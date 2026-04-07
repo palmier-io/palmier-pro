@@ -26,5 +26,6 @@ struct EditorView: View {
             }
             .frame(minHeight: Layout.timelineMinHeight)
         }
+        .focusEffectDisabled()
     }
 }

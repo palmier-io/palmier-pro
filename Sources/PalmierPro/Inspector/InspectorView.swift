@@ -8,7 +8,7 @@ struct InspectorView: View {
             if let clip = selectedClip {
                 inspectorContent(clip)
             } else {
-                ContentUnavailableView("No Selection", systemImage: "square.dashed", description: Text("Select a clip to inspect"))
+                Color.clear
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
