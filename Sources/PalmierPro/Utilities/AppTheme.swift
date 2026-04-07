@@ -30,9 +30,9 @@ enum AppTheme {
     // MARK: - Track type colors
 
     enum TrackColor {
-        static let video = NSColor(red: 0.165, green: 0.624, blue: 0.831, alpha: 1) // cyan
-        static let audio = NSColor(red: 0.361, green: 0.722, blue: 0.086, alpha: 1) // lime
-        static let image = NSColor(red: 0.639, green: 0.345, blue: 0.878, alpha: 1) // purple
+        static let video = NSColor(red: 0x00/255.0, green: 0x6D/255.0, blue: 0x94/255.0, alpha: 1) // #006d94
+        static let audio = NSColor(red: 0x3D/255.0, green: 0x7A/255.0, blue: 0x0A/255.0, alpha: 1) // #3d7a0a
+        static let image = NSColor(red: 0x96/255.0, green: 0x15/255.0, blue: 0xAD/255.0, alpha: 1) // #9615ad
     }
 
     // MARK: - Clip fills

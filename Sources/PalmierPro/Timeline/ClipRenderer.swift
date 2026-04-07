@@ -2,6 +2,9 @@ import AppKit
 
 enum ClipRenderer {
 
+    private static let labelBarHeight: CGFloat = 16
+    private static let waveformStripHeight: CGFloat = 14
+
     static func draw(
         _ clip: Clip,
         type: ClipType,
@@ -19,20 +22,53 @@ enum ClipRenderer {
         let cornerRadius = Trim.clipCornerRadius
         let path = CGPath(roundedRect: rect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
 
-        // Fill
-        let fill = isSelected ? AppTheme.ClipFill.selected : AppTheme.ClipFill.base
+        let baseColor = type.themeColor
+        let fill = isSelected
+            ? baseColor.withAlphaComponent(0.45)
+            : baseColor.withAlphaComponent(0.3)
         context.setFillColor(fill.cgColor)
         context.addPath(path)
         context.fillPath()
 
-        // Visual content (waveform or thumbnails) — drawn after fill, before label
+        // --- Layout zones ---
         let stripWidth: CGFloat = 3
-        if type == .video, let thumbs = cache?.thumbnails(for: clip.mediaRef), !thumbs.isEmpty {
-            drawThumbnailStrip(thumbnails: thumbs, clip: clip, stripWidth: stripWidth, in: rect, cornerRadius: cornerRadius, context: context)
-        } else if type == .audio || type == .video {
-            if let samples = cache?.samples(for: clip.mediaRef), !samples.isEmpty {
-                drawWaveform(samples: samples, clip: clip, type: type, stripWidth: stripWidth, in: rect, context: context)
-            }
+        let handleW = Trim.handleWidth
+        let contentX = rect.minX + stripWidth + 1
+        let contentWidth = rect.width - stripWidth - 1 - handleW
+
+        let hasWaveform = cache?.samples(for: clip.mediaRef) != nil
+        let hasThumbnails = type == .video && (cache?.thumbnails(for: clip.mediaRef) != nil)
+
+        // Label bar at top
+        let labelRect = CGRect(x: contentX, y: rect.minY, width: contentWidth, height: labelBarHeight)
+
+        // Waveform strip at bottom (for video clips with audio, or audio-only clips)
+        let waveformRect: CGRect?
+        if hasWaveform && (type == .audio || hasThumbnails) {
+            waveformRect = CGRect(x: contentX, y: rect.maxY - waveformStripHeight, width: contentWidth, height: waveformStripHeight)
+        } else {
+            waveformRect = nil
+        }
+
+        // Thumbnail / main content area (between label and waveform)
+        let contentY = rect.minY + labelBarHeight
+        let contentBottom = waveformRect?.minY ?? rect.maxY
+        let mainHeight = contentBottom - contentY
+
+        // --- Draw visual content ---
+
+        if type == .video, let thumbs = cache?.thumbnails(for: clip.mediaRef), !thumbs.isEmpty, mainHeight > 4 {
+            let thumbRect = CGRect(x: contentX, y: contentY, width: contentWidth, height: mainHeight)
+            drawThumbnailStrip(thumbnails: thumbs, clip: clip, in: thumbRect, clipRect: rect, cornerRadius: cornerRadius, context: context)
+        } else if type == .audio, let samples = cache?.samples(for: clip.mediaRef), !samples.isEmpty {
+            // Audio-only: waveform fills the full area below label
+            let audioRect = CGRect(x: contentX, y: contentY, width: contentWidth, height: rect.maxY - contentY)
+            drawWaveform(samples: samples, clip: clip, type: type, in: audioRect, context: context)
+        }
+
+        // Waveform strip at bottom (for video clips)
+        if let wfRect = waveformRect, let samples = cache?.samples(for: clip.mediaRef), !samples.isEmpty {
+            drawWaveform(samples: samples, clip: clip, type: type, in: wfRect, context: context)
         }
 
         // Color-coded left edge strip
@@ -51,10 +87,8 @@ enum ClipRenderer {
         context.addPath(path)
         context.strokePath()
 
-        // Label
-        drawLabel(clip.mediaRef, in: rect, context: context)
+        drawLabelBar(clip: clip, type: type, in: labelRect, clipRect: rect, context: context)
 
-        // Trim handles
         drawTrimHandles(in: rect, context: context)
 
         if opacity < 1.0 {
@@ -68,17 +102,12 @@ enum ClipRenderer {
         samples: [Float],
         clip: Clip,
         type: ClipType,
-        stripWidth: CGFloat,
-        in rect: NSRect,
+        in drawRect: NSRect,
         context: CGContext
     ) {
-        let handleW = Trim.handleWidth
-        let drawX = rect.minX + stripWidth + 1
-        let drawWidth = rect.width - stripWidth - 1 - handleW
-        guard drawWidth > 2 else { return }
-
-        let drawY = rect.minY + 2
-        let drawHeight = rect.height - 4
+        let drawWidth = drawRect.width
+        let drawHeight = drawRect.height
+        guard drawWidth > 2, drawHeight > 2 else { return }
 
         // Map visible portion of source to sample indices
         let totalSource = clip.sourceDurationFrames
@@ -93,7 +122,7 @@ enum ClipRenderer {
         let barCount = Int(drawWidth)
         guard barCount > 0 else { return }
 
-        let color = type.themeColor.withAlphaComponent(0.5).cgColor
+        let color = type.themeColor.withAlphaComponent(0.6).cgColor
         context.setFillColor(color)
 
         for i in 0..<barCount {
@@ -101,9 +130,9 @@ enum ClipRenderer {
             let sample = visibleSamples[min(sampleIdx, visibleSamples.count - 1)]
             // sample is 0=loud, 1=silence; invert for bar height
             let amplitude = CGFloat(1.0 - sample)
-            let barHeight = max(1, amplitude * drawHeight)
-            let barY = drawY + (drawHeight - barHeight) / 2
-            context.fill(CGRect(x: drawX + CGFloat(i), y: barY, width: 1, height: barHeight))
+            let barHeight = max(1, amplitude * (drawHeight - 2))
+            let barY = drawRect.maxY - barHeight - 1
+            context.fill(CGRect(x: drawRect.minX + CGFloat(i), y: barY, width: 1, height: barHeight))
         }
     }
 
@@ -112,41 +141,34 @@ enum ClipRenderer {
     private static func drawThumbnailStrip(
         thumbnails: [(time: Double, image: CGImage)],
         clip: Clip,
-        stripWidth: CGFloat,
-        in rect: NSRect,
+        in drawRect: NSRect,
+        clipRect: NSRect,
         cornerRadius: CGFloat,
         context: CGContext
     ) {
-        let handleW = Trim.handleWidth
-        let drawX = rect.minX + stripWidth + 1
-        let drawWidth = rect.width - stripWidth - 1 - handleW
-        let drawY = rect.minY + 1
-        let drawHeight = rect.height - 2
-        guard drawWidth > 4, drawHeight > 4 else { return }
-
-        let drawRect = CGRect(x: drawX, y: drawY, width: drawWidth, height: drawHeight)
+        guard drawRect.width > 4, drawRect.height > 4 else { return }
 
         // Compute thumbnail display width from aspect ratio
         let firstThumb = thumbnails[0].image
         let aspectRatio = CGFloat(firstThumb.width) / CGFloat(firstThumb.height)
-        let thumbDisplayWidth = max(1, drawHeight * aspectRatio)
+        let thumbDisplayWidth = max(1, drawRect.height * aspectRatio)
 
         // Visible time range based on trim
-        let fps = 30.0 // default; could be passed through but rarely changes
+        let fps = 30.0
         let visibleStartSec = Double(clip.trimStartFrame) / fps
         let visibleDurationSec = Double(clip.durationFrames) / fps
         guard visibleDurationSec > 0 else { return }
 
         context.saveGState()
-        let clipPath = CGPath(roundedRect: drawRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
+        let clipPath = CGPath(roundedRect: clipRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
         context.addPath(clipPath)
         context.clip()
+        context.clip(to: drawRect)
 
         // Tile thumbnails across the drawable area
-        var x = drawX
-        while x < drawX + drawWidth {
-            // What time does this x position correspond to?
-            let frac = (x - drawX) / drawWidth
+        var x = drawRect.minX
+        while x < drawRect.maxX {
+            let frac = (x - drawRect.minX) / drawRect.width
             let timeSec = visibleStartSec + frac * visibleDurationSec
 
             // Find nearest thumbnail
@@ -160,7 +182,7 @@ enum ClipRenderer {
                 }
             }
 
-            let tileRect = CGRect(x: x, y: drawY, width: thumbDisplayWidth, height: drawHeight)
+            let tileRect = CGRect(x: x, y: drawRect.minY, width: thumbDisplayWidth, height: drawRect.height)
             // CGContext.draw uses bottom-up coords; flip for the flipped NSView
             context.saveGState()
             context.translateBy(x: 0, y: tileRect.midY * 2)
@@ -170,30 +192,32 @@ enum ClipRenderer {
             x += thumbDisplayWidth
         }
 
-        // Semi-transparent overlay so label is readable
-        context.setFillColor(NSColor.black.withAlphaComponent(0.35).cgColor)
-        context.fill(drawRect)
-
         context.restoreGState()
     }
 
-    // MARK: - Label
+    // MARK: - Label Bar
 
-    private static func drawLabel(_ text: String, in rect: NSRect, context: CGContext) {
-        guard rect.width > 30 else { return }
+    private static func drawLabelBar(clip: Clip, type: ClipType, in labelRect: NSRect, clipRect: NSRect, context: CGContext) {
+        guard clipRect.width > 20 else { return }
+
+        // Text: "filename.ext  HH:MM:SS:FF"
+        let timecode = formatTimecode(frame: clip.durationFrames, fps: 30)
+        let text = "\(clip.mediaRef)  \(timecode)"
+
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: AppTheme.FontSize.xs, weight: .medium),
             .foregroundColor: AppTheme.Text.primary,
         ]
         let str = NSAttributedString(string: text, attributes: attrs)
         let size = str.size()
-        let inset: CGFloat = 8 // extra inset to clear the edge strip
+        let inset: CGFloat = 6
         let origin = NSPoint(
-            x: rect.minX + inset,
-            y: rect.midY - size.height / 2
+            x: labelRect.minX + inset,
+            y: labelRect.minY + (labelRect.height - size.height) / 2
         )
+
         context.saveGState()
-        context.clip(to: rect.insetBy(dx: inset, dy: 2))
+        context.clip(to: labelRect.insetBy(dx: inset, dy: 0))
         str.draw(at: origin)
         context.restoreGState()
     }
