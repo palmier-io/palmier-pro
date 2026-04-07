@@ -108,7 +108,7 @@ final class TimelineInputController {
                     originalTrack: hit.trackIndex,
                     originalFrame: clip.startFrame,
                     grabOffsetFrames: grabFrame - clip.startFrame,
-                    targetTrackIndex: hit.trackIndex
+                    dropTarget: .existingTrack(hit.trackIndex)
                 ))
             }
         } else {
@@ -128,7 +128,6 @@ final class TimelineInputController {
     func mouseDragged(with event: NSEvent, geometry: TimelineGeometry) {
         let point = view.convert(event.locationInWindow, from: nil)
         let frame = geometry.frameAt(x: point.x)
-        let trackIndex = geometry.trackAt(y: point.y)
 
         switch dragState {
         case .scrubPlayhead:
@@ -154,7 +153,7 @@ final class TimelineInputController {
                 snapIndicatorX = nil
                 drag.deltaFrames = candidateFrame - drag.originalFrame
             }
-            drag.targetTrackIndex = trackIndex
+            drag.dropTarget = geometry.dropTargetAt(y: point.y)
             dragState = .moveClip(drag)
 
         case .trimLeft(var drag):
@@ -242,8 +241,14 @@ final class TimelineInputController {
         switch dragState {
         case .moveClip(let drag):
             let targetFrame = max(0, drag.originalFrame + drag.deltaFrames)
-            if drag.targetTrackIndex != drag.originalTrack || targetFrame != drag.originalFrame {
-                editor.moveClip(clipId: drag.clipId, toTrack: drag.targetTrackIndex, toFrame: targetFrame)
+            switch drag.dropTarget {
+            case .existingTrack(let trackIndex):
+                if trackIndex != drag.originalTrack || targetFrame != drag.originalFrame {
+                    editor.moveClip(clipId: drag.clipId, toTrack: trackIndex, toFrame: targetFrame)
+                }
+            case .newTrackAt(let insertIndex):
+                let clipType = editor.timeline.tracks[drag.originalTrack].type
+                editor.moveClipToNewTrack(clipId: drag.clipId, insertAt: insertIndex, clipType: clipType, toFrame: targetFrame)
             }
 
         case .trimLeft(let drag):

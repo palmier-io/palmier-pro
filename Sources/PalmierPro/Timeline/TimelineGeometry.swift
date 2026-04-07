@@ -1,5 +1,10 @@
 import AppKit
 
+enum TrackDropTarget: Equatable {
+    case existingTrack(Int)
+    case newTrackAt(Int) // insert new track before this index
+}
+
 /// Pure layout math for the timeline. Used by both TimelineView (drawing)
 /// and TimelineInputController (hit testing).
 struct TimelineGeometry {
@@ -24,7 +29,7 @@ struct TimelineGeometry {
 
         var cumY: [CGFloat] = []
         cumY.reserveCapacity(trackHeights.count)
-        var y = rulerHeight
+        var y = rulerHeight + Layout.dropZoneHeight
         for h in trackHeights {
             cumY.append(y)
             y += h
@@ -59,6 +64,55 @@ struct TimelineGeometry {
             if y < Double(cumulativeY[i]) + Double(trackHeights[i]) { return i }
         }
         return max(0, trackCount - 1)
+    }
+
+    func dropTargetAt(y: Double) -> TrackDropTarget {
+        guard trackCount > 0 else { return .newTrackAt(0) }
+
+        // Top drop zone
+        if y < Double(cumulativeY[0]) {
+            return .newTrackAt(0)
+        }
+
+        // Check between-track boundaries
+        let threshold = Double(Layout.insertThreshold)
+        for i in 0..<(trackCount - 1) {
+            let bottomOfTrack = Double(cumulativeY[i]) + Double(trackHeights[i])
+            let topOfNext = Double(cumulativeY[i + 1])
+            // The boundary region: threshold above the gap to threshold below
+            if y >= bottomOfTrack - threshold && y <= topOfNext + threshold {
+                return .newTrackAt(i + 1)
+            }
+        }
+
+        // Bottom drop zone: past the last track
+        let lastTrackBottom = Double(cumulativeY[trackCount - 1]) + Double(trackHeights[trackCount - 1])
+        if y >= lastTrackBottom {
+            return .newTrackAt(trackCount)
+        }
+
+        // On an existing track
+        for i in cumulativeY.indices {
+            if y < Double(cumulativeY[i]) + Double(trackHeights[i]) { return .existingTrack(i) }
+        }
+        return .existingTrack(max(0, trackCount - 1))
+    }
+
+    func insertionLineY(for target: TrackDropTarget) -> CGFloat? {
+        switch target {
+        case .existingTrack:
+            return nil
+        case .newTrackAt(let index):
+            if trackCount == 0 {
+                return rulerHeight + Layout.dropZoneHeight
+            } else if index == 0 {
+                return cumulativeY[0]
+            } else if index >= trackCount {
+                return cumulativeY[trackCount - 1] + trackHeights[trackCount - 1]
+            } else {
+                return cumulativeY[index]
+            }
+        }
     }
 
     func xForFrame(_ frame: Int) -> Double {

@@ -13,6 +13,7 @@ final class TimelineView: NSView {
         super.init(frame: .zero)
         self.inputController = TimelineInputController(editor: editor, view: self)
         wantsLayer = true
+        layerContentsRedrawPolicy = .onSetNeedsDisplay
         layer?.backgroundColor = NSColor(white: 0.15, alpha: 1).cgColor
         registerForDraggedTypes([.string, .fileURL])
     }
@@ -30,6 +31,9 @@ final class TimelineView: NSView {
         .font: NSFont.systemFont(ofSize: AppTheme.FontSize.sm, weight: .medium),
         .foregroundColor: AppTheme.Text.secondary,
     ]
+
+    /// Drop target during external drags (media panel), used for drawing the insertion indicator.
+    var externalDropTarget: TrackDropTarget?
 
     var geometry: TimelineGeometry {
         TimelineGeometry(editor: editor, bounds: bounds)
@@ -73,6 +77,22 @@ final class TimelineView: NSView {
             ctx.addRect(marq.current)
             ctx.drawPath(using: .fillStroke)
             ctx.setLineDash(phase: 0, lengths: [])
+        }
+
+        // Yellow insertion line for new-track drop zones
+        let activeDropTarget: TrackDropTarget? = {
+            if case .moveClip(let drag) = inputController.dragState {
+                if case .newTrackAt = drag.dropTarget { return drag.dropTarget }
+            }
+            if let ext = externalDropTarget, case .newTrackAt = ext { return ext }
+            return nil
+        }()
+        if let target = activeDropTarget, let lineY = geo.insertionLineY(for: target) {
+            ctx.setStrokeColor(NSColor.systemYellow.cgColor)
+            ctx.setLineWidth(2)
+            ctx.move(to: CGPoint(x: geo.headerWidth, y: Double(lineY)))
+            ctx.addLine(to: CGPoint(x: Double(bounds.width), y: Double(lineY)))
+            ctx.strokePath()
         }
 
         if let razorFrame = inputController.razorPreviewFrame {
@@ -132,11 +152,27 @@ final class TimelineView: NSView {
                     // Ghost at target position
                     var ghostClip = clip
                     ghostClip.startFrame = max(0, drag.originalFrame + drag.deltaFrames)
-                    let ghostRect = geo.clipRect(for: ghostClip, trackIndex: drag.targetTrackIndex)
+                    let ghostRect: NSRect
+                    let ghostType: ClipType
+                    switch drag.dropTarget {
+                    case .existingTrack(let idx):
+                        ghostRect = geo.clipRect(for: ghostClip, trackIndex: idx)
+                        ghostType = editor.timeline.tracks.indices.contains(idx)
+                            ? editor.timeline.tracks[idx].type : track.type
+                    case .newTrackAt(let idx):
+                        if let lineY = geo.insertionLineY(for: .newTrackAt(idx)) {
+                            ghostRect = NSRect(
+                                x: geo.headerWidth + Double(ghostClip.startFrame) * geo.pixelsPerFrame,
+                                y: Double(lineY) + 2,
+                                width: Double(ghostClip.durationFrames) * geo.pixelsPerFrame,
+                                height: Double(Layout.trackHeight) - 4
+                            )
+                        } else {
+                            ghostRect = geo.clipRect(for: ghostClip, trackIndex: 0)
+                        }
+                        ghostType = track.type
+                    }
                     if ghostRect.intersects(dirtyRect) {
-                        let ghostType = editor.timeline.tracks.indices.contains(drag.targetTrackIndex)
-                            ? editor.timeline.tracks[drag.targetTrackIndex].type
-                            : track.type
                         ClipRenderer.draw(ghostClip, type: ghostType, in: ghostRect,
                                           isSelected: true, opacity: 0.7, context: ctx)
                     }
@@ -281,33 +317,49 @@ final class TimelineView: NSView {
     // MARK: - Drop target (drag from media panel)
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        .copy
+        let point = convert(sender.draggingLocation, from: nil)
+        externalDropTarget = geometry.dropTargetAt(y: point.y)
+        needsDisplay = true
+        return .copy
     }
 
     override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        .copy
+        let point = convert(sender.draggingLocation, from: nil)
+        externalDropTarget = geometry.dropTargetAt(y: point.y)
+        needsDisplay = true
+        return .copy
+    }
+
+    override func draggingExited(_ sender: (any NSDraggingInfo)?) {
+        externalDropTarget = nil
+        needsDisplay = true
     }
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         let geo = geometry
         let point = convert(sender.draggingLocation, from: nil)
-        let targetTrack = geo.trackAt(y: point.y)
+        let dropTarget = geo.dropTargetAt(y: point.y)
         let targetFrame = geo.frameAt(x: point.x)
+
+        externalDropTarget = nil
 
         guard let urlString = sender.draggingPasteboard.string(forType: .string),
               let asset = editor.mediaAssets.first(where: { $0.url.absoluteString == urlString })
         else { return false }
 
-        guard editor.timeline.tracks.indices.contains(targetTrack) else { return false }
-
-        // Cmd = ripple insert, Option = overwrite insert, default = normal add
-        let mods = NSEvent.modifierFlags
-        if mods.contains(.command) {
-            editor.rippleInsertClip(asset: asset, trackIndex: targetTrack, atFrame: targetFrame)
-        } else if mods.contains(.option) {
-            editor.overwriteInsertClip(asset: asset, trackIndex: targetTrack, atFrame: targetFrame)
-        } else {
-            editor.addClip(asset: asset, trackIndex: targetTrack, startFrame: targetFrame)
+        switch dropTarget {
+        case .existingTrack(let targetTrack):
+            guard editor.timeline.tracks.indices.contains(targetTrack) else { return false }
+            let mods = NSEvent.modifierFlags
+            if mods.contains(.command) {
+                editor.rippleInsertClip(asset: asset, trackIndex: targetTrack, atFrame: targetFrame)
+            } else if mods.contains(.option) {
+                editor.overwriteInsertClip(asset: asset, trackIndex: targetTrack, atFrame: targetFrame)
+            } else {
+                editor.addClip(asset: asset, trackIndex: targetTrack, startFrame: targetFrame)
+            }
+        case .newTrackAt(let insertIndex):
+            editor.addClipToNewTrack(asset: asset, insertAt: insertIndex, startFrame: targetFrame)
         }
 
         needsDisplay = true

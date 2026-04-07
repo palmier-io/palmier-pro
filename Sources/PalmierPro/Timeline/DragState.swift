@@ -18,7 +18,7 @@ enum DragState {
         let originalFrame: Int
         let grabOffsetFrames: Int  // frames between clip start and where user clicked
         var deltaFrames: Int = 0
-        var targetTrackIndex: Int
+        var dropTarget: TrackDropTarget
     }
 
     struct TrimDrag {

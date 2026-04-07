@@ -34,11 +34,6 @@ final class VideoProject: NSDocument {
         if let loaded = loadedTimeline {
             editorViewModel.timeline = loaded
             loadedTimeline = nil
-        } else if editorViewModel.timeline.tracks.isEmpty {
-            editorViewModel.timeline.tracks = [
-                Track(type: .video, label: "Video 1"),
-                Track(type: .audio, label: "Audio 1"),
-            ]
         }
         editorViewModel.undoManager = undoManager
 

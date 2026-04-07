@@ -53,6 +53,53 @@ final class EditorViewModel {
         undoManager?.setActionName("Add Track")
     }
 
+    @discardableResult
+    func insertTrack(at index: Int, type: ClipType, label: String) -> Int {
+        let track = Track(type: type, label: label)
+        let clamped = min(index, timeline.tracks.count)
+        timeline.tracks.insert(track, at: clamped)
+        undoManager?.registerUndo(withTarget: self) { $0.removeTrack(id: track.id) }
+        undoManager?.setActionName("Add Track")
+        return clamped
+    }
+
+    func trackLabel(for type: ClipType) -> String {
+        switch type {
+        case .video: "Video"
+        case .audio: "Audio"
+        case .image: "Image"
+        }
+    }
+
+    func moveClipToNewTrack(clipId: String, insertAt: Int, clipType: ClipType, toFrame: Int) {
+        guard let loc = findClip(id: clipId) else { return }
+        undoManager?.beginUndoGrouping()
+        let newIndex = insertTrack(at: insertAt, type: clipType, label: trackLabel(for: clipType))
+        // If we inserted before/at the clip's current track, its index shifted by 1
+        let adjustedOriginal = newIndex <= loc.trackIndex ? loc.trackIndex + 1 : loc.trackIndex
+        // Move clip directly: remove from old track, add to new
+        var clip = timeline.tracks[adjustedOriginal].clips.remove(at: loc.clipIndex)
+        clip.startFrame = max(0, toFrame)
+        timeline.tracks[newIndex].clips.append(clip)
+        sortClips(trackIndex: adjustedOriginal)
+        sortClips(trackIndex: newIndex)
+        let prevTrack = adjustedOriginal
+        let prevFrame = timeline.tracks[newIndex].clips.first(where: { $0.id == clipId })?.startFrame ?? toFrame
+        undoManager?.registerUndo(withTarget: self) { $0.moveClip(clipId: clipId, toTrack: prevTrack, toFrame: prevFrame) }
+        pruneEmptyTracks()
+        undoManager?.endUndoGrouping()
+        undoManager?.setActionName("Move Clip to New Track")
+        notifyTimelineChanged()
+    }
+
+    func addClipToNewTrack(asset: MediaAsset, insertAt: Int, startFrame: Int) {
+        undoManager?.beginUndoGrouping()
+        let newIndex = insertTrack(at: insertAt, type: asset.type, label: trackLabel(for: asset.type))
+        addClip(asset: asset, trackIndex: newIndex, startFrame: startFrame)
+        undoManager?.endUndoGrouping()
+        undoManager?.setActionName("Add Clip to New Track")
+    }
+
     func removeTrack(id: String) {
         guard let idx = timeline.tracks.firstIndex(where: { $0.id == id }) else { return }
         let removed = timeline.tracks.remove(at: idx)
@@ -71,6 +118,7 @@ final class EditorViewModel {
             vm.timeline.tracks[trackIndex].muted = was
         }
         undoManager?.setActionName(was ? "Unmute Track" : "Mute Track")
+        notifyTimelineChanged()
     }
 
     func toggleTrackHidden(trackIndex: Int) {
@@ -81,6 +129,7 @@ final class EditorViewModel {
             vm.timeline.tracks[trackIndex].hidden = was
         }
         undoManager?.setActionName(was ? "Show Track" : "Hide Track")
+        notifyTimelineChanged()
     }
 
     func setTrackHeight(trackIndex: Int, height: CGFloat) {
@@ -121,6 +170,7 @@ final class EditorViewModel {
         // Don't allow moving to a track of a different type
         let clipType = timeline.tracks[loc.trackIndex].type
         guard timeline.tracks[toTrack].type == clipType else { return }
+        undoManager?.beginUndoGrouping()
         let prev = (track: loc.trackIndex, frame: timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame)
         var clip = timeline.tracks[loc.trackIndex].clips.remove(at: loc.clipIndex)
         let resolvedFrame = resolveOverlap(trackIndex: toTrack, clipId: clipId, startFrame: toFrame, duration: clip.durationFrames)
@@ -129,6 +179,8 @@ final class EditorViewModel {
         sortClips(trackIndex: loc.trackIndex)
         sortClips(trackIndex: toTrack)
         undoManager?.registerUndo(withTarget: self) { $0.moveClip(clipId: clipId, toTrack: prev.track, toFrame: prev.frame) }
+        pruneEmptyTracks()
+        undoManager?.endUndoGrouping()
         undoManager?.setActionName("Move Clip")
         notifyTimelineChanged()
     }
@@ -192,6 +244,7 @@ final class EditorViewModel {
         }
         guard !removed.isEmpty else { return }
         selectedClipIds.subtract(ids)
+        undoManager?.beginUndoGrouping()
         undoManager?.registerUndo(withTarget: self) { vm in
             for entry in removed {
                 if vm.timeline.tracks.indices.contains(entry.trackIndex) {
@@ -200,6 +253,8 @@ final class EditorViewModel {
                 }
             }
         }
+        pruneEmptyTracks()
+        undoManager?.endUndoGrouping()
         undoManager?.setActionName("Remove Clip\(removed.count == 1 ? "" : "s")")
         notifyTimelineChanged()
     }
@@ -434,5 +489,9 @@ final class EditorViewModel {
         for i in timeline.tracks.indices {
             timeline.tracks[i].clips.removeAll { $0.id == id }
         }
+    }
+
+    private func pruneEmptyTracks() {
+        timeline.tracks.filter(\.clips.isEmpty).forEach { removeTrack(id: $0.id) }
     }
 }
