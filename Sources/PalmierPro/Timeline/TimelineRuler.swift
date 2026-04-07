@@ -32,6 +32,32 @@ enum TimelineRuler {
             .foregroundColor: AppTheme.Text.tertiary,
         ]
 
+        // Minor ticks: subdivide each major interval
+        let minorCount = minorSubdivisions(framesPerMajor: framesPerMajor, pixelsPerFrame: pixelsPerFrame, fps: fps)
+        let framesPerMinor = minorCount > 0 ? framesPerMajor / minorCount : 0
+
+        // Draw minor ticks first (so major ticks draw on top)
+        if framesPerMinor > 0 {
+            context.setStrokeColor(AppTheme.Text.muted.withAlphaComponent(0.4).cgColor)
+            context.setLineWidth(0.5)
+            var minorFrame = (startFrame / framesPerMinor) * framesPerMinor
+            while minorFrame <= endFrame {
+                if minorFrame % framesPerMajor != 0 {
+                    let localX = Double(minorFrame) * pixelsPerFrame - scrollOffsetX
+                    if localX >= 0 && localX <= Double(rect.width) {
+                        let x = Double(rect.minX) + localX
+                        let isMidpoint = minorCount % 2 == 0 && minorFrame % (framesPerMajor / 2) == 0
+                        let tickHeight: Double = isMidpoint ? 6 : 4
+                        context.move(to: CGPoint(x: x, y: Double(rect.maxY) - tickHeight))
+                        context.addLine(to: CGPoint(x: x, y: Double(rect.maxY)))
+                        context.strokePath()
+                    }
+                }
+                minorFrame += framesPerMinor
+            }
+        }
+
+        // Draw major ticks and labels
         var frame = (startFrame / framesPerMajor) * framesPerMajor
         while frame <= endFrame {
             let localX = Double(frame) * pixelsPerFrame - scrollOffsetX
@@ -62,5 +88,17 @@ enum TimelineRuler {
         // Round to "nice" intervals: 1s, 2s, 5s, 10s, 30s, 1m, 5m, 10m
         let candidates = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600].map { $0 * fps }
         return candidates.first { Double($0) >= rawFrames } ?? candidates.last!
+    }
+
+    /// How many minor subdivisions fit between major ticks
+    private static func minorSubdivisions(framesPerMajor: Int, pixelsPerFrame: Double, fps: Int) -> Int {
+        let majorPixels = Double(framesPerMajor) * pixelsPerFrame
+        // Try 10, 5, 4, 2 subdivisions — pick the first where each minor tick is >= 12px apart
+        for divisions in [10, 5, 4, 2] {
+            if majorPixels / Double(divisions) >= 12 {
+                return divisions
+            }
+        }
+        return 0
     }
 }
