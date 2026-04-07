@@ -172,6 +172,14 @@ struct MediaPanelView: View {
                 asset.thumbnail = NSImage(cgImage: cgImage, size: NSSize(width: 160, height: 90))
             }
         }
+
+        // Generate timeline visuals (waveform + thumbnails)
+        if asset.type == .audio || asset.type == .video {
+            editor.mediaVisualCache.generateWaveform(for: asset)
+        }
+        if asset.type == .video {
+            editor.mediaVisualCache.generateThumbnails(for: asset, fps: editor.timeline.fps)
+        }
     }
 }
 

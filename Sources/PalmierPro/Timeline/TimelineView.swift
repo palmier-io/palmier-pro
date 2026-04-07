@@ -12,6 +12,7 @@ final class TimelineView: NSView {
         self.editor = editor
         super.init(frame: .zero)
         self.inputController = TimelineInputController(editor: editor, view: self)
+        editor.mediaVisualCache.timelineView = self
         wantsLayer = true
         layerContentsRedrawPolicy = .onSetNeedsDisplay
         layer?.backgroundColor = NSColor(white: 0.15, alpha: 1).cgColor
@@ -146,7 +147,8 @@ final class TimelineView: NSView {
                     // Dimmed original position
                     if originalRect.intersects(dirtyRect) {
                         ClipRenderer.draw(clip, type: track.type, in: originalRect,
-                                          isSelected: false, opacity: 0.3, context: ctx)
+                                          isSelected: false, opacity: 0.3, context: ctx,
+                                          cache: editor.mediaVisualCache)
                     }
 
                     // Ghost at target position
@@ -174,7 +176,8 @@ final class TimelineView: NSView {
                     }
                     if ghostRect.intersects(dirtyRect) {
                         ClipRenderer.draw(ghostClip, type: ghostType, in: ghostRect,
-                                          isSelected: true, opacity: 0.7, context: ctx)
+                                          isSelected: true, opacity: 0.7, context: ctx,
+                                          cache: editor.mediaVisualCache)
                     }
                     continue
                 }
@@ -193,7 +196,8 @@ final class TimelineView: NSView {
                     let previewRect = geo.clipRect(for: previewClip, trackIndex: ti)
                     if previewRect.intersects(dirtyRect) {
                         ClipRenderer.draw(previewClip, type: track.type, in: previewRect,
-                                          isSelected: isSelected, context: ctx)
+                                          isSelected: isSelected, context: ctx,
+                                          cache: editor.mediaVisualCache)
                     }
                     continue
                 }
@@ -202,7 +206,8 @@ final class TimelineView: NSView {
                 let rect = geo.clipRect(for: clip, trackIndex: ti)
                 guard rect.intersects(dirtyRect) else { continue }
                 ClipRenderer.draw(clip, type: track.type, in: rect,
-                                  isSelected: isSelected, context: ctx)
+                                  isSelected: isSelected, context: ctx,
+                                  cache: editor.mediaVisualCache)
             }
         }
     }

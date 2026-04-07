@@ -11,6 +11,14 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
         }
     }
 
+    var trackLabel: String {
+        switch self {
+        case .video: "Video"
+        case .audio: "Audio"
+        case .image: "Image"
+        }
+    }
+
     init?(fileExtension ext: String) {
         switch ext {
         case "mov", "mp4", "m4v": self = .video

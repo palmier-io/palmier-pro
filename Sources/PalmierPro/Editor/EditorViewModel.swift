@@ -20,6 +20,7 @@ final class EditorViewModel {
     // MARK: - Media library (in-memory, rebuilt on project open)
 
     var mediaAssets: [MediaAsset] = []
+    let mediaVisualCache = MediaVisualCache()
 
     // MARK: - Document bridge
 
