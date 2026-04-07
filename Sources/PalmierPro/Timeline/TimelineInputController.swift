@@ -1,0 +1,397 @@
+import AppKit
+
+/// Owns all mouse/cursor/drag logic for the timeline.
+/// Communicates back to TimelineView via `view.needsDisplay = true`.
+/// Uses delta-only drag model: never mutates EditorViewModel during drag.
+@MainActor
+final class TimelineInputController {
+    unowned let editor: EditorViewModel
+    unowned let view: TimelineView
+
+    private(set) var dragState: DragState = .idle
+    private(set) var snapIndicatorX: Double?
+    private(set) var razorPreviewFrame: Int?
+    private var snapState = SnapEngine.SnapState()
+
+    init(editor: EditorViewModel, view: TimelineView) {
+        self.editor = editor
+        self.view = view
+    }
+
+    // MARK: - Mouse down
+
+    func mouseDown(with event: NSEvent, geometry: TimelineGeometry) {
+        let point = view.convert(event.locationInWindow, from: nil)
+
+        // Ruler area — scrub playhead
+        if point.y < geometry.rulerHeight {
+            dragState = .scrubPlayhead
+            editor.isScrubbing = true
+            scrubToFrame(geometry.frameAt(x: point.x))
+            return
+        }
+
+        let trackIndex = geometry.trackAt(y: point.y)
+
+        // Razor tool: click to split
+        if editor.toolMode == .razor {
+            if let hit = hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) {
+                let clickFrame = razorPreviewFrame ?? geometry.frameAt(x: point.x)
+                let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
+                editor.splitClip(clipId: clip.id, atFrame: clickFrame)
+                view.needsDisplay = true
+            }
+            return
+        }
+
+        if point.x < geometry.headerWidth {
+            for (ti, rect) in view.muteButtonRects {
+                if rect.contains(point) {
+                    editor.toggleTrackMute(trackIndex: ti)
+                    view.needsDisplay = true
+                    return
+                }
+            }
+            for (ti, rect) in view.hideButtonRects {
+                if rect.contains(point) {
+                    editor.toggleTrackHidden(trackIndex: ti)
+                    view.needsDisplay = true
+                    return
+                }
+            }
+
+            if let resizeTrack = hitTestResizeHandle(at: point, geometry: geometry) {
+                dragState = .resizeTrack(trackIndex: resizeTrack, originalHeight: editor.timeline.tracks[resizeTrack].displayHeight)
+                view.needsDisplay = true
+                return
+            }
+        }
+
+        // Hit test clips
+        if let hit = hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) {
+            let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
+            let rect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
+
+            // Selection
+            if event.modifierFlags.contains(.shift) {
+                if editor.selectedClipIds.contains(clip.id) {
+                    editor.selectedClipIds.remove(clip.id)
+                } else {
+                    editor.selectedClipIds.insert(clip.id)
+                }
+            } else if !editor.selectedClipIds.contains(clip.id) {
+                editor.selectedClipIds = [clip.id]
+            }
+
+            // Determine drag mode: trim left, trim right, or move
+            let localX = point.x - rect.minX
+            if localX <= Trim.handleWidth {
+                dragState = .trimLeft(DragState.TrimDrag(
+                    clipId: clip.id,
+                    originalTrimStart: clip.trimStartFrame,
+                    originalTrimEnd: clip.trimEndFrame,
+                    originalStartFrame: clip.startFrame,
+                    originalDuration: clip.durationFrames
+                ))
+            } else if localX >= rect.width - Trim.handleWidth {
+                dragState = .trimRight(DragState.TrimDrag(
+                    clipId: clip.id,
+                    originalTrimStart: clip.trimStartFrame,
+                    originalTrimEnd: clip.trimEndFrame,
+                    originalStartFrame: clip.startFrame,
+                    originalDuration: clip.durationFrames
+                ))
+            } else {
+                let grabFrame = geometry.frameAt(x: point.x)
+                dragState = .moveClip(DragState.MoveClipDrag(
+                    clipId: clip.id,
+                    originalTrack: hit.trackIndex,
+                    originalFrame: clip.startFrame,
+                    grabOffsetFrames: grabFrame - clip.startFrame,
+                    targetTrackIndex: hit.trackIndex
+                ))
+            }
+        } else {
+            // Empty space — start marquee
+            if !event.modifierFlags.contains(.shift) {
+                editor.selectedClipIds.removeAll()
+            }
+            dragState = .marquee(DragState.MarqueeDrag(origin: point))
+        }
+
+        snapState = SnapEngine.SnapState() // Reset sticky snap for new drag
+        view.needsDisplay = true
+    }
+
+    // MARK: - Mouse dragged
+
+    func mouseDragged(with event: NSEvent, geometry: TimelineGeometry) {
+        let point = view.convert(event.locationInWindow, from: nil)
+        let frame = geometry.frameAt(x: point.x)
+        let trackIndex = geometry.trackAt(y: point.y)
+
+        switch dragState {
+        case .scrubPlayhead:
+            scrubToFrame(frame)
+
+        case .moveClip(var drag):
+            let candidateFrame = frame - drag.grabOffsetFrames
+            let targets = SnapEngine.collectTargets(
+                tracks: editor.timeline.tracks,
+                playheadFrame: editor.currentFrame,
+                excludeClipIds: [drag.clipId]
+            )
+            if let snap = SnapEngine.findSnap(
+                position: candidateFrame,
+                targets: targets,
+                state: &snapState,
+                baseThreshold: Snap.thresholdPixels,
+                pixelsPerFrame: geometry.pixelsPerFrame
+            ) {
+                snapIndicatorX = snap.x
+                drag.deltaFrames = snap.frame - drag.originalFrame
+            } else {
+                snapIndicatorX = nil
+                drag.deltaFrames = candidateFrame - drag.originalFrame
+            }
+            drag.targetTrackIndex = trackIndex
+            dragState = .moveClip(drag)
+
+        case .trimLeft(var drag):
+            // Snap the left edge to targets
+            let candidateStart = frame
+            let targets = SnapEngine.collectTargets(
+                tracks: editor.timeline.tracks,
+                playheadFrame: editor.currentFrame,
+                excludeClipIds: [drag.clipId]
+            )
+            let snappedStart: Int
+            if let snap = SnapEngine.findSnap(
+                position: candidateStart,
+                targets: targets,
+                state: &snapState,
+                baseThreshold: Snap.thresholdPixels,
+                pixelsPerFrame: geometry.pixelsPerFrame
+            ) {
+                snapIndicatorX = snap.x
+                snappedStart = snap.frame
+            } else {
+                snapIndicatorX = nil
+                snappedStart = candidateStart
+            }
+            let delta = snappedStart - drag.originalStartFrame
+            let maxDelta = drag.originalDuration - 1
+            let minDelta = -drag.originalTrimStart
+            drag.deltaFrames = max(minDelta, min(maxDelta, delta))
+            dragState = .trimLeft(drag)
+
+        case .trimRight(var drag):
+            // Snap the right edge to targets
+            let originalEndFrame = drag.originalStartFrame + drag.originalDuration
+            let candidateEnd = max(drag.originalStartFrame + 1, frame)
+            let targets = SnapEngine.collectTargets(
+                tracks: editor.timeline.tracks,
+                playheadFrame: editor.currentFrame,
+                excludeClipIds: [drag.clipId]
+            )
+            let snappedEnd: Int
+            if let snap = SnapEngine.findSnap(
+                position: candidateEnd,
+                targets: targets,
+                state: &snapState,
+                baseThreshold: Snap.thresholdPixels,
+                pixelsPerFrame: geometry.pixelsPerFrame
+            ) {
+                snapIndicatorX = snap.x
+                snappedEnd = snap.frame
+            } else {
+                snapIndicatorX = nil
+                snappedEnd = candidateEnd
+            }
+            drag.deltaFrames = snappedEnd - originalEndFrame
+            // Can't shrink past 1 frame, can't expand past trimEnd (source material)
+            let minDelta = -(drag.originalDuration - 1)
+            let maxDelta = drag.originalTrimEnd
+            drag.deltaFrames = max(minDelta, min(maxDelta, drag.deltaFrames))
+            dragState = .trimRight(drag)
+
+        case .marquee(var marq):
+            marq.current = NSRect(
+                x: min(marq.origin.x, point.x),
+                y: min(marq.origin.y, point.y),
+                width: abs(point.x - marq.origin.x),
+                height: abs(point.y - marq.origin.y)
+            )
+            dragState = .marquee(marq)
+
+        case .resizeTrack(let ti, _):
+            let trackTop = geometry.trackY(at: ti)
+            let newHeight = max(TrackSize.minHeight, min(TrackSize.maxHeight, point.y - trackTop))
+            editor.timeline.tracks[ti].displayHeight = newHeight
+
+        case .idle:
+            break
+        }
+
+        view.needsDisplay = true
+    }
+
+    // MARK: - Mouse up
+
+    func mouseUp(with event: NSEvent, geometry: TimelineGeometry) {
+        switch dragState {
+        case .moveClip(let drag):
+            let targetFrame = max(0, drag.originalFrame + drag.deltaFrames)
+            if drag.targetTrackIndex != drag.originalTrack || targetFrame != drag.originalFrame {
+                editor.moveClip(clipId: drag.clipId, toTrack: drag.targetTrackIndex, toFrame: targetFrame)
+            }
+
+        case .trimLeft(let drag):
+            if drag.deltaFrames != 0 {
+                let newTrimStart = drag.originalTrimStart + drag.deltaFrames
+                editor.trimClip(
+                    clipId: drag.clipId,
+                    trimStartFrame: newTrimStart,
+                    trimEndFrame: drag.originalTrimEnd
+                )
+            }
+
+        case .trimRight(let drag):
+            if drag.deltaFrames != 0 {
+                let newTrimEnd = drag.originalTrimEnd - drag.deltaFrames
+                editor.trimClip(
+                    clipId: drag.clipId,
+                    trimStartFrame: drag.originalTrimStart,
+                    trimEndFrame: newTrimEnd
+                )
+            }
+
+        case .marquee(let marq):
+            for (ti, track) in editor.timeline.tracks.enumerated() {
+                for clip in track.clips {
+                    if geometry.clipRect(for: clip, trackIndex: ti).intersects(marq.current) {
+                        editor.selectedClipIds.insert(clip.id)
+                    }
+                }
+            }
+
+        case .resizeTrack(let ti, let originalHeight):
+            let finalHeight = editor.timeline.tracks[ti].displayHeight
+            if finalHeight != originalHeight {
+                // Revert to original, then commit through undo-aware path
+                editor.timeline.tracks[ti].displayHeight = originalHeight
+                editor.setTrackHeight(trackIndex: ti, height: finalHeight)
+            }
+
+        case .scrubPlayhead:
+            editor.isScrubbing = false
+
+        case .idle:
+            break
+        }
+
+        dragState = .idle
+        snapIndicatorX = nil
+        view.needsDisplay = true
+    }
+
+    // MARK: - Mouse moved (cursor updates)
+
+    func mouseMoved(with event: NSEvent, geometry: TimelineGeometry) {
+        let point = view.convert(event.locationInWindow, from: nil)
+
+        // Razor tool: show preview line
+        if editor.toolMode == .razor && point.y >= geometry.rulerHeight && point.x >= geometry.headerWidth {
+            var frame = geometry.frameAt(x: point.x)
+            // Snap razor to playhead
+            let snapThreshold = max(1, Int(Snap.thresholdPixels / geometry.pixelsPerFrame))
+            if abs(frame - editor.currentFrame) <= snapThreshold {
+                frame = editor.currentFrame
+            }
+            razorPreviewFrame = frame
+            NSCursor.crosshair.set()
+            view.needsDisplay = true
+            return
+        }
+        razorPreviewFrame = nil
+
+        if hitTestResizeHandle(at: point, geometry: geometry) != nil {
+            NSCursor.resizeUpDown.set()
+            return
+        }
+
+        let trackIndex = geometry.trackAt(y: point.y)
+
+        if let hit = hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) {
+            let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
+            let rect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
+            let localX = point.x - rect.minX
+            if localX <= Trim.handleWidth || localX >= rect.width - Trim.handleWidth {
+                NSCursor.resizeLeftRight.set()
+                return
+            }
+        }
+        NSCursor.arrow.set()
+    }
+
+    // MARK: - Scroll wheel (Option+scroll = zoom)
+
+    func scrollWheel(with event: NSEvent, geometry: TimelineGeometry) {
+        guard event.modifierFlags.contains(.option) else {
+            view.superview?.superview?.scrollWheel(with: event)
+            return
+        }
+
+        let cursorX = view.convert(event.locationInWindow, from: nil).x
+        let offsetFromHeader = cursorX - geometry.headerWidth
+
+        // Frame under cursor before zoom
+        let frameUnderCursor = max(0.0, offsetFromHeader / geometry.pixelsPerFrame)
+
+        let delta = event.scrollingDeltaY * Zoom.scrollSensitivity
+        editor.zoomScale = max(Zoom.min, min(Zoom.max, editor.zoomScale + delta))
+
+        // After zoom, scroll so the same frame stays under cursor
+        if let scrollView = view.superview?.superview as? NSScrollView {
+            let newXForFrame = frameUnderCursor * editor.zoomScale + geometry.headerWidth
+            let scrollX = max(0, newXForFrame - offsetFromHeader)
+            let origin = scrollView.contentView.bounds.origin
+            scrollView.contentView.setBoundsOrigin(NSPoint(x: scrollX, y: origin.y))
+        }
+
+        view.needsDisplay = true
+    }
+
+    // MARK: - Hit testing
+
+    func hitTestClip(
+        at point: NSPoint,
+        trackIndex: Int,
+        geometry: TimelineGeometry
+    ) -> (trackIndex: Int, clipIndex: Int)? {
+        guard editor.timeline.tracks.indices.contains(trackIndex) else { return nil }
+        for (ci, clip) in editor.timeline.tracks[trackIndex].clips.enumerated() {
+            if geometry.clipRect(for: clip, trackIndex: trackIndex).contains(point) {
+                return (trackIndex, ci)
+            }
+        }
+        return nil
+    }
+
+    // MARK: - Helpers
+
+    private func hitTestResizeHandle(at point: NSPoint, geometry: TimelineGeometry) -> Int? {
+        guard point.x < geometry.headerWidth else { return nil }
+        for i in editor.timeline.tracks.indices {
+            let trackBottom = geometry.trackY(at: i) + geometry.trackHeight(at: i)
+            if abs(point.y - trackBottom) <= TrackSize.resizeHandleZone {
+                return i
+            }
+        }
+        return nil
+    }
+
+    private func scrubToFrame(_ frame: Int) {
+        editor.seekToFrame(frame)
+    }
+}
