@@ -24,19 +24,43 @@ struct AssetThumbnailView: View {
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .strokeBorder(Color(nsColor: asset.type.themeColor), lineWidth: isOnTimeline ? 2 : 0)
+                    .strokeBorder(
+                        isSelected ? Color.accentColor : Color(nsColor: asset.type.themeColor),
+                        lineWidth: isSelected ? 2.5 : (isOnTimeline ? 2 : 0)
+                    )
+            )
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                    .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
             )
 
             Text(asset.name)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .foregroundStyle(isOnTimeline ? Color(nsColor: asset.type.themeColor) : AppTheme.Text.secondaryColor)
+                .foregroundStyle(isSelected ? Color.accentColor : (isOnTimeline ? Color(nsColor: asset.type.themeColor) : AppTheme.Text.secondaryColor))
         }
         .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            let shiftHeld = NSEvent.modifierFlags.contains(.shift)
+            if shiftHeld {
+                if editor.selectedMediaAssetIds.contains(asset.id) {
+                    editor.selectedMediaAssetIds.remove(asset.id)
+                } else {
+                    editor.selectedMediaAssetIds.insert(asset.id)
+                }
+            } else {
+                editor.selectedMediaAssetIds = [asset.id]
+            }
+        }
     }
 
     private var iconName: String { asset.type.sfSymbolName }
+
+    private var isSelected: Bool {
+        editor.selectedMediaAssetIds.contains(asset.id)
+    }
 
     private var isOnTimeline: Bool {
         let mediaRef = asset.url.lastPathComponent

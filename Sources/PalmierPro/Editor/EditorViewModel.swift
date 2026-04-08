@@ -13,6 +13,7 @@ final class EditorViewModel {
     var currentFrame: Int = 0
     var isPlaying: Bool = false
     var selectedClipIds: Set<String> = []
+    var selectedMediaAssetIds: Set<String> = []
     var zoomScale: Double = Defaults.pixelsPerFrame
     var isScrubbing: Bool = false
     var toolMode: ToolMode = .pointer
@@ -94,12 +95,33 @@ final class EditorViewModel {
         notifyTimelineChanged()
     }
 
-    func addClipToNewTrack(asset: MediaAsset, insertAt: Int, startFrame: Int) {
+    func addClips(assets: [MediaAsset], trackIndex: Int, startFrame: Int) {
+        guard timeline.tracks.indices.contains(trackIndex) else { return }
         undoManager?.beginUndoGrouping()
-        let newIndex = insertTrack(at: insertAt, type: asset.type, label: trackLabel(for: asset.type))
-        addClip(asset: asset, trackIndex: newIndex, startFrame: startFrame)
+        var cursor = startFrame
+        var clipIds: [String] = []
+        for asset in assets {
+            let durationFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
+            let resolvedStart = resolveOverlap(trackIndex: trackIndex, clipId: "", startFrame: cursor, duration: durationFrames)
+            let clip = Clip(mediaRef: asset.url.lastPathComponent, startFrame: resolvedStart, durationFrames: durationFrames)
+            timeline.tracks[trackIndex].clips.append(clip)
+            clipIds.append(clip.id)
+            cursor = resolvedStart + durationFrames
+        }
+        sortClips(trackIndex: trackIndex)
+        undoManager?.registerUndo(withTarget: self) { $0.removeClips(ids: Set(clipIds)) }
         undoManager?.endUndoGrouping()
-        undoManager?.setActionName("Add Clip to New Track")
+        undoManager?.setActionName("Add Clips")
+        notifyTimelineChanged()
+    }
+
+    func addClipsToNewTrack(assets: [MediaAsset], insertAt: Int, startFrame: Int) {
+        guard let firstAsset = assets.first else { return }
+        undoManager?.beginUndoGrouping()
+        let newIndex = insertTrack(at: insertAt, type: firstAsset.type, label: trackLabel(for: firstAsset.type))
+        addClips(assets: assets, trackIndex: newIndex, startFrame: startFrame)
+        undoManager?.endUndoGrouping()
+        undoManager?.setActionName("Add Clips to New Track")
     }
 
     func removeTrack(id: String) {
@@ -153,18 +175,6 @@ final class EditorViewModel {
     }
 
     // MARK: - Clip mutations
-
-    func addClip(asset: MediaAsset, trackIndex: Int, startFrame: Int) {
-        guard timeline.tracks.indices.contains(trackIndex) else { return }
-        let durationFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
-        let resolvedStart = resolveOverlap(trackIndex: trackIndex, clipId: "", startFrame: startFrame, duration: durationFrames)
-        let clip = Clip(mediaRef: asset.url.lastPathComponent, startFrame: resolvedStart, durationFrames: durationFrames)
-        timeline.tracks[trackIndex].clips.append(clip)
-        sortClips(trackIndex: trackIndex)
-        undoManager?.registerUndo(withTarget: self) { $0.removeClips(ids: [clip.id]) }
-        undoManager?.setActionName("Add Clip")
-        notifyTimelineChanged()
-    }
 
     func moveClip(clipId: String, toTrack: Int, toFrame: Int) {
         guard let loc = findClip(id: clipId),
@@ -427,18 +437,18 @@ final class EditorViewModel {
         }
     }
 
-    /// Ripple insert: push existing clips forward, then add clip.
-    func rippleInsertClip(asset: MediaAsset, trackIndex: Int, atFrame: Int) {
+    func rippleInsertClips(assets: [MediaAsset], trackIndex: Int, atFrame: Int) {
         guard timeline.tracks.indices.contains(trackIndex) else { return }
-        let durationFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
-
         undoManager?.beginUndoGrouping()
-
-        // Push clips forward
+        var cursor = atFrame
+        var clipIds: [String] = []
+        // Compute total push amount for all assets
+        let totalPush = assets.reduce(0) { $0 + secondsToFrame(seconds: $1.duration, fps: timeline.fps) }
+        // Push existing clips forward once
         let shifts = RippleEngine.computeRipplePush(
             clips: timeline.tracks[trackIndex].clips,
             insertFrame: atFrame,
-            pushAmount: durationFrames
+            pushAmount: totalPush
         )
         for shift in shifts {
             if let loc = findClip(id: shift.clipId) {
@@ -452,32 +462,42 @@ final class EditorViewModel {
                 }
             }
         }
-
-        // Add the new clip at the insertion point
-        let clip = Clip(mediaRef: asset.url.lastPathComponent, startFrame: atFrame, durationFrames: durationFrames)
-        timeline.tracks[trackIndex].clips.append(clip)
+        // Insert all clips sequentially
+        for asset in assets {
+            let durationFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
+            let clip = Clip(mediaRef: asset.url.lastPathComponent, startFrame: cursor, durationFrames: durationFrames)
+            timeline.tracks[trackIndex].clips.append(clip)
+            clipIds.append(clip.id)
+            cursor += durationFrames
+        }
         sortClips(trackIndex: trackIndex)
-        undoManager?.registerUndo(withTarget: self) { $0.removeClips(ids: [clip.id]) }
-
+        undoManager?.registerUndo(withTarget: self) { $0.removeClips(ids: Set(clipIds)) }
         undoManager?.endUndoGrouping()
-        undoManager?.setActionName("Ripple Insert")
+        undoManager?.setActionName("Ripple Insert Clips")
+        notifyTimelineChanged()
     }
 
-    /// Overwrite insert: clear the region, then add clip.
-    func overwriteInsertClip(asset: MediaAsset, trackIndex: Int, atFrame: Int) {
+    func overwriteInsertClips(assets: [MediaAsset], trackIndex: Int, atFrame: Int) {
         guard timeline.tracks.indices.contains(trackIndex) else { return }
-        let durationFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
-
+        // Compute total region to clear
+        let totalDuration = assets.reduce(0) { $0 + secondsToFrame(seconds: $1.duration, fps: timeline.fps) }
         undoManager?.beginUndoGrouping()
-        clearRegion(trackIndex: trackIndex, start: atFrame, end: atFrame + durationFrames)
-
-        let clip = Clip(mediaRef: asset.url.lastPathComponent, startFrame: atFrame, durationFrames: durationFrames)
-        timeline.tracks[trackIndex].clips.append(clip)
+        clearRegion(trackIndex: trackIndex, start: atFrame, end: atFrame + totalDuration)
+        // Insert all clips sequentially
+        var cursor = atFrame
+        var clipIds: [String] = []
+        for asset in assets {
+            let durationFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
+            let clip = Clip(mediaRef: asset.url.lastPathComponent, startFrame: cursor, durationFrames: durationFrames)
+            timeline.tracks[trackIndex].clips.append(clip)
+            clipIds.append(clip.id)
+            cursor += durationFrames
+        }
         sortClips(trackIndex: trackIndex)
-        undoManager?.registerUndo(withTarget: self) { $0.removeClips(ids: [clip.id]) }
-
+        undoManager?.registerUndo(withTarget: self) { $0.removeClips(ids: Set(clipIds)) }
         undoManager?.endUndoGrouping()
-        undoManager?.setActionName("Overwrite Insert")
+        undoManager?.setActionName("Overwrite Insert Clips")
+        notifyTimelineChanged()
     }
 
     // MARK: - Private helpers

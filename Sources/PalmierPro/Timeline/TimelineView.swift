@@ -348,23 +348,44 @@ final class TimelineView: NSView {
 
         externalDropTarget = nil
 
-        guard let urlString = sender.draggingPasteboard.string(forType: .string),
-              let asset = editor.mediaAssets.first(where: { $0.url.absoluteString == urlString })
-        else { return false }
+        guard let urlString = sender.draggingPasteboard.string(forType: .string) else { return false }
+
+        // Support multi-asset drag (newline-separated URLs)
+        let urlStrings = urlString.split(separator: "\n").map(String.init)
+        let assets = urlStrings.compactMap { str in
+            editor.mediaAssets.first(where: { $0.url.absoluteString == str })
+        }
+        guard !assets.isEmpty else { return false }
 
         switch dropTarget {
         case .existingTrack(let targetTrack):
             guard editor.timeline.tracks.indices.contains(targetTrack) else { return false }
+            let trackType = editor.timeline.tracks[targetTrack].type
+            let matching = assets.filter { $0.type == trackType }
+            guard !matching.isEmpty else { return false }
+
             let mods = NSEvent.modifierFlags
             if mods.contains(.command) {
-                editor.rippleInsertClip(asset: asset, trackIndex: targetTrack, atFrame: targetFrame)
+                editor.rippleInsertClips(assets: matching, trackIndex: targetTrack, atFrame: targetFrame)
             } else if mods.contains(.option) {
-                editor.overwriteInsertClip(asset: asset, trackIndex: targetTrack, atFrame: targetFrame)
+                editor.overwriteInsertClips(assets: matching, trackIndex: targetTrack, atFrame: targetFrame)
             } else {
-                editor.addClip(asset: asset, trackIndex: targetTrack, startFrame: targetFrame)
+                editor.addClips(assets: matching, trackIndex: targetTrack, startFrame: targetFrame)
             }
+
         case .newTrackAt(let insertIndex):
-            editor.addClipToNewTrack(asset: asset, insertAt: insertIndex, startFrame: targetFrame)
+            // Group by type, create one track per type (sorted for deterministic order)
+            let grouped = Dictionary(grouping: assets, by: \.type)
+            let sortedTypes: [ClipType] = [.video, .image, .audio]
+            editor.undoManager?.beginUndoGrouping()
+            var trackOffset = 0
+            for type in sortedTypes {
+                guard let group = grouped[type] else { continue }
+                editor.addClipsToNewTrack(assets: group, insertAt: insertIndex + trackOffset, startFrame: targetFrame)
+                trackOffset += 1
+            }
+            editor.undoManager?.endUndoGrouping()
+            editor.undoManager?.setActionName("Add Clips to New Track\(grouped.count > 1 ? "s" : "")")
         }
 
         needsDisplay = true

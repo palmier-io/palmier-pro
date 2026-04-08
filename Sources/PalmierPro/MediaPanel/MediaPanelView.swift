@@ -5,6 +5,11 @@ struct MediaPanelView: View {
     @Environment(EditorViewModel.self) var editor
     @State private var selectedTab: ClipType = .video
     @State private var isDropTargeted = false
+    @State private var assetFrames: [String: CGRect] = [:]
+    @State private var marqueeRect: CGRect? = nil
+    @State private var marqueeActive = false
+    @State private var marqueeShiftHeld = false
+    @State private var marqueeBaseSelection: Set<String> = []
 
     private let columns = [GridItem(.adaptive(minimum: 80), spacing: AppTheme.Spacing.md)]
 
@@ -24,11 +29,30 @@ struct MediaPanelView: View {
                     LazyVGrid(columns: columns, spacing: AppTheme.Spacing.md) {
                         ForEach(filteredAssets) { asset in
                             AssetThumbnailView(asset: asset)
-                                .draggable(asset.url.absoluteString) // drag to timeline
+                                .draggable(dragPayload(for: asset)) {
+                                    dragPreview(for: asset)
+                                }
+                                .background(
+                                    GeometryReader { geo in
+                                        Color.clear.preference(
+                                            key: AssetFramePreferenceKey.self,
+                                            value: [asset.id: geo.frame(in: .named("mediaGrid"))]
+                                        )
+                                    }
+                                )
                         }
                     }
                     .padding(AppTheme.Spacing.md)
                 }
+                .coordinateSpace(name: "mediaGrid")
+                .onPreferenceChange(AssetFramePreferenceKey.self) { assetFrames = $0 }
+                .onTapGesture {
+                    editor.selectedMediaAssetIds.removeAll()
+                }
+                .overlay {
+                    marqueeOverlay
+                }
+                .gesture(marqueeGesture)
 
                 Rectangle()
                     .fill(AppTheme.Border.subtleColor)
@@ -54,6 +78,108 @@ struct MediaPanelView: View {
             if isDropTargeted {
                 dropHighlight
             }
+        }
+        .onChange(of: selectedTab) {
+            editor.selectedMediaAssetIds.removeAll()
+        }
+    }
+
+    // MARK: - Multi-drag payload
+
+    private func dragPayload(for asset: MediaAsset) -> String {
+        if editor.selectedMediaAssetIds.contains(asset.id) {
+            let selectedInOrder = filteredAssets.filter { editor.selectedMediaAssetIds.contains($0.id) }
+            return selectedInOrder.map(\.url.absoluteString).joined(separator: "\n")
+        }
+        return asset.url.absoluteString
+    }
+
+    // MARK: - Drag Preview
+
+    @ViewBuilder
+    private func dragPreview(for asset: MediaAsset) -> some View {
+        let count = editor.selectedMediaAssetIds.contains(asset.id) ? editor.selectedMediaAssetIds.count : 1
+        ZStack(alignment: .topTrailing) {
+            Group {
+                if let thumbnail = asset.thumbnail {
+                    Image(nsImage: thumbnail)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                } else {
+                    ZStack {
+                        Rectangle().fill(.quaternary)
+                        Image(systemName: asset.type.sfSymbolName)
+                            .font(.title2)
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    }
+                }
+            }
+            .frame(width: 80, height: 60)
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                    .strokeBorder(Color.accentColor, lineWidth: 1.5)
+            )
+            .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+
+            if count > 1 {
+                Text("\(count)")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.accentColor))
+                    .offset(x: 4, y: -4)
+            }
+        }
+        .padding(.top, 4)
+        .padding(.trailing, 4)
+    }
+
+    // MARK: - Marquee Selection
+
+    private var marqueeGesture: some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .named("mediaGrid"))
+            .onChanged { value in
+                if !marqueeActive {
+                    let startOnAsset = assetFrames.values.contains { $0.contains(value.startLocation) }
+                    if startOnAsset { return }
+                    marqueeActive = true
+                    marqueeShiftHeld = NSEvent.modifierFlags.contains(.shift)
+                    marqueeBaseSelection = marqueeShiftHeld ? editor.selectedMediaAssetIds : []
+                }
+                let rect = CGRect(
+                    x: min(value.startLocation.x, value.location.x),
+                    y: min(value.startLocation.y, value.location.y),
+                    width: abs(value.location.x - value.startLocation.x),
+                    height: abs(value.location.y - value.startLocation.y)
+                )
+                marqueeRect = rect
+                var ids = marqueeBaseSelection
+                for (id, frame) in assetFrames {
+                    if rect.intersects(frame) {
+                        ids.insert(id)
+                    }
+                }
+                if ids != editor.selectedMediaAssetIds {
+                    editor.selectedMediaAssetIds = ids
+                }
+            }
+            .onEnded { _ in
+                marqueeRect = nil
+                marqueeActive = false
+            }
+    }
+
+    @ViewBuilder
+    private var marqueeOverlay: some View {
+        if let rect = marqueeRect {
+            Rectangle()
+                .stroke(Color.white.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                .background(Rectangle().fill(Color.white.opacity(0.1)))
+                .frame(width: rect.width, height: rect.height)
+                .position(x: rect.midX, y: rect.midY)
+                .allowsHitTesting(false)
         }
     }
 
@@ -184,3 +310,12 @@ struct MediaPanelView: View {
 }
 
 import AVFoundation
+
+// MARK: - Preference Key for asset frame tracking
+
+private struct AssetFramePreferenceKey: PreferenceKey {
+    nonisolated(unsafe) static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
