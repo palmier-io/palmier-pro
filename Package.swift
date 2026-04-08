@@ -11,7 +11,6 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/fal-ai/fal-swift", from: "0.5.6"),
         .package(url: "https://github.com/dmrschmidt/DSWaveformImage", from: "14.2.2"),
-        .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.17.0"),
     ],
     targets: [
         .executableTarget(
@@ -22,14 +21,6 @@ let package = Package(
             ],
             path: "Sources/PalmierPro",
             exclude: ["Resources/Info.plist"]
-        ),
-        .testTarget(
-            name: "PalmierProTests",
-            dependencies: [
-                "PalmierPro",
-                .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
-            ],
-            path: "Tests/PalmierProTests"
         ),
     ]
 )

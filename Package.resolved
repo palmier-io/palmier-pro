@@ -1,0 +1,33 @@
+{
+  "originHash" : "f8c193a4981d9c0a5e17671e1ca17e4a4c44a84036765362db1f4ecc2b6a7012",
+  "pins" : [
+    {
+      "identity" : "dswaveformimage",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/dmrschmidt/DSWaveformImage",
+      "state" : {
+        "revision" : "a7a96cf4478c6fa084e76c175bcf7f4c9a38f80a",
+        "version" : "14.3.0"
+      }
+    },
+    {
+      "identity" : "fal-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/fal-ai/fal-swift",
+      "state" : {
+        "revision" : "a58ca8a926a56a69ba3c454583f626b3629a4223",
+        "version" : "0.5.6"
+      }
+    },
+    {
+      "identity" : "swift-msgpack",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/nnabeyang/swift-msgpack.git",
+      "state" : {
+        "revision" : "1c8dbd506c68888df3fd5df4ff56cef9cb39c388",
+        "version" : "0.7.0"
+      }
+    }
+  ],
+  "version" : 3
+}

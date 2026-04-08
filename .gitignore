@@ -1,6 +1,7 @@
 .DS_Store
 .swiftpm/
 .build/
+.vscode/
 
 # Xcode
 xcuserdata/
