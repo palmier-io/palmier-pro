@@ -136,42 +136,42 @@ final class TimelineView: NSView {
             }
         }()
 
+        let allDraggedIds: Set<String> = {
+            guard let drag = moveDrag else { return [] }
+            return Set([drag.clipId] + drag.companions.map(\.clipId))
+        }()
+
         for (ti, track) in editor.timeline.tracks.enumerated() {
             for clip in track.clips {
                 let isSelected = editor.selectedClipIds.contains(clip.id)
 
-                // Ghost drag: draw dimmed original + offset ghost
-                if let drag = moveDrag, clip.id == drag.clipId {
+                if let drag = moveDrag, allDraggedIds.contains(clip.id) {
                     let originalRect = geo.clipRect(for: clip, trackIndex: ti)
 
-                    // Dimmed original position
                     if originalRect.intersects(dirtyRect) {
                         ClipRenderer.draw(clip, type: track.type, in: originalRect,
                                           isSelected: false, opacity: 0.3, context: ctx,
                                           cache: editor.mediaVisualCache)
                     }
 
-                    // Ghost at target position
+                    let frameDelta = drag.deltaFrames
+                    let trackDelta: Int = {
+                        switch drag.dropTarget {
+                        case .existingTrack(let idx): return idx - drag.originalTrack
+                        case .newTrackAt: return 0
+                        }
+                    }()
+
                     var ghostClip = clip
-                    ghostClip.startFrame = max(0, drag.originalFrame + drag.deltaFrames)
+                    ghostClip.startFrame = max(0, clip.startFrame + frameDelta)
+                    let ghostTrack = ti + trackDelta
                     let ghostRect: NSRect
                     let ghostType: ClipType
-                    switch drag.dropTarget {
-                    case .existingTrack(let idx):
-                        ghostRect = geo.clipRect(for: ghostClip, trackIndex: idx)
-                        ghostType = editor.timeline.tracks.indices.contains(idx)
-                            ? editor.timeline.tracks[idx].type : track.type
-                    case .newTrackAt(let idx):
-                        if let lineY = geo.insertionLineY(for: .newTrackAt(idx)) {
-                            ghostRect = NSRect(
-                                x: geo.headerWidth + Double(ghostClip.startFrame) * geo.pixelsPerFrame,
-                                y: Double(lineY) + 2,
-                                width: Double(ghostClip.durationFrames) * geo.pixelsPerFrame,
-                                height: Double(Layout.trackHeight) - 4
-                            )
-                        } else {
-                            ghostRect = geo.clipRect(for: ghostClip, trackIndex: 0)
-                        }
+                    if editor.timeline.tracks.indices.contains(ghostTrack) {
+                        ghostRect = geo.clipRect(for: ghostClip, trackIndex: ghostTrack)
+                        ghostType = editor.timeline.tracks[ghostTrack].type
+                    } else {
+                        ghostRect = geo.clipRect(for: ghostClip, trackIndex: ti)
                         ghostType = track.type
                     }
                     if ghostRect.intersects(dirtyRect) {

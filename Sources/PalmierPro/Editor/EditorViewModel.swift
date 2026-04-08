@@ -186,6 +186,36 @@ final class EditorViewModel {
         notifyTimelineChanged()
     }
 
+    /// Batch-move multiple clips in a single undo group. Used for multi-clip drag.
+    /// Removes all clips first to avoid self-overlap, then reinserts at new positions.
+    func moveClips(_ moves: [(clipId: String, toTrack: Int, toFrame: Int)]) {
+        undoManager?.beginUndoGrouping()
+        var undoMoves: [(clipId: String, toTrack: Int, toFrame: Int)] = []
+        for m in moves {
+            guard let loc = findClip(id: m.clipId) else { continue }
+            let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            undoMoves.append((m.clipId, loc.trackIndex, clip.startFrame))
+        }
+        var removed: [(clip: Clip, toTrack: Int, toFrame: Int)] = []
+        for m in moves {
+            guard let loc = findClip(id: m.clipId) else { continue }
+            let clip = timeline.tracks[loc.trackIndex].clips.remove(at: loc.clipIndex)
+            removed.append((clip, m.toTrack, m.toFrame))
+        }
+        for var r in removed {
+            guard timeline.tracks.indices.contains(r.toTrack) else { continue }
+            r.clip.startFrame = max(0, r.toFrame)
+            timeline.tracks[r.toTrack].clips.append(r.clip)
+        }
+        // Sort affected tracks
+        for i in timeline.tracks.indices { sortClips(trackIndex: i) }
+        undoManager?.registerUndo(withTarget: self) { $0.moveClips(undoMoves) }
+        pruneEmptyTracks()
+        undoManager?.endUndoGrouping()
+        undoManager?.setActionName("Move Clips")
+        notifyTimelineChanged()
+    }
+
     func trimClip(clipId: String, trimStartFrame: Int, trimEndFrame: Int) {
         guard let loc = findClip(id: clipId) else { return }
         let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
