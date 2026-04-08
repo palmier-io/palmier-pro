@@ -27,5 +27,8 @@ struct EditorView: View {
             .frame(minHeight: Layout.timelineMinHeight)
         }
         .focusEffectDisabled()
+        .sheet(isPresented: Bindable(editor).showExportDialog) {
+            ExportView()
+        }
     }
 }

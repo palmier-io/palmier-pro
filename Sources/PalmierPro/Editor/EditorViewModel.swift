@@ -16,6 +16,7 @@ final class EditorViewModel {
     var zoomScale: Double = Defaults.pixelsPerFrame
     var isScrubbing: Bool = false
     var toolMode: ToolMode = .pointer
+    var showExportDialog: Bool = false
 
     // MARK: - Media library (in-memory, rebuilt on project open)
 

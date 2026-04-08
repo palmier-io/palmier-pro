@@ -44,6 +44,12 @@ enum MainMenuBuilder {
         importItem.keyEquivalentModifierMask = [.command]
         menu.addItem(importItem)
 
+        menu.addItem(.separator())
+
+        let exportItem = NSMenuItem(title: "Export...", action: #selector(EditorActions.showExport(_:)), keyEquivalent: "e")
+        exportItem.keyEquivalentModifierMask = [.command]
+        menu.addItem(exportItem)
+
         item.submenu = menu
         return item
     }
@@ -111,4 +117,5 @@ enum MainMenuBuilder {
     func stepFrameBackward(_ sender: Any?)
     func skipFramesForward(_ sender: Any?)
     func skipFramesBackward(_ sender: Any?)
+    func showExport(_ sender: Any?)
 }

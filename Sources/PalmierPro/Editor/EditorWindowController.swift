@@ -100,4 +100,8 @@ extension EditorWindowController: EditorActions {
     @objc func importMedia(_ sender: Any?) {
         // Will be implemented in Phase 8 (Media Panel)
     }
+
+    @objc func showExport(_ sender: Any?) {
+        editorViewModel.showExportDialog = true
+    }
 }

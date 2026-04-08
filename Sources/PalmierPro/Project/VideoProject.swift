@@ -47,7 +47,29 @@ final class VideoProject: NSDocument {
         window.title = "Palmier Pro"
         window.setFrameAutosaveName("PalmierProWindow")
         window.appearance = NSAppearance(named: .darkAqua)
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = false
         window.center()
+
+        // Export button in the title bar
+        let exportButton = NSButton(title: "Export", target: nil, action: #selector(EditorActions.showExport(_:)))
+        exportButton.bezelStyle = .recessed
+        exportButton.isBordered = true
+        exportButton.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: "Export")
+        exportButton.imagePosition = .imageLeading
+        exportButton.controlSize = .small
+        exportButton.font = .systemFont(ofSize: 12, weight: .medium)
+        exportButton.sizeToFit()
+
+        let wrapper = NSView(frame: NSRect(x: 0, y: 0, width: exportButton.fittingSize.width + 16, height: 28))
+        exportButton.frame.origin.x = 8
+        exportButton.frame.origin.y = (wrapper.frame.height - exportButton.fittingSize.height) / 2
+        wrapper.addSubview(exportButton)
+
+        let accessory = NSTitlebarAccessoryViewController()
+        accessory.view = wrapper
+        accessory.layoutAttribute = .trailing
+        window.addTitlebarAccessoryViewController(accessory)
 
         let controller = EditorWindowController(editorViewModel: editorViewModel, window: window)
         controller.shouldCascadeWindows = true
