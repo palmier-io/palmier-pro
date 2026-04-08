@@ -3,7 +3,7 @@ import AppKit
 enum ClipRenderer {
 
     private static let labelBarHeight: CGFloat = 16
-    private static let waveformStripHeight: CGFloat = 14
+    private static let waveformStripMinHeight: CGFloat = 14
 
     static func draw(
         _ clip: Clip,
@@ -43,6 +43,7 @@ enum ClipRenderer {
         let labelRect = CGRect(x: contentX, y: rect.minY, width: contentWidth, height: labelBarHeight)
 
         // Waveform strip at bottom (for video clips with audio, or audio-only clips)
+        let waveformStripHeight = max(waveformStripMinHeight, rect.height * 0.4)
         let waveformRect: CGRect?
         if hasWaveform && (type == .audio || hasThumbnails) {
             waveformRect = CGRect(x: contentX, y: rect.maxY - waveformStripHeight, width: contentWidth, height: waveformStripHeight)
