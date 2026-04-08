@@ -30,7 +30,6 @@ final class VideoProject: NSDocument {
     }
 
     override func makeWindowControllers() {
-        // Apply any timeline loaded from disk, or create default tracks
         if let loaded = loadedTimeline {
             editorViewModel.timeline = loaded
             loadedTimeline = nil
@@ -51,7 +50,6 @@ final class VideoProject: NSDocument {
         window.titlebarAppearsTransparent = false
         window.center()
 
-        // Export button in the title bar
         let exportButton = NSButton(title: "Export", target: nil, action: #selector(EditorActions.showExport(_:)))
         exportButton.bezelStyle = .recessed
         exportButton.isBordered = true
@@ -76,7 +74,6 @@ final class VideoProject: NSDocument {
         controller.installKeyMonitor()
         addWindowController(controller)
 
-        // Scan media/ folder if opening an existing project
         if let fileURL {
             Task { @MainActor in
                 await scanMedia(projectURL: fileURL)
@@ -93,41 +90,11 @@ final class VideoProject: NSDocument {
         ) else { return }
 
         for url in contents {
-            let ext = url.pathExtension.lowercased()
-            guard let type = clipType(for: ext) else { continue }
+            guard let type = ClipType(fileExtension: url.pathExtension.lowercased()) else { continue }
             let name = url.deletingPathExtension().lastPathComponent
             let asset = MediaAsset(url: url, type: type, name: name)
             editorViewModel.mediaAssets.append(asset)
-            await loadAssetMetadata(asset)
-        }
-    }
-
-    private func loadAssetMetadata(_ asset: MediaAsset) async {
-        let avAsset = AVURLAsset(url: asset.url)
-        if asset.type == .video || asset.type == .audio {
-            if let duration = try? await avAsset.load(.duration) {
-                asset.duration = duration.seconds
-            }
-        }
-        if asset.type == .video || asset.type == .image {
-            await generateThumbnail(for: asset)
-        }
-    }
-
-    private func clipType(for ext: String) -> ClipType? {
-        ClipType(fileExtension: ext)
-    }
-
-    private func generateThumbnail(for asset: MediaAsset) async {
-        if asset.type == .image {
-            asset.thumbnail = NSImage(contentsOf: asset.url)
-            return
-        }
-        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: asset.url))
-        generator.maximumSize = CGSize(width: 160, height: 90)
-        generator.appliesPreferredTrackTransform = true
-        if let cgImage = try? await generator.image(at: .zero).image {
-            asset.thumbnail = NSImage(cgImage: cgImage, size: NSSize(width: 160, height: 90))
+            await asset.loadMetadata()
         }
     }
 }

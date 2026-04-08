@@ -37,7 +37,6 @@ final class VideoEngine {
                 editor.isPlaying = true
             }
         } else {
-            // No rebuild needed — just seek and play
             let time = CMTime(value: CMTimeValue(editor.currentFrame), timescale: CMTimeScale(editor.timeline.fps))
             player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
             player.play()
@@ -95,7 +94,6 @@ final class VideoEngine {
 
             guard let compTrack = composition.addMutableTrack(withMediaType: mediaType, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
 
-            // Audio track for video clips (separate so we can mute independently)
             let audioCompTrack: AVMutableCompositionTrack?
             if isAudio {
                 audioCompTrack = nil

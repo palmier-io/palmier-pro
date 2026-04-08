@@ -33,7 +33,6 @@ final class TimelineInputController {
 
         let trackIndex = geometry.trackAt(y: point.y)
 
-        // Razor tool: click to split
         if editor.toolMode == .razor {
             if let hit = hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) {
                 let clickFrame = razorPreviewFrame ?? geometry.frameAt(x: point.x)
@@ -67,12 +66,10 @@ final class TimelineInputController {
             }
         }
 
-        // Hit test clips
         if let hit = hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) {
             let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
             let rect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
 
-            // Selection
             if event.modifierFlags.contains(.shift) {
                 if editor.selectedClipIds.contains(clip.id) {
                     editor.selectedClipIds.remove(clip.id)
@@ -186,7 +183,6 @@ final class TimelineInputController {
             dragState = .moveClip(drag)
 
         case .trimLeft(var drag):
-            // Snap the left edge to targets
             let candidateStart = frame
             let targets = SnapEngine.collectTargets(
                 tracks: editor.timeline.tracks,
@@ -214,7 +210,6 @@ final class TimelineInputController {
             dragState = .trimLeft(drag)
 
         case .trimRight(var drag):
-            // Snap the right edge to targets
             let originalEndFrame = drag.originalStartFrame + drag.originalDuration
             let candidateEnd = max(drag.originalStartFrame + 1, frame)
             let targets = SnapEngine.collectTargets(
@@ -278,7 +273,6 @@ final class TimelineInputController {
             }()
 
             if drag.companions.isEmpty {
-                // Single-clip drag
                 switch drag.dropTarget {
                 case .existingTrack(let trackIndex):
                     if trackIndex != drag.originalTrack || targetFrame != drag.originalFrame {
@@ -328,7 +322,6 @@ final class TimelineInputController {
         case .resizeTrack(let ti, let originalHeight):
             let finalHeight = editor.timeline.tracks[ti].displayHeight
             if finalHeight != originalHeight {
-                // Revert to original, then commit through undo-aware path
                 editor.timeline.tracks[ti].displayHeight = originalHeight
                 editor.setTrackHeight(trackIndex: ti, height: finalHeight)
             }

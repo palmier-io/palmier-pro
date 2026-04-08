@@ -66,18 +66,10 @@ final class EditorViewModel {
         return clamped
     }
 
-    func trackLabel(for type: ClipType) -> String {
-        switch type {
-        case .video: "Video"
-        case .audio: "Audio"
-        case .image: "Image"
-        }
-    }
-
     func moveClipToNewTrack(clipId: String, insertAt: Int, clipType: ClipType, toFrame: Int) {
         guard let loc = findClip(id: clipId) else { return }
         undoManager?.beginUndoGrouping()
-        let newIndex = insertTrack(at: insertAt, type: clipType, label: trackLabel(for: clipType))
+        let newIndex = insertTrack(at: insertAt, type: clipType, label: clipType.trackLabel)
         // If we inserted before/at the clip's current track, its index shifted by 1
         let adjustedOriginal = newIndex <= loc.trackIndex ? loc.trackIndex + 1 : loc.trackIndex
         // Move clip directly: remove from old track, add to new
@@ -118,7 +110,7 @@ final class EditorViewModel {
     func addClipsToNewTrack(assets: [MediaAsset], insertAt: Int, startFrame: Int) {
         guard let firstAsset = assets.first else { return }
         undoManager?.beginUndoGrouping()
-        let newIndex = insertTrack(at: insertAt, type: firstAsset.type, label: trackLabel(for: firstAsset.type))
+        let newIndex = insertTrack(at: insertAt, type: firstAsset.type, label: firstAsset.type.trackLabel)
         addClips(assets: assets, trackIndex: newIndex, startFrame: startFrame)
         undoManager?.endUndoGrouping()
         undoManager?.setActionName("Add Clips to New Track")
@@ -304,7 +296,6 @@ final class EditorViewModel {
         sortClips(trackIndex: loc.trackIndex)
 
         undoManager?.registerUndo(withTarget: self) { vm in
-            // Undo: remove right, restore original clip
             vm.removeClipInternal(id: right.id)
             if let newLoc = vm.findClip(id: left.id) {
                 vm.timeline.tracks[newLoc.trackIndex].clips[newLoc.clipIndex] = clip
@@ -402,10 +393,8 @@ final class EditorViewModel {
             }
         }
 
-        // Remove clips
         removeClips(ids: ids)
 
-        // Apply shifts
         for shift in allShifts {
             if let loc = findClip(id: shift.clipId) {
                 let before = timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame
@@ -516,7 +505,6 @@ final class EditorViewModel {
         let totalDuration = assets.reduce(0) { $0 + secondsToFrame(seconds: $1.duration, fps: timeline.fps) }
         undoManager?.beginUndoGrouping()
         clearRegion(trackIndex: trackIndex, start: atFrame, end: atFrame + totalDuration)
-        // Insert all clips sequentially
         var cursor = atFrame
         var clipIds: [String] = []
         for asset in assets {
@@ -553,7 +541,6 @@ final class EditorViewModel {
     private func resolveOverlap(trackIndex: Int, clipId: String, startFrame: Int, duration: Int) -> Int {
         let others = timeline.tracks[trackIndex].clips.filter { $0.id != clipId }
         var frame = startFrame
-        // Keep pushing forward until no overlap
         var changed = true
         while changed {
             changed = false

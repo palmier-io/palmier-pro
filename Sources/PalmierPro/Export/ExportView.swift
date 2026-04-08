@@ -28,7 +28,6 @@ struct ExportView: View {
                 .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
-            // Mode tabs
             Picker("", selection: $mode) {
                 ForEach(ExportMode.allCases) { m in
                     Text(m.rawValue).tag(m)
@@ -36,7 +35,6 @@ struct ExportView: View {
             }
             .pickerStyle(.segmented)
 
-            // Mode-specific options
             switch mode {
             case .video:
                 Grid(alignment: .leading, verticalSpacing: AppTheme.Spacing.lg) {
@@ -92,7 +90,6 @@ struct ExportView: View {
                     .foregroundStyle(.red)
             }
 
-            // Info line
             HStack(spacing: AppTheme.Spacing.lg) {
                 let duration = formatTimecode(frame: editor.timeline.totalFrames, fps: editor.timeline.fps)
                 Label("Duration: \(duration)", systemImage: "clock")
@@ -104,7 +101,6 @@ struct ExportView: View {
             .font(.system(size: AppTheme.FontSize.xs))
             .foregroundStyle(AppTheme.Text.tertiaryColor)
 
-            // Buttons
             HStack {
                 Spacer()
                 Button("Cancel") { editor.showExportDialog = false }

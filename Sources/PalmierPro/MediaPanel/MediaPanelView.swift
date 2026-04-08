@@ -240,8 +240,6 @@ struct MediaPanelView: View {
         editor.mediaAssets.filter { $0.type == selectedTab }
     }
 
-    private var emptyIcon: String { selectedTab.sfSymbolName }
-
     // MARK: - Import
 
     private func importMedia() {
@@ -275,41 +273,17 @@ struct MediaPanelView: View {
         let asset = MediaAsset(url: url, type: type, name: name)
         editor.mediaAssets.append(asset)
 
-        // Load metadata async
         Task {
-            await loadMetadata(for: asset)
-        }
-    }
-
-    private func loadMetadata(for asset: MediaAsset) async {
-        let avAsset = AVFoundation.AVURLAsset(url: asset.url)
-        if asset.type == .video || asset.type == .audio {
-            if let duration = try? await avAsset.load(.duration) {
-                asset.duration = duration.seconds
+            await asset.loadMetadata()
+            if asset.type == .audio || asset.type == .video {
+                editor.mediaVisualCache.generateWaveform(for: asset)
             }
-        }
-        if asset.type == .image {
-            asset.thumbnail = NSImage(contentsOf: asset.url)
-        } else if asset.type == .video {
-            let gen = AVFoundation.AVAssetImageGenerator(asset: avAsset)
-            gen.maximumSize = CGSize(width: 160, height: 90)
-            gen.appliesPreferredTrackTransform = true
-            if let cgImage = try? await gen.image(at: .zero).image {
-                asset.thumbnail = NSImage(cgImage: cgImage, size: NSSize(width: 160, height: 90))
+            if asset.type == .video {
+                editor.mediaVisualCache.generateThumbnails(for: asset, fps: editor.timeline.fps)
             }
-        }
-
-        // Generate timeline visuals (waveform + thumbnails)
-        if asset.type == .audio || asset.type == .video {
-            editor.mediaVisualCache.generateWaveform(for: asset)
-        }
-        if asset.type == .video {
-            editor.mediaVisualCache.generateThumbnails(for: asset, fps: editor.timeline.fps)
         }
     }
 }
-
-import AVFoundation
 
 // MARK: - Preference Key for asset frame tracking
 

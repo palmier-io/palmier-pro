@@ -41,15 +41,12 @@ enum OverwriteEngine {
             let ce = clip.endFrame
 
             if ce <= regionStart || cs >= regionEnd {
-                // Completely outside — no action
                 continue
             }
 
             if cs >= regionStart && ce <= regionEnd {
-                // Fully inside region — remove
                 actions.append(.remove(clipId: clip.id))
             } else if cs < regionStart && ce > regionEnd {
-                // Straddles both sides — split into left + right
                 let leftDuration = regionStart - cs
                 let rightStartFrame = regionEnd
                 let rightTrimStart = clip.trimStartFrame + (regionEnd - cs)
