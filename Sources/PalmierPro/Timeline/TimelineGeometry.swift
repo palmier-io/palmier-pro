@@ -46,12 +46,16 @@ struct TimelineGeometry {
     }
 
     func clipRect(for clip: Clip, trackIndex: Int) -> NSRect {
-        let h = trackHeight(at: trackIndex)
-        return NSRect(
+        clipRect(for: clip, atY: Double(trackY(at: trackIndex)), height: Double(trackHeight(at: trackIndex)))
+    }
+
+    /// Clip rect at an arbitrary Y position (used for ghost clips at insertion lines).
+    func clipRect(for clip: Clip, atY y: Double, height h: Double) -> NSRect {
+        NSRect(
             x: headerWidth + Double(clip.startFrame) * pixelsPerFrame,
-            y: Double(trackY(at: trackIndex)) + 2,
+            y: y + 2,
             width: Double(clip.durationFrames) * pixelsPerFrame,
-            height: Double(h) - 4
+            height: h - 4
         )
     }
 

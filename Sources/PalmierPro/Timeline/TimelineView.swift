@@ -35,6 +35,9 @@ final class TimelineView: NSView {
 
     /// Drop target during external drags (media panel), used for drawing the insertion indicator.
     var externalDropTarget: TrackDropTarget?
+    /// Cached assets and drop frame during external drags, for ghost clip preview.
+    var externalDragAssets: [MediaAsset]?
+    var externalDragFrame: Int = 0
 
     var geometry: TimelineGeometry {
         TimelineGeometry(editor: editor, bounds: bounds)
@@ -58,6 +61,10 @@ final class TimelineView: NSView {
         )
 
         drawClips(geometry: geo, dirtyRect: bounds, context: ctx)
+
+        if let assets = externalDragAssets, !assets.isEmpty, let target = externalDropTarget {
+            drawExternalDragGhosts(assets: assets, target: target, frame: externalDragFrame, geometry: geo, dirtyRect: bounds, context: ctx)
+        }
 
         if let snapX = inputController.snapIndicatorX {
             ctx.setStrokeColor(NSColor.systemYellow.cgColor)
@@ -166,21 +173,20 @@ final class TimelineView: NSView {
                     }
 
                     let frameDelta = drag.deltaFrames
-                    let trackDelta: Int = {
-                        switch drag.dropTarget {
-                        case .existingTrack(let idx): return idx - drag.originalTrack
-                        case .newTrackAt: return 0
-                        }
-                    }()
 
                     var ghostClip = clip
                     ghostClip.startFrame = max(0, clip.startFrame + frameDelta)
-                    let ghostTrack = ti + trackDelta
                     let ghostRect: NSRect
                     let ghostType: ClipType
-                    if editor.timeline.tracks.indices.contains(ghostTrack) {
+
+                    if case .existingTrack(let idx) = drag.dropTarget,
+                       editor.timeline.tracks.indices.contains(ti + idx - drag.originalTrack) {
+                        let ghostTrack = ti + idx - drag.originalTrack
                         ghostRect = geo.clipRect(for: ghostClip, trackIndex: ghostTrack)
                         ghostType = editor.timeline.tracks[ghostTrack].type
+                    } else if let lineY = geo.insertionLineY(for: drag.dropTarget) {
+                        ghostRect = geo.clipRect(for: ghostClip, atY: Double(lineY), height: Layout.trackHeight)
+                        ghostType = track.type
                     } else {
                         ghostRect = geo.clipRect(for: ghostClip, trackIndex: ti)
                         ghostType = track.type
@@ -229,6 +235,59 @@ final class TimelineView: NSView {
                 ClipRenderer.draw(clip, type: track.type, in: rect,
                                   isSelected: isSelected, context: ctx,
                                   cache: editor.mediaVisualCache)
+            }
+        }
+    }
+
+    // MARK: - External drag ghost clips
+
+    private func drawExternalDragGhosts(
+        assets: [MediaAsset],
+        target: TrackDropTarget,
+        frame: Int,
+        geometry geo: TimelineGeometry,
+        dirtyRect: NSRect,
+        context ctx: CGContext
+    ) {
+        let fps = editor.timeline.fps
+
+        // Groups to draw: each is (assets, type, rect-builder)
+        var groups: [(assets: [MediaAsset], type: ClipType, rectFor: (Clip) -> NSRect)] = []
+
+        switch target {
+        case .existingTrack(let trackIndex):
+            guard editor.timeline.tracks.indices.contains(trackIndex) else { return }
+            let trackType = editor.timeline.tracks[trackIndex].type
+            let matching = assets.filter { $0.type == trackType }
+            if !matching.isEmpty {
+                groups.append((matching, trackType, { geo.clipRect(for: $0, trackIndex: trackIndex) }))
+            }
+
+        case .newTrackAt:
+            guard let lineY = geo.insertionLineY(for: target) else { return }
+            let h = Layout.trackHeight
+            let grouped = Dictionary(grouping: assets, by: \.type)
+            var yOffset: CGFloat = 0
+            for type in [ClipType.video, .image, .audio] {
+                guard let group = grouped[type] else { continue }
+                let y = Double(lineY) + Double(yOffset)
+                groups.append((group, type, { geo.clipRect(for: $0, atY: y, height: h) }))
+                yOffset += h
+            }
+        }
+
+        for group in groups {
+            var cursor = frame
+            for asset in group.assets {
+                let durationFrames = max(1, secondsToFrame(seconds: asset.duration, fps: fps))
+                let ghostClip = Clip(mediaRef: asset.url.lastPathComponent, startFrame: cursor, durationFrames: durationFrames)
+                let rect = group.rectFor(ghostClip)
+                if rect.intersects(dirtyRect) {
+                    ClipRenderer.draw(ghostClip, type: group.type, in: rect,
+                                      isSelected: true, opacity: 0.5, context: ctx,
+                                      cache: editor.mediaVisualCache)
+                }
+                cursor += durationFrames
             }
         }
     }
@@ -344,20 +403,32 @@ final class TimelineView: NSView {
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
         let point = convert(sender.draggingLocation, from: nil)
-        externalDropTarget = geometry.dropTargetAt(y: point.y)
+        let geo = geometry
+        externalDropTarget = geo.dropTargetAt(y: point.y)
+        externalDragFrame = geo.frameAt(x: point.x)
+        // Parse assets from pasteboard once on enter
+        if externalDragAssets == nil, let urlString = sender.draggingPasteboard.string(forType: .string) {
+            let urlStrings = urlString.split(separator: "\n").map(String.init)
+            externalDragAssets = urlStrings.compactMap { str in
+                editor.mediaAssets.first(where: { $0.url.absoluteString == str })
+            }
+        }
         needsDisplay = true
         return .copy
     }
 
     override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
         let point = convert(sender.draggingLocation, from: nil)
-        externalDropTarget = geometry.dropTargetAt(y: point.y)
+        let geo = geometry
+        externalDropTarget = geo.dropTargetAt(y: point.y)
+        externalDragFrame = geo.frameAt(x: point.x)
         needsDisplay = true
         return .copy
     }
 
     override func draggingExited(_ sender: (any NSDraggingInfo)?) {
         externalDropTarget = nil
+        externalDragAssets = nil
         needsDisplay = true
     }
 
@@ -368,6 +439,7 @@ final class TimelineView: NSView {
         let targetFrame = geo.frameAt(x: point.x)
 
         externalDropTarget = nil
+        externalDragAssets = nil
 
         guard let urlString = sender.draggingPasteboard.string(forType: .string) else { return false }
 
