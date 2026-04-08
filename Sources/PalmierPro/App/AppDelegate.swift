@@ -6,16 +6,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
 
-        // When running via `swift run` there's no .app bundle with Info.plist,
-        // so NSDocumentController can't discover VideoProject automatically.
-        // Create the first empty project manually.
-        let doc = VideoProject()
-        doc.makeWindowControllers()
-        doc.showWindows()
-        NSDocumentController.shared.addDocument(doc)
+        // Show the home screen on launch
+        HomeWindowController.shared.showWindow(nil)
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        true
+        false
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            AppState.shared.showHome()
+        }
+        return true
     }
 }

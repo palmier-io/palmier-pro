@@ -26,6 +26,12 @@ final class EditorWindowController: NSWindowController {
     }
 
     private func handleKeyDown(_ event: NSEvent) -> Bool {
+        // Don't intercept keys when a text field has focus
+        if let responder = window?.firstResponder,
+           responder is NSTextView || responder is NSTextField {
+            return false
+        }
+
         let mods = event.modifierFlags
         let shift = mods.contains(.shift)
         let cmd = mods.contains(.command)

@@ -55,3 +55,19 @@ enum Trim {
     static let handleWidth: CGFloat = 4.0
     static let clipCornerRadius: CGFloat = 3.0
 }
+
+enum Project {
+    static let fileExtension = "palmier"
+    static let typeIdentifier = "io.palmier.project"
+    static let defaultProjectName = "Untitled Project"
+    static let timelineFilename = "project.json"
+    static let thumbnailFilename = "thumbnail.jpg"
+    static let mediaDirectoryName = "media"
+
+    static let storageDirectory: URL = {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Documents/Palmier Pro", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }()
+}
