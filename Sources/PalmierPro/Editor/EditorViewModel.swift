@@ -252,19 +252,31 @@ final class EditorViewModel {
         notifyTimelineChanged()
     }
 
+    /// Ripple trim: trims the clip and shifts adjacent clips to stay contiguous.
+    /// Only ripples clips that are touching — gaps are preserved.
     func trimClip(clipId: String, trimStartFrame: Int, trimEndFrame: Int) {
         guard let loc = findClip(id: clipId) else { return }
-        let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        let ti = loc.trackIndex
+        let clip = timeline.tracks[ti].clips[loc.clipIndex]
         let prevStart = clip.trimStartFrame
         let prevEnd = clip.trimEndFrame
         let prevDuration = clip.durationFrames
-        let prevStartFrame = clip.startFrame
+        let oldEnd = clip.startFrame + clip.durationFrames
 
         let deltaStart = trimStartFrame - prevStart
-        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].trimStartFrame = trimStartFrame
-        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].trimEndFrame = trimEndFrame
-        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame = prevStartFrame + deltaStart
-        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].durationFrames = prevDuration - deltaStart - (trimEndFrame - prevEnd)
+        timeline.tracks[ti].clips[loc.clipIndex].trimStartFrame = trimStartFrame
+        timeline.tracks[ti].clips[loc.clipIndex].trimEndFrame = trimEndFrame
+        timeline.tracks[ti].clips[loc.clipIndex].durationFrames = prevDuration - deltaStart - (trimEndFrame - prevEnd)
+
+        let newEnd = timeline.tracks[ti].clips[loc.clipIndex].startFrame + timeline.tracks[ti].clips[loc.clipIndex].durationFrames
+        let rippleDelta = newEnd - oldEnd
+        if rippleDelta != 0 {
+            let chainIds = timeline.tracks[ti].contiguousClipIds(fromEnd: oldEnd, excludeId: clipId)
+            for ci in timeline.tracks[ti].clips.indices where chainIds.contains(timeline.tracks[ti].clips[ci].id) {
+                timeline.tracks[ti].clips[ci].startFrame += rippleDelta
+            }
+        }
+        sortClips(trackIndex: ti)
 
         undoManager?.registerUndo(withTarget: self) { $0.trimClip(clipId: clipId, trimStartFrame: prevStart, trimEndFrame: prevEnd) }
         undoManager?.setActionName("Trim Clip")

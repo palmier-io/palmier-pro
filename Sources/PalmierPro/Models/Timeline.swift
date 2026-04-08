@@ -28,6 +28,18 @@ struct Track: Codable, Sendable, Equatable, Identifiable {
         clips.map(\.endFrame).max() ?? 0
     }
 
+    /// Returns IDs of clips forming a contiguous chain starting at `fromEnd`, excluding `excludeId`.
+    func contiguousClipIds(fromEnd: Int, excludeId: String) -> Set<String> {
+        var ids = Set<String>()
+        var chainEnd = fromEnd
+        for c in clips.sorted(by: { $0.startFrame < $1.startFrame }) where c.id != excludeId && c.startFrame >= fromEnd {
+            if c.startFrame != chainEnd { break }
+            chainEnd = c.endFrame
+            ids.insert(c.id)
+        }
+        return ids
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id, type, label, muted, hidden, clips
     }

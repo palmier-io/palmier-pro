@@ -88,6 +88,7 @@ final class TimelineInputController {
             if localX <= Trim.handleWidth {
                 dragState = .trimLeft(DragState.TrimDrag(
                     clipId: clip.id,
+                    trackIndex: hit.trackIndex,
                     originalTrimStart: clip.trimStartFrame,
                     originalTrimEnd: clip.trimEndFrame,
                     originalStartFrame: clip.startFrame,
@@ -96,6 +97,7 @@ final class TimelineInputController {
             } else if localX >= rect.width - Trim.handleWidth {
                 dragState = .trimRight(DragState.TrimDrag(
                     clipId: clip.id,
+                    trackIndex: hit.trackIndex,
                     originalTrimStart: clip.trimStartFrame,
                     originalTrimEnd: clip.trimEndFrame,
                     originalStartFrame: clip.startFrame,

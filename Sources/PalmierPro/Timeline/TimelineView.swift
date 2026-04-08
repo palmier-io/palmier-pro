@@ -57,7 +57,7 @@ final class TimelineView: NSView {
             context: ctx
         )
 
-        drawClips(geometry: geo, dirtyRect: dirtyRect, context: ctx)
+        drawClips(geometry: geo, dirtyRect: bounds, context: ctx)
 
         if let snapX = inputController.snapIndicatorX {
             ctx.setStrokeColor(NSColor.systemYellow.cgColor)
@@ -141,6 +141,17 @@ final class TimelineView: NSView {
             return Set([drag.clipId] + drag.companions.map(\.clipId))
         }()
 
+        let ripplePreview: (ids: Set<String>, delta: Int) = {
+            guard let (drag, isLeft) = trimDrag, drag.deltaFrames != 0,
+                  editor.timeline.tracks.indices.contains(drag.trackIndex) else { return ([], 0) }
+            let oldEnd = drag.originalStartFrame + drag.originalDuration
+            let newDuration = isLeft ? drag.originalDuration - drag.deltaFrames : drag.originalDuration + drag.deltaFrames
+            let delta = drag.originalStartFrame + newDuration - oldEnd
+            guard delta != 0 else { return ([], 0) }
+            let ids = editor.timeline.tracks[drag.trackIndex].contiguousClipIds(fromEnd: oldEnd, excludeId: drag.clipId)
+            return (ids, delta)
+        }()
+
         for (ti, track) in editor.timeline.tracks.enumerated() {
             for clip in track.clips {
                 let isSelected = editor.selectedClipIds.contains(clip.id)
@@ -182,13 +193,10 @@ final class TimelineView: NSView {
                     continue
                 }
 
-                // Trim preview: draw clip with adjusted bounds
                 if let (drag, isLeft) = trimDrag, clip.id == drag.clipId {
                     var previewClip = clip
                     if isLeft {
-                        let newTrimStart = drag.originalTrimStart + drag.deltaFrames
-                        previewClip.startFrame = drag.originalStartFrame + drag.deltaFrames
-                        previewClip.trimStartFrame = newTrimStart
+                        previewClip.trimStartFrame = drag.originalTrimStart + drag.deltaFrames
                         previewClip.durationFrames = drag.originalDuration - drag.deltaFrames
                     } else {
                         previewClip.durationFrames = drag.originalDuration + drag.deltaFrames
@@ -196,6 +204,19 @@ final class TimelineView: NSView {
                     let previewRect = geo.clipRect(for: previewClip, trackIndex: ti)
                     if previewRect.intersects(dirtyRect) {
                         ClipRenderer.draw(previewClip, type: track.type, in: previewRect,
+                                          isSelected: isSelected, context: ctx,
+                                          cache: editor.mediaVisualCache)
+                    }
+                    continue
+                }
+
+                // Ripple preview: draw adjacent clips shifted
+                if ripplePreview.ids.contains(clip.id) {
+                    var shifted = clip
+                    shifted.startFrame += ripplePreview.delta
+                    let rect = geo.clipRect(for: shifted, trackIndex: ti)
+                    if rect.intersects(dirtyRect) {
+                        ClipRenderer.draw(shifted, type: track.type, in: rect,
                                           isSelected: isSelected, context: ctx,
                                           cache: editor.mediaVisualCache)
                     }

@@ -30,6 +30,7 @@ enum DragState {
 
     struct TrimDrag {
         let clipId: String
+        let trackIndex: Int
         let originalTrimStart: Int
         let originalTrimEnd: Int
         let originalStartFrame: Int
