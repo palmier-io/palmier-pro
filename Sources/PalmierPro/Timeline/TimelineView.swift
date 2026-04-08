@@ -350,7 +350,6 @@ final class TimelineView: NSView {
 
         guard let urlString = sender.draggingPasteboard.string(forType: .string) else { return false }
 
-        // Support multi-asset drag (newline-separated URLs)
         let urlStrings = urlString.split(separator: "\n").map(String.init)
         let assets = urlStrings.compactMap { str in
             editor.mediaAssets.first(where: { $0.url.absoluteString == str })
@@ -374,7 +373,7 @@ final class TimelineView: NSView {
             }
 
         case .newTrackAt(let insertIndex):
-            // Group by type, create one track per type (sorted for deterministic order)
+            // One track per type, deterministic order
             let grouped = Dictionary(grouping: assets, by: \.type)
             let sortedTypes: [ClipType] = [.video, .image, .audio]
             editor.undoManager?.beginUndoGrouping()

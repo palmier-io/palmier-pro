@@ -287,9 +287,11 @@ final class TimelineInputController {
                     editor.moveClipToNewTrack(clipId: drag.clipId, insertAt: insertIndex, clipType: clipType, toFrame: targetFrame)
                 }
             } else if drag.deltaFrames != 0 || trackDelta != 0 {
-                // Multi-clip drag — move all selected clips by the same delta
+                // Clamp delta so no clip goes below frame 0
                 let allClips = [DragState.CompanionClip(clipId: drag.clipId, originalTrack: drag.originalTrack, originalFrame: drag.originalFrame)] + drag.companions
-                editor.moveClips(allClips.map { ($0.clipId, $0.originalTrack + trackDelta, max(0, $0.originalFrame + drag.deltaFrames)) })
+                let minOrigFrame = allClips.map(\.originalFrame).min()!
+                let clampedDelta = max(-minOrigFrame, drag.deltaFrames)
+                editor.moveClips(allClips.map { ($0.clipId, $0.originalTrack + trackDelta, $0.originalFrame + clampedDelta) })
             }
 
         case .trimLeft(let drag):

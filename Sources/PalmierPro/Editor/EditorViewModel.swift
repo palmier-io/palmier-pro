@@ -197,28 +197,53 @@ final class EditorViewModel {
         notifyTimelineChanged()
     }
 
-    /// Batch-move multiple clips in a single undo group. Used for multi-clip drag.
-    /// Removes all clips first to avoid self-overlap, then reinserts at new positions.
+    /// Batch-move multiple clips in a single undo group.
+    /// Clamps the group delta so no moved clip overlaps a non-moved clip on the same track.
     func moveClips(_ moves: [(clipId: String, toTrack: Int, toFrame: Int)]) {
         undoManager?.beginUndoGrouping()
+        let movedIds = Set(moves.map(\.clipId))
         var undoMoves: [(clipId: String, toTrack: Int, toFrame: Int)] = []
+        var clipInfos: [(clip: Clip, fromTrack: Int, toTrack: Int, toFrame: Int)] = []
         for m in moves {
             guard let loc = findClip(id: m.clipId) else { continue }
             let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
             undoMoves.append((m.clipId, loc.trackIndex, clip.startFrame))
+            clipInfos.append((clip, loc.trackIndex, m.toTrack, m.toFrame))
         }
-        var removed: [(clip: Clip, toTrack: Int, toFrame: Int)] = []
-        for m in moves {
-            guard let loc = findClip(id: m.clipId) else { continue }
-            let clip = timeline.tracks[loc.trackIndex].clips.remove(at: loc.clipIndex)
-            removed.append((clip, m.toTrack, m.toFrame))
+        // Find most restrictive delta clamp across all moved clips vs non-moved obstacles
+        var clampedDelta: Int? = nil
+        let byDestTrack = Dictionary(grouping: clipInfos, by: \.toTrack)
+        for (destTrack, group) in byDestTrack {
+            guard timeline.tracks.indices.contains(destTrack) else { continue }
+            let obstacles = timeline.tracks[destTrack].clips.filter { !movedIds.contains($0.id) }
+            for info in group {
+                let proposedStart = max(0, info.toFrame)
+                let proposedEnd = proposedStart + info.clip.durationFrames
+                for obs in obstacles where proposedStart < obs.endFrame && proposedEnd > obs.startFrame {
+                    let origDelta = info.toFrame - info.clip.startFrame
+                    let allowedDelta = origDelta < 0
+                        ? obs.endFrame - info.clip.startFrame
+                        : (obs.startFrame - info.clip.durationFrames) - info.clip.startFrame
+                    if clampedDelta == nil || abs(allowedDelta) < abs(clampedDelta!) {
+                        clampedDelta = allowedDelta
+                    }
+                }
+            }
         }
-        for var r in removed {
-            guard timeline.tracks.indices.contains(r.toTrack) else { continue }
-            r.clip.startFrame = max(0, r.toFrame)
-            timeline.tracks[r.toTrack].clips.append(r.clip)
+        let finalInfos = clampedDelta.map { clamped in
+            clipInfos.map { ($0.clip, $0.fromTrack, $0.toTrack, $0.clip.startFrame + clamped) }
+        } ?? clipInfos
+        for info in finalInfos {
+            if let loc = findClip(id: info.clip.id) {
+                timeline.tracks[loc.trackIndex].clips.remove(at: loc.clipIndex)
+            }
         }
-        // Sort affected tracks
+        for info in finalInfos {
+            guard timeline.tracks.indices.contains(info.toTrack) else { continue }
+            var clip = info.clip
+            clip.startFrame = max(0, info.toFrame)
+            timeline.tracks[info.toTrack].clips.append(clip)
+        }
         for i in timeline.tracks.indices { sortClips(trackIndex: i) }
         undoManager?.registerUndo(withTarget: self) { $0.moveClips(undoMoves) }
         pruneEmptyTracks()
@@ -442,9 +467,7 @@ final class EditorViewModel {
         undoManager?.beginUndoGrouping()
         var cursor = atFrame
         var clipIds: [String] = []
-        // Compute total push amount for all assets
         let totalPush = assets.reduce(0) { $0 + secondsToFrame(seconds: $1.duration, fps: timeline.fps) }
-        // Push existing clips forward once
         let shifts = RippleEngine.computeRipplePush(
             clips: timeline.tracks[trackIndex].clips,
             insertFrame: atFrame,
@@ -462,7 +485,6 @@ final class EditorViewModel {
                 }
             }
         }
-        // Insert all clips sequentially
         for asset in assets {
             let durationFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
             let clip = Clip(mediaRef: asset.url.lastPathComponent, startFrame: cursor, durationFrames: durationFrames)
@@ -479,7 +501,6 @@ final class EditorViewModel {
 
     func overwriteInsertClips(assets: [MediaAsset], trackIndex: Int, atFrame: Int) {
         guard timeline.tracks.indices.contains(trackIndex) else { return }
-        // Compute total region to clear
         let totalDuration = assets.reduce(0) { $0 + secondsToFrame(seconds: $1.duration, fps: timeline.fps) }
         undoManager?.beginUndoGrouping()
         clearRegion(trackIndex: trackIndex, start: atFrame, end: atFrame + totalDuration)
