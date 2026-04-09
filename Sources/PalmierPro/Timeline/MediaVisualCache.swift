@@ -40,8 +40,8 @@ final class MediaVisualCache {
         Task.detached(priority: .userInitiated) { [weak self] in
             let analyzer = WaveformAnalyzer()
             let result = try? await analyzer.samples(fromAudioAt: url, count: 4000)
-            await MainActor.run {
-                guard let self else { return }
+            guard let self else { return }
+            await MainActor.run { [self] in
                 self.waveformInFlight.remove(key)
                 if let result {
                     self.waveformSamples[key] = result
@@ -77,8 +77,8 @@ final class MediaVisualCache {
                 t += interval
             }
 
-            await MainActor.run {
-                guard let self else { return }
+            guard let self else { return }
+            await MainActor.run { [self] in
                 self.thumbnailInFlight.remove(key)
                 if !results.isEmpty {
                     self.videoThumbnails[key] = results
