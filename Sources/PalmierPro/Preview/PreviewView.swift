@@ -10,6 +10,7 @@ struct PreviewView: NSViewRepresentable {
         view.playerLayer.player = engine.player
         context.coordinator.engine = engine
         editor.videoEngine = engine
+        engine.activateTab(editor.activePreviewTab)
         return view
     }
 

@@ -6,9 +6,7 @@ import AppKit
 final class VideoEngine {
     private(set) var player = AVPlayer()
     private var timeObserver: Any?
-    private var compositionNeedsRebuild = true
-    private var isRebuilding = false
-    private var activationTask: Task<Void, Never>?
+    private var rebuildTask: Task<Void, Never>?
 
     weak var editor: EditorViewModel?
 
@@ -26,24 +24,12 @@ final class VideoEngine {
     // MARK: - Playback control
 
     func play() {
-        guard let editor, !isRebuilding else { return }
-        if editor.activePreviewTab == .timeline && compositionNeedsRebuild {
-            isRebuilding = true
-            Task {
-                await rebuildComposition()
-                let time = CMTime(value: CMTimeValue(editor.currentFrame), timescale: CMTimeScale(editor.timeline.fps))
-                await player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
-                isRebuilding = false
-                player.play()
-                editor.isPlaying = true
-            }
-        } else {
-            let frame = editor.activePreviewTab == .timeline ? editor.currentFrame : editor.sourcePlayheadFrame
-            let time = CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(editor.timeline.fps))
-            player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
-            player.play()
-            editor.isPlaying = true
-        }
+        guard let editor else { return }
+        editor.isPlaying = true
+        guard rebuildTask == nil else { return }
+        let frame = editor.activePreviewTab == .timeline ? editor.currentFrame : editor.sourcePlayheadFrame
+        seek(to: frame)
+        player.play()
     }
 
     func pause() {
@@ -66,29 +52,20 @@ final class VideoEngine {
     func previewAsset(_ asset: MediaAsset) {
         let item = AVPlayerItem(url: asset.url)
         player.replaceCurrentItem(with: item)
-        compositionNeedsRebuild = true
     }
 
     func activateTab(_ tab: PreviewTab) {
         guard let editor else { return }
-        activationTask?.cancel()
+        rebuildTask?.cancel()
+        rebuildTask = nil
         pause()
         switch tab {
         case .timeline:
-            if compositionNeedsRebuild {
-                activationTask = Task {
-                    await rebuildComposition()
-                    guard !Task.isCancelled else { return }
-                    seek(to: editor.currentFrame)
-                }
-            } else {
-                seek(to: editor.currentFrame)
-            }
+            rebuild()
         case .mediaAsset(let id, _, let type):
             guard let asset = editor.mediaAssets.first(where: { $0.id == id }) else { return }
             if type == .image {
                 player.replaceCurrentItem(with: nil)
-                compositionNeedsRebuild = true
             } else {
                 previewAsset(asset)
                 seek(to: editor.sourcePlayheadFrame)
@@ -96,23 +73,31 @@ final class VideoEngine {
         }
     }
 
-    /// Build composition from timeline for multi-clip playback.
-    /// Video tracks are layered bottom-to-top (last track = background, first = foreground).
-    /// Respects track.muted (silences audio) and track.hidden (hides video).
-    func rebuildComposition() async {
-        guard let editor else { return }
-        let timeline = editor.timeline
-        guard !timeline.tracks.isEmpty else {
-            player.replaceCurrentItem(with: nil)
-            return
+    func rebuild() {
+        guard let editor, editor.activePreviewTab == .timeline else { return }
+        rebuildTask?.cancel()
+        rebuildTask = Task {
+            let item = await buildPlayerItem()
+            rebuildTask = nil
+            guard !Task.isCancelled else { return }
+            player.replaceCurrentItem(with: item)
+            seek(to: editor.currentFrame)
+            if editor.isPlaying {
+                player.play()
+            }
         }
+    }
+
+    /// Builds an AVPlayerItem from the current timeline.
+    private func buildPlayerItem() async -> AVPlayerItem? {
+        guard let editor else { return nil }
+        let timeline = editor.timeline
+        guard !timeline.tracks.isEmpty else { return nil }
 
         let composition = AVMutableComposition()
-        let fps = timeline.fps
-        let timescale = CMTimeScale(fps)
+        let timescale = CMTimeScale(timeline.fps)
         let renderSize = CGSize(width: timeline.width, height: timeline.height)
 
-        // Collect per-track info for video layering and audio mixing
         var videoLayerEntries: [(track: AVMutableCompositionTrack, hidden: Bool, endTime: CMTime)] = []
         var audioMixEntries: [(track: AVMutableCompositionTrack, muted: Bool)] = []
 
@@ -145,6 +130,7 @@ final class VideoEngine {
                     mediaURL = videoURL
                 }
 
+                guard !Task.isCancelled else { return nil }
                 let sourceAsset = AVURLAsset(url: mediaURL)
                 guard let sourceTrack = try? await sourceAsset.loadTracks(withMediaType: mediaType).first else { continue }
 
@@ -174,7 +160,9 @@ final class VideoEngine {
             }
         }
 
-        // --- Audio mix: apply mute via volume ---
+        guard !Task.isCancelled else { return nil }
+
+        // Audio mix
         let audioMix = AVMutableAudioMix()
         audioMix.inputParameters = audioMixEntries.map { entry in
             let params = AVMutableAudioMixInputParameters(track: entry.track)
@@ -182,35 +170,25 @@ final class VideoEngine {
             return params
         }
 
-        // --- Video composition: layer tracks with opacity ---
-        let totalDuration = composition.duration
+        // Video composition: layering, visibility, scaling
         let videoComposition = AVMutableVideoComposition()
         videoComposition.renderSize = renderSize
         videoComposition.frameDuration = CMTime(value: 1, timescale: timescale)
 
-        // Build a single instruction spanning the entire composition
         let instruction = AVMutableVideoCompositionInstruction()
-        instruction.timeRange = CMTimeRange(start: .zero, duration: totalDuration)
-
-        // Layer video tracks: track 0 (top in timeline) = foreground (first in array = topmost)
+        instruction.timeRange = CMTimeRange(start: .zero, duration: composition.duration)
         var layerInstructions: [AVMutableVideoCompositionLayerInstruction] = []
         for entry in videoLayerEntries {
-            let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: entry.track)
-            if entry.hidden {
-                layerInstruction.setOpacity(0, at: .zero)
+            let li = AVMutableVideoCompositionLayerInstruction(assetTrack: entry.track)
+            if entry.hidden { li.setOpacity(0, at: .zero) }
+            if entry.endTime < composition.duration { li.setOpacity(0, at: entry.endTime) }
+            if let size = try? await entry.track.load(.naturalSize), size.width > 0, size.height > 0 {
+                li.setTransform(CGAffineTransform(
+                    scaleX: renderSize.width / size.width,
+                    y: renderSize.height / size.height
+                ), at: .zero)
             }
-            if entry.endTime < totalDuration {
-                layerInstruction.setOpacity(0, at: entry.endTime)
-            }
-            // Scale source video to fill render size
-            if let naturalSize = try? await entry.track.load(.naturalSize),
-               naturalSize.width > 0, naturalSize.height > 0 {
-                let scaleX = renderSize.width / naturalSize.width
-                let scaleY = renderSize.height / naturalSize.height
-                let transform = CGAffineTransform(scaleX: scaleX, y: scaleY)
-                layerInstruction.setTransform(transform, at: .zero)
-            }
-            layerInstructions.append(layerInstruction)
+            layerInstructions.append(li)
         }
         instruction.layerInstructions = layerInstructions
         videoComposition.instructions = [instruction]
@@ -218,12 +196,7 @@ final class VideoEngine {
         let item = AVPlayerItem(asset: composition)
         item.audioMix = audioMix
         item.videoComposition = videoComposition
-        player.replaceCurrentItem(with: item)
-        compositionNeedsRebuild = false
-    }
-
-    func markNeedsRebuild() {
-        compositionNeedsRebuild = true
+        return item
     }
 
     // MARK: - Private

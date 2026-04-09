@@ -227,12 +227,11 @@ final class EditorViewModel {
         undoManager?.setActionName("Resize Track")
     }
 
-    /// Pause playback on edit, rebuild composition, show current frame.
     private func notifyTimelineChanged() {
         if isPlaying {
             videoEngine?.pause()
         }
-        videoEngine?.markNeedsRebuild()
+        videoEngine?.rebuild()
     }
 
     // MARK: - Clip mutations
