@@ -8,6 +8,7 @@ final class VideoEngine {
     private var timeObserver: Any?
     private var compositionNeedsRebuild = true
     private var isRebuilding = false
+    private var activationTask: Task<Void, Never>?
 
     weak var editor: EditorViewModel?
 
@@ -26,7 +27,7 @@ final class VideoEngine {
 
     func play() {
         guard let editor, !isRebuilding else { return }
-        if compositionNeedsRebuild {
+        if editor.activePreviewTab == .timeline && compositionNeedsRebuild {
             isRebuilding = true
             Task {
                 await rebuildComposition()
@@ -37,7 +38,8 @@ final class VideoEngine {
                 editor.isPlaying = true
             }
         } else {
-            let time = CMTime(value: CMTimeValue(editor.currentFrame), timescale: CMTimeScale(editor.timeline.fps))
+            let frame = editor.activePreviewTab == .timeline ? editor.currentFrame : editor.sourcePlayheadFrame
+            let time = CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(editor.timeline.fps))
             player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
             player.play()
             editor.isPlaying = true
@@ -64,6 +66,34 @@ final class VideoEngine {
     func previewAsset(_ asset: MediaAsset) {
         let item = AVPlayerItem(url: asset.url)
         player.replaceCurrentItem(with: item)
+        compositionNeedsRebuild = true
+    }
+
+    func activateTab(_ tab: PreviewTab) {
+        guard let editor else { return }
+        activationTask?.cancel()
+        pause()
+        switch tab {
+        case .timeline:
+            if compositionNeedsRebuild {
+                activationTask = Task {
+                    await rebuildComposition()
+                    guard !Task.isCancelled else { return }
+                    seek(to: editor.currentFrame)
+                }
+            } else {
+                seek(to: editor.currentFrame)
+            }
+        case .mediaAsset(let id, _, let type):
+            guard let asset = editor.mediaAssets.first(where: { $0.id == id }) else { return }
+            if type == .image {
+                player.replaceCurrentItem(with: nil)
+                compositionNeedsRebuild = true
+            } else {
+                previewAsset(asset)
+                seek(to: editor.sourcePlayheadFrame)
+            }
+        }
     }
 
     /// Build composition from timeline for multi-clip playback.
@@ -197,7 +227,12 @@ final class VideoEngine {
             Task { @MainActor in
                 guard let editor = self.editor else { return }
                 if editor.isPlaying && !editor.isScrubbing {
-                    editor.currentFrame = secondsToFrame(seconds: time.seconds, fps: editor.timeline.fps)
+                    let frame = secondsToFrame(seconds: time.seconds, fps: editor.timeline.fps)
+                    if editor.activePreviewTab == .timeline {
+                        editor.currentFrame = frame
+                    } else {
+                        editor.sourcePlayheadFrame = frame
+                    }
                 }
             }
         }

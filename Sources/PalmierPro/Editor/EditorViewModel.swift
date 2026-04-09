@@ -19,6 +19,9 @@ final class EditorViewModel {
     var isScrubbing: Bool = false
     var toolMode: ToolMode = .pointer
     var showExportDialog: Bool = false
+    var previewTabs: [PreviewTab] = [.timeline]
+    var activePreviewTabId: String = PreviewTab.timeline.id
+    var sourcePlayheadFrame: Int = 0
 
     // MARK: - Media library (in-memory, rebuilt on project open)
 
@@ -52,6 +55,48 @@ final class EditorViewModel {
         mediaManifest.entries.append(entry)
     }
 
+    // MARK: - Preview tabs
+
+    var activePreviewTab: PreviewTab {
+        previewTabs.first { $0.id == activePreviewTabId } ?? .timeline
+    }
+
+    var activePreviewDurationFrames: Int {
+        switch activePreviewTab {
+        case .timeline:
+            return timeline.totalFrames
+        case .mediaAsset(let id, _, _):
+            guard let asset = mediaAssets.first(where: { $0.id == id }) else { return 0 }
+            return secondsToFrame(seconds: asset.duration, fps: timeline.fps)
+        }
+    }
+
+    func openPreviewTab(for asset: MediaAsset) {
+        let tab = PreviewTab.mediaAsset(id: asset.id, name: asset.name, type: asset.type)
+        if !previewTabs.contains(where: { $0.id == tab.id }) {
+            previewTabs.append(tab)
+        }
+        activePreviewTabId = tab.id
+        sourcePlayheadFrame = 0
+        videoEngine?.activateTab(tab)
+    }
+
+    func closePreviewTab(id: String) {
+        guard id != PreviewTab.timeline.id else { return }
+        previewTabs.removeAll { $0.id == id }
+        if activePreviewTabId == id {
+            activePreviewTabId = PreviewTab.timeline.id
+            videoEngine?.activateTab(.timeline)
+        }
+    }
+
+    func selectPreviewTab(id: String) {
+        guard previewTabs.contains(where: { $0.id == id }),
+              activePreviewTabId != id else { return }
+        activePreviewTabId = id
+        videoEngine?.activateTab(activePreviewTab)
+    }
+
     // MARK: - Playback
 
     func togglePlayback() { isPlaying.toggle() }
@@ -61,6 +106,17 @@ final class EditorViewModel {
     func seekToFrame(_ frame: Int) {
         currentFrame = max(0, frame)
         videoEngine?.seek(to: currentFrame)
+    }
+
+    // MARK: - Source playback (for preview tabs)
+
+    func seekSourceToFrame(_ frame: Int) {
+        sourcePlayheadFrame = max(0, frame)
+        videoEngine?.seek(to: sourcePlayheadFrame)
+    }
+
+    func toggleSourcePlayback() {
+        videoEngine?.togglePlayback()
     }
 
     func stepForward() { seekToFrame(currentFrame + 1) }

@@ -24,33 +24,6 @@ struct ToolbarView: View {
             // Split at playhead
             toolbarButton("square.split.2x1", action: editor.splitAtPlayhead)
 
-            themeDivider()
-
-            // Transport
-            HStack(spacing: AppTheme.Spacing.xs) {
-                toolbarButton("backward.end.fill", action: { editor.seekToFrame(0) })
-                toolbarButton("backward.frame.fill", action: editor.stepBackward)
-                toolbarButton(editor.isPlaying ? "pause.fill" : "play.fill", action: editor.togglePlayback)
-                toolbarButton("forward.frame.fill", action: editor.stepForward)
-                toolbarButton("forward.end.fill", action: { editor.seekToFrame(editor.timeline.totalFrames) })
-            }
-
-            themeDivider()
-
-            // Timecode
-            Text(formatTimecode(frame: editor.currentFrame, fps: editor.timeline.fps))
-                .monospacedDigit()
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(AppTheme.Text.primaryColor)
-
-            Text("/")
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-
-            Text(formatTimecode(frame: editor.timeline.totalFrames, fps: editor.timeline.fps))
-                .monospacedDigit()
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
-
             Spacer()
 
             // Zoom

@@ -10,7 +10,7 @@ struct EditorView: View {
                 MediaPanelView()
                     .frame(minWidth: Layout.mediaPanelMin, idealWidth: Layout.mediaPanelDefault, maxWidth: Layout.mediaPanelMax)
 
-                PreviewView()
+                PreviewContainerView()
                     .frame(minWidth: Layout.previewMinWidth)
 
                 InspectorView()

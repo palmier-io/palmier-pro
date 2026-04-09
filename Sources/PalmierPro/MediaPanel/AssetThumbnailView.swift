@@ -42,7 +42,10 @@ struct AssetThumbnailView: View {
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
-        .onTapGesture {
+        .onTapGesture(count: 2) {
+            editor.openPreviewTab(for: asset)
+        }
+        .onTapGesture(count: 1) {
             let shiftHeld = NSEvent.modifierFlags.contains(.shift)
             if shiftHeld {
                 if editor.selectedMediaAssetIds.contains(asset.id) {

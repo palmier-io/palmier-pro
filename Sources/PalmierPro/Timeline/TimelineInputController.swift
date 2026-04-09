@@ -23,6 +23,11 @@ final class TimelineInputController {
     func mouseDown(with event: NSEvent, geometry: TimelineGeometry) {
         let point = view.convert(event.locationInWindow, from: nil)
 
+        // Any click on the timeline switches back to the Timeline preview tab
+        if editor.activePreviewTab != .timeline {
+            editor.selectPreviewTab(id: PreviewTab.timeline.id)
+        }
+
         // Ruler area — scrub playhead
         if point.y < geometry.rulerHeight {
             dragState = .scrubPlayhead
