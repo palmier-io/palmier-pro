@@ -81,13 +81,17 @@ enum ClipRenderer {
         context.fillPath()
 
         // Border
-        let borderColor = isSelected
-            ? type.themeColor.withAlphaComponent(0.6).cgColor
-            : AppTheme.Border.primary.cgColor
-        context.setStrokeColor(borderColor)
-        context.setLineWidth(isSelected ? 1 : 0.5)
-        context.addPath(path)
-        context.strokePath()
+        if isSelected {
+            context.setStrokeColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.9))
+            context.setLineWidth(1.5)
+            context.addPath(path)
+            context.strokePath()
+        } else {
+            context.setStrokeColor(AppTheme.Border.primary.cgColor)
+            context.setLineWidth(0.5)
+            context.addPath(path)
+            context.strokePath()
+        }
 
         drawLabelBar(clip: clip, type: type, in: labelRect, clipRect: rect, context: context, displayName: displayName)
 
