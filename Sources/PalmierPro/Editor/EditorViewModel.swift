@@ -167,16 +167,7 @@ final class EditorViewModel {
     func addClips(assets: [MediaAsset], trackIndex: Int, startFrame: Int) {
         guard timeline.tracks.indices.contains(trackIndex) else { return }
         undoManager?.beginUndoGrouping()
-        var cursor = startFrame
-        var clipIds: [String] = []
-        for asset in assets {
-            let durationFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
-            let resolvedStart = resolveOverlap(trackIndex: trackIndex, clipId: "", startFrame: cursor, duration: durationFrames)
-            let clip = Clip(mediaRef: asset.id, startFrame: resolvedStart, durationFrames: durationFrames)
-            timeline.tracks[trackIndex].clips.append(clip)
-            clipIds.append(clip.id)
-            cursor = resolvedStart + durationFrames
-        }
+        let clipIds = createClips(from: assets, trackIndex: trackIndex, startFrame: startFrame, resolveOverlaps: true)
         sortClips(trackIndex: trackIndex)
         undoManager?.registerUndo(withTarget: self) { $0.removeClips(ids: Set(clipIds)) }
         undoManager?.endUndoGrouping()
@@ -186,8 +177,9 @@ final class EditorViewModel {
 
     func addClipsToNewTrack(assets: [MediaAsset], insertAt: Int, startFrame: Int) {
         guard let firstAsset = assets.first else { return }
+        let trackType = firstAsset.type.isVisual ? ClipType.video : firstAsset.type
         undoManager?.beginUndoGrouping()
-        let newIndex = insertTrack(at: insertAt, type: firstAsset.type, label: firstAsset.type.trackLabel)
+        let newIndex = insertTrack(at: insertAt, type: trackType, label: trackType.trackLabel)
         addClips(assets: assets, trackIndex: newIndex, startFrame: startFrame)
         undoManager?.endUndoGrouping()
         undoManager?.setActionName("Add Clips to New Track")
@@ -235,7 +227,7 @@ final class EditorViewModel {
         undoManager?.setActionName("Resize Track")
     }
 
-    /// Pause playback on edit (industry standard), rebuild composition, show current frame.
+    /// Pause playback on edit, rebuild composition, show current frame.
     private func notifyTimelineChanged() {
         if isPlaying {
             videoEngine?.pause()
@@ -250,7 +242,7 @@ final class EditorViewModel {
               timeline.tracks.indices.contains(toTrack) else { return }
         // Don't allow moving to a track of a different type
         let clipType = timeline.tracks[loc.trackIndex].type
-        guard timeline.tracks[toTrack].type == clipType else { return }
+        guard timeline.tracks[toTrack].type.isCompatible(with: clipType) else { return }
         undoManager?.beginUndoGrouping()
         let prev = (track: loc.trackIndex, frame: timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame)
         var clip = timeline.tracks[loc.trackIndex].clips.remove(at: loc.clipIndex)
@@ -553,8 +545,6 @@ final class EditorViewModel {
     func rippleInsertClips(assets: [MediaAsset], trackIndex: Int, atFrame: Int) {
         guard timeline.tracks.indices.contains(trackIndex) else { return }
         undoManager?.beginUndoGrouping()
-        var cursor = atFrame
-        var clipIds: [String] = []
         let totalPush = assets.reduce(0) { $0 + secondsToFrame(seconds: $1.duration, fps: timeline.fps) }
         let shifts = RippleEngine.computeRipplePush(
             clips: timeline.tracks[trackIndex].clips,
@@ -573,13 +563,7 @@ final class EditorViewModel {
                 }
             }
         }
-        for asset in assets {
-            let durationFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
-            let clip = Clip(mediaRef: asset.id, startFrame: cursor, durationFrames: durationFrames)
-            timeline.tracks[trackIndex].clips.append(clip)
-            clipIds.append(clip.id)
-            cursor += durationFrames
-        }
+        let clipIds = createClips(from: assets, trackIndex: trackIndex, startFrame: atFrame)
         sortClips(trackIndex: trackIndex)
         undoManager?.registerUndo(withTarget: self) { $0.removeClips(ids: Set(clipIds)) }
         undoManager?.endUndoGrouping()
@@ -592,15 +576,7 @@ final class EditorViewModel {
         let totalDuration = assets.reduce(0) { $0 + secondsToFrame(seconds: $1.duration, fps: timeline.fps) }
         undoManager?.beginUndoGrouping()
         clearRegion(trackIndex: trackIndex, start: atFrame, end: atFrame + totalDuration)
-        var cursor = atFrame
-        var clipIds: [String] = []
-        for asset in assets {
-            let durationFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
-            let clip = Clip(mediaRef: asset.id, startFrame: cursor, durationFrames: durationFrames)
-            timeline.tracks[trackIndex].clips.append(clip)
-            clipIds.append(clip.id)
-            cursor += durationFrames
-        }
+        let clipIds = createClips(from: assets, trackIndex: trackIndex, startFrame: atFrame)
         sortClips(trackIndex: trackIndex)
         undoManager?.registerUndo(withTarget: self) { $0.removeClips(ids: Set(clipIds)) }
         undoManager?.endUndoGrouping()
@@ -609,6 +585,29 @@ final class EditorViewModel {
     }
 
     // MARK: - Private helpers
+
+    /// Create clips from assets sequentially starting at `startFrame`, appending to the given track.
+    @discardableResult
+    private func createClips(
+        from assets: [MediaAsset],
+        trackIndex: Int,
+        startFrame: Int,
+        resolveOverlaps: Bool = false
+    ) -> [String] {
+        var cursor = startFrame
+        var clipIds: [String] = []
+        for asset in assets {
+            let durationFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
+            let resolvedStart = resolveOverlaps
+                ? resolveOverlap(trackIndex: trackIndex, clipId: "", startFrame: cursor, duration: durationFrames)
+                : cursor
+            let clip = Clip(mediaRef: asset.id, mediaType: asset.type, startFrame: resolvedStart, durationFrames: durationFrames)
+            timeline.tracks[trackIndex].clips.append(clip)
+            clipIds.append(clip.id)
+            cursor = resolvedStart + durationFrames
+        }
+        return clipIds
+    }
 
     func findClip(id: String) -> (trackIndex: Int, clipIndex: Int)? {
         for ti in timeline.tracks.indices {

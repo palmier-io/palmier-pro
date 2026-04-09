@@ -15,6 +15,10 @@ final class MediaVisualCache {
     private var videoThumbnails: [String: [(time: Double, image: CGImage)]] = [:]
     private var thumbnailInFlight: Set<String> = []
 
+    // MARK: - Image thumbnails (single still per asset)
+
+    private var imageThumbnails: [String: CGImage] = [:]
+
     // MARK: - Redraw trigger
 
     weak var timelineView: NSView?
@@ -27,6 +31,10 @@ final class MediaVisualCache {
 
     nonisolated func thumbnails(for mediaRef: String) -> [(time: Double, image: CGImage)]? {
         MainActor.assumeIsolated { videoThumbnails[mediaRef] }
+    }
+
+    nonisolated func imageThumbnail(for mediaRef: String) -> CGImage? {
+        MainActor.assumeIsolated { imageThumbnails[mediaRef] }
     }
 
     // MARK: - Async generation
@@ -49,6 +57,35 @@ final class MediaVisualCache {
                 }
             }
         }
+    }
+
+    func generateImageThumbnail(for asset: MediaAsset) {
+        let key = asset.id
+        guard imageThumbnails[key] == nil else { return }
+        guard let nsImage = NSImage(contentsOf: asset.url),
+              let fullImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
+
+        // Downscale to match video thumbnail size (120x68) to avoid storing full-resolution images
+        let maxWidth = 120
+        let maxHeight = 68
+        let scale = min(CGFloat(maxWidth) / CGFloat(fullImage.width), CGFloat(maxHeight) / CGFloat(fullImage.height), 1.0)
+        let scaledWidth = Int(CGFloat(fullImage.width) * scale)
+        let scaledHeight = Int(CGFloat(fullImage.height) * scale)
+
+        guard let colorSpace = fullImage.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(data: nil, width: scaledWidth, height: scaledHeight,
+                                 bitsPerComponent: 8, bytesPerRow: 0, space: colorSpace,
+                                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let scaled = (ctx.draw(fullImage, in: CGRect(x: 0, y: 0, width: scaledWidth, height: scaledHeight)),
+                            ctx.makeImage()).1
+        else {
+            imageThumbnails[key] = fullImage
+            timelineView?.needsDisplay = true
+            return
+        }
+
+        imageThumbnails[key] = scaled
+        timelineView?.needsDisplay = true
     }
 
     func generateThumbnails(for asset: MediaAsset, fps: Int) {

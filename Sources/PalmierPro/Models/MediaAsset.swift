@@ -38,15 +38,17 @@ final class MediaAsset: Identifiable {
     }
 
     func loadMetadata() async {
-        let avAsset = AVURLAsset(url: url)
-        if type == .video || type == .audio {
-            if let d = try? await avAsset.load(.duration) {
-                duration = d.seconds
-            }
-        }
         if type == .image {
+            duration = Defaults.imageDurationSeconds
             thumbnail = NSImage(contentsOf: url)
-        } else if type == .video {
+            return
+        }
+
+        let avAsset = AVURLAsset(url: url)
+        if let d = try? await avAsset.load(.duration) {
+            duration = d.seconds
+        }
+        if type == .video {
             let gen = AVAssetImageGenerator(asset: avAsset)
             gen.maximumSize = CGSize(width: 160, height: 90)
             gen.appliesPreferredTrackTransform = true

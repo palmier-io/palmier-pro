@@ -62,6 +62,9 @@ enum ClipRenderer {
         if type == .video, let thumbs = cache?.thumbnails(for: clip.mediaRef), !thumbs.isEmpty, mainHeight > 4 {
             let thumbRect = CGRect(x: contentX, y: contentY, width: contentWidth, height: mainHeight)
             drawThumbnailStrip(thumbnails: thumbs, clip: clip, in: thumbRect, clipRect: rect, cornerRadius: cornerRadius, context: context)
+        } else if type == .image, let image = cache?.imageThumbnail(for: clip.mediaRef), mainHeight > 4 {
+            let thumbRect = CGRect(x: contentX, y: contentY, width: contentWidth, height: mainHeight)
+            drawTiledImage(image: image, in: thumbRect, clipRect: rect, cornerRadius: cornerRadius, context: context)
         } else if type == .audio, let samples = cache?.samples(for: clip.mediaRef), !samples.isEmpty {
             // Audio-only: waveform fills the full area below label
             let audioRect = CGRect(x: contentX, y: contentY, width: contentWidth, height: rect.maxY - contentY)
@@ -171,13 +174,14 @@ enum ClipRenderer {
         context.clip()
         context.clip(to: drawRect)
 
-        // Tile thumbnails across the drawable area
+        // Tile thumbnails across the drawable area, selecting the nearest frame per tile
+        let maxTiles = 200
         var x = drawRect.minX
-        while x < drawRect.maxX {
+        var tileCount = 0
+        while x < drawRect.maxX, tileCount < maxTiles {
             let frac = (x - drawRect.minX) / drawRect.width
             let timeSec = visibleStartSec + frac * visibleDurationSec
 
-            // Find nearest thumbnail
             var best = thumbnails[0]
             var bestDist = abs(best.time - timeSec)
             for thumb in thumbnails {
@@ -189,16 +193,63 @@ enum ClipRenderer {
             }
 
             let tileRect = CGRect(x: x, y: drawRect.minY, width: thumbDisplayWidth, height: drawRect.height)
-            // CGContext.draw uses bottom-up coords; flip for the flipped NSView
             context.saveGState()
             context.translateBy(x: 0, y: tileRect.midY * 2)
             context.scaleBy(x: 1, y: -1)
             context.draw(best.image, in: tileRect)
             context.restoreGState()
             x += thumbDisplayWidth
+            tileCount += 1
         }
 
         context.restoreGState()
+    }
+
+    // MARK: - Image Thumbnail (tiled)
+
+    private static func drawTiledImage(
+        image: CGImage,
+        in drawRect: NSRect,
+        clipRect: NSRect,
+        cornerRadius: CGFloat,
+        context: CGContext
+    ) {
+        guard drawRect.width > 4, drawRect.height > 4 else { return }
+        let aspectRatio = CGFloat(image.width) / CGFloat(image.height)
+        let thumbDisplayWidth = max(1, drawRect.height * aspectRatio)
+
+        context.saveGState()
+        let clipPath = CGPath(roundedRect: clipRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
+        context.addPath(clipPath)
+        context.clip()
+        context.clip(to: drawRect)
+
+        tileImage(image, width: thumbDisplayWidth, in: drawRect, context: context)
+
+        context.restoreGState()
+    }
+
+    // MARK: - Shared tiling
+
+    private static func tileImage(
+        _ image: CGImage,
+        width thumbDisplayWidth: CGFloat,
+        in drawRect: NSRect,
+        context: CGContext
+    ) {
+        let maxTiles = 200
+        var x = drawRect.minX
+        var tileCount = 0
+        while x < drawRect.maxX, tileCount < maxTiles {
+            let tileRect = CGRect(x: x, y: drawRect.minY, width: thumbDisplayWidth, height: drawRect.height)
+            context.saveGState()
+            context.translateBy(x: 0, y: tileRect.midY * 2)
+            context.scaleBy(x: 1, y: -1)
+            context.draw(image, in: tileRect)
+            context.restoreGState()
+            x += thumbDisplayWidth
+            tileCount += 1
+        }
     }
 
     // MARK: - Label Bar

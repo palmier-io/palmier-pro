@@ -143,6 +143,9 @@ final class VideoProject: NSDocument {
             if asset.type == .video {
                 cache.generateThumbnails(for: asset, fps: fps)
             }
+            if asset.type == .image {
+                cache.generateImageThumbnail(for: asset)
+            }
             Task { await asset.loadMetadata() }
         }
     }

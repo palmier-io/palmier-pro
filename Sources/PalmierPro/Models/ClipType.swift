@@ -19,6 +19,14 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
         }
     }
 
+    var isVisual: Bool {
+        self == .video || self == .image
+    }
+
+    func isCompatible(with other: ClipType) -> Bool {
+        self == other || (self.isVisual && other.isVisual)
+    }
+
     init?(fileExtension ext: String) {
         switch ext {
         case "mov", "mp4", "m4v": self = .video

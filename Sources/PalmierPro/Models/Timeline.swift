@@ -48,6 +48,7 @@ struct Track: Codable, Sendable, Equatable, Identifiable {
 struct Clip: Codable, Sendable, Equatable, Identifiable {
     var id: String = UUID().uuidString
     var mediaRef: String
+    var mediaType: ClipType = .video
     var startFrame: Int
     var durationFrames: Int
     var trimStartFrame: Int = 0

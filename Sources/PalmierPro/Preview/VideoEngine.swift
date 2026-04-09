@@ -113,7 +113,7 @@ final class VideoEngine {
         let renderSize = CGSize(width: timeline.width, height: timeline.height)
 
         // Collect per-track info for video layering and audio mixing
-        var videoLayerEntries: [(track: AVMutableCompositionTrack, hidden: Bool)] = []
+        var videoLayerEntries: [(track: AVMutableCompositionTrack, hidden: Bool, endTime: CMTime)] = []
         var audioMixEntries: [(track: AVMutableCompositionTrack, muted: Bool)] = []
 
         for track in timeline.tracks {
@@ -137,7 +137,14 @@ final class VideoEngine {
 
             var cursor = CMTime.zero
             for clip in sortedClips {
-                guard let mediaURL = editor.mediaResolver.resolveURL(for: clip.mediaRef) else { continue }
+                guard var mediaURL = editor.mediaResolver.resolveURL(for: clip.mediaRef) else { continue }
+                if clip.mediaType == .image {
+                    guard let videoURL = try? await ImageVideoGenerator.stillVideo(
+                        for: mediaURL, mediaRef: clip.mediaRef, size: renderSize
+                    ) else { continue }
+                    mediaURL = videoURL
+                }
+
                 let sourceAsset = AVURLAsset(url: mediaURL)
                 guard let sourceTrack = try? await sourceAsset.loadTracks(withMediaType: mediaType).first else { continue }
 
@@ -163,7 +170,7 @@ final class VideoEngine {
             }
 
             if !isAudio {
-                videoLayerEntries.append((compTrack, track.hidden))
+                videoLayerEntries.append((compTrack, track.hidden, cursor))
             }
         }
 
@@ -191,6 +198,9 @@ final class VideoEngine {
             let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: entry.track)
             if entry.hidden {
                 layerInstruction.setOpacity(0, at: .zero)
+            }
+            if entry.endTime < totalDuration {
+                layerInstruction.setOpacity(0, at: entry.endTime)
             }
             // Scale source video to fill render size
             if let naturalSize = try? await entry.track.load(.naturalSize),

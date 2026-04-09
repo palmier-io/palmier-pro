@@ -87,7 +87,7 @@ enum XMLExporter {
         let clips = sorted.compactMap { clip -> String? in
             guard resolver.resolveURL(for: clip.mediaRef) != nil else { return nil }
             let name = resolver.displayName(for: clip.mediaRef)
-            let fileXml = buildFileElement(clip.mediaRef, type: track.type, fps: fps, sourceDuration: clip.sourceDurationFrames, resolver: resolver, emittedFiles: &emittedFiles)
+            let fileXml = buildFileElement(clip.mediaRef, type: clip.mediaType, fps: fps, sourceDuration: clip.sourceDurationFrames, resolver: resolver, emittedFiles: &emittedFiles)
             let speedXml = buildSpeedXml(clip.speed)
             let filtersXml = buildVideoFilters(clip, seqWidth: width, seqHeight: height)
             return clipItemXml(

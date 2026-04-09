@@ -168,9 +168,10 @@ final class TimelineView: NSView {
                     let originalRect = geo.clipRect(for: clip, trackIndex: ti)
 
                     if originalRect.intersects(dirtyRect) {
-                        ClipRenderer.draw(clip, type: track.type, in: originalRect,
+                        ClipRenderer.draw(clip, type: clip.mediaType, in: originalRect,
                                           isSelected: false, opacity: 0.3, context: ctx,
-                                          cache: editor.mediaVisualCache)
+                                          cache: editor.mediaVisualCache,
+                                          displayName: editor.mediaResolver.displayName(for: clip.mediaRef))
                     }
 
                     let frameDelta = drag.deltaFrames
@@ -178,24 +179,21 @@ final class TimelineView: NSView {
                     var ghostClip = clip
                     ghostClip.startFrame = max(0, clip.startFrame + frameDelta)
                     let ghostRect: NSRect
-                    let ghostType: ClipType
 
                     if case .existingTrack(let idx) = drag.dropTarget,
                        editor.timeline.tracks.indices.contains(ti + idx - drag.originalTrack) {
                         let ghostTrack = ti + idx - drag.originalTrack
                         ghostRect = geo.clipRect(for: ghostClip, trackIndex: ghostTrack)
-                        ghostType = editor.timeline.tracks[ghostTrack].type
                     } else if let lineY = geo.insertionLineY(for: drag.dropTarget) {
                         ghostRect = geo.clipRect(for: ghostClip, atY: Double(lineY), height: Layout.trackHeight)
-                        ghostType = track.type
                     } else {
                         ghostRect = geo.clipRect(for: ghostClip, trackIndex: ti)
-                        ghostType = track.type
                     }
                     if ghostRect.intersects(dirtyRect) {
-                        ClipRenderer.draw(ghostClip, type: ghostType, in: ghostRect,
+                        ClipRenderer.draw(ghostClip, type: clip.mediaType, in: ghostRect,
                                           isSelected: true, opacity: 0.7, context: ctx,
-                                          cache: editor.mediaVisualCache)
+                                          cache: editor.mediaVisualCache,
+                                          displayName: editor.mediaResolver.displayName(for: clip.mediaRef))
                     }
                     continue
                 }
@@ -211,9 +209,10 @@ final class TimelineView: NSView {
                     }
                     let previewRect = geo.clipRect(for: previewClip, trackIndex: ti)
                     if previewRect.intersects(dirtyRect) {
-                        ClipRenderer.draw(previewClip, type: track.type, in: previewRect,
+                        ClipRenderer.draw(previewClip, type: clip.mediaType, in: previewRect,
                                           isSelected: isSelected, context: ctx,
-                                          cache: editor.mediaVisualCache)
+                                          cache: editor.mediaVisualCache,
+                                          displayName: editor.mediaResolver.displayName(for: clip.mediaRef))
                     }
                     continue
                 }
@@ -224,9 +223,10 @@ final class TimelineView: NSView {
                     shifted.startFrame += ripplePreview.delta
                     let rect = geo.clipRect(for: shifted, trackIndex: ti)
                     if rect.intersects(dirtyRect) {
-                        ClipRenderer.draw(shifted, type: track.type, in: rect,
+                        ClipRenderer.draw(shifted, type: clip.mediaType, in: rect,
                                           isSelected: isSelected, context: ctx,
-                                          cache: editor.mediaVisualCache)
+                                          cache: editor.mediaVisualCache,
+                                          displayName: editor.mediaResolver.displayName(for: clip.mediaRef))
                     }
                     continue
                 }
@@ -234,7 +234,7 @@ final class TimelineView: NSView {
                 // Normal clip
                 let rect = geo.clipRect(for: clip, trackIndex: ti)
                 guard rect.intersects(dirtyRect) else { continue }
-                ClipRenderer.draw(clip, type: track.type, in: rect,
+                ClipRenderer.draw(clip, type: clip.mediaType, in: rect,
                                   isSelected: isSelected, context: ctx,
                                   cache: editor.mediaVisualCache,
                                   displayName: editor.mediaResolver.displayName(for: clip.mediaRef))
@@ -261,7 +261,7 @@ final class TimelineView: NSView {
         case .existingTrack(let trackIndex):
             guard editor.timeline.tracks.indices.contains(trackIndex) else { return }
             let trackType = editor.timeline.tracks[trackIndex].type
-            let matching = assets.filter { $0.type == trackType }
+            let matching = assets.filter { $0.type.isCompatible(with: trackType) }
             if !matching.isEmpty {
                 groups.append((matching, trackType, { geo.clipRect(for: $0, trackIndex: trackIndex) }))
             }
@@ -269,12 +269,17 @@ final class TimelineView: NSView {
         case .newTrackAt:
             guard let lineY = geo.insertionLineY(for: target) else { return }
             let h = Layout.trackHeight
-            let grouped = Dictionary(grouping: assets, by: \.type)
+            let visual = assets.filter { $0.type.isVisual }
+            let audio = assets.filter { $0.type == .audio }
             var yOffset: CGFloat = 0
-            for type in [ClipType.video, .image, .audio] {
-                guard let group = grouped[type] else { continue }
+            if !visual.isEmpty {
                 let y = Double(lineY) + Double(yOffset)
-                groups.append((group, type, { geo.clipRect(for: $0, atY: y, height: h) }))
+                groups.append((visual, .video, { geo.clipRect(for: $0, atY: y, height: h) }))
+                yOffset += h
+            }
+            if !audio.isEmpty {
+                let y = Double(lineY) + Double(yOffset)
+                groups.append((audio, .audio, { geo.clipRect(for: $0, atY: y, height: h) }))
                 yOffset += h
             }
         }
@@ -283,10 +288,10 @@ final class TimelineView: NSView {
             var cursor = frame
             for asset in group.assets {
                 let durationFrames = max(1, secondsToFrame(seconds: asset.duration, fps: fps))
-                let ghostClip = Clip(mediaRef: asset.id, startFrame: cursor, durationFrames: durationFrames)
+                let ghostClip = Clip(mediaRef: asset.id, mediaType: asset.type, startFrame: cursor, durationFrames: durationFrames)
                 let rect = group.rectFor(ghostClip)
                 if rect.intersects(dirtyRect) {
-                    ClipRenderer.draw(ghostClip, type: group.type, in: rect,
+                    ClipRenderer.draw(ghostClip, type: asset.type, in: rect,
                                       isSelected: true, opacity: 0.5, context: ctx,
                                       cache: editor.mediaVisualCache)
                 }
@@ -456,7 +461,7 @@ final class TimelineView: NSView {
         case .existingTrack(let targetTrack):
             guard editor.timeline.tracks.indices.contains(targetTrack) else { return false }
             let trackType = editor.timeline.tracks[targetTrack].type
-            let matching = assets.filter { $0.type == trackType }
+            let matching = assets.filter { $0.type.isCompatible(with: trackType) }
             guard !matching.isEmpty else { return false }
 
             let mods = NSEvent.modifierFlags
@@ -470,17 +475,20 @@ final class TimelineView: NSView {
 
         case .newTrackAt(let insertIndex):
             // One track per type, deterministic order
-            let grouped = Dictionary(grouping: assets, by: \.type)
-            let sortedTypes: [ClipType] = [.video, .image, .audio]
+            let visual = assets.filter { $0.type.isVisual }
+            let audio = assets.filter { $0.type == .audio }
             editor.undoManager?.beginUndoGrouping()
             var trackOffset = 0
-            for type in sortedTypes {
-                guard let group = grouped[type] else { continue }
-                editor.addClipsToNewTrack(assets: group, insertAt: insertIndex + trackOffset, startFrame: targetFrame)
+            if !visual.isEmpty {
+                editor.addClipsToNewTrack(assets: visual, insertAt: insertIndex + trackOffset, startFrame: targetFrame)
+                trackOffset += 1
+            }
+            if !audio.isEmpty {
+                editor.addClipsToNewTrack(assets: audio, insertAt: insertIndex + trackOffset, startFrame: targetFrame)
                 trackOffset += 1
             }
             editor.undoManager?.endUndoGrouping()
-            editor.undoManager?.setActionName("Add Clips to New Track\(grouped.count > 1 ? "s" : "")")
+            editor.undoManager?.setActionName("Add Clips to New Track\(trackOffset > 1 ? "s" : "")")
         }
 
         needsDisplay = true

@@ -281,6 +281,9 @@ struct MediaPanelView: View {
             if asset.type == .video {
                 editor.mediaVisualCache.generateThumbnails(for: asset, fps: editor.timeline.fps)
             }
+            if asset.type == .image {
+                editor.mediaVisualCache.generateImageThumbnail(for: asset)
+            }
         }
     }
 }

@@ -94,7 +94,8 @@ final class TimelineInputController {
                     originalTrimStart: clip.trimStartFrame,
                     originalTrimEnd: clip.trimEndFrame,
                     originalStartFrame: clip.startFrame,
-                    originalDuration: clip.durationFrames
+                    originalDuration: clip.durationFrames,
+                    isImage: clip.mediaType == .image
                 ))
             } else if localX >= rect.width - Trim.handleWidth {
                 dragState = .trimRight(DragState.TrimDrag(
@@ -103,7 +104,8 @@ final class TimelineInputController {
                     originalTrimStart: clip.trimStartFrame,
                     originalTrimEnd: clip.trimEndFrame,
                     originalStartFrame: clip.startFrame,
-                    originalDuration: clip.durationFrames
+                    originalDuration: clip.durationFrames,
+                    isImage: clip.mediaType == .image
                 ))
             } else {
                 let grabFrame = geometry.frameAt(x: point.x)
@@ -180,7 +182,7 @@ final class TimelineInputController {
                 let tracks = editor.timeline.tracks
                 let typeOk = allTracks.allSatisfy { orig in
                     let dest = orig + clamped
-                    return tracks.indices.contains(dest) && tracks[dest].type == tracks[orig].type
+                    return tracks.indices.contains(dest) && tracks[dest].type.isCompatible(with: tracks[orig].type)
                 }
                 if !typeOk { clamped = 0 }
                 drag.dropTarget = .existingTrack(drag.originalTrack + clamped)
@@ -237,10 +239,14 @@ final class TimelineInputController {
                 snappedEnd = candidateEnd
             }
             drag.deltaFrames = snappedEnd - originalEndFrame
-            // Can't shrink past 1 frame, can't expand past trimEnd (source material)
+            // Can't shrink past 1 frame; for non-image clips, can't expand past source material
             let minDelta = -(drag.originalDuration - 1)
-            let maxDelta = drag.originalTrimEnd
-            drag.deltaFrames = max(minDelta, min(maxDelta, drag.deltaFrames))
+            if drag.isImage {
+                drag.deltaFrames = max(minDelta, drag.deltaFrames)
+            } else {
+                let maxDelta = drag.originalTrimEnd
+                drag.deltaFrames = max(minDelta, min(maxDelta, drag.deltaFrames))
+            }
             dragState = .trimRight(drag)
 
         case .marquee(var marq):

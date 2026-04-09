@@ -160,7 +160,14 @@ final class ExportService {
 
             var cursor = CMTime.zero
             for clip in sortedClips {
-                guard let mediaURL = resolver.resolveURL(for: clip.mediaRef) else { continue }
+                guard var mediaURL = resolver.resolveURL(for: clip.mediaRef) else { continue }
+                if clip.mediaType == .image {
+                    let renderSize = CGSize(width: timeline.width, height: timeline.height)
+                    mediaURL = try await ImageVideoGenerator.stillVideo(
+                        for: mediaURL, mediaRef: clip.mediaRef, size: renderSize
+                    )
+                }
+
                 let source = AVURLAsset(url: mediaURL)
                 guard let sourceTrack = try await source.loadTracks(withMediaType: mediaType).first else { continue }
 

@@ -35,6 +35,7 @@ enum DragState {
         let originalTrimEnd: Int
         let originalStartFrame: Int
         let originalDuration: Int
+        let isImage: Bool
         var deltaFrames: Int = 0
     }
 
