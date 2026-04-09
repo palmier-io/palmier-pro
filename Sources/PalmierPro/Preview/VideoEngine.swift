@@ -155,10 +155,9 @@ final class VideoEngine {
         let instruction = AVMutableVideoCompositionInstruction()
         instruction.timeRange = CMTimeRange(start: .zero, duration: totalDuration)
 
-        // Layer video tracks: last timeline track = bottom layer (rendered first, behind others)
-        // Reversed so that track 0 (top in timeline) is the foreground
+        // Layer video tracks: track 0 (top in timeline) = foreground (first in array = topmost)
         var layerInstructions: [AVMutableVideoCompositionLayerInstruction] = []
-        for entry in videoLayerEntries.reversed() {
+        for entry in videoLayerEntries {
             let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: entry.track)
             if entry.hidden {
                 layerInstruction.setOpacity(0, at: .zero)
