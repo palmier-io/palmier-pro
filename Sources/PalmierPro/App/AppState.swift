@@ -25,9 +25,6 @@ final class AppState {
     func createNewProject() {
         let url = Self.nextAvailableURL()
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        if let data = try? JSONEncoder().encode(Timeline()) {
-            try? data.write(to: url.appendingPathComponent(Project.timelineFilename))
-        }
 
         let doc = VideoProject()
         doc.fileURL = url
@@ -36,16 +33,13 @@ final class AppState {
         doc.showWindows()
         NSDocumentController.shared.addDocument(doc)
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        doc.save(to: url, ofType: VideoProject.typeIdentifier, for: .saveOperation) { _ in }
     }
 
     // TODO: Replace with NSDocumentController.shared.openDocument(withContentsOf:) when running as .app bundle
     func openProject(at url: URL) {
-        let doc = VideoProject()
         do {
-            let wrapper = try FileWrapper(url: url, options: .immediate)
-            try doc.read(from: wrapper, ofType: VideoProject.typeIdentifier)
-            doc.fileURL = url
-            doc.fileType = VideoProject.typeIdentifier
+            let doc = try VideoProject(contentsOf: url, ofType: VideoProject.typeIdentifier)
             doc.makeWindowControllers()
             doc.showWindows()
             NSDocumentController.shared.addDocument(doc)
