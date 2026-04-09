@@ -452,6 +452,15 @@ final class EditorViewModel {
         removeClips(ids: selectedClipIds)
     }
 
+    func deleteSelectedMediaAssets() {
+        let ids = selectedMediaAssetIds
+        guard !ids.isEmpty else { return }
+        mediaAssets.removeAll { ids.contains($0.id) }
+        mediaManifest.entries.removeAll { ids.contains($0.id) }
+        for id in ids { closePreviewTab(id: id) }
+        selectedMediaAssetIds.removeAll()
+    }
+
     /// Ripple delete: remove clips and shift subsequent clips backward to close gaps.
     func rippleDeleteSelectedClips() {
         let ids = selectedClipIds
