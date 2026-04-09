@@ -152,7 +152,7 @@ struct ExportView: View {
             Task {
                 await service.export(
                     timeline: editor.timeline,
-                    mediaAssets: editor.mediaAssets,
+                    resolver: editor.mediaResolver,
                     format: format,
                     resolution: resolution,
                     outputURL: url

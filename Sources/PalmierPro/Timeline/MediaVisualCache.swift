@@ -32,7 +32,7 @@ final class MediaVisualCache {
     // MARK: - Async generation
 
     func generateWaveform(for asset: MediaAsset) {
-        let key = asset.url.lastPathComponent
+        let key = asset.id
         guard waveformSamples[key] == nil, !waveformInFlight.contains(key) else { return }
         waveformInFlight.insert(key)
 
@@ -52,7 +52,7 @@ final class MediaVisualCache {
     }
 
     func generateThumbnails(for asset: MediaAsset, fps: Int) {
-        let key = asset.url.lastPathComponent
+        let key = asset.id
         guard videoThumbnails[key] == nil, !thumbnailInFlight.contains(key) else { return }
         thumbnailInFlight.insert(key)
 
@@ -64,11 +64,10 @@ final class MediaVisualCache {
             let generator = AVAssetImageGenerator(asset: avAsset)
             generator.maximumSize = CGSize(width: 120, height: 68)
             generator.appliesPreferredTrackTransform = true
-            generator.requestedTimeToleranceBefore = CMTime(seconds: 0.5, preferredTimescale: 600)
-            generator.requestedTimeToleranceAfter = CMTime(seconds: 0.5, preferredTimescale: 600)
+            generator.requestedTimeToleranceBefore = CMTime(seconds: 1.0, preferredTimescale: 600)
+            generator.requestedTimeToleranceAfter = CMTime(seconds: 1.0, preferredTimescale: 600)
 
-            // Generate at 1-second intervals
-            let interval = max(0.5, duration < 5 ? 0.5 : 1.0)
+            let interval = max(1.0, duration < 10 ? 1.0 : 2.0)
             var t = 0.0
             while t < duration {
                 let cmTime = CMTime(seconds: t, preferredTimescale: 600)

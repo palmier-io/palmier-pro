@@ -271,7 +271,7 @@ struct MediaPanelView: View {
 
         let name = url.deletingPathExtension().lastPathComponent
         let asset = MediaAsset(url: url, type: type, name: name)
-        editor.mediaAssets.append(asset)
+        editor.importMediaAsset(asset)
 
         Task {
             await asset.loadMetadata()

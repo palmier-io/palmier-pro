@@ -7,6 +7,7 @@ final class EditorViewModel {
     // MARK: - Persisted state (synced with VideoProject)
 
     var timeline = Timeline()
+    var mediaManifest = MediaManifest()
 
     // MARK: - Transient UI state
 
@@ -23,6 +24,18 @@ final class EditorViewModel {
 
     var mediaAssets: [MediaAsset] = []
     let mediaVisualCache = MediaVisualCache()
+    var projectURL: URL?
+    // Placeholder replaced in init() — @Observable doesn't support lazy var
+    private(set) var mediaResolver: MediaResolver = MediaResolver(
+        manifest: { MediaManifest() }, projectURL: { nil }
+    )
+
+    init() {
+        mediaResolver = MediaResolver(
+            manifest: { [weak self] in self?.mediaManifest ?? MediaManifest() },
+            projectURL: { [weak self] in self?.projectURL }
+        )
+    }
 
     // MARK: - Document bridge
 
@@ -30,6 +43,14 @@ final class EditorViewModel {
 
     /// Set by PreviewView so timeline scrubbing can seek the player
     var videoEngine: VideoEngine?
+
+    // MARK: - Media import
+
+    func importMediaAsset(_ asset: MediaAsset) {
+        mediaAssets.append(asset)
+        let entry = asset.toManifestEntry(projectURL: projectURL)
+        mediaManifest.entries.append(entry)
+    }
 
     // MARK: - Playback
 
@@ -95,7 +116,7 @@ final class EditorViewModel {
         for asset in assets {
             let durationFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
             let resolvedStart = resolveOverlap(trackIndex: trackIndex, clipId: "", startFrame: cursor, duration: durationFrames)
-            let clip = Clip(mediaRef: asset.url.lastPathComponent, startFrame: resolvedStart, durationFrames: durationFrames)
+            let clip = Clip(mediaRef: asset.id, startFrame: resolvedStart, durationFrames: durationFrames)
             timeline.tracks[trackIndex].clips.append(clip)
             clipIds.append(clip.id)
             cursor = resolvedStart + durationFrames
@@ -488,7 +509,7 @@ final class EditorViewModel {
         }
         for asset in assets {
             let durationFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
-            let clip = Clip(mediaRef: asset.url.lastPathComponent, startFrame: cursor, durationFrames: durationFrames)
+            let clip = Clip(mediaRef: asset.id, startFrame: cursor, durationFrames: durationFrames)
             timeline.tracks[trackIndex].clips.append(clip)
             clipIds.append(clip.id)
             cursor += durationFrames
@@ -509,7 +530,7 @@ final class EditorViewModel {
         var clipIds: [String] = []
         for asset in assets {
             let durationFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
-            let clip = Clip(mediaRef: asset.url.lastPathComponent, startFrame: cursor, durationFrames: durationFrames)
+            let clip = Clip(mediaRef: asset.id, startFrame: cursor, durationFrames: durationFrames)
             timeline.tracks[trackIndex].clips.append(clip)
             clipIds.append(clip.id)
             cursor += durationFrames

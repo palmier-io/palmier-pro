@@ -61,6 +61,7 @@ enum Project {
     static let typeIdentifier = "io.palmier.project"
     static let defaultProjectName = "Untitled Project"
     static let timelineFilename = "project.json"
+    static let manifestFilename = "media.json"
     static let thumbnailFilename = "thumbnail.jpg"
     static let mediaDirectoryName = "media"
 

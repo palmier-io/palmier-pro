@@ -234,7 +234,8 @@ final class TimelineView: NSView {
                 guard rect.intersects(dirtyRect) else { continue }
                 ClipRenderer.draw(clip, type: track.type, in: rect,
                                   isSelected: isSelected, context: ctx,
-                                  cache: editor.mediaVisualCache)
+                                  cache: editor.mediaVisualCache,
+                                  displayName: editor.mediaResolver.displayName(for: clip.mediaRef))
             }
         }
     }
@@ -280,7 +281,7 @@ final class TimelineView: NSView {
             var cursor = frame
             for asset in group.assets {
                 let durationFrames = max(1, secondsToFrame(seconds: asset.duration, fps: fps))
-                let ghostClip = Clip(mediaRef: asset.url.lastPathComponent, startFrame: cursor, durationFrames: durationFrames)
+                let ghostClip = Clip(mediaRef: asset.id, startFrame: cursor, durationFrames: durationFrames)
                 let rect = group.rectFor(ghostClip)
                 if rect.intersects(dirtyRect) {
                     ClipRenderer.draw(ghostClip, type: group.type, in: rect,

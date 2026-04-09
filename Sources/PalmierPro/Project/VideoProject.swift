@@ -11,9 +11,11 @@ final class VideoProject: NSDocument {
 
     /// Decoded off-main in read(), applied on main in makeWindowControllers.
     private nonisolated(unsafe) var loadedTimeline: Timeline?
+    private nonisolated(unsafe) var loadedManifest: MediaManifest?
 
     /// Captured on main thread in save(to:) before fileWrapper runs (possibly off-main).
     private nonisolated(unsafe) var snapshotData: Data?
+    private nonisolated(unsafe) var snapshotManifest: Data?
     private nonisolated(unsafe) var snapshotThumbnail: Data?
 
     // MARK: - Persistence
@@ -25,10 +27,14 @@ final class VideoProject: NSDocument {
             throw CocoaError(.fileReadCorruptFile)
         }
         loadedTimeline = try JSONDecoder().decode(Timeline.self, from: data)
+        if let manifestData = fileWrapper.fileWrappers?[Project.manifestFilename]?.regularFileContents {
+            loadedManifest = try? JSONDecoder().decode(MediaManifest.self, from: manifestData)
+        }
     }
 
     override func save(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType, completionHandler: @escaping (Error?) -> Void) {
         snapshotData = try? JSONEncoder().encode(editorViewModel.timeline)
+        snapshotManifest = try? JSONEncoder().encode(editorViewModel.mediaManifest)
         snapshotThumbnail = captureThumbnail()
         super.save(to: url, ofType: typeName, for: saveOperation, completionHandler: completionHandler)
     }
@@ -37,6 +43,9 @@ final class VideoProject: NSDocument {
         guard let data = snapshotData else { throw CocoaError(.fileWriteUnknown) }
         let dir = FileWrapper(directoryWithFileWrappers: [:])
         dir.addRegularFile(withContents: data, preferredFilename: Project.timelineFilename)
+        if let manifest = snapshotManifest {
+            dir.addRegularFile(withContents: manifest, preferredFilename: Project.manifestFilename)
+        }
         if let thumb = snapshotThumbnail {
             dir.addRegularFile(withContents: thumb, preferredFilename: Project.thumbnailFilename)
         }
@@ -44,15 +53,6 @@ final class VideoProject: NSDocument {
     }
 
     // MARK: - Close
-
-    // TODO: Test removing this override when running as .app bundle — autosavesInPlace may handle it
-    override func canClose(withDelegate delegate: Any, shouldClose shouldCloseSelector: Selector?, contextInfo: UnsafeMutableRawPointer?) {
-        if fileURL != nil, isDocumentEdited {
-            save(withDelegate: delegate, didSave: shouldCloseSelector, contextInfo: contextInfo)
-        } else {
-            super.canClose(withDelegate: delegate, shouldClose: shouldCloseSelector, contextInfo: contextInfo)
-        }
-    }
 
     override func close() {
         super.close()
@@ -71,6 +71,7 @@ final class VideoProject: NSDocument {
             loadedTimeline = nil
         }
         editorViewModel.undoManager = undoManager
+        editorViewModel.projectURL = fileURL
 
         let editorView = EditorView().environment(editorViewModel)
         let hostingController = NSHostingController(rootView: editorView)
@@ -95,10 +96,10 @@ final class VideoProject: NSDocument {
 
         AppState.shared.showEditor(for: self)
 
-        if let fileURL {
-            Task { @MainActor in
-                await scanMedia(projectURL: fileURL)
-            }
+        if let manifest = loadedManifest {
+            editorViewModel.mediaManifest = manifest
+            loadedManifest = nil
+            restoreAssetsFromManifest()
         }
     }
 
@@ -106,14 +107,13 @@ final class VideoProject: NSDocument {
 
     private var cachedThumbnail: Data?
 
-    /// Grabs a JPEG from the first video clip's first frame. Cached after first call.
     private func captureThumbnail() -> Data? {
         if let cached = cachedThumbnail { return cached }
 
         for track in editorViewModel.timeline.tracks where track.type == .video {
             for clip in track.clips {
-                guard let asset = editorViewModel.mediaAssets.first(where: { $0.url.lastPathComponent == clip.mediaRef }) else { continue }
-                let generator = AVAssetImageGenerator(asset: AVURLAsset(url: asset.url))
+                guard let url = editorViewModel.mediaResolver.resolveURL(for: clip.mediaRef) else { continue }
+                let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
                 generator.maximumSize = CGSize(width: 320, height: 180)
                 generator.appliesPreferredTrackTransform = true
                 let time = CMTime(value: CMTimeValue(clip.trimStartFrame), timescale: CMTimeScale(editorViewModel.timeline.fps))
@@ -127,21 +127,23 @@ final class VideoProject: NSDocument {
         return nil
     }
 
-    // MARK: - Media scanning
+    // MARK: - Media restore
 
-
-    private func scanMedia(projectURL: URL) async {
-        let mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: mediaDir, includingPropertiesForKeys: nil
-        ) else { return }
-
-        for url in contents {
-            guard let type = ClipType(fileExtension: url.pathExtension.lowercased()) else { continue }
-            let name = url.deletingPathExtension().lastPathComponent
-            let asset = MediaAsset(url: url, type: type, name: name)
+    private func restoreAssetsFromManifest() {
+        let cache = editorViewModel.mediaVisualCache
+        let fps = editorViewModel.timeline.fps
+        let resolver = editorViewModel.mediaResolver
+        for entry in editorViewModel.mediaManifest.entries {
+            guard let url = resolver.resolveURL(for: entry.id) else { continue }
+            let asset = MediaAsset(entry: entry, resolvedURL: url)
             editorViewModel.mediaAssets.append(asset)
-            await asset.loadMetadata()
+            if asset.type == .audio || asset.type == .video {
+                cache.generateWaveform(for: asset)
+            }
+            if asset.type == .video {
+                cache.generateThumbnails(for: asset, fps: fps)
+            }
+            Task { await asset.loadMetadata() }
         }
     }
 }
@@ -149,7 +151,6 @@ final class VideoProject: NSDocument {
 // MARK: - NSWindow helper
 
 extension NSWindow {
-    /// Adds a SwiftUI view as a title bar accessory.
     func addTitlebarSwiftUI<V: View>(_ view: V, side: NSLayoutConstraint.Attribute, width: CGFloat) {
         let host = NSHostingController(rootView: view)
         host.view.frame = NSRect(x: 0, y: 0, width: width, height: 28)

@@ -47,13 +47,13 @@ final class ExportService {
 
     func export(
         timeline: Timeline,
-        mediaAssets: [MediaAsset],
+        resolver: MediaResolver,
         format: ExportFormat,
         resolution: ExportResolution,
         outputURL: URL
     ) async {
         if format == .xml {
-            XMLExporter.export(timeline: timeline, mediaAssets: mediaAssets, outputURL: outputURL)
+            XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
             progress = 1.0
             return
         }
@@ -63,7 +63,7 @@ final class ExportService {
         error = nil
 
         do {
-            let composition = try await buildComposition(timeline: timeline, mediaAssets: mediaAssets)
+            let composition = try await buildComposition(timeline: timeline, resolver: resolver)
 
             // AVAssetExportSession fails if the file already exists (e.g. from a previous failed export)
             try? FileManager.default.removeItem(at: outputURL)
@@ -144,7 +144,7 @@ final class ExportService {
 
     // MARK: - Composition builder
 
-    private func buildComposition(timeline: Timeline, mediaAssets: [MediaAsset]) async throws -> AVMutableComposition {
+    private func buildComposition(timeline: Timeline, resolver: MediaResolver) async throws -> AVMutableComposition {
         let composition = AVMutableComposition()
         let fps = timeline.fps
 
@@ -160,8 +160,8 @@ final class ExportService {
 
             var cursor = CMTime.zero
             for clip in sortedClips {
-                guard let asset = mediaAssets.first(where: { $0.url.lastPathComponent == clip.mediaRef }) else { continue }
-                let source = AVURLAsset(url: asset.url)
+                guard let mediaURL = resolver.resolveURL(for: clip.mediaRef) else { continue }
+                let source = AVURLAsset(url: mediaURL)
                 guard let sourceTrack = try await source.loadTracks(withMediaType: mediaType).first else { continue }
 
                 let clipStart = CMTime(value: CMTimeValue(clip.startFrame), timescale: CMTimeScale(fps))

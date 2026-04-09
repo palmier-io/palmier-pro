@@ -3,7 +3,7 @@ import Foundation
 /// Exports a timeline as XMEML 4 (FCP7 XML) — compatible with DaVinci Resolve, Premiere Pro, Final Cut Pro.
 enum XMLExporter {
 
-    static func export(timeline: Timeline, mediaAssets: [MediaAsset], outputURL: URL) {
+    static func export(timeline: Timeline, resolver: MediaResolver, outputURL: URL) {
         let fps = timeline.fps
         let width = timeline.width
         let height = timeline.height
@@ -14,11 +14,11 @@ enum XMLExporter {
 
         // FCP XML: first <track> = bottom layer, last = top
         let videoTracksXml = videoImageTracks.reversed().map { track in
-            buildVideoTrack(track, fps: fps, width: width, height: height, mediaAssets: mediaAssets, emittedFiles: &emittedFiles)
+            buildVideoTrack(track, fps: fps, width: width, height: height, resolver: resolver, emittedFiles: &emittedFiles)
         }.joined(separator: "\n")
 
         let audioTracksXml = audioTracks.map { track in
-            buildAudioTrack(track, fps: fps, mediaAssets: mediaAssets, emittedFiles: &emittedFiles)
+            buildAudioTrack(track, fps: fps, resolver: resolver, emittedFiles: &emittedFiles)
         }.joined(separator: "\n")
 
         let xml = """
@@ -81,16 +81,17 @@ enum XMLExporter {
 
     private static func buildVideoTrack(
         _ track: Track, fps: Int, width: Int, height: Int,
-        mediaAssets: [MediaAsset], emittedFiles: inout Set<String>
+        resolver: MediaResolver, emittedFiles: inout Set<String>
     ) -> String {
         let sorted = track.clips.sorted { $0.startFrame < $1.startFrame }
         let clips = sorted.compactMap { clip -> String? in
-            guard mediaAssets.contains(where: { $0.url.lastPathComponent == clip.mediaRef }) else { return nil }
-            let fileXml = buildFileElement(clip.mediaRef, type: track.type, fps: fps, sourceDuration: clip.sourceDurationFrames, mediaAssets: mediaAssets, emittedFiles: &emittedFiles)
+            guard resolver.resolveURL(for: clip.mediaRef) != nil else { return nil }
+            let name = resolver.displayName(for: clip.mediaRef)
+            let fileXml = buildFileElement(clip.mediaRef, type: track.type, fps: fps, sourceDuration: clip.sourceDurationFrames, resolver: resolver, emittedFiles: &emittedFiles)
             let speedXml = buildSpeedXml(clip.speed)
             let filtersXml = buildVideoFilters(clip, seqWidth: width, seqHeight: height)
             return clipItemXml(
-                id: clip.id, name: clip.mediaRef, sourceDuration: clip.sourceDurationFrames, fps: fps,
+                id: clip.id, name: name, sourceDuration: clip.sourceDurationFrames, fps: fps,
                 start: clip.startFrame, end: clip.endFrame,
                 inPt: clip.trimStartFrame, outPt: clip.trimStartFrame + clip.durationFrames,
                 inner: fileXml + speedXml + filtersXml
@@ -108,16 +109,17 @@ enum XMLExporter {
 
     private static func buildAudioTrack(
         _ track: Track, fps: Int,
-        mediaAssets: [MediaAsset], emittedFiles: inout Set<String>
+        resolver: MediaResolver, emittedFiles: inout Set<String>
     ) -> String {
         let sorted = track.clips.sorted { $0.startFrame < $1.startFrame }
         let clips = sorted.compactMap { clip -> String? in
-            guard mediaAssets.contains(where: { $0.url.lastPathComponent == clip.mediaRef }) else { return nil }
-            let fileXml = buildFileElement(clip.mediaRef, type: .audio, fps: fps, sourceDuration: clip.sourceDurationFrames, mediaAssets: mediaAssets, emittedFiles: &emittedFiles)
+            guard resolver.resolveURL(for: clip.mediaRef) != nil else { return nil }
+            let name = resolver.displayName(for: clip.mediaRef)
+            let fileXml = buildFileElement(clip.mediaRef, type: .audio, fps: fps, sourceDuration: clip.sourceDurationFrames, resolver: resolver, emittedFiles: &emittedFiles)
             let speedXml = buildSpeedXml(clip.speed)
             let volumeXml = buildVolumeFilter(clip.volume)
             return clipItemXml(
-                id: clip.id, name: clip.mediaRef, sourceDuration: clip.sourceDurationFrames, fps: fps,
+                id: clip.id, name: name, sourceDuration: clip.sourceDurationFrames, fps: fps,
                 start: clip.startFrame, end: clip.endFrame,
                 inPt: clip.trimStartFrame, outPt: clip.trimStartFrame + clip.durationFrames,
                 inner: fileXml + speedXml + volumeXml
@@ -159,7 +161,7 @@ enum XMLExporter {
 
     private static func buildFileElement(
         _ mediaRef: String, type: ClipType, fps: Int, sourceDuration: Int,
-        mediaAssets: [MediaAsset], emittedFiles: inout Set<String>
+        resolver: MediaResolver, emittedFiles: inout Set<String>
     ) -> String {
         let fileId = "file-\(mediaRef)"
         if emittedFiles.contains(mediaRef) {
@@ -168,8 +170,8 @@ enum XMLExporter {
         emittedFiles.insert(mediaRef)
 
         let pathUrl: String
-        if let asset = mediaAssets.first(where: { $0.url.lastPathComponent == mediaRef }) {
-            pathUrl = asset.url.absoluteString
+        if let url = resolver.resolveURL(for: mediaRef) {
+            pathUrl = url.absoluteString
         } else {
             pathUrl = "media/\(mediaRef)"
         }

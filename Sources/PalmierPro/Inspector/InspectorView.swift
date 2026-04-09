@@ -23,7 +23,7 @@ struct InspectorView: View {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
                 // Clip info
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                    Text(clip.mediaRef)
+                    Text(editor.mediaResolver.displayName(for: clip.mediaRef))
                         .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
                         .foregroundStyle(AppTheme.Text.primaryColor)
                         .lineLimit(1)

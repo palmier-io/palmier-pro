@@ -20,7 +20,23 @@ final class MediaAsset: Identifiable {
         self.thumbnail = thumbnail
     }
 
-    /// Load duration and thumbnail from the source file.
+    /// Reconstruct from a manifest entry + resolved URL.
+    convenience init(entry: MediaManifestEntry, resolvedURL: URL) {
+        self.init(id: entry.id, url: resolvedURL, type: entry.type, name: entry.name, duration: entry.duration)
+    }
+
+    /// Produce a serializable manifest entry from this asset.
+    func toManifestEntry(projectURL: URL?) -> MediaManifestEntry {
+        let source: MediaSource
+        if let projectURL, url.path.hasPrefix(projectURL.path) {
+            let relative = String(url.path.dropFirst(projectURL.path.count + 1))
+            source = .project(relativePath: relative)
+        } else {
+            source = .external(absolutePath: url.path)
+        }
+        return MediaManifestEntry(id: id, name: name, type: type, source: source, duration: duration)
+    }
+
     func loadMetadata() async {
         let avAsset = AVURLAsset(url: url)
         if type == .video || type == .audio {

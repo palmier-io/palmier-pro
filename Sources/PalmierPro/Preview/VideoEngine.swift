@@ -107,7 +107,7 @@ final class VideoEngine {
 
             var cursor = CMTime.zero
             for clip in sortedClips {
-                guard let mediaURL = resolveMediaURL(clip.mediaRef) else { continue }
+                guard let mediaURL = editor.mediaResolver.resolveURL(for: clip.mediaRef) else { continue }
                 let sourceAsset = AVURLAsset(url: mediaURL)
                 guard let sourceTrack = try? await sourceAsset.loadTracks(withMediaType: mediaType).first else { continue }
 
@@ -202,9 +202,5 @@ final class VideoEngine {
                 }
             }
         }
-    }
-
-    private func resolveMediaURL(_ mediaRef: String) -> URL? {
-        editor?.mediaAssets.first { $0.url.lastPathComponent == mediaRef }?.url
     }
 }

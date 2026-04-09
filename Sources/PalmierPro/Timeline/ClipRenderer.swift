@@ -12,7 +12,8 @@ enum ClipRenderer {
         isSelected: Bool,
         opacity: CGFloat = 1.0,
         context: CGContext,
-        cache: MediaVisualCache? = nil
+        cache: MediaVisualCache? = nil,
+        displayName: String? = nil
     ) {
         if opacity < 1.0 {
             context.saveGState()
@@ -88,7 +89,7 @@ enum ClipRenderer {
         context.addPath(path)
         context.strokePath()
 
-        drawLabelBar(clip: clip, type: type, in: labelRect, clipRect: rect, context: context)
+        drawLabelBar(clip: clip, type: type, in: labelRect, clipRect: rect, context: context, displayName: displayName)
 
         drawTrimHandles(in: rect, context: context)
 
@@ -198,12 +199,12 @@ enum ClipRenderer {
 
     // MARK: - Label Bar
 
-    private static func drawLabelBar(clip: Clip, type: ClipType, in labelRect: NSRect, clipRect: NSRect, context: CGContext) {
+    private static func drawLabelBar(clip: Clip, type: ClipType, in labelRect: NSRect, clipRect: NSRect, context: CGContext, displayName: String? = nil) {
         guard clipRect.width > 20 else { return }
 
-        // Text: "filename.ext  HH:MM:SS:FF"
         let timecode = formatTimecode(frame: clip.durationFrames, fps: 30)
-        let text = "\(clip.mediaRef)  \(timecode)"
+        let name = displayName ?? clip.mediaRef
+        let text = "\(name)  \(timecode)"
 
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: AppTheme.FontSize.xs, weight: .medium),

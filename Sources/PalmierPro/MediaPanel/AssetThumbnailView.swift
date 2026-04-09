@@ -63,9 +63,8 @@ struct AssetThumbnailView: View {
     }
 
     private var isOnTimeline: Bool {
-        let mediaRef = asset.url.lastPathComponent
-        return editor.timeline.tracks.contains { track in
-            track.clips.contains { $0.mediaRef == mediaRef }
+        editor.timeline.tracks.contains { track in
+            track.clips.contains { $0.mediaRef == asset.id }
         }
     }
 }
