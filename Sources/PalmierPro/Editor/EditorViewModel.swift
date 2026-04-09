@@ -279,6 +279,7 @@ final class EditorViewModel {
         let deltaStart = trimStartFrame - prevStart
         timeline.tracks[ti].clips[loc.clipIndex].trimStartFrame = trimStartFrame
         timeline.tracks[ti].clips[loc.clipIndex].trimEndFrame = trimEndFrame
+        timeline.tracks[ti].clips[loc.clipIndex].startFrame += deltaStart
         timeline.tracks[ti].clips[loc.clipIndex].durationFrames = prevDuration - deltaStart - (trimEndFrame - prevEnd)
 
         let newEnd = timeline.tracks[ti].clips[loc.clipIndex].startFrame + timeline.tracks[ti].clips[loc.clipIndex].durationFrames

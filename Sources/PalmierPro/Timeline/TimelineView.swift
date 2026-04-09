@@ -152,8 +152,9 @@ final class TimelineView: NSView {
             guard let (drag, isLeft) = trimDrag, drag.deltaFrames != 0,
                   editor.timeline.tracks.indices.contains(drag.trackIndex) else { return ([], 0) }
             let oldEnd = drag.originalStartFrame + drag.originalDuration
+            let newStart = isLeft ? drag.originalStartFrame + drag.deltaFrames : drag.originalStartFrame
             let newDuration = isLeft ? drag.originalDuration - drag.deltaFrames : drag.originalDuration + drag.deltaFrames
-            let delta = drag.originalStartFrame + newDuration - oldEnd
+            let delta = newStart + newDuration - oldEnd
             guard delta != 0 else { return ([], 0) }
             let ids = editor.timeline.tracks[drag.trackIndex].contiguousClipIds(fromEnd: oldEnd, excludeId: drag.clipId)
             return (ids, delta)
@@ -202,6 +203,7 @@ final class TimelineView: NSView {
                 if let (drag, isLeft) = trimDrag, clip.id == drag.clipId {
                     var previewClip = clip
                     if isLeft {
+                        previewClip.startFrame = drag.originalStartFrame + drag.deltaFrames
                         previewClip.trimStartFrame = drag.originalTrimStart + drag.deltaFrames
                         previewClip.durationFrames = drag.originalDuration - drag.deltaFrames
                     } else {
