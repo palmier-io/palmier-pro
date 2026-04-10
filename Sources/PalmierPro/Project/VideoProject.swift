@@ -13,8 +13,10 @@ final class VideoProject: NSDocument {
     private nonisolated(unsafe) var loadedTimeline: Timeline?
     private nonisolated(unsafe) var loadedManifest: MediaManifest?
 
+    private nonisolated(unsafe) var packageWrapper = FileWrapper(directoryWithFileWrappers: [:])
+
     /// Captured on main thread in save(to:) before fileWrapper runs (possibly off-main).
-    private nonisolated(unsafe) var snapshotData: Data?
+    private nonisolated(unsafe) var snapshotTimeline: Data?
     private nonisolated(unsafe) var snapshotManifest: Data?
     private nonisolated(unsafe) var snapshotThumbnail: Data?
 
@@ -26,6 +28,7 @@ final class VideoProject: NSDocument {
         guard let data = fileWrapper.fileWrappers?[Project.timelineFilename]?.regularFileContents else {
             throw CocoaError(.fileReadCorruptFile)
         }
+        packageWrapper = fileWrapper
         loadedTimeline = try JSONDecoder().decode(Timeline.self, from: data)
         if let manifestData = fileWrapper.fileWrappers?[Project.manifestFilename]?.regularFileContents {
             loadedManifest = try? JSONDecoder().decode(MediaManifest.self, from: manifestData)
@@ -33,23 +36,44 @@ final class VideoProject: NSDocument {
     }
 
     override func save(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType, completionHandler: @escaping (Error?) -> Void) {
-        snapshotData = try? JSONEncoder().encode(editorViewModel.timeline)
+        if let date = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
+            fileModificationDate = date
+        }
+
+        snapshotTimeline = try? JSONEncoder().encode(editorViewModel.timeline)
         snapshotManifest = try? JSONEncoder().encode(editorViewModel.mediaManifest)
         snapshotThumbnail = captureThumbnail()
         super.save(to: url, ofType: typeName, for: saveOperation, completionHandler: completionHandler)
     }
 
     override func fileWrapper(ofType typeName: String) throws -> FileWrapper {
-        guard let data = snapshotData else { throw CocoaError(.fileWriteUnknown) }
-        let dir = FileWrapper(directoryWithFileWrappers: [:])
-        dir.addRegularFile(withContents: data, preferredFilename: Project.timelineFilename)
+        guard let data = snapshotTimeline else { throw CocoaError(.fileWriteUnknown) }
+
+        replaceChild(Project.timelineFilename, with: data)
         if let manifest = snapshotManifest {
-            dir.addRegularFile(withContents: manifest, preferredFilename: Project.manifestFilename)
+            replaceChild(Project.manifestFilename, with: manifest)
         }
         if let thumb = snapshotThumbnail {
-            dir.addRegularFile(withContents: thumb, preferredFilename: Project.thumbnailFilename)
+            replaceChild(Project.thumbnailFilename, with: thumb)
         }
-        return dir
+        return packageWrapper
+    }
+
+    override func updateChangeCount(_ change: NSDocument.ChangeType) {
+        super.updateChangeCount(change)
+        editorViewModel.isDocumentEdited = isDocumentEdited
+    }
+
+    override func updateChangeCount(withToken changeCountToken: Any, for saveOperation: NSDocument.SaveOperationType) {
+        super.updateChangeCount(withToken: changeCountToken, for: saveOperation)
+        editorViewModel.isDocumentEdited = isDocumentEdited
+    }
+
+    private nonisolated func replaceChild(_ name: String, with data: Data) {
+        if let old = packageWrapper.fileWrappers?[name] {
+            packageWrapper.removeFileWrapper(old)
+        }
+        packageWrapper.addRegularFile(withContents: data, preferredFilename: name)
     }
 
     // MARK: - Close
@@ -86,7 +110,7 @@ final class VideoProject: NSDocument {
         window.titlebarAppearsTransparent = false
         window.center()
 
-        window.addTitlebarSwiftUI(TitleBarLeadingView(), side: .leading, width: 240)
+        window.addTitlebarSwiftUI(TitleBarLeadingView().environment(editorViewModel), side: .leading, width: 240)
         window.addTitlebarSwiftUI(TitleBarTrailingView().environment(editorViewModel), side: .trailing, width: 100)
 
         let controller = EditorWindowController(editorViewModel: editorViewModel, window: window)

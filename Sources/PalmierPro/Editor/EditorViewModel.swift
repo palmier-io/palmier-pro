@@ -43,6 +43,7 @@ final class EditorViewModel {
     // MARK: - Document bridge
 
     weak var undoManager: UndoManager?
+    var isDocumentEdited: Bool = false
 
     /// Set by PreviewView so timeline scrubbing can seek the player
     var videoEngine: VideoEngine?

@@ -8,9 +8,23 @@ final class AppState {
     private(set) var activeProject: VideoProject?
 
     func showHome() {
-        activeProject?.windowControllers.forEach { $0.window?.orderOut(nil) }
-        activeProject = nil
-        HomeWindowController.shared.showWindow(nil)
+        guard let project = activeProject else {
+            HomeWindowController.shared.showWindow(nil)
+            return
+        }
+        if project.isDocumentEdited {
+            project.autosave(withImplicitCancellability: false) { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.activeProject?.windowControllers.forEach { $0.window?.orderOut(nil) }
+                    self?.activeProject = nil
+                    HomeWindowController.shared.showWindow(nil)
+                }
+            }
+        } else {
+            activeProject?.windowControllers.forEach { $0.window?.orderOut(nil) }
+            activeProject = nil
+            HomeWindowController.shared.showWindow(nil)
+        }
     }
 
     func showEditor(for project: VideoProject) {
@@ -24,7 +38,6 @@ final class AppState {
     // TODO: Replace with NSDocumentController.shared.newDocument() when running as .app bundle
     func createNewProject() {
         let url = Self.nextAvailableURL()
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
 
         let doc = VideoProject()
         doc.fileURL = url
@@ -32,8 +45,9 @@ final class AppState {
         doc.makeWindowControllers()
         doc.showWindows()
         NSDocumentController.shared.addDocument(doc)
-        NSDocumentController.shared.noteNewRecentDocumentURL(url)
-        doc.save(to: url, ofType: VideoProject.typeIdentifier, for: .saveOperation) { _ in }
+        doc.save(to: url, ofType: VideoProject.typeIdentifier, for: .saveOperation) { _ in
+            NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        }
     }
 
     // TODO: Replace with NSDocumentController.shared.openDocument(withContentsOf:) when running as .app bundle

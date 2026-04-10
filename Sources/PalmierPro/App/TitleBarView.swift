@@ -1,8 +1,15 @@
 import SwiftUI
 
 struct TitleBarLeadingView: View {
+    @Environment(EditorViewModel.self) var editor
+
     var body: some View {
         HStack(spacing: 8) {
+            Circle()
+                .fill(editor.isDocumentEdited ? AppTheme.Text.mutedColor : .clear)
+                .frame(width: 6, height: 6)
+                .help(editor.isDocumentEdited ? "Unsaved changes" : "")
+
             // Home button
             Button(action: { AppState.shared.showHome() }) {
                 Image(systemName: "house")
