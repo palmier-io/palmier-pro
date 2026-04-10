@@ -106,7 +106,7 @@ final class TimelineInputController {
             if !event.modifierFlags.contains(.shift) {
                 editor.selectedClipIds.removeAll()
             }
-            dragState = .marquee(DragState.MarqueeDrag(origin: point))
+            dragState = .marquee(DragState.MarqueeDrag(origin: point, baseSelection: editor.selectedClipIds))
         }
 
         snapState = SnapEngine.SnapState() // Reset sticky snap for new drag
@@ -233,6 +233,15 @@ final class TimelineInputController {
                 width: abs(point.x - marq.origin.x),
                 height: abs(point.y - marq.origin.y)
             )
+            var selected = marq.baseSelection
+            for (ti, track) in editor.timeline.tracks.enumerated() {
+                for clip in track.clips {
+                    if geometry.clipRect(for: clip, trackIndex: ti).intersects(marq.current) {
+                        selected.insert(clip.id)
+                    }
+                }
+            }
+            editor.selectedClipIds = selected
             dragState = .marquee(marq)
 
         case .idle:
@@ -293,14 +302,8 @@ final class TimelineInputController {
                 )
             }
 
-        case .marquee(let marq):
-            for (ti, track) in editor.timeline.tracks.enumerated() {
-                for clip in track.clips {
-                    if geometry.clipRect(for: clip, trackIndex: ti).intersects(marq.current) {
-                        editor.selectedClipIds.insert(clip.id)
-                    }
-                }
-            }
+        case .marquee:
+            break
 
         case .scrubPlayhead:
             editor.isScrubbing = false

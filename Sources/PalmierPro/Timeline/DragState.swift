@@ -41,5 +41,6 @@ enum DragState {
     struct MarqueeDrag {
         let origin: NSPoint
         var current: NSRect = .zero
+        var baseSelection: Set<String> = []
     }
 }
