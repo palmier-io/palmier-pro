@@ -10,7 +10,6 @@ enum DragState {
     case trimLeft(TrimDrag)
     case trimRight(TrimDrag)
     case marquee(MarqueeDrag)
-    case resizeTrack(trackIndex: Int, originalHeight: CGFloat)
 
     struct MoveClipDrag {
         let clipId: String

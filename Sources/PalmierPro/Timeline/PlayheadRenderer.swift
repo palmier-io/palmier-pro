@@ -6,13 +6,11 @@ enum PlayheadRenderer {
     static func draw(
         frame: Int,
         pixelsPerFrame: Double,
-        scrollOffsetX: CGFloat,
-        headerWidth: CGFloat,
         rulerHeight: CGFloat,
         totalHeight: CGFloat,
         context: CGContext
     ) {
-        let x = headerWidth + Double(frame) * pixelsPerFrame - Double(scrollOffsetX)
+        let x = Double(frame) * pixelsPerFrame
         let color = NSColor.systemRed.cgColor
 
         // Vertical line

@@ -27,11 +27,6 @@ final class TimelineView: NSView {
     // Cached for draw performance — avoid per-frame allocations
     private static let trackBgEven = NSColor(white: 0.17, alpha: 1).cgColor
     private static let trackBgOdd = NSColor(white: 0.14, alpha: 1).cgColor
-    private static let headerBg = NSColor(white: 0.12, alpha: 1).cgColor
-    private static let labelAttrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.systemFont(ofSize: AppTheme.FontSize.sm, weight: .medium),
-        .foregroundColor: AppTheme.Text.secondary,
-    ]
 
     /// Drop target during external drags (media panel), used for drawing the insertion indicator.
     var externalDropTarget: TrackDropTarget?
@@ -43,23 +38,35 @@ final class TimelineView: NSView {
         TimelineGeometry(editor: editor, bounds: bounds)
     }
 
+    func updateContentSize() {
+        guard let scrollView = enclosingScrollView else { return }
+        let visibleSize = scrollView.contentView.bounds.size
+        let totalFrames = editor.timeline.totalFrames
+        // Add padding so user can scroll a bit past the last clip
+        let contentWidth = editor.zoomScale * Double(totalFrames) + visibleSize.width * 0.5
+        let geo = geometry
+        let contentHeight: CGFloat
+        if editor.timeline.tracks.isEmpty {
+            contentHeight = visibleSize.height
+        } else {
+            let lastTrack = editor.timeline.tracks.count - 1
+            contentHeight = max(visibleSize.height, geo.trackY(at: lastTrack) + geo.trackHeight(at: lastTrack) + Layout.dropZoneHeight)
+        }
+        let newSize = NSSize(width: max(visibleSize.width, contentWidth), height: contentHeight)
+        if frame.size != newSize {
+            setFrameSize(newSize)
+        }
+    }
+
     // MARK: - Drawing
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let geo = geometry
+        let scrollOffset = enclosingScrollView?.contentView.bounds.origin ?? .zero
+        let visibleWidth = enclosingScrollView?.contentView.bounds.width ?? bounds.width
 
         drawTrackBackgrounds(geometry: geo, context: ctx)
-        drawTrackHeaders(geometry: geo, context: ctx)
-
-        TimelineRuler.draw(
-            in: NSRect(x: geo.headerWidth, y: 0, width: Double(bounds.width) - geo.headerWidth, height: Double(geo.rulerHeight)),
-            fps: editor.timeline.fps,
-            pixelsPerFrame: geo.pixelsPerFrame,
-            scrollOffsetX: 0,
-            context: ctx
-        )
-
         drawClips(geometry: geo, dirtyRect: bounds, context: ctx)
 
         if let assets = externalDragAssets, !assets.isEmpty, let target = externalDropTarget {
@@ -70,8 +77,8 @@ final class TimelineView: NSView {
             ctx.setStrokeColor(NSColor.systemYellow.cgColor)
             ctx.setLineWidth(1)
             ctx.setLineDash(phase: 0, lengths: [4, 4])
-            ctx.move(to: CGPoint(x: geo.headerWidth + snapX, y: Double(geo.rulerHeight)))
-            ctx.addLine(to: CGPoint(x: geo.headerWidth + snapX, y: Double(bounds.height)))
+            ctx.move(to: CGPoint(x: snapX, y: Double(geo.rulerHeight)))
+            ctx.addLine(to: CGPoint(x: snapX, y: Double(bounds.height)))
             ctx.strokePath()
             ctx.setLineDash(phase: 0, lengths: [])
         }
@@ -98,7 +105,7 @@ final class TimelineView: NSView {
         if let target = activeDropTarget, let lineY = geo.insertionLineY(for: target) {
             ctx.setStrokeColor(NSColor.systemYellow.cgColor)
             ctx.setLineWidth(2)
-            ctx.move(to: CGPoint(x: geo.headerWidth, y: Double(lineY)))
+            ctx.move(to: CGPoint(x: 0, y: Double(lineY)))
             ctx.addLine(to: CGPoint(x: Double(bounds.width), y: Double(lineY)))
             ctx.strokePath()
         }
@@ -117,10 +124,16 @@ final class TimelineView: NSView {
         PlayheadRenderer.draw(
             frame: editor.currentFrame,
             pixelsPerFrame: geo.pixelsPerFrame,
-            scrollOffsetX: 0,
-            headerWidth: CGFloat(geo.headerWidth),
             rulerHeight: geo.rulerHeight,
             totalHeight: bounds.height,
+            context: ctx
+        )
+
+        TimelineRuler.draw(
+            in: NSRect(x: scrollOffset.x, y: scrollOffset.y, width: visibleWidth, height: Double(geo.rulerHeight)),
+            fps: editor.timeline.fps,
+            pixelsPerFrame: geo.pixelsPerFrame,
+            scrollOffsetX: scrollOffset.x,
             context: ctx
         )
     }
@@ -307,72 +320,8 @@ final class TimelineView: NSView {
             let y = geo.trackY(at: i)
             let h = geo.trackHeight(at: i)
             context.setFillColor(i % 2 == 0 ? Self.trackBgEven : Self.trackBgOdd)
-            context.fill(NSRect(x: geo.headerWidth, y: y, width: bounds.width - geo.headerWidth, height: h))
+            context.fill(NSRect(x: 0, y: y, width: bounds.width, height: h))
         }
-    }
-
-    /// Rects for mute/hide buttons, indexed by track. Used for hit testing.
-    var muteButtonRects: [Int: NSRect] = [:]
-    var hideButtonRects: [Int: NSRect] = [:]
-
-    private func drawTrackHeaders(geometry geo: TimelineGeometry, context: CGContext) {
-        context.setFillColor(Self.headerBg)
-        context.fill(NSRect(x: 0, y: 0, width: geo.headerWidth, height: bounds.height))
-
-        muteButtonRects.removeAll()
-        hideButtonRects.removeAll()
-        let stripWidth: CGFloat = 3
-        let iconSize: CGFloat = 14
-        let iconConfig = NSImage.SymbolConfiguration(pointSize: iconSize, weight: .regular)
-
-        for (i, track) in editor.timeline.tracks.enumerated() {
-            let y = geo.trackY(at: i)
-            let h = geo.trackHeight(at: i)
-
-            // Color-coded left border strip
-            context.setFillColor(track.type.themeColor.cgColor)
-            context.fill(NSRect(x: 0, y: y, width: stripWidth, height: h))
-
-            // Track label (left side)
-            let str = NSAttributedString(string: track.label, attributes: Self.labelAttrs)
-            let labelSize = str.size()
-            let labelY = y + (h - labelSize.height) / 2
-            str.draw(at: NSPoint(x: stripWidth + 6, y: labelY))
-
-            // Mute + hide buttons (right side, vertically centered)
-            let iconY = y + (h - iconSize) / 2
-            let hideX = geo.headerWidth - iconSize - 6
-            let muteX = hideX - iconSize - 4
-
-            let muteIcon = track.muted ? "speaker.slash.fill" : "speaker.wave.2.fill"
-            let muteTint: NSColor = track.muted ? AppTheme.Text.secondary.withAlphaComponent(0.3) : AppTheme.Text.secondary
-            let muteRect = NSRect(x: muteX, y: iconY, width: iconSize, height: iconSize)
-            drawSymbol(muteIcon, in: muteRect, tint: muteTint, config: iconConfig)
-            muteButtonRects[i] = muteRect.insetBy(dx: -4, dy: -4)
-
-            let hideIcon = track.hidden ? "eye.slash" : "eye"
-            let hideTint: NSColor = track.hidden ? AppTheme.Text.secondary.withAlphaComponent(0.3) : AppTheme.Text.secondary
-            let hideRect = NSRect(x: hideX, y: iconY, width: iconSize, height: iconSize)
-            drawSymbol(hideIcon, in: hideRect, tint: hideTint, config: iconConfig)
-            hideButtonRects[i] = hideRect.insetBy(dx: -4, dy: -4)
-
-            // Resize handle at bottom of track
-            let handleY = y + h - 1
-            context.setFillColor(AppTheme.Border.subtle.cgColor)
-            context.fill(NSRect(x: 0, y: handleY, width: geo.headerWidth, height: 1))
-        }
-    }
-
-    private func drawSymbol(_ name: String, in rect: NSRect, tint: NSColor, config: NSImage.SymbolConfiguration) {
-        guard let img = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config) else { return }
-        let tinted = NSImage(size: rect.size, flipped: true) { drawRect in
-            tint.set()
-            img.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: 1.0)
-            drawRect.fill(using: .sourceAtop)
-            return true
-        }
-        tinted.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1.0)
     }
 
     // MARK: - Input forwarding

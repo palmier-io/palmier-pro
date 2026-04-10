@@ -48,29 +48,6 @@ final class TimelineInputController {
             return
         }
 
-        if point.x < geometry.headerWidth {
-            for (ti, rect) in view.muteButtonRects {
-                if rect.contains(point) {
-                    editor.toggleTrackMute(trackIndex: ti)
-                    view.needsDisplay = true
-                    return
-                }
-            }
-            for (ti, rect) in view.hideButtonRects {
-                if rect.contains(point) {
-                    editor.toggleTrackHidden(trackIndex: ti)
-                    view.needsDisplay = true
-                    return
-                }
-            }
-
-            if let resizeTrack = hitTestResizeHandle(at: point, geometry: geometry) {
-                dragState = .resizeTrack(trackIndex: resizeTrack, originalHeight: editor.timeline.tracks[resizeTrack].displayHeight)
-                view.needsDisplay = true
-                return
-            }
-        }
-
         if let hit = hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) {
             let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
             let rect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
@@ -258,11 +235,6 @@ final class TimelineInputController {
             )
             dragState = .marquee(marq)
 
-        case .resizeTrack(let ti, _):
-            let trackTop = geometry.trackY(at: ti)
-            let newHeight = max(TrackSize.minHeight, min(TrackSize.maxHeight, point.y - trackTop))
-            editor.timeline.tracks[ti].displayHeight = newHeight
-
         case .idle:
             break
         }
@@ -330,13 +302,6 @@ final class TimelineInputController {
                 }
             }
 
-        case .resizeTrack(let ti, let originalHeight):
-            let finalHeight = editor.timeline.tracks[ti].displayHeight
-            if finalHeight != originalHeight {
-                editor.timeline.tracks[ti].displayHeight = originalHeight
-                editor.setTrackHeight(trackIndex: ti, height: finalHeight)
-            }
-
         case .scrubPlayhead:
             editor.isScrubbing = false
 
@@ -355,7 +320,7 @@ final class TimelineInputController {
         let point = view.convert(event.locationInWindow, from: nil)
 
         // Razor tool: show preview line
-        if editor.toolMode == .razor && point.y >= geometry.rulerHeight && point.x >= geometry.headerWidth {
+        if editor.toolMode == .razor && point.y >= geometry.rulerHeight {
             var frame = geometry.frameAt(x: point.x)
             // Snap razor to playhead
             let snapThreshold = max(1, Int(Snap.thresholdPixels / geometry.pixelsPerFrame))
@@ -368,11 +333,6 @@ final class TimelineInputController {
             return
         }
         razorPreviewFrame = nil
-
-        if hitTestResizeHandle(at: point, geometry: geometry) != nil {
-            NSCursor.resizeUpDown.set()
-            return
-        }
 
         let trackIndex = geometry.trackAt(y: point.y)
 
@@ -396,19 +356,19 @@ final class TimelineInputController {
             return
         }
 
-        let cursorX = view.convert(event.locationInWindow, from: nil).x
-        let offsetFromHeader = cursorX - geometry.headerWidth
+        let cursorDocX = view.convert(event.locationInWindow, from: nil).x
+        let scrollOrigin = view.enclosingScrollView?.contentView.bounds.origin.x ?? 0
+        let cursorViewportX = cursorDocX - scrollOrigin
 
-        // Frame under cursor before zoom
-        let frameUnderCursor = max(0.0, offsetFromHeader / geometry.pixelsPerFrame)
+        let frameUnderCursor = max(0.0, cursorDocX / geometry.pixelsPerFrame)
 
         let delta = event.scrollingDeltaY * Zoom.scrollSensitivity
         editor.zoomScale = max(Zoom.min, min(Zoom.max, editor.zoomScale + delta))
 
         // After zoom, scroll so the same frame stays under cursor
-        if let scrollView = view.superview?.superview as? NSScrollView {
-            let newXForFrame = frameUnderCursor * editor.zoomScale + geometry.headerWidth
-            let scrollX = max(0, newXForFrame - offsetFromHeader)
+        if let scrollView = view.enclosingScrollView {
+            let newXForFrame = frameUnderCursor * editor.zoomScale
+            let scrollX = max(0, newXForFrame - cursorViewportX)
             let origin = scrollView.contentView.bounds.origin
             scrollView.contentView.setBoundsOrigin(NSPoint(x: scrollX, y: origin.y))
         }
@@ -433,17 +393,6 @@ final class TimelineInputController {
     }
 
     // MARK: - Helpers
-
-    private func hitTestResizeHandle(at point: NSPoint, geometry: TimelineGeometry) -> Int? {
-        guard point.x < geometry.headerWidth else { return nil }
-        for i in editor.timeline.tracks.indices {
-            let trackBottom = geometry.trackY(at: i) + geometry.trackHeight(at: i)
-            if abs(point.y - trackBottom) <= TrackSize.resizeHandleZone {
-                return i
-            }
-        }
-        return nil
-    }
 
     private func scrubToFrame(_ frame: Int) {
         editor.seekToFrame(frame)

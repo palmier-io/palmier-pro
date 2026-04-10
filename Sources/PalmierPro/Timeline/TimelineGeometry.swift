@@ -19,9 +19,9 @@ struct TimelineGeometry {
     private let cumulativeY: [CGFloat]
 
     @MainActor
-    init(editor: EditorViewModel, bounds: NSRect) {
+    init(editor: EditorViewModel, bounds: NSRect, headerWidth: Double = 0) {
         self.pixelsPerFrame = editor.zoomScale
-        self.headerWidth = Layout.trackHeaderWidth
+        self.headerWidth = headerWidth
         self.rulerHeight = Layout.rulerHeight
         self.trackCount = editor.timeline.tracks.count
         self.trackHeights = editor.timeline.tracks.map(\.displayHeight)
