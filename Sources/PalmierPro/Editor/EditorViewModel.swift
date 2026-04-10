@@ -56,6 +56,12 @@ final class EditorViewModel {
         mediaManifest.entries.append(entry)
     }
 
+    func updateManifestDuration(for asset: MediaAsset) {
+        if let idx = mediaManifest.entries.firstIndex(where: { $0.id == asset.id }) {
+            mediaManifest.entries[idx].duration = asset.duration
+        }
+    }
+
     // MARK: - Preview tabs
 
     var activePreviewTab: PreviewTab {

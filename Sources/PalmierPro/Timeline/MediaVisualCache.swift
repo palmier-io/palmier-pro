@@ -80,12 +80,12 @@ final class MediaVisualCache {
                             ctx.makeImage()).1
         else {
             imageThumbnails[key] = fullImage
-            timelineView?.needsDisplay = true
+            self.timelineView?.needsDisplay = true
             return
         }
 
         imageThumbnails[key] = scaled
-        timelineView?.needsDisplay = true
+        self.timelineView?.needsDisplay = true
     }
 
     func generateThumbnails(for asset: MediaAsset, fps: Int) {
@@ -94,10 +94,12 @@ final class MediaVisualCache {
         thumbnailInFlight.insert(key)
 
         let url = asset.url
-        let duration = asset.duration
         Task.detached(priority: .userInitiated) { [weak self] in
             var results: [(time: Double, image: CGImage)] = []
             let avAsset = AVURLAsset(url: url)
+            let duration = (try? await avAsset.load(.duration).seconds) ?? 0
+            guard duration > 0 else { return }
+
             let generator = AVAssetImageGenerator(asset: avAsset)
             generator.maximumSize = CGSize(width: 120, height: 68)
             generator.appliesPreferredTrackTransform = true

@@ -275,6 +275,7 @@ struct MediaPanelView: View {
 
         Task {
             await asset.loadMetadata()
+            editor.updateManifestDuration(for: asset)
             if asset.type == .audio || asset.type == .video {
                 editor.mediaVisualCache.generateWaveform(for: asset)
             }
