@@ -121,19 +121,19 @@ final class TimelineView: NSView {
             ctx.setLineDash(phase: 0, lengths: [])
         }
 
-        PlayheadRenderer.draw(
-            frame: editor.currentFrame,
-            pixelsPerFrame: geo.pixelsPerFrame,
-            rulerHeight: geo.rulerHeight,
-            totalHeight: bounds.height,
-            context: ctx
-        )
-
         TimelineRuler.draw(
             in: NSRect(x: scrollOffset.x, y: scrollOffset.y, width: visibleWidth, height: Double(geo.rulerHeight)),
             fps: editor.timeline.fps,
             pixelsPerFrame: geo.pixelsPerFrame,
             scrollOffsetX: scrollOffset.x,
+            context: ctx
+        )
+
+        PlayheadRenderer.draw(
+            frame: editor.currentFrame,
+            pixelsPerFrame: geo.pixelsPerFrame,
+            rulerHeight: geo.rulerHeight,
+            totalHeight: bounds.height,
             context: ctx
         )
     }
