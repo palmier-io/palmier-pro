@@ -32,12 +32,19 @@ struct TimelineContainerView: NSViewRepresentable {
         context.coordinator.timelineView = timelineView
         context.coordinator.scrollView = scrollView
 
-        // Redraw ruler when scroll position changes
+        // Redraw ruler when scroll position changes; resize content when clip view frame changes
         scrollView.contentView.postsBoundsChangedNotifications = true
+        scrollView.contentView.postsFrameChangedNotifications = true
         NotificationCenter.default.addObserver(
             context.coordinator,
             selector: #selector(Coordinator.scrollViewBoundsChanged),
             name: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView
+        )
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.clipViewFrameChanged),
+            name: NSView.frameDidChangeNotification,
             object: scrollView.contentView
         )
 
@@ -82,6 +89,10 @@ struct TimelineContainerView: NSViewRepresentable {
                 headerView?.setBoundsOrigin(NSPoint(x: 0, y: scrollY))
                 headerView?.needsDisplay = true
             }
+        }
+
+        @MainActor @objc func clipViewFrameChanged(_ notification: Notification) {
+            timelineView?.updateContentSize()
         }
 
         deinit {
