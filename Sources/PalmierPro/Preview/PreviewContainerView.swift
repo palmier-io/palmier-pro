@@ -17,6 +17,7 @@ struct PreviewContainerView: View {
                 }
             }
             if !isImage {
+                scrubBar
                 transportBar
             }
         }
@@ -103,6 +104,44 @@ struct PreviewContainerView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - Scrub bar
+
+    @State private var isScrubbing = false
+
+    private var scrubBar: some View {
+        GeometryReader { geo in
+            let progress = durationFrames > 0 ? CGFloat(playheadFrame) / CGFloat(durationFrames) : 0
+            let thumbSize: CGFloat = isScrubbing ? 12 : 8
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(Color.white.opacity(0.08))
+                Rectangle()
+                    .fill(Color.accentColor)
+                    .frame(width: max(0, geo.size.width * progress))
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: thumbSize, height: thumbSize)
+                    .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+                    .position(x: geo.size.width * progress, y: geo.size.height / 2)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        isScrubbing = true
+                        let fraction = max(0, min(1, value.location.x / geo.size.width))
+                        let frame = Int(fraction * CGFloat(durationFrames))
+                        seekTo(frame)
+                    }
+                    .onEnded { _ in
+                        isScrubbing = false
+                    }
+            )
+        }
+        .frame(height: 6)
+        .animation(.easeOut(duration: 0.15), value: isScrubbing)
     }
 
     // MARK: - Transport bar
