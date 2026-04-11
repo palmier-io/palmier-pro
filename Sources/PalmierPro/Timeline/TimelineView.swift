@@ -41,6 +41,10 @@ final class TimelineView: NSView {
     func updateContentSize() {
         guard let scrollView = enclosingScrollView else { return }
         let visibleSize = scrollView.contentView.bounds.size
+        editor.timelineVisibleWidth = Double(visibleSize.width)
+        if editor.zoomScale < editor.minZoomScale {
+            editor.zoomScale = editor.minZoomScale
+        }
         let totalFrames = editor.timeline.totalFrames
         // Add padding so user can scroll a bit past the last clip
         let contentWidth = editor.zoomScale * Double(totalFrames) + visibleSize.width * 0.5

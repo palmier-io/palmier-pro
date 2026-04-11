@@ -366,7 +366,7 @@ final class TimelineInputController {
         let frameUnderCursor = max(0.0, cursorDocX / geometry.pixelsPerFrame)
 
         let delta = event.scrollingDeltaY * Zoom.scrollSensitivity
-        editor.zoomScale = max(Zoom.min, min(Zoom.max, editor.zoomScale + delta))
+        editor.zoomScale = max(editor.minZoomScale, min(Zoom.max, editor.zoomScale + delta))
 
         // After zoom, scroll so the same frame stays under cursor
         if let scrollView = view.enclosingScrollView {

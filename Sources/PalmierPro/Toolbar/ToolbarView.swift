@@ -32,7 +32,7 @@ struct ToolbarView: View {
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .font(.system(size: AppTheme.FontSize.sm))
                 @Bindable var ed = editor
-                Slider(value: $ed.zoomScale, in: 0.5...20.0)
+                Slider(value: $ed.zoomScale, in: editor.minZoomScale...Zoom.max)
                     .controlSize(.mini)
                     .frame(width: 100)
                 Image(systemName: "plus.magnifyingglass")
