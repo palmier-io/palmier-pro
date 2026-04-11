@@ -10,19 +10,31 @@ final class MediaAsset: Identifiable {
     let name: String
     var duration: Double
     var thumbnail: NSImage?
+    var generationInput: GenerationInput?
+    var generationStatus: GenerationStatus = .none
 
-    init(id: String = UUID().uuidString, url: URL, type: ClipType, name: String, duration: Double = 0, thumbnail: NSImage? = nil) {
+    enum GenerationStatus: Equatable {
+        case none
+        case generating
+        case failed(String)
+    }
+
+    var isGenerated: Bool { generationInput != nil }
+    var isGenerating: Bool { generationStatus == .generating }
+
+    init(id: String = UUID().uuidString, url: URL, type: ClipType, name: String, duration: Double = 0, thumbnail: NSImage? = nil, generationInput: GenerationInput? = nil) {
         self.id = id
         self.url = url
         self.type = type
         self.name = name
         self.duration = duration
         self.thumbnail = thumbnail
+        self.generationInput = generationInput
     }
 
     /// Reconstruct from a manifest entry + resolved URL.
     convenience init(entry: MediaManifestEntry, resolvedURL: URL) {
-        self.init(id: entry.id, url: resolvedURL, type: entry.type, name: entry.name, duration: entry.duration)
+        self.init(id: entry.id, url: resolvedURL, type: entry.type, name: entry.name, duration: entry.duration, generationInput: entry.generationInput)
     }
 
     /// Produce a serializable manifest entry from this asset.
@@ -34,7 +46,7 @@ final class MediaAsset: Identifiable {
         } else {
             source = .external(absolutePath: url.path)
         }
-        return MediaManifestEntry(id: id, name: name, type: type, source: source, duration: duration)
+        return MediaManifestEntry(id: id, name: name, type: type, source: source, duration: duration, generationInput: generationInput)
     }
 
     func loadMetadata() async {

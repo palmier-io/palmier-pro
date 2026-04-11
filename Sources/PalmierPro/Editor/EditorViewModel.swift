@@ -19,6 +19,7 @@ final class EditorViewModel {
     var isScrubbing: Bool = false
     var toolMode: ToolMode = .pointer
     var showExportDialog: Bool = false
+    var showGenerationPanel: Bool = false
     var previewTabs: [PreviewTab] = [.timeline]
     var activePreviewTabId: String = PreviewTab.timeline.id
     var sourcePlayheadFrame: Int = 0
@@ -50,8 +51,10 @@ final class EditorViewModel {
 
     // MARK: - Media import
 
-    func importMediaAsset(_ asset: MediaAsset) {
-        mediaAssets.append(asset)
+    func importMediaAsset(_ asset: MediaAsset, skipAppend: Bool = false) {
+        if !skipAppend {
+            mediaAssets.append(asset)
+        }
         let entry = asset.toManifestEntry(projectURL: projectURL)
         mediaManifest.entries.append(entry)
     }

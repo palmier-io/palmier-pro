@@ -11,6 +11,15 @@ struct MediaManifestEntry: Codable, Sendable, Equatable, Identifiable {
     var type: ClipType
     var source: MediaSource
     var duration: Double
+    var generationInput: GenerationInput?
+}
+
+struct GenerationInput: Codable, Sendable, Equatable {
+    var prompt: String
+    var model: String
+    var duration: Int
+    var aspectRatio: String
+    var resolution: String?
 }
 
 enum MediaSource: Codable, Sendable, Equatable {
