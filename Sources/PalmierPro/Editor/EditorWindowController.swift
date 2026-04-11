@@ -5,6 +5,7 @@ import AppKit
 final class EditorWindowController: NSWindowController {
     let editorViewModel: EditorViewModel
     private nonisolated(unsafe) var keyMonitor: Any?
+    private nonisolated(unsafe) var mouseMonitor: Any?
 
     init(editorViewModel: EditorViewModel, window: NSWindow) {
         self.editorViewModel = editorViewModel
@@ -16,6 +17,7 @@ final class EditorWindowController: NSWindowController {
 
     deinit {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
     }
 
     func installKeyMonitor() {
@@ -23,12 +25,17 @@ final class EditorWindowController: NSWindowController {
             guard let self, self.window?.isKeyWindow == true else { return event }
             return self.handleKeyDown(event) ? nil : event
         }
+
+        mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            guard let self, self.window?.isKeyWindow == true else { return event }
+            self.resignTextFocusIfNeeded(for: event)
+            return event
+        }
     }
 
     private func handleKeyDown(_ event: NSEvent) -> Bool {
         // Don't intercept keys when a text field has focus
-        if let responder = window?.firstResponder,
-           responder is NSTextView || responder is NSTextField {
+        if isTextInputFocused {
             return false
         }
 
@@ -90,6 +97,22 @@ final class EditorWindowController: NSWindowController {
             return false
         }
     }
+
+    private var isTextInputFocused: Bool {
+        if let responder = window?.firstResponder {
+            responder is NSTextView || responder is NSTextField
+        } else {
+            false
+        }
+    }
+
+    private func resignTextFocusIfNeeded(for event: NSEvent) {
+        guard window?.firstResponder is NSTextView else { return }
+        let hitView = window?.contentView?.hitTest(event.locationInWindow)
+        if !(hitView is NSTextView || hitView is NSTextField) {
+            window?.makeFirstResponder(nil)
+        }
+    }
 }
 
 // MARK: - EditorActions (responder chain)
@@ -106,7 +129,7 @@ extension EditorWindowController: EditorActions {
     @objc func skipFramesBackward(_ sender: Any?) { editorViewModel.skipBackward() }
 
     @objc func importMedia(_ sender: Any?) {
-        // Will be implemented in Phase 8 (Media Panel)
+        // Handled by MediaPanelView directly
     }
 
     @objc func showExport(_ sender: Any?) {

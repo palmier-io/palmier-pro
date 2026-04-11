@@ -50,13 +50,18 @@ final class VideoProject: NSDocument {
         guard let data = snapshotTimeline else { throw CocoaError(.fileWriteUnknown) }
 
         replaceChild(Project.timelineFilename, with: data)
-        if let manifest = snapshotManifest {
-            replaceChild(Project.manifestFilename, with: manifest)
-        }
-        if let thumb = snapshotThumbnail {
-            replaceChild(Project.thumbnailFilename, with: thumb)
-        }
+        if let manifest = snapshotManifest { replaceChild(Project.manifestFilename, with: manifest) }
+        if let thumb = snapshotThumbnail { replaceChild(Project.thumbnailFilename, with: thumb) }
+        if let mediaDir = mediaDirWrapper() { replaceChild(Project.mediaDirectoryName, with: mediaDir) }
+
         return packageWrapper
+    }
+
+    private func mediaDirWrapper() -> FileWrapper? {
+        guard let projectURL = fileURL else { return nil }
+        let mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
+        guard FileManager.default.fileExists(atPath: mediaDir.path) else { return nil }
+        return try? FileWrapper(url: mediaDir, options: .immediate)
     }
 
     override func updateChangeCount(_ change: NSDocument.ChangeType) {
@@ -70,10 +75,17 @@ final class VideoProject: NSDocument {
     }
 
     private nonisolated func replaceChild(_ name: String, with data: Data) {
+        let wrapper = FileWrapper(regularFileWithContents: data)
+        wrapper.preferredFilename = name
+        replaceChild(name, with: wrapper)
+    }
+
+    private nonisolated func replaceChild(_ name: String, with wrapper: FileWrapper) {
         if let old = packageWrapper.fileWrappers?[name] {
             packageWrapper.removeFileWrapper(old)
         }
-        packageWrapper.addRegularFile(withContents: data, preferredFilename: name)
+        wrapper.preferredFilename = name
+        packageWrapper.addFileWrapper(wrapper)
     }
 
     // MARK: - Close
