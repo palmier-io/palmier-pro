@@ -62,6 +62,11 @@ enum MainMenuBuilder {
         menu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
         menu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        menu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        menu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        menu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        menu.addItem(.separator())
 
         let splitItem = NSMenuItem(title: "Split at Playhead", action: #selector(EditorActions.splitAtPlayhead(_:)), keyEquivalent: "k")
         splitItem.keyEquivalentModifierMask = [.command]
