@@ -6,6 +6,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
 
+        // Seed registry from default directory on first launch
+        ProjectRegistry.shared.migrateDefaultDirectoryIfNeeded()
+
         // Show the home screen on launch
         HomeWindowController.shared.showWindow(nil)
     }

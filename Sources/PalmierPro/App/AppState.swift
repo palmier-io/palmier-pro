@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 @Observable
 @MainActor
@@ -35,29 +36,33 @@ final class AppState {
 
     // MARK: - Project lifecycle
 
-    // TODO: Replace with NSDocumentController.shared.newDocument() when running as .app bundle
     func createNewProject() {
-        let url = Self.nextAvailableURL()
-
-        let doc = VideoProject()
-        doc.fileURL = url
-        doc.fileType = VideoProject.typeIdentifier
-        doc.makeWindowControllers()
-        doc.showWindows()
-        NSDocumentController.shared.addDocument(doc)
-        doc.save(to: url, ofType: VideoProject.typeIdentifier, for: .saveOperation) { _ in
-            NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: Project.fileExtension)!]
+        panel.nameFieldStringValue = Project.defaultProjectName
+        panel.directoryURL = Project.storageDirectory
+        panel.title = "New Project"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            let doc = VideoProject()
+            doc.fileURL = url
+            doc.fileType = VideoProject.typeIdentifier
+            doc.makeWindowControllers()
+            doc.showWindows()
+            NSDocumentController.shared.addDocument(doc)
+            doc.save(to: url, ofType: VideoProject.typeIdentifier, for: .saveOperation) { _ in
+                ProjectRegistry.shared.register(url)
+            }
         }
     }
 
-    // TODO: Replace with NSDocumentController.shared.openDocument(withContentsOf:) when running as .app bundle
     func openProject(at url: URL) {
         do {
             let doc = try VideoProject(contentsOf: url, ofType: VideoProject.typeIdentifier)
             doc.makeWindowControllers()
             doc.showWindows()
             NSDocumentController.shared.addDocument(doc)
-            NSDocumentController.shared.noteNewRecentDocumentURL(url)
+            ProjectRegistry.shared.register(url)
         } catch {
             NSAlert(error: error).runModal()
         }
@@ -78,21 +83,23 @@ final class AppState {
             if let doc = activeProject, doc.fileURL == url {
                 doc.fileURL = newURL
             }
-            NSDocumentController.shared.noteNewRecentDocumentURL(newURL)
+            ProjectRegistry.shared.updateURL(from: url, to: newURL)
             return newURL
         } catch {
             return nil
         }
     }
 
-    private static func nextAvailableURL() -> URL {
-        let base = Project.defaultProjectName
-        var n = 1
-        while true {
-            let name = n == 1 ? "\(base).\(Project.fileExtension)" : "\(base) \(n).\(Project.fileExtension)"
-            let url = Project.storageDirectory.appendingPathComponent(name)
-            if !FileManager.default.fileExists(atPath: url.path) { return url }
-            n += 1
+    func openProjectFromPanel() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: Project.fileExtension)!]
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.title = "Open Project"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            AppState.shared.openProject(at: url)
         }
     }
+
 }

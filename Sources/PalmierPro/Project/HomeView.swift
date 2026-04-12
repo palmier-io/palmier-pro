@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct HomeView: View {
-    @State private var recentURLs: [URL] = []
-
     private let columns = [
         GridItem(.adaptive(minimum: 200, maximum: 240), spacing: 20)
     ]
@@ -16,10 +14,6 @@ struct HomeView: View {
         .frame(minWidth: 700, minHeight: 460)
         .background(Color(white: 0.08))
         .focusEffectDisabled()
-        .onAppear { refreshRecents() }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
-            refreshRecents()
-        }
     }
 
     private var header: some View {
@@ -36,6 +30,11 @@ struct HomeView: View {
 
             Spacer()
 
+            Button(action: { AppState.shared.openProjectFromPanel() }) {
+                Label("Open", systemImage: "folder")
+            }
+            .buttonStyle(.bordered)
+
             Button(action: { AppState.shared.createNewProject() }) {
                 Label("New Project", systemImage: "plus")
             }
@@ -47,13 +46,17 @@ struct HomeView: View {
 
     private var projectGrid: some View {
         Group {
-            if recentURLs.isEmpty {
+            if ProjectRegistry.shared.sortedEntries.isEmpty {
                 emptyState
             } else {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 16) {
-                        ForEach(recentURLs, id: \.absoluteString) { url in
-                            ProjectCard(url: url) { AppState.shared.openProject(at: $0) }
+                        ForEach(ProjectRegistry.shared.sortedEntries) { entry in
+                            ProjectCard(
+                                entry: entry,
+                                onOpen: { AppState.shared.openProject(at: $0) },
+                                onRemove: { ProjectRegistry.shared.remove($0) }
+                            )
                         }
                     }
                     .padding(24)
@@ -79,24 +82,6 @@ struct HomeView: View {
         }
     }
 
-    // TODO: Replace with NSDocumentController.shared.recentDocumentURLs when running as .app bundle
-    private func refreshRecents() {
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: Project.storageDirectory,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            recentURLs = []
-            return
-        }
-        recentURLs = contents
-            .filter { $0.pathExtension == Project.fileExtension }
-            .sorted { a, b in
-                let dateA = (try? a.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                let dateB = (try? b.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                return dateA > dateB
-            }
-    }
 }
 
 // MARK: - Home window controller

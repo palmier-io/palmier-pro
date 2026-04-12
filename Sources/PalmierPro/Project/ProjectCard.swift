@@ -1,12 +1,12 @@
 import SwiftUI
 
 struct ProjectCard: View {
-    @State var url: URL
+    let entry: ProjectEntry
     let onOpen: (URL) -> Void
+    let onRemove: (URL) -> Void
 
     @State private var isHovered = false
     @State private var thumbnail: NSImage?
-    @State private var modifiedDate: Date?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -29,24 +29,46 @@ struct ProjectCard: View {
                         .font(.system(size: 28))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                 }
+
+                if !entry.isAccessible {
+                    Color.black.opacity(0.6)
+
+                    VStack(spacing: 4) {
+                        Image(systemName: "questionmark.folder")
+                            .font(.system(size: 22))
+                        Text("Not Found")
+                            .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                    }
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
             }
             .frame(height: 120)
             .clipped()
-            .onTapGesture { onOpen(url) }
+            .onTapGesture {
+                if entry.isAccessible { onOpen(entry.url) }
+            }
 
             VStack(alignment: .leading, spacing: 3) {
-                ProjectNameField(url: optionalURLBinding, width: 160)
+                Text(entry.name)
+                    .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                    .foregroundStyle(entry.isAccessible ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
+                    .lineLimit(1)
 
-                if let modifiedDate {
-                    Text(Self.relativeString(for: modifiedDate))
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
-                }
+                Text(entry.url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Text(Self.relativeString(for: entry.createdDate))
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
         }
         .background(Color(white: isHovered ? 0.16 : 0.12))
+        .opacity(entry.isAccessible ? 1.0 : 0.6)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.md))
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Radius.md)
@@ -59,19 +81,16 @@ struct ProjectCard: View {
         .animation(.easeOut(duration: AppTheme.Anim.hover), value: isHovered)
         .onHover { isHovered = $0 }
         .contextMenu {
-            Button("Open") { onOpen(url) }
-Button("Reveal in Finder") {
-                NSWorkspace.shared.selectFile(url.path, inFileViewerRootedAtPath: url.deletingLastPathComponent().path)
+            if entry.isAccessible {
+                Button("Open") { onOpen(entry.url) }
+                Button("Reveal in Finder") {
+                    NSWorkspace.shared.selectFile(entry.url.path, inFileViewerRootedAtPath: entry.url.deletingLastPathComponent().path)
+                }
+                Divider()
             }
+            Button("Remove from Recents") { onRemove(entry.url) }
         }
-        .task { loadMetadata() }
-    }
-
-    private var optionalURLBinding: Binding<URL?> {
-        Binding(
-            get: { url },
-            set: { if let newURL = $0 { url = newURL } }
-        )
+        .task { loadThumbnail() }
     }
 
     private static let relativeDateFormatter: RelativeDateTimeFormatter = {
@@ -84,16 +103,11 @@ Button("Reveal in Finder") {
         relativeDateFormatter.localizedString(for: date, relativeTo: Date())
     }
 
-    private func loadMetadata() {
-        let thumbURL = url.appendingPathComponent(Project.thumbnailFilename)
+    private func loadThumbnail() {
+        let thumbURL = entry.url.appendingPathComponent(Project.thumbnailFilename)
         if let data = try? Data(contentsOf: thumbURL),
            let image = NSImage(data: data) {
             thumbnail = image
-        }
-
-        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-           let date = attrs[.modificationDate] as? Date {
-            modifiedDate = date
         }
     }
 }
