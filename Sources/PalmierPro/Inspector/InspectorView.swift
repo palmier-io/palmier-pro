@@ -6,7 +6,9 @@ struct InspectorView: View {
     var body: some View {
         Group {
             if let clip = selectedClip {
-                inspectorContent(clip)
+                clipInspectorContent(clip)
+            } else if let asset = selectedMediaAsset {
+                mediaAssetInspectorContent(asset)
             } else {
                 Color.clear
             }
@@ -15,10 +17,10 @@ struct InspectorView: View {
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
-    // MARK: - Content
+    // MARK: - Clip Inspector
 
     @ViewBuilder
-    private func inspectorContent(_ clip: Clip) -> some View {
+    private func clipInspectorContent(_ clip: Clip) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
                 // Clip info
@@ -100,6 +102,92 @@ struct InspectorView: View {
         )
     }
 
+    // MARK: - Media Asset Inspector
+
+    @ViewBuilder
+    private func mediaAssetInspectorContent(_ asset: MediaAsset) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
+                // Asset info
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                    Text(asset.name)
+                        .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
+                        .foregroundStyle(AppTheme.Text.primaryColor)
+                        .lineLimit(2)
+
+                    metadataRow("Type", value: asset.type.trackLabel)
+
+                    if asset.type != .audio {
+                        if let size = imageDimensions(for: asset.url) {
+                            metadataRow("Dimensions", value: "\(size.width) × \(size.height)")
+                        }
+                    }
+
+                    if asset.duration > 0 && asset.type != .image {
+                        metadataRow("Duration", value: formatDuration(asset.duration))
+                    }
+
+                    if let fileSize = fileSize(for: asset.url) {
+                        metadataRow("File Size", value: fileSize)
+                    }
+                }
+
+                if let gen = asset.generationInput {
+                    Rectangle()
+                        .fill(AppTheme.Border.subtleColor)
+                        .frame(height: 0.5)
+
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                        HStack(spacing: AppTheme.Spacing.xs) {
+                            Text("AI Generated")
+                                .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+                                .foregroundStyle(AppTheme.Text.primaryColor)
+                            Image(systemName: "sparkles")
+                                .font(.system(size: AppTheme.FontSize.sm))
+                                .foregroundStyle(.purple)
+                        }
+
+                        metadataRow("Model", value: modelDisplayName(for: gen.model))
+                        metadataRow("Aspect Ratio", value: gen.aspectRatio)
+
+                        if let resolution = gen.resolution {
+                            metadataRow("Resolution", value: resolution)
+                        }
+
+                        if gen.duration > 0 {
+                            metadataRow("Gen Duration", value: "\(gen.duration)s")
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Prompt")
+                                .font(.system(size: AppTheme.FontSize.xs))
+                                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                            Text(gen.prompt)
+                                .font(.system(size: AppTheme.FontSize.xs))
+                                .foregroundStyle(AppTheme.Text.secondaryColor)
+                                .textSelection(.enabled)
+                                .lineLimit(10)
+                        }
+                    }
+                }
+            }
+            .padding(AppTheme.Spacing.lg)
+        }
+    }
+
+    private func metadataRow(_ label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: AppTheme.FontSize.xs))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            Spacer()
+            Text(value)
+                .font(.system(size: AppTheme.FontSize.xs))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .lineLimit(1)
+        }
+    }
+
     // MARK: - Helpers
 
     private var selectedClip: Clip? {
@@ -109,6 +197,48 @@ struct InspectorView: View {
             if let clip = track.clips.first(where: { $0.id == id }) { return clip }
         }
         return nil
+    }
+
+    private var selectedMediaAsset: MediaAsset? {
+        guard editor.selectedMediaAssetIds.count == 1,
+              let id = editor.selectedMediaAssetIds.first else { return nil }
+        return editor.mediaAssets.first { $0.id == id }
+    }
+
+    private func modelDisplayName(for modelId: String) -> String {
+        if let config = ImageModelConfig.allModels.first(where: { $0.id == modelId }) {
+            return config.displayName
+        }
+        if let config = VideoModelConfig.allModels.first(where: { $0.id == modelId }) {
+            return config.displayName
+        }
+        return modelId
+    }
+
+    private func fileSize(for url: URL) -> String? {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let bytes = attrs[.size] as? Int64 else { return nil }
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+
+    private func imageDimensions(for url: URL) -> (width: Int, height: Int)? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let w = props[kCGImagePropertyPixelWidth] as? Int,
+              let h = props[kCGImagePropertyPixelHeight] as? Int else { return nil }
+        return (w, h)
+    }
+
+    private func formatDuration(_ seconds: Double) -> String {
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        let frac = Int((seconds.truncatingRemainder(dividingBy: 1)) * 100)
+        if mins > 0 {
+            return String(format: "%d:%02d.%02d", mins, secs, frac)
+        }
+        return String(format: "%d.%02ds", secs, frac)
     }
 }
 
