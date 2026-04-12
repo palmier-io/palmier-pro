@@ -419,16 +419,81 @@ final class EditorViewModel {
         notifyTimelineChanged()
     }
 
-    func updateClipProperty(clipId: String, _ modify: (inout Clip) -> Void) {
+    /// Snapshot captured at drag start
+    private var dragBefore: (clipId: String, clip: Clip)?
+
+    func applyClipSpeed(clipId: String, newSpeed: Double) {
         guard let loc = findClip(id: clipId) else { return }
-        let before = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        modify(&timeline.tracks[loc.trackIndex].clips[loc.clipIndex])
+        let ti = loc.trackIndex
+        if dragBefore == nil || dragBefore?.clipId != clipId {
+            dragBefore = (clipId, timeline.tracks[ti].clips[loc.clipIndex])
+        }
+        setClipSpeed(at: loc, newSpeed: newSpeed)
+    }
+
+    func commitClipSpeed(clipId: String, newSpeed: Double) {
+        guard let loc = findClip(id: clipId) else { return }
+        let before = dragBefore?.clipId == clipId ? dragBefore?.clip : timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        dragBefore = nil
+        setClipSpeed(at: loc, newSpeed: newSpeed)
+        guard let before, before.speed != newSpeed else { return }
         undoManager?.registerUndo(withTarget: self) { vm in
             if let current = vm.findClip(id: clipId) {
-                vm.timeline.tracks[current.trackIndex].clips[current.clipIndex] = before
+                vm.setClipSpeed(at: current, newSpeed: before.speed)
+                vm.undoManager?.registerUndo(withTarget: vm) { vm2 in
+                    if let loc2 = vm2.findClip(id: clipId) {
+                        vm2.setClipSpeed(at: loc2, newSpeed: newSpeed)
+                    }
+                }
+                vm.undoManager?.setActionName("Change Speed")
             }
         }
-        undoManager?.setActionName("Change Clip Property")
+        undoManager?.setActionName("Change Speed")
+    }
+
+    private func setClipSpeed(at loc: (trackIndex: Int, clipIndex: Int), newSpeed: Double) {
+        let ti = loc.trackIndex
+        let clip = timeline.tracks[ti].clips[loc.clipIndex]
+        let sourceFrames = Double(clip.durationFrames) * clip.speed
+        let newDuration = max(1, Int((sourceFrames / newSpeed).rounded()))
+        let oldEnd = clip.endFrame
+
+        timeline.tracks[ti].clips[loc.clipIndex].speed = newSpeed
+        timeline.tracks[ti].clips[loc.clipIndex].durationFrames = newDuration
+
+        let rippleDelta = (clip.startFrame + newDuration) - oldEnd
+        if rippleDelta != 0 {
+            let chainIds = timeline.tracks[ti].contiguousClipIds(fromEnd: oldEnd, excludeId: clip.id)
+            for ci in timeline.tracks[ti].clips.indices where chainIds.contains(timeline.tracks[ti].clips[ci].id) {
+                timeline.tracks[ti].clips[ci].startFrame += rippleDelta
+            }
+        }
+        sortClips(trackIndex: ti)
+        notifyTimelineChanged()
+    }
+
+    func applyClipProperty(clipId: String, _ modify: (inout Clip) -> Void) {
+        guard let loc = findClip(id: clipId) else { return }
+        if dragBefore == nil || dragBefore?.clipId != clipId {
+            dragBefore = (clipId, timeline.tracks[loc.trackIndex].clips[loc.clipIndex])
+        }
+        modify(&timeline.tracks[loc.trackIndex].clips[loc.clipIndex])
+        notifyTimelineChanged()
+    }
+
+    func commitClipProperty(clipId: String, _ modify: (inout Clip) -> Void) {
+        guard let loc = findClip(id: clipId) else { return }
+        let before = dragBefore?.clipId == clipId ? dragBefore?.clip : timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        dragBefore = nil
+        modify(&timeline.tracks[loc.trackIndex].clips[loc.clipIndex])
+        if let before {
+            undoManager?.registerUndo(withTarget: self) { vm in
+                if let current = vm.findClip(id: clipId) {
+                    vm.timeline.tracks[current.trackIndex].clips[current.clipIndex] = before
+                }
+            }
+            undoManager?.setActionName("Change Clip Property")
+        }
         notifyTimelineChanged()
     }
 
