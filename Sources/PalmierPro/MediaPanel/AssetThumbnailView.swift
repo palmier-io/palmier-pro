@@ -59,7 +59,7 @@ struct AssetThumbnailView: View {
 
     @ViewBuilder
     private var thumbnailBadges: some View {
-        if !asset.isGenerating {
+        if asset.isGenerated && !asset.isGenerating {
             sourceBadge
                 .padding(4)
         }
@@ -75,8 +75,8 @@ struct AssetThumbnailView: View {
 
     private var sourceBadge: some View {
         badge(
-            asset.isGenerated ? "AI" : "Added",
-            background: asset.isGenerated ? Color.purple.opacity(0.85) : Color.black.opacity(0.6),
+            "AI",
+            background: Color.purple.opacity(0.85),
             weight: .semibold
         )
     }
