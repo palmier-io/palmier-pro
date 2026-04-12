@@ -23,83 +23,117 @@ struct InspectorView: View {
     private func clipInspectorContent(_ clip: Clip) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
-                // Clip info
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                    Text(editor.mediaResolver.displayName(for: clip.mediaRef))
-                        .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
-                        .foregroundStyle(AppTheme.Text.primaryColor)
-                        .lineLimit(1)
-                    Text("Start: \(formatTimecode(frame: clip.startFrame, fps: editor.timeline.fps))")
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    Text("Duration: \(formatTimecode(frame: clip.durationFrames, fps: editor.timeline.fps))")
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                frameSection(clip)
+
+                sectionDivider
+
+                InspectorSlider(
+                    icon: "circle.lefthalf.filled",
+                    label: "Opacity",
+                    value: clip.opacity,
+                    range: 0...1,
+                    displayMultiplier: 100,
+                    valueSuffix: "%",
+                    format: "%.0f",
+                    onChanged: { newVal in
+                        editor.applyClipProperty(clipId: clip.id) { $0.opacity = newVal }
+                    }
+                ) { newVal in
+                    editor.commitClipProperty(clipId: clip.id) { $0.opacity = newVal }
                 }
 
-                Rectangle()
-                    .fill(AppTheme.Border.subtleColor)
-                    .frame(height: 0.5)
-
-                // Speed
-                propertySlider("Speed", value: clip.speed, range: 0.25...4.0, format: "%.2fx") { newVal in
-                    editor.updateClipProperty(clipId: clip.id) { $0.speed = newVal }
-                }
+                sectionDivider
 
                 // Volume
-                propertySlider("Volume", value: clip.volume, range: 0...1, format: "%.0f%%", displayMultiplier: 100) { newVal in
-                    editor.updateClipProperty(clipId: clip.id) { $0.volume = newVal }
+                InspectorSlider(
+                    icon: "speaker.wave.2.fill",
+                    label: "Volume",
+                    value: clip.volume,
+                    range: 0...1,
+                    displayMultiplier: 100,
+                    valueSuffix: "%",
+                    format: "%.0f",
+                    onChanged: { newVal in
+                        editor.applyClipProperty(clipId: clip.id) { $0.volume = newVal }
+                    }
+                ) { newVal in
+                    editor.commitClipProperty(clipId: clip.id) { $0.volume = newVal }
                 }
 
-                // Opacity
-                propertySlider("Opacity", value: clip.opacity, range: 0...1, format: "%.0f%%", displayMultiplier: 100) { newVal in
-                    editor.updateClipProperty(clipId: clip.id) { $0.opacity = newVal }
-                }
+                sectionDivider
 
-                Rectangle()
-                    .fill(AppTheme.Border.subtleColor)
-                    .frame(height: 0.5)
-
-                // Transform
-                Text("Transform")
-                    .font(.system(size: AppTheme.FontSize.md, weight: .medium))
-                    .foregroundStyle(AppTheme.Text.primaryColor)
-
-                propertySlider("X", value: clip.transform.x, range: 0...1, format: "%.2f") { newVal in
-                    editor.updateClipProperty(clipId: clip.id) { $0.transform.x = newVal }
-                }
-                propertySlider("Y", value: clip.transform.y, range: 0...1, format: "%.2f") { newVal in
-                    editor.updateClipProperty(clipId: clip.id) { $0.transform.y = newVal }
-                }
-                propertySlider("Width", value: clip.transform.width, range: 0...2, format: "%.2f") { newVal in
-                    editor.updateClipProperty(clipId: clip.id) { $0.transform.width = newVal }
-                }
-                propertySlider("Height", value: clip.transform.height, range: 0...2, format: "%.2f") { newVal in
-                    editor.updateClipProperty(clipId: clip.id) { $0.transform.height = newVal }
+                // Speed
+                InspectorSlider(
+                    icon: "gauge.with.dots.needle.67percent",
+                    label: "Speed",
+                    value: clip.speed,
+                    range: 0.25...4.0,
+                    displayMultiplier: 1,
+                    valueSuffix: "x",
+                    format: "%.2f",
+                    onChanged: { newVal in
+                        editor.applyClipSpeed(clipId: clip.id, newSpeed: newVal)
+                    }
+                ) { newVal in
+                    editor.commitClipSpeed(clipId: clip.id, newSpeed: newVal)
                 }
             }
             .padding(AppTheme.Spacing.lg)
         }
     }
 
-    // MARK: - Slider component
+    // MARK: - Frame Section
 
-    private func propertySlider(
-        _ label: String,
-        value: Double,
-        range: ClosedRange<Double>,
-        format: String,
-        displayMultiplier: Double = 1,
-        onCommit: @escaping (Double) -> Void
-    ) -> some View {
-        PropertySlider(
-            label: label,
-            value: value,
-            range: range,
-            format: format,
-            displayMultiplier: displayMultiplier,
-            onCommit: onCommit
-        )
+    @ViewBuilder
+    private func frameSection(_ clip: Clip) -> some View {
+        let tl = clip.transform.topLeft
+        let canvasW = Double(editor.timeline.width)
+        let canvasH = Double(editor.timeline.height)
+
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            HStack {
+                Image(systemName: "crop")
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                Text("Frame")
+                    .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                Spacer()
+                Button {
+                    editor.commitClipProperty(clipId: clip.id) { $0.transform = Transform() }
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: AppTheme.FontSize.sm))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
+                .buttonStyle(.plain)
+                .help("Reset transform")
+            }
+
+            HStack(spacing: AppTheme.Spacing.sm) {
+                InspectorNumberField(label: "X", value: tl.x * canvasW) { newX in
+                    editor.commitClipProperty(clipId: clip.id) {
+                        let old = $0.transform.topLeft
+                        $0.transform = Transform(topLeft: (newX / canvasW, old.y), width: $0.transform.width, height: $0.transform.height)
+                    }
+                }
+                InspectorNumberField(label: "Y", value: tl.y * canvasH) { newY in
+                    editor.commitClipProperty(clipId: clip.id) {
+                        let old = $0.transform.topLeft
+                        $0.transform = Transform(topLeft: (old.x, newY / canvasH), width: $0.transform.width, height: $0.transform.height)
+                    }
+                }
+                InspectorNumberField(label: "Scale", value: clip.transform.width * 100) { newScale in
+                    editor.commitClipProperty(clipId: clip.id) {
+                        let s = max(newScale, 1) / 100.0
+                        let old = $0.transform.topLeft
+                        let cx = old.x + $0.transform.width / 2.0
+                        let cy = old.y + $0.transform.height / 2.0
+                        $0.transform = Transform(topLeft: (cx - s / 2.0, cy - s / 2.0), width: s, height: s)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Media Asset Inspector
@@ -108,7 +142,6 @@ struct InspectorView: View {
     private func mediaAssetInspectorContent(_ asset: MediaAsset) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
-                // Asset info
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
                     Text(asset.name)
                         .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
@@ -133,9 +166,7 @@ struct InspectorView: View {
                 }
 
                 if let gen = asset.generationInput {
-                    Rectangle()
-                        .fill(AppTheme.Border.subtleColor)
-                        .frame(height: 0.5)
+                    sectionDivider
 
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
                         HStack(spacing: AppTheme.Spacing.xs) {
@@ -186,6 +217,12 @@ struct InspectorView: View {
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .lineLimit(1)
         }
+    }
+
+    private var sectionDivider: some View {
+        Rectangle()
+            .fill(AppTheme.Border.subtleColor)
+            .frame(height: 0.5)
     }
 
     // MARK: - Helpers
@@ -242,30 +279,41 @@ struct InspectorView: View {
     }
 }
 
-/// Slider that only commits undo on release, not during drag.
-private struct PropertySlider: View {
+// MARK: - Inspector Slider
+
+private struct InspectorSlider: View {
+    let icon: String
     let label: String
     let value: Double
     let range: ClosedRange<Double>
-    let format: String
     let displayMultiplier: Double
+    let valueSuffix: String
+    let format: String
+    var onChanged: ((Double) -> Void)? = nil
     let onCommit: (Double) -> Void
 
     @State private var liveValue: Double = 0
     @State private var isDragging = false
 
+    private var displayValue: Double { (isDragging ? liveValue : value) * displayMultiplier }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             HStack {
-                Text(label)
-                    .font(.system(size: AppTheme.FontSize.xs))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                Spacer()
-                Text(String(format: format, displayValue * displayMultiplier))
-                    .font(.system(size: AppTheme.FontSize.xs))
-                    .monospacedDigit()
+                Image(systemName: icon)
+                    .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .frame(width: 16)
+                Text(label)
+                    .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                Spacer()
+                Text(String(format: format, displayValue) + valueSuffix)
+                    .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(AppTheme.Text.primaryColor)
             }
+
             Slider(value: $liveValue, in: range) { editing in
                 if editing {
                     isDragging = true
@@ -274,13 +322,60 @@ private struct PropertySlider: View {
                     onCommit(liveValue)
                 }
             }
-            .controlSize(.mini)
+            .controlSize(.small)
         }
         .onAppear { liveValue = value }
         .onChange(of: value) { _, newValue in
             if !isDragging { liveValue = newValue }
         }
+        .onChange(of: liveValue) { _, newValue in
+            if isDragging { onChanged?(newValue) }
+        }
+    }
+}
+
+// MARK: - Inspector Number Field
+
+private struct InspectorNumberField: View {
+    let label: String
+    let value: Double
+    let onCommit: (Double) -> Void
+
+    @State private var text: String = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.system(size: AppTheme.FontSize.xs))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            TextField("", text: $text)
+                .textFieldStyle(.plain)
+                .font(.system(size: AppTheme.FontSize.md).monospacedDigit())
+                .foregroundStyle(AppTheme.Text.primaryColor)
+                .padding(.horizontal, AppTheme.Spacing.sm)
+                .padding(.vertical, AppTheme.Spacing.xs)
+                .background(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                        .fill(Color.white.opacity(0.06))
+                )
+                .focused($isFocused)
+                .onSubmit { commitValue() }
+                .onChange(of: isFocused) { _, focused in
+                    if !focused { commitValue() }
+                }
+        }
+        .onAppear { text = String(Int(value.rounded())) }
+        .onChange(of: value) { _, newValue in
+            if !isFocused { text = String(Int(newValue.rounded())) }
+        }
     }
 
-    private var displayValue: Double { isDragging ? liveValue : value }
+    private func commitValue() {
+        if let parsed = Double(text) {
+            onCommit(parsed)
+        } else {
+            text = String(Int(value.rounded()))
+        }
+    }
 }
