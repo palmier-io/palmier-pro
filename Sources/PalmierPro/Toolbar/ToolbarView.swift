@@ -42,7 +42,7 @@ struct ToolbarView: View {
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(AppTheme.Background.barColor)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(AppTheme.Border.primaryColor)

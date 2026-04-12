@@ -26,6 +26,11 @@ struct MediaPanelView: View {
 
                 Spacer()
 
+                Text("\(filteredAndSortedAssets.count) items")
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+                    .monospacedDigit()
+
                 // Sort
                 toolbarMenuIcon(systemName: "arrow.up.arrow.down") {
                     ForEach(SortMode.allCases, id: \.self) { mode in
@@ -53,7 +58,7 @@ struct MediaPanelView: View {
             }
             .padding(.horizontal, AppTheme.Spacing.sm)
             .frame(height: 28)
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(AppTheme.Background.barColor)
             .overlay(alignment: .bottom) {
                 Rectangle().fill(AppTheme.Border.primaryColor).frame(height: 0.5)
             }
@@ -73,7 +78,7 @@ struct MediaPanelView: View {
                 }
             }
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(AppTheme.Background.panelColor)
     }
 
     private var selectedMediaAssetsInOrder: [MediaAsset] {

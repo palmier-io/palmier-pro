@@ -3,6 +3,21 @@ import SwiftUI
 
 enum AppTheme {
 
+    // MARK: - Backgrounds (3-tier depth hierarchy)
+
+    enum Background {
+        /// Darkest – content wells: preview area, timeline body
+        static let well = NSColor(white: 0.07, alpha: 1)
+        /// Mid – panel bodies: media panel, inspector
+        static let panel = NSColor(white: 0.10, alpha: 1)
+        /// Lightest – bars: toolbars, tab bars, headers
+        static let bar = NSColor(white: 0.13, alpha: 1)
+
+        static var wellColor: Color { Color(well) }
+        static var panelColor: Color { Color(panel) }
+        static var barColor: Color { Color(bar) }
+    }
+
     // MARK: - Borders
 
     enum Border {
@@ -11,6 +26,12 @@ enum AppTheme {
 
         static var primaryColor: Color { Color(primary) }
         static var subtleColor: Color { Color(subtle) }
+    }
+
+    // MARK: - Accent
+
+    enum Accent {
+        static let timecodeColor = Color(red: 0.95, green: 0.6, blue: 0.2) // warm amber
     }
 
     // MARK: - Text

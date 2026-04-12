@@ -4,17 +4,19 @@ struct InspectorView: View {
     @Environment(EditorViewModel.self) var editor
 
     var body: some View {
-        Group {
-            if let clip = selectedClip {
-                clipInspectorContent(clip)
-            } else if let asset = selectedMediaAsset {
-                mediaAssetInspectorContent(asset)
-            } else {
-                Color.clear
+        VStack(spacing: 0) {
+            Group {
+                if let clip = selectedClip {
+                    clipInspectorContent(clip)
+                } else if let asset = selectedMediaAsset {
+                    mediaAssetInspectorContent(asset)
+                } else {
+                    Color.clear
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(AppTheme.Background.panelColor)
     }
 
     // MARK: - Clip Inspector

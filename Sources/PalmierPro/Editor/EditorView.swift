@@ -10,8 +10,12 @@ struct EditorView: View {
                 MediaPanelView()
                     .frame(minWidth: Layout.mediaPanelMin, idealWidth: Layout.mediaPanelDefault, maxWidth: Layout.mediaPanelMax)
 
+                panelDivider
+
                 PreviewContainerView()
                     .frame(minWidth: Layout.previewMinWidth)
+
+                panelDivider
 
                 InspectorView()
                     .frame(minWidth: Layout.inspectorMin, idealWidth: Layout.inspectorDefault, maxWidth: Layout.inspectorMax)
@@ -30,5 +34,10 @@ struct EditorView: View {
         .sheet(isPresented: Bindable(editor).showExportDialog) {
             ExportView()
         }
+    }
+    private var panelDivider: some View {
+        Rectangle()
+            .fill(Color.black)
+            .frame(width: 2)
     }
 }

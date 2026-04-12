@@ -22,7 +22,7 @@ struct PreviewContainerView: View {
                 transportBar
             }
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(AppTheme.Background.wellColor)
     }
 
     // MARK: - Image preview
@@ -54,7 +54,7 @@ struct PreviewContainerView: View {
             Spacer()
         }
         .frame(height: 28)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(AppTheme.Background.barColor)
         .overlay(alignment: .bottom) {
             Rectangle().fill(AppTheme.Border.primaryColor).frame(height: 0.5)
         }
@@ -80,10 +80,11 @@ struct PreviewContainerView: View {
             .padding(.horizontal, AppTheme.Spacing.md)
             .padding(.vertical, AppTheme.Spacing.xs)
             .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
-            .background {
+            .overlay(alignment: .bottom) {
                 if isActive {
-                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm - 1)
-                        .fill(Color.white.opacity(0.08))
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(Color.accentColor)
+                        .frame(height: 2)
                         .matchedGeometryEffect(id: "activePreviewTab", in: tabNamespace)
                 }
             }
@@ -160,7 +161,7 @@ struct PreviewContainerView: View {
             Text(formatTimecode(frame: playheadFrame, fps: editor.timeline.fps))
                 .monospacedDigit()
                 .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
-                .foregroundStyle(AppTheme.Text.primaryColor)
+                .foregroundStyle(AppTheme.Accent.timecodeColor)
 
             Spacer()
 
