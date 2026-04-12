@@ -15,6 +15,7 @@ struct PreviewContainerView: View {
                 if isImage {
                     imagePreview
                 }
+                TransformOverlayView()
             }
             if !isImage {
                 scrubBar
