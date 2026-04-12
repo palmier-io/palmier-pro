@@ -4,93 +4,100 @@ import Foundation
 @Observable
 @MainActor
 final class GenerationService {
-    private var apiKey: String { UserDefaults.standard.string(forKey: "falApiKey") ?? "" }
+    private var apiKey: String = FalKeychain.load() ?? ""
 
     var hasApiKey: Bool { !apiKey.isEmpty }
 
-    // MARK: - Video generation
-
-    func generateVideo(
-        model: VideoModelConfig,
-        prompt: String,
-        duration: Int,
-        aspectRatio: String,
-        resolution: String?,
-        projectURL: URL?,
-        editor: EditorViewModel
-    ) {
-        let genInput = GenerationInput(
-            prompt: prompt,
-            model: model.displayName,
-            duration: duration,
-            aspectRatio: aspectRatio,
-            resolution: resolution
-        )
-
-        let placeholder = createPlaceholder(
-            type: .video,
-            name: "AI: \(prompt.prefix(30))",
-            duration: Double(duration),
-            genInput: genInput,
-            editor: editor
-        )
-
-        let input = model.buildInput(prompt: prompt, duration: duration, aspectRatio: aspectRatio, resolution: resolution)
-        let endpoint = model.endpoint
-
-        runGeneration(
-            placeholder: placeholder,
-            endpoint: endpoint,
-            input: input,
-            responseKeyPath: { $0["video"]["url"].stringValue },
-            fileExtension: "mp4",
-            assetType: .video,
-            genInput: genInput,
-            projectURL: projectURL,
-            editor: editor
-        )
+    var maskedApiKey: String {
+        guard apiKey.count > 6 else { return String(repeating: "\u{2022}", count: apiKey.count) }
+        return apiKey.prefix(3) + String(repeating: "\u{2022}", count: apiKey.count - 6) + apiKey.suffix(3)
     }
 
-    // MARK: - Image generation
+    func setApiKey(_ key: String) {
+        FalKeychain.save(key)
+        apiKey = key
+    }
 
-    func generateImage(
-        model: ImageModelConfig,
-        prompt: String,
-        aspectRatio: String,
-        resolution: String?,
+    func removeApiKey() {
+        FalKeychain.delete()
+        apiKey = ""
+    }
+
+    // MARK: - Generation
+
+    func generate(
+        genInput: GenerationInput,
+        assetType: ClipType,
+        placeholderDuration: Double,
+        references: [MediaAsset] = [],
+        buildInput: @escaping ([String]) -> (endpoint: String, input: Payload),
+        responseKeyPath: @escaping @Sendable (Payload) -> String?,
+        fileExtension: String,
         projectURL: URL?,
         editor: EditorViewModel
     ) {
-        let genInput = GenerationInput(
-            prompt: prompt,
-            model: model.displayName,
-            duration: 0,
-            aspectRatio: aspectRatio,
-            resolution: resolution
-        )
-
         let placeholder = createPlaceholder(
-            type: .image,
-            name: "AI: \(prompt.prefix(30))",
-            duration: Defaults.imageDurationSeconds,
+            type: assetType,
+            name: "AI: \(genInput.prompt.prefix(30))",
+            duration: placeholderDuration,
             genInput: genInput,
             editor: editor
         )
 
-        let input = model.buildInput(prompt: prompt, aspectRatio: aspectRatio, resolution: resolution)
-        let endpoint = model.endpoint
+        let refURLs = references.map(\.url)
 
-        runGeneration(
-            placeholder: placeholder,
-            endpoint: endpoint,
-            input: input,
-            responseKeyPath: { $0["images"][0]["url"].stringValue },
-            fileExtension: "jpg",
-            assetType: .image,
-            genInput: genInput,
-            projectURL: projectURL,
-            editor: editor
-        )
+        Task { @MainActor in
+            do {
+                let uploaded = try await uploadImages(at: refURLs)
+
+                var finalGenInput = genInput
+                finalGenInput.imageURLs = uploaded.isEmpty ? nil : uploaded
+                placeholder.generationInput = finalGenInput
+
+                let (endpoint, input) = buildInput(uploaded)
+
+                self.runGeneration(
+                    placeholder: placeholder,
+                    endpoint: endpoint,
+                    input: input,
+                    responseKeyPath: responseKeyPath,
+                    fileExtension: fileExtension,
+                    assetType: assetType,
+                    genInput: finalGenInput,
+                    projectURL: projectURL,
+                    editor: editor
+                )
+            } catch {
+                placeholder.generationStatus = .failed("Upload failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    // MARK: - Image upload
+
+    private func uploadImages(at urls: [URL]) async throws -> [String] {
+        guard !urls.isEmpty else { return [] }
+        let key = apiKey
+        let client = FalClient.withCredentials(.keyPair(key))
+        return try await withThrowingTaskGroup(of: (Int, String).self) { group in
+            for (i, url) in urls.enumerated() {
+                group.addTask {
+                    let data = try Data(contentsOf: url)
+                    let ext = url.pathExtension.lowercased()
+                    let fileType: FileType = switch ext {
+                    case "png": .imagePng
+                    case "webp": .imageWebp
+                    case "gif": .imageGif
+                    default: .imageJpeg
+                    }
+                    let uploaded = try await client.storage.upload(data: data, ofType: fileType)
+                    return (i, uploaded)
+                }
+            }
+            var results = [(Int, String)]()
+            for try await result in group { results.append(result) }
+            return results.sorted(by: { $0.0 < $1.0 }).map(\.1)
+        }
     }
 
     // MARK: - Shared

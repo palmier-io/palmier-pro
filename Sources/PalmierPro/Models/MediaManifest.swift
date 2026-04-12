@@ -20,6 +20,7 @@ struct GenerationInput: Codable, Sendable, Equatable {
     var duration: Int
     var aspectRatio: String
     var resolution: String?
+    var imageURLs: [String]?
 }
 
 enum MediaSource: Codable, Sendable, Equatable {

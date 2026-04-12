@@ -13,13 +13,24 @@ struct GenerationView: View {
     @State private var showSettingsPopover = false
     @FocusState private var isPromptFocused: Bool
 
-    var selectedAssets: [MediaAsset] = []
+    // API key
+    @State private var apiKeyDraft = ""
+    @State private var showApiKeyPopover = false
+
+    // Video frame references
+    @State private var firstFrame: MediaAsset?
+    @State private var lastFrame: MediaAsset?
+    @State private var firstFrameTargeted = false
+    @State private var lastFrameTargeted = false
+
+    // Image references
+    @State private var imageReferences: [MediaAsset] = []
+    @State private var imageRefTargeted = false
 
     enum GenerationType: String, CaseIterable {
         case image = "AI Image"
         case video = "AI Video"
         case audio = "AI Audio"
-
         var icon: String {
             switch self {
             case .image: "photo"
@@ -34,7 +45,7 @@ struct GenerationView: View {
     private var videoModel: VideoModelConfig { VideoModelConfig.allModels[selectedVideoModelIndex] }
     private var imageModel: ImageModelConfig { ImageModelConfig.allModels[selectedImageModelIndex] }
     private var isPromptEmpty: Bool { prompt.trimmingCharacters(in: .whitespaces).isEmpty }
-    private var canSubmit: Bool { !isPromptEmpty && selectedType != .audio }
+    private var canSubmit: Bool { !isPromptEmpty && selectedType != .audio && service.hasApiKey }
 
     private var currentModelName: String {
         switch selectedType {
@@ -80,15 +91,8 @@ struct GenerationView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if !service.hasApiKey {
-                Text("Enter your fal.ai API key in Settings")
-                    .font(.system(size: AppTheme.FontSize.xs))
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
-                    .padding(AppTheme.Spacing.lg)
-            } else {
-                generationForm
-                    .padding(AppTheme.Spacing.md)
-            }
+            generationForm
+                .padding(AppTheme.Spacing.md)
         }
     }
 
@@ -100,18 +104,165 @@ struct GenerationView: View {
                 typePicker
                 modelPicker
                 if selectedType != .audio { settingsButton }
+                apiKeyButton
             }
 
-            if !selectedAssets.isEmpty { referenceStrip }
+            if selectedType == .video && videoModel.supportsFirstFrame {
+                videoFrameStrip
+            } else if selectedType == .image && imageModel.supportsImageReference {
+                imageReferenceStrip
+            }
 
             HStack(alignment: .bottom, spacing: AppTheme.Spacing.sm) {
                 promptField
                 submitButton
             }
         }
-        .onChange(of: selectedType) { _, _ in resetSettings() }
-        .onChange(of: selectedVideoModelIndex) { _, _ in if selectedType == .video { resetSettings() } }
-        .onChange(of: selectedImageModelIndex) { _, _ in if selectedType == .image { resetSettings() } }
+        .onChange(of: selectedType) { _, _ in
+            resetSettings()
+            clearReferences()
+        }
+        .onChange(of: selectedVideoModelIndex) { _, _ in
+            if selectedType == .video {
+                resetSettings()
+                clearReferences()
+            }
+        }
+        .onChange(of: selectedImageModelIndex) { _, _ in
+            if selectedType == .image {
+                resetSettings()
+                clearReferences()
+            }
+        }
+    }
+
+    // MARK: - Video frame references
+
+    private var videoFrameStrip: some View {
+        HStack(spacing: AppTheme.Spacing.xs) {
+            frameSlot(label: "First Frame", asset: firstFrame, isTargeted: $firstFrameTargeted,
+                      onDrop: { firstFrame = $0 }, onClear: { firstFrame = nil })
+            if videoModel.supportsLastFrame {
+                frameSlot(label: "Last Frame", asset: lastFrame, isTargeted: $lastFrameTargeted,
+                          onDrop: { lastFrame = $0 }, onClear: { lastFrame = nil })
+            }
+        }
+    }
+
+    private func frameSlot(
+        label: String, asset: MediaAsset?,
+        isTargeted: Binding<Bool>,
+        onDrop: @escaping (MediaAsset) -> Void,
+        onClear: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            Text(label)
+                .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+
+            if let asset {
+                Group {
+                    if let thumb = asset.thumbnail {
+                        Image(nsImage: thumb).resizable().aspectRatio(contentMode: .fill)
+                    } else {
+                        Rectangle().fill(.quaternary)
+                    }
+                }
+                .frame(width: 80, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
+                .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                    .strokeBorder(AppTheme.Border.primaryColor, lineWidth: 1))
+                .overlay(alignment: .topTrailing) {
+                    Button { onClear() } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.8))
+                            .shadow(radius: 2)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(2)
+                }
+            } else {
+                dropZone(isTargeted: isTargeted) { onDrop($0) }
+            }
+        }
+    }
+
+    // MARK: - Image references
+
+    private var imageReferenceStrip: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            Text("References")
+                .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: AppTheme.Spacing.xs) {
+                    ForEach(Array(imageReferences.enumerated()), id: \.element.id) { index, asset in
+                        refCard(asset: asset) { imageReferences.remove(at: index) }
+                    }
+                    dropZone(isTargeted: $imageRefTargeted) { imageReferences.append($0) }
+                }
+            }
+        }
+    }
+
+    private func refCard(asset: MediaAsset, onRemove: @escaping () -> Void) -> some View {
+        Group {
+            if let thumb = asset.thumbnail {
+                Image(nsImage: thumb).resizable().aspectRatio(contentMode: .fill)
+            } else {
+                ZStack {
+                    Rectangle().fill(.quaternary)
+                    Image(systemName: asset.type.sfSymbolName)
+                        .font(.system(size: 14))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
+            }
+        }
+        .frame(width: 80, height: 56)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
+        .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+            .strokeBorder(AppTheme.Border.primaryColor, lineWidth: 1))
+        .overlay(alignment: .topTrailing) {
+            Button { onRemove() } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .shadow(radius: 2)
+            }
+            .buttonStyle(.plain)
+            .padding(2)
+        }
+    }
+
+    // MARK: - Shared drop zone
+
+    private func dropZone(isTargeted: Binding<Bool>, onDrop: @escaping (MediaAsset) -> Void) -> some View {
+        Image(systemName: "photo.badge.plus")
+            .font(.system(size: 12))
+            .foregroundStyle(isTargeted.wrappedValue ? Color.accentColor : AppTheme.Text.mutedColor)
+            .frame(width: 80, height: 56)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                    .fill(isTargeted.wrappedValue ? Color.accentColor.opacity(0.08) : Color.white.opacity(0.02))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                    .strokeBorder(
+                        isTargeted.wrappedValue ? Color.accentColor.opacity(0.5) : AppTheme.Border.primaryColor,
+                        style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                    )
+            )
+            .overlay {
+                DropTargetOverlay(isTargeted: isTargeted) { urlString in
+                    if let asset = editor.mediaAssets.first(where: {
+                        $0.url.absoluteString == urlString && $0.type == .image
+                    }) {
+                        onDrop(asset)
+                    }
+                }
+            }
     }
 
     // MARK: - Prompt
@@ -137,47 +288,6 @@ struct GenerationView: View {
         .buttonStyle(.plain)
         .foregroundStyle(canSubmit ? Color.accentColor : AppTheme.Text.mutedColor)
         .disabled(!canSubmit)
-    }
-
-    // MARK: - References
-
-    private var referenceStrip: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text("References")
-                .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: AppTheme.Spacing.xs) {
-                    ForEach(selectedAssets) { asset in
-                        referenceThumbnail(asset)
-                    }
-                }
-            }
-        }
-    }
-
-    private func referenceThumbnail(_ asset: MediaAsset) -> some View {
-        Group {
-            if let thumbnail = asset.thumbnail {
-                Image(nsImage: thumbnail)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } else {
-                ZStack {
-                    Rectangle().fill(.quaternary)
-                    Image(systemName: asset.type.sfSymbolName)
-                        .font(.system(size: 14))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
-                }
-            }
-        }
-        .frame(width: 56, height: 40)
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .strokeBorder(AppTheme.Border.primaryColor, lineWidth: 1)
-        )
     }
 
     // MARK: - Type picker
@@ -281,37 +391,137 @@ struct GenerationView: View {
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
             Picker("", selection: selection) {
-                ForEach(options, id: \.self) { option in
-                    Text(format(option)).tag(option)
-                }
+                ForEach(options, id: \.self) { Text(format($0)).tag($0) }
             }
             .pickerStyle(.segmented)
             .controlSize(.small)
         }
     }
 
+    // MARK: - API key
+
+    private var apiKeyButton: some View {
+        Button { showApiKeyPopover.toggle() } label: {
+            Image(systemName: "key")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(service.hasApiKey ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
+                .frame(width: 28, height: 28)
+                .controlBackground()
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $showApiKeyPopover, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                if service.hasApiKey {
+                    HStack(spacing: AppTheme.Spacing.sm) {
+                        Text(service.maskedApiKey)
+                            .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+                            .foregroundStyle(AppTheme.Text.secondaryColor)
+                        Spacer()
+                        Button(role: .destructive) {
+                            service.removeApiKey()
+                            showApiKeyPopover = false
+                        } label: {
+                            Image(systemName: "trash").font(.system(size: AppTheme.FontSize.xs))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+                HStack(spacing: AppTheme.Spacing.sm) {
+                    SecureField(service.hasApiKey ? "Replace API key" : "Paste fal.ai API key", text: $apiKeyDraft)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: AppTheme.FontSize.sm))
+                        .controlSize(.small)
+                        .onSubmit { saveApiKey() }
+                    Button("Save") { saveApiKey() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(apiKeyDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            .padding(AppTheme.Spacing.lg)
+            .frame(width: 320)
+        }
+    }
+
+    private func saveApiKey() {
+        let key = apiKeyDraft.trimmingCharacters(in: .whitespaces)
+        guard !key.isEmpty else { return }
+        service.setApiKey(key)
+        apiKeyDraft = ""
+        showApiKeyPopover = false
+    }
+
     // MARK: - Actions
 
     private func submitGeneration() {
+        let genInput = GenerationInput(
+            prompt: prompt,
+            model: currentModelName,
+            duration: selectedType == .video ? selectedDuration : 0,
+            aspectRatio: selectedAspectRatio,
+            resolution: selectedType == .video
+                ? (videoModel.resolutions != nil ? selectedResolution : nil)
+                : (imageModel.resolutions != nil ? selectedResolution : nil)
+        )
+
         switch selectedType {
         case .video:
-            service.generateVideo(
-                model: videoModel, prompt: prompt, duration: selectedDuration,
-                aspectRatio: selectedAspectRatio,
-                resolution: videoModel.resolutions != nil ? selectedResolution : nil,
+            let model = videoModel
+            var frameRefs: [MediaAsset] = []
+            if let f = firstFrame { frameRefs.append(f) }
+            if let l = lastFrame { frameRefs.append(l) }
+            service.generate(
+                genInput: genInput,
+                assetType: .video,
+                placeholderDuration: Double(selectedDuration),
+                references: frameRefs,
+                buildInput: { uploaded in
+                    let params = VideoGenerationParams(
+                        prompt: genInput.prompt,
+                        duration: genInput.duration,
+                        aspectRatio: genInput.aspectRatio,
+                        resolution: genInput.resolution,
+                        startFrameURL: uploaded.first,
+                        endFrameURL: uploaded.count > 1 ? uploaded[1] : nil,
+                        referenceImageURLs: [],
+                        generateAudio: true
+                    )
+                    return (model.resolvedEndpoint(params: params), model.buildInput(params: params))
+                },
+                responseKeyPath: { $0["video"]["url"].stringValue },
+                fileExtension: "mp4",
                 projectURL: editor.projectURL, editor: editor
             )
         case .image:
-            service.generateImage(
-                model: imageModel, prompt: prompt, aspectRatio: selectedAspectRatio,
-                resolution: imageModel.resolutions != nil ? selectedResolution : nil,
+            let model = imageModel
+            service.generate(
+                genInput: genInput,
+                assetType: .image,
+                placeholderDuration: Defaults.imageDurationSeconds,
+                references: imageReferences,
+                buildInput: { uploaded in
+                    let input = model.buildInput(
+                        prompt: genInput.prompt, aspectRatio: genInput.aspectRatio,
+                        resolution: genInput.resolution, imageURLs: uploaded
+                    )
+                    return (model.resolvedEndpoint(imageURLs: uploaded), input)
+                },
+                responseKeyPath: { $0["images"][0]["url"].stringValue },
+                fileExtension: "jpg",
                 projectURL: editor.projectURL, editor: editor
             )
         case .audio:
-            // TODO: Implement audio generation
             return
         }
         prompt = ""
+        clearReferences()
+    }
+
+    private func clearReferences() {
+        firstFrame = nil
+        lastFrame = nil
+        imageReferences.removeAll()
     }
 
     private func resetSettings() {

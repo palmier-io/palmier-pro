@@ -68,25 +68,12 @@ struct MediaPanelView: View {
                         .fill(AppTheme.Border.subtleColor)
                         .frame(height: 0.5)
 
-                    GenerationView(selectedAssets: selectedMediaAssets)
+                    GenerationView()
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
-        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
-            handleDrop(providers)
-            return true
-        }
-        .overlay {
-            if isDropTargeted {
-                dropHighlight
-            }
-        }
-    }
-
-    private var selectedMediaAssets: [MediaAsset] {
-        selectedMediaAssetsInOrder
     }
 
     private var selectedMediaAssetsInOrder: [MediaAsset] {
@@ -165,6 +152,15 @@ struct MediaPanelView: View {
             marqueeOverlay
         }
         .gesture(marqueeGesture)
+        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+            handleDrop(providers)
+            return true
+        }
+        .overlay {
+            if isDropTargeted {
+                dropHighlight
+            }
+        }
     }
 
     private func assetCell(for asset: MediaAsset) -> some View {

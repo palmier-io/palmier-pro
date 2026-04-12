@@ -3,7 +3,7 @@ import Foundation
 enum Layout {
     // Media panel
     static let mediaPanelDefault: CGFloat = 220
-    static let mediaPanelMin: CGFloat = 180
+    static let mediaPanelMin: CGFloat = 220
     static let mediaPanelMax: CGFloat = 600
 
     // Inspector
