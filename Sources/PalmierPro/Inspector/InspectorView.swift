@@ -142,32 +142,32 @@ struct InspectorView: View {
     private func mediaAssetInspectorContent(_ asset: MediaAsset) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                    Text(asset.name)
-                        .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
-                        .foregroundStyle(AppTheme.Text.primaryColor)
-                        .lineLimit(2)
+                if asset.generationInput == nil {
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                        Text(asset.name)
+                            .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
+                            .foregroundStyle(AppTheme.Text.primaryColor)
+                            .lineLimit(2)
 
-                    metadataRow("Type", value: asset.type.trackLabel)
+                        metadataRow("Type", value: asset.type.trackLabel)
 
-                    if asset.type != .audio {
-                        if let size = imageDimensions(for: asset.url) {
-                            metadataRow("Dimensions", value: "\(size.width) × \(size.height)")
+                        if asset.type != .audio {
+                            if let size = imageDimensions(for: asset.url) {
+                                metadataRow("Dimensions", value: "\(size.width) × \(size.height)")
+                            }
                         }
-                    }
 
-                    if asset.duration > 0 && asset.type != .image {
-                        metadataRow("Duration", value: formatDuration(asset.duration))
-                    }
+                        if asset.duration > 0 && asset.type != .image {
+                            metadataRow("Duration", value: formatDuration(asset.duration))
+                        }
 
-                    if let fileSize = fileSize(for: asset.url) {
-                        metadataRow("File Size", value: fileSize)
+                        if let fileSize = fileSize(for: asset.url) {
+                            metadataRow("File Size", value: fileSize)
+                        }
                     }
                 }
 
                 if let gen = asset.generationInput {
-                    sectionDivider
-
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
                         HStack(spacing: AppTheme.Spacing.xs) {
                             Text("AI Generated")
@@ -197,7 +197,7 @@ struct InspectorView: View {
                                 .font(.system(size: AppTheme.FontSize.xs))
                                 .foregroundStyle(AppTheme.Text.secondaryColor)
                                 .textSelection(.enabled)
-                                .lineLimit(10)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }

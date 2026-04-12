@@ -28,9 +28,9 @@ struct GenerationView: View {
     @State private var imageRefTargeted = false
 
     enum GenerationType: String, CaseIterable {
-        case image = "AI Image"
-        case video = "AI Video"
-        case audio = "AI Audio"
+        case image = "Image"
+        case video = "Video"
+        case audio = "Audio"
         var icon: String {
             switch self {
             case .image: "photo"
@@ -100,8 +100,9 @@ struct GenerationView: View {
 
     private var generationForm: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            typeTabs
+
             HStack(spacing: AppTheme.Spacing.sm) {
-                typePicker
                 modelPicker
                 if selectedType != .audio { settingsButton }
                 apiKeyButton
@@ -268,16 +269,27 @@ struct GenerationView: View {
     // MARK: - Prompt
 
     private var promptField: some View {
-        TextField(promptPlaceholder, text: $prompt, axis: .vertical)
-            .textFieldStyle(.plain)
-            .font(.system(size: AppTheme.FontSize.sm))
-            .lineLimit(4...12)
-            .padding(AppTheme.Spacing.sm)
-            .frame(minHeight: 80)
-            .focused($isPromptFocused)
-            .controlBackground(
-                borderColor: isPromptFocused ? Color.accentColor.opacity(0.5) : AppTheme.Border.primaryColor
-            )
+        ZStack(alignment: .topLeading) {
+            TextEditor(text: $prompt)
+                .font(.system(size: AppTheme.FontSize.sm))
+                .scrollContentBackground(.hidden)
+                .scrollIndicators(.automatic)
+                .padding(AppTheme.Spacing.xs)
+                .focused($isPromptFocused)
+
+            if prompt.isEmpty {
+                Text(promptPlaceholder)
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+                    .padding(.horizontal, AppTheme.Spacing.sm)
+                    .padding(.vertical, AppTheme.Spacing.sm)
+                    .allowsHitTesting(false)
+            }
+        }
+        .frame(minHeight: 80, maxHeight: 120)
+        .controlBackground(
+            borderColor: isPromptFocused ? Color.accentColor.opacity(0.5) : AppTheme.Border.primaryColor
+        )
     }
 
     private var submitButton: some View {
@@ -292,23 +304,38 @@ struct GenerationView: View {
 
     // MARK: - Type picker
 
-    private var typePicker: some View {
-        Menu {
+    private var typeTabs: some View {
+        HStack(spacing: 0) {
             ForEach(GenerationType.allCases, id: \.self) { type in
-                Button { selectedType = type } label: {
-                    Label(type.rawValue, systemImage: type.icon)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) { selectedType = type }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: type.icon)
+                            .font(.system(size: 8, weight: .medium))
+                        Text(type.rawValue)
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .foregroundStyle(selectedType == type ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
+                    .padding(.horizontal, AppTheme.Spacing.sm)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                            .fill(selectedType == type ? Color.white.opacity(0.08) : .clear)
+                    )
                 }
+                .buttonStyle(.plain)
             }
-        } label: {
-            Image(systemName: selectedType.icon)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
-                .frame(width: 28, height: 28)
-                .controlBackground()
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                .fill(Color.white.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                .strokeBorder(AppTheme.Border.primaryColor, lineWidth: 1)
+        )
     }
 
     // MARK: - Model picker
@@ -390,11 +417,32 @@ struct GenerationView: View {
             Text(label)
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-            Picker("", selection: selection) {
-                ForEach(options, id: \.self) { Text(format($0)).tag($0) }
+            if options.count <= 5 {
+                Picker("", selection: selection) {
+                    ForEach(options, id: \.self) { Text(format($0)).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .controlSize(.small)
+            } else {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 5), spacing: 4) {
+                    ForEach(options, id: \.self) { option in
+                        Button {
+                            selection.wrappedValue = option
+                        } label: {
+                            Text(format(option))
+                                .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                                .foregroundStyle(selection.wrappedValue == option ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                                        .fill(selection.wrappedValue == option ? Color.white.opacity(0.1) : Color.white.opacity(0.03))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
-            .pickerStyle(.segmented)
-            .controlSize(.small)
         }
     }
 

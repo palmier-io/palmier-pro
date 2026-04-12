@@ -38,7 +38,7 @@ final class GenerationService {
     ) {
         let placeholder = createPlaceholder(
             type: assetType,
-            name: "AI: \(genInput.prompt.prefix(30))",
+            name: String(genInput.prompt.prefix(30)),
             duration: placeholderDuration,
             genInput: genInput,
             editor: editor
@@ -178,7 +178,7 @@ final class GenerationService {
                         id: placeholderId,
                         url: destURL,
                         type: assetType,
-                        name: genInput.prompt.prefix(30).isEmpty ? "AI Generated" : "AI: \(genInput.prompt.prefix(30))",
+                        name: genInput.prompt.prefix(30).isEmpty ? "Generated" : String(genInput.prompt.prefix(30)),
                         duration: placeholder.duration,
                         generationInput: genInput
                     )
