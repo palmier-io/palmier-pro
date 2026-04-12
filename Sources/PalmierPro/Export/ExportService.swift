@@ -63,13 +63,16 @@ final class ExportService {
         error = nil
 
         do {
-            let composition = try await buildComposition(timeline: timeline, resolver: resolver)
+            let result = try await CompositionBuilder.build(
+                timeline: timeline,
+                resolveURL: { resolver.resolveURL(for: $0) }
+            )
 
-            // AVAssetExportSession fails if the file already exists (e.g. from a previous failed export)
+            // AVAssetExportSession fails if the file already exists
             try? FileManager.default.removeItem(at: outputURL)
 
             let presetName = exportPresetName(format: format, resolution: resolution)
-            guard let session = AVAssetExportSession(asset: composition, presetName: presetName) else {
+            guard let session = AVAssetExportSession(asset: result.composition, presetName: presetName) else {
                 error = "Export preset not supported on this system"
                 isExporting = false
                 return
@@ -83,6 +86,8 @@ final class ExportService {
 
             session.outputURL = outputURL
             session.outputFileType = fileType
+            session.audioMix = result.audioMix
+            session.videoComposition = result.videoComposition
 
             // Poll progress periodically
             nonisolated(unsafe) let unsafeSession = session
@@ -141,58 +146,4 @@ final class ExportService {
             AVAssetExportPresetPassthrough // unreachable — XML returns early
         }
     }
-
-    // MARK: - Composition builder
-
-    private func buildComposition(timeline: Timeline, resolver: MediaResolver) async throws -> AVMutableComposition {
-        let composition = AVMutableComposition()
-        let fps = timeline.fps
-
-        for track in timeline.tracks {
-            let sortedClips = track.clips.sorted { $0.startFrame < $1.startFrame }
-            guard !sortedClips.isEmpty else { continue }
-            let isAudio = track.type == .audio
-            let mediaType: AVMediaType = isAudio ? .audio : .video
-
-            guard let compTrack = composition.addMutableTrack(withMediaType: mediaType, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
-            let audioCompTrack: AVMutableCompositionTrack? = isAudio ? nil :
-                composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
-
-            var cursor = CMTime.zero
-            for clip in sortedClips {
-                guard var mediaURL = resolver.resolveURL(for: clip.mediaRef) else { continue }
-                if clip.mediaType == .image {
-                    let renderSize = CGSize(width: timeline.width, height: timeline.height)
-                    mediaURL = try await ImageVideoGenerator.stillVideo(
-                        for: mediaURL, mediaRef: clip.mediaRef, size: renderSize
-                    )
-                }
-
-                let source = AVURLAsset(url: mediaURL)
-                guard let sourceTrack = try await source.loadTracks(withMediaType: mediaType).first else { continue }
-
-                let clipStart = CMTime(value: CMTimeValue(clip.startFrame), timescale: CMTimeScale(fps))
-                let trimStart = CMTime(value: CMTimeValue(clip.trimStartFrame), timescale: CMTimeScale(fps))
-                let duration = CMTime(value: CMTimeValue(clip.durationFrames), timescale: CMTimeScale(fps))
-                let sourceRange = CMTimeRange(start: trimStart, duration: duration)
-
-                if clipStart > cursor {
-                    let gap = clipStart - cursor
-                    compTrack.insertEmptyTimeRange(CMTimeRange(start: cursor, duration: gap))
-                    audioCompTrack?.insertEmptyTimeRange(CMTimeRange(start: cursor, duration: gap))
-                }
-
-                try compTrack.insertTimeRange(sourceRange, of: sourceTrack, at: clipStart)
-
-                if let audioCompTrack, let audioSource = try? await source.loadTracks(withMediaType: .audio).first {
-                    try? audioCompTrack.insertTimeRange(sourceRange, of: audioSource, at: clipStart)
-                }
-
-                cursor = clipStart + duration
-            }
-        }
-
-        return composition
-    }
-
 }

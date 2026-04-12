@@ -70,4 +70,30 @@ struct Transform: Codable, Sendable, Equatable {
     var y: Double = 0       // 0 = top edge
     var width: Double = 1   // 1 = full canvas width
     var height: Double = 1  // 1 = full canvas height
+
+    /// Top-left corner in normalized canvas space (0–1).
+    var topLeft: (x: Double, y: Double) {
+        (x + width / 2.0 - 0.5, y + height / 2.0 - 0.5)
+    }
+
+    init(x: Double = 0, y: Double = 0, width: Double = 1, height: Double = 1) {
+        self.x = x; self.y = y; self.width = width; self.height = height
+    }
+
+    init(topLeft tl: (x: Double, y: Double), width w: Double, height h: Double) {
+        self.width = w
+        self.height = h
+        self.x = tl.x - w / 2.0 + 0.5
+        self.y = tl.y - h / 2.0 + 0.5
+    }
+
+    /// Clamp so all edges stay within [0, 1] canvas bounds.
+    mutating func clampToBounds() {
+        let tl = topLeft
+        if tl.x < 0 { x -= tl.x }
+        if tl.y < 0 { y -= tl.y }
+        let br = topLeft
+        if br.x + width > 1 { x -= (br.x + width - 1) }
+        if br.y + height > 1 { y -= (br.y + height - 1) }
+    }
 }
