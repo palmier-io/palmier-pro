@@ -4,7 +4,7 @@ enum Layout {
     // Media panel
     static let mediaPanelDefault: CGFloat = 220
     static let mediaPanelMin: CGFloat = 180
-    static let mediaPanelMax: CGFloat = 400
+    static let mediaPanelMax: CGFloat = 600
 
     // Inspector
     static let inspectorDefault: CGFloat = 260
