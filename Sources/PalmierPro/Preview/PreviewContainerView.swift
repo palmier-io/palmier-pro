@@ -10,12 +10,18 @@ struct PreviewContainerView: View {
     var body: some View {
         VStack(spacing: 0) {
             tabBar
-            ZStack {
-                PreviewView()
-                if isImage {
-                    imagePreview
+            GeometryReader { geo in
+                let aspect = CGFloat(editor.timeline.width) / CGFloat(editor.timeline.height)
+                let fitSize = fitSize(in: geo.size, aspect: aspect)
+                ZStack {
+                    PreviewView()
+                    if isImage {
+                        imagePreview
+                    }
+                    TransformOverlayView()
                 }
-                TransformOverlayView()
+                .frame(width: fitSize.width, height: fitSize.height)
+                .position(x: geo.size.width / 2, y: geo.size.height / 2)
             }
             if !isImage {
                 scrubBar
@@ -37,6 +43,14 @@ struct PreviewContainerView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.black)
+    }
+
+    private func fitSize(in container: CGSize, aspect: CGFloat) -> CGSize {
+        let widthFromHeight = container.height * aspect
+        if widthFromHeight <= container.width {
+            return CGSize(width: widthFromHeight, height: container.height)
+        }
+        return CGSize(width: container.width, height: container.width / aspect)
     }
 
     private var activeMediaAsset: MediaAsset? {

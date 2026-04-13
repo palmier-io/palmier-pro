@@ -4,6 +4,7 @@ struct Timeline: Codable, Sendable, Equatable {
     var fps: Int = 30
     var width: Int = 1920
     var height: Int = 1080
+    var settingsConfigured: Bool = false
     var tracks: [Track] = []
 
     /// Total duration in frames across all tracks

@@ -50,6 +50,108 @@ final class EditorViewModel {
     /// Set by PreviewView so timeline scrubbing can seek the player
     var videoEngine: VideoEngine?
 
+    // MARK: - Project settings
+
+    /// Pending mismatch dialog state — set when a clip's settings differ from the timeline.
+    var pendingSettingsMismatch: SettingsMismatch?
+    /// Deferred clip-addition operation, executed after the user resolves the mismatch.
+    var pendingSettingsContinuation: (@MainActor () -> Void)?
+
+    struct SettingsMismatch: Identifiable {
+        let id = UUID()
+        let clipFPS: Int
+        let clipWidth: Int
+        let clipHeight: Int
+    }
+
+    func applyTimelineSettings(fps: Int, width: Int, height: Int) {
+        let prevFPS = timeline.fps
+        let prevWidth = timeline.width
+        let prevHeight = timeline.height
+        let prevConfigured = timeline.settingsConfigured
+
+        // Rescale all frame-based values when FPS changes
+        if fps != prevFPS {
+            let scale = Double(fps) / Double(prevFPS)
+            currentFrame = Int((Double(currentFrame) * scale).rounded())
+            sourcePlayheadFrame = Int((Double(sourcePlayheadFrame) * scale).rounded())
+            for ti in timeline.tracks.indices {
+                for ci in timeline.tracks[ti].clips.indices {
+                    let clip = timeline.tracks[ti].clips[ci]
+                    timeline.tracks[ti].clips[ci].startFrame = Int((Double(clip.startFrame) * scale).rounded())
+                    timeline.tracks[ti].clips[ci].durationFrames = max(1, Int((Double(clip.durationFrames) * scale).rounded()))
+                    timeline.tracks[ti].clips[ci].trimStartFrame = Int((Double(clip.trimStartFrame) * scale).rounded())
+                    timeline.tracks[ti].clips[ci].trimEndFrame = Int((Double(clip.trimEndFrame) * scale).rounded())
+                }
+            }
+        }
+
+        timeline.fps = fps
+        timeline.width = width
+        timeline.height = height
+        timeline.settingsConfigured = true
+        undoManager?.registerUndo(withTarget: self) { vm in
+            vm.applyTimelineSettings(fps: prevFPS, width: prevWidth, height: prevHeight)
+            vm.timeline.settingsConfigured = prevConfigured
+        }
+        undoManager?.setActionName("Change Project Settings")
+        notifyTimelineChanged()
+    }
+
+    enum ProjectSettingsAction {
+        case proceed
+        case mismatch(clipFPS: Int, clipWidth: Int, clipHeight: Int)
+    }
+
+    func checkProjectSettings(for assets: [MediaAsset]) -> ProjectSettingsAction {
+        guard let firstVideo = assets.first(where: { $0.type == .video }) else {
+            return .proceed
+        }
+
+        let timelineIsEmpty = timeline.tracks.allSatisfy { $0.clips.isEmpty }
+        if timelineIsEmpty && !timeline.settingsConfigured {
+            // Auto-detect from first clip
+            let fps = firstVideo.sourceFPS.flatMap { Int($0.rounded()) } ?? timeline.fps
+            let width = firstVideo.sourceWidth ?? timeline.width
+            let height = firstVideo.sourceHeight ?? timeline.height
+            applyTimelineSettings(fps: fps, width: width, height: height)
+            return .proceed
+        }
+
+        // Check for mismatch
+        let clipFPS = firstVideo.sourceFPS.flatMap { Int($0.rounded()) }
+        let clipWidth = firstVideo.sourceWidth
+        let clipHeight = firstVideo.sourceHeight
+
+        let fpsMismatch = clipFPS != nil && clipFPS != timeline.fps
+        let resMismatch = (clipWidth != nil && clipWidth != timeline.width) ||
+                          (clipHeight != nil && clipHeight != timeline.height)
+
+        if fpsMismatch || resMismatch {
+            return .mismatch(
+                clipFPS: clipFPS ?? timeline.fps,
+                clipWidth: clipWidth ?? timeline.width,
+                clipHeight: clipHeight ?? timeline.height
+            )
+        }
+        return .proceed
+    }
+
+    func addClipsWithSettingsCheck(assets: [MediaAsset], operation: @escaping @MainActor () -> Void) {
+        let action = checkProjectSettings(for: assets)
+        switch action {
+        case .proceed:
+            operation()
+        case .mismatch(let clipFPS, let clipWidth, let clipHeight):
+            pendingSettingsContinuation = operation
+            pendingSettingsMismatch = SettingsMismatch(
+                clipFPS: clipFPS,
+                clipWidth: clipWidth,
+                clipHeight: clipHeight
+            )
+        }
+    }
+
     // MARK: - Media import
 
     func importMediaAsset(_ asset: MediaAsset, skipAppend: Bool = false) {
@@ -60,9 +162,12 @@ final class EditorViewModel {
         mediaManifest.entries.append(entry)
     }
 
-    func updateManifestDuration(for asset: MediaAsset) {
+    func updateManifestMetadata(for asset: MediaAsset) {
         if let idx = mediaManifest.entries.firstIndex(where: { $0.id == asset.id }) {
             mediaManifest.entries[idx].duration = asset.duration
+            mediaManifest.entries[idx].sourceWidth = asset.sourceWidth
+            mediaManifest.entries[idx].sourceHeight = asset.sourceHeight
+            mediaManifest.entries[idx].sourceFPS = asset.sourceFPS
         }
     }
 
@@ -686,7 +791,8 @@ final class EditorViewModel {
             let resolvedStart = resolveOverlaps
                 ? resolveOverlap(trackIndex: trackIndex, clipId: "", startFrame: cursor, duration: durationFrames)
                 : cursor
-            let clip = Clip(mediaRef: asset.id, mediaType: asset.type, startFrame: resolvedStart, durationFrames: durationFrames)
+            let transform = fitTransform(for: asset)
+            let clip = Clip(mediaRef: asset.id, mediaType: asset.type, startFrame: resolvedStart, durationFrames: durationFrames, transform: transform)
             timeline.tracks[trackIndex].clips.append(clip)
             clipIds.append(clip.id)
             cursor = resolvedStart + durationFrames
@@ -726,6 +832,33 @@ final class EditorViewModel {
             }
         }
         return frame
+    }
+
+    /// Compute a transform that fits the asset's source resolution into the canvas
+    /// while preserving aspect ratio (letterbox). Returns default full-canvas transform
+    /// if source dimensions are unknown or match the canvas aspect ratio.
+    private func fitTransform(for asset: MediaAsset) -> Transform {
+        guard let sw = asset.sourceWidth, let sh = asset.sourceHeight, sw > 0, sh > 0 else {
+            return Transform()
+        }
+        let canvasAspect = Double(timeline.width) / Double(timeline.height)
+        let sourceAspect = Double(sw) / Double(sh)
+        // If aspects are close enough, fill the canvas
+        if abs(canvasAspect - sourceAspect) < Defaults.aspectTolerance {
+            return Transform()
+        }
+        let scaleW: Double
+        let scaleH: Double
+        if sourceAspect > canvasAspect {
+            // Source is wider — fit to width, letterbox top/bottom
+            scaleW = 1.0
+            scaleH = canvasAspect / sourceAspect
+        } else {
+            // Source is taller — fit to height, pillarbox left/right
+            scaleW = sourceAspect / canvasAspect
+            scaleH = 1.0
+        }
+        return Transform(topLeft: (0, 0), width: scaleW, height: scaleH)
     }
 
     private func removeClipInternal(id: String) {

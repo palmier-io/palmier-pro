@@ -32,6 +32,7 @@ enum Defaults {
     static let canvasHeight = 1080
     static let pixelsPerFrame: Double = 4.0
     static let imageDurationSeconds: Double = 5.0
+    static let aspectTolerance: Double = 0.02
 }
 
 enum Snap {

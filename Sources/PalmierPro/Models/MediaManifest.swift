@@ -12,6 +12,9 @@ struct MediaManifestEntry: Codable, Sendable, Equatable, Identifiable {
     var source: MediaSource
     var duration: Double
     var generationInput: GenerationInput?
+    var sourceWidth: Int?
+    var sourceHeight: Int?
+    var sourceFPS: Double?
 }
 
 struct GenerationInput: Codable, Sendable, Equatable {

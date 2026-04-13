@@ -388,7 +388,7 @@ struct MediaPanelView: View {
 
         Task {
             await asset.loadMetadata()
-            editor.updateManifestDuration(for: asset)
+            editor.updateManifestMetadata(for: asset)
             switch asset.type {
             case .video:
                 editor.mediaVisualCache.generateWaveform(for: asset)

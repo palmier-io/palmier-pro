@@ -10,6 +10,9 @@ final class MediaAsset: Identifiable {
     let name: String
     var duration: Double
     var thumbnail: NSImage?
+    var sourceWidth: Int?
+    var sourceHeight: Int?
+    var sourceFPS: Double?
     var generationInput: GenerationInput?
     var generationStatus: GenerationStatus = .none
 
@@ -35,6 +38,9 @@ final class MediaAsset: Identifiable {
     /// Reconstruct from a manifest entry + resolved URL.
     convenience init(entry: MediaManifestEntry, resolvedURL: URL) {
         self.init(id: entry.id, url: resolvedURL, type: entry.type, name: entry.name, duration: entry.duration, generationInput: entry.generationInput)
+        self.sourceWidth = entry.sourceWidth
+        self.sourceHeight = entry.sourceHeight
+        self.sourceFPS = entry.sourceFPS
     }
 
     /// Produce a serializable manifest entry from this asset.
@@ -46,13 +52,18 @@ final class MediaAsset: Identifiable {
         } else {
             source = .external(absolutePath: url.path)
         }
-        return MediaManifestEntry(id: id, name: name, type: type, source: source, duration: duration, generationInput: generationInput)
+        return MediaManifestEntry(id: id, name: name, type: type, source: source, duration: duration, generationInput: generationInput, sourceWidth: sourceWidth, sourceHeight: sourceHeight, sourceFPS: sourceFPS)
     }
 
     func loadMetadata() async {
         if type == .image {
             duration = Defaults.imageDurationSeconds
             thumbnail = NSImage(contentsOf: url)
+            if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
+                sourceWidth = props[kCGImagePropertyPixelWidth] as? Int
+                sourceHeight = props[kCGImagePropertyPixelHeight] as? Int
+            }
             return
         }
 
@@ -61,6 +72,17 @@ final class MediaAsset: Identifiable {
             duration = d.seconds
         }
         if type == .video {
+            if let videoTrack = try? await avAsset.loadTracks(withMediaType: .video).first {
+                if let size = try? await videoTrack.load(.naturalSize),
+                   let transform = try? await videoTrack.load(.preferredTransform) {
+                    let corrected = size.applying(transform)
+                    sourceWidth = Int(abs(corrected.width))
+                    sourceHeight = Int(abs(corrected.height))
+                }
+                if let rate = try? await videoTrack.load(.nominalFrameRate), rate > 0 {
+                    sourceFPS = Double(rate)
+                }
+            }
             let gen = AVAssetImageGenerator(asset: avAsset)
             gen.maximumSize = CGSize(width: 160, height: 90)
             gen.appliesPreferredTrackTransform = true

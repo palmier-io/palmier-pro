@@ -34,6 +34,9 @@ struct EditorView: View {
         .sheet(isPresented: Bindable(editor).showExportDialog) {
             ExportView()
         }
+        .sheet(item: Bindable(editor).pendingSettingsMismatch) { mismatch in
+            ProjectSettingsMismatchView(mismatch: mismatch)
+        }
     }
     private var panelDivider: some View {
         Rectangle()

@@ -420,6 +420,7 @@ final class TimelineView: NSView {
         }
         guard !assets.isEmpty else { return false }
 
+        let operation: @MainActor () -> Void
         switch dropTarget {
         case .existingTrack(let targetTrack):
             guard editor.timeline.tracks.indices.contains(targetTrack) else { return false }
@@ -428,31 +429,36 @@ final class TimelineView: NSView {
             guard !matching.isEmpty else { return false }
 
             let mods = NSEvent.modifierFlags
+            let editor = self.editor
             if mods.contains(.command) {
-                editor.rippleInsertClips(assets: matching, trackIndex: targetTrack, atFrame: targetFrame)
+                operation = { editor.rippleInsertClips(assets: matching, trackIndex: targetTrack, atFrame: targetFrame) }
             } else if mods.contains(.option) {
-                editor.overwriteInsertClips(assets: matching, trackIndex: targetTrack, atFrame: targetFrame)
+                operation = { editor.overwriteInsertClips(assets: matching, trackIndex: targetTrack, atFrame: targetFrame) }
             } else {
-                editor.addClips(assets: matching, trackIndex: targetTrack, startFrame: targetFrame)
+                operation = { editor.addClips(assets: matching, trackIndex: targetTrack, startFrame: targetFrame) }
             }
 
         case .newTrackAt(let insertIndex):
-            // One track per type, deterministic order
             let visual = assets.filter { $0.type.isVisual }
             let audio = assets.filter { $0.type == .audio }
-            editor.undoManager?.beginUndoGrouping()
-            var trackOffset = 0
-            if !visual.isEmpty {
-                editor.addClipsToNewTrack(assets: visual, insertAt: insertIndex + trackOffset, startFrame: targetFrame)
-                trackOffset += 1
+            let editor = self.editor
+            operation = {
+                editor.undoManager?.beginUndoGrouping()
+                var trackOffset = 0
+                if !visual.isEmpty {
+                    editor.addClipsToNewTrack(assets: visual, insertAt: insertIndex + trackOffset, startFrame: targetFrame)
+                    trackOffset += 1
+                }
+                if !audio.isEmpty {
+                    editor.addClipsToNewTrack(assets: audio, insertAt: insertIndex + trackOffset, startFrame: targetFrame)
+                    trackOffset += 1
+                }
+                editor.undoManager?.endUndoGrouping()
+                editor.undoManager?.setActionName("Add Clips to New Track\(trackOffset > 1 ? "s" : "")")
             }
-            if !audio.isEmpty {
-                editor.addClipsToNewTrack(assets: audio, insertAt: insertIndex + trackOffset, startFrame: targetFrame)
-                trackOffset += 1
-            }
-            editor.undoManager?.endUndoGrouping()
-            editor.undoManager?.setActionName("Add Clips to New Track\(trackOffset > 1 ? "s" : "")")
         }
+
+        editor.addClipsWithSettingsCheck(assets: assets, operation: operation)
 
         needsDisplay = true
         return true

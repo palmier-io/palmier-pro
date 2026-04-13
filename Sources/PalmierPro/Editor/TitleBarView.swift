@@ -34,15 +34,30 @@ struct TitleBarLeadingView: View {
 
 struct TitleBarTrailingView: View {
     @Environment(EditorViewModel.self) var editor
+    @State private var showSettingsPopover = false
 
     var body: some View {
-        // Export button
-        Button(action: { editor.showExportDialog = true }) {
-            Label("Export", systemImage: "square.and.arrow.up")
-                .font(.system(size: 12, weight: .medium))
+        HStack(spacing: AppTheme.Spacing.sm) {
+            // Project settings
+            Button { showSettingsPopover.toggle() } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 12))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showSettingsPopover, arrowEdge: .bottom) {
+                ProjectSettingsPopover()
+            }
+
+            // Export button
+            Button(action: { editor.showExportDialog = true }) {
+                Label("Export", systemImage: "square.and.arrow.up")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
         .padding(.trailing, 8)
     }
 }

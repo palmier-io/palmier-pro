@@ -123,7 +123,7 @@ final class VideoProject: NSDocument {
         window.center()
 
         window.addTitlebarSwiftUI(TitleBarLeadingView().environment(editorViewModel), side: .leading, width: 240)
-        window.addTitlebarSwiftUI(TitleBarTrailingView().environment(editorViewModel), side: .trailing, width: 100)
+        window.addTitlebarSwiftUI(TitleBarTrailingView().environment(editorViewModel), side: .trailing, width: 140)
 
         let controller = EditorWindowController(editorViewModel: editorViewModel, window: window)
         controller.shouldCascadeWindows = true
