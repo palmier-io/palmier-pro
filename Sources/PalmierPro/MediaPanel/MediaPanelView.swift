@@ -69,10 +69,6 @@ struct MediaPanelView: View {
                 mediaGridView
 
                 if editor.showGenerationPanel {
-                    Rectangle()
-                        .fill(AppTheme.Border.subtleColor)
-                        .frame(height: 0.5)
-
                     GenerationView()
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }

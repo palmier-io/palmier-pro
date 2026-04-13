@@ -90,35 +90,54 @@ struct GenerationView: View {
     // MARK: - Body
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            generationForm
-                .padding(AppTheme.Spacing.md)
-        }
-    }
-
-    // MARK: - Form
-
-    private var generationForm: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            typeTabs
-
-            HStack(spacing: AppTheme.Spacing.sm) {
-                modelPicker
-                if selectedType != .audio { settingsButton }
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            // Type tabs + API key on top row
+            HStack {
+                typeTabs
+                Spacer()
                 apiKeyButton
             }
+            .padding(.horizontal, AppTheme.Spacing.sm)
 
+            // Frame/image references
             if selectedType == .video && videoModel.supportsFirstFrame {
                 videoFrameStrip
+                    .padding(.horizontal, AppTheme.Spacing.md)
             } else if selectedType == .image && imageModel.supportsImageReference {
                 imageReferenceStrip
+                    .padding(.horizontal, AppTheme.Spacing.md)
             }
 
-            HStack(alignment: .bottom, spacing: AppTheme.Spacing.sm) {
-                promptField
-                submitButton
+            // Unified input box
+            VStack(spacing: 0) {
+                promptArea
+                inputToolbar
             }
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+                    .fill(Color.white.opacity(0.04))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+                    .strokeBorder(
+                        isPromptFocused ? Color.accentColor.opacity(0.5) : Color.white.opacity(0.10),
+                        lineWidth: 1
+                    )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.md))
+            .padding(.horizontal, AppTheme.Spacing.sm)
+            .padding(.bottom, AppTheme.Spacing.sm)
         }
+        .padding(.top, AppTheme.Spacing.sm)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+                .fill(Color(white: 0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+                .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+        )
+        .padding(AppTheme.Spacing.sm)
         .onChange(of: selectedType) { _, _ in
             resetSettings()
             clearReferences()
@@ -135,6 +154,46 @@ struct GenerationView: View {
                 clearReferences()
             }
         }
+    }
+
+    // MARK: - Prompt area (inside input box)
+
+    private var promptArea: some View {
+        ZStack(alignment: .topLeading) {
+            TextEditor(text: $prompt)
+                .font(.system(size: AppTheme.FontSize.sm))
+                .scrollContentBackground(.hidden)
+                .scrollIndicators(.automatic)
+                .padding(.horizontal, AppTheme.Spacing.sm)
+                .padding(.top, AppTheme.Spacing.sm)
+                .padding(.bottom, AppTheme.Spacing.xs)
+                .focused($isPromptFocused)
+
+            if prompt.isEmpty {
+                Text(promptPlaceholder)
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+                    .padding(.horizontal, AppTheme.Spacing.md)
+                    .padding(.top, AppTheme.Spacing.md)
+                    .allowsHitTesting(false)
+            }
+        }
+        .frame(minHeight: 60, maxHeight: 100)
+    }
+
+    // MARK: - Input toolbar (bottom of input box)
+
+    private var inputToolbar: some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            modelPicker
+            if selectedType != .audio { settingsButton }
+
+            Spacer()
+
+            submitButton
+        }
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.vertical, AppTheme.Spacing.xs)
     }
 
     // MARK: - Video frame references
@@ -266,31 +325,7 @@ struct GenerationView: View {
             }
     }
 
-    // MARK: - Prompt
-
-    private var promptField: some View {
-        ZStack(alignment: .topLeading) {
-            TextEditor(text: $prompt)
-                .font(.system(size: AppTheme.FontSize.sm))
-                .scrollContentBackground(.hidden)
-                .scrollIndicators(.automatic)
-                .padding(AppTheme.Spacing.xs)
-                .focused($isPromptFocused)
-
-            if prompt.isEmpty {
-                Text(promptPlaceholder)
-                    .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(AppTheme.Text.mutedColor)
-                    .padding(.horizontal, AppTheme.Spacing.sm)
-                    .padding(.vertical, AppTheme.Spacing.sm)
-                    .allowsHitTesting(false)
-            }
-        }
-        .frame(minHeight: 80, maxHeight: 120)
-        .controlBackground(
-            borderColor: isPromptFocused ? Color.accentColor.opacity(0.5) : AppTheme.Border.primaryColor
-        )
-    }
+    // MARK: - Submit button
 
     private var submitButton: some View {
         Button { submitGeneration() } label: {
@@ -358,19 +393,15 @@ struct GenerationView: View {
             HStack(spacing: AppTheme.Spacing.xs) {
                 Text(currentModelName)
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-                    .foregroundStyle(AppTheme.Text.primaryColor)
-                Spacer(minLength: 0)
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.system(size: 7, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .frame(maxWidth: .infinity, minHeight: 28)
-            .controlBackground()
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .fixedSize(horizontal: false, vertical: true)
+        .fixedSize()
     }
 
     // MARK: - Settings
@@ -380,15 +411,12 @@ struct GenerationView: View {
             HStack(spacing: AppTheme.Spacing.xs) {
                 Text(settingsSummary)
                     .font(.system(size: AppTheme.FontSize.xs))
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .lineLimit(1)
                 Image(systemName: "gearshape")
-                    .font(.system(size: AppTheme.FontSize.xs))
+                    .font(.system(size: 9))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .frame(height: 28)
-            .controlBackground()
         }
         .buttonStyle(.plain)
         .popover(isPresented: $showSettingsPopover, arrowEdge: .bottom) {
@@ -450,11 +478,15 @@ struct GenerationView: View {
 
     private var apiKeyButton: some View {
         Button { showApiKeyPopover.toggle() } label: {
-            Image(systemName: "key")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(service.hasApiKey ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
-                .frame(width: 28, height: 28)
-                .controlBackground()
+            HStack(spacing: 3) {
+                Image(systemName: "key")
+                    .font(.system(size: 9, weight: .medium))
+                Text("fal")
+                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+            }
+            .foregroundStyle(service.hasApiKey ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
+            .padding(.horizontal, AppTheme.Spacing.sm)
+            .padding(.vertical, 3)
         }
         .buttonStyle(.plain)
         .popover(isPresented: $showApiKeyPopover, arrowEdge: .bottom) {
@@ -582,19 +614,5 @@ struct GenerationView: View {
         if selectedType == .video, !videoModel.durations.contains(selectedDuration) {
             selectedDuration = videoModel.durations.first ?? 5
         }
-    }
-}
-
-private extension View {
-    func controlBackground(borderColor: Color = AppTheme.Border.primaryColor) -> some View {
-        self
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(Color.white.opacity(0.04))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .strokeBorder(borderColor, lineWidth: 1)
-            )
     }
 }
