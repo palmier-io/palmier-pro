@@ -29,6 +29,34 @@ struct InspectorView: View {
 
                 sectionDivider
 
+                // Scale
+                InspectorSlider(
+                    icon: "arrow.up.left.and.arrow.down.right",
+                    label: "Scale",
+                    value: clip.transform.width,
+                    range: 0.01...5.0,
+                    displayMultiplier: 100,
+                    valueSuffix: "%",
+                    format: "%.0f",
+                    onChanged: { newVal in
+                        editor.applyClipProperty(clipId: clip.id) {
+                            let old = $0.transform.topLeft
+                            let cx = old.x + $0.transform.width / 2.0
+                            let cy = old.y + $0.transform.height / 2.0
+                            $0.transform = Transform(topLeft: (cx - newVal / 2.0, cy - newVal / 2.0), width: newVal, height: newVal)
+                        }
+                    }
+                ) { newVal in
+                    editor.commitClipProperty(clipId: clip.id) {
+                        let old = $0.transform.topLeft
+                        let cx = old.x + $0.transform.width / 2.0
+                        let cy = old.y + $0.transform.height / 2.0
+                        $0.transform = Transform(topLeft: (cx - newVal / 2.0, cy - newVal / 2.0), width: newVal, height: newVal)
+                    }
+                }
+
+                sectionDivider
+
                 InspectorSlider(
                     icon: "circle.lefthalf.filled",
                     label: "Opacity",

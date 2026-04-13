@@ -1,9 +1,18 @@
 import AVFoundation
 
+struct TrackMapping: @unchecked Sendable {
+    let compositionTrack: AVMutableCompositionTrack
+    let timelineTrackIndex: Int
+    let naturalSize: CGSize   // zero for audio-only mappings
+    let endTime: CMTime       // .zero for audio-only mappings
+    let isVideo: Bool
+}
+
 struct CompositionResult {
     let composition: AVMutableComposition
     let audioMix: AVMutableAudioMix
     let videoComposition: AVMutableVideoComposition
+    let trackMappings: [TrackMapping]
 }
 
 /// Builds an AVFoundation composition from a Timeline.
@@ -16,11 +25,9 @@ enum CompositionBuilder {
         let composition = AVMutableComposition()
         let timescale = CMTimeScale(timeline.fps)
         let renderSize = CGSize(width: timeline.width, height: timeline.height)
+        var trackMappings: [TrackMapping] = []
 
-        var videoEntries: [(track: AVMutableCompositionTrack, hidden: Bool, clips: [Clip], endTime: CMTime)] = []
-        var audioEntries: [(track: AVMutableCompositionTrack, muted: Bool, clips: [Clip])] = []
-
-        for track in timeline.tracks {
+        for (trackIdx, track) in timeline.tracks.enumerated() {
             let sortedClips = track.clips.sorted { $0.startFrame < $1.startFrame }
             guard !sortedClips.isEmpty else { continue }
             let isAudio = track.type == .audio
@@ -30,10 +37,10 @@ enum CompositionBuilder {
             let audioCompTrack: AVMutableCompositionTrack? = isAudio ? nil :
                 composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
 
-            if isAudio {
-                audioEntries.append((compTrack, track.muted, sortedClips))
-            } else if let audioCompTrack {
-                audioEntries.append((audioCompTrack, track.muted, sortedClips))
+            if let audioCompTrack {
+                trackMappings.append(TrackMapping(compositionTrack: audioCompTrack, timelineTrackIndex: trackIdx, naturalSize: .zero, endTime: .zero, isVideo: false))
+            } else if isAudio {
+                trackMappings.append(TrackMapping(compositionTrack: compTrack, timelineTrackIndex: trackIdx, naturalSize: .zero, endTime: .zero, isVideo: false))
             }
 
             var cursor = CMTime.zero
@@ -84,18 +91,44 @@ enum CompositionBuilder {
             }
 
             if !isAudio {
-                videoEntries.append((compTrack, track.hidden, sortedClips, cursor))
+                let naturalSize = (try? await compTrack.load(.naturalSize)).flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil } ?? renderSize
+                trackMappings.append(TrackMapping(compositionTrack: compTrack, timelineTrackIndex: trackIdx, naturalSize: naturalSize, endTime: cursor, isVideo: true))
             }
         }
 
         guard !Task.isCancelled else { throw CancellationError() }
 
+        let (audioMix, videoComposition) = buildVisuals(
+            timeline: timeline,
+            trackMappings: trackMappings,
+            compositionDuration: composition.duration
+        )
+
+        return CompositionResult(
+            composition: composition,
+            audioMix: audioMix,
+            videoComposition: videoComposition,
+            trackMappings: trackMappings
+        )
+    }
+
+    /// Rebuild only visual properties (transforms, opacity, volume)
+    static func buildVisuals(
+        timeline: Timeline,
+        trackMappings: [TrackMapping],
+        compositionDuration: CMTime
+    ) -> (audioMix: AVMutableAudioMix, videoComposition: AVMutableVideoComposition) {
+        let timescale = CMTimeScale(timeline.fps)
+        let renderSize = CGSize(width: timeline.width, height: timeline.height)
+
         let audioMix = AVMutableAudioMix()
-        audioMix.inputParameters = audioEntries.map { entry in
-            let params = AVMutableAudioMixInputParameters(track: entry.track)
+        audioMix.inputParameters = trackMappings.filter { !$0.isVideo }.compactMap { mapping in
+            guard timeline.tracks.indices.contains(mapping.timelineTrackIndex) else { return nil }
+            let track = timeline.tracks[mapping.timelineTrackIndex]
+            let params = AVMutableAudioMixInputParameters(track: mapping.compositionTrack)
             params.setVolume(0, at: .zero)
-            for clip in entry.clips {
-                let vol: Float = entry.muted ? 0 : Float(clip.volume)
+            for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) {
+                let vol: Float = track.muted ? 0 : Float(clip.volume)
                 params.setVolume(vol, at: CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale))
                 params.setVolume(0, at: CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale))
             }
@@ -107,51 +140,37 @@ enum CompositionBuilder {
         videoComposition.frameDuration = CMTime(value: 1, timescale: timescale)
 
         let instruction = AVMutableVideoCompositionInstruction()
-        instruction.timeRange = CMTimeRange(start: .zero, duration: composition.duration)
-
-        instruction.layerInstructions = await videoEntries.asyncMap { entry in
-            let li = AVMutableVideoCompositionLayerInstruction(assetTrack: entry.track)
-            let naturalSize = (try? await entry.track.load(.naturalSize)).flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil } ?? renderSize
+        instruction.timeRange = CMTimeRange(start: .zero, duration: compositionDuration)
+        instruction.layerInstructions = trackMappings.filter { $0.isVideo }.map { mapping in
+            let li = AVMutableVideoCompositionLayerInstruction(assetTrack: mapping.compositionTrack)
+            let track = timeline.tracks.indices.contains(mapping.timelineTrackIndex)
+                ? timeline.tracks[mapping.timelineTrackIndex] : nil
 
             li.setOpacity(0, at: .zero)
-            if !entry.hidden {
-                for clip in entry.clips {
+            if let track, !track.hidden {
+                for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) {
                     let start = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
                     let end = CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale)
                     let ct = clip.transform
+                    let tl = ct.topLeft
 
                     li.setOpacity(Float(clip.opacity), at: start)
                     li.setOpacity(0, at: end)
-
-                    let tl = ct.topLeft
-                    let sx = (renderSize.width / naturalSize.width) * ct.width
-                    let sy = (renderSize.height / naturalSize.height) * ct.height
-                    let tx = tl.x * renderSize.width
-                    let ty = tl.y * renderSize.height
                     li.setTransform(
-                        CGAffineTransform(scaleX: sx, y: sy).concatenating(CGAffineTransform(translationX: tx, y: ty)),
+                        CGAffineTransform(scaleX: (renderSize.width / mapping.naturalSize.width) * ct.width,
+                                          y: (renderSize.height / mapping.naturalSize.height) * ct.height)
+                            .concatenating(CGAffineTransform(translationX: tl.x * renderSize.width, y: tl.y * renderSize.height)),
                         at: start
                     )
                 }
             }
-            if entry.endTime < composition.duration {
-                li.setOpacity(0, at: entry.endTime)
+            if mapping.endTime < compositionDuration {
+                li.setOpacity(0, at: mapping.endTime)
             }
             return li
         }
 
         videoComposition.instructions = [instruction]
-        return CompositionResult(composition: composition, audioMix: audioMix, videoComposition: videoComposition)
-    }
-}
-
-private extension Array {
-    func asyncMap<T>(_ transform: (Element) async throws -> T) async rethrows -> [T] {
-        var results: [T] = []
-        results.reserveCapacity(count)
-        for element in self {
-            try results.append(await transform(element))
-        }
-        return results
+        return (audioMix, videoComposition)
     }
 }

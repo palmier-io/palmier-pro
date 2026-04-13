@@ -588,7 +588,7 @@ final class EditorViewModel {
             dragBefore = (clipId, timeline.tracks[loc.trackIndex].clips[loc.clipIndex])
         }
         modify(&timeline.tracks[loc.trackIndex].clips[loc.clipIndex])
-        notifyTimelineChanged()
+        videoEngine?.refreshVisuals()
     }
 
     func commitClipProperty(clipId: String, _ modify: (inout Clip) -> Void) {

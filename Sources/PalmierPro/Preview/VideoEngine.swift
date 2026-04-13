@@ -7,6 +7,8 @@ final class VideoEngine {
     private(set) var player = AVPlayer()
     private var timeObserver: Any?
     private var rebuildTask: Task<Void, Never>?
+    private var trackMappings: [TrackMapping] = []
+    private var compositionDuration: CMTime = .zero
 
     weak var editor: EditorViewModel?
 
@@ -88,6 +90,9 @@ final class VideoEngine {
             rebuildTask = nil
             guard !Task.isCancelled else { return }
 
+            trackMappings = result.trackMappings
+            compositionDuration = result.composition.duration
+
             let item = AVPlayerItem(asset: result.composition)
             item.audioMix = result.audioMix
             item.videoComposition = result.videoComposition
@@ -95,6 +100,24 @@ final class VideoEngine {
             seek(to: editor.currentFrame)
             if editor.isPlaying { player.play() }
         }
+    }
+
+    /// Update only visual properties (transform, opacity, volume)
+    func refreshVisuals() {
+        guard let editor, editor.activePreviewTab == .timeline,
+              let currentItem = player.currentItem,
+              !trackMappings.isEmpty else {
+            rebuild()
+            return
+        }
+
+        let (audioMix, videoComposition) = CompositionBuilder.buildVisuals(
+            timeline: editor.timeline,
+            trackMappings: trackMappings,
+            compositionDuration: compositionDuration
+        )
+        currentItem.audioMix = audioMix
+        currentItem.videoComposition = videoComposition
     }
 
     // MARK: - Private
