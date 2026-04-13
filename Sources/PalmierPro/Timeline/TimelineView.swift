@@ -38,19 +38,26 @@ final class TimelineView: NSView {
         TimelineGeometry(editor: editor, bounds: bounds)
     }
 
+    private var isUpdatingContentSize = false
+
     func updateContentSize() {
+        guard !isUpdatingContentSize else { return }
+        isUpdatingContentSize = true
+        defer { isUpdatingContentSize = false }
+
         guard let scrollView = enclosingScrollView else { return }
         let visibleSize = scrollView.contentView.bounds.size
 
-        // Defer observable property updates so they don't fire during an
-        // AppKit layout/constraint pass, which causes a crash.
         let newVisibleWidth = Double(visibleSize.width)
         if editor.timelineVisibleWidth != newVisibleWidth {
-            DispatchQueue.main.async { [editor] in
-                editor.timelineVisibleWidth = newVisibleWidth
-                let minZoom = editor.minZoomScale
-                if editor.zoomScale < minZoom {
-                    editor.zoomScale = minZoom
+            let editor = self.editor
+            RunLoop.main.perform(inModes: [.default]) {
+                MainActor.assumeIsolated {
+                    editor.timelineVisibleWidth = newVisibleWidth
+                    let minZoom = editor.minZoomScale
+                    if editor.zoomScale < minZoom {
+                        editor.zoomScale = minZoom
+                    }
                 }
             }
         }

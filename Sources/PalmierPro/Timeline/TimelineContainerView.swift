@@ -52,7 +52,8 @@ struct TimelineContainerView: NSViewRepresentable {
     }
 
     func updateNSView(_ container: NSView, context: Context) {
-        context.coordinator.timelineView?.updateContentSize()
+        let coordinator = context.coordinator
+        DispatchQueue.main.async { coordinator.timelineView?.updateContentSize() }
         context.coordinator.timelineView?.needsDisplay = true
         context.coordinator.headerView?.needsDisplay = true
 

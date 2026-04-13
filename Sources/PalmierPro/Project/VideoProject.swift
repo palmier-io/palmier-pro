@@ -109,7 +109,15 @@ final class VideoProject: NSDocument {
         editorViewModel.undoManager = undoManager
         editorViewModel.projectURL = fileURL
 
-        let editorView = EditorView().environment(editorViewModel)
+        let editorView = EditorView()
+            .environment(editorViewModel)
+            .focusEffectDisabled()
+            .sheet(isPresented: Bindable(editorViewModel).showExportDialog) {
+                ExportView()
+            }
+            .sheet(item: Bindable(editorViewModel).pendingSettingsMismatch) { mismatch in
+                ProjectSettingsMismatchView(mismatch: mismatch)
+            }
         let hostingController = NSHostingController(rootView: editorView)
 
         let window = NSWindow(contentViewController: hostingController)
