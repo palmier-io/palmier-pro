@@ -119,6 +119,13 @@ struct TimelineGeometry {
         }
     }
 
+    /// Y position where a ghost clip should render for a new-track drop.
+    func ghostY(for target: TrackDropTarget, height: CGFloat = Layout.trackHeight) -> CGFloat? {
+        guard case .newTrackAt(let index) = target,
+              let lineY = insertionLineY(for: target) else { return nil }
+        return index < trackCount ? lineY - height : lineY
+    }
+
     func xForFrame(_ frame: Int) -> Double {
         headerWidth + Double(frame) * pixelsPerFrame
     }

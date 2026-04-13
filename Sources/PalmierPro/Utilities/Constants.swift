@@ -19,7 +19,7 @@ enum Layout {
     static let trackHeight: CGFloat = 60
     static let rulerHeight: CGFloat = 24
     static let trackHeaderWidth: CGFloat = 100
-    static let dropZoneHeight: CGFloat = 30
+    static let dropZoneHeight: CGFloat = 60
     static let insertThreshold: CGFloat = 10
 
     // Preview

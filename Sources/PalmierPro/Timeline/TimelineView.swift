@@ -211,8 +211,8 @@ final class TimelineView: NSView {
                        editor.timeline.tracks.indices.contains(ti + idx - drag.originalTrack) {
                         let ghostTrack = ti + idx - drag.originalTrack
                         ghostRect = geo.clipRect(for: ghostClip, trackIndex: ghostTrack)
-                    } else if let lineY = geo.insertionLineY(for: drag.dropTarget) {
-                        ghostRect = geo.clipRect(for: ghostClip, atY: Double(lineY), height: Layout.trackHeight)
+                    } else if let y = geo.ghostY(for: drag.dropTarget) {
+                        ghostRect = geo.clipRect(for: ghostClip, atY: Double(y), height: Layout.trackHeight)
                     } else {
                         ghostRect = geo.clipRect(for: ghostClip, trackIndex: ti)
                     }
@@ -294,20 +294,20 @@ final class TimelineView: NSView {
             }
 
         case .newTrackAt:
-            guard let lineY = geo.insertionLineY(for: target) else { return }
             let h = Layout.trackHeight
             let visual = assets.filter { $0.type.isVisual }
             let audio = assets.filter { $0.type == .audio }
+            let totalHeight = CGFloat((visual.isEmpty ? 0 : 1) + (audio.isEmpty ? 0 : 1)) * h
+            guard let baseY = geo.ghostY(for: target, height: totalHeight) else { return }
             var yOffset: CGFloat = 0
             if !visual.isEmpty {
-                let y = Double(lineY) + Double(yOffset)
+                let y = Double(baseY + yOffset)
                 groups.append((visual, .video, { geo.clipRect(for: $0, atY: y, height: h) }))
                 yOffset += h
             }
             if !audio.isEmpty {
-                let y = Double(lineY) + Double(yOffset)
+                let y = Double(baseY + yOffset)
                 groups.append((audio, .audio, { geo.clipRect(for: $0, atY: y, height: h) }))
-                yOffset += h
             }
         }
 
