@@ -109,8 +109,9 @@ final class EditorViewModel {
         }
 
         let timelineIsEmpty = timeline.tracks.allSatisfy { $0.clips.isEmpty }
-        if timelineIsEmpty && !timeline.settingsConfigured {
-            // Auto-detect from first clip
+
+        if !timeline.settingsConfigured {
+            // First clip ever — auto-detect settings silently
             let fps = firstVideo.sourceFPS.flatMap { Int($0.rounded()) } ?? timeline.fps
             let width = firstVideo.sourceWidth ?? timeline.width
             let height = firstVideo.sourceHeight ?? timeline.height
@@ -118,7 +119,11 @@ final class EditorViewModel {
             return .proceed
         }
 
-        // Check for mismatch
+        if !timelineIsEmpty {
+            return .proceed
+        }
+
+        // Timeline is empty but settings were previously configured — check for mismatch
         let clipFPS = firstVideo.sourceFPS.flatMap { Int($0.rounded()) }
         let clipWidth = firstVideo.sourceWidth
         let clipHeight = firstVideo.sourceHeight
