@@ -8,6 +8,7 @@ struct EditorView: View {
             // Top: three-column layout
             HSplitView {
                 MediaPanelView()
+                    .accessibilityIdentifier("mediaPanel")
                     .frame(minWidth: Layout.mediaPanelMin, idealWidth: Layout.mediaPanelDefault, maxWidth: Layout.mediaPanelMax)
 
                 panelDivider

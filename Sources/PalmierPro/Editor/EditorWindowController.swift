@@ -29,6 +29,7 @@ final class EditorWindowController: NSWindowController {
         mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             guard let self, self.window?.isKeyWindow == true else { return event }
             self.resignTextFocusIfNeeded(for: event)
+            self.deselectMediaIfClickedOutside(event)
             return event
         }
     }
@@ -104,6 +105,17 @@ final class EditorWindowController: NSWindowController {
         } else {
             false
         }
+    }
+
+    private func deselectMediaIfClickedOutside(_ event: NSEvent) {
+        guard !editorViewModel.selectedMediaAssetIds.isEmpty else { return }
+        let hitView = window?.contentView?.hitTest(event.locationInWindow)
+        var view = hitView
+        while let v = view {
+            if v.accessibilityIdentifier() == "mediaPanel" { return }
+            view = v.superview
+        }
+        editorViewModel.selectedMediaAssetIds.removeAll()
     }
 
     private func resignTextFocusIfNeeded(for event: NSEvent) {
