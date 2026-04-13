@@ -38,6 +38,8 @@ struct TitleBarTrailingView: View {
 
     var body: some View {
         HStack(spacing: AppTheme.Spacing.sm) {
+            LayoutPresetMenu()
+
             // Project settings
             Button { showSettingsPopover.toggle() } label: {
                 Image(systemName: "gearshape")
@@ -133,5 +135,44 @@ struct ProjectNameField: View {
                 withAnimation { showError = false }
             }
         }
+    }
+}
+
+// MARK: - Layout preset menu
+
+struct LayoutPresetMenu: View {
+    @Environment(EditorViewModel.self) var editor
+
+    var body: some View {
+        Menu {
+            ForEach(LayoutPreset.allCases, id: \.self) { preset in
+                Button {
+                    editor.layoutPreset = preset
+                } label: {
+                    HStack {
+                        Image(systemName: preset.icon)
+                        Text(preset.label)
+                    }
+                }
+                .disabled(editor.layoutPreset == preset)
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: editor.layoutPreset.icon)
+                    .font(.system(size: 12))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+            }
+            .foregroundStyle(AppTheme.Text.secondaryColor)
+            .frame(height: 22)
+            .padding(.horizontal, 6)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                    .fill(Color.white.opacity(0.06))
+            )
+        }
+        .buttonStyle(.plain)
+        .menuStyle(.borderlessButton)
+        .fixedSize()
     }
 }

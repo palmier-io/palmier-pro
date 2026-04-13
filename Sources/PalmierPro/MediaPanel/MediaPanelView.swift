@@ -57,7 +57,7 @@ struct MediaPanelView: View {
                 }
             }
             .padding(.horizontal, AppTheme.Spacing.sm)
-            .frame(height: 28)
+            .frame(height: Layout.panelHeaderHeight)
             .background(AppTheme.Background.barColor)
             .overlay(alignment: .bottom) {
                 Rectangle().fill(AppTheme.Border.primaryColor).frame(height: 0.5)

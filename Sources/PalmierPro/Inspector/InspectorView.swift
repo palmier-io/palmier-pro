@@ -4,15 +4,29 @@ struct InspectorView: View {
     @Environment(EditorViewModel.self) var editor
 
     var body: some View {
+        let clip = selectedClip
+        let asset = selectedMediaAsset
+
         VStack(spacing: 0) {
-            Group {
-                if let clip = selectedClip {
-                    clipInspectorContent(clip)
-                } else if let asset = selectedMediaAsset {
-                    mediaAssetInspectorContent(asset)
-                } else {
-                    Color.clear
-                }
+            HStack {
+                Text(asset != nil && clip == nil ? "Details" : "Inspector")
+                    .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                Spacer()
+            }
+            .padding(.horizontal, AppTheme.Spacing.lg)
+            .frame(height: Layout.panelHeaderHeight)
+            .background(AppTheme.Background.barColor)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(AppTheme.Border.primaryColor)
+                    .frame(height: 0.5)
+            }
+
+            if let clip {
+                clipInspectorContent(clip)
+            } else if let asset {
+                mediaAssetInspectorContent(asset)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

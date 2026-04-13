@@ -24,6 +24,15 @@ final class EditorViewModel {
     var previewTabs: [PreviewTab] = [.timeline]
     var activePreviewTabId: String = PreviewTab.timeline.id
     var sourcePlayheadFrame: Int = 0
+    var layoutPreset: LayoutPreset = {
+        if let raw = UserDefaults.standard.string(forKey: "layoutPreset"),
+           let preset = LayoutPreset(rawValue: raw) {
+            return preset
+        }
+        return .default
+    }() {
+        didSet { UserDefaults.standard.set(layoutPreset.rawValue, forKey: "layoutPreset") }
+    }
 
     // MARK: - Media library (in-memory, rebuilt on project open)
 

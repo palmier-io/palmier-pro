@@ -67,7 +67,7 @@ struct PreviewContainerView: View {
             }
             Spacer()
         }
-        .frame(height: 28)
+        .frame(height: Layout.panelHeaderHeight)
         .background(AppTheme.Background.barColor)
         .overlay(alignment: .bottom) {
             Rectangle().fill(AppTheme.Border.primaryColor).frame(height: 0.5)
