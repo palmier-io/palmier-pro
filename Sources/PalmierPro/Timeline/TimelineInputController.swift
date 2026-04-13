@@ -22,6 +22,7 @@ final class TimelineInputController {
 
     func mouseDown(with event: NSEvent, geometry: TimelineGeometry) {
         let point = view.convert(event.locationInWindow, from: nil)
+        let scrollOffsetY = view.enclosingScrollView?.contentView.bounds.origin.y ?? 0
 
         // Any click on the timeline switches back to the Timeline preview tab
         if editor.activePreviewTab != .timeline {
@@ -29,7 +30,7 @@ final class TimelineInputController {
         }
 
         // Ruler area — scrub playhead
-        if point.y < geometry.rulerHeight {
+        if point.y >= scrollOffsetY && point.y < scrollOffsetY + geometry.rulerHeight {
             dragState = .scrubPlayhead
             editor.isScrubbing = true
             scrubToFrame(geometry.frameAt(x: point.x))
@@ -321,9 +322,10 @@ final class TimelineInputController {
 
     func mouseMoved(with event: NSEvent, geometry: TimelineGeometry) {
         let point = view.convert(event.locationInWindow, from: nil)
+        let scrollOffsetY = view.enclosingScrollView?.contentView.bounds.origin.y ?? 0
 
         // Razor tool: show preview line
-        if editor.toolMode == .razor && point.y >= geometry.rulerHeight {
+        if editor.toolMode == .razor && point.y >= scrollOffsetY + geometry.rulerHeight {
             var frame = geometry.frameAt(x: point.x)
             // Snap razor to playhead
             let snapThreshold = max(1, Int(Snap.thresholdPixels / geometry.pixelsPerFrame))

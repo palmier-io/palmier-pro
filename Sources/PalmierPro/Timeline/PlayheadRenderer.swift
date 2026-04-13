@@ -7,25 +7,28 @@ enum PlayheadRenderer {
         frame: Int,
         pixelsPerFrame: Double,
         rulerHeight: CGFloat,
-        totalHeight: CGFloat,
+        scrollOffsetY: CGFloat,
+        visibleHeight: CGFloat,
         context: CGContext
     ) {
         let x = Double(frame) * pixelsPerFrame
         let color = NSColor.systemRed.cgColor
+        let top = scrollOffsetY + rulerHeight
+        let bottom = scrollOffsetY + visibleHeight
 
         // Vertical line
         context.setStrokeColor(color)
         context.setLineWidth(1)
-        context.move(to: CGPoint(x: x, y: Double(rulerHeight)))
-        context.addLine(to: CGPoint(x: x, y: Double(totalHeight)))
+        context.move(to: CGPoint(x: x, y: top))
+        context.addLine(to: CGPoint(x: x, y: bottom))
         context.strokePath()
 
         // Triangle head on ruler
         let triSize: Double = 8
         context.setFillColor(color)
-        context.move(to: CGPoint(x: x, y: Double(rulerHeight)))
-        context.addLine(to: CGPoint(x: x - triSize / 2, y: Double(rulerHeight) - triSize))
-        context.addLine(to: CGPoint(x: x + triSize / 2, y: Double(rulerHeight) - triSize))
+        context.move(to: CGPoint(x: x, y: top))
+        context.addLine(to: CGPoint(x: x - triSize / 2, y: top - triSize))
+        context.addLine(to: CGPoint(x: x + triSize / 2, y: top - triSize))
         context.closePath()
         context.fillPath()
     }

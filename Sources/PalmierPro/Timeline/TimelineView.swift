@@ -147,7 +147,8 @@ final class TimelineView: NSView {
             frame: editor.currentFrame,
             pixelsPerFrame: geo.pixelsPerFrame,
             rulerHeight: geo.rulerHeight,
-            totalHeight: bounds.height,
+            scrollOffsetY: scrollOffset.y,
+            visibleHeight: enclosingScrollView?.contentView.bounds.height ?? bounds.height,
             context: ctx
         )
     }
