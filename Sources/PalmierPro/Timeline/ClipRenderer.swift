@@ -131,7 +131,7 @@ enum ClipRenderer {
         let barCount = Int(drawWidth)
         guard barCount > 0 else { return }
 
-        let color = type.themeColor.withAlphaComponent(0.6).cgColor
+        let color = (type.themeColor.blended(withFraction: 0.3, of: .white) ?? type.themeColor).withAlphaComponent(0.85).cgColor
         context.setFillColor(color)
 
         for i in 0..<barCount {
