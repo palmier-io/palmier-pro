@@ -38,6 +38,13 @@ struct GenerationView: View {
             case .audio: "waveform"
             }
         }
+        var accentColor: Color {
+            switch self {
+            case .image: .purple
+            case .video: .blue
+            case .audio: .green
+            }
+        }
     }
 
     // MARK: - Computed state
@@ -113,30 +120,29 @@ struct GenerationView: View {
                 promptArea
                 inputToolbar
             }
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                    .fill(Color.white.opacity(0.04))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+            .background {
+                let r = AppTheme.Radius.concentric(outer: AppTheme.Radius.lg, padding: AppTheme.Spacing.sm)
+                RoundedRectangle(cornerRadius: r)
+                    .fill(Color.white.opacity(0.03))
+            }
+            .overlay {
+                let r = AppTheme.Radius.concentric(outer: AppTheme.Radius.lg, padding: AppTheme.Spacing.sm)
+                RoundedRectangle(cornerRadius: r)
                     .strokeBorder(
                         isPromptFocused ? Color.accentColor.opacity(0.5) : Color.white.opacity(0.10),
                         lineWidth: 1
                     )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.md))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.lg, padding: AppTheme.Spacing.sm)))
             .padding(.horizontal, AppTheme.Spacing.sm)
             .padding(.bottom, AppTheme.Spacing.sm)
         }
         .padding(.top, AppTheme.Spacing.sm)
         .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                .fill(Color(white: 0.08))
+            RoundedRectangle(cornerRadius: AppTheme.Radius.lg)
+                .fill(.ultraThinMaterial)
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
-        )
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.lg))
         .padding(AppTheme.Spacing.sm)
         .onChange(of: selectedType) { _, _ in
             resetSettings()
@@ -178,22 +184,25 @@ struct GenerationView: View {
                     .allowsHitTesting(false)
             }
         }
-        .frame(minHeight: 60, maxHeight: 100)
+        .frame(minHeight: 70, maxHeight: 120)
     }
 
     // MARK: - Input toolbar (bottom of input box)
 
     private var inputToolbar: some View {
-        HStack(spacing: AppTheme.Spacing.sm) {
-            modelPicker
-            if selectedType != .audio { settingsButton }
+        VStack(spacing: 0) {
+            Rectangle().fill(Color.white.opacity(0.06)).frame(height: 0.5)
+            HStack(spacing: AppTheme.Spacing.sm) {
+                modelPicker
+                if selectedType != .audio { settingsButton }
 
-            Spacer()
+                Spacer()
 
-            submitButton
+                submitButton
+            }
+            .padding(.horizontal, AppTheme.Spacing.md)
+            .padding(.vertical, AppTheme.Spacing.sm)
         }
-        .padding(.horizontal, AppTheme.Spacing.sm)
-        .padding(.vertical, AppTheme.Spacing.xs)
     }
 
     // MARK: - Video frame references
@@ -330,7 +339,7 @@ struct GenerationView: View {
     private var submitButton: some View {
         Button { submitGeneration() } label: {
             Image(systemName: "arrow.up.circle.fill")
-                .font(.system(size: 22))
+                .font(.system(size: 24))
         }
         .buttonStyle(.plain)
         .foregroundStyle(canSubmit ? Color.accentColor : AppTheme.Text.mutedColor)
@@ -345,18 +354,18 @@ struct GenerationView: View {
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) { selectedType = type }
                 } label: {
-                    HStack(spacing: 3) {
+                    HStack(spacing: 4) {
                         Image(systemName: type.icon)
-                            .font(.system(size: 8, weight: .medium))
+                            .font(.system(size: 9, weight: .medium))
                         Text(type.rawValue)
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                     }
-                    .foregroundStyle(selectedType == type ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
+                    .foregroundStyle(selectedType == type ? type.accentColor : AppTheme.Text.tertiaryColor)
                     .padding(.horizontal, AppTheme.Spacing.sm)
                     .padding(.vertical, 4)
                     .background(
-                        RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                            .fill(selectedType == type ? Color.white.opacity(0.08) : .clear)
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: 2))
+                            .fill(selectedType == type ? type.accentColor.opacity(0.12) : .clear)
                     )
                 }
                 .buttonStyle(.plain)

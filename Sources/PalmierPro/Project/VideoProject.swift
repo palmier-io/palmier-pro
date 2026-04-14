@@ -112,11 +112,13 @@ final class VideoProject: NSDocument {
         let editorView = EditorView()
             .environment(editorViewModel)
             .focusEffectDisabled()
-            .sheet(isPresented: Bindable(editorViewModel).showExportDialog) {
+            .sheet(isPresented: Bindable(editorViewModel).showExportDialog) { [editorViewModel] in
                 ExportView()
+                    .environment(editorViewModel)
             }
-            .sheet(item: Bindable(editorViewModel).pendingSettingsMismatch) { mismatch in
+            .sheet(item: Bindable(editorViewModel).pendingSettingsMismatch) { [editorViewModel] mismatch in
                 ProjectSettingsMismatchView(mismatch: mismatch)
+                    .environment(editorViewModel)
             }
         let hostingController = NSHostingController(rootView: editorView)
 
@@ -200,10 +202,27 @@ final class VideoProject: NSDocument {
 extension NSWindow {
     func addTitlebarSwiftUI<V: View>(_ view: V, side: NSLayoutConstraint.Attribute, width: CGFloat) {
         let host = NSHostingController(rootView: view)
-        host.view.frame = NSRect(x: 0, y: 0, width: width, height: 28)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+
+        let wrapper = CornerAdaptiveView()
+        wrapper.frame = NSRect(x: 0, y: 0, width: width, height: 28)
+        wrapper.addSubview(host.view)
+
+        let safeArea = wrapper.layoutGuide(for: .safeArea(cornerAdaptation: .horizontal))
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: wrapper.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor),
+            host.view.leadingAnchor.constraint(equalTo: side == .leading ? safeArea.leadingAnchor : wrapper.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: side == .trailing ? safeArea.trailingAnchor : wrapper.trailingAnchor),
+        ])
+
         let accessory = NSTitlebarAccessoryViewController()
-        accessory.view = host.view
+        accessory.view = wrapper
         accessory.layoutAttribute = side
         addTitlebarAccessoryViewController(accessory)
     }
+}
+
+private class CornerAdaptiveView: NSView {
+    override class var requiresConstraintBasedLayout: Bool { true }
 }

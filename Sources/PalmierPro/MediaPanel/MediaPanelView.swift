@@ -14,67 +14,80 @@ struct MediaPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Top toolbar
-            HStack(spacing: AppTheme.Spacing.xs) {
-                toolbarButton(title: "Import", systemImage: "plus", action: importMedia)
-
-                toolbarButton(title: "Generate", systemImage: "sparkles") {
-                    withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
-                        editor.showGenerationPanel.toggle()
-                    }
-                }
-
-                Spacer()
-
-                Text("\(filteredAndSortedAssets.count) items")
-                    .font(.system(size: AppTheme.FontSize.xs))
-                    .foregroundStyle(AppTheme.Text.mutedColor)
-                    .monospacedDigit()
-
-                // Sort
-                toolbarMenuIcon(systemName: "arrow.up.arrow.down") {
-                    ForEach(SortMode.allCases, id: \.self) { mode in
-                        Button(mode.title) { sortMode = mode }
-                    }
-                }
-
-                // Filter
-                toolbarMenuIcon(
-                    systemName: "line.3.horizontal.decrease",
-                    foregroundStyle: hasActiveFilters ? Color.accentColor : AppTheme.Text.tertiaryColor
-                ) {
-                    ForEach(ClipType.allCases, id: \.self) { type in
-                        Button { toggleFilter(type) } label: {
-                            Label(type.trackLabel, systemImage: filterTypes.contains(type) ? "checkmark" : "")
+            GlassEffectContainer {
+                ZStack(alignment: .top) {
+                    // Content layer
+                    VStack(spacing: 0) {
+                        if showsEmptyState {
+                            emptyStateView
+                        } else {
+                            mediaGridView
+                                .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.sm)
                         }
                     }
-                    Divider()
-                    Button { filterAI.toggle() } label: {
-                        Label("AI Generated", systemImage: filterAI ? "checkmark" : "")
+
+                // Floating toolbar
+                HStack(spacing: AppTheme.Spacing.xs) {
+                    GlassEffectContainer {
+                        HStack(spacing: AppTheme.Spacing.xs) {
+                            toolbarButton(title: "Import", systemImage: "plus", action: importMedia)
+
+                            toolbarButton(title: "Generate", systemImage: "sparkles") {
+                                withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
+                                    editor.showGenerationPanel.toggle()
+                                }
+                            }
+                        }
                     }
-                    Divider()
-                    Button("Clear Filters", action: clearFilters)
+
+                    Spacer()
+
+                    Text("\(filteredAndSortedAssets.count) items")
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .foregroundStyle(AppTheme.Text.mutedColor)
+                        .monospacedDigit()
+
+                    // Sort
+                    toolbarMenuIcon(systemName: "arrow.up.arrow.down") {
+                        ForEach(SortMode.allCases, id: \.self) { mode in
+                            Button(mode.title) { sortMode = mode }
+                        }
+                    }
+
+                    // Filter
+                    toolbarMenuIcon(
+                        systemName: "line.3.horizontal.decrease",
+                        foregroundStyle: hasActiveFilters ? Color.accentColor : AppTheme.Text.tertiaryColor
+                    ) {
+                        ForEach(ClipType.allCases, id: \.self) { type in
+                            Button { toggleFilter(type) } label: {
+                                Label(type.trackLabel, systemImage: filterTypes.contains(type) ? "checkmark" : "")
+                            }
+                        }
+                        Divider()
+                        Button { filterAI.toggle() } label: {
+                            Label("AI Generated", systemImage: filterAI ? "checkmark" : "")
+                        }
+                        Divider()
+                        Button("Clear Filters", action: clearFilters)
+                    }
                 }
+                .padding(.horizontal, AppTheme.Spacing.sm)
+                .padding(.vertical, AppTheme.Spacing.xs)
+                .glassEffect(.regular, in: .capsule)
+                .padding(.horizontal, AppTheme.Spacing.sm)
+                .padding(.top, AppTheme.Spacing.xs)
             }
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .frame(height: Layout.panelHeaderHeight)
-            .background(AppTheme.Background.barColor)
-            .overlay(alignment: .bottom) {
-                Rectangle().fill(AppTheme.Border.primaryColor).frame(height: 0.5)
             }
 
-            if showsEmptyState {
-                emptyStateView
-            } else {
-                mediaGridView
-
-                if editor.showGenerationPanel {
-                    GenerationView()
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
+            if editor.showGenerationPanel {
+                GenerationView()
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .background(AppTheme.Background.panelColor)
+        .overlay(alignment: .trailing) {
+            Rectangle().fill(AppTheme.Border.subtleColor).frame(width: 0.5)
+        }
     }
 
     private var selectedMediaAssetsInOrder: [MediaAsset] {
@@ -186,7 +199,7 @@ struct MediaPanelView: View {
             Label(title, systemImage: systemImage)
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.glass)
         .controlSize(.mini)
         .focusable(false)
     }

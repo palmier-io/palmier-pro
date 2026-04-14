@@ -3,34 +3,88 @@ import SwiftUI
 struct InspectorView: View {
     @Environment(EditorViewModel.self) var editor
 
-    var body: some View {
-        let clip = selectedClip
-        let asset = selectedMediaAsset
+    private var headerTitle: String {
+        if selectedClip != nil { return "Inspector" }
+        if activeTabAsset != nil || selectedMediaAsset != nil { return "Details" }
+        return "Details"
+    }
 
-        VStack(spacing: 0) {
-            HStack {
-                Text(asset != nil && clip == nil ? "Details" : "Inspector")
+    private var headerIcon: String {
+        if selectedClip != nil { return "slider.horizontal.3" }
+        return "info.circle"
+    }
+
+    /// Media asset from the active preview tab (when viewing a media asset tab)
+    private var activeTabAsset: MediaAsset? {
+        guard case .mediaAsset(let id, _, _) = editor.activePreviewTab else { return nil }
+        return editor.mediaAssets.first { $0.id == id }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Plain header
+            HStack(spacing: AppTheme.Spacing.xs) {
+                Image(systemName: headerIcon)
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                Text(headerTitle)
                     .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                 Spacer()
             }
             .padding(.horizontal, AppTheme.Spacing.lg)
-            .frame(height: Layout.panelHeaderHeight)
-            .background(AppTheme.Background.barColor)
-            .overlay(alignment: .bottom) {
-                Rectangle()
-                    .fill(AppTheme.Border.primaryColor)
-                    .frame(height: 0.5)
-            }
+            .padding(.vertical, AppTheme.Spacing.sm)
 
-            if let clip {
+            // Content layer
+            if let clip = selectedClip {
                 clipInspectorContent(clip)
-            } else if let asset {
+            } else if let asset = selectedMediaAsset {
                 mediaAssetInspectorContent(asset)
+            } else if let asset = activeTabAsset {
+                mediaAssetInspectorContent(asset)
+            } else {
+                projectMetadataContent
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(AppTheme.Background.panelColor)
+    }
+
+    // MARK: - Project Metadata
+
+    private var projectMetadataContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+                // Project info
+                inspectorCard {
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                        if let url = editor.projectURL {
+                            metadataRow("doc.text", label: "Name", value: url.deletingPathExtension().lastPathComponent)
+                            metadataRow("folder", label: "Path", value: url.deletingLastPathComponent().path)
+                        }
+                    }
+                }
+
+                // Timeline settings
+                inspectorCard {
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                        metadataRow("rectangle.split.3x3", label: "Resolution", value: "\(editor.timeline.width) × \(editor.timeline.height)")
+                        metadataRow("film", label: "Frame Rate", value: "\(editor.timeline.fps) fps")
+                        metadataRow("aspectratio", label: "Aspect Ratio", value: formatAspectRatio(width: editor.timeline.width, height: editor.timeline.height))
+                        metadataRow("clock", label: "Duration", value: formatDuration(Double(editor.timeline.totalFrames) / Double(editor.timeline.fps)))
+                    }
+                }
+            }
+            .padding(AppTheme.Spacing.md)
+        }
+    }
+
+    private func formatAspectRatio(width: Int, height: Int) -> String {
+        let gcd = gcd(width, height)
+        return "\(width / gcd):\(height / gcd)"
+    }
+
+    private func gcd(_ a: Int, _ b: Int) -> Int {
+        b == 0 ? a : gcd(b, a % b)
     }
 
     // MARK: - Clip Inspector
@@ -41,9 +95,6 @@ struct InspectorView: View {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
                 frameSection(clip)
 
-                sectionDivider
-
-                // Scale
                 InspectorSlider(
                     icon: "arrow.up.left.and.arrow.down.right",
                     label: "Scale",
@@ -69,8 +120,6 @@ struct InspectorView: View {
                     }
                 }
 
-                sectionDivider
-
                 InspectorSlider(
                     icon: "circle.lefthalf.filled",
                     label: "Opacity",
@@ -86,9 +135,6 @@ struct InspectorView: View {
                     editor.commitClipProperty(clipId: clip.id) { $0.opacity = newVal }
                 }
 
-                sectionDivider
-
-                // Volume
                 InspectorSlider(
                     icon: "speaker.wave.2.fill",
                     label: "Volume",
@@ -104,9 +150,6 @@ struct InspectorView: View {
                     editor.commitClipProperty(clipId: clip.id) { $0.volume = newVal }
                 }
 
-                sectionDivider
-
-                // Speed
                 InspectorSlider(
                     icon: "gauge.with.dots.needle.67percent",
                     label: "Speed",
@@ -124,6 +167,15 @@ struct InspectorView: View {
             }
             .padding(AppTheme.Spacing.lg)
         }
+    }
+
+    private func inspectorCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(AppTheme.Spacing.md)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                    .fill(Color.white.opacity(0.04))
+            )
     }
 
     // MARK: - Frame Section
@@ -185,73 +237,81 @@ struct InspectorView: View {
     @ViewBuilder
     private func mediaAssetInspectorContent(_ asset: MediaAsset) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
                 if asset.generationInput == nil {
-                    VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                        Text(asset.name)
-                            .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
-                            .foregroundStyle(AppTheme.Text.primaryColor)
-                            .lineLimit(2)
+                    inspectorCard {
+                        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                            Text(asset.name)
+                                .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
+                                .foregroundStyle(AppTheme.Text.primaryColor)
+                                .lineLimit(2)
 
-                        metadataRow("Type", value: asset.type.trackLabel)
+                            metadataRow("tag", label: "Type", value: asset.type.trackLabel)
 
-                        if asset.type != .audio {
-                            if let size = imageDimensions(for: asset.url) {
-                                metadataRow("Dimensions", value: "\(size.width) × \(size.height)")
+                            if asset.type != .audio {
+                                if let size = imageDimensions(for: asset.url) {
+                                    metadataRow("rectangle.split.3x3", label: "Dimensions", value: "\(size.width) × \(size.height)")
+                                }
                             }
-                        }
 
-                        if asset.duration > 0 && asset.type != .image {
-                            metadataRow("Duration", value: formatDuration(asset.duration))
-                        }
+                            if asset.duration > 0 && asset.type != .image {
+                                metadataRow("clock", label: "Duration", value: formatDuration(asset.duration))
+                            }
 
-                        if let fileSize = fileSize(for: asset.url) {
-                            metadataRow("File Size", value: fileSize)
+                            if let fileSize = fileSize(for: asset.url) {
+                                metadataRow("internaldrive", label: "File Size", value: fileSize)
+                            }
                         }
                     }
                 }
 
                 if let gen = asset.generationInput {
-                    VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-                        HStack(spacing: AppTheme.Spacing.xs) {
-                            Text("AI Generated")
-                                .font(.system(size: AppTheme.FontSize.md, weight: .medium))
-                                .foregroundStyle(AppTheme.Text.primaryColor)
-                            Image(systemName: "sparkles")
-                                .font(.system(size: AppTheme.FontSize.sm))
-                                .foregroundStyle(.purple)
-                        }
+                    inspectorCard {
+                        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                            HStack(spacing: AppTheme.Spacing.xs) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: AppTheme.FontSize.sm))
+                                    .foregroundStyle(.purple)
+                                Text("AI Generated")
+                                    .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+                                    .foregroundStyle(AppTheme.Text.primaryColor)
+                            }
 
-                        metadataRow("Model", value: modelDisplayName(for: gen.model))
-                        metadataRow("Aspect Ratio", value: gen.aspectRatio)
+                            metadataRow("cpu", label: "Model", value: modelDisplayName(for: gen.model))
+                            metadataRow("aspectratio", label: "Aspect Ratio", value: gen.aspectRatio)
 
-                        if let resolution = gen.resolution {
-                            metadataRow("Resolution", value: resolution)
-                        }
+                            if let resolution = gen.resolution {
+                                metadataRow("rectangle.split.3x3", label: "Resolution", value: resolution)
+                            }
 
-                        if gen.duration > 0 {
-                            metadataRow("Gen Duration", value: "\(gen.duration)s")
-                        }
+                            if gen.duration > 0 {
+                                metadataRow("clock", label: "Duration", value: "\(gen.duration)s")
+                            }
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Prompt")
-                                .font(.system(size: AppTheme.FontSize.xs))
-                                .foregroundStyle(AppTheme.Text.tertiaryColor)
-                            Text(gen.prompt)
-                                .font(.system(size: AppTheme.FontSize.xs))
-                                .foregroundStyle(AppTheme.Text.secondaryColor)
-                                .textSelection(.enabled)
-                                .fixedSize(horizontal: false, vertical: true)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Prompt")
+                                    .font(.system(size: AppTheme.FontSize.xs))
+                                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                                Text(gen.prompt)
+                                    .font(.system(size: AppTheme.FontSize.xs))
+                                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
                     }
                 }
             }
-            .padding(AppTheme.Spacing.lg)
+            .padding(AppTheme.Spacing.md)
         }
     }
 
-    private func metadataRow(_ label: String, value: String) -> some View {
-        HStack {
+    private func metadataRow(_ icon: String, label: String, value: String) -> some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Image(systemName: icon)
+                .font(.system(size: AppTheme.FontSize.xs))
+                .foregroundStyle(AppTheme.Text.mutedColor)
+                .frame(width: 14)
             Text(label)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -259,15 +319,11 @@ struct InspectorView: View {
             Text(value)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
-                .lineLimit(1)
+                .lineLimit(2)
+                .multilineTextAlignment(.trailing)
         }
     }
 
-    private var sectionDivider: some View {
-        Rectangle()
-            .fill(AppTheme.Border.subtleColor)
-            .frame(height: 0.5)
-    }
 
     // MARK: - Helpers
 

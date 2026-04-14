@@ -10,7 +10,7 @@ enum TimelineRuler {
         context: CGContext
     ) {
         // Background
-        context.setFillColor(AppTheme.Background.bar.cgColor)
+        context.setFillColor(AppTheme.Background.panel.cgColor)
         context.fill(rect)
 
         // Bottom separator

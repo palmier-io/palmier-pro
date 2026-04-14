@@ -15,7 +15,7 @@ final class TimelineView: NSView {
         editor.mediaVisualCache.timelineView = self
         wantsLayer = true
         layerContentsRedrawPolicy = .onSetNeedsDisplay
-        layer?.backgroundColor = NSColor(white: 0.15, alpha: 1).cgColor
+        layer?.backgroundColor = AppTheme.Background.panel.cgColor
         registerForDraggedTypes([.string, .fileURL])
     }
 
@@ -25,8 +25,8 @@ final class TimelineView: NSView {
     override var isFlipped: Bool { true }
 
     // Cached for draw performance — avoid per-frame allocations
-    private static let trackBgEven = NSColor(white: 0.17, alpha: 1).cgColor
-    private static let trackBgOdd = NSColor(white: 0.14, alpha: 1).cgColor
+    private static let trackBgEven = AppTheme.Background.bar.cgColor
+    private static let trackBgOdd = AppTheme.Background.panel.cgColor
 
     /// Drop target during external drags (media panel), used for drawing the insertion indicator.
     var externalDropTarget: TrackDropTarget?

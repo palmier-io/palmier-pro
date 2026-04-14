@@ -8,7 +8,6 @@ struct HomeView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider().opacity(0.3)
             projectGrid
         }
         .frame(minWidth: 700, minHeight: 460)
@@ -30,15 +29,23 @@ struct HomeView: View {
 
             Spacer()
 
-            Button(action: { AppState.shared.openProjectFromPanel() }) {
-                Label("Open", systemImage: "folder")
-            }
-            .buttonStyle(.bordered)
+            GlassEffectContainer {
+                HStack(spacing: AppTheme.Spacing.sm) {
+                    Button(action: { AppState.shared.openProjectFromPanel() }) {
+                        Label("Open", systemImage: "folder")
+                    }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.regular)
 
-            Button(action: { AppState.shared.createNewProject() }) {
-                Label("New Project", systemImage: "plus")
+                    Button(action: { AppState.shared.createNewProject() }) {
+                        Label("New Project", systemImage: "plus")
+                    }
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.regular)
+                }
             }
-            .buttonStyle(.borderedProminent)
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 18)
@@ -61,6 +68,7 @@ struct HomeView: View {
                     }
                     .padding(24)
                 }
+                .scrollEdgeEffectStyle(.soft, for: .top)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

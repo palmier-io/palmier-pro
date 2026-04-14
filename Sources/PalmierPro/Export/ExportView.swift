@@ -23,96 +23,163 @@ struct ExportView: View {
     @State private var resolution: ExportResolution = .r1080p
 
     var body: some View {
-        VStack(spacing: AppTheme.Spacing.xl) {
-            Text("Export")
-                .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
-                .foregroundStyle(AppTheme.Text.primaryColor)
+        VStack(spacing: 0) {
+            // Header
+            VStack(spacing: AppTheme.Spacing.md) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 48, height: 48)
+                    .glassEffect(.regular.tint(Color.accentColor.opacity(0.1)), in: .circle)
 
+                VStack(spacing: 2) {
+                    Text("Export")
+                        .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
+                        .foregroundStyle(AppTheme.Text.primaryColor)
+
+                    Text("\(editor.timeline.width)×\(editor.timeline.height) · \(editor.timeline.fps)fps")
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
+            }
+            .padding(.top, AppTheme.Spacing.xl)
+            .padding(.bottom, AppTheme.Spacing.lg)
+
+            // Format picker
             Picker("", selection: $mode) {
                 ForEach(ExportMode.allCases) { m in
                     Text(m.rawValue).tag(m)
                 }
             }
             .pickerStyle(.segmented)
+            .padding(.horizontal, AppTheme.Spacing.xl)
+            .padding(.bottom, AppTheme.Spacing.lg)
 
-            switch mode {
-            case .video:
-                Grid(alignment: .leading, verticalSpacing: AppTheme.Spacing.lg) {
-                    GridRow {
-                        Text("Codec")
-                            .foregroundStyle(AppTheme.Text.secondaryColor)
-                            .gridColumnAlignment(.trailing)
-                        Picker("", selection: $codec) {
-                            ForEach(VideoCodec.allCases) { c in
-                                Text(c.rawValue).tag(c)
+            // Settings
+            VStack(spacing: AppTheme.Spacing.md) {
+                switch mode {
+                case .video:
+                    settingCard {
+                        settingRow(icon: "film", label: "Codec") {
+                            Picker("", selection: $codec) {
+                                ForEach(VideoCodec.allCases) { c in
+                                    Text(c.rawValue).tag(c)
+                                }
                             }
+                            .labelsHidden()
+                            .frame(width: 140)
                         }
-                        .labelsHidden()
-                        .frame(width: 160)
                     }
-                    GridRow {
-                        Text("Resolution")
-                            .foregroundStyle(AppTheme.Text.secondaryColor)
-                        Picker("", selection: $resolution) {
-                            ForEach(ExportResolution.allCases) { p in
-                                Text(p.rawValue).tag(p)
+
+                    settingCard {
+                        settingRow(icon: "rectangle.split.3x3", label: "Resolution") {
+                            Picker("", selection: $resolution) {
+                                ForEach(ExportResolution.allCases) { p in
+                                    Text(p.rawValue).tag(p)
+                                }
                             }
+                            .labelsHidden()
+                            .frame(width: 140)
                         }
-                        .labelsHidden()
-                        .frame(width: 160)
                     }
-                }
 
-            case .xml:
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-                    Text("Exports your timeline as XML for use in other editors.")
-                        .font(.system(size: AppTheme.FontSize.sm))
-                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                case .xml:
+                    settingCard {
+                        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                            Text("Exports your timeline as XML for use in other editors.")
+                                .font(.system(size: AppTheme.FontSize.sm))
+                                .foregroundStyle(AppTheme.Text.secondaryColor)
 
-                    Text("Works with DaVinci Resolve, Premiere Pro, and Final Cut Pro.")
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                            Text("Works with DaVinci Resolve, Premiere Pro, and Final Cut Pro.")
+                                .font(.system(size: AppTheme.FontSize.xs))
+                                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        }
+                    }
                 }
             }
+            .padding(.horizontal, AppTheme.Spacing.xl)
 
+            Spacer().frame(height: AppTheme.Spacing.lg)
+
+            // Progress
             if service.isExporting {
-                ProgressView(value: service.progress)
-                    .progressViewStyle(.linear)
-                Text("\(Int(service.progress * 100))%")
-                    .font(.system(size: AppTheme.FontSize.xs))
-                    .monospacedDigit()
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                VStack(spacing: AppTheme.Spacing.xs) {
+                    ProgressView(value: service.progress)
+                        .progressViewStyle(.linear)
+                    Text("\(Int(service.progress * 100))%")
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .monospacedDigit()
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                }
+                .padding(.horizontal, AppTheme.Spacing.xl)
             }
 
             if let error = service.error {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(.red)
+                    .padding(.horizontal, AppTheme.Spacing.xl)
             }
 
+            // Summary
             HStack(spacing: AppTheme.Spacing.lg) {
                 let duration = formatTimecode(frame: editor.timeline.totalFrames, fps: editor.timeline.fps)
-                Label("Duration: \(duration)", systemImage: "clock")
+                HStack(spacing: AppTheme.Spacing.xs) {
+                    Image(systemName: "clock")
+                    Text(duration)
+                }
                 if mode == .video {
-                    Label("Size: ~\(estimatedFileSize)", systemImage: "doc")
+                    HStack(spacing: AppTheme.Spacing.xs) {
+                        Image(systemName: "doc")
+                        Text("~\(estimatedFileSize)")
+                    }
                 }
                 Spacer()
             }
             .font(.system(size: AppTheme.FontSize.xs))
-            .foregroundStyle(AppTheme.Text.tertiaryColor)
+            .foregroundStyle(AppTheme.Text.mutedColor)
+            .padding(.horizontal, AppTheme.Spacing.xl)
+            .padding(.bottom, AppTheme.Spacing.lg)
 
+            // Actions
             HStack {
                 Spacer()
                 Button("Cancel") { editor.showExportDialog = false }
                     .keyboardShortcut(.cancelAction)
                 Button("Export") { startExport() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
                     .disabled(service.isExporting)
                     .keyboardShortcut(.defaultAction)
             }
+            .padding(.horizontal, AppTheme.Spacing.xl)
+            .padding(.bottom, AppTheme.Spacing.xl)
         }
-        .padding(AppTheme.Spacing.xl)
-        .frame(width: 360)
+        .frame(width: 380)
+    }
+
+    private func settingCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(AppTheme.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                    .fill(Color.white.opacity(0.04))
+            )
+    }
+
+    private func settingRow<Control: View>(icon: String, label: String, @ViewBuilder control: () -> Control) -> some View {
+        HStack {
+            Image(systemName: icon)
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .frame(width: 16)
+            Text(label)
+                .font(.system(size: AppTheme.FontSize.md))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+            Spacer()
+            control()
+        }
     }
 
     private var estimatedFileSize: String {

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 enum PreviewTab: Identifiable, Equatable {
     case timeline
@@ -24,6 +25,13 @@ enum PreviewTab: Identifiable, Equatable {
         switch self {
         case .timeline: nil
         case .mediaAsset(_, _, let type): type
+        }
+    }
+
+    var tintColor: Color {
+        switch self {
+        case .timeline: Color.accentColor.opacity(0.15)
+        case .mediaAsset(_, _, let type): Color(type.themeColor).opacity(0.25)
         }
     }
 }

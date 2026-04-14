@@ -7,12 +7,14 @@ enum AppTheme {
 
     enum Background {
         /// Darkest – content wells: preview area, timeline body
-        static let well = NSColor(white: 0.07, alpha: 1)
+        static let well = NSColor(white: 0.10, alpha: 1)
         /// Mid – panel bodies: media panel, inspector
-        static let panel = NSColor(white: 0.10, alpha: 1)
+        static let panel = NSColor(white: 0.11, alpha: 1)
         /// Lightest – bars: toolbars, tab bars, headers
-        static let bar = NSColor(white: 0.13, alpha: 1)
+        static let bar = NSColor(white: 0.17, alpha: 1)
 
+        /// Opaque dark for video preview / timeline canvas (color accuracy)
+        static var canvasColor: Color { Color(well) }
         static var wellColor: Color { Color(well) }
         static var panelColor: Color { Color(panel) }
         static var barColor: Color { Color(bar) }
@@ -32,6 +34,13 @@ enum AppTheme {
 
     enum Accent {
         static let timecodeColor = Color(red: 0.95, green: 0.6, blue: 0.2) // warm amber
+    }
+
+    // MARK: - Glass
+
+    enum Glass {
+        /// Tint reserved for primary action buttons only (Export, New Project)
+        static let primaryTint = Color.accentColor.opacity(0.05)
     }
 
     // MARK: - Text
@@ -70,6 +79,11 @@ enum AppTheme {
         static let md: CGFloat = 10
         static let lg: CGFloat = 14
         static let xl: CGFloat = 20
+
+        /// Concentric inner radius: outer radius minus padding, floored at 0
+        static func concentric(outer: CGFloat, padding: CGFloat) -> CGFloat {
+            max(outer - padding, 0)
+        }
     }
 
     // MARK: - Spacing

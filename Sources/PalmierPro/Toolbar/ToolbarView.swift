@@ -6,20 +6,16 @@ struct ToolbarView: View {
     var body: some View {
         HStack(spacing: AppTheme.Spacing.lg) {
             // Undo / Redo
-            HStack(spacing: AppTheme.Spacing.xs) {
+            HStack(spacing: AppTheme.Spacing.md) {
                 toolbarButton("arrow.uturn.backward", action: { editor.undoManager?.undo() })
                 toolbarButton("arrow.uturn.forward", action: { editor.undoManager?.redo() })
             }
 
-            themeDivider()
-
             // Tool mode
-            HStack(spacing: 2) {
+            HStack(spacing: AppTheme.Spacing.md) {
                 toolModeButton("cursorarrow", mode: .pointer)
                 toolModeButton("scissors", mode: .razor)
             }
-
-            themeDivider()
 
             // Split at playhead
             toolbarButton("square.split.2x1", action: editor.splitAtPlayhead)
@@ -42,21 +38,16 @@ struct ToolbarView: View {
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(AppTheme.Background.barColor)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(AppTheme.Border.primaryColor)
-                .frame(height: 0.5)
-        }
     }
 
     private func toolbarButton(_ systemName: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: AppTheme.FontSize.md))
-                .frame(width: 28, height: 28)
+                .frame(width: 24, height: 24)
+                .foregroundStyle(AppTheme.Text.secondaryColor)
         }
-        .buttonStyle(ToolbarHoverButtonStyle())
+        .buttonStyle(.plain)
     }
 
     private func toolModeButton(_ systemName: String, mode: ToolMode) -> some View {
@@ -64,43 +55,10 @@ struct ToolbarView: View {
         return Button { editor.toolMode = mode } label: {
             Image(systemName: systemName)
                 .font(.system(size: AppTheme.FontSize.md))
-                .frame(width: 28, height: 28)
+                .frame(width: 24, height: 24)
                 .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
-                .background(
-                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                        .fill(isActive ? Color.white.opacity(0.1) : .clear)
-                )
         }
         .buttonStyle(.plain)
     }
 
-    private func themeDivider() -> some View {
-        Rectangle()
-            .fill(AppTheme.Border.subtleColor)
-            .frame(width: 0.5, height: 20)
-    }
-}
-
-// MARK: - Hover button style
-
-struct ToolbarHoverButtonStyle: ButtonStyle {
-    @State private var isHovered = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(isHovered || configuration.isPressed
-                ? AppTheme.Text.primaryColor
-                : AppTheme.Text.secondaryColor)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(configuration.isPressed
-                        ? Color.white.opacity(0.1)
-                        : isHovered ? Color.white.opacity(0.06) : .clear)
-            )
-            .onHover { hovering in
-                withAnimation(.easeOut(duration: AppTheme.Anim.hover)) {
-                    isHovered = hovering
-                }
-            }
-    }
 }

@@ -9,7 +9,14 @@ struct PreviewContainerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            tabBar
+            // Tab bar reserves its own space
+            GlassEffectContainer {
+                tabBar
+            }
+            .padding(.horizontal, AppTheme.Spacing.sm)
+            .padding(.top, AppTheme.Spacing.xs)
+            .padding(.bottom, AppTheme.Spacing.xs)
+
             GeometryReader { geo in
                 let aspect = CGFloat(editor.timeline.width) / CGFloat(editor.timeline.height)
                 let fitSize = fitSize(in: geo.size, aspect: aspect)
@@ -28,7 +35,46 @@ struct PreviewContainerView: View {
                 transportBar
             }
         }
-        .background(AppTheme.Background.wellColor)
+        .background(AppTheme.Background.canvasColor)
+    }
+
+    // MARK: - Transport bar
+
+    private var transportBar: some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Text(formatTimecode(frame: playheadFrame, fps: editor.timeline.fps))
+                .monospacedDigit()
+                .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+                .foregroundStyle(AppTheme.Accent.timecodeColor)
+
+            Spacer()
+
+            HStack(spacing: AppTheme.Spacing.md) {
+                transportButton("backward.end.fill") { seekTo(0) }
+                transportButton("backward.frame.fill") { seekTo(playheadFrame - 1) }
+                transportButton(editor.isPlaying ? "pause.fill" : "play.fill") {
+                    if isTimeline {
+                        editor.togglePlayback()
+                    } else {
+                        editor.toggleSourcePlayback()
+                    }
+                }
+                transportButton("forward.frame.fill") { seekTo(playheadFrame + 1) }
+                transportButton("forward.end.fill") { seekTo(durationFrames) }
+            }
+            .padding(.horizontal, AppTheme.Spacing.md)
+            .padding(.vertical, AppTheme.Spacing.xs)
+            .glassEffect(.regular, in: .capsule)
+
+            Spacer()
+
+            Text(formatTimecode(frame: durationFrames, fps: editor.timeline.fps))
+                .monospacedDigit()
+                .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+        }
+        .padding(.horizontal, AppTheme.Spacing.lg)
+        .frame(height: 36)
     }
 
     // MARK: - Image preview
@@ -67,11 +113,6 @@ struct PreviewContainerView: View {
             }
             Spacer()
         }
-        .frame(height: Layout.panelHeaderHeight)
-        .background(AppTheme.Background.barColor)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(AppTheme.Border.primaryColor).frame(height: 0.5)
-        }
     }
 
     private func tabButton(for tab: PreviewTab) -> some View {
@@ -94,14 +135,7 @@ struct PreviewContainerView: View {
             .padding(.horizontal, AppTheme.Spacing.md)
             .padding(.vertical, AppTheme.Spacing.xs)
             .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
-            .overlay(alignment: .bottom) {
-                if isActive {
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(Color.accentColor)
-                        .frame(height: 2)
-                        .matchedGeometryEffect(id: "activePreviewTab", in: tabNamespace)
-                }
-            }
+            .glassEffect(isActive ? .regular.tint(tab.tintColor) : .identity, in: .capsule)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -125,24 +159,37 @@ struct PreviewContainerView: View {
     // MARK: - Scrub bar
 
     @State private var isScrubbing = false
+    @State private var isScrubHovered = false
 
     private var scrubBar: some View {
         GeometryReader { geo in
             let progress = durationFrames > 0 ? CGFloat(playheadFrame) / CGFloat(durationFrames) : 0
-            let thumbSize: CGFloat = isScrubbing ? 12 : 8
+            let active = isScrubbing || isScrubHovered
+            let thumbSize: CGFloat = active ? 10 : 6
+            let barHeight: CGFloat = active ? 4 : 3
             ZStack(alignment: .leading) {
-                Rectangle()
-                    .fill(Color.white.opacity(0.08))
-                Rectangle()
+                Capsule()
+                    .fill(Color.white.opacity(0.12))
+                    .frame(height: barHeight)
+                Capsule()
                     .fill(Color.accentColor)
-                    .frame(width: max(0, geo.size.width * progress))
+                    .frame(width: max(0, geo.size.width * progress), height: barHeight)
                 Circle()
                     .fill(Color.white)
                     .frame(width: thumbSize, height: thumbSize)
-                    .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+                    .shadow(color: .black.opacity(0.3), radius: 1, y: 1)
                     .position(x: geo.size.width * progress, y: geo.size.height / 2)
             }
+            .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
+            .onHover { hovering in
+                isScrubHovered = hovering
+                if hovering {
+                    NSCursor.pointingHand.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
@@ -156,11 +203,18 @@ struct PreviewContainerView: View {
                     }
             )
         }
-        .frame(height: 6)
+        .frame(height: 12)
         .animation(.easeOut(duration: 0.15), value: isScrubbing)
+        .animation(.easeOut(duration: 0.15), value: isScrubHovered)
+        .onDisappear {
+            if isScrubHovered {
+                NSCursor.pop()
+                isScrubHovered = false
+            }
+        }
     }
 
-    // MARK: - Transport bar
+    // MARK: - Transport helpers
 
     private var playheadFrame: Int {
         isTimeline ? editor.currentFrame : editor.sourcePlayheadFrame
@@ -168,43 +222,6 @@ struct PreviewContainerView: View {
 
     private var durationFrames: Int {
         editor.activePreviewDurationFrames
-    }
-
-    private var transportBar: some View {
-        HStack(spacing: AppTheme.Spacing.sm) {
-            Text(formatTimecode(frame: playheadFrame, fps: editor.timeline.fps))
-                .monospacedDigit()
-                .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
-                .foregroundStyle(AppTheme.Accent.timecodeColor)
-
-            Spacer()
-
-            HStack(spacing: AppTheme.Spacing.xs) {
-                transportButton("backward.end.fill") { seekTo(0) }
-                transportButton("backward.frame.fill") { seekTo(playheadFrame - 1) }
-                transportButton(editor.isPlaying ? "pause.fill" : "play.fill") {
-                    if isTimeline {
-                        editor.togglePlayback()
-                    } else {
-                        editor.toggleSourcePlayback()
-                    }
-                }
-                transportButton("forward.frame.fill") { seekTo(playheadFrame + 1) }
-                transportButton("forward.end.fill") { seekTo(durationFrames) }
-            }
-
-            Spacer()
-
-            Text(formatTimecode(frame: durationFrames, fps: editor.timeline.fps))
-                .monospacedDigit()
-                .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
-        }
-        .padding(.horizontal, AppTheme.Spacing.lg)
-        .frame(height: 32)
-        .overlay(alignment: .top) {
-            Rectangle().fill(AppTheme.Border.primaryColor).frame(height: 0.5)
-        }
     }
 
     private func seekTo(_ frame: Int) {
@@ -218,9 +235,10 @@ struct PreviewContainerView: View {
     private func transportButton(_ systemName: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: AppTheme.FontSize.md))
-                .frame(width: 28, height: 28)
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .frame(width: 24, height: 24)
         }
-        .buttonStyle(ToolbarHoverButtonStyle())
+        .buttonStyle(.plain)
     }
 }

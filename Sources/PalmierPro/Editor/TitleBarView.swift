@@ -14,10 +14,10 @@ struct TitleBarLeadingView: View {
             Button(action: { AppState.shared.showHome() }) {
                 Image(systemName: "house")
                     .font(.system(size: 12))
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
-                    .frame(width: 22, height: 22)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .controlSize(.small)
 
             // Editable project name
             ProjectNameField(
@@ -40,27 +40,29 @@ struct TitleBarTrailingView: View {
         HStack(spacing: AppTheme.Spacing.sm) {
             LayoutPresetMenu()
 
-            // Project settings
-            Button { showSettingsPopover.toggle() } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 12))
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
-                    .frame(width: 22, height: 22)
-            }
-            .buttonStyle(.plain)
-            .popover(isPresented: $showSettingsPopover, arrowEdge: .bottom) {
-                ProjectSettingsPopover()
-            }
+            // Settings + Export on shared glass surface
+            HStack(spacing: AppTheme.Spacing.md) {
+                Button { showSettingsPopover.toggle() } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 12))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showSettingsPopover, arrowEdge: .bottom) {
+                    ProjectSettingsPopover()
+                }
 
-            // Export button
-            Button(action: { editor.showExportDialog = true }) {
-                Label("Export", systemImage: "square.and.arrow.up")
-                    .font(.system(size: 12, weight: .medium))
+                Button(action: { editor.showExportDialog = true }) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 12))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+            .padding(.horizontal, AppTheme.Spacing.md)
+            .padding(.vertical, AppTheme.Spacing.sm)
+            .glassEffect(.regular, in: .capsule)
         }
-        .padding(.trailing, 8)
     }
 }
 
@@ -164,15 +166,12 @@ struct LayoutPresetMenu: View {
                     .font(.system(size: 8, weight: .semibold))
             }
             .foregroundStyle(AppTheme.Text.secondaryColor)
-            .frame(height: 22)
-            .padding(.horizontal, 6)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(Color.white.opacity(0.06))
-            )
         }
-        .buttonStyle(.plain)
         .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .fixedSize()
+        .padding(.horizontal, AppTheme.Spacing.md)
+        .padding(.vertical, AppTheme.Spacing.sm)
+        .glassEffect(.regular, in: .capsule)
     }
 }

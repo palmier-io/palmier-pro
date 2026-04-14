@@ -324,6 +324,13 @@ final class TimelineInputController {
         let point = view.convert(event.locationInWindow, from: nil)
         let scrollOffsetY = view.enclosingScrollView?.contentView.bounds.origin.y ?? 0
 
+        // Ruler area — show pointing hand for scrub affordance
+        if point.y >= scrollOffsetY && point.y < scrollOffsetY + geometry.rulerHeight {
+            NSCursor.pointingHand.set()
+            razorPreviewFrame = nil
+            return
+        }
+
         // Razor tool: show preview line
         if editor.toolMode == .razor && point.y >= scrollOffsetY + geometry.rulerHeight {
             var frame = geometry.frameAt(x: point.x)

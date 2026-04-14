@@ -20,10 +20,17 @@ struct AssetThumbnailView: View {
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
                     .strokeBorder(
-                        isSelected ? Color.accentColor : (isOnTimeline ? Color(nsColor: asset.type.themeColor) : Color.clear),
-                        lineWidth: isSelected ? 2 : (isOnTimeline ? 1.5 : 0)
+                        isSelected ? Color.accentColor : Color.clear,
+                        lineWidth: isSelected ? 2 : 0
                     )
             )
+
+            // Timeline indicator
+            if isOnTimeline {
+                Capsule()
+                    .fill(Color(nsColor: asset.type.themeColor))
+                    .frame(height: 2)
+            }
 
             // Filename
             Text(asset.name)
@@ -74,25 +81,22 @@ struct AssetThumbnailView: View {
     // MARK: - Badges
 
     private var sourceBadge: some View {
-        badge(
-            "AI",
-            background: Color.purple.opacity(0.85),
-            weight: .semibold
-        )
-    }
-
-    private var durationBadge: some View {
-        badge(formatDuration(asset.duration), background: Color.black.opacity(0.6))
-            .monospacedDigit()
-    }
-
-    private func badge(_ text: String, background: Color, weight: Font.Weight = .medium) -> some View {
-        Text(text)
-            .font(.system(size: 9, weight: weight))
+        Text("AI")
+            .font(.system(size: 9, weight: .semibold))
             .foregroundStyle(.white)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
-            .background(Capsule().fill(background))
+            .glassEffect(.clear, in: .capsule)
+    }
+
+    private var durationBadge: some View {
+        Text(formatDuration(asset.duration))
+            .font(.system(size: 9, weight: .medium))
+            .foregroundStyle(.white)
+            .monospacedDigit()
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .glassEffect(.clear, in: .capsule)
     }
 
     private func failedThumbnail(error: String) -> some View {
