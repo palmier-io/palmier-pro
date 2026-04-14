@@ -103,6 +103,12 @@ struct GenerationView: View {
                 typeTabs
                 Spacer()
                 apiKeyButton
+                Button { editor.showGenerationPanel = false } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, AppTheme.Spacing.sm)
 
