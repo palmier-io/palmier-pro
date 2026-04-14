@@ -120,7 +120,7 @@ final class EditorSplitViewController: NSSplitViewController {
         addSplitViewItem(makePreviewItem())
 
         scheduleDividerPositions { size in
-            self.splitView.setPosition(round(size.width * 0.65), ofDividerAt: 0)
+            self.splitView.setPosition(round(size.width * 0.5), ofDividerAt: 0)
             leftSplit.splitView.setPosition(round(size.height * 0.55), ofDividerAt: 0)
             topSplit.splitView.setPosition(Layout.mediaPanelDefault, ofDividerAt: 0)
         }

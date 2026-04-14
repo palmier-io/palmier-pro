@@ -28,8 +28,10 @@ struct PreviewContainerView: View {
                     TransformOverlayView()
                 }
                 .frame(width: fitSize.width, height: fitSize.height)
+                .clipped()
                 .position(x: geo.size.width / 2, y: geo.size.height / 2)
             }
+            .clipped()
             if !isImage {
                 scrubBar
                 transportBar
