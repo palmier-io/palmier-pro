@@ -4,7 +4,7 @@ import AppKit
 final class TimelineHeaderView: NSView {
     unowned var editor: EditorViewModel
 
-    private static let headerBg = AppTheme.Background.panel.cgColor
+    private static let headerBg = AppTheme.Background.timelineHeader.cgColor
     private static let labelAttrs: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: AppTheme.FontSize.sm, weight: .medium),
         .foregroundColor: AppTheme.Text.secondary,

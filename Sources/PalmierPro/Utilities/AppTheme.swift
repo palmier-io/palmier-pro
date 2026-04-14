@@ -13,6 +13,12 @@ enum AppTheme {
         /// Lightest – bars: toolbars, tab bars, headers
         static let bar = NSColor(white: 0.17, alpha: 1)
 
+        // Timeline-specific shades (distinct from the 3-tier hierarchy)
+        static let timelineHeader = NSColor(white: 0.08, alpha: 1)
+        static let timelineBody = NSColor(white: 0.11, alpha: 1)
+        static let trackEven = NSColor(white: 0.13, alpha: 1)
+        static let trackOdd = NSColor(white: 0.10, alpha: 1)
+
         /// Opaque dark for video preview / timeline canvas (color accuracy)
         static var canvasColor: Color { Color(well) }
         static var wellColor: Color { Color(well) }
