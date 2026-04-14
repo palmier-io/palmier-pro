@@ -74,6 +74,7 @@ enum Zoom {
     static let min: Double = 0.5
     static let max: Double = 40.0
     static let scrollSensitivity: Double = 0.1
+    static let fitAllBuffer: Double = 1.3
 }
 
 enum Trim {

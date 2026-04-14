@@ -191,14 +191,14 @@ final class EditorViewModel {
         previewTabs.first { $0.id == activePreviewTabId } ?? .timeline
     }
 
-    /// Minimum zoom scale that fits the entire timeline with ~10% end padding.
+    /// Minimum zoom scale that fits the entire timeline with end padding.
     var minZoomScale: Double {
         let totalFrames = timeline.totalFrames
         guard totalFrames > 0, timelineVisibleWidth > 0 else { return Zoom.min }
         let headerWidth = Double(Layout.trackHeaderWidth)
         let availableWidth = timelineVisibleWidth - headerWidth
         guard availableWidth > 0 else { return Zoom.min }
-        return max(Zoom.min, availableWidth / (Double(totalFrames) * 1.1))
+        return max(Zoom.min, availableWidth / (Double(totalFrames) * Zoom.fitAllBuffer))
     }
 
     var activePreviewDurationFrames: Int {
