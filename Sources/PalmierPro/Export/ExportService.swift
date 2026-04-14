@@ -84,8 +84,6 @@ final class ExportService {
                 return
             }
 
-            session.outputURL = outputURL
-            session.outputFileType = fileType
             session.audioMix = result.audioMix
             session.videoComposition = result.videoComposition
 
@@ -99,24 +97,18 @@ final class ExportService {
                 }
             }
 
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                session.exportAsynchronously {
-                    continuation.resume()
+            do {
+                try await session.export(to: outputURL, as: fileType)
+                progress = 1.0
+            } catch {
+                if (error as NSError).domain == NSCocoaErrorDomain && (error as NSError).code == NSUserCancelledError {
+                    self.error = "Export was cancelled"
+                } else {
+                    self.error = error.localizedDescription
                 }
             }
 
             progressTask.cancel()
-
-            switch session.status {
-            case .completed:
-                progress = 1.0
-            case .failed:
-                self.error = session.error?.localizedDescription ?? "Export failed"
-            case .cancelled:
-                self.error = "Export was cancelled"
-            default:
-                self.error = "Export ended unexpectedly"
-            }
         } catch {
             self.error = error.localizedDescription
         }

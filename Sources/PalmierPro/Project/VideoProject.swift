@@ -163,7 +163,14 @@ final class VideoProject: NSDocument {
                 generator.maximumSize = CGSize(width: 320, height: 180)
                 generator.appliesPreferredTrackTransform = true
                 let time = CMTime(value: CMTimeValue(clip.trimStartFrame), timescale: CMTimeScale(editorViewModel.timeline.fps))
-                if let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) {
+                nonisolated(unsafe) var result: CGImage?
+                let semaphore = DispatchSemaphore(value: 0)
+                generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { _, image, _, _, _ in
+                    result = image
+                    semaphore.signal()
+                }
+                semaphore.wait()
+                if let cgImage = result {
                     let rep = NSBitmapImageRep(cgImage: cgImage)
                     cachedThumbnail = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.7])
                     return cachedThumbnail

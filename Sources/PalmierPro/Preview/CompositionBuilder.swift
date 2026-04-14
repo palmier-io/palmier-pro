@@ -11,7 +11,7 @@ struct TrackMapping: @unchecked Sendable {
 struct CompositionResult {
     let composition: AVMutableComposition
     let audioMix: AVMutableAudioMix
-    let videoComposition: AVMutableVideoComposition
+    let videoComposition: AVVideoComposition
     let trackMappings: [TrackMapping]
 }
 
@@ -117,7 +117,7 @@ enum CompositionBuilder {
         timeline: Timeline,
         trackMappings: [TrackMapping],
         compositionDuration: CMTime
-    ) -> (audioMix: AVMutableAudioMix, videoComposition: AVMutableVideoComposition) {
+    ) -> (audioMix: AVMutableAudioMix, videoComposition: AVVideoComposition) {
         let timescale = CMTimeScale(timeline.fps)
         let renderSize = CGSize(width: timeline.width, height: timeline.height)
 
@@ -135,18 +135,12 @@ enum CompositionBuilder {
             return params
         }
 
-        let videoComposition = AVMutableVideoComposition()
-        videoComposition.renderSize = renderSize
-        videoComposition.frameDuration = CMTime(value: 1, timescale: timescale)
-
-        let instruction = AVMutableVideoCompositionInstruction()
-        instruction.timeRange = CMTimeRange(start: .zero, duration: compositionDuration)
-        instruction.layerInstructions = trackMappings.filter { $0.isVideo }.map { mapping in
-            let li = AVMutableVideoCompositionLayerInstruction(assetTrack: mapping.compositionTrack)
+        let layerInstructions: [AVVideoCompositionLayerInstruction] = trackMappings.filter { $0.isVideo }.map { mapping in
+            var liConfig = AVVideoCompositionLayerInstruction.Configuration(trackID: mapping.compositionTrack.trackID)
             let track = timeline.tracks.indices.contains(mapping.timelineTrackIndex)
                 ? timeline.tracks[mapping.timelineTrackIndex] : nil
 
-            li.setOpacity(0, at: .zero)
+            liConfig.setOpacity(0, at: .zero)
             if let track, !track.hidden {
                 for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) {
                     let start = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
@@ -154,9 +148,9 @@ enum CompositionBuilder {
                     let ct = clip.transform
                     let tl = ct.topLeft
 
-                    li.setOpacity(Float(clip.opacity), at: start)
-                    li.setOpacity(0, at: end)
-                    li.setTransform(
+                    liConfig.setOpacity(Float(clip.opacity), at: start)
+                    liConfig.setOpacity(0, at: end)
+                    liConfig.setTransform(
                         CGAffineTransform(scaleX: (renderSize.width / mapping.naturalSize.width) * ct.width,
                                           y: (renderSize.height / mapping.naturalSize.height) * ct.height)
                             .concatenating(CGAffineTransform(translationX: tl.x * renderSize.width, y: tl.y * renderSize.height)),
@@ -165,12 +159,21 @@ enum CompositionBuilder {
                 }
             }
             if mapping.endTime < compositionDuration {
-                li.setOpacity(0, at: mapping.endTime)
+                liConfig.setOpacity(0, at: mapping.endTime)
             }
-            return li
+            return AVVideoCompositionLayerInstruction(configuration: liConfig)
         }
 
-        videoComposition.instructions = [instruction]
-        return (audioMix, videoComposition)
+        var instrConfig = AVVideoCompositionInstruction.Configuration()
+        instrConfig.timeRange = CMTimeRange(start: .zero, duration: compositionDuration)
+        instrConfig.layerInstructions = layerInstructions
+        let instruction = AVVideoCompositionInstruction(configuration: instrConfig)
+
+        var vcConfig = AVVideoComposition.Configuration()
+        vcConfig.renderSize = renderSize
+        vcConfig.frameDuration = CMTime(value: 1, timescale: timescale)
+        vcConfig.instructions = [instruction]
+
+        return (audioMix, AVVideoComposition(configuration: vcConfig))
     }
 }
