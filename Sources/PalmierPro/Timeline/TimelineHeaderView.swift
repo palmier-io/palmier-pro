@@ -41,7 +41,7 @@ final class TimelineHeaderView: NSView {
         hideButtonRects.removeAll()
         let stripWidth: CGFloat = 3
         let iconSize: CGFloat = 14
-        let iconConfig = NSImage.SymbolConfiguration(pointSize: iconSize, weight: .regular)
+        let iconConfig = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
         let headerWidth = bounds.width
 
         let geo = TimelineGeometry(editor: editor, bounds: bounds)
@@ -87,13 +87,15 @@ final class TimelineHeaderView: NSView {
     private func drawSymbol(_ name: String, in rect: NSRect, tint: NSColor, config: NSImage.SymbolConfiguration, context: CGContext) {
         guard let img = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(config) else { return }
-        let tinted = NSImage(size: rect.size, flipped: true) { drawRect in
+        let symbolSize = img.size
+        let drawRect = NSRect(x: rect.midX - symbolSize.width / 2, y: rect.midY - symbolSize.height / 2, width: symbolSize.width, height: symbolSize.height)
+        let tinted = NSImage(size: drawRect.size, flipped: true) { drawRect in
             tint.set()
             img.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: 1.0)
             drawRect.fill(using: .sourceAtop)
             return true
         }
-        tinted.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1.0)
+        tinted.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: 1.0)
     }
 
     // MARK: - Input handling (mute/hide/resize)
