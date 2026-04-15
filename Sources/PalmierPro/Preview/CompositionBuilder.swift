@@ -13,6 +13,7 @@ struct CompositionResult {
     let audioMix: AVMutableAudioMix
     let videoComposition: AVVideoComposition
     let trackMappings: [TrackMapping]
+    let clipNaturalSizes: [String: CGSize]
 }
 
 /// Builds an AVFoundation composition from a Timeline.
@@ -20,12 +21,14 @@ enum CompositionBuilder {
 
     static func build(
         timeline: Timeline,
-        resolveURL: @Sendable (String) -> URL?
+        resolveURL: @Sendable (String) -> URL?,
+        resolveSourceSize: @Sendable (String) -> CGSize? = { _ in nil }
     ) async throws -> CompositionResult {
         let composition = AVMutableComposition()
         let timescale = CMTimeScale(timeline.fps)
         let renderSize = CGSize(width: timeline.width, height: timeline.height)
         var trackMappings: [TrackMapping] = []
+        var clipNaturalSizes: [String: CGSize] = [:]
 
         for (trackIdx, track) in timeline.tracks.enumerated() {
             let sortedClips = track.clips.sorted { $0.startFrame < $1.startFrame }
@@ -47,8 +50,9 @@ enum CompositionBuilder {
             for clip in sortedClips {
                 guard var mediaURL = resolveURL(clip.mediaRef) else { continue }
                 if clip.mediaType == .image {
+                    let imageSize = resolveSourceSize(clip.mediaRef) ?? ImageVideoGenerator.imageNativeSize(url: mediaURL) ?? renderSize
                     guard let videoURL = try? await ImageVideoGenerator.stillVideo(
-                        for: mediaURL, mediaRef: clip.mediaRef, size: renderSize
+                        for: mediaURL, mediaRef: clip.mediaRef, size: imageSize
                     ) else { continue }
                     mediaURL = videoURL
                 }
@@ -56,6 +60,11 @@ enum CompositionBuilder {
                 guard !Task.isCancelled else { throw CancellationError() }
                 let sourceAsset = AVURLAsset(url: mediaURL)
                 guard let sourceTrack = try await sourceAsset.loadTracks(withMediaType: mediaType).first else { continue }
+
+                if !isAudio, let natSize = try? await sourceTrack.load(.naturalSize),
+                   natSize.width > 0, natSize.height > 0 {
+                    clipNaturalSizes[clip.id] = natSize
+                }
 
                 let clipStart = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
                 let trimStart = CMTime(value: CMTimeValue(clip.trimStartFrame), timescale: timescale)
@@ -101,6 +110,7 @@ enum CompositionBuilder {
         let (audioMix, videoComposition) = buildVisuals(
             timeline: timeline,
             trackMappings: trackMappings,
+            clipNaturalSizes: clipNaturalSizes,
             compositionDuration: composition.duration
         )
 
@@ -108,7 +118,8 @@ enum CompositionBuilder {
             composition: composition,
             audioMix: audioMix,
             videoComposition: videoComposition,
-            trackMappings: trackMappings
+            trackMappings: trackMappings,
+            clipNaturalSizes: clipNaturalSizes
         )
     }
 
@@ -116,6 +127,7 @@ enum CompositionBuilder {
     static func buildVisuals(
         timeline: Timeline,
         trackMappings: [TrackMapping],
+        clipNaturalSizes: [String: CGSize] = [:],
         compositionDuration: CMTime
     ) -> (audioMix: AVMutableAudioMix, videoComposition: AVVideoComposition) {
         let timescale = CMTimeScale(timeline.fps)
@@ -147,12 +159,13 @@ enum CompositionBuilder {
                     let end = CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale)
                     let ct = clip.transform
                     let tl = ct.topLeft
+                    let natSize = clipNaturalSizes[clip.id] ?? mapping.naturalSize
 
                     liConfig.setOpacity(Float(clip.opacity), at: start)
                     liConfig.setOpacity(0, at: end)
                     liConfig.setTransform(
-                        CGAffineTransform(scaleX: (renderSize.width / mapping.naturalSize.width) * ct.width,
-                                          y: (renderSize.height / mapping.naturalSize.height) * ct.height)
+                        CGAffineTransform(scaleX: (renderSize.width / natSize.width) * ct.width,
+                                          y: (renderSize.height / natSize.height) * ct.height)
                             .concatenating(CGAffineTransform(translationX: tl.x * renderSize.width, y: tl.y * renderSize.height)),
                         at: start
                     )

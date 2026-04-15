@@ -34,31 +34,17 @@ struct TitleBarLeadingView: View {
 
 struct TitleBarTrailingView: View {
     @Environment(EditorViewModel.self) var editor
-    @State private var showSettingsPopover = false
 
     var body: some View {
         HStack(spacing: AppTheme.Spacing.sm) {
             LayoutPresetMenu()
 
-            // Settings + Export on shared glass surface
-            HStack(spacing: AppTheme.Spacing.md) {
-                Button { showSettingsPopover.toggle() } label: {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 12))
-                        .foregroundStyle(AppTheme.Text.secondaryColor)
-                }
-                .buttonStyle(.plain)
-                .popover(isPresented: $showSettingsPopover, arrowEdge: .bottom) {
-                    ProjectSettingsPopover()
-                }
-
-                Button(action: { editor.showExportDialog = true }) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 12))
-                        .foregroundStyle(AppTheme.Text.secondaryColor)
-                }
-                .buttonStyle(.plain)
+            Button(action: { editor.showExportDialog = true }) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 12))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
             }
+            .buttonStyle(.plain)
             .padding(.horizontal, AppTheme.Spacing.md)
             .padding(.vertical, AppTheme.Spacing.sm)
             .glassEffect(.regular, in: .capsule)

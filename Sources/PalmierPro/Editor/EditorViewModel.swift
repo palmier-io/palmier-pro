@@ -16,6 +16,7 @@ final class EditorViewModel {
     var selectedClipIds: Set<String> = []
     var selectedMediaAssetIds: Set<String> = []
     var zoomScale: Double = Defaults.pixelsPerFrame
+    var canvasZoom: CGFloat = 1.0
     var timelineVisibleWidth: Double = 0
     var isScrubbing: Bool = false
     var toolMode: ToolMode = .pointer
@@ -873,6 +874,16 @@ final class EditorViewModel {
             scaleH = 1.0
         }
         return Transform(topLeft: (0, 0), width: scaleW, height: scaleH)
+    }
+
+    /// Media source aspect ratio relative to canvas for a clip.
+    /// Returns nil if source dimensions are unknown.
+    func mediaCanvasAspect(for clip: Clip) -> Double? {
+        guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }),
+              let sw = asset.sourceWidth, let sh = asset.sourceHeight,
+              sw > 0, sh > 0 else { return nil }
+        let canvasAspect = Double(timeline.width) / Double(timeline.height)
+        return (Double(sw) / Double(sh)) / canvasAspect
     }
 
     private func removeClipInternal(id: String) {

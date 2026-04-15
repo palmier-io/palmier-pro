@@ -20,6 +20,8 @@ struct PreviewContainerView: View {
             GeometryReader { geo in
                 let aspect = CGFloat(editor.timeline.width) / CGFloat(editor.timeline.height)
                 let fitSize = fitSize(in: geo.size, aspect: aspect)
+                let scaledWidth = fitSize.width * editor.canvasZoom
+                let scaledHeight = fitSize.height * editor.canvasZoom
                 ZStack {
                     PreviewView()
                     if isImage {
@@ -27,8 +29,11 @@ struct PreviewContainerView: View {
                     }
                     TransformOverlayView()
                 }
-                .frame(width: fitSize.width, height: fitSize.height)
-                .clipped()
+                .frame(width: scaledWidth, height: scaledHeight)
+                .overlay(
+                    Rectangle()
+                        .stroke(Color.white.opacity(editor.canvasZoom < 1.0 ? 0.25 : 0), lineWidth: 1)
+                )
                 .position(x: geo.size.width / 2, y: geo.size.height / 2)
             }
             .clipped()
@@ -44,10 +49,16 @@ struct PreviewContainerView: View {
 
     private var transportBar: some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            Text(formatTimecode(frame: playheadFrame, fps: editor.timeline.fps))
-                .monospacedDigit()
-                .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
-                .foregroundStyle(AppTheme.Accent.timecodeColor)
+            HStack(spacing: 0) {
+                Text(formatTimecode(frame: playheadFrame, fps: editor.timeline.fps))
+                    .foregroundStyle(AppTheme.Accent.timecodeColor)
+                Text(" / ")
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                Text(formatTimecode(frame: durationFrames, fps: editor.timeline.fps))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+            }
+            .monospacedDigit()
+            .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
 
             Spacer()
 
@@ -70,13 +81,132 @@ struct PreviewContainerView: View {
 
             Spacer()
 
-            Text(formatTimecode(frame: durationFrames, fps: editor.timeline.fps))
-                .monospacedDigit()
-                .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
+            projectSettingsGroup
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .frame(height: 36)
+    }
+
+    // MARK: - Project settings
+
+    @State private var showZoomPopover = false
+
+    private var projectSettingsGroup: some View {
+        HStack(spacing: AppTheme.Spacing.md) {
+            settingsMenuButton(label: aspectBadgeLabel) {
+                ForEach(AspectPreset.allCases, id: \.self) { preset in
+                    Button {
+                        editor.applyTimelineSettings(fps: editor.timeline.fps, width: preset.width, height: preset.height)
+                    } label: {
+                        HStack {
+                            Text(preset.label)
+                            Spacer()
+                            if editor.timeline.width == preset.width && editor.timeline.height == preset.height {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+
+            settingsMenuButton(label: "\(editor.timeline.fps)") {
+                ForEach([24, 25, 30, 50, 60], id: \.self) { fps in
+                    Button {
+                        editor.applyTimelineSettings(fps: fps, width: editor.timeline.width, height: editor.timeline.height)
+                    } label: {
+                        HStack {
+                            Text("\(fps) fps")
+                            Spacer()
+                            if editor.timeline.fps == fps {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+
+            settingsMenuButton(label: qualityBadgeLabel) {
+                ForEach(QualityPreset.allCases, id: \.self) { preset in
+                    Button {
+                        let (w, h) = preset.resolution(currentWidth: editor.timeline.width, currentHeight: editor.timeline.height)
+                        editor.applyTimelineSettings(fps: editor.timeline.fps, width: w, height: h)
+                    } label: {
+                        HStack {
+                            Text(preset.label)
+                            Spacer()
+                            if preset.matches(width: editor.timeline.width, height: editor.timeline.height) {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+
+            Button {
+                showZoomPopover.toggle()
+            } label: {
+                badgeIcon("magnifyingglass")
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showZoomPopover, arrowEdge: .bottom) {
+                HStack(spacing: AppTheme.Spacing.sm) {
+                    Text("25%")
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    @Bindable var ed = editor
+                    Slider(value: $ed.canvasZoom, in: 0.25...2.0)
+                        .controlSize(.mini)
+                        .frame(width: 100)
+                    Text("200%")
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
+                .padding(AppTheme.Spacing.md)
+            }
+        }
+    }
+
+    private var aspectBadgeLabel: String {
+        let w = editor.timeline.width
+        let h = editor.timeline.height
+        let g = gcd(w, h)
+        return "\(w / g):\(h / g)"
+    }
+
+    private var qualityBadgeLabel: String {
+        let h = min(editor.timeline.width, editor.timeline.height)
+        if h <= 720 { return "HD" }
+        if h <= 1080 { return "FHD" }
+        if h <= 1440 { return "2K" }
+        return "4K"
+    }
+
+    private func settingsMenuButton<MenuContent: View>(
+        label: String,
+        @ViewBuilder menu: @escaping () -> MenuContent
+    ) -> some View {
+        Menu {
+            menu()
+        } label: {
+            badgeLabel(label)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+    }
+
+    private func badgeLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .bold, design: .rounded))
+            .foregroundStyle(AppTheme.Text.secondaryColor)
+            .frame(height: 24)
+    }
+
+    private func badgeIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: AppTheme.FontSize.sm))
+            .foregroundStyle(AppTheme.Text.secondaryColor)
+            .frame(width: 24, height: 24)
     }
 
     // MARK: - Image preview
@@ -242,5 +372,79 @@ struct PreviewContainerView: View {
                 .frame(width: 24, height: 24)
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Settings Presets
+
+private enum AspectPreset: CaseIterable {
+    case sixteenNine, nineByFourteen, nineSixteen, oneOne, fourThree, twoPointFourOne
+
+    var label: String {
+        switch self {
+        case .sixteenNine: "16:9"
+        case .nineByFourteen: "9:14"
+        case .nineSixteen: "9:16"
+        case .oneOne: "1:1"
+        case .fourThree: "4:3"
+        case .twoPointFourOne: "2.4:1"
+        }
+    }
+
+    var width: Int {
+        switch self {
+        case .sixteenNine: 1920
+        case .nineByFourteen: 1080
+        case .nineSixteen: 1080
+        case .oneOne: 1080
+        case .fourThree: 1440
+        case .twoPointFourOne: 2560
+        }
+    }
+
+    var height: Int {
+        switch self {
+        case .sixteenNine: 1080
+        case .nineByFourteen: 1680
+        case .nineSixteen: 1920
+        case .oneOne: 1080
+        case .fourThree: 1080
+        case .twoPointFourOne: 1080
+        }
+    }
+}
+
+private enum QualityPreset: CaseIterable {
+    case hd720, fullHD, twoK, fourK
+
+    var label: String {
+        switch self {
+        case .hd720: "720p"
+        case .fullHD: "1080p"
+        case .twoK: "2K"
+        case .fourK: "4K"
+        }
+    }
+
+    /// Scale resolution while preserving the current aspect ratio.
+    func resolution(currentWidth: Int, currentHeight: Int) -> (width: Int, height: Int) {
+        let target = shortEdge
+        if currentWidth <= currentHeight {
+            return (target, Int(Double(target) * Double(currentHeight) / Double(currentWidth)))
+        }
+        return (Int(Double(target) * Double(currentWidth) / Double(currentHeight)), target)
+    }
+
+    func matches(width: Int, height: Int) -> Bool {
+        min(width, height) == shortEdge
+    }
+
+    private var shortEdge: Int {
+        switch self {
+        case .hd720: 720
+        case .fullHD: 1080
+        case .twoK: 1440
+        case .fourK: 2160
+        }
     }
 }

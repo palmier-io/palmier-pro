@@ -8,6 +8,7 @@ final class VideoEngine {
     private var timeObserver: Any?
     private var rebuildTask: Task<Void, Never>?
     private var trackMappings: [TrackMapping] = []
+    private var clipNaturalSizes: [String: CGSize] = [:]
     private var compositionDuration: CMTime = .zero
 
     weak var editor: EditorViewModel?
@@ -79,10 +80,17 @@ final class VideoEngine {
         guard let editor, editor.activePreviewTab == .timeline else { return }
         rebuildTask?.cancel()
         let resolver = editor.mediaResolver
+        let assetSizes: [String: CGSize] = Dictionary(
+            uniqueKeysWithValues: editor.mediaAssets.compactMap { asset in
+                guard let w = asset.sourceWidth, let h = asset.sourceHeight, w > 0, h > 0 else { return nil }
+                return (asset.id, CGSize(width: w, height: h))
+            }
+        )
         rebuildTask = Task {
             guard let result = try? await CompositionBuilder.build(
                 timeline: editor.timeline,
-                resolveURL: { resolver.resolveURL(for: $0) }
+                resolveURL: { resolver.resolveURL(for: $0) },
+                resolveSourceSize: { assetSizes[$0] }
             ) else {
                 rebuildTask = nil
                 return
@@ -91,6 +99,7 @@ final class VideoEngine {
             guard !Task.isCancelled else { return }
 
             trackMappings = result.trackMappings
+            clipNaturalSizes = result.clipNaturalSizes
             compositionDuration = result.composition.duration
 
             let item = AVPlayerItem(asset: result.composition)
@@ -114,6 +123,7 @@ final class VideoEngine {
         let (audioMix, videoComposition) = CompositionBuilder.buildVisuals(
             timeline: editor.timeline,
             trackMappings: trackMappings,
+            clipNaturalSizes: clipNaturalSizes,
             compositionDuration: compositionDuration
         )
         currentItem.audioMix = audioMix

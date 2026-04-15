@@ -88,13 +88,38 @@ struct Transform: Codable, Sendable, Equatable {
         self.y = tl.y - h / 2.0 + 0.5
     }
 
-    /// Clamp so all edges stay within [0, 1] canvas bounds.
-    mutating func clampToBounds() {
+    /// Snap a value to canvas boundaries (0 or 1) within threshold.
+    static func snapToBoundary(_ value: Double, threshold: Double) -> Double {
+        if abs(value) < threshold { return 0 }
+        if abs(value - 1) < threshold { return 1 }
+        return value
+    }
+
+    /// Snap clip edges and center to canvas boundaries (0, 0.5, 1).
+    mutating func snapToCanvasEdges(threshold: Double) {
         let tl = topLeft
-        if tl.x < 0 { x -= tl.x }
-        if tl.y < 0 { y -= tl.y }
-        let br = topLeft
-        if br.x + width > 1 { x -= (br.x + width - 1) }
-        if br.y + height > 1 { y -= (br.y + height - 1) }
+
+        // Horizontal: snap left edge to 0, right edge to 1, or center to 0.5
+        let snappedLeft = Self.snapToBoundary(tl.x, threshold: threshold)
+        let snappedRight = Self.snapToBoundary(tl.x + width, threshold: threshold)
+        if snappedLeft != tl.x {
+            x -= (tl.x - snappedLeft)
+        } else if snappedRight != tl.x + width {
+            x -= (tl.x + width - snappedRight)
+        } else if abs(x) < threshold {
+            x = 0
+        }
+
+        // Vertical: snap top edge to 0, bottom edge to 1, or center to 0.5
+        let tl2 = topLeft
+        let snappedTop = Self.snapToBoundary(tl2.y, threshold: threshold)
+        let snappedBottom = Self.snapToBoundary(tl2.y + height, threshold: threshold)
+        if snappedTop != tl2.y {
+            y -= (tl2.y - snappedTop)
+        } else if snappedBottom != tl2.y + height {
+            y -= (tl2.y + height - snappedBottom)
+        } else if abs(y) < threshold {
+            y = 0
+        }
     }
 }

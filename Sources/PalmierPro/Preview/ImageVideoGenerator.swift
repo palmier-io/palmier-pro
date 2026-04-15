@@ -39,6 +39,15 @@ enum ImageVideoGenerator {
         return outputURL
     }
 
+    static func imageNativeSize(url: URL) -> CGSize? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let w = props[kCGImagePropertyPixelWidth] as? Int,
+              let h = props[kCGImagePropertyPixelHeight] as? Int,
+              w > 0, h > 0 else { return nil }
+        return CGSize(width: w, height: h)
+    }
+
     // MARK: - Private
 
     private static func createPixelBuffer(from image: NSImage, size: CGSize) throws -> CVPixelBuffer {
@@ -70,7 +79,7 @@ enum ImageVideoGenerator {
             throw ImageVideoError.pixelBufferCreationFailed
         }
 
-        // Fill black background, then draw image scaled to fit (letterbox)
+        // Fill black background, then draw image to fill the buffer at native size
         context.setFillColor(.black)
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
 
@@ -78,19 +87,7 @@ enum ImageVideoGenerator {
             throw ImageVideoError.imageLoadFailed
         }
 
-        let imgAspect = CGFloat(cgImage.width) / CGFloat(cgImage.height)
-        let canvasAspect = size.width / size.height
-        let drawRect: CGRect
-        if imgAspect > canvasAspect {
-            // Image wider than canvas — fit to width
-            let drawHeight = size.width / imgAspect
-            drawRect = CGRect(x: 0, y: (size.height - drawHeight) / 2, width: size.width, height: drawHeight)
-        } else {
-            // Image taller than canvas — fit to height
-            let drawWidth = size.height * imgAspect
-            drawRect = CGRect(x: (size.width - drawWidth) / 2, y: 0, width: drawWidth, height: size.height)
-        }
-        context.draw(cgImage, in: drawRect)
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
 
         return buffer
     }

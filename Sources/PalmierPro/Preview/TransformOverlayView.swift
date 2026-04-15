@@ -62,7 +62,7 @@ struct TransformOverlayView: View {
         var t = start
         t.x += translation.width / videoRect.width
         t.y += translation.height / videoRect.height
-        t.clampToBounds()
+        t.snapToCanvasEdges(threshold: Snap.thresholdPixels / Double(videoRect.width))
         return t
     }
 
@@ -71,18 +71,18 @@ struct TransformOverlayView: View {
             .onChanged { value in
                 if resizeStart == nil { resizeStart = clip.transform }
                 guard let start = resizeStart else { return }
-                let resized = resizedTransform(start, corner: corner, by: value.translation, in: videoRect)
+                let resized = resizedTransform(start, corner: corner, by: value.translation, in: videoRect, mediaCanvasAspect: mediaCanvasAspect)
                 editor.applyClipProperty(clipId: clip.id) { $0.transform = resized }
             }
             .onEnded { value in
                 guard let start = resizeStart else { return }
-                let resized = resizedTransform(start, corner: corner, by: value.translation, in: videoRect)
+                let resized = resizedTransform(start, corner: corner, by: value.translation, in: videoRect, mediaCanvasAspect: mediaCanvasAspect)
                 resizeStart = nil
                 editor.commitClipProperty(clipId: clip.id) { $0.transform = resized }
             }
     }
 
-    private func resizedTransform(_ start: Transform, corner: Corner, by translation: CGSize, in videoRect: CGRect) -> Transform {
+    private func resizedTransform(_ start: Transform, corner: Corner, by translation: CGSize, in videoRect: CGRect, mediaCanvasAspect: Double?) -> Transform {
         let dx = translation.width / videoRect.width
         let dy = translation.height / videoRect.height
         let tl = start.topLeft
@@ -96,11 +96,50 @@ struct TransformOverlayView: View {
         case .bottomRight: right += dx; bottom += dy
         }
 
-        left = max(0, left); top = max(0, top)
-        right = min(1, right); bottom = min(1, bottom)
+        // Constrain to media aspect ratio if available
+        if let aspect = mediaCanvasAspect {
+            let w = right - left
+            let h = bottom - top
+            let widthFromHeight = h * aspect
+
+            if abs(w) >= abs(widthFromHeight) {
+                let adjustedH = w / aspect
+                switch corner {
+                case .topLeft, .topRight: top = bottom - adjustedH
+                case .bottomLeft, .bottomRight: bottom = top + adjustedH
+                }
+            } else {
+                let adjustedW = h * aspect
+                switch corner {
+                case .topLeft, .bottomLeft: left = right - adjustedW
+                case .topRight, .bottomRight: right = left + adjustedW
+                }
+            }
+        }
+
+        // Snap dragged edges to canvas boundaries, then re-apply aspect ratio
+        let snapH = Snap.thresholdPixels / Double(videoRect.width)
+        let snapV = Snap.thresholdPixels / Double(videoRect.height)
+        let movesLeft = corner == .topLeft || corner == .bottomLeft
+        let movesTop = corner == .topLeft || corner == .topRight
+
+        let snappedH = Transform.snapToBoundary(movesLeft ? left : right, threshold: snapH)
+        let snappedV = Transform.snapToBoundary(movesTop ? top : bottom, threshold: snapV)
+
+        if snappedH != (movesLeft ? left : right) {
+            if movesLeft { left = snappedH } else { right = snappedH }
+            if let aspect = mediaCanvasAspect {
+                if movesTop { top = bottom - (right - left) / aspect } else { bottom = top + (right - left) / aspect }
+            }
+        } else if snappedV != (movesTop ? top : bottom) {
+            if movesTop { top = snappedV } else { bottom = snappedV }
+            if let aspect = mediaCanvasAspect {
+                if movesLeft { left = right - (bottom - top) * aspect } else { right = left + (bottom - top) * aspect }
+            }
+        }
 
         return Transform(
-            topLeft: (max(0, left), max(0, top)),
+            topLeft: (left, top),
             width: max(0.05, right - left),
             height: max(0.05, bottom - top)
         )
@@ -137,6 +176,11 @@ struct TransformOverlayView: View {
         case .bottomLeft:  CGPoint(x: rect.minX, y: rect.maxY)
         case .bottomRight: CGPoint(x: rect.maxX, y: rect.maxY)
         }
+    }
+
+    private var mediaCanvasAspect: Double? {
+        guard let clip = selectedClip else { return nil }
+        return editor.mediaCanvasAspect(for: clip)
     }
 
     // MARK: - Selection

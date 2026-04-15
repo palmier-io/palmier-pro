@@ -99,3 +99,7 @@ enum Project {
         return url
     }()
 }
+
+func gcd(_ a: Int, _ b: Int) -> Int {
+    b == 0 ? a : gcd(b, a % b)
+}

@@ -83,10 +83,6 @@ struct InspectorView: View {
         return "\(width / gcd):\(height / gcd)"
     }
 
-    private func gcd(_ a: Int, _ b: Int) -> Int {
-        b == 0 ? a : gcd(b, a % b)
-    }
-
     // MARK: - Clip Inspector
 
     @ViewBuilder
@@ -104,20 +100,10 @@ struct InspectorView: View {
                     valueSuffix: "%",
                     format: "%.0f",
                     onChanged: { newVal in
-                        editor.applyClipProperty(clipId: clip.id) {
-                            let old = $0.transform.topLeft
-                            let cx = old.x + $0.transform.width / 2.0
-                            let cy = old.y + $0.transform.height / 2.0
-                            $0.transform = Transform(topLeft: (cx - newVal / 2.0, cy - newVal / 2.0), width: newVal, height: newVal)
-                        }
+                        editor.applyClipProperty(clipId: clip.id) { $0.transform = scaledTransform(for: clip, newScale: newVal) }
                     }
                 ) { newVal in
-                    editor.commitClipProperty(clipId: clip.id) {
-                        let old = $0.transform.topLeft
-                        let cx = old.x + $0.transform.width / 2.0
-                        let cy = old.y + $0.transform.height / 2.0
-                        $0.transform = Transform(topLeft: (cx - newVal / 2.0, cy - newVal / 2.0), width: newVal, height: newVal)
-                    }
+                    editor.commitClipProperty(clipId: clip.id) { $0.transform = scaledTransform(for: clip, newScale: newVal) }
                 }
 
                 InspectorSlider(
@@ -221,11 +207,7 @@ struct InspectorView: View {
                 }
                 InspectorNumberField(label: "Scale", value: clip.transform.width * 100) { newScale in
                     editor.commitClipProperty(clipId: clip.id) {
-                        let s = max(newScale, 1) / 100.0
-                        let old = $0.transform.topLeft
-                        let cx = old.x + $0.transform.width / 2.0
-                        let cy = old.y + $0.transform.height / 2.0
-                        $0.transform = Transform(topLeft: (cx - s / 2.0, cy - s / 2.0), width: s, height: s)
+                        $0.transform = scaledTransform(for: clip, newScale: max(newScale, 1) / 100.0)
                     }
                 }
             }
@@ -366,6 +348,16 @@ struct InspectorView: View {
               let w = props[kCGImagePropertyPixelWidth] as? Int,
               let h = props[kCGImagePropertyPixelHeight] as? Int else { return nil }
         return (w, h)
+    }
+
+    private func scaledTransform(for clip: Clip, newScale: Double) -> Transform {
+        let old = clip.transform.topLeft
+        let cx = old.x + clip.transform.width / 2.0
+        let cy = old.y + clip.transform.height / 2.0
+        let aspect = editor.mediaCanvasAspect(for: clip) ?? 1.0
+        let w = newScale
+        let h = newScale / aspect
+        return Transform(topLeft: (cx - w / 2.0, cy - h / 2.0), width: w, height: h)
     }
 
     private func formatDuration(_ seconds: Double) -> String {
