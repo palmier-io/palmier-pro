@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 enum ExportMode: String, CaseIterable, Identifiable {
@@ -21,29 +22,60 @@ struct ExportView: View {
     @State private var mode: ExportMode = .video
     @State private var codec: VideoCodec = .h264
     @State private var resolution: ExportResolution = .r1080p
+    @State private var preview: NSImage?
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            VStack(spacing: AppTheme.Spacing.md) {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 48, height: 48)
-                    .glassEffect(.regular.tint(Color.accentColor.opacity(0.1)), in: .circle)
-
-                VStack(spacing: 2) {
-                    Text("Export")
-                        .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
-                        .foregroundStyle(AppTheme.Text.primaryColor)
-
-                    Text("\(editor.timeline.width)×\(editor.timeline.height) · \(editor.timeline.fps)fps")
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
-                }
+            // Main content: preview + settings
+            HStack(alignment: .top, spacing: 0) {
+                previewPanel
+                settingsPanel
             }
-            .padding(.top, AppTheme.Spacing.xl)
-            .padding(.bottom, AppTheme.Spacing.lg)
+
+            Divider().opacity(0.3)
+
+            // Bottom bar
+            bottomBar
+        }
+        .frame(width: 580, height: 340)
+        .presentationBackground {
+            Color(white: 0.08, opacity: 0.85)
+                .background(.ultraThinMaterial)
+        }
+        .task { loadPreview() }
+    }
+
+    // MARK: - Preview (left)
+
+    private var previewPanel: some View {
+        ZStack {
+            Color(white: 0.05)
+
+            if let preview {
+                Image(nsImage: preview)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                Image(systemName: "film")
+                    .font(.system(size: 32, weight: .light))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+            }
+        }
+        .frame(width: 240)
+        .frame(maxHeight: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
+        .padding(AppTheme.Spacing.xl)
+    }
+
+    // MARK: - Settings (right)
+
+    private var settingsPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Title
+            Text("Export")
+                .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+                .padding(.bottom, AppTheme.Spacing.lg)
 
             // Format picker
             Picker("", selection: $mode) {
@@ -52,54 +84,52 @@ struct ExportView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .padding(.horizontal, AppTheme.Spacing.xl)
             .padding(.bottom, AppTheme.Spacing.lg)
 
-            // Settings
-            VStack(spacing: AppTheme.Spacing.md) {
+            // Settings rows
+            VStack(spacing: 0) {
                 switch mode {
                 case .video:
-                    settingCard {
-                        settingRow(icon: "film", label: "Codec") {
-                            Picker("", selection: $codec) {
-                                ForEach(VideoCodec.allCases) { c in
-                                    Text(c.rawValue).tag(c)
-                                }
+                    settingRow(label: "Codec") {
+                        Picker("", selection: $codec) {
+                            ForEach(VideoCodec.allCases) { c in
+                                Text(c.rawValue).tag(c)
                             }
-                            .labelsHidden()
-                            .frame(width: 140)
                         }
+                        .labelsHidden()
                     }
 
-                    settingCard {
-                        settingRow(icon: "rectangle.split.3x3", label: "Resolution") {
-                            Picker("", selection: $resolution) {
-                                ForEach(ExportResolution.allCases) { p in
-                                    Text(p.rawValue).tag(p)
-                                }
+                    Divider().opacity(0.2)
+
+                    settingRow(label: "Resolution") {
+                        Picker("", selection: $resolution) {
+                            ForEach(ExportResolution.allCases) { p in
+                                Text(p.rawValue).tag(p)
                             }
-                            .labelsHidden()
-                            .frame(width: 140)
                         }
+                        .labelsHidden()
+                    }
+
+                    Divider().opacity(0.2)
+
+                    settingRow(label: "Frame Rate") {
+                        Text("\(editor.timeline.fps) fps")
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
                     }
 
                 case .xml:
-                    settingCard {
-                        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                            Text("Exports your timeline as XML for use in other editors.")
-                                .font(.system(size: AppTheme.FontSize.sm))
-                                .foregroundStyle(AppTheme.Text.secondaryColor)
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                        Text("Exports your timeline as XML for use in other editors.")
+                            .font(.system(size: AppTheme.FontSize.sm))
+                            .foregroundStyle(AppTheme.Text.secondaryColor)
 
-                            Text("Works with DaVinci Resolve, Premiere Pro, and Final Cut Pro.")
-                                .font(.system(size: AppTheme.FontSize.xs))
-                                .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        }
+                        Text("Works with DaVinci Resolve, Premiere Pro, and Final Cut Pro.")
+                            .font(.system(size: AppTheme.FontSize.xs))
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
                     }
+                    .padding(.vertical, AppTheme.Spacing.md)
                 }
             }
-            .padding(.horizontal, AppTheme.Spacing.xl)
-
-            Spacer().frame(height: AppTheme.Spacing.lg)
 
             // Progress
             if service.isExporting {
@@ -111,19 +141,28 @@ struct ExportView: View {
                         .monospacedDigit()
                         .foregroundStyle(AppTheme.Text.secondaryColor)
                 }
-                .padding(.horizontal, AppTheme.Spacing.xl)
+                .padding(.top, AppTheme.Spacing.md)
             }
 
             if let error = service.error {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(.red)
-                    .padding(.horizontal, AppTheme.Spacing.xl)
+                    .padding(.top, AppTheme.Spacing.sm)
             }
 
-            // Summary
+            Spacer()
+        }
+        .padding(.top, AppTheme.Spacing.xl)
+        .padding(.trailing, AppTheme.Spacing.xl)
+    }
+
+    // MARK: - Bottom bar
+
+    private var bottomBar: some View {
+        HStack {
+            let duration = formatTimecode(frame: editor.timeline.totalFrames, fps: editor.timeline.fps)
             HStack(spacing: AppTheme.Spacing.lg) {
-                let duration = formatTimecode(frame: editor.timeline.totalFrames, fps: editor.timeline.fps)
                 HStack(spacing: AppTheme.Spacing.xs) {
                     Image(systemName: "clock")
                     Text(duration)
@@ -134,52 +173,36 @@ struct ExportView: View {
                         Text("~\(estimatedFileSize)")
                     }
                 }
-                Spacer()
+                Text("\(editor.timeline.width)×\(editor.timeline.height)")
             }
             .font(.system(size: AppTheme.FontSize.xs))
             .foregroundStyle(AppTheme.Text.mutedColor)
-            .padding(.horizontal, AppTheme.Spacing.xl)
-            .padding(.bottom, AppTheme.Spacing.lg)
 
-            // Actions
-            HStack {
-                Spacer()
-                Button("Cancel") { editor.showExportDialog = false }
-                    .keyboardShortcut(.cancelAction)
-                Button("Export") { startExport() }
-                    .buttonStyle(.glassProminent)
-                    .buttonBorderShape(.capsule)
-                    .disabled(service.isExporting)
-                    .keyboardShortcut(.defaultAction)
-            }
-            .padding(.horizontal, AppTheme.Spacing.xl)
-            .padding(.bottom, AppTheme.Spacing.xl)
+            Spacer()
+
+            Button("Cancel") { editor.showExportDialog = false }
+                .keyboardShortcut(.cancelAction)
+            Button("Export") { startExport() }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.capsule)
+                .disabled(service.isExporting)
+                .keyboardShortcut(.defaultAction)
         }
-        .frame(width: 380)
+        .padding(.horizontal, AppTheme.Spacing.xl)
+        .padding(.vertical, AppTheme.Spacing.lg)
     }
 
-    private func settingCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .padding(AppTheme.Spacing.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(Color.white.opacity(0.04))
-            )
-    }
+    // MARK: - Helpers
 
-    private func settingRow<Control: View>(icon: String, label: String, @ViewBuilder control: () -> Control) -> some View {
+    private func settingRow<Control: View>(label: String, @ViewBuilder control: () -> Control) -> some View {
         HStack {
-            Image(systemName: icon)
-                .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: 16)
             Text(label)
                 .font(.system(size: AppTheme.FontSize.md))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
             Spacer()
             control()
         }
+        .padding(.vertical, AppTheme.Spacing.sm)
     }
 
     private var estimatedFileSize: String {
@@ -200,6 +223,26 @@ struct ExportView: View {
             case .h264: .h264
             case .h265: .h265
             case .prores: .prores
+            }
+        }
+    }
+
+    private func loadPreview() {
+        for track in editor.timeline.tracks where track.type == .video {
+            for clip in track.clips {
+                guard let url = editor.mediaResolver.resolveURL(for: clip.mediaRef) else { continue }
+                let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+                generator.maximumSize = CGSize(width: 480, height: 270)
+                generator.appliesPreferredTrackTransform = true
+                let time = CMTime(value: CMTimeValue(clip.trimStartFrame), timescale: CMTimeScale(editor.timeline.fps))
+                generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { _, image, _, _, _ in
+                    if let image {
+                        Task { @MainActor in
+                            preview = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+                        }
+                    }
+                }
+                return
             }
         }
     }
