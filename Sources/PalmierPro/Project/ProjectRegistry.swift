@@ -46,6 +46,12 @@ final class ProjectRegistry {
         save()
     }
 
+    /// Moves the project file to Trash and removes it from the registry.
+    func delete(_ url: URL) throws {
+        try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+        remove(url)
+    }
+
     func updateURL(from oldURL: URL, to newURL: URL) {
         let resolvedOld = oldURL.standardizedFileURL
         if let index = entries.firstIndex(where: { $0.url.standardizedFileURL == resolvedOld }) {
