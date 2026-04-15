@@ -7,78 +7,82 @@ struct ProjectCard: View {
 
     @State private var isHovered = false
     @State private var thumbnail: NSImage?
+    @State private var showDeleteConfirmation = false
+
+    private let cardRadius: CGFloat = 12
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ZStack {
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(white: 0.15), Color(white: 0.10)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-
-                if let thumbnail {
-                    Image(nsImage: thumbnail)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } else {
-                    Image(systemName: "film")
-                        .font(.system(size: 28))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
-                }
-
-                if !entry.isAccessible {
-                    Color.black.opacity(0.6)
-
-                    VStack(spacing: 4) {
-                        Image(systemName: "questionmark.folder")
-                            .font(.system(size: 22))
-                        Text("Not Found")
-                            .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+        ZStack(alignment: .bottomLeading) {
+            // Thumbnail
+            Color(white: 0.10)
+                .aspectRatio(5.0/4.0, contentMode: .fit)
+                .overlay {
+                    if let thumbnail {
+                        Image(nsImage: thumbnail)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } else {
+                        Image(systemName: "film")
+                            .font(.system(size: 28, weight: .light))
+                            .foregroundStyle(AppTheme.Text.mutedColor)
                     }
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
                 }
-            }
-            .frame(height: 120)
-            .clipped()
-            .onTapGesture {
-                if entry.isAccessible { onOpen(entry.url) }
-            }
+                .overlay {
+                    if !entry.isAccessible {
+                        Color.black.opacity(0.6)
 
-            VStack(alignment: .leading, spacing: 3) {
+                        VStack(spacing: 4) {
+                            Image(systemName: "questionmark.folder")
+                                .font(.system(size: 22))
+                            Text("Not Found")
+                                .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                        }
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    }
+                }
+                .clipped()
+                .onTapGesture {
+                    if entry.isAccessible { onOpen(entry.url) }
+                }
+
+            // Bottom gradient + label overlay
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black.opacity(0.7), location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 60)
+            .allowsHitTesting(false)
+
+            VStack(alignment: .leading, spacing: 2) {
                 Text(entry.name)
                     .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
-                    .foregroundStyle(entry.isAccessible ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
+                    .foregroundStyle(entry.isAccessible ? .white : AppTheme.Text.mutedColor)
                     .lineLimit(1)
-
-                Text(entry.url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
-                    .font(.system(size: AppTheme.FontSize.xs))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
 
                 Text(Self.relativeString(for: entry.createdDate))
                     .font(.system(size: AppTheme.FontSize.xs))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .foregroundStyle(.white.opacity(0.4))
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .padding(.bottom, 8)
         }
-        .background(Color(white: isHovered ? 0.16 : 0.12))
         .opacity(entry.isAccessible ? 1.0 : 0.6)
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.md))
+        .clipShape(RoundedRectangle(cornerRadius: cardRadius, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+            RoundedRectangle(cornerRadius: cardRadius, style: .continuous)
                 .strokeBorder(
-                    isHovered ? Color.white.opacity(0.15) : AppTheme.Border.subtleColor,
-                    lineWidth: 1
+                    Color.white.opacity(isHovered ? 0.15 : 0.06),
+                    lineWidth: 0.5
                 )
         )
-        .scaleEffect(isHovered ? 1.02 : 1.0)
-        .animation(.easeOut(duration: AppTheme.Anim.hover), value: isHovered)
+        .shadow(color: .black.opacity(isHovered ? 0.4 : 0.2), radius: isHovered ? 12 : 4, y: isHovered ? 4 : 2)
+        .scaleEffect(isHovered ? 1.03 : 1.0)
+        .padding(4)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
         .onHover { isHovered = $0 }
         .contextMenu {
             if entry.isAccessible {
@@ -89,6 +93,15 @@ struct ProjectCard: View {
                 Divider()
             }
             Button("Remove from Recents") { onRemove(entry.url) }
+            Button("Delete Project", role: .destructive) { showDeleteConfirmation = true }
+        }
+        .alert("Delete \"\(entry.name)\"?", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                try? ProjectRegistry.shared.delete(entry.url)
+            }
+        } message: {
+            Text("The project will be moved to the Trash.")
         }
         .task { loadThumbnail() }
     }
