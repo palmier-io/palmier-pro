@@ -2,7 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     private let columns = [
-        GridItem(.adaptive(minimum: 200, maximum: 240), spacing: 20)
+        GridItem(.adaptive(minimum: 180, maximum: 220), spacing: 28)
     ]
 
     var body: some View {
@@ -11,7 +11,7 @@ struct HomeView: View {
             projectGrid
         }
         .frame(minWidth: 700, minHeight: 460)
-        .background(Color(white: 0.08))
+        .background(.ultraThinMaterial)
         .focusEffectDisabled()
     }
 
@@ -57,7 +57,7 @@ struct HomeView: View {
                 emptyState
             } else {
                 ScrollView {
-                    LazyVGrid(columns: columns, spacing: 16) {
+                    LazyVGrid(columns: columns, spacing: 24) {
                         ForEach(ProjectRegistry.shared.sortedEntries) { entry in
                             ProjectCard(
                                 entry: entry,
@@ -106,6 +106,8 @@ final class HomeWindowController: NSWindowController {
         window.title = "Palmier Pro"
         window.setFrameAutosaveName("PalmierProHome")
         window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = NSColor(white: 0.08, alpha: 0.4)
+        window.isOpaque = false
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
