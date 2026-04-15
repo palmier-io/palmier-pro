@@ -13,11 +13,11 @@ struct TitleBarLeadingView: View {
             // Home button
             Button(action: { AppState.shared.showHome() }) {
                 Image(systemName: "house")
-                    .font(.system(size: 12))
+                    .font(.system(size: 11))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .frame(width: 26, height: 26)
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.circle)
-            .controlSize(.small)
+            .buttonStyle(.plain)
 
             // Editable project name
             ProjectNameField(
@@ -41,13 +41,11 @@ struct TitleBarTrailingView: View {
 
             Button(action: { editor.showExportDialog = true }) {
                 Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 12))
+                    .font(.system(size: 11))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .frame(width: 26, height: 26)
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, AppTheme.Spacing.md)
-            .padding(.vertical, AppTheme.Spacing.sm)
-            .glassEffect(.regular, in: .capsule)
         }
     }
 }
@@ -145,19 +143,13 @@ struct LayoutPresetMenu: View {
                 .disabled(editor.layoutPreset == preset)
             }
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: editor.layoutPreset.icon)
-                    .font(.system(size: 12))
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
-            }
-            .foregroundStyle(AppTheme.Text.secondaryColor)
+            Image(systemName: editor.layoutPreset.icon)
+                .font(.system(size: 11))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .frame(width: 26, height: 26)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .padding(.horizontal, AppTheme.Spacing.md)
-        .padding(.vertical, AppTheme.Spacing.sm)
-        .glassEffect(.regular, in: .capsule)
     }
 }
