@@ -132,15 +132,22 @@ final class TimelineInputController {
                 playheadFrame: editor.currentFrame,
                 excludeClipIds: allDraggedIds
             )
+
+            let clipDuration = editor.timeline.tracks
+                .flatMap(\.clips)
+                .first(where: { $0.id == drag.clipId })?
+                .durationFrames ?? 0
+
             if let snap = SnapEngine.findSnap(
                 position: candidateFrame,
+                probeOffsets: [0, clipDuration],
                 targets: targets,
                 state: &snapState,
                 baseThreshold: Snap.thresholdPixels,
                 pixelsPerFrame: geometry.pixelsPerFrame
             ) {
                 snapIndicatorX = snap.x
-                drag.deltaFrames = snap.frame - drag.originalFrame
+                drag.deltaFrames = (snap.frame - snap.probeOffset) - drag.originalFrame
             } else {
                 snapIndicatorX = nil
                 drag.deltaFrames = candidateFrame - drag.originalFrame

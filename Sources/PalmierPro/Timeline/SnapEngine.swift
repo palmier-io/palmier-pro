@@ -12,12 +12,14 @@ enum SnapEngine {
 
     struct SnapResult {
         let frame: Int
-        let x: Double // pixel position for drawing the snap indicator
+        let probeOffset: Int // which probe snapped (0=start, duration=end)
+        let x: Double // snap indicator pixel position
     }
 
     /// Mutable state that persists across drag events for sticky snap behavior.
     struct SnapState {
         var currentlySnappedTo: Int?
+        var currentProbeOffset: Int = 0 // which probe is sticky
     }
 
     // MARK: - Target collection
@@ -41,13 +43,11 @@ enum SnapEngine {
 
     // MARK: - Snap finding
 
-    /// Enhanced snap with sticky behavior and playhead priority.
-    ///
-    /// 1. If currently snapped to a target, require 2.5x threshold to break free (sticky).
-    /// 2. Playhead gets 1.5x threshold (easier to snap to).
-    /// 3. Closest target within its respective threshold wins.
+    /// Snap position(s) to nearest target, with sticky behavior and playhead priority.
+    /// Tests one or more probe positions (e.g., clip start and end) against all targets.
     static func findSnap(
         position: Int,
+        probeOffsets: [Int] = [0],
         targets: [SnapTarget],
         state: inout SnapState,
         baseThreshold: Double,
@@ -55,36 +55,38 @@ enum SnapEngine {
     ) -> SnapResult? {
         let baseFrameThreshold = baseThreshold / pixelsPerFrame
 
-        // Sticky: if already snapped, hold until moved far enough
+        // Sticky: stay snapped until moved 2.5x threshold away
         if let snapped = state.currentlySnappedTo {
             let holdThreshold = baseFrameThreshold * Snap.stickyMultiplier
-            if abs(Double(position - snapped)) <= holdThreshold {
-                // Check target still exists
-                if targets.contains(where: { $0.frame == snapped }) {
-                    return SnapResult(frame: snapped, x: Double(snapped) * pixelsPerFrame)
-                }
+            let probePos = position + state.currentProbeOffset
+            if abs(Double(probePos - snapped)) <= holdThreshold,
+               targets.contains(where: { $0.frame == snapped }) {
+                return SnapResult(frame: snapped, probeOffset: state.currentProbeOffset, x: Double(snapped) * pixelsPerFrame)
             }
-            // Broke free
             state.currentlySnappedTo = nil
+            state.currentProbeOffset = 0
         }
 
-        // Find closest target with type-specific thresholds
-        var best: (target: SnapTarget, distance: Double)?
-        for target in targets {
-            let threshold: Double = switch target.kind {
-            case .playhead: baseFrameThreshold * Snap.playheadMultiplier
-            case .clipEdge: baseFrameThreshold
-            }
-
-            let dist = abs(Double(position - target.frame))
-            if dist <= threshold, dist < (best?.distance ?? .infinity) {
-                best = (target, dist)
+        // Find closest (probe, target) pair
+        var best: (probeOffset: Int, target: SnapTarget, distance: Double)?
+        for probeOffset in probeOffsets {
+            let probePos = position + probeOffset
+            for target in targets {
+                let threshold: Double = switch target.kind {
+                case .playhead: baseFrameThreshold * Snap.playheadMultiplier
+                case .clipEdge: baseFrameThreshold
+                }
+                let dist = abs(Double(probePos - target.frame))
+                if dist <= threshold, dist < (best?.distance ?? .infinity) {
+                    best = (probeOffset, target, dist)
+                }
             }
         }
 
         guard let best else { return nil }
         state.currentlySnappedTo = best.target.frame
-        return SnapResult(frame: best.target.frame, x: Double(best.target.frame) * pixelsPerFrame)
+        state.currentProbeOffset = best.probeOffset
+        return SnapResult(frame: best.target.frame, probeOffset: best.probeOffset, x: Double(best.target.frame) * pixelsPerFrame)
     }
 
 }
