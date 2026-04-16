@@ -4,6 +4,7 @@ struct GenerationView: View {
     @Environment(EditorViewModel.self) var editor
     @State private var service = GenerationService()
     @State private var prompt = ""
+    @State private var assetName = ""
     @State private var selectedType: GenerationType = .video
     @State private var selectedVideoModelIndex = 0
     @State private var selectedImageModelIndex = 0
@@ -121,6 +122,12 @@ struct GenerationView: View {
                     .padding(.horizontal, AppTheme.Spacing.md)
             }
 
+            // Name field
+            nameField
+                .frame(width: 160, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, AppTheme.Spacing.sm)
+
             // Unified input box
             VStack(spacing: 0) {
                 promptArea
@@ -166,6 +173,25 @@ struct GenerationView: View {
                 clearReferences()
             }
         }
+    }
+
+    // MARK: - Name field
+
+    private var nameField: some View {
+        TextField("Name (Optional)", text: $assetName)
+            .font(.system(size: AppTheme.FontSize.xs))
+            .textFieldStyle(.plain)
+            .foregroundStyle(AppTheme.Text.secondaryColor)
+            .padding(.horizontal, AppTheme.Spacing.sm)
+            .padding(.vertical, AppTheme.Spacing.xs + 1)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                    .fill(Color.white.opacity(0.03))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+            )
     }
 
     // MARK: - Prompt area (inside input box)
@@ -560,6 +586,9 @@ struct GenerationView: View {
                 : (imageModel.resolutions != nil ? selectedResolution : nil)
         )
 
+        let trimmedName = assetName.trimmingCharacters(in: .whitespaces)
+        let name: String? = trimmedName.isEmpty ? nil : trimmedName
+
         switch selectedType {
         case .video:
             let model = videoModel
@@ -571,6 +600,7 @@ struct GenerationView: View {
                 assetType: .video,
                 placeholderDuration: Double(selectedDuration),
                 references: frameRefs,
+                name: name,
                 buildInput: { uploaded in
                     let params = VideoGenerationParams(
                         prompt: genInput.prompt,
@@ -595,6 +625,7 @@ struct GenerationView: View {
                 assetType: .image,
                 placeholderDuration: Defaults.imageDurationSeconds,
                 references: imageReferences,
+                name: name,
                 buildInput: { uploaded in
                     let input = model.buildInput(
                         prompt: genInput.prompt, aspectRatio: genInput.aspectRatio,
@@ -610,6 +641,7 @@ struct GenerationView: View {
             return
         }
         prompt = ""
+        assetName = ""
         clearReferences()
     }
 

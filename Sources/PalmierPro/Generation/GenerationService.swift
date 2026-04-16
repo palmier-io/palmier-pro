@@ -25,25 +25,28 @@ final class GenerationService {
 
     // MARK: - Generation
 
+    @discardableResult
     func generate(
         genInput: GenerationInput,
         assetType: ClipType,
         placeholderDuration: Double,
         references: [MediaAsset] = [],
+        name: String? = nil,
         buildInput: @escaping ([String]) -> (endpoint: String, input: Payload),
         responseKeyPath: @escaping @Sendable (Payload) -> String?,
         fileExtension: String,
         projectURL: URL?,
         editor: EditorViewModel
-    ) {
+    ) -> String {
         let placeholder = createPlaceholder(
             type: assetType,
-            name: String(genInput.prompt.prefix(30)),
+            name: name ?? String(genInput.prompt.prefix(30)),
             duration: placeholderDuration,
             genInput: genInput,
             editor: editor
         )
 
+        let placeholderId = placeholder.id
         let refURLs = references.map(\.url)
 
         Task { @MainActor in
@@ -71,6 +74,8 @@ final class GenerationService {
                 placeholder.generationStatus = .failed("Upload failed: \(error.localizedDescription)")
             }
         }
+
+        return placeholderId
     }
 
     // MARK: - Image upload
@@ -178,7 +183,7 @@ final class GenerationService {
                         id: placeholderId,
                         url: destURL,
                         type: assetType,
-                        name: genInput.prompt.prefix(30).isEmpty ? "Generated" : String(genInput.prompt.prefix(30)),
+                        name: placeholder.name,
                         duration: placeholder.duration,
                         generationInput: genInput
                     )

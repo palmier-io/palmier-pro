@@ -3,6 +3,8 @@ import SwiftUI
 struct AssetThumbnailView: View {
     let asset: MediaAsset
     @Environment(EditorViewModel.self) var editor
+    @FocusState private var isRenaming: Bool
+    @State private var renameDraft = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
@@ -33,16 +35,29 @@ struct AssetThumbnailView: View {
             }
 
             // Filename
-            Text(asset.name)
-                .font(.system(size: AppTheme.FontSize.xs))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .foregroundStyle(isSelected ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
+            if isRenaming {
+                TextField("Name", text: $renameDraft, onCommit: commitRename)
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .textFieldStyle(.plain)
+                    .lineLimit(1)
+                    .focused($isRenaming)
+                    .onExitCommand { isRenaming = false }
+            } else {
+                Text(asset.name)
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(isSelected ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
+                    .onTapGesture(count: 2) { beginRename() }
+            }
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
         .onTapGesture(count: 1) {
             handleTap()
+        }
+        .onChange(of: isRenaming) { _, focused in
+            if !focused { commitRename() }
         }
     }
 
@@ -132,6 +147,19 @@ struct AssetThumbnailView: View {
         editor.timeline.tracks.contains { track in
             track.clips.contains { $0.mediaRef == asset.id }
         }
+    }
+
+    private func beginRename() {
+        renameDraft = asset.name
+        isRenaming = true
+    }
+
+    private func commitRename() {
+        let trimmed = renameDraft.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty && trimmed != asset.name {
+            editor.renameMediaAsset(id: asset.id, name: trimmed)
+        }
+        isRenaming = false
     }
 
     private func handleTap() {

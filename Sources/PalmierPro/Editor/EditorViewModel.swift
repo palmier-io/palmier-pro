@@ -193,6 +193,19 @@ final class EditorViewModel {
         mediaManifest.entries.append(entry)
     }
 
+    func renameMediaAsset(id: String, name: String) {
+        guard let asset = mediaAssets.first(where: { $0.id == id }) else { return }
+        let oldName = asset.name
+        asset.name = name
+        if let idx = mediaManifest.entries.firstIndex(where: { $0.id == id }) {
+            mediaManifest.entries[idx].name = name
+        }
+        undoManager?.registerUndo(withTarget: self) { vm in
+            vm.renameMediaAsset(id: id, name: oldName)
+        }
+        undoManager?.setActionName("Rename Asset")
+    }
+
     func updateManifestMetadata(for asset: MediaAsset) {
         if let idx = mediaManifest.entries.firstIndex(where: { $0.id == asset.id }) {
             mediaManifest.entries[idx].duration = asset.duration

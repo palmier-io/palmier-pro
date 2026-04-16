@@ -7,7 +7,7 @@ final class MediaAsset: Identifiable {
     let id: String
     let url: URL
     let type: ClipType
-    let name: String
+    var name: String
     var duration: Double
     var thumbnail: NSImage?
     var sourceWidth: Int?
