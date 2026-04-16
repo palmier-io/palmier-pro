@@ -4,7 +4,7 @@ import AppKit
 final class TimelineHeaderView: NSView {
     unowned var editor: EditorViewModel
 
-    private static let headerBg = AppTheme.Background.timelineHeader.cgColor
+    private static let headerBg = AppTheme.Background.surface.cgColor
     private static let labelAttrs: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: AppTheme.FontSize.sm, weight: .medium),
         .foregroundColor: AppTheme.Text.secondary,
@@ -32,6 +32,10 @@ final class TimelineHeaderView: NSView {
         // Background
         ctx.setFillColor(Self.headerBg)
         ctx.fill(bounds)
+
+        let rulerBottom = bounds.origin.y + Layout.rulerHeight - 0.5
+        ctx.setFillColor(AppTheme.Border.primary.cgColor)
+        ctx.fill(NSRect(x: 0, y: rulerBottom, width: bounds.width, height: 1))
 
         // Clip drawing below the ruler so headers don't overlap it when scrolled
         let clipTop = bounds.origin.y + Layout.rulerHeight
@@ -77,9 +81,13 @@ final class TimelineHeaderView: NSView {
             drawSymbol(hideIcon, in: hideRect, tint: hideTint, config: iconConfig, context: ctx)
             hideButtonRects[i] = hideRect.insetBy(dx: -4, dy: -4)
 
-            // Resize handle at bottom
+            // White border at top of first track and bottom of every track
+            if i == 0 {
+                ctx.setFillColor(AppTheme.Border.primary.cgColor)
+                ctx.fill(NSRect(x: 0, y: y, width: headerWidth, height: 1))
+            }
             let handleY = y + h - 1
-            ctx.setFillColor(AppTheme.Border.subtle.cgColor)
+            ctx.setFillColor(AppTheme.Border.primary.cgColor)
             ctx.fill(NSRect(x: 0, y: handleY, width: headerWidth, height: 1))
         }
     }

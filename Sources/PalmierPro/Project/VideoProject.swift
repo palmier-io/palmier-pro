@@ -139,7 +139,7 @@ final class VideoProject: NSDocument {
         window.appearance = NSAppearance(named: .darkAqua)
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
-        window.backgroundColor = NSColor(AppTheme.Background.panelColor)
+        window.backgroundColor = NSColor(AppTheme.Background.surfaceColor)
         window.center()
 
         window.addTitlebarSwiftUI(TitleBarLeadingView().environment(editorViewModel), side: .leading, width: 240)

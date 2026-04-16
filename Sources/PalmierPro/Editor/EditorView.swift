@@ -176,7 +176,7 @@ final class EditorSplitViewController: NSSplitViewController {
             rootView: content
                 .environment(editor)
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                .background(AppTheme.Background.panelColor)
+                .background(AppTheme.Background.surfaceColor)
                 .overlay {
                     PanelFocusRing(editor: editor, panel: panel)
                         .allowsHitTesting(false)

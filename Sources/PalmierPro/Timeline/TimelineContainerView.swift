@@ -28,6 +28,14 @@ struct TimelineContainerView: NSViewRepresentable {
         scrollView.autoresizingMask = [.width, .height]
         container.addSubview(scrollView)
 
+        // Vertical border between header and timeline
+        let border = NSView()
+        border.wantsLayer = true
+        border.layer?.backgroundColor = AppTheme.Border.primary.cgColor
+        border.frame = NSRect(x: Layout.trackHeaderWidth - 1, y: 0, width: 1, height: 0)
+        border.autoresizingMask = [.height]
+        container.addSubview(border)
+
         context.coordinator.headerView = headerView
         context.coordinator.timelineView = timelineView
         context.coordinator.scrollView = scrollView

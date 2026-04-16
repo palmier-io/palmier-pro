@@ -10,11 +10,11 @@ enum TimelineRuler {
         context: CGContext
     ) {
         // Background
-        context.setFillColor(AppTheme.Background.timelineHeader.cgColor)
+        context.setFillColor(AppTheme.Background.surface.cgColor)
         context.fill(rect)
 
         // Bottom separator
-        context.setStrokeColor(AppTheme.Border.subtle.cgColor)
+        context.setStrokeColor(AppTheme.Border.primary.cgColor)
         context.setLineWidth(1)
         context.move(to: CGPoint(x: rect.minX, y: rect.maxY - 0.5))
         context.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - 0.5))

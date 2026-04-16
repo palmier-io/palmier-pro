@@ -15,7 +15,7 @@ final class TimelineView: NSView {
         editor.mediaVisualCache.timelineView = self
         wantsLayer = true
         layerContentsRedrawPolicy = .onSetNeedsDisplay
-        layer?.backgroundColor = AppTheme.Background.timelineBody.cgColor
+        layer?.backgroundColor = AppTheme.Background.surface.cgColor
         registerForDraggedTypes([.string, .fileURL])
     }
 
@@ -25,8 +25,8 @@ final class TimelineView: NSView {
     override var isFlipped: Bool { true }
 
     // Cached for draw performance — avoid per-frame allocations
-    private static let trackBgEven = AppTheme.Background.trackEven.cgColor
-    private static let trackBgOdd = AppTheme.Background.trackOdd.cgColor
+    private static let trackBgEven = AppTheme.Background.surface.cgColor
+    private static let trackBgOdd = AppTheme.Background.surface.cgColor
 
     /// Drop target during external drags (media panel), used for drawing the insertion indicator.
     var externalDropTarget: TrackDropTarget?
@@ -342,11 +342,20 @@ final class TimelineView: NSView {
     // MARK: - Track drawing
 
     private func drawTrackBackgrounds(geometry geo: TimelineGeometry, context: CGContext) {
+        let borderColor = AppTheme.Border.primary.cgColor
         for i in editor.timeline.tracks.indices {
             let y = geo.trackY(at: i)
             let h = geo.trackHeight(at: i)
-            context.setFillColor(i % 2 == 0 ? Self.trackBgEven : Self.trackBgOdd)
+            context.setFillColor(Self.trackBgEven)
             context.fill(NSRect(x: 0, y: y, width: bounds.width, height: h))
+
+            // White border at top of first track and bottom of every track
+            if i == 0 {
+                context.setFillColor(borderColor)
+                context.fill(NSRect(x: 0, y: y, width: bounds.width, height: 1))
+            }
+            context.setFillColor(borderColor)
+            context.fill(NSRect(x: 0, y: y + h - 1, width: bounds.width, height: 1))
         }
     }
 

@@ -3,34 +3,23 @@ import SwiftUI
 
 enum AppTheme {
 
-    // MARK: - Backgrounds (3-tier depth hierarchy)
+    // MARK: - Backgrounds
 
     enum Background {
-        /// Darkest – content wells: preview area, timeline body
-        static let well = NSColor(white: 0.10, alpha: 1)
-        /// Mid – panel bodies: media panel, inspector
-        static let panel = NSColor(white: 0.11, alpha: 1)
-        /// Lightest – bars: toolbars, tab bars, headers
-        static let bar = NSColor(white: 0.17, alpha: 1)
+        /// Base – content areas, panels, timeline body, wells
+        static let surface = NSColor(white: 0.07, alpha: 1)
+        /// Raised – toolbars, tab bars, headers
+        static let elevated = NSColor(white: 0.13, alpha: 1)
 
-        // Timeline-specific shades (distinct from the 3-tier hierarchy)
-        static let timelineHeader = NSColor(white: 0.08, alpha: 1)
-        static let timelineBody = NSColor(white: 0.11, alpha: 1)
-        static let trackEven = NSColor(white: 0.13, alpha: 1)
-        static let trackOdd = NSColor(white: 0.10, alpha: 1)
-
-        /// Opaque dark for video preview / timeline canvas (color accuracy)
-        static var canvasColor: Color { Color(well) }
-        static var wellColor: Color { Color(well) }
-        static var panelColor: Color { Color(panel) }
-        static var barColor: Color { Color(bar) }
+        static var surfaceColor: Color { Color(surface) }
+        static var elevatedColor: Color { Color(elevated) }
     }
 
     // MARK: - Borders
 
     enum Border {
-        static let primary = NSColor.white.withAlphaComponent(0.08)
-        static let subtle = NSColor.white.withAlphaComponent(0.05)
+        static let primary = NSColor.white.withAlphaComponent(0.12)
+        static let subtle = NSColor.white.withAlphaComponent(0.08)
 
         static var primaryColor: Color { Color(primary) }
         static var subtleColor: Color { Color(subtle) }
@@ -52,9 +41,9 @@ enum AppTheme {
     // MARK: - Text
 
     enum Text {
-        static let primary = NSColor.white.withAlphaComponent(0.92)
-        static let secondary = NSColor.white.withAlphaComponent(0.60)
-        static let tertiary = NSColor.white.withAlphaComponent(0.40)
+        static let primary = NSColor.white.withAlphaComponent(0.96)
+        static let secondary = NSColor.white.withAlphaComponent(0.70)
+        static let tertiary = NSColor.white.withAlphaComponent(0.50)
         static let muted = NSColor.white.withAlphaComponent(0.25)
 
         static var primaryColor: Color { Color(primary) }
@@ -74,8 +63,8 @@ enum AppTheme {
     // MARK: - Clip fills
 
     enum ClipFill {
-        static let base = NSColor(red: 0.12, green: 0.12, blue: 0.14, alpha: 1)
-        static let selected = NSColor(red: 0.18, green: 0.18, blue: 0.22, alpha: 1)
+        static let base = NSColor(red: 0.09, green: 0.09, blue: 0.11, alpha: 1)
+        static let selected = NSColor(red: 0.15, green: 0.15, blue: 0.19, alpha: 1)
     }
 
     // MARK: - Corner radii

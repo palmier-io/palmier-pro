@@ -42,7 +42,7 @@ struct PreviewContainerView: View {
                 transportBar
             }
         }
-        .background(AppTheme.Background.canvasColor)
+        .background(AppTheme.Background.surfaceColor)
     }
 
     // MARK: - Transport bar

@@ -149,7 +149,7 @@ struct MediaPanelView: View {
     }
 
     private var mediaGridView: some View {
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             LazyVGrid(columns: columns, spacing: AppTheme.Spacing.xl) {
                 ForEach(filteredAndSortedAssets) { asset in
                     assetCell(for: asset)
