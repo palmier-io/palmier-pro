@@ -71,6 +71,20 @@ struct ProjectCard: View {
             .padding(.bottom, 8)
         }
         .opacity(entry.isAccessible ? 1.0 : 0.6)
+        .overlay(alignment: .topTrailing) {
+            if isHovered {
+                Button { showDeleteConfirmation = true } label: {
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.red)
+                        .frame(width: 28, height: 28)
+                        .glassEffect(.regular, in: .circle)
+                }
+                .buttonStyle(.plain)
+                .padding(8)
+                .transition(.opacity.combined(with: .scale))
+            }
+        }
         .clipShape(RoundedRectangle(cornerRadius: cardRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: cardRadius, style: .continuous)
