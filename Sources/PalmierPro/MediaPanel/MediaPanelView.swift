@@ -28,15 +28,14 @@ struct MediaPanelView: View {
 
                 // Floating toolbar
                 HStack(spacing: AppTheme.Spacing.xs) {
-                    GlassEffectContainer {
+                    ViewThatFits(in: .horizontal) {
                         HStack(spacing: AppTheme.Spacing.xs) {
-                            toolbarButton(title: "Import", systemImage: "plus", action: importMedia)
-
-                            toolbarButton(title: "Generate", systemImage: "sparkles") {
-                                withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
-                                    editor.showGenerationPanel.toggle()
-                                }
-                            }
+                            toolbarButton(title: "Import", systemImage: "plus", compact: false, action: importMedia)
+                            toolbarButton(title: "Generate", systemImage: "sparkles", compact: false, action: toggleGenerationPanel)
+                        }
+                        HStack(spacing: AppTheme.Spacing.xs) {
+                            toolbarButton(title: "Import", systemImage: "plus", compact: true, action: importMedia)
+                            toolbarButton(title: "Generate", systemImage: "sparkles", compact: true, action: toggleGenerationPanel)
                         }
                     }
 
@@ -194,14 +193,27 @@ struct MediaPanelView: View {
         }
     }
 
-    private func toolbarButton(title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+    private func toolbarButton(title: String, systemImage: String, compact: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+            Group {
+                if compact {
+                    Image(systemName: systemImage)
+                } else {
+                    Label(title, systemImage: systemImage)
+                }
+            }
+            .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+            .foregroundStyle(AppTheme.Text.secondaryColor)
+            .help(title)
         }
-        .buttonStyle(.glass)
-        .controlSize(.mini)
+        .buttonStyle(.plain)
         .focusable(false)
+    }
+
+    private func toggleGenerationPanel() {
+        withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
+            editor.showGenerationPanel.toggle()
+        }
     }
 
     private func toolbarMenuIcon<Content: View>(

@@ -2,7 +2,6 @@ import SwiftUI
 
 struct PreviewContainerView: View {
     @Environment(EditorViewModel.self) var editor
-    @Namespace private var tabNamespace
 
     private var isTimeline: Bool { editor.activePreviewTab == .timeline }
     private var isImage: Bool { editor.activePreviewTab.clipType == .image }
@@ -90,68 +89,91 @@ struct PreviewContainerView: View {
     // MARK: - Project settings
 
     private var projectSettingsGroup: some View {
-        HStack(spacing: AppTheme.Spacing.md) {
-            settingsMenuButton(label: aspectBadgeLabel) {
-                ForEach(AspectPreset.allCases, id: \.self) { preset in
-                    Button {
-                        editor.applyTimelineSettings(fps: editor.timeline.fps, width: preset.width, height: preset.height)
-                    } label: {
-                        HStack {
-                            Text(preset.label)
-                            Spacer()
-                            if editor.timeline.width == preset.width && editor.timeline.height == preset.height {
-                                Image(systemName: "checkmark")
-                            }
-                        }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: AppTheme.Spacing.md) {
+                settingsMenuButton(label: aspectBadgeLabel) { aspectMenuItems }
+                settingsMenuButton(label: "\(editor.timeline.fps)") { fpsMenuItems }
+                settingsMenuButton(label: qualityBadgeLabel) { qualityMenuItems }
+                settingsMenuButton(label: zoomBadgeLabel) { zoomMenuItems }
+            }
+
+            Menu {
+                Menu("Aspect Ratio") { aspectMenuItems }
+                Menu("Frame Rate") { fpsMenuItems }
+                Menu("Quality") { qualityMenuItems }
+                Menu("Zoom") { zoomMenuItems }
+            } label: {
+                badgeIcon("slider.horizontal.3")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        }
+    }
+
+    @ViewBuilder
+    private var aspectMenuItems: some View {
+        ForEach(AspectPreset.allCases, id: \.self) { preset in
+            Button {
+                editor.applyTimelineSettings(fps: editor.timeline.fps, width: preset.width, height: preset.height)
+            } label: {
+                HStack {
+                    Text(preset.label)
+                    Spacer()
+                    if editor.timeline.width == preset.width && editor.timeline.height == preset.height {
+                        Image(systemName: "checkmark")
                     }
                 }
             }
+        }
+    }
 
-            settingsMenuButton(label: "\(editor.timeline.fps)") {
-                ForEach([24, 25, 30, 50, 60], id: \.self) { fps in
-                    Button {
-                        editor.applyTimelineSettings(fps: fps, width: editor.timeline.width, height: editor.timeline.height)
-                    } label: {
-                        HStack {
-                            Text("\(fps) fps")
-                            Spacer()
-                            if editor.timeline.fps == fps {
-                                Image(systemName: "checkmark")
-                            }
-                        }
+    @ViewBuilder
+    private var fpsMenuItems: some View {
+        ForEach([24, 25, 30, 50, 60], id: \.self) { fps in
+            Button {
+                editor.applyTimelineSettings(fps: fps, width: editor.timeline.width, height: editor.timeline.height)
+            } label: {
+                HStack {
+                    Text("\(fps) fps")
+                    Spacer()
+                    if editor.timeline.fps == fps {
+                        Image(systemName: "checkmark")
                     }
                 }
             }
+        }
+    }
 
-            settingsMenuButton(label: qualityBadgeLabel) {
-                ForEach(QualityPreset.allCases, id: \.self) { preset in
-                    Button {
-                        let (w, h) = preset.resolution(currentWidth: editor.timeline.width, currentHeight: editor.timeline.height)
-                        editor.applyTimelineSettings(fps: editor.timeline.fps, width: w, height: h)
-                    } label: {
-                        HStack {
-                            Text(preset.label)
-                            Spacer()
-                            if preset.matches(width: editor.timeline.width, height: editor.timeline.height) {
-                                Image(systemName: "checkmark")
-                            }
-                        }
+    @ViewBuilder
+    private var qualityMenuItems: some View {
+        ForEach(QualityPreset.allCases, id: \.self) { preset in
+            Button {
+                let (w, h) = preset.resolution(currentWidth: editor.timeline.width, currentHeight: editor.timeline.height)
+                editor.applyTimelineSettings(fps: editor.timeline.fps, width: w, height: h)
+            } label: {
+                HStack {
+                    Text(preset.label)
+                    Spacer()
+                    if preset.matches(width: editor.timeline.width, height: editor.timeline.height) {
+                        Image(systemName: "checkmark")
                     }
                 }
             }
+        }
+    }
 
-            settingsMenuButton(label: zoomBadgeLabel) {
-                ForEach(ZoomPreset.allCases, id: \.self) { preset in
-                    Button {
-                        editor.canvasZoom = preset.value
-                    } label: {
-                        HStack {
-                            Text(preset.label)
-                            Spacer()
-                            if isZoomPresetActive(preset) {
-                                Image(systemName: "checkmark")
-                            }
-                        }
+    @ViewBuilder
+    private var zoomMenuItems: some View {
+        ForEach(ZoomPreset.allCases, id: \.self) { preset in
+            Button {
+                editor.canvasZoom = preset.value
+            } label: {
+                HStack {
+                    Text(preset.label)
+                    Spacer()
+                    if isZoomPresetActive(preset) {
+                        Image(systemName: "checkmark")
                     }
                 }
             }
@@ -244,37 +266,27 @@ struct PreviewContainerView: View {
 
     private var tabBar: some View {
         HStack(spacing: 0) {
-            ForEach(editor.previewTabs) { tab in
-                tabButton(for: tab)
+            if let activeTab = editor.previewTabs.first(where: { $0.id == editor.activePreviewTabId }) {
+                activeTabLabel(for: activeTab)
             }
             Spacer()
         }
     }
 
-    private func tabButton(for tab: PreviewTab) -> some View {
-        let isActive = editor.activePreviewTabId == tab.id
+    private func activeTabLabel(for tab: PreviewTab) -> some View {
+        HStack(spacing: 4) {
+            Text(tab.displayName)
+                .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
+                .lineLimit(1)
 
-        return Button {
-            withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
-                editor.selectPreviewTab(id: tab.id)
+            if tab.isCloseable {
+                closeButton(tabId: tab.id)
             }
-        } label: {
-            HStack(spacing: 4) {
-                Text(tab.displayName)
-                    .font(.system(size: AppTheme.FontSize.xs, weight: isActive ? .semibold : .regular))
-                    .lineLimit(1)
-
-                if tab.isCloseable {
-                    closeButton(tabId: tab.id)
-                }
-            }
-            .padding(.horizontal, AppTheme.Spacing.md)
-            .padding(.vertical, AppTheme.Spacing.xs)
-            .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
-            .glassEffect(isActive ? .regular.tint(tab.tintColor) : .identity, in: .capsule)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, AppTheme.Spacing.md)
+        .padding(.vertical, AppTheme.Spacing.xs)
+        .foregroundStyle(AppTheme.Text.primaryColor)
+        .glassEffect(.regular.tint(tab.tintColor), in: .capsule)
     }
 
     private func closeButton(tabId: String) -> some View {
