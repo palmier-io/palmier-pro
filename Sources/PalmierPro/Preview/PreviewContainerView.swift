@@ -89,8 +89,6 @@ struct PreviewContainerView: View {
 
     // MARK: - Project settings
 
-    @State private var showZoomPopover = false
-
     private var projectSettingsGroup: some View {
         HStack(spacing: AppTheme.Spacing.md) {
             settingsMenuButton(label: aspectBadgeLabel) {
@@ -142,28 +140,34 @@ struct PreviewContainerView: View {
                 }
             }
 
-            Button {
-                showZoomPopover.toggle()
-            } label: {
-                badgeIcon("magnifyingglass")
-            }
-            .buttonStyle(.plain)
-            .popover(isPresented: $showZoomPopover, arrowEdge: .bottom) {
-                HStack(spacing: AppTheme.Spacing.sm) {
-                    Text("25%")
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    @Bindable var ed = editor
-                    Slider(value: $ed.canvasZoom, in: 0.25...2.0)
-                        .controlSize(.mini)
-                        .frame(width: 100)
-                    Text("200%")
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+            settingsMenuButton(label: zoomBadgeLabel) {
+                ForEach(ZoomPreset.allCases, id: \.self) { preset in
+                    Button {
+                        editor.canvasZoom = preset.value
+                    } label: {
+                        HStack {
+                            Text(preset.label)
+                            Spacer()
+                            if isZoomPresetActive(preset) {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
                 }
-                .padding(AppTheme.Spacing.md)
             }
         }
+    }
+
+    private var zoomBadgeLabel: String {
+        if isZoomPresetActive(.fit) {
+            return "Fit"
+        }
+        let percent = Int(editor.canvasZoom * 100)
+        return "\(percent)%"
+    }
+
+    private func isZoomPresetActive(_ preset: ZoomPreset) -> Bool {
+        abs(editor.canvasZoom - preset.value) < 0.01
     }
 
     private var aspectBadgeLabel: String {
@@ -445,6 +449,34 @@ private enum QualityPreset: CaseIterable {
         case .fullHD: 1080
         case .twoK: 1440
         case .fourK: 2160
+        }
+    }
+}
+
+private enum ZoomPreset: CaseIterable {
+    case twentyFivePercent, fiftyPercent, seventyFivePercent, fit, oneTwentyFivePercent, oneFiftyPercent, twoHundredPercent
+
+    var label: String {
+        switch self {
+        case .twentyFivePercent: "25%"
+        case .fiftyPercent: "50%"
+        case .seventyFivePercent: "75%"
+        case .fit: "Fit"
+        case .oneTwentyFivePercent: "125%"
+        case .oneFiftyPercent: "150%"
+        case .twoHundredPercent: "200%"
+        }
+    }
+
+    var value: CGFloat {
+        switch self {
+        case .twentyFivePercent: 0.25
+        case .fiftyPercent: 0.50
+        case .seventyFivePercent: 0.75
+        case .fit: 1.0
+        case .oneTwentyFivePercent: 1.25
+        case .oneFiftyPercent: 1.50
+        case .twoHundredPercent: 2.0
         }
     }
 }
