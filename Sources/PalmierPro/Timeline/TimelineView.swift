@@ -246,6 +246,7 @@ final class TimelineView: NSView {
                         previewClip.durationFrames = drag.originalDuration - drag.deltaFrames
                     } else {
                         previewClip.durationFrames = drag.originalDuration + drag.deltaFrames
+                        previewClip.trimEndFrame = drag.originalTrimEnd - drag.deltaFrames
                     }
                     let previewRect = geo.clipRect(for: previewClip, trackIndex: ti)
                     if previewRect.intersects(dirtyRect) {
