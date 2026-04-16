@@ -28,8 +28,9 @@ final class EditorWindowController: NSWindowController {
 
         mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             guard let self, self.window?.isKeyWindow == true else { return event }
-            self.resignTextFocusIfNeeded(for: event)
-            self.deselectMediaIfClickedOutside(event)
+            let hitView = self.window?.contentView?.hitTest(event.locationInWindow)
+            self.resignTextFocusIfNeeded(hitView: hitView)
+            self.handlePanelClick(hitView: hitView)
             return event
         }
     }
@@ -107,20 +108,21 @@ final class EditorWindowController: NSWindowController {
         }
     }
 
-    private func deselectMediaIfClickedOutside(_ event: NSEvent) {
-        guard !editorViewModel.selectedMediaAssetIds.isEmpty else { return }
-        let hitView = window?.contentView?.hitTest(event.locationInWindow)
+    private func handlePanelClick(hitView: NSView?) {
         var view = hitView
         while let v = view {
-            if v.accessibilityIdentifier() == "mediaPanel" { return }
+            if let panel = EditorViewModel.FocusedPanel(accessibilityID: v.accessibilityIdentifier()) {
+                editorViewModel.focusedPanel = panel
+                if panel != .media { editorViewModel.selectedMediaAssetIds.removeAll() }
+                if panel != .timeline { editorViewModel.selectedClipIds.removeAll() }
+                return
+            }
             view = v.superview
         }
-        editorViewModel.selectedMediaAssetIds.removeAll()
     }
 
-    private func resignTextFocusIfNeeded(for event: NSEvent) {
+    private func resignTextFocusIfNeeded(hitView: NSView?) {
         guard window?.firstResponder is NSTextView else { return }
-        let hitView = window?.contentView?.hitTest(event.locationInWindow)
         if !(hitView is NSTextView || hitView is NSTextField) {
             window?.makeFirstResponder(nil)
         }

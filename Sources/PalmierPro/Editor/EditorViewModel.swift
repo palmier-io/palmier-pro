@@ -9,6 +9,21 @@ final class EditorViewModel {
     var timeline = Timeline()
     var mediaManifest = MediaManifest()
 
+    // MARK: - Panel focus
+
+    enum FocusedPanel: String {
+        case media, preview, inspector, timeline
+
+        var accessibilityID: String { rawValue + "Panel" }
+
+        init?(accessibilityID: String) {
+            guard accessibilityID.hasSuffix("Panel") else { return nil }
+            self.init(rawValue: String(accessibilityID.dropLast(5)))
+        }
+    }
+
+    var focusedPanel: FocusedPanel?
+
     // MARK: - Transient UI state
 
     var currentFrame: Int = 0

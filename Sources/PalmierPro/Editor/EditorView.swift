@@ -136,9 +136,7 @@ final class EditorSplitViewController: NSSplitViewController {
     }
 
     private func makeMediaItem() -> NSSplitViewItem {
-        let item = NSSplitViewItem(viewController: makeHosting(
-            MediaPanelView().accessibilityIdentifier("mediaPanel")
-        ))
+        let item = NSSplitViewItem(viewController: makeHosting(MediaPanelView(), panel: .media))
         item.minimumThickness = Layout.mediaPanelMin
         item.maximumThickness = Layout.mediaPanelMax
         item.canCollapse = false
@@ -146,14 +144,14 @@ final class EditorSplitViewController: NSSplitViewController {
     }
 
     private func makePreviewItem() -> NSSplitViewItem {
-        let item = NSSplitViewItem(viewController: makeHosting(PreviewContainerView()))
+        let item = NSSplitViewItem(viewController: makeHosting(PreviewContainerView(), panel: .preview))
         item.minimumThickness = Layout.previewMinWidth
         item.maximumThickness = Layout.previewMaxWidth
         return item
     }
 
     private func makeInspectorItem() -> NSSplitViewItem {
-        let item = NSSplitViewItem(viewController: makeHosting(InspectorView()))
+        let item = NSSplitViewItem(viewController: makeHosting(InspectorView(), panel: .inspector))
         item.minimumThickness = Layout.inspectorMin
         item.maximumThickness = Layout.inspectorMax
         item.canCollapse = false
@@ -165,20 +163,27 @@ final class EditorSplitViewController: NSSplitViewController {
             VStack(spacing: 0) {
                 ToolbarView().frame(height: Layout.toolbarHeight)
                 TimelineContainerView()
-            }
+            },
+            panel: .timeline
         ))
         item.minimumThickness = Layout.timelineMinHeight
         item.maximumThickness = Layout.timelineMaxHeight
         return item
     }
 
-    private func makeHosting<V: View>(_ content: V) -> NSHostingController<some View> {
-        NSHostingController(
+    private func makeHosting<V: View>(_ content: V, panel: EditorViewModel.FocusedPanel) -> NSHostingController<some View> {
+        let hc = NSHostingController(
             rootView: content
                 .environment(editor)
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                 .background(AppTheme.Background.panelColor)
+                .overlay {
+                    PanelFocusRing(editor: editor, panel: panel)
+                        .allowsHitTesting(false)
+                }
         )
+        hc.view.setAccessibilityIdentifier(panel.accessibilityID)
+        return hc
     }
 
     private func scheduleDividerPositions(_ apply: @escaping (CGSize) -> Void) {
@@ -189,5 +194,21 @@ final class EditorSplitViewController: NSSplitViewController {
         }
         pendingLayout = work
         DispatchQueue.main.async(execute: work)
+    }
+}
+
+// MARK: - Panel focus ring overlay
+
+private struct PanelFocusRing: View {
+    var editor: EditorViewModel
+    let panel: EditorViewModel.FocusedPanel
+
+    private var isFocused: Bool { editor.focusedPanel == panel }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 2)
+            .strokeBorder(Color.accentColor, lineWidth: isFocused ? 1.5 : 0)
+            .opacity(isFocused ? 0.6 : 0)
+            .animation(.easeOut(duration: AppTheme.Anim.transition), value: isFocused)
     }
 }
