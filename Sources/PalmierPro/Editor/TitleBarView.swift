@@ -37,6 +37,15 @@ struct TitleBarTrailingView: View {
 
     var body: some View {
         HStack(spacing: AppTheme.Spacing.sm) {
+            Button(action: { editor.showKeyboardShortcuts = true }) {
+                Image(systemName: "questionmark.circle")
+                    .font(.system(size: 11))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .frame(width: 26, height: 26)
+            }
+            .buttonStyle(.plain)
+            .help("Keyboard Shortcuts (Cmd+?)")
+
             LayoutPresetMenu()
 
             Button(action: { editor.showExportDialog = true }) {

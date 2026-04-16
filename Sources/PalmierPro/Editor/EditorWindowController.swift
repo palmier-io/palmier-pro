@@ -147,4 +147,8 @@ extension EditorWindowController: EditorActions {
     @objc func showExport(_ sender: Any?) {
         editorViewModel.showExportDialog = true
     }
+
+    @objc func showKeyboardShortcuts(_ sender: Any?) {
+        editorViewModel.showKeyboardShortcuts = true
+    }
 }

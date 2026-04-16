@@ -119,6 +119,12 @@ final class VideoProject: NSDocument {
                 ExportView()
                     .environment(editorViewModel)
             }
+            .sheet(isPresented: Bindable(editorViewModel).showKeyboardShortcuts) { [editorViewModel] in
+                KeyboardShortcutsView()
+                    .environment(editorViewModel)
+                    .presentationSizing(.fitted)
+                    .presentationBackground(.ultraThinMaterial)
+            }
             .sheet(item: Bindable(editorViewModel).pendingSettingsMismatch) { [editorViewModel] mismatch in
                 ProjectSettingsMismatchView(mismatch: mismatch)
                     .environment(editorViewModel)
@@ -136,7 +142,7 @@ final class VideoProject: NSDocument {
         window.center()
 
         window.addTitlebarSwiftUI(TitleBarLeadingView().environment(editorViewModel), side: .leading, width: 240)
-        window.addTitlebarSwiftUI(TitleBarTrailingView().environment(editorViewModel), side: .trailing, width: 80)
+        window.addTitlebarSwiftUI(TitleBarTrailingView().environment(editorViewModel), side: .trailing, width: 110)
 
         let controller = EditorWindowController(editorViewModel: editorViewModel, window: window)
         controller.shouldCascadeWindows = true

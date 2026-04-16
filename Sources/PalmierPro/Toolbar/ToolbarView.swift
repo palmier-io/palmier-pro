@@ -4,12 +4,15 @@ struct ToolbarView: View {
     @Environment(EditorViewModel.self) var editor
 
     var body: some View {
-        HStack(spacing: AppTheme.Spacing.lg) {
+        HStack(spacing: AppTheme.Spacing.md) {
             // Undo / Redo
             HStack(spacing: AppTheme.Spacing.md) {
                 toolbarButton("arrow.uturn.backward", action: { editor.undoManager?.undo() })
                 toolbarButton("arrow.uturn.forward", action: { editor.undoManager?.redo() })
             }
+
+            Divider()
+                .frame(height: 20)
 
             // Tool mode
             HStack(spacing: AppTheme.Spacing.md) {
@@ -17,8 +20,15 @@ struct ToolbarView: View {
                 toolModeButton("scissors", mode: .razor)
             }
 
-            // Split at playhead
-            toolbarButton("square.split.2x1", action: editor.splitAtPlayhead)
+            Divider()
+                .frame(height: 20)
+
+            // Split, trim buttons
+            HStack(spacing: AppTheme.Spacing.md) {
+                toolbarButton("square.split.2x1", action: editor.splitAtPlayhead)
+                bracketButton("[", action: editor.trimStartToPlayhead)
+                bracketButton("]", action: editor.trimEndToPlayhead)
+            }
 
             Spacer()
 
@@ -36,7 +46,7 @@ struct ToolbarView: View {
                     .font(.system(size: AppTheme.FontSize.sm))
             }
         }
-        .padding(.horizontal, AppTheme.Spacing.lg)
+        .padding(.horizontal, AppTheme.Spacing.md)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -57,6 +67,16 @@ struct ToolbarView: View {
                 .font(.system(size: AppTheme.FontSize.md))
                 .frame(width: 24, height: 24)
                 .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func bracketButton(_ bracket: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(bracket)
+                .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                .frame(width: 24, height: 24)
+                .foregroundStyle(AppTheme.Text.secondaryColor)
         }
         .buttonStyle(.plain)
     }

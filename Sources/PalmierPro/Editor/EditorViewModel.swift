@@ -22,6 +22,7 @@ final class EditorViewModel {
     var toolMode: ToolMode = .pointer
     var showExportDialog: Bool = false
     var showGenerationPanel: Bool = false
+    var showKeyboardShortcuts: Bool = false
     var previewTabs: [PreviewTab] = [.timeline]
     var activePreviewTabId: String = PreviewTab.timeline.id
     var sourcePlayheadFrame: Int = 0
