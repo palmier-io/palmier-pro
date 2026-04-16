@@ -25,20 +25,21 @@ enum LayoutPreset: String, CaseIterable {
 enum Layout {
     // Media panel
     static let mediaPanelDefault: CGFloat = 220
-    static let mediaPanelMin: CGFloat = 220
-    static let mediaPanelMax: CGFloat = 600
+    static let mediaPanelMin: CGFloat = 200
+    static let mediaPanelMax: CGFloat = 900
 
     // Inspector
     static let inspectorDefault: CGFloat = 260
-    static let inspectorMin: CGFloat = 200
-    static let inspectorMax: CGFloat = 360
+    static let inspectorMin: CGFloat = 150
+    static let inspectorMax: CGFloat = 600
 
     // Headers & toolbars
     static let panelHeaderHeight: CGFloat = 28
     static let toolbarHeight: CGFloat = 38
 
     // Timeline
-    static let timelineMinHeight: CGFloat = 200
+    static let timelineMinHeight: CGFloat = 100
+    static let timelineMaxHeight: CGFloat = 700
     static let trackHeight: CGFloat = 60
     static let rulerHeight: CGFloat = 24
     static let trackHeaderWidth: CGFloat = 100
@@ -46,7 +47,8 @@ enum Layout {
     static let insertThreshold: CGFloat = 10
 
     // Preview
-    static let previewMinWidth: CGFloat = 300
+    static let previewMinWidth: CGFloat = 200
+    static let previewMaxWidth: CGFloat = 1200
 }
 
 enum Defaults {

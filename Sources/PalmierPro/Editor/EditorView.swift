@@ -148,6 +148,7 @@ final class EditorSplitViewController: NSSplitViewController {
     private func makePreviewItem() -> NSSplitViewItem {
         let item = NSSplitViewItem(viewController: makeHosting(PreviewContainerView()))
         item.minimumThickness = Layout.previewMinWidth
+        item.maximumThickness = Layout.previewMaxWidth
         return item
     }
 
@@ -167,6 +168,7 @@ final class EditorSplitViewController: NSSplitViewController {
             }
         ))
         item.minimumThickness = Layout.timelineMinHeight
+        item.maximumThickness = Layout.timelineMaxHeight
         return item
     }
 
