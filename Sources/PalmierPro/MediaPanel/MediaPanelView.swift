@@ -9,8 +9,14 @@ struct MediaPanelView: View {
     @State private var isDropTargeted = false
     @State private var assetFrames: [String: CGRect] = [:]
     @State private var marqueeSelection = MarqueeSelection()
+    @State private var thumbnailSize: Double = 110
 
-    private let columns = [GridItem(.adaptive(minimum: 110), spacing: AppTheme.Spacing.xl)]
+    private static let minThumbnailSize: Double = 72
+    private static let maxThumbnailSize: Double = 220
+
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: thumbnailSize), spacing: AppTheme.Spacing.xl)]
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,6 +29,15 @@ struct MediaPanelView: View {
                         } else {
                             mediaGridView
                                 .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.sm)
+                        }
+                    }
+                    .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+                        handleDrop(providers)
+                        return true
+                    }
+                    .overlay {
+                        if isDropTargeted {
+                            dropHighlight
                         }
                     }
 
@@ -165,15 +180,6 @@ struct MediaPanelView: View {
             marqueeOverlay
         }
         .gesture(marqueeGesture)
-        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
-            handleDrop(providers)
-            return true
-        }
-        .overlay {
-            if isDropTargeted {
-                dropHighlight
-            }
-        }
     }
 
     private func assetCell(for asset: MediaAsset) -> some View {
