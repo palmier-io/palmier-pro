@@ -113,8 +113,8 @@ final class EditorWindowController: NSWindowController {
         while let v = view {
             if let panel = EditorViewModel.FocusedPanel(accessibilityID: v.accessibilityIdentifier()) {
                 editorViewModel.focusedPanel = panel
-                if panel != .media { editorViewModel.selectedMediaAssetIds.removeAll() }
-                if panel != .timeline { editorViewModel.selectedClipIds.removeAll() }
+                if panel == .media { editorViewModel.selectedClipIds.removeAll() }
+                if panel == .timeline { editorViewModel.selectedMediaAssetIds.removeAll() }
                 return
             }
             view = v.superview
