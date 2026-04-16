@@ -28,7 +28,6 @@ struct MediaPanelView: View {
                             emptyStateView
                         } else {
                             mediaGridView
-                                .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.sm)
                         }
                     }
                     .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
@@ -60,6 +59,14 @@ struct MediaPanelView: View {
                         .font(.system(size: AppTheme.FontSize.xs))
                         .foregroundStyle(AppTheme.Text.mutedColor)
                         .monospacedDigit()
+
+                    Slider(
+                        value: $thumbnailSize,
+                        in: Self.minThumbnailSize...Self.maxThumbnailSize
+                    )
+                    .controlSize(.mini)
+                    .frame(width: 60)
+                    .help("Thumbnail size")
 
                     // Sort
                     toolbarMenuIcon(systemName: "arrow.up.arrow.down") {
@@ -170,6 +177,7 @@ struct MediaPanelView: View {
                 }
             }
             .padding(AppTheme.Spacing.md)
+            .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.sm)
         }
         .coordinateSpace(name: "mediaGrid")
         .onPreferenceChange(AssetFramePreferenceKey.self) { assetFrames = $0 }
