@@ -402,11 +402,11 @@ final class TimelineInputController {
         at point: NSPoint,
         trackIndex: Int,
         geometry: TimelineGeometry
-    ) -> (trackIndex: Int, clipIndex: Int)? {
+    ) -> ClipLocation? {
         guard editor.timeline.tracks.indices.contains(trackIndex) else { return nil }
         for (ci, clip) in editor.timeline.tracks[trackIndex].clips.enumerated() {
             if geometry.clipRect(for: clip, trackIndex: trackIndex).contains(point) {
-                return (trackIndex, ci)
+                return ClipLocation(trackIndex: trackIndex, clipIndex: ci)
             }
         }
         return nil

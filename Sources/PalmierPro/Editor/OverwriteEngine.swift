@@ -2,20 +2,15 @@ import Foundation
 
 /// Pure functions for overwrite editing: computing how to clear a region
 /// of the timeline by removing, trimming, or splitting existing clips.
-/// No state, easily testable.
 enum OverwriteEngine {
 
     enum Action {
-        /// Remove the clip entirely (fully inside the overwrite region)
         case remove(clipId: String)
 
-        /// Trim the clip's right edge (clip extends past the region's left boundary)
         case trimEnd(clipId: String, newDuration: Int)
 
-        /// Trim the clip's left edge (clip extends past the region's right boundary)
         case trimStart(clipId: String, newStartFrame: Int, newTrimStart: Int, newDuration: Int)
 
-        /// Split the clip (clip straddles the entire region)
         case split(
             clipId: String,
             leftDuration: Int,

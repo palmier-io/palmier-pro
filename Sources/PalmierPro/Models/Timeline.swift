@@ -1,5 +1,12 @@
 import Foundation
 
+/// A resolved position of a clip within the timeline: which track holds it and where in
+/// that track's `clips` array it sits.
+struct ClipLocation: Equatable, Sendable {
+    let trackIndex: Int
+    let clipIndex: Int
+}
+
 struct Timeline: Codable, Sendable, Equatable {
     var fps: Int = 30
     var width: Int = 1920
