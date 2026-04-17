@@ -387,6 +387,17 @@ final class EditorViewModel {
         notifyTimelineChanged()
     }
 
+    func toggleTrackSyncLock(trackIndex: Int) {
+        guard timeline.tracks.indices.contains(trackIndex) else { return }
+        let was = timeline.tracks[trackIndex].syncLocked
+        timeline.tracks[trackIndex].syncLocked.toggle()
+        undoManager?.registerUndo(withTarget: self) { vm in
+            vm.timeline.tracks[trackIndex].syncLocked = was
+        }
+        undoManager?.setActionName(was ? "Unlock Track Sync" : "Sync Lock Track")
+        notifyTimelineChanged()
+    }
+
     func setTrackHeight(trackIndex: Int, height: CGFloat) {
         guard timeline.tracks.indices.contains(trackIndex) else { return }
         let prev = timeline.tracks[trackIndex].displayHeight
@@ -485,6 +496,12 @@ final class EditorViewModel {
     /// Ripple trim: trims the clip and shifts adjacent clips to stay contiguous.
     /// Only ripples clips that are touching — gaps are preserved.
     func trimClip(clipId: String, trimStartFrame: Int, trimEndFrame: Int) {
+        trimClipInternal(clipId: clipId, trimStartFrame: trimStartFrame, trimEndFrame: trimEndFrame, applySyncLock: true)
+    }
+
+    /// `applySyncLock=false` on the undo path: per-clip undos in `applySyncLockShift` already
+    /// reverse the forward push; re-applying here would double-shift clips in the delta zone.
+    private func trimClipInternal(clipId: String, trimStartFrame: Int, trimEndFrame: Int, applySyncLock: Bool) {
         guard let loc = findClip(id: clipId) else { return }
         let ti = loc.trackIndex
         let clip = timeline.tracks[ti].clips[loc.clipIndex]
@@ -492,24 +509,39 @@ final class EditorViewModel {
         let prevEnd = clip.trimEndFrame
         let prevDuration = clip.durationFrames
         let oldEnd = clip.startFrame + clip.durationFrames
-
         let deltaStart = trimStartFrame - prevStart
+        let newDuration = prevDuration - deltaStart - (trimEndFrame - prevEnd)
+        let newStartFrame = clip.startFrame + deltaStart
+        let rippleDelta = (newStartFrame + newDuration) - oldEnd
+
+        if applySyncLock && rippleDelta != 0,
+           let reason = firstSyncLockConflict(excludingTrack: ti, insertFrame: oldEnd, pushAmount: rippleDelta) {
+            refuseRipple(reason: reason)
+            return
+        }
+
+        undoManager?.beginUndoGrouping()
+
         timeline.tracks[ti].clips[loc.clipIndex].trimStartFrame = trimStartFrame
         timeline.tracks[ti].clips[loc.clipIndex].trimEndFrame = trimEndFrame
-        timeline.tracks[ti].clips[loc.clipIndex].startFrame += deltaStart
-        timeline.tracks[ti].clips[loc.clipIndex].durationFrames = prevDuration - deltaStart - (trimEndFrame - prevEnd)
+        timeline.tracks[ti].clips[loc.clipIndex].startFrame = newStartFrame
+        timeline.tracks[ti].clips[loc.clipIndex].durationFrames = newDuration
 
-        let newEnd = timeline.tracks[ti].clips[loc.clipIndex].startFrame + timeline.tracks[ti].clips[loc.clipIndex].durationFrames
-        let rippleDelta = newEnd - oldEnd
         if rippleDelta != 0 {
             let chainIds = timeline.tracks[ti].contiguousClipIds(fromEnd: oldEnd, excludeId: clipId)
             for ci in timeline.tracks[ti].clips.indices where chainIds.contains(timeline.tracks[ti].clips[ci].id) {
                 timeline.tracks[ti].clips[ci].startFrame += rippleDelta
             }
+            if applySyncLock {
+                applySyncLockShift(excludingTrack: ti, insertFrame: oldEnd, pushAmount: rippleDelta)
+            }
         }
         sortClips(trackIndex: ti)
 
-        undoManager?.registerUndo(withTarget: self) { $0.trimClip(clipId: clipId, trimStartFrame: prevStart, trimEndFrame: prevEnd) }
+        undoManager?.registerUndo(withTarget: self) { vm in
+            vm.trimClipInternal(clipId: clipId, trimStartFrame: prevStart, trimEndFrame: prevEnd, applySyncLock: !applySyncLock)
+        }
+        undoManager?.endUndoGrouping()
         undoManager?.setActionName("Trim Clip")
         notifyTimelineChanged()
     }
@@ -621,6 +653,72 @@ final class EditorViewModel {
         notifyTimelineChanged()
     }
 
+    /// Apply a shift and register an undo that restores the prior startFrame.
+    private func applyShiftWithUndo(_ shift: (clipId: String, newStartFrame: Int)) {
+        guard let loc = findClip(id: shift.clipId) else { return }
+        let before = timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame
+        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame = shift.newStartFrame
+        let clipId = shift.clipId
+        undoManager?.registerUndo(withTarget: self) { vm in
+            if let l = vm.findClip(id: clipId) {
+                vm.timeline.tracks[l.trackIndex].clips[l.clipIndex].startFrame = before
+            }
+        }
+    }
+
+    /// Dry-run: would applying these shifts on `trackIndex` produce a legal layout?
+    /// Returns a human-readable reason if not (collision or negative startFrame), else nil.
+    private func validateShifts(trackIndex: Int, shifts: [(clipId: String, newStartFrame: Int)]) -> String? {
+        guard !shifts.isEmpty, timeline.tracks.indices.contains(trackIndex) else { return nil }
+        let track = timeline.tracks[trackIndex]
+        let shiftMap = Dictionary(uniqueKeysWithValues: shifts.map { ($0.clipId, $0.newStartFrame) })
+        var intervals: [(start: Int, end: Int)] = []
+        for clip in track.clips {
+            let start = shiftMap[clip.id] ?? clip.startFrame
+            if start < 0 {
+                return "Sync-locked track \"\(track.label)\" would move past the timeline start."
+            }
+            intervals.append((start, start + clip.durationFrames))
+        }
+        intervals.sort { $0.start < $1.start }
+        for i in 1..<intervals.count where intervals[i].start < intervals[i-1].end {
+            return "Sync-locked track \"\(track.label)\" doesn't have room to ripple."
+        }
+        return nil
+    }
+
+    /// Dry-run of `applySyncLockShift`; returns the first blocking reason or nil.
+    private func firstSyncLockConflict(excludingTrack: Int, insertFrame: Int, pushAmount: Int) -> String? {
+        for ti in timeline.tracks.indices where ti != excludingTrack && timeline.tracks[ti].syncLocked {
+            let shifts = RippleEngine.computeRipplePush(
+                clips: timeline.tracks[ti].clips,
+                insertFrame: insertFrame,
+                pushAmount: pushAmount
+            )
+            if let reason = validateShifts(trackIndex: ti, shifts: shifts) { return reason }
+        }
+        return nil
+    }
+
+    /// Refuse a ripple edit: beep + log.
+    private func refuseRipple(reason: String) {
+        NSSound.beep()
+        NSLog("[palmier] ripple blocked: %@", reason)
+    }
+
+    /// Push clips on every sync-locked track other than `excludingTrack`. Per-clip undos
+    /// are required — the re-entrant trim undo can't recompute the inverse correctly.
+    private func applySyncLockShift(excludingTrack: Int, insertFrame: Int, pushAmount: Int) {
+        for ti in timeline.tracks.indices where ti != excludingTrack && timeline.tracks[ti].syncLocked {
+            RippleEngine.computeRipplePush(
+                clips: timeline.tracks[ti].clips,
+                insertFrame: insertFrame,
+                pushAmount: pushAmount
+            ).forEach(applyShiftWithUndo)
+            sortClips(trackIndex: ti)
+        }
+    }
+
     func applyClipProperty(clipId: String, _ modify: (inout Clip) -> Void) {
         guard let loc = findClip(id: clipId) else { return }
         if dragBefore == nil || dragBefore?.clipId != clipId {
@@ -696,39 +794,39 @@ final class EditorViewModel {
         selectedMediaAssetIds.removeAll()
     }
 
-    /// Ripple delete: remove clips and shift subsequent clips backward to close gaps.
+    /// Ripple delete: remove selected clips and close the gaps. Sync-locked tracks shift
+    /// along to preserve cross-track alignment; refuses if any would collide.
     func rippleDeleteSelectedClips() {
         let ids = selectedClipIds
         guard !ids.isEmpty else { return }
 
-        undoManager?.beginUndoGrouping()
+        // Merged ranges used to shift sync-locked tracks that have no deletions of their own.
+        let globalRemovedRanges: [(start: Int, end: Int)] = timeline.tracks
+            .flatMap(\.clips)
+            .filter { ids.contains($0.id) }
+            .map { (start: $0.startFrame, end: $0.endFrame) }
 
-        // Compute shifts before removing
-        var allShifts: [(trackIndex: Int, clipId: String, newStartFrame: Int)] = []
+        var shiftsByTrack: [Int: [(clipId: String, newStartFrame: Int)]] = [:]
         for ti in timeline.tracks.indices {
-            let shifts = RippleEngine.computeRippleShifts(
-                clips: timeline.tracks[ti].clips,
-                removedIds: ids
-            )
-            for s in shifts {
-                allShifts.append((ti, s.clipId, s.newStartFrame))
-            }
-        }
-
-        removeClips(ids: ids)
-
-        for shift in allShifts {
-            if let loc = findClip(id: shift.clipId) {
-                let before = timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame
-                timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame = shift.newStartFrame
-                undoManager?.registerUndo(withTarget: self) { vm in
-                    if let current = vm.findClip(id: shift.clipId) {
-                        vm.timeline.tracks[current.trackIndex].clips[current.clipIndex].startFrame = before
-                    }
+            let track = timeline.tracks[ti]
+            let hasOwnRemovals = track.clips.contains { ids.contains($0.id) }
+            if hasOwnRemovals {
+                shiftsByTrack[ti] = RippleEngine.computeRippleShifts(clips: track.clips, removedIds: ids)
+            } else if track.syncLocked {
+                shiftsByTrack[ti] = RippleEngine.computeRippleShiftsForRanges(
+                    clips: track.clips,
+                    removedRanges: globalRemovedRanges
+                )
+                if let reason = validateShifts(trackIndex: ti, shifts: shiftsByTrack[ti] ?? []) {
+                    refuseRipple(reason: reason)
+                    return
                 }
             }
         }
 
+        undoManager?.beginUndoGrouping()
+        removeClips(ids: ids)
+        shiftsByTrack.values.forEach { $0.forEach(applyShiftWithUndo) }
         undoManager?.endUndoGrouping()
         undoManager?.setActionName("Ripple Delete")
     }
@@ -789,22 +887,13 @@ final class EditorViewModel {
         guard timeline.tracks.indices.contains(trackIndex) else { return }
         undoManager?.beginUndoGrouping()
         let totalPush = assets.reduce(0) { $0 + secondsToFrame(seconds: $1.duration, fps: timeline.fps) }
-        let shifts = RippleEngine.computeRipplePush(
-            clips: timeline.tracks[trackIndex].clips,
-            insertFrame: atFrame,
-            pushAmount: totalPush
-        )
-        for shift in shifts {
-            if let loc = findClip(id: shift.clipId) {
-                let before = timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame
-                timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame = shift.newStartFrame
-                let clipId = shift.clipId
-                undoManager?.registerUndo(withTarget: self) { vm in
-                    if let current = vm.findClip(id: clipId) {
-                        vm.timeline.tracks[current.trackIndex].clips[current.clipIndex].startFrame = before
-                    }
-                }
-            }
+
+        for ti in timeline.tracks.indices where ti == trackIndex || timeline.tracks[ti].syncLocked {
+            RippleEngine.computeRipplePush(
+                clips: timeline.tracks[ti].clips,
+                insertFrame: atFrame,
+                pushAmount: totalPush
+            ).forEach(applyShiftWithUndo)
         }
         let clipIds = createClips(from: assets, trackIndex: trackIndex, startFrame: atFrame)
         sortClips(trackIndex: trackIndex)

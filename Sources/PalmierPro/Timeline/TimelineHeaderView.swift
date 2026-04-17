@@ -10,9 +10,10 @@ final class TimelineHeaderView: NSView {
         .foregroundColor: AppTheme.Text.secondary,
     ]
 
-    /// Rects for mute/hide buttons, indexed by track. Used for hit testing.
+    /// Rects for mute/hide/sync-lock buttons, indexed by track. Used for hit testing.
     var muteButtonRects: [Int: NSRect] = [:]
     var hideButtonRects: [Int: NSRect] = [:]
+    var syncLockButtonRects: [Int: NSRect] = [:]
 
     init(editor: EditorViewModel) {
         self.editor = editor
@@ -43,6 +44,7 @@ final class TimelineHeaderView: NSView {
 
         muteButtonRects.removeAll()
         hideButtonRects.removeAll()
+        syncLockButtonRects.removeAll()
         let stripWidth: CGFloat = 3
         let iconSize: CGFloat = 14
         let iconConfig = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
@@ -64,22 +66,24 @@ final class TimelineHeaderView: NSView {
             let labelY = y + (h - labelSize.height) / 2
             str.draw(at: NSPoint(x: stripWidth + 6, y: labelY))
 
-            // Mute + hide buttons
+            // Sync-lock + mute + hide buttons
             let iconY = y + (h - iconSize) / 2
             let hideX = headerWidth - iconSize - 6
             let muteX = hideX - iconSize - 4
+            let syncX = muteX - iconSize - 4
 
-            let muteIcon = track.muted ? "speaker.slash.fill" : "speaker.wave.2.fill"
-            let muteTint: NSColor = track.muted ? AppTheme.Text.secondary.withAlphaComponent(0.3) : AppTheme.Text.secondary
-            let muteRect = NSRect(x: muteX, y: iconY, width: iconSize, height: iconSize)
-            drawSymbol(muteIcon, in: muteRect, tint: muteTint, config: iconConfig, context: ctx)
-            muteButtonRects[i] = muteRect.insetBy(dx: -4, dy: -4)
-
-            let hideIcon = track.hidden ? "eye.slash" : "eye"
-            let hideTint: NSColor = track.hidden ? AppTheme.Text.secondary.withAlphaComponent(0.3) : AppTheme.Text.secondary
-            let hideRect = NSRect(x: hideX, y: iconY, width: iconSize, height: iconSize)
-            drawSymbol(hideIcon, in: hideRect, tint: hideTint, config: iconConfig, context: ctx)
-            hideButtonRects[i] = hideRect.insetBy(dx: -4, dy: -4)
+            syncLockButtonRects[i] = drawToggleIcon(
+                x: syncX, y: iconY, size: iconSize, config: iconConfig, context: ctx,
+                active: track.syncLocked, onSymbol: "link", offSymbol: "personalhotspot.slash"
+            )
+            muteButtonRects[i] = drawToggleIcon(
+                x: muteX, y: iconY, size: iconSize, config: iconConfig, context: ctx,
+                active: !track.muted, onSymbol: "speaker.wave.2.fill", offSymbol: "speaker.slash.fill"
+            )
+            hideButtonRects[i] = drawToggleIcon(
+                x: hideX, y: iconY, size: iconSize, config: iconConfig, context: ctx,
+                active: !track.hidden, onSymbol: "eye", offSymbol: "eye.slash"
+            )
 
             // White border at top of first track and bottom of every track
             if i == 0 {
@@ -90,6 +94,18 @@ final class TimelineHeaderView: NSView {
             ctx.setFillColor(AppTheme.Border.primary.cgColor)
             ctx.fill(NSRect(x: 0, y: handleY, width: headerWidth, height: 1))
         }
+    }
+
+    /// Draw a toggleable SF Symbol button; returns the hit-test rect (padded).
+    private func drawToggleIcon(
+        x: CGFloat, y: CGFloat, size: CGFloat,
+        config: NSImage.SymbolConfiguration, context: CGContext,
+        active: Bool, onSymbol: String, offSymbol: String
+    ) -> NSRect {
+        let rect = NSRect(x: x, y: y, width: size, height: size)
+        let tint = active ? AppTheme.Text.secondary : AppTheme.Text.secondary.withAlphaComponent(0.3)
+        drawSymbol(active ? onSymbol : offSymbol, in: rect, tint: tint, config: config, context: context)
+        return rect.insetBy(dx: -4, dy: -4)
     }
 
     private func drawSymbol(_ name: String, in rect: NSRect, tint: NSColor, config: NSImage.SymbolConfiguration, context: CGContext) {
@@ -134,6 +150,13 @@ final class TimelineHeaderView: NSView {
         for (ti, rect) in hideButtonRects {
             if rect.contains(point) {
                 editor.toggleTrackHidden(trackIndex: ti)
+                needsDisplay = true
+                return
+            }
+        }
+        for (ti, rect) in syncLockButtonRects {
+            if rect.contains(point) {
+                editor.toggleTrackSyncLock(trackIndex: ti)
                 needsDisplay = true
                 return
             }

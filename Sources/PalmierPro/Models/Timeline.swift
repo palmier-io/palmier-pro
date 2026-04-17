@@ -19,6 +19,7 @@ struct Track: Codable, Sendable, Equatable, Identifiable {
     var label: String
     var muted: Bool = false
     var hidden: Bool = false
+    var syncLocked: Bool = true
     var clips: [Clip] = []
 
     /// Display-only height, not serialized. Reset to default on project open.
@@ -42,7 +43,22 @@ struct Track: Codable, Sendable, Equatable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, type, label, muted, hidden, clips
+        case id, type, label, muted, hidden, syncLocked, clips
+    }
+}
+
+extension Track {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString,
+            type: try c.decode(ClipType.self, forKey: .type),
+            label: try c.decode(String.self, forKey: .label),
+            muted: (try? c.decode(Bool.self, forKey: .muted)) ?? false,
+            hidden: (try? c.decode(Bool.self, forKey: .hidden)) ?? false,
+            syncLocked: (try? c.decode(Bool.self, forKey: .syncLocked)) ?? true,
+            clips: (try? c.decode([Clip].self, forKey: .clips)) ?? []
+        )
     }
 }
 

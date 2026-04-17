@@ -12,22 +12,26 @@ enum RippleEngine {
         clips: [Clip],
         removedIds: Set<String>
     ) -> [(clipId: String, newStartFrame: Int)] {
-        // Sort clips by startFrame
-        let sorted = clips.sorted { $0.startFrame < $1.startFrame }
+        let removedRanges = clips
+            .filter { removedIds.contains($0.id) }
+            .map { (start: $0.startFrame, end: $0.endFrame) }
+        return computeRippleShiftsForRanges(
+            clips: clips.filter { !removedIds.contains($0.id) },
+            removedRanges: removedRanges
+        )
+    }
 
-        // Find the gaps left by removed clips and shift everything after them
-        var removedRanges: [(start: Int, end: Int)] = []
-
-        for clip in sorted where removedIds.contains(clip.id) {
-            removedRanges.append((clip.startFrame, clip.endFrame))
-        }
-
-        // Merge overlapping/adjacent ranges
+    /// Shift clips leftward to close the gaps defined by `removedRanges`.
+    /// Used when ranges come from a different track (sync-locked ripple).
+    static func computeRippleShiftsForRanges(
+        clips: [Clip],
+        removedRanges: [(start: Int, end: Int)]
+    ) -> [(clipId: String, newStartFrame: Int)] {
         let merged = mergeRanges(removedRanges)
+        guard !merged.isEmpty else { return [] }
 
-        // For each remaining clip, compute how much it shifts backward
         var shifts: [(clipId: String, newStartFrame: Int)] = []
-        for clip in sorted where !removedIds.contains(clip.id) {
+        for clip in clips.sorted(by: { $0.startFrame < $1.startFrame }) {
             var shift = 0
             for range in merged where range.end <= clip.startFrame {
                 shift += range.end - range.start
@@ -36,7 +40,6 @@ enum RippleEngine {
                 shifts.append((clip.id, clip.startFrame - shift))
             }
         }
-
         return shifts
     }
 
