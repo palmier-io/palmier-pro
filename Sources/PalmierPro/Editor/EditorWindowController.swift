@@ -29,7 +29,7 @@ final class EditorWindowController: NSWindowController {
         mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             guard let self, self.window?.isKeyWindow == true else { return event }
             let hitView = self.window?.contentView?.hitTest(event.locationInWindow)
-            self.resignTextFocusIfNeeded(hitView: hitView)
+            self.resignStaleFocus(hitView: hitView)
             self.handlePanelClick(hitView: hitView)
             return event
         }
@@ -121,11 +121,13 @@ final class EditorWindowController: NSWindowController {
         }
     }
 
-    private func resignTextFocusIfNeeded(hitView: NSView?) {
-        guard window?.firstResponder is NSTextView else { return }
-        if !(hitView is NSTextView || hitView is NSTextField) {
-            window?.makeFirstResponder(nil)
-        }
+    /// Clear stale first-responder focus before the click is dispatched.
+    private func resignStaleFocus(hitView: NSView?) {
+        // Don't disturb a deliberate click into a text input.
+        if hitView is NSTextView || hitView is NSTextField { return }
+        guard let responder = window?.firstResponder,
+              let view = responder as? NSView, view !== window?.contentView else { return }
+        window?.makeFirstResponder(nil)
     }
 }
 
