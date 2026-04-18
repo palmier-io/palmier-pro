@@ -310,12 +310,17 @@ struct InspectorView: View {
     // MARK: - Helpers
 
     private var selectedClip: Clip? {
-        guard editor.selectedClipIds.count == 1,
-              let id = editor.selectedClipIds.first else { return nil }
+        // TODO: Inspector should separate visual and audio sections
+        // Prefer a visual clip from the selection; otherwise pick the first.
+        guard !editor.selectedClipIds.isEmpty else { return nil }
+        var firstMatch: Clip?
         for track in editor.timeline.tracks {
-            if let clip = track.clips.first(where: { $0.id == id }) { return clip }
+            for clip in track.clips where editor.selectedClipIds.contains(clip.id) {
+                if clip.mediaType.isVisual { return clip }
+                if firstMatch == nil { firstMatch = clip }
+            }
         }
-        return nil
+        return firstMatch
     }
 
     private var selectedMediaAsset: MediaAsset? {
