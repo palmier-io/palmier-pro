@@ -20,6 +20,17 @@ final class EditorSplitViewController: NSSplitViewController {
     private var currentPreset: LayoutPreset?
     private var pendingLayout: DispatchWorkItem?
 
+    private lazy var mediaHC: NSViewController     = makeHosting(MediaPanelView(), panel: .media)
+    private lazy var previewHC: NSViewController   = makeHosting(PreviewContainerView(), panel: .preview)
+    private lazy var inspectorHC: NSViewController = makeHosting(InspectorView(), panel: .inspector)
+    private lazy var timelineHC: NSViewController  = makeHosting(
+        VStack(spacing: 0) {
+            ToolbarView().frame(height: Layout.toolbarHeight)
+            TimelineContainerView()
+        },
+        panel: .timeline
+    )
+
     init(editor: EditorViewModel) {
         self.editor = editor
         super.init(nibName: nil, bundle: nil)
@@ -38,7 +49,10 @@ final class EditorSplitViewController: NSSplitViewController {
 
     func applyLayoutIfNeeded(_ preset: LayoutPreset) {
         guard preset != currentPreset else { return }
-        buildLayout(preset)
+        DispatchQueue.main.async { [weak self] in
+            guard let self, preset != self.currentPreset else { return }
+            self.buildLayout(preset)
+        }
     }
 
     private func buildLayout(_ preset: LayoutPreset) {
@@ -136,7 +150,7 @@ final class EditorSplitViewController: NSSplitViewController {
     }
 
     private func makeMediaItem() -> NSSplitViewItem {
-        let item = NSSplitViewItem(viewController: makeHosting(MediaPanelView(), panel: .media))
+        let item = NSSplitViewItem(viewController: mediaHC)
         item.minimumThickness = Layout.mediaPanelMin
         item.maximumThickness = Layout.mediaPanelMax
         item.canCollapse = false
@@ -144,14 +158,14 @@ final class EditorSplitViewController: NSSplitViewController {
     }
 
     private func makePreviewItem() -> NSSplitViewItem {
-        let item = NSSplitViewItem(viewController: makeHosting(PreviewContainerView(), panel: .preview))
+        let item = NSSplitViewItem(viewController: previewHC)
         item.minimumThickness = Layout.previewMinWidth
         item.maximumThickness = Layout.previewMaxWidth
         return item
     }
 
     private func makeInspectorItem() -> NSSplitViewItem {
-        let item = NSSplitViewItem(viewController: makeHosting(InspectorView(), panel: .inspector))
+        let item = NSSplitViewItem(viewController: inspectorHC)
         item.minimumThickness = Layout.inspectorMin
         item.maximumThickness = Layout.inspectorMax
         item.canCollapse = false
@@ -159,13 +173,7 @@ final class EditorSplitViewController: NSSplitViewController {
     }
 
     private func makeTimelineItem() -> NSSplitViewItem {
-        let item = NSSplitViewItem(viewController: makeHosting(
-            VStack(spacing: 0) {
-                ToolbarView().frame(height: Layout.toolbarHeight)
-                TimelineContainerView()
-            },
-            panel: .timeline
-        ))
+        let item = NSSplitViewItem(viewController: timelineHC)
         item.minimumThickness = Layout.timelineMinHeight
         item.maximumThickness = Layout.timelineMaxHeight
         return item
@@ -187,7 +195,12 @@ final class EditorSplitViewController: NSSplitViewController {
     }
 
     private func scheduleDividerPositions(_ apply: @escaping (CGSize) -> Void) {
-        view.needsLayout = true
+        pendingLayout?.cancel()
+        view.layoutSubtreeIfNeeded()
+        if view.bounds.size.width > 0 {
+            apply(view.bounds.size)
+            return
+        }
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.view.bounds.size.width > 0 else { return }
             apply(self.view.bounds.size)
