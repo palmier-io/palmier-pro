@@ -385,7 +385,8 @@ struct PreviewContainerView: View {
             Image(systemName: systemName)
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
-                .frame(width: 24, height: 24)
+                .frame(width: 32, height: 28)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
