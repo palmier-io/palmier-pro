@@ -421,19 +421,7 @@ struct MediaPanelView: View {
         let asset = MediaAsset(url: url, type: type, name: name)
         editor.importMediaAsset(asset)
 
-        Task {
-            await asset.loadMetadata()
-            editor.updateManifestMetadata(for: asset)
-            switch asset.type {
-            case .video:
-                editor.mediaVisualCache.generateWaveform(for: asset)
-                editor.mediaVisualCache.generateThumbnails(for: asset, fps: editor.timeline.fps)
-            case .audio:
-                editor.mediaVisualCache.generateWaveform(for: asset)
-            case .image:
-                editor.mediaVisualCache.generateImageThumbnail(for: asset)
-            }
-        }
+        Task { await editor.finalizeImportedAsset(asset) }
     }
 }
 
