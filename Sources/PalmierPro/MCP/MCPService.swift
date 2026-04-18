@@ -8,6 +8,82 @@ final class MCPService {
 
     static let port: UInt16 = 19789
 
+    nonisolated private static let serverInstructions = """
+        You are a creative AI assistant connected to palmier-pro, a AI-native video editor. Your job is \
+        to help the user create and edit a video project by calling the tools exposed by this \
+        MCP server.
+
+        # Core model
+        - The project is a timeline with a fixed fps (e.g. 30) and a resolution. All timing is in \
+          frames, not seconds. Convert from user-facing seconds via frame = seconds × fps.
+        - The timeline has ordered tracks. Each track has a type (video/audio/image) and holds clips.
+        - A clip references a media asset and occupies [startFrame, startFrame + durationFrames) \
+          on its track.
+        - Clips have trimStartFrame / trimEndFrame (offsets into the source media, not the \
+          timeline), speed, volume, and opacity.
+        - Media assets live in a project-level library and are referenced by ID. Assets may be \
+          user-imported or AI-generated.
+
+        # Always do
+        - Call get_timeline before any edit so you know fps, the track list and types, and \
+          existing clip frames.
+        - Call get_media before referencing any asset — every mediaRef comes from there.
+        - Call list_models before generate_video or generate_image so the model you pick actually \
+          supports your duration, aspect ratio, and first/last-frame or reference needs.
+        - When passing an existing asset as a reference (startFrameMediaRef, endFrameMediaRef, \
+          referenceMediaRefs), call read_media on it first and describe what's actually in the \
+          frame. Never guess from the filename.
+
+        # Editing discipline
+        - Placements must fit the track's type: video clips on video tracks, etc.
+        - update_clip: omit fields to leave them unchanged. speed 1.0 is normal; <1.0 stretches \
+          the clip longer on the timeline; >1.0 shortens it. trim* values are source offsets.
+        - split_clip's atFrame must be strictly between the clip's start and end.
+        - Timeline edits are undoable via the app's undo stack and are effectively free — don't \
+          ask permission for individual edits, just explain what you changed.
+
+        # Generation discipline
+        - Default flow: images first, then video. Iterate on images with the user until they \
+          approve the look, then use the approved image as the video's startFrameMediaRef. \
+          Go straight to text-to-video only if the user explicitly asks or the shot has no \
+          single anchorable frame (e.g. a continuous camera sweep starting from black).
+        - Generation is asynchronous and costs real money. Propose the prompt, chosen model, \
+          duration, and aspect ratio to the user and wait for confirmation before calling \
+          generate_video or generate_image.
+        - Both tools return a placeholder asset ID immediately. The asset appears in get_media \
+          with generationStatus: "generating". Poll get_media until the status clears; then the \
+          asset is drop-in usable in add_clip.
+        - Video models cannot render readable text. For on-screen text, generate a still via \
+          generate_image (text baked into the image) and pass it as startFrameMediaRef.
+        - For character / location / style consistency across multiple generations, reuse \
+          references: referenceMediaRefs for images, startFrameMediaRef / endFrameMediaRef for \
+          videos.
+        - Parallelize independent image generations. Build base images (characters, locations) \
+          before derived ones (same character in scene 3).
+
+        # Prompt craft
+        - Images (nano-banana-pro, nano-banana-2, recraft-v4): 15–30 words. Formula: subject + \
+          setting + shot type + lighting/mood. Concrete nouns beat adjectives. grok-imagine \
+          prefers a natural-language sentence with looser style.
+        - Videos (veo3.1 family, kling-v3/o3, seedance-2, minimax-hailuo-2.3, ltx-2.3, \
+          grok-imagine-video): 8–20 words. Formula: camera movement + subject action. When the \
+          video has a startFrameMediaRef, do not re-describe what's in that frame — the model \
+          already sees it; spend the prompt on motion and sound.
+        - Audio in video prompts: state dialogue, VO, SFX, and music explicitly (tone, volume, \
+          pitch when persistent). Silent video is usually a bug, not a feature.
+        - Image the user supplies (via referenceMediaRefs, startFrameMediaRef, etc.) is the \
+          source of truth for what's in the frame. Always read_media it and describe what you \
+          actually see; never paraphrase the filename.
+        - Never generate: UI screenshots, app interfaces, software screens, logo animations, \
+          motion graphics, title cards, text overlays, or screen recordings. Those belong in \
+          the editor (add_clip with an imported asset), not in the model.
+
+        # Communication
+        - Be concise. Describe what you did and what's next, not the mechanics of each tool call.
+        - When the user is vague about aesthetic direction, ask one focused question instead of \
+          guessing.
+        """
+
     private enum ToolName: String {
         case getTimeline = "get_timeline"
         case getMedia = "get_media"
@@ -47,6 +123,7 @@ final class MCPService {
             let server = Server(
                 name: "palmier-pro",
                 version: "1.0.0",
+                instructions: Self.serverInstructions,
                 capabilities: .init(
                     prompts: .init(listChanged: false),
                     resources: .init(subscribe: false, listChanged: false),
@@ -84,17 +161,17 @@ final class MCPService {
         let tools = [
             Tool(
                 name: ToolName.getTimeline.rawValue,
-                description: "Get the full timeline including project settings (fps, resolution), all tracks, and all clips",
+                description: "Always call before any edit. Returns project settings (fps, resolution), track list with types and order, and all clips with their frames and properties. The clipId/trackId values here are what every other tool accepts.",
                 inputSchema: noArgsSchema
             ),
             Tool(
                 name: ToolName.getMedia.rawValue,
-                description: "List all available media assets in the project",
+                description: "Call before referencing any asset. Every mediaRef/reference ID in other tools comes from the IDs returned here. Also exposes generationStatus for async-generated assets — poll this to know when a generation is done.",
                 inputSchema: noArgsSchema
             ),
             Tool(
                 name: ToolName.readMedia.rawValue,
-                description: "Read an image asset: returns MCP image content (base64) plus JSON metadata (dimensions, file size, optional EXIF subset). Only image assets are supported; default max file size 20MB. Optional maxImageBytes overrides the cap.",
+                description: "Visually inspect an image asset — use this before passing it as a reference to generate_video/generate_image so your prompt describes what's actually in the frame rather than guessing from the filename. Returns MCP image content (base64) plus JSON metadata (dimensions, file size, optional EXIF subset). Images only for now; default max 20MB, override via maxImageBytes.",
                 inputSchema: Self.objectSchema(properties: [
                     "mediaRef": .object(["type": .string("string"), "description": .string("ID of the media asset from get_media")]),
                     "maxImageBytes": .object(["type": .string("integer"), "description": .string("Maximum file size in bytes (default 20971520)")]),
@@ -102,7 +179,7 @@ final class MCPService {
             ),
             Tool(
                 name: ToolName.addTrack.rawValue,
-                description: "Add a new track to the timeline",
+                description: "Adds a new track at the bottom of the track list. Track type must match the clips you intend to place on it (video/audio/image). Label is cosmetic.",
                 inputSchema: Self.objectSchema(properties: [
                     "type": .object(["type": .string("string"), "enum": .array([.string("video"), .string("audio"), .string("image")]), "description": .string("Track type")]),
                     "label": .object(["type": .string("string"), "description": .string("Display label. Defaults to the type name (e.g. 'Video').")]),
@@ -110,14 +187,14 @@ final class MCPService {
             ),
             Tool(
                 name: ToolName.removeTrack.rawValue,
-                description: "Remove a track and all its clips from the timeline",
+                description: "Removes a track and every clip on it. Undoable via the app's undo stack.",
                 inputSchema: Self.objectSchema(properties: [
                     "trackId": .object(["type": .string("string"), "description": .string("The track ID to remove")]),
                 ], required: ["trackId"])
             ),
             Tool(
                 name: ToolName.addClip.rawValue,
-                description: "Add a media asset as a clip on a track",
+                description: "Places a media asset on an existing track at startFrame for durationFrames. The asset's type must be compatible with the track's type. Call get_timeline first to pick a valid trackIndex and an open frame range.",
                 inputSchema: Self.objectSchema(properties: [
                     "mediaRef": .object(["type": .string("string"), "description": .string("ID of the media asset from get_media")]),
                     "trackIndex": .object(["type": .string("integer"), "description": .string("Track index (0-based)")]),
@@ -127,14 +204,14 @@ final class MCPService {
             ),
             Tool(
                 name: ToolName.removeClip.rawValue,
-                description: "Remove a clip from the timeline by its ID",
+                description: "Removes one clip by ID. Undoable.",
                 inputSchema: Self.objectSchema(properties: [
                     "clipId": .object(["type": .string("string"), "description": .string("The clip ID to remove")]),
                 ], required: ["clipId"])
             ),
             Tool(
                 name: ToolName.updateClip.rawValue,
-                description: "Update properties of an existing clip (position, trim, speed, volume, opacity)",
+                description: "Changes an existing clip's position, trim, speed, volume, or opacity. trimStartFrame/trimEndFrame are offsets from the source media, not the timeline. speed 1.0 is normal, <1.0 slows (clip gets longer on the timeline), >1.0 speeds up. volume and opacity are 0.0–1.0. Omit fields to leave them unchanged.",
                 inputSchema: Self.objectSchema(properties: [
                     "clipId": .object(["type": .string("string"), "description": .string("The clip ID to update")]),
                     "startFrame": .object(["type": .string("integer"), "description": .string("New start frame position")]),
@@ -148,7 +225,7 @@ final class MCPService {
             ),
             Tool(
                 name: ToolName.moveClip.rawValue,
-                description: "Move a clip to a different track and/or frame position. Handles overlap resolution automatically.",
+                description: "Moves a clip to a new track and/or frame. Overlap with existing clips on the destination track is resolved automatically.",
                 inputSchema: Self.objectSchema(properties: [
                     "clipId": .object(["type": .string("string"), "description": .string("The clip ID to move")]),
                     "toTrack": .object(["type": .string("integer"), "description": .string("Destination track index (0-based)")]),
@@ -157,7 +234,7 @@ final class MCPService {
             ),
             Tool(
                 name: ToolName.splitClip.rawValue,
-                description: "Split a clip into two at the specified frame. The frame must be within the clip's range.",
+                description: "Splits a clip into two at atFrame. The frame must be strictly between the clip's start and end — use get_timeline to confirm the range.",
                 inputSchema: Self.objectSchema(properties: [
                     "clipId": .object(["type": .string("string"), "description": .string("The clip ID to split")]),
                     "atFrame": .object(["type": .string("integer"), "description": .string("Frame position to split at (must be between clip start and end)")]),
@@ -165,7 +242,7 @@ final class MCPService {
             ),
             Tool(
                 name: ToolName.generateVideo.rawValue,
-                description: "Generate a video using AI. Returns immediately with a placeholder asset ID; the asset status transitions to complete once generation finishes.",
+                description: "Starts an async AI video generation. Returns a placeholder asset ID immediately; the asset's generationStatus in get_media goes from 'generating' to 'none' when ready, then it is drop-in usable in add_clip. Always call list_models first to pick a model whose durations, aspectRatios, and supportsFirstFrame/supportsLastFrame fit your needs. Video models cannot render readable text — if you need on-screen text, bake it into a still via generate_image and pass it as startFrameMediaRef. Costs real money and is not undoable; get user confirmation before calling.",
                 inputSchema: Self.objectSchema(properties: [
                     "prompt": .object(["type": .string("string"), "description": .string("Text description of the video to generate")]),
                     "name": .object(["type": .string("string"), "description": .string("Display name for the asset in the media library. Defaults to first 30 chars of prompt.")]),
@@ -179,7 +256,7 @@ final class MCPService {
             ),
             Tool(
                 name: ToolName.generateImage.rawValue,
-                description: "Generate an image using AI. Returns immediately with a placeholder asset ID; the asset status transitions to complete once generation finishes.",
+                description: "Starts an async AI image generation. Returns a placeholder asset ID immediately; poll generationStatus via get_media for completion. Call list_models first to pick a model. Pass existing media IDs via referenceMediaRefs for character/style/location consistency across generations. Costs real money and is not undoable; get user confirmation before calling.",
                 inputSchema: Self.objectSchema(properties: [
                     "prompt": .object(["type": .string("string"), "description": .string("Text description of the image to generate")]),
                     "name": .object(["type": .string("string"), "description": .string("Display name for the asset in the media library. Defaults to first 30 chars of prompt.")]),
@@ -191,7 +268,7 @@ final class MCPService {
             ),
             Tool(
                 name: ToolName.listModels.rawValue,
-                description: "List available AI generation models and their capabilities",
+                description: "Lists AI models with their capabilities (durations, aspect ratios, resolutions, first/last frame support, reference support). Always call before generate_video or generate_image so the model you pick actually supports the constraints you need.",
                 inputSchema: Self.objectSchema(properties: [
                     "type": .object(["type": .string("string"), "enum": .array([.string("video"), .string("image")]), "description": .string("Filter by type. Omit to list all models.")]),
                 ])
@@ -666,15 +743,32 @@ final class MCPService {
                     description: "Generate a video clip",
                     messages: [
                         .user(.text(text: """
-                            Generate a video clip\(styleClause).
+                            You are a creative director generating a \(duration)s video clip\(styleClause) for an editor timeline. Think about how this clip fits into a larger edit, not just how it looks standalone.
 
                             Description: \(desc)
 
-                            Steps:
-                            1. Call list_models with type "video" to see available models
-                            2. Pick the best model for this use case
-                            3. Call generate_video with a detailed prompt based on the description, \
-                            the chosen model, duration \(duration)s, and appropriate aspect ratio/resolution
+                            Model selection priority, in order:
+                            1. Reference frames — if continuity with an existing asset matters, you need a model with supportsFirstFrame (for startFrameMediaRef) or supportsLastFrame (for endFrameMediaRef).
+                            2. Duration — \(duration)s must be in the model's `durations` list.
+                            3. Aspect ratio and resolution — match the project's settings from get_timeline.
+                            4. Cost and speed.
+
+                            Reference-image discipline: if you pass startFrameMediaRef or endFrameMediaRef, call read_media on that asset first and describe what you actually see in the prompt. Never rely on the handle name or filename.
+
+                            Text in video: video models cannot render readable text. For on-screen text, use generate_image to make a still with the text baked in, then pass it as startFrameMediaRef.
+
+                            Permission: generation costs real money and is not undoable. Propose the prompt, chosen model, duration, and aspect ratio to the user and get confirmation before calling generate_video.
+
+                            Placeholder-then-poll: generate_video returns immediately with a placeholder asset ID. The asset appears in get_media with generationStatus: generating. Poll get_media until the status clears; then the ID is drop-in usable in add_clip.
+
+                            Workflow:
+                            1. get_timeline and get_media to see the project settings and existing assets that could be reference frames.
+                            2. list_models with type "video".
+                            3. Pick a model using the priority above; draft a grounded, concrete prompt.
+                            4. Propose the plan to the user and wait for confirmation.
+                            5. Call generate_video.
+                            6. Poll get_media until generationStatus clears.
+                            7. Use the asset in add_clip when the user is ready to drop it on the timeline.
                             """))
                     ]
                 )
@@ -687,15 +781,28 @@ final class MCPService {
                     description: "Generate an image",
                     messages: [
                         .user(.text(text: """
-                            Generate an image\(styleClause).
+                            You are a creative director generating an image\(styleClause) that will likely become the first frame of a scene. Think about composition, light, and camera — not just subject.
 
                             Description: \(desc)
 
-                            Steps:
-                            1. Call list_models with type "image" to see available models
-                            2. Pick the best model for this use case
-                            3. Call generate_image with a detailed prompt based on the description, \
-                            the chosen model, and appropriate aspect ratio/resolution
+                            Model selection priority, in order:
+                            1. Reference support — if you need character/style/location consistency with existing assets, use a model with supportsImageReference and pass those assets via referenceMediaRefs.
+                            2. Aspect ratio and resolution — match the project's settings from get_timeline.
+                            3. Cost and speed.
+
+                            Reference-image discipline: before passing any ID in referenceMediaRefs, call read_media on it and describe what you actually see in the prompt. Never rely on the handle name or filename.
+
+                            Permission: generation costs real money and is not undoable. Propose the prompt, chosen model, and aspect ratio to the user and get confirmation before calling generate_image.
+
+                            Placeholder-then-poll: generate_image returns immediately with a placeholder asset ID. The asset appears in get_media with generationStatus: generating. Poll get_media until the status clears; then the ID is usable as a reference for generate_video or as a clip via add_clip on an image track.
+
+                            Workflow:
+                            1. get_timeline and get_media to see the project settings and existing assets that could serve as references.
+                            2. list_models with type "image".
+                            3. Pick a model using the priority above; draft a grounded, concrete prompt.
+                            4. Propose the plan to the user and wait for confirmation.
+                            5. Call generate_image.
+                            6. Poll get_media until generationStatus clears.
                             """))
                     ]
                 )
