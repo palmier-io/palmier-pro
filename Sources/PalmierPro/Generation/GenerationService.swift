@@ -193,7 +193,7 @@ final class GenerationService {
                     )
                     editor.mediaAssets[idx] = asset
                     editor.importMediaAsset(asset, skipAppend: true)
-                    Task { await asset.loadMetadata() }
+                    await editor.finalizeImportedAsset(asset)
                 }
             } catch {
                 Log.generation.error("generation failed model=\(genInput.model) error=\(error.localizedDescription)")

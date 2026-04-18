@@ -34,4 +34,18 @@ extension EditorViewModel {
             mediaManifest.entries[idx].hasAudio = asset.hasAudio
         }
     }
+
+    func finalizeImportedAsset(_ asset: MediaAsset) async {
+        await asset.loadMetadata()
+        updateManifestMetadata(for: asset)
+        switch asset.type {
+        case .video:
+            mediaVisualCache.generateWaveform(for: asset)
+            mediaVisualCache.generateThumbnails(for: asset, fps: timeline.fps)
+        case .audio:
+            mediaVisualCache.generateWaveform(for: asset)
+        case .image:
+            mediaVisualCache.generateImageThumbnail(for: asset)
+        }
+    }
 }
