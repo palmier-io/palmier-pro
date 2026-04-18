@@ -122,6 +122,39 @@ final class EditorViewModel {
         videoEngine?.rebuild()
     }
 
+    /// Place one clip at exact frames, optionally pairing the audio from a video
+    /// asset onto an audio track. Returns every clip ID created (1 or 2).
+    @discardableResult
+    func placeClip(
+        asset: MediaAsset,
+        trackIndex: Int,
+        startFrame: Int,
+        durationFrames: Int,
+        addLinkedAudio: Bool = true,
+        linkedAudioTrackIndex: Int? = nil
+    ) -> [String] {
+        let targetIsVideo = timeline.tracks.indices.contains(trackIndex) && timeline.tracks[trackIndex].type == .video
+        let shouldLink = addLinkedAudio && targetIsVideo && asset.type == .video && asset.hasAudio
+        let linkGroupId: String? = shouldLink ? UUID().uuidString : nil
+
+        var clip = Clip(mediaRef: asset.id, mediaType: asset.type, sourceClipType: asset.type, startFrame: startFrame, durationFrames: durationFrames, transform: fitTransform(for: asset))
+        clip.linkGroupId = linkGroupId
+        timeline.tracks[trackIndex].clips.append(clip)
+        sortClips(trackIndex: trackIndex)
+        var ids = [clip.id]
+
+        if let gid = linkGroupId {
+            let audioTrackIdx = linkedAudioTrackIndex
+                ?? resolveOrCreateAudioTrack(startFrame: startFrame, duration: durationFrames)
+            var audioClip = Clip(mediaRef: asset.id, mediaType: .audio, sourceClipType: asset.type, startFrame: startFrame, durationFrames: durationFrames)
+            audioClip.linkGroupId = gid
+            timeline.tracks[audioTrackIdx].clips.append(audioClip)
+            sortClips(trackIndex: audioTrackIdx)
+            ids.append(audioClip.id)
+        }
+        return ids
+    }
+
     /// Create clips sequentially at exact frames — callers clear the range first.
     /// Linked audio lands on `linkedAudioTrackIndex`, or `resolveOrCreateAudioTrack` when nil.
     @discardableResult
@@ -134,27 +167,16 @@ final class EditorViewModel {
     ) -> [String] {
         var cursor = startFrame
         var clipIds: [String] = []
-        let targetIsVideo = timeline.tracks.indices.contains(trackIndex) && timeline.tracks[trackIndex].type == .video
         for asset in assets {
             let durationFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
-            let transform = fitTransform(for: asset)
-            let shouldLink = addLinkedAudio && targetIsVideo && asset.type == .video && asset.hasAudio
-            let linkGroupId: String? = shouldLink ? UUID().uuidString : nil
-            var clip = Clip(mediaRef: asset.id, mediaType: asset.type, sourceClipType: asset.type, startFrame: cursor, durationFrames: durationFrames, transform: transform)
-            clip.linkGroupId = linkGroupId
-            timeline.tracks[trackIndex].clips.append(clip)
-            clipIds.append(clip.id)
-
-            if let gid = linkGroupId {
-                let audioTrackIdx = linkedAudioTrackIndex
-                    ?? resolveOrCreateAudioTrack(startFrame: cursor, duration: durationFrames)
-                var audioClip = Clip(mediaRef: asset.id, mediaType: .audio, sourceClipType: asset.type, startFrame: cursor, durationFrames: durationFrames)
-                audioClip.linkGroupId = gid
-                timeline.tracks[audioTrackIdx].clips.append(audioClip)
-                sortClips(trackIndex: audioTrackIdx)
-                clipIds.append(audioClip.id)
-            }
-
+            clipIds.append(contentsOf: placeClip(
+                asset: asset,
+                trackIndex: trackIndex,
+                startFrame: cursor,
+                durationFrames: durationFrames,
+                addLinkedAudio: addLinkedAudio,
+                linkedAudioTrackIndex: linkedAudioTrackIndex
+            ))
             cursor += durationFrames
         }
         return clipIds
