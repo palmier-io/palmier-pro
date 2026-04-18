@@ -37,12 +37,8 @@ enum CompositionBuilder {
             let mediaType: AVMediaType = isAudio ? .audio : .video
 
             guard let compTrack = composition.addMutableTrack(withMediaType: mediaType, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
-            let audioCompTrack: AVMutableCompositionTrack? = isAudio ? nil :
-                composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
 
-            if let audioCompTrack {
-                trackMappings.append(TrackMapping(compositionTrack: audioCompTrack, timelineTrackIndex: trackIdx, naturalSize: .zero, endTime: .zero, isVideo: false))
-            } else if isAudio {
+            if isAudio {
                 trackMappings.append(TrackMapping(compositionTrack: compTrack, timelineTrackIndex: trackIdx, naturalSize: .zero, endTime: .zero, isVideo: false))
             }
 
@@ -73,7 +69,6 @@ enum CompositionBuilder {
                 if clipStart > cursor {
                     let gap = clipStart - cursor
                     compTrack.insertEmptyTimeRange(CMTimeRange(start: cursor, duration: gap))
-                    audioCompTrack?.insertEmptyTimeRange(CMTimeRange(start: cursor, duration: gap))
                 }
 
                 let sourceDuration: CMTime
@@ -87,13 +82,6 @@ enum CompositionBuilder {
                 try compTrack.insertTimeRange(sourceRange, of: sourceTrack, at: clipStart)
                 if clip.speed != 1.0 {
                     compTrack.scaleTimeRange(CMTimeRange(start: clipStart, duration: sourceDuration), toDuration: clipDuration)
-                }
-
-                if let audioCompTrack, let audioSource = try? await sourceAsset.loadTracks(withMediaType: .audio).first {
-                    try? audioCompTrack.insertTimeRange(sourceRange, of: audioSource, at: clipStart)
-                    if clip.speed != 1.0 {
-                        audioCompTrack.scaleTimeRange(CMTimeRange(start: clipStart, duration: sourceDuration), toDuration: clipDuration)
-                    }
                 }
 
                 cursor = clipStart + clipDuration

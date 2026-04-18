@@ -52,15 +52,28 @@ final class TimelineInputController {
         if let hit = hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) {
             let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
             let rect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
+            let isShift = event.modifierFlags.contains(.shift)
+            let isOption = event.modifierFlags.contains(.option)
+            // Linked behavior is always on; Option is the per-drag override.
+            let linkedOn = !isOption
 
-            if event.modifierFlags.contains(.shift) {
+            if isShift {
                 if editor.selectedClipIds.contains(clip.id) {
-                    editor.selectedClipIds.remove(clip.id)
+                    if linkedOn {
+                        editor.selectedClipIds.subtract(editor.expandToLinkGroup([clip.id]))
+                    } else {
+                        editor.selectedClipIds.remove(clip.id)
+                    }
+                } else if linkedOn {
+                    editor.selectedClipIds.formUnion(editor.expandToLinkGroup([clip.id]))
                 } else {
                     editor.selectedClipIds.insert(clip.id)
                 }
-            } else if !editor.selectedClipIds.contains(clip.id) {
+            } else if isOption {
+                // Override: select only the clicked clip regardless of link group.
                 editor.selectedClipIds = [clip.id]
+            } else if !editor.selectedClipIds.contains(clip.id) {
+                editor.selectedClipIds = linkedOn ? editor.expandToLinkGroup([clip.id]) : [clip.id]
             }
 
             // Determine drag mode: trim left, trim right, or move
@@ -73,7 +86,8 @@ final class TimelineInputController {
                     originalTrimEnd: clip.trimEndFrame,
                     originalStartFrame: clip.startFrame,
                     originalDuration: clip.durationFrames,
-                    isImage: clip.mediaType == .image
+                    isImage: clip.mediaType == .image,
+                    propagateToLinked: linkedOn
                 ))
             } else if localX >= rect.width - Trim.handleWidth {
                 dragState = .trimRight(DragState.TrimDrag(
@@ -83,23 +97,22 @@ final class TimelineInputController {
                     originalTrimEnd: clip.trimEndFrame,
                     originalStartFrame: clip.startFrame,
                     originalDuration: clip.durationFrames,
-                    isImage: clip.mediaType == .image
+                    isImage: clip.mediaType == .image,
+                    propagateToLinked: linkedOn
                 ))
             } else {
                 let grabFrame = geometry.frameAt(x: point.x)
-                var companions: [DragState.CompanionClip] = []
+                var companions: [DragState.Participant] = []
                 for (ti, track) in editor.timeline.tracks.enumerated() {
                     for c in track.clips where c.id != clip.id && editor.selectedClipIds.contains(c.id) {
                         companions.append(.init(clipId: c.id, originalTrack: ti, originalFrame: c.startFrame))
                     }
                 }
                 dragState = .moveClip(DragState.MoveClipDrag(
-                    clipId: clip.id,
-                    originalTrack: hit.trackIndex,
-                    originalFrame: clip.startFrame,
+                    lead: .init(clipId: clip.id, originalTrack: hit.trackIndex, originalFrame: clip.startFrame),
+                    companions: companions,
                     grabOffsetFrames: grabFrame - clip.startFrame,
-                    dropTarget: .existingTrack(hit.trackIndex),
-                    companions: companions
+                    dropTarget: .existingTrack(hit.trackIndex)
                 ))
             }
         } else {
@@ -126,7 +139,7 @@ final class TimelineInputController {
 
         case .moveClip(var drag):
             let candidateFrame = frame - drag.grabOffsetFrames
-            let allDraggedIds = Set([drag.clipId] + drag.companions.map(\.clipId))
+            let allDraggedIds = Set(drag.all.map(\.clipId))
             let targets = SnapEngine.collectTargets(
                 tracks: editor.timeline.tracks,
                 playheadFrame: editor.currentFrame,
@@ -135,7 +148,7 @@ final class TimelineInputController {
 
             let clipDuration = editor.timeline.tracks
                 .flatMap(\.clips)
-                .first(where: { $0.id == drag.clipId })?
+                .first(where: { $0.id == drag.lead.clipId })?
                 .durationFrames ?? 0
 
             if let snap = SnapEngine.findSnap(
@@ -147,30 +160,23 @@ final class TimelineInputController {
                 pixelsPerFrame: geometry.pixelsPerFrame
             ) {
                 snapIndicatorX = snap.x
-                drag.deltaFrames = (snap.frame - snap.probeOffset) - drag.originalFrame
+                drag.deltaFrames = (snap.frame - snap.probeOffset) - drag.lead.originalFrame
             } else {
                 snapIndicatorX = nil
-                drag.deltaFrames = candidateFrame - drag.originalFrame
+                drag.deltaFrames = candidateFrame - drag.lead.originalFrame
             }
-            // Multi-clip drag: clamp vertical movement so no clip overflows
-            // the track list, and block moves that would land on incompatible types.
+            // Vertical movement affects only the grabbed clip — a linked
+            // partner keeps its own track and just follows horizontally.
             let rawTarget = geometry.dropTargetAt(y: point.y)
-            if drag.companions.isEmpty {
-                drag.dropTarget = rawTarget
-            } else if case .existingTrack(let targetTrack) = rawTarget {
-                let trackDelta = targetTrack - drag.originalTrack
-                let allTracks = [drag.originalTrack] + drag.companions.map(\.originalTrack)
-                let minTrack = allTracks.min()!
-                let maxTrack = allTracks.max()!
-                let trackCount = editor.timeline.tracks.count
-                var clamped = max(-minTrack, min(trackCount - 1 - maxTrack, trackDelta))
+            if case .existingTrack(let targetTrack) = rawTarget {
                 let tracks = editor.timeline.tracks
-                let typeOk = allTracks.allSatisfy { orig in
-                    let dest = orig + clamped
-                    return tracks.indices.contains(dest) && tracks[dest].type.isCompatible(with: tracks[orig].type)
-                }
-                if !typeOk { clamped = 0 }
-                drag.dropTarget = .existingTrack(drag.originalTrack + clamped)
+                let leadType = tracks[drag.lead.originalTrack].type
+                let landedTrack = tracks.indices.contains(targetTrack)
+                    && tracks[targetTrack].type.isCompatible(with: leadType)
+                    ? targetTrack : drag.lead.originalTrack
+                drag.dropTarget = .existingTrack(landedTrack)
+            } else {
+                drag.dropTarget = rawTarget
             }
             dragState = .moveClip(drag)
 
@@ -249,6 +255,9 @@ final class TimelineInputController {
                     }
                 }
             }
+            if !event.modifierFlags.contains(.option) {
+                selected = editor.expandToLinkGroup(selected)
+            }
             editor.selectedClipIds = selected
             dragState = .marquee(marq)
 
@@ -264,49 +273,64 @@ final class TimelineInputController {
     func mouseUp(with event: NSEvent, geometry: TimelineGeometry) {
         switch dragState {
         case .moveClip(let drag):
-            let targetFrame = max(0, drag.originalFrame + drag.deltaFrames)
-            let trackDelta = {
-                switch drag.dropTarget {
-                case .existingTrack(let idx): return idx - drag.originalTrack
-                case .newTrackAt: return 0
+            // Clamp the group delta so no clip ends up at a negative frame.
+            let minOrigFrame = drag.all.map(\.originalFrame).min()!
+            let clampedDelta = max(-minOrigFrame, drag.deltaFrames)
+            let trackDelta: Int = {
+                if case .existingTrack(let idx) = drag.dropTarget {
+                    return idx - drag.lead.originalTrack
                 }
+                return 0
             }()
 
-            if drag.companions.isEmpty {
-                switch drag.dropTarget {
-                case .existingTrack(let trackIndex):
-                    if trackIndex != drag.originalTrack || targetFrame != drag.originalFrame {
-                        editor.moveClip(clipId: drag.clipId, toTrack: trackIndex, toFrame: targetFrame)
+            // No-op: lead didn't move and there's no new track to create.
+            if case .existingTrack = drag.dropTarget,
+               trackDelta == 0, drag.deltaFrames == 0 {
+                break
+            }
+
+            switch drag.dropTarget {
+            case .existingTrack:
+                // Lead changes track; companions keep their own.
+                editor.moveClips(drag.all.map { p in
+                    let destTrack = drag.isLead(p) ? p.originalTrack + trackDelta : p.originalTrack
+                    return (p.clipId, destTrack, p.originalFrame + clampedDelta)
+                })
+            case .newTrackAt(let insertIndex):
+                // Insert a new track for the lead, then move. Companions that
+                // sat at or below the insertion index shift down by 1.
+                editor.undoManager?.beginUndoGrouping()
+                let clipType = editor.timeline.tracks[drag.lead.originalTrack].type
+                let newIdx = editor.insertTrack(at: insertIndex, type: clipType, label: clipType.trackLabel)
+                let moves: [(String, Int, Int)] = drag.all.map { p in
+                    if drag.isLead(p) {
+                        return (p.clipId, newIdx, p.originalFrame + clampedDelta)
                     }
-                case .newTrackAt(let insertIndex):
-                    let clipType = editor.timeline.tracks[drag.originalTrack].type
-                    editor.moveClipToNewTrack(clipId: drag.clipId, insertAt: insertIndex, clipType: clipType, toFrame: targetFrame)
+                    let shifted = p.originalTrack >= newIdx ? p.originalTrack + 1 : p.originalTrack
+                    return (p.clipId, shifted, p.originalFrame + clampedDelta)
                 }
-            } else if drag.deltaFrames != 0 || trackDelta != 0 {
-                // Clamp delta so no clip goes below frame 0
-                let allClips = [DragState.CompanionClip(clipId: drag.clipId, originalTrack: drag.originalTrack, originalFrame: drag.originalFrame)] + drag.companions
-                let minOrigFrame = allClips.map(\.originalFrame).min()!
-                let clampedDelta = max(-minOrigFrame, drag.deltaFrames)
-                editor.moveClips(allClips.map { ($0.clipId, $0.originalTrack + trackDelta, $0.originalFrame + clampedDelta) })
+                editor.moveClips(moves)
+                editor.undoManager?.endUndoGrouping()
+                editor.undoManager?.setActionName("Move Clip to New Track")
             }
 
         case .trimLeft(let drag):
             if drag.deltaFrames != 0 {
-                let newTrimStart = drag.originalTrimStart + drag.deltaFrames
-                editor.trimClip(
+                editor.commitTrim(
                     clipId: drag.clipId,
-                    trimStartFrame: newTrimStart,
-                    trimEndFrame: drag.originalTrimEnd
+                    edge: .left,
+                    deltaFrames: drag.deltaFrames,
+                    propagateToLinked: drag.propagateToLinked
                 )
             }
 
         case .trimRight(let drag):
             if drag.deltaFrames != 0 {
-                let newTrimEnd = drag.originalTrimEnd - drag.deltaFrames
-                editor.trimClip(
+                editor.commitTrim(
                     clipId: drag.clipId,
-                    trimStartFrame: drag.originalTrimStart,
-                    trimEndFrame: newTrimEnd
+                    edge: .right,
+                    deltaFrames: drag.deltaFrames,
+                    propagateToLinked: drag.propagateToLinked
                 )
             }
 

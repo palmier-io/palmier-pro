@@ -61,29 +61,31 @@ final class TimelineHeaderView: NSView {
             ctx.fill(NSRect(x: 0, y: y, width: stripWidth, height: h))
 
             // Track label
-            let str = NSAttributedString(string: track.label, attributes: Self.labelAttrs)
+            let str = NSAttributedString(string: displayLabel(for: i), attributes: Self.labelAttrs)
             let labelSize = str.size()
             let labelY = y + (h - labelSize.height) / 2
             str.draw(at: NSPoint(x: stripWidth + 6, y: labelY))
 
-            // Sync-lock + mute + hide buttons
+
             let iconY = y + (h - iconSize) / 2
-            let hideX = headerWidth - iconSize - 6
-            let muteX = hideX - iconSize - 4
-            let syncX = muteX - iconSize - 4
+            let rightmostX = headerWidth - iconSize - 6
+            let syncX = rightmostX - iconSize - 4
 
             syncLockButtonRects[i] = drawToggleIcon(
                 x: syncX, y: iconY, size: iconSize, config: iconConfig, context: ctx,
                 active: track.syncLocked, onSymbol: "link", offSymbol: "personalhotspot.slash"
             )
-            muteButtonRects[i] = drawToggleIcon(
-                x: muteX, y: iconY, size: iconSize, config: iconConfig, context: ctx,
-                active: !track.muted, onSymbol: "speaker.wave.2.fill", offSymbol: "speaker.slash.fill"
-            )
-            hideButtonRects[i] = drawToggleIcon(
-                x: hideX, y: iconY, size: iconSize, config: iconConfig, context: ctx,
-                active: !track.hidden, onSymbol: "eye", offSymbol: "eye.slash"
-            )
+            if track.type == .audio {
+                muteButtonRects[i] = drawToggleIcon(
+                    x: rightmostX, y: iconY, size: iconSize, config: iconConfig, context: ctx,
+                    active: !track.muted, onSymbol: "speaker.wave.2.fill", offSymbol: "speaker.slash.fill"
+                )
+            } else {
+                hideButtonRects[i] = drawToggleIcon(
+                    x: rightmostX, y: iconY, size: iconSize, config: iconConfig, context: ctx,
+                    active: !track.hidden, onSymbol: "eye", offSymbol: "eye.slash"
+                )
+            }
 
             // White border at top of first track and bottom of every track
             if i == 0 {
@@ -94,6 +96,26 @@ final class TimelineHeaderView: NSView {
             ctx.setFillColor(AppTheme.Border.primary.cgColor)
             ctx.fill(NSRect(x: 0, y: handleY, width: headerWidth, height: 1))
         }
+
+        // Thick divider between the video zone and the audio zone,
+        let z = editor.zones
+        if z.videoTrackCount > 0, z.audioTrackCount > 0 {
+            let dividerY = geo.trackY(at: z.firstAudioIndex)
+            ctx.setFillColor(AppTheme.Border.divider.cgColor)
+            ctx.fill(NSRect(x: 0, y: dividerY - 1, width: headerWidth, height: 2))
+        }
+    }
+
+    /// Premiere-style "V1", "A1", "I1" label based on position among same-type tracks.
+    private func displayLabel(for trackIndex: Int) -> String {
+        let tracks = editor.timeline.tracks
+        guard tracks.indices.contains(trackIndex) else { return "" }
+        let type = tracks[trackIndex].type
+        var n = 0
+        for i in 0...trackIndex where tracks[i].type == type {
+            n += 1
+        }
+        return "\(type.trackLabelPrefix)\(n)"
     }
 
     /// Draw a toggleable SF Symbol button; returns the hit-test rect (padded).

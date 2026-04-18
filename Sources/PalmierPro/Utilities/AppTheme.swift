@@ -8,11 +8,8 @@ enum AppTheme {
     enum Background {
         /// Base – content areas, panels, timeline body, wells
         static let surface = NSColor(white: 0.07, alpha: 1)
-        /// Raised – toolbars, tab bars, headers
-        static let elevated = NSColor(white: 0.13, alpha: 1)
 
         static var surfaceColor: Color { Color(surface) }
-        static var elevatedColor: Color { Color(elevated) }
     }
 
     // MARK: - Borders
@@ -20,6 +17,7 @@ enum AppTheme {
     enum Border {
         static let primary = NSColor.white.withAlphaComponent(0.12)
         static let subtle = NSColor.white.withAlphaComponent(0.08)
+        static let divider = NSColor.white.withAlphaComponent(0.35)
 
         static var primaryColor: Color { Color(primary) }
         static var subtleColor: Color { Color(subtle) }

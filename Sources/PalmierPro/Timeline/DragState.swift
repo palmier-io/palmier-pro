@@ -12,16 +12,20 @@ enum DragState {
     case marquee(MarqueeDrag)
 
     struct MoveClipDrag {
-        let clipId: String
-        let originalTrack: Int
-        let originalFrame: Int
+        /// Clip the user grabbed. Vertical drag only relocates this clip.
+        let lead: Participant
+        /// Other selected/linked clips that follow horizontally but stay on their own tracks.
+        var companions: [Participant] = []
         let grabOffsetFrames: Int
         var deltaFrames: Int = 0
         var dropTarget: TrackDropTarget
-        var companions: [CompanionClip] = []
+
+        var all: [Participant] { [lead] + companions }
+
+        func isLead(_ p: Participant) -> Bool { p.clipId == lead.clipId }
     }
 
-    struct CompanionClip {
+    struct Participant {
         let clipId: String
         let originalTrack: Int
         let originalFrame: Int
@@ -35,6 +39,8 @@ enum DragState {
         let originalStartFrame: Int
         let originalDuration: Int
         let isImage: Bool
+        /// When true, trim applies to link-group partners too.
+        let propagateToLinked: Bool
         var deltaFrames: Int = 0
     }
 

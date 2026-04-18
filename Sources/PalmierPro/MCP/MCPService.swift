@@ -339,6 +339,7 @@ final class MCPService {
         let clip = Clip(
             mediaRef: mediaRef,
             mediaType: asset.type,
+            sourceClipType: asset.type,
             startFrame: startFrame,
             durationFrames: durationFrames
         )
@@ -394,11 +395,11 @@ final class MCPService {
             return toolError("Missing or invalid 'type'. Must be: video, audio, image")
         }
         let label = args["label"]?.stringValue ?? type.trackLabel
-        editor.addTrack(type: type, label: label)
-        guard let track = editor.timeline.tracks.last else {
+        let index = editor.insertTrack(at: editor.timeline.tracks.count, type: type, label: label)
+        guard editor.timeline.tracks.indices.contains(index) else {
             return toolError("Failed to add track")
         }
-        let index = editor.timeline.tracks.count - 1
+        let track = editor.timeline.tracks[index]
         return toolOK("Added track '\(label)' (type: \(typeStr), id: \(track.id)) at index \(index)")
     }
 
@@ -425,7 +426,7 @@ final class MCPService {
         guard editor.timeline.tracks.indices.contains(toTrack) else {
             return toolError("Track index \(toTrack) out of range (0..\(editor.timeline.tracks.count - 1))")
         }
-        editor.moveClip(clipId: clipId, toTrack: toTrack, toFrame: toFrame)
+        editor.moveClips([(clipId: clipId, toTrack: toTrack, toFrame: toFrame)])
         return toolOK("Moved clip \(clipId) to track \(toTrack) at frame \(toFrame)")
     }
 

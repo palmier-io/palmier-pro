@@ -34,6 +34,9 @@ final class TimelineView: NSView {
     var externalDragAssets: [MediaAsset]?
     var externalDragFrame: Int = 0
 
+    private var externalSnapIndicatorX: Double?
+    private var externalSnapState = SnapEngine.SnapState()
+
     var geometry: TimelineGeometry {
         TimelineGeometry(editor: editor, bounds: bounds)
     }
@@ -99,7 +102,7 @@ final class TimelineView: NSView {
             drawExternalDragGhosts(assets: assets, target: target, frame: externalDragFrame, geometry: geo, dirtyRect: bounds, context: ctx)
         }
 
-        if let snapX = inputController.snapIndicatorX {
+        if let snapX = inputController.snapIndicatorX ?? externalSnapIndicatorX {
             ctx.setStrokeColor(NSColor.systemYellow.cgColor)
             ctx.setLineWidth(1)
             ctx.setLineDash(phase: 0, lengths: [4, 4])
@@ -185,7 +188,7 @@ final class TimelineView: NSView {
 
         let allDraggedIds: Set<String> = {
             guard let drag = moveDrag else { return [] }
-            return Set([drag.clipId] + drag.companions.map(\.clipId))
+            return Set(drag.all.map(\.clipId))
         }()
 
         let ripplePreview: (ids: Set<String>, delta: Int) = {
@@ -199,6 +202,14 @@ final class TimelineView: NSView {
             let ids = editor.timeline.tracks[drag.trackIndex].contiguousClipIds(fromEnd: oldEnd, excludeId: drag.clipId)
             return (ids, delta)
         }()
+
+        /// Linked partners that should mirror the trim preview live.
+        let trimPartnerIds: Set<String> = {
+            guard let (drag, _) = trimDrag, drag.propagateToLinked else { return [] }
+            return Set(editor.linkedPartnerIds(of: drag.clipId))
+        }()
+
+        let linkOffsets = editor.linkGroupOffsets()
 
         for (ti, track) in editor.timeline.tracks.enumerated() {
             for clip in track.clips {
@@ -219,12 +230,12 @@ final class TimelineView: NSView {
                     var ghostClip = clip
                     ghostClip.startFrame = max(0, clip.startFrame + frameDelta)
                     let ghostRect: NSRect
+                    let isLead = clip.id == drag.lead.clipId
 
-                    if case .existingTrack(let idx) = drag.dropTarget,
-                       editor.timeline.tracks.indices.contains(ti + idx - drag.originalTrack) {
-                        let ghostTrack = ti + idx - drag.originalTrack
-                        ghostRect = geo.clipRect(for: ghostClip, trackIndex: ghostTrack)
-                    } else if let y = geo.ghostY(for: drag.dropTarget) {
+                    if isLead, case .existingTrack(let idx) = drag.dropTarget,
+                       editor.timeline.tracks.indices.contains(idx) {
+                        ghostRect = geo.clipRect(for: ghostClip, trackIndex: idx)
+                    } else if isLead, let y = geo.ghostY(for: drag.dropTarget) {
                         ghostRect = geo.clipRect(for: ghostClip, atY: Double(y), height: Layout.trackHeight)
                     } else {
                         ghostRect = geo.clipRect(for: ghostClip, trackIndex: ti)
@@ -238,15 +249,16 @@ final class TimelineView: NSView {
                     continue
                 }
 
-                if let (drag, isLeft) = trimDrag, clip.id == drag.clipId {
+                if let (drag, isLeft) = trimDrag,
+                   clip.id == drag.clipId || trimPartnerIds.contains(clip.id) {
                     var previewClip = clip
                     if isLeft {
-                        previewClip.startFrame = drag.originalStartFrame + drag.deltaFrames
-                        previewClip.trimStartFrame = drag.originalTrimStart + drag.deltaFrames
-                        previewClip.durationFrames = drag.originalDuration - drag.deltaFrames
+                        previewClip.startFrame = clip.startFrame + drag.deltaFrames
+                        previewClip.trimStartFrame = clip.trimStartFrame + drag.deltaFrames
+                        previewClip.durationFrames = clip.durationFrames - drag.deltaFrames
                     } else {
-                        previewClip.durationFrames = drag.originalDuration + drag.deltaFrames
-                        previewClip.trimEndFrame = drag.originalTrimEnd - drag.deltaFrames
+                        previewClip.durationFrames = clip.durationFrames + drag.deltaFrames
+                        previewClip.trimEndFrame = clip.trimEndFrame - drag.deltaFrames
                     }
                     let previewRect = geo.clipRect(for: previewClip, trackIndex: ti)
                     if previewRect.intersects(dirtyRect) {
@@ -278,7 +290,8 @@ final class TimelineView: NSView {
                 ClipRenderer.draw(clip, type: clip.mediaType, in: rect,
                                   isSelected: isSelected, context: ctx,
                                   cache: editor.mediaVisualCache,
-                                  displayName: editor.mediaResolver.displayName(for: clip.mediaRef))
+                                  displayName: editor.mediaResolver.displayName(for: clip.mediaRef),
+                                  linkOffset: linkOffsets[clip.id])
             }
         }
     }
@@ -293,51 +306,65 @@ final class TimelineView: NSView {
         dirtyRect: NSRect,
         context ctx: CGContext
     ) {
-        let fps = editor.timeline.fps
+        let h = Layout.trackHeight
+        let plan = editor.resolveDropPlan(cursor: target, assets: assets, atFrame: frame)
 
-        // Groups to draw: each is (assets, type, rect-builder)
-        var groups: [(assets: [MediaAsset], type: ClipType, rectFor: (Clip) -> NSRect)] = []
+        struct Ghost {
+            let clip: Clip
+            let rect: NSRect
+        }
+        var ghosts: [Ghost] = []
 
-        switch target {
-        case .existingTrack(let trackIndex):
-            guard editor.timeline.tracks.indices.contains(trackIndex) else { return }
-            let trackType = editor.timeline.tracks[trackIndex].type
-            let matching = assets.filter { $0.type.isCompatible(with: trackType) }
-            if !matching.isEmpty {
-                groups.append((matching, trackType, { geo.clipRect(for: $0, trackIndex: trackIndex) }))
+        for p in plan.placements {
+            if p.hasVisual, let vt = plan.visualTarget {
+                let probe = Clip(mediaRef: p.asset.id, mediaType: p.asset.type, sourceClipType: p.asset.type, startFrame: p.startFrame, durationFrames: p.durationFrames)
+                ghosts.append(Ghost(
+                    clip: probe,
+                    rect: ghostRect(target: vt, probe: probe, height: h, geo: geo)
+                ))
             }
-
-        case .newTrackAt:
-            let h = Layout.trackHeight
-            let visual = assets.filter { $0.type.isVisual }
-            let audio = assets.filter { $0.type == .audio }
-            let totalHeight = CGFloat((visual.isEmpty ? 0 : 1) + (audio.isEmpty ? 0 : 1)) * h
-            guard let baseY = geo.ghostY(for: target, height: totalHeight) else { return }
-            var yOffset: CGFloat = 0
-            if !visual.isEmpty {
-                let y = Double(baseY + yOffset)
-                groups.append((visual, .video, { geo.clipRect(for: $0, atY: y, height: h) }))
-                yOffset += h
-            }
-            if !audio.isEmpty {
-                let y = Double(baseY + yOffset)
-                groups.append((audio, .audio, { geo.clipRect(for: $0, atY: y, height: h) }))
+            if p.hasAudio, let at = plan.audioTarget {
+                let probe = Clip(mediaRef: p.asset.id, mediaType: .audio, sourceClipType: p.asset.type, startFrame: p.startFrame, durationFrames: p.durationFrames)
+                ghosts.append(Ghost(
+                    clip: probe,
+                    rect: ghostRect(target: at, probe: probe, height: h, geo: geo)
+                ))
             }
         }
 
-        for group in groups {
-            var cursor = frame
-            for asset in group.assets {
-                let durationFrames = max(1, secondsToFrame(seconds: asset.duration, fps: fps))
-                let ghostClip = Clip(mediaRef: asset.id, mediaType: asset.type, startFrame: cursor, durationFrames: durationFrames)
-                let rect = group.rectFor(ghostClip)
-                if rect.intersects(dirtyRect) {
-                    ClipRenderer.draw(ghostClip, type: asset.type, in: rect,
-                                      isSelected: true, opacity: 0.5, context: ctx,
-                                      cache: editor.mediaVisualCache)
-                }
-                cursor += durationFrames
+        for ghost in ghosts where ghost.rect.intersects(dirtyRect) {
+            ClipRenderer.draw(ghost.clip, type: ghost.clip.mediaType, in: ghost.rect,
+                              isSelected: true, opacity: 0.5, context: ctx,
+                              cache: editor.mediaVisualCache)
+        }
+    }
+
+    /// Geometry for a ghost rect at a given drop target
+    private func ghostRect(
+        target: TrackDropTarget, probe: Clip, height: CGFloat,
+        geo: TimelineGeometry
+    ) -> NSRect {
+        switch target {
+        case .existingTrack(let idx):
+            return geo.clipRect(for: probe, trackIndex: idx)
+        case .newTrackAt(let idx):
+            let trackCount = editor.timeline.tracks.count
+            let top = geo.rulerHeight + Layout.dropZoneHeight
+            let y: CGFloat
+            if trackCount == 0 {
+                // No tracks yet — stack synthetic positions from the top by idx.
+                y = top + CGFloat(idx) * height
+            } else if idx >= trackCount {
+                // Appending: anchor at the bottom of the last track, then step
+                // down one track-height per additional slot beyond count.
+                let last = trackCount - 1
+                let bottom = geo.trackY(at: last) + geo.trackHeight(at: last)
+                y = bottom + CGFloat(idx - trackCount) * height
+            } else {
+                // Inserting in the middle — ghost sits just above the insertion line.
+                y = geo.trackY(at: idx) - height
             }
+            return geo.clipRect(for: probe, atY: Double(y), height: height)
         }
     }
 
@@ -358,6 +385,14 @@ final class TimelineView: NSView {
             }
             context.setFillColor(borderColor)
             context.fill(NSRect(x: 0, y: y + h - 1, width: bounds.width, height: 1))
+        }
+
+        // Thick divider between the video zone and the audio zone.
+        let z = editor.zones
+        if z.videoTrackCount > 0, z.audioTrackCount > 0 {
+            let dividerY = geo.trackY(at: z.firstAudioIndex)
+            context.setFillColor(AppTheme.Border.divider.cgColor)
+            context.fill(NSRect(x: 0, y: dividerY - 1, width: bounds.width, height: 2))
         }
     }
 
@@ -383,6 +418,43 @@ final class TimelineView: NSView {
         inputController.scrollWheel(with: event, geometry: geometry)
     }
 
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let point = convert(event.locationInWindow, from: nil)
+        let trackIndex = geometry.trackAt(y: point.y)
+        guard let hit = inputController.hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) else {
+            return nil
+        }
+        let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
+
+        if !editor.selectedClipIds.contains(clip.id) {
+            editor.selectedClipIds = editor.expandToLinkGroup([clip.id])
+            needsDisplay = true
+        }
+
+        let menu = NSMenu()
+        if editor.canLinkSelected {
+            let item = NSMenuItem(title: "Link", action: #selector(performLink(_:)), keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+        }
+        if editor.canUnlinkSelected {
+            let item = NSMenuItem(title: "Unlink", action: #selector(performUnlink(_:)), keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+        }
+        return menu.items.isEmpty ? nil : menu
+    }
+
+    @objc private func performLink(_ sender: Any?) {
+        editor.linkClips(ids: editor.selectedClipIds)
+        needsDisplay = true
+    }
+
+    @objc private func performUnlink(_ sender: Any?) {
+        editor.unlinkClips(ids: editor.selectedClipIds)
+        needsDisplay = true
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         for area in trackingAreas { removeTrackingArea(area) }
@@ -398,8 +470,6 @@ final class TimelineView: NSView {
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
         let point = convert(sender.draggingLocation, from: nil)
         let geo = geometry
-        externalDropTarget = geo.dropTargetAt(y: point.y)
-        externalDragFrame = geo.frameAt(x: point.x)
         // Parse assets from pasteboard once on enter
         if externalDragAssets == nil, let urlString = sender.draggingPasteboard.string(forType: .string) {
             let urlStrings = urlString.split(separator: "\n").map(String.init)
@@ -407,6 +477,9 @@ final class TimelineView: NSView {
                 editor.mediaAssets.first(where: { $0.url.absoluteString == str })
             }
         }
+        externalDropTarget = geo.dropTargetAt(y: point.y)
+        externalSnapState = SnapEngine.SnapState()
+        externalDragFrame = applyExternalSnap(at: point, geo: geo)
         needsDisplay = true
         return .copy
     }
@@ -415,7 +488,7 @@ final class TimelineView: NSView {
         let point = convert(sender.draggingLocation, from: nil)
         let geo = geometry
         externalDropTarget = geo.dropTargetAt(y: point.y)
-        externalDragFrame = geo.frameAt(x: point.x)
+        externalDragFrame = applyExternalSnap(at: point, geo: geo)
         needsDisplay = true
         return .copy
     }
@@ -423,62 +496,88 @@ final class TimelineView: NSView {
     override func draggingExited(_ sender: (any NSDraggingInfo)?) {
         externalDropTarget = nil
         externalDragAssets = nil
+        externalSnapIndicatorX = nil
+        externalSnapState = SnapEngine.SnapState()
         needsDisplay = true
+    }
+
+    /// Snap the external-drag frame to clip edges / playhead
+    private func applyExternalSnap(at point: NSPoint, geo: TimelineGeometry) -> Int {
+        let candidate = geo.frameAt(x: point.x)
+        guard let assets = externalDragAssets, !assets.isEmpty else {
+            externalSnapIndicatorX = nil
+            return candidate
+        }
+        let fps = editor.timeline.fps
+        let totalDur = assets.reduce(0) { $0 + max(1, secondsToFrame(seconds: $1.duration, fps: fps)) }
+        let targets = SnapEngine.collectTargets(
+            tracks: editor.timeline.tracks,
+            playheadFrame: editor.currentFrame,
+            excludeClipIds: []
+        )
+        if let snap = SnapEngine.findSnap(
+            position: candidate,
+            probeOffsets: [0, totalDur],
+            targets: targets,
+            state: &externalSnapState,
+            baseThreshold: Snap.thresholdPixels,
+            pixelsPerFrame: geo.pixelsPerFrame
+        ) {
+            externalSnapIndicatorX = snap.x
+            return snap.frame - snap.probeOffset
+        }
+        externalSnapIndicatorX = nil
+        return candidate
     }
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         let geo = geometry
         let point = convert(sender.draggingLocation, from: nil)
-        let dropTarget = geo.dropTargetAt(y: point.y)
-        let targetFrame = geo.frameAt(x: point.x)
+        let cursorTarget = geo.dropTargetAt(y: point.y)
+        let targetFrame = applyExternalSnap(at: point, geo: geo)
 
         externalDropTarget = nil
         externalDragAssets = nil
+        externalSnapIndicatorX = nil
+        externalSnapState = SnapEngine.SnapState()
 
         guard let urlString = sender.draggingPasteboard.string(forType: .string) else { return false }
 
+        let editor = self.editor
         let urlStrings = urlString.split(separator: "\n").map(String.init)
         let assets = urlStrings.compactMap { str in
             editor.mediaAssets.first(where: { $0.url.absoluteString == str })
         }
         guard !assets.isEmpty else { return false }
 
-        let operation: @MainActor () -> Void
-        switch dropTarget {
-        case .existingTrack(let targetTrack):
-            guard editor.timeline.tracks.indices.contains(targetTrack) else { return false }
-            let trackType = editor.timeline.tracks[targetTrack].type
-            let matching = assets.filter { $0.type.isCompatible(with: trackType) }
-            guard !matching.isEmpty else { return false }
+        let mods = NSEvent.modifierFlags
 
-            let mods = NSEvent.modifierFlags
-            let editor = self.editor
-            if mods.contains(.command) {
-                operation = { editor.rippleInsertClips(assets: matching, trackIndex: targetTrack, atFrame: targetFrame) }
-            } else if mods.contains(.option) {
-                operation = { editor.overwriteInsertClips(assets: matching, trackIndex: targetTrack, atFrame: targetFrame) }
-            } else {
-                operation = { editor.addClips(assets: matching, trackIndex: targetTrack, startFrame: targetFrame) }
+        let operation: @MainActor () -> Void = {
+            editor.undoManager?.beginUndoGrouping()
+
+            let plan = editor.resolveDropPlan(cursor: cursorTarget, assets: assets, atFrame: targetFrame)
+            let (visualIdx, audioIdx) = editor.materialize(plan: plan)
+            let ripple = mods.contains(.command)
+
+            let insert: ([MediaAsset], Int, Int?) -> Void = { assets, trackIdx, linkedAudio in
+                if ripple {
+                    editor.rippleInsertClips(assets: assets, trackIndex: trackIdx, atFrame: targetFrame)
+                } else {
+                    editor.addClips(assets: assets, trackIndex: trackIdx, startFrame: targetFrame, linkedAudioTrackIndex: linkedAudio)
+                }
             }
 
-        case .newTrackAt(let insertIndex):
-            let visual = assets.filter { $0.type.isVisual }
-            let audio = assets.filter { $0.type == .audio }
-            let editor = self.editor
-            operation = {
-                editor.undoManager?.beginUndoGrouping()
-                var trackOffset = 0
-                if !visual.isEmpty {
-                    editor.addClipsToNewTrack(assets: visual, insertAt: insertIndex + trackOffset, startFrame: targetFrame)
-                    trackOffset += 1
-                }
-                if !audio.isEmpty {
-                    editor.addClipsToNewTrack(assets: audio, insertAt: insertIndex + trackOffset, startFrame: targetFrame)
-                    trackOffset += 1
-                }
-                editor.undoManager?.endUndoGrouping()
-                editor.undoManager?.setActionName("Add Clips to New Track\(trackOffset > 1 ? "s" : "")")
+            let visualAssets = assets.filter { $0.type.isVisual }
+            if !visualAssets.isEmpty, let vIdx = visualIdx {
+                insert(visualAssets, vIdx, audioIdx)
             }
+            let audioOnlyAssets = assets.filter { $0.type == .audio }
+            if !audioOnlyAssets.isEmpty, let aIdx = audioIdx {
+                insert(audioOnlyAssets, aIdx, nil)
+            }
+
+            editor.undoManager?.endUndoGrouping()
+            editor.undoManager?.setActionName("Add Clips")
         }
 
         editor.addClipsWithSettingsCheck(assets: assets, operation: operation)

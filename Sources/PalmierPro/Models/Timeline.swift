@@ -30,7 +30,7 @@ struct Track: Codable, Sendable, Equatable, Identifiable {
     var clips: [Clip] = []
 
     /// Display-only height, not serialized. Reset to default on project open.
-    var displayHeight: CGFloat = 60
+    var displayHeight: CGFloat = 50
 
     /// Frame where the last clip ends
     var endFrame: Int {
@@ -73,6 +73,8 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var id: String = UUID().uuidString
     var mediaRef: String
     var mediaType: ClipType = .video
+    // audio clip can be extracted from a video type. Used for color-coding.
+    var sourceClipType: ClipType = .video
     var startFrame: Int
     var durationFrames: Int
     var trimStartFrame: Int = 0
@@ -81,6 +83,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var volume: Double = 1.0
     var opacity: Double = 1.0
     var transform: Transform = Transform()
+    var linkGroupId: String?
 
     /// Frame where this clip ends on the timeline
     var endFrame: Int { startFrame + durationFrames }

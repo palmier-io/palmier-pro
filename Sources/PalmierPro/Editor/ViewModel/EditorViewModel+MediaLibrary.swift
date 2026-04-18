@@ -31,6 +31,7 @@ extension EditorViewModel {
             mediaManifest.entries[idx].sourceWidth = asset.sourceWidth
             mediaManifest.entries[idx].sourceHeight = asset.sourceHeight
             mediaManifest.entries[idx].sourceFPS = asset.sourceFPS
+            mediaManifest.entries[idx].hasAudio = asset.hasAudio
         }
     }
 }

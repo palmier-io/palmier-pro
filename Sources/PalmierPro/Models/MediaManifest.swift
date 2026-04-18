@@ -15,6 +15,7 @@ struct MediaManifestEntry: Codable, Sendable, Equatable, Identifiable {
     var sourceWidth: Int?
     var sourceHeight: Int?
     var sourceFPS: Double?
+    var hasAudio: Bool?
 }
 
 struct GenerationInput: Codable, Sendable, Equatable {

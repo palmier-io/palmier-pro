@@ -6,10 +6,24 @@ extension EditorViewModel {
 
     // MARK: - Public API
 
-    /// Ripple trim: trims the clip and shifts adjacent clips to stay contiguous.
-    /// Only ripples clips that are touching — gaps are preserved.
-    func trimClip(clipId: String, trimStartFrame: Int, trimEndFrame: Int) {
-        trimClipInternal(clipId: clipId, trimStartFrame: trimStartFrame, trimEndFrame: trimEndFrame, applySyncLock: true)
+    /// Ripple-trim one or more clips in a single undo group. Adjacent clips on
+    /// each edit's track shift to stay contiguous. A multi-edit call (linked
+    /// partners trimmed together) skips cross-track sync-lock push so the
+    /// caller's own per-partner trim doesn't double-shift other tracks.
+    func trimClips(_ edits: [(clipId: String, trimStartFrame: Int, trimEndFrame: Int)]) {
+        guard !edits.isEmpty else { return }
+        let applySyncLock = edits.count == 1
+        undoManager?.beginUndoGrouping()
+        for e in edits {
+            trimClipInternal(
+                clipId: e.clipId,
+                trimStartFrame: e.trimStartFrame,
+                trimEndFrame: e.trimEndFrame,
+                applySyncLock: applySyncLock
+            )
+        }
+        undoManager?.endUndoGrouping()
+        undoManager?.setActionName(edits.count == 1 ? "Trim Clip" : "Trim Clips")
     }
 
     /// Ripple delete: remove selected clips and close the gaps. Sync-locked tracks shift

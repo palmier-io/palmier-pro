@@ -5,21 +5,28 @@ extension EditorViewModel {
 
     // MARK: - Add / remove
 
-    func addTrack(type: ClipType, label: String) {
-        let track = Track(type: type, label: label)
-        timeline.tracks.append(track)
-        undoManager?.registerUndo(withTarget: self) { $0.removeTrack(id: track.id) }
-        undoManager?.setActionName("Add Track")
-    }
-
     @discardableResult
     func insertTrack(at index: Int, type: ClipType, label: String) -> Int {
         let track = Track(type: type, label: label)
-        let clamped = min(index, timeline.tracks.count)
+        let clamped = partitionedInsertionIndex(for: type, requested: index)
         timeline.tracks.insert(track, at: clamped)
         undoManager?.registerUndo(withTarget: self) { $0.removeTrack(id: track.id) }
         undoManager?.setActionName("Add Track")
         return clamped
+    }
+
+    /// Clamp `requested` so that visual (video/image) tracks always sit above every audio track.
+    private func partitionedInsertionIndex(for type: ClipType, requested: Int) -> Int {
+        let z = zones
+        let bounded = max(0, min(requested, z.trackCount))
+        switch type {
+        case .video, .image:
+            // Visual tracks must come at or before the first audio track.
+            return min(bounded, z.firstAudioIndex)
+        case .audio:
+            // Audio tracks must come at or after the first audio track
+            return max(bounded, z.firstAudioIndex)
+        }
     }
 
     func removeTrack(id: String) {

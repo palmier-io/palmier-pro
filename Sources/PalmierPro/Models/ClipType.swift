@@ -19,6 +19,8 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
         }
     }
 
+    var trackLabelPrefix: String { String(trackLabel.prefix(1)) }
+
     var isVisual: Bool {
         self == .video || self == .image
     }

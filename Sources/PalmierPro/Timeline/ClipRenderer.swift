@@ -3,7 +3,6 @@ import AppKit
 enum ClipRenderer {
 
     private static let labelBarHeight: CGFloat = 16
-    private static let waveformStripMinHeight: CGFloat = 14
 
     static func draw(
         _ clip: Clip,
@@ -13,7 +12,8 @@ enum ClipRenderer {
         opacity: CGFloat = 1.0,
         context: CGContext,
         cache: MediaVisualCache? = nil,
-        displayName: String? = nil
+        displayName: String? = nil,
+        linkOffset: Int? = nil
     ) {
         if opacity < 1.0 {
             context.saveGState()
@@ -23,7 +23,9 @@ enum ClipRenderer {
         let cornerRadius = Trim.clipCornerRadius
         let path = CGPath(roundedRect: rect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
 
-        let baseColor = type.themeColor
+
+        let colorType = clip.sourceClipType
+        let baseColor = colorType.themeColor
         let fill = isSelected
             ? baseColor.withAlphaComponent(0.45)
             : baseColor.withAlphaComponent(0.3)
@@ -37,25 +39,11 @@ enum ClipRenderer {
         let contentX = rect.minX + stripWidth + 1
         let contentWidth = rect.width - stripWidth - 1 - handleW
 
-        let hasWaveform = cache?.samples(for: clip.mediaRef) != nil
-        let hasThumbnails = type == .video && (cache?.thumbnails(for: clip.mediaRef) != nil)
-
         // Label bar at top
         let labelRect = CGRect(x: contentX, y: rect.minY, width: contentWidth, height: labelBarHeight)
 
-        // Waveform strip at bottom (for video clips with audio, or audio-only clips)
-        let waveformStripHeight = max(waveformStripMinHeight, rect.height * 0.4)
-        let waveformRect: CGRect?
-        if hasWaveform && (type == .audio || hasThumbnails) {
-            waveformRect = CGRect(x: contentX, y: rect.maxY - waveformStripHeight, width: contentWidth, height: waveformStripHeight)
-        } else {
-            waveformRect = nil
-        }
-
-        // Thumbnail / main content area (between label and waveform)
         let contentY = rect.minY + labelBarHeight
-        let contentBottom = waveformRect?.minY ?? rect.maxY
-        let mainHeight = contentBottom - contentY
+        let mainHeight = rect.maxY - contentY
 
         // --- Draw visual content ---
 
@@ -66,20 +54,14 @@ enum ClipRenderer {
             let thumbRect = CGRect(x: contentX, y: contentY, width: contentWidth, height: mainHeight)
             drawTiledImage(image: image, in: thumbRect, clipRect: rect, cornerRadius: cornerRadius, context: context)
         } else if type == .audio, let samples = cache?.samples(for: clip.mediaRef), !samples.isEmpty {
-            // Audio-only: waveform fills the full area below label
-            let audioRect = CGRect(x: contentX, y: contentY, width: contentWidth, height: rect.maxY - contentY)
-            drawWaveform(samples: samples, clip: clip, type: type, in: audioRect, context: context)
+            let audioRect = CGRect(x: contentX, y: contentY, width: contentWidth, height: mainHeight)
+            drawWaveform(samples: samples, clip: clip, type: colorType, in: audioRect, context: context)
         }
 
-        // Waveform strip at bottom (for video clips)
-        if let wfRect = waveformRect, let samples = cache?.samples(for: clip.mediaRef), !samples.isEmpty {
-            drawWaveform(samples: samples, clip: clip, type: type, in: wfRect, context: context)
-        }
-
-        // Color-coded left edge strip
+        // Color-coded left edge strip (uses the same source-type as the fill).
         let stripRect = NSRect(x: rect.minX, y: rect.minY, width: stripWidth, height: rect.height)
         let stripPath = CGPath(roundedRect: stripRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
-        context.setFillColor(type.themeColor.cgColor)
+        context.setFillColor(colorType.themeColor.cgColor)
         context.addPath(stripPath)
         context.fillPath()
 
@@ -97,6 +79,10 @@ enum ClipRenderer {
         }
 
         drawLabelBar(clip: clip, type: type, in: labelRect, clipRect: rect, context: context, displayName: displayName)
+
+        if let linkOffset, linkOffset != 0 {
+            drawOffsetBadge(frames: linkOffset, in: rect, context: context)
+        }
 
         drawTrimHandles(in: rect, context: context)
 
@@ -261,12 +247,15 @@ enum ClipRenderer {
         let name = displayName ?? clip.mediaRef
         let text = "\(name)  \(timecode)"
 
-        let attrs: [NSAttributedString.Key: Any] = [
+        let baseAttrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: AppTheme.FontSize.xs, weight: .medium),
             .foregroundColor: AppTheme.Text.primary,
         ]
-        let str = NSAttributedString(string: text, attributes: attrs)
-        let size = str.size()
+        let attributed = NSMutableAttributedString(string: text, attributes: baseAttrs)
+        if clip.linkGroupId != nil {
+            attributed.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: NSRange(location: 0, length: (name as NSString).length))
+        }
+        let size = attributed.size()
         let inset: CGFloat = 6
         let origin = NSPoint(
             x: labelRect.minX + inset,
@@ -275,7 +264,41 @@ enum ClipRenderer {
 
         context.saveGState()
         context.clip(to: labelRect.insetBy(dx: inset, dy: 0))
-        str.draw(at: origin)
+        attributed.draw(at: origin)
+        context.restoreGState()
+    }
+
+    // MARK: - Out-of-sync offset badge
+
+    private static let offsetBadgeColor = NSColor(red: 1.0, green: 0.28, blue: 0.28, alpha: 1.0)
+
+    private static func drawOffsetBadge(frames: Int, in rect: NSRect, context: CGContext) {
+        let text = frames > 0 ? "+\(frames)" : "\(frames)"
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: AppTheme.FontSize.xs, weight: .semibold),
+            .foregroundColor: NSColor.white,
+        ]
+        let str = NSAttributedString(string: text, attributes: attrs)
+        let textSize = str.size()
+        let padH: CGFloat = 4
+        let padV: CGFloat = 1
+        let badgeWidth = textSize.width + padH * 2
+        let badgeHeight = textSize.height + padV * 2
+        let handleW = Trim.handleWidth
+        let badgeRect = NSRect(
+            x: rect.maxX - handleW - badgeWidth - 2,
+            y: rect.minY + 2,
+            width: badgeWidth,
+            height: badgeHeight
+        )
+        guard badgeRect.minX > rect.minX + 6 else { return }
+
+        context.saveGState()
+        let path = CGPath(roundedRect: badgeRect, cornerWidth: 3, cornerHeight: 3, transform: nil)
+        context.setFillColor(offsetBadgeColor.cgColor)
+        context.addPath(path)
+        context.fillPath()
+        str.draw(at: NSPoint(x: badgeRect.minX + padH, y: badgeRect.minY + padV))
         context.restoreGState()
     }
 

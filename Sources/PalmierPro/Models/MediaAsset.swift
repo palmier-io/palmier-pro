@@ -13,6 +13,7 @@ final class MediaAsset: Identifiable {
     var sourceWidth: Int?
     var sourceHeight: Int?
     var sourceFPS: Double?
+    var hasAudio: Bool = false
     var generationInput: GenerationInput?
     var generationStatus: GenerationStatus = .none
 
@@ -33,6 +34,7 @@ final class MediaAsset: Identifiable {
         self.duration = duration
         self.thumbnail = thumbnail
         self.generationInput = generationInput
+        self.hasAudio = (type == .video)
     }
 
     /// Reconstruct from a manifest entry + resolved URL.
@@ -41,6 +43,7 @@ final class MediaAsset: Identifiable {
         self.sourceWidth = entry.sourceWidth
         self.sourceHeight = entry.sourceHeight
         self.sourceFPS = entry.sourceFPS
+        self.hasAudio = entry.hasAudio ?? false
     }
 
     /// Produce a serializable manifest entry from this asset.
@@ -52,7 +55,7 @@ final class MediaAsset: Identifiable {
         } else {
             source = .external(absolutePath: url.path)
         }
-        return MediaManifestEntry(id: id, name: name, type: type, source: source, duration: duration, generationInput: generationInput, sourceWidth: sourceWidth, sourceHeight: sourceHeight, sourceFPS: sourceFPS)
+        return MediaManifestEntry(id: id, name: name, type: type, source: source, duration: duration, generationInput: generationInput, sourceWidth: sourceWidth, sourceHeight: sourceHeight, sourceFPS: sourceFPS, hasAudio: hasAudio)
     }
 
     func loadMetadata() async {
@@ -82,6 +85,9 @@ final class MediaAsset: Identifiable {
                 if let rate = try? await videoTrack.load(.nominalFrameRate), rate > 0 {
                     sourceFPS = Double(rate)
                 }
+            }
+            if let audioTracks = try? await avAsset.loadTracks(withMediaType: .audio) {
+                hasAudio = !audioTracks.isEmpty
             }
             let gen = AVAssetImageGenerator(asset: avAsset)
             gen.maximumSize = CGSize(width: 160, height: 90)

@@ -50,7 +50,6 @@ final class EditorViewModel {
     }() {
         didSet { UserDefaults.standard.set(layoutPreset.rawValue, forKey: "layoutPreset") }
     }
-
     // MARK: - Media library (in-memory, rebuilt on project open)
 
     var mediaAssets: [MediaAsset] = []
@@ -122,26 +121,40 @@ final class EditorViewModel {
         videoEngine?.rebuild()
     }
 
-    /// Create clips from assets sequentially starting at `startFrame`, appending to the given track.
+    /// Create clips sequentially at exact frames — callers clear the range first.
+    /// Linked audio lands on `linkedAudioTrackIndex`, or `resolveOrCreateAudioTrack` when nil.
     @discardableResult
     func createClips(
         from assets: [MediaAsset],
         trackIndex: Int,
         startFrame: Int,
-        resolveOverlaps: Bool = false
+        addLinkedAudio: Bool = true,
+        linkedAudioTrackIndex: Int? = nil
     ) -> [String] {
         var cursor = startFrame
         var clipIds: [String] = []
+        let targetIsVideo = timeline.tracks.indices.contains(trackIndex) && timeline.tracks[trackIndex].type == .video
         for asset in assets {
             let durationFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
-            let resolvedStart = resolveOverlaps
-                ? resolveOverlap(trackIndex: trackIndex, clipId: "", startFrame: cursor, duration: durationFrames)
-                : cursor
             let transform = fitTransform(for: asset)
-            let clip = Clip(mediaRef: asset.id, mediaType: asset.type, startFrame: resolvedStart, durationFrames: durationFrames, transform: transform)
+            let shouldLink = addLinkedAudio && targetIsVideo && asset.type == .video && asset.hasAudio
+            let linkGroupId: String? = shouldLink ? UUID().uuidString : nil
+            var clip = Clip(mediaRef: asset.id, mediaType: asset.type, sourceClipType: asset.type, startFrame: cursor, durationFrames: durationFrames, transform: transform)
+            clip.linkGroupId = linkGroupId
             timeline.tracks[trackIndex].clips.append(clip)
             clipIds.append(clip.id)
-            cursor = resolvedStart + durationFrames
+
+            if let gid = linkGroupId {
+                let audioTrackIdx = linkedAudioTrackIndex
+                    ?? resolveOrCreateAudioTrack(startFrame: cursor, duration: durationFrames)
+                var audioClip = Clip(mediaRef: asset.id, mediaType: .audio, sourceClipType: asset.type, startFrame: cursor, durationFrames: durationFrames)
+                audioClip.linkGroupId = gid
+                timeline.tracks[audioTrackIdx].clips.append(audioClip)
+                sortClips(trackIndex: audioTrackIdx)
+                clipIds.append(audioClip.id)
+            }
+
+            cursor += durationFrames
         }
         return clipIds
     }
@@ -157,26 +170,6 @@ final class EditorViewModel {
 
     func sortClips(trackIndex: Int) {
         timeline.tracks[trackIndex].clips.sort { $0.startFrame < $1.startFrame }
-    }
-
-    /// Returns the nearest non-overlapping startFrame for a clip on a track.
-    /// Snaps forward to the end of the overlapping clip.
-    func resolveOverlap(trackIndex: Int, clipId: String, startFrame: Int, duration: Int) -> Int {
-        let others = timeline.tracks[trackIndex].clips.filter { $0.id != clipId }
-        var frame = startFrame
-        var changed = true
-        while changed {
-            changed = false
-            for other in others {
-                let overlapStart = max(frame, other.startFrame)
-                let overlapEnd = min(frame + duration, other.endFrame)
-                if overlapStart < overlapEnd {
-                    frame = other.endFrame
-                    changed = true
-                }
-            }
-        }
-        return frame
     }
 
     /// Transform that letterboxes the asset into the canvas, preserving aspect ratio.
