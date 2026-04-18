@@ -77,10 +77,35 @@ extension EditorViewModel {
 
     // MARK: - Split / remove
 
+    /// Split `clipId` at `atFrame`. Also splits linked partners.
     func splitClip(clipId: String, atFrame: Int) {
         guard let loc = findClip(id: clipId) else { return }
         let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        guard atFrame > clip.startFrame && atFrame < clip.endFrame else { return }
+        let groupIds: Set<String> = clip.linkGroupId != nil
+            ? Set([clipId] + linkedPartnerIds(of: clipId))
+            : [clipId]
+
+        undoManager?.beginUndoGrouping()
+        var rightIds: [String] = []
+        for id in groupIds {
+            if let rightId = splitSingleClip(clipId: id, atFrame: atFrame) {
+                rightIds.append(rightId)
+            }
+        }
+        // Regroup the right halves so each side is its own linked pair.
+        if groupIds.count > 1 && !rightIds.isEmpty {
+            let newGroup = UUID().uuidString
+            mutateClips(ids: Set(rightIds), actionName: "Split Clip") { $0.linkGroupId = newGroup }
+        }
+        undoManager?.endUndoGrouping()
+        undoManager?.setActionName(groupIds.count > 1 ? "Split Clips" : "Split Clip")
+    }
+
+    @discardableResult
+    private func splitSingleClip(clipId: String, atFrame: Int) -> String? {
+        guard let loc = findClip(id: clipId) else { return nil }
+        let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        guard atFrame > clip.startFrame && atFrame < clip.endFrame else { return nil }
 
         let splitOffset = atFrame - clip.startFrame
         var left = clip
@@ -103,8 +128,8 @@ extension EditorViewModel {
                 vm.timeline.tracks[newLoc.trackIndex].clips[newLoc.clipIndex] = clip
             }
         }
-        undoManager?.setActionName("Split Clip")
         notifyTimelineChanged()
+        return right.id
     }
 
     func removeClips(ids: Set<String>) {
