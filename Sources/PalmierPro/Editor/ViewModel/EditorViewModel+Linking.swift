@@ -130,11 +130,12 @@ extension EditorViewModel {
     }
 
     private func trimValues(for clip: Clip, edge: TrimEdge, delta: Int) -> (trimStart: Int, trimEnd: Int) {
+        let sourceDelta = Int((Double(delta) * clip.speed).rounded())
         switch edge {
         case .left:
-            return (max(0, clip.trimStartFrame + delta), clip.trimEndFrame)
+            return (max(0, clip.trimStartFrame + sourceDelta), clip.trimEndFrame)
         case .right:
-            return (clip.trimStartFrame, max(0, clip.trimEndFrame - delta))
+            return (clip.trimStartFrame, max(0, clip.trimEndFrame - sourceDelta))
         }
     }
 

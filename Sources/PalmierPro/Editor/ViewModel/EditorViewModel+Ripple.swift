@@ -97,9 +97,14 @@ extension EditorViewModel {
         let prevEnd = clip.trimEndFrame
         let prevDuration = clip.durationFrames
         let oldEnd = clip.startFrame + clip.durationFrames
-        let deltaStart = trimStartFrame - prevStart
-        let newDuration = prevDuration - deltaStart - (trimEndFrame - prevEnd)
-        let newStartFrame = clip.startFrame + deltaStart
+        // The incoming trim values are source frames; translate their deltas
+        // into timeline frames before applying to `startFrame` / `durationFrames`.
+        let deltaStartSource = trimStartFrame - prevStart
+        let deltaEndSource = trimEndFrame - prevEnd
+        let deltaStartTimeline = Int((Double(deltaStartSource) / clip.speed).rounded())
+        let deltaEndTimeline = Int((Double(deltaEndSource) / clip.speed).rounded())
+        let newDuration = prevDuration - deltaStartTimeline - deltaEndTimeline
+        let newStartFrame = clip.startFrame + deltaStartTimeline
         let rippleDelta = (newStartFrame + newDuration) - oldEnd
 
         if applySyncLock && rippleDelta != 0,

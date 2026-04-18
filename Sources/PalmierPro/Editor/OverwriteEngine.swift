@@ -44,7 +44,7 @@ enum OverwriteEngine {
             } else if cs < regionStart && ce > regionEnd {
                 let leftDuration = regionStart - cs
                 let rightStartFrame = regionEnd
-                let rightTrimStart = clip.trimStartFrame + (regionEnd - cs)
+                let rightTrimStart = clip.trimStartFrame + Int((Double(regionEnd - cs) * clip.speed).rounded())
                 let rightDuration = ce - regionEnd
                 actions.append(.split(
                     clipId: clip.id,
@@ -62,7 +62,7 @@ enum OverwriteEngine {
                 // Overlaps right side — trim left edge
                 let trimAmount = regionEnd - cs
                 let newStartFrame = regionEnd
-                let newTrimStart = clip.trimStartFrame + trimAmount
+                let newTrimStart = clip.trimStartFrame + Int((Double(trimAmount) * clip.speed).rounded())
                 let newDuration = ce - regionEnd
                 actions.append(.trimStart(
                     clipId: clip.id,

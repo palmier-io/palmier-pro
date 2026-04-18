@@ -88,8 +88,11 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     /// Frame where this clip ends on the timeline
     var endFrame: Int { startFrame + durationFrames }
 
-    /// Source duration accounting for trim on both ends
-    var sourceDurationFrames: Int { durationFrames + trimStartFrame + trimEndFrame }
+    /// Source frames consumed by the visible portion
+    var sourceFramesConsumed: Int { Int((Double(durationFrames) * speed).rounded()) }
+
+    /// Total source frames the clip references, including both trims.
+    var sourceDurationFrames: Int { sourceFramesConsumed + trimStartFrame + trimEndFrame }
 }
 
 struct Transform: Codable, Sendable, Equatable {

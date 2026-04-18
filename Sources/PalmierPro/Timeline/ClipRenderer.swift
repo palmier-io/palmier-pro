@@ -104,11 +104,11 @@ enum ClipRenderer {
         let drawHeight = drawRect.height
         guard drawWidth > 2, drawHeight > 2 else { return }
 
-        // Map visible portion of source to sample indices
+        // Map visible portion of source to sample indices.
         let totalSource = clip.sourceDurationFrames
         guard totalSource > 0 else { return }
         let startFrac = Double(clip.trimStartFrame) / Double(totalSource)
-        let endFrac = Double(clip.trimStartFrame + clip.durationFrames) / Double(totalSource)
+        let endFrac = Double(clip.trimStartFrame + clip.sourceFramesConsumed) / Double(totalSource)
         let sampleStart = Int(startFrac * Double(samples.count))
         let sampleEnd = min(samples.count, Int(endFrac * Double(samples.count)))
         guard sampleEnd > sampleStart else { return }
@@ -151,7 +151,7 @@ enum ClipRenderer {
         // Visible time range based on trim
         let fps = 30.0
         let visibleStartSec = Double(clip.trimStartFrame) / fps
-        let visibleDurationSec = Double(clip.durationFrames) / fps
+        let visibleDurationSec = Double(clip.sourceFramesConsumed) / fps
         guard visibleDurationSec > 0 else { return }
 
         context.saveGState()

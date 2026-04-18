@@ -252,13 +252,14 @@ final class TimelineView: NSView {
                 if let (drag, isLeft) = trimDrag,
                    clip.id == drag.clipId || trimPartnerIds.contains(clip.id) {
                     var previewClip = clip
+                    let sourceDelta = Int((Double(drag.deltaFrames) * clip.speed).rounded())
                     if isLeft {
                         previewClip.startFrame = clip.startFrame + drag.deltaFrames
-                        previewClip.trimStartFrame = clip.trimStartFrame + drag.deltaFrames
+                        previewClip.trimStartFrame = clip.trimStartFrame + sourceDelta
                         previewClip.durationFrames = clip.durationFrames - drag.deltaFrames
                     } else {
                         previewClip.durationFrames = clip.durationFrames + drag.deltaFrames
-                        previewClip.trimEndFrame = clip.trimEndFrame - drag.deltaFrames
+                        previewClip.trimEndFrame = clip.trimEndFrame - sourceDelta
                     }
                     let previewRect = geo.clipRect(for: previewClip, trackIndex: ti)
                     if previewRect.intersects(dirtyRect) {
