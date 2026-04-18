@@ -19,14 +19,20 @@ struct CompositionResult {
 /// Builds an AVFoundation composition from a Timeline.
 enum CompositionBuilder {
 
+    struct InvalidTimelineError: LocalizedError {
+        let reason: String
+        var errorDescription: String? { "Invalid timeline: \(reason)" }
+    }
+
     static func build(
         timeline: Timeline,
         resolveURL: @Sendable (String) -> URL?,
         resolveSourceSize: @Sendable (String) -> CGSize? = { _ in nil }
     ) async throws -> CompositionResult {
         Log.preview.info("build fps=\(timeline.fps) size=\(timeline.width)x\(timeline.height) tracks=\(timeline.tracks.count)")
-        if timeline.fps <= 0 || timeline.width <= 0 || timeline.height <= 0 {
-            Log.preview.fault("build: invalid timeline settings — CMTimeScale/render will corrupt")
+        guard timeline.fps > 0, timeline.width > 0, timeline.height > 0 else {
+            Log.preview.fault("build: invalid timeline fps=\(timeline.fps) size=\(timeline.width)x\(timeline.height)")
+            throw InvalidTimelineError(reason: "fps=\(timeline.fps) size=\(timeline.width)x\(timeline.height)")
         }
         let composition = AVMutableComposition()
         let timescale = CMTimeScale(timeline.fps)
