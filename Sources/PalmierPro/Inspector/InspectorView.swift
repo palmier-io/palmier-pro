@@ -3,14 +3,22 @@ import SwiftUI
 struct InspectorView: View {
     @Environment(EditorViewModel.self) var editor
 
+    enum ClipTab: String, Hashable {
+        case video = "Video"
+        case audio = "Audio"
+        case speed = "Speed"
+    }
+
+    @State private var preferredTab: ClipTab = .video
+
     private var headerTitle: String {
-        if selectedClip != nil { return "Inspector" }
+        if selectedVisualClip != nil || selectedAudioClip != nil { return "Inspector" }
         if activeTabAsset != nil || selectedMediaAsset != nil { return "Details" }
         return "Details"
     }
 
     private var headerIcon: String {
-        if selectedClip != nil { return "slider.horizontal.3" }
+        if selectedVisualClip != nil || selectedAudioClip != nil { return "slider.horizontal.3" }
         return "info.circle"
     }
 
@@ -36,8 +44,8 @@ struct InspectorView: View {
             .padding(.vertical, AppTheme.Spacing.sm)
 
             // Content layer
-            if let clip = selectedClip {
-                clipInspectorContent(clip)
+            if selectedVisualClip != nil || selectedAudioClip != nil {
+                clipInspectorContent()
             } else if let asset = selectedMediaAsset {
                 mediaAssetInspectorContent(asset)
             } else if let asset = activeTabAsset {
@@ -85,74 +93,161 @@ struct InspectorView: View {
 
     // MARK: - Clip Inspector
 
+    /// Tabs available for the current selection. Speed shows whenever any
+    /// clip is selected; Video/Audio only when their half is present.
+    private var availableTabs: [ClipTab] {
+        var tabs: [ClipTab] = []
+        if selectedVisualClip != nil { tabs.append(.video) }
+        if selectedAudioClip != nil { tabs.append(.audio) }
+        if selectedVisualClip != nil || selectedAudioClip != nil { tabs.append(.speed) }
+        return tabs
+    }
+
+    /// Tab the view actually renders (preferred if valid, else first available).
+    private var activeTab: ClipTab? {
+        let tabs = availableTabs
+        return tabs.contains(preferredTab) ? preferredTab : tabs.first
+    }
+
     @ViewBuilder
-    private func clipInspectorContent(_ clip: Clip) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
-                frameSection(clip)
-
-                InspectorSlider(
-                    icon: "arrow.up.left.and.arrow.down.right",
-                    label: "Scale",
-                    value: clip.transform.width,
-                    range: 0.01...5.0,
-                    displayMultiplier: 100,
-                    valueSuffix: "%",
-                    format: "%.0f",
-                    onChanged: { newVal in
-                        editor.applyClipProperty(clipId: clip.id) { $0.transform = scaledTransform(for: clip, newScale: newVal) }
-                    }
-                ) { newVal in
-                    editor.commitClipProperty(clipId: clip.id) { $0.transform = scaledTransform(for: clip, newScale: newVal) }
-                }
-
-                InspectorSlider(
-                    icon: "circle.lefthalf.filled",
-                    label: "Opacity",
-                    value: clip.opacity,
-                    range: 0...1,
-                    displayMultiplier: 100,
-                    valueSuffix: "%",
-                    format: "%.0f",
-                    onChanged: { newVal in
-                        editor.applyClipProperty(clipId: clip.id) { $0.opacity = newVal }
-                    }
-                ) { newVal in
-                    editor.commitClipProperty(clipId: clip.id) { $0.opacity = newVal }
-                }
-
-                InspectorSlider(
-                    icon: "speaker.wave.2.fill",
-                    label: "Volume",
-                    value: clip.volume,
-                    range: 0...1,
-                    displayMultiplier: 100,
-                    valueSuffix: "%",
-                    format: "%.0f",
-                    onChanged: { newVal in
-                        editor.applyClipProperty(clipId: clip.id) { $0.volume = newVal }
-                    }
-                ) { newVal in
-                    editor.commitClipProperty(clipId: clip.id) { $0.volume = newVal }
-                }
-
-                InspectorSlider(
-                    icon: "gauge.with.dots.needle.67percent",
-                    label: "Speed",
-                    value: clip.speed,
-                    range: 0.25...4.0,
-                    displayMultiplier: 1,
-                    valueSuffix: "x",
-                    format: "%.2f",
-                    onChanged: { newVal in
-                        editor.applyClipSpeed(clipId: clip.id, newSpeed: newVal)
-                    }
-                ) { newVal in
-                    editor.commitClipSpeed(clipId: clip.id, newSpeed: newVal)
-                }
+    private func clipInspectorContent() -> some View {
+        let tabs = availableTabs
+        VStack(spacing: 0) {
+            if tabs.count > 1 {
+                tabBar(tabs)
             }
-            .padding(AppTheme.Spacing.lg)
+            ScrollView {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
+                    switch activeTab {
+                    case .video:
+                        if let v = selectedVisualClip { videoTabContent(v) }
+                    case .audio:
+                        if let a = selectedAudioClip { audioTabContent(a) }
+                    case .speed:
+                        if let s = selectedVisualClip ?? selectedAudioClip { speedTabContent(s) }
+                    case .none:
+                        EmptyView()
+                    }
+                }
+                .padding(AppTheme.Spacing.lg)
+            }
         }
+    }
+
+    private func tabBar(_ tabs: [ClipTab]) -> some View {
+        HStack(spacing: 2) {
+            ForEach(tabs, id: \.self) { tab in
+                tabButton(tab)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, AppTheme.Spacing.lg)
+        .padding(.top, AppTheme.Spacing.xs)
+        .padding(.bottom, AppTheme.Spacing.xs)
+    }
+
+    private func tabButton(_ tab: ClipTab) -> some View {
+        let isActive = activeTab == tab
+        return Button {
+            preferredTab = tab
+        } label: {
+            Text(tab.rawValue)
+                .font(.system(size: AppTheme.FontSize.sm, weight: isActive ? .medium : .regular))
+                .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
+                .padding(.horizontal, AppTheme.Spacing.md)
+                .padding(.vertical, AppTheme.Spacing.xs)
+                .background(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                        .fill(isActive ? Color.white.opacity(0.08) : Color.clear)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func videoTabContent(_ vClip: Clip) -> some View {
+        frameSection(vClip)
+
+        InspectorSlider(
+            icon: "arrow.up.left.and.arrow.down.right",
+            label: "Scale",
+            value: vClip.transform.width,
+            range: 0.01...5.0,
+            displayMultiplier: 100,
+            valueSuffix: "%",
+            format: "%.0f",
+            onChanged: { newVal in
+                let t = scaledTransform(for: vClip, newScale: newVal)
+                editor.applyClipProperty(clipId: vClip.id) { $0.transform = t }
+            }
+        ) { newVal in
+            let t = scaledTransform(for: vClip, newScale: newVal)
+            editor.commitClipProperty(clipId: vClip.id) { $0.transform = t }
+        }
+
+        InspectorSlider(
+            icon: "circle.lefthalf.filled",
+            label: "Opacity",
+            value: vClip.opacity,
+            range: 0...1,
+            displayMultiplier: 100,
+            valueSuffix: "%",
+            format: "%.0f",
+            onChanged: { newVal in
+                editor.applyClipProperty(clipId: vClip.id) { $0.opacity = newVal }
+            }
+        ) { newVal in
+            editor.commitClipProperty(clipId: vClip.id) { $0.opacity = newVal }
+        }
+    }
+
+    @ViewBuilder
+    private func audioTabContent(_ aClip: Clip) -> some View {
+        InspectorSlider(
+            icon: "speaker.wave.2.fill",
+            label: "Volume",
+            value: aClip.volume,
+            range: 0...1,
+            displayMultiplier: 100,
+            valueSuffix: "%",
+            format: "%.0f",
+            onChanged: { newVal in
+                editor.applyClipProperty(clipId: aClip.id) { $0.volume = newVal }
+            }
+        ) { newVal in
+            editor.commitClipProperty(clipId: aClip.id) { $0.volume = newVal }
+        }
+    }
+
+    @ViewBuilder
+    private func speedTabContent(_ clip: Clip) -> some View {
+        InspectorSlider(
+            icon: "gauge.with.dots.needle.67percent",
+            label: "Speed",
+            value: clip.speed,
+            range: 0.25...4.0,
+            displayMultiplier: 1,
+            valueSuffix: "x",
+            format: "%.2f",
+            onChanged: { newVal in
+                applySpeedToSelection(newVal)
+            }
+        ) { newVal in
+            commitSpeedToSelection(newVal)
+        }
+    }
+
+    private func applySpeedToSelection(_ newVal: Double) {
+        if let v = selectedVisualClip { editor.applyClipSpeed(clipId: v.id, newSpeed: newVal) }
+        if let a = selectedAudioClip { editor.applyClipSpeed(clipId: a.id, newSpeed: newVal) }
+    }
+
+    private func commitSpeedToSelection(_ newVal: Double) {
+        editor.undoManager?.beginUndoGrouping()
+        if let v = selectedVisualClip { editor.commitClipSpeed(clipId: v.id, newSpeed: newVal) }
+        if let a = selectedAudioClip { editor.commitClipSpeed(clipId: a.id, newSpeed: newVal) }
+        editor.undoManager?.endUndoGrouping()
+        editor.undoManager?.setActionName("Change Speed")
     }
 
     private func inspectorCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -206,9 +301,8 @@ struct InspectorView: View {
                     }
                 }
                 InspectorNumberField(label: "Scale", value: clip.transform.width * 100) { newScale in
-                    editor.commitClipProperty(clipId: clip.id) {
-                        $0.transform = scaledTransform(for: clip, newScale: max(newScale, 1) / 100.0)
-                    }
+                    let t = scaledTransform(for: clip, newScale: max(newScale, 1) / 100.0)
+                    editor.commitClipProperty(clipId: clip.id) { $0.transform = t }
                 }
             }
         }
@@ -309,18 +403,27 @@ struct InspectorView: View {
 
     // MARK: - Helpers
 
-    private var selectedClip: Clip? {
-        // TODO: Inspector should separate visual and audio sections
-        // Prefer a visual clip from the selection; otherwise pick the first.
+    /// The visual half of the current selection, if any. Frame / Scale /
+    /// Opacity controls target this.
+    private var selectedVisualClip: Clip? {
         guard !editor.selectedClipIds.isEmpty else { return nil }
-        var firstMatch: Clip?
         for track in editor.timeline.tracks {
-            for clip in track.clips where editor.selectedClipIds.contains(clip.id) {
-                if clip.mediaType.isVisual { return clip }
-                if firstMatch == nil { firstMatch = clip }
+            for clip in track.clips where editor.selectedClipIds.contains(clip.id) && clip.mediaType.isVisual {
+                return clip
             }
         }
-        return firstMatch
+        return nil
+    }
+
+    /// The audio half of the current selection, if any. Volume targets this.
+    private var selectedAudioClip: Clip? {
+        guard !editor.selectedClipIds.isEmpty else { return nil }
+        for track in editor.timeline.tracks {
+            for clip in track.clips where editor.selectedClipIds.contains(clip.id) && clip.mediaType == .audio {
+                return clip
+            }
+        }
+        return nil
     }
 
     private var selectedMediaAsset: MediaAsset? {

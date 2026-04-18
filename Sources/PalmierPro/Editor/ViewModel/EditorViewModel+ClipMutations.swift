@@ -160,18 +160,17 @@ extension EditorViewModel {
 
     func applyClipSpeed(clipId: String, newSpeed: Double) {
         guard let loc = findClip(id: clipId) else { return }
-        if dragBefore == nil || dragBefore?.clipId != clipId {
-            dragBefore = (clipId, timeline.tracks[loc.trackIndex].clips[loc.clipIndex])
+        if dragBefore[clipId] == nil {
+            dragBefore[clipId] = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
         }
         setClipSpeed(at: loc, newSpeed: newSpeed)
     }
 
     func commitClipSpeed(clipId: String, newSpeed: Double) {
         guard let loc = findClip(id: clipId) else { return }
-        let before = dragBefore?.clipId == clipId ? dragBefore?.clip : timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        dragBefore = nil
+        let before = dragBefore.removeValue(forKey: clipId) ?? timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
         setClipSpeed(at: loc, newSpeed: newSpeed)
-        guard let before, before.speed != newSpeed else { return }
+        guard before.speed != newSpeed else { return }
         undoManager?.registerUndo(withTarget: self) { vm in
             if let current = vm.findClip(id: clipId) {
                 vm.setClipSpeed(at: current, newSpeed: before.speed)
@@ -251,8 +250,8 @@ extension EditorViewModel {
 
     func applyClipProperty(clipId: String, _ modify: (inout Clip) -> Void) {
         guard let loc = findClip(id: clipId) else { return }
-        if dragBefore == nil || dragBefore?.clipId != clipId {
-            dragBefore = (clipId, timeline.tracks[loc.trackIndex].clips[loc.clipIndex])
+        if dragBefore[clipId] == nil {
+            dragBefore[clipId] = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
         }
         modify(&timeline.tracks[loc.trackIndex].clips[loc.clipIndex])
         videoEngine?.refreshVisuals()
@@ -260,17 +259,14 @@ extension EditorViewModel {
 
     func commitClipProperty(clipId: String, _ modify: (inout Clip) -> Void) {
         guard let loc = findClip(id: clipId) else { return }
-        let before = dragBefore?.clipId == clipId ? dragBefore?.clip : timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        dragBefore = nil
+        let before = dragBefore.removeValue(forKey: clipId) ?? timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
         modify(&timeline.tracks[loc.trackIndex].clips[loc.clipIndex])
-        if let before {
-            undoManager?.registerUndo(withTarget: self) { vm in
-                if let current = vm.findClip(id: clipId) {
-                    vm.timeline.tracks[current.trackIndex].clips[current.clipIndex] = before
-                }
+        undoManager?.registerUndo(withTarget: self) { vm in
+            if let current = vm.findClip(id: clipId) {
+                vm.timeline.tracks[current.trackIndex].clips[current.clipIndex] = before
             }
-            undoManager?.setActionName("Change Clip Property")
         }
+        undoManager?.setActionName("Change Clip Property")
         notifyTimelineChanged()
     }
 

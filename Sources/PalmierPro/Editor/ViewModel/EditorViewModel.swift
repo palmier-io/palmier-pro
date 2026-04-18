@@ -111,8 +111,9 @@ final class EditorViewModel {
 
     // MARK: - Shared infrastructure
 
-    /// Snapshot captured at drag start for continuous clip edits (speed, property).
-    var dragBefore: (clipId: String, clip: Clip)?
+    /// Snapshots captured at drag start for continuous clip edits (speed,
+    /// property). Keyed by clip id so multiple clips can be edited in tandem
+    var dragBefore: [String: Clip] = [:]
 
     func notifyTimelineChanged() {
         if isPlaying {
