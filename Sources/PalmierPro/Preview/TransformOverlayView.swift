@@ -187,10 +187,11 @@ struct TransformOverlayView: View {
 
     private var selectedClip: Clip? {
         guard editor.activePreviewTab == .timeline,
-              editor.selectedClipIds.count == 1,
-              let id = editor.selectedClipIds.first else { return nil }
+              !editor.selectedClipIds.isEmpty else { return nil }
         for track in editor.timeline.tracks where track.type != .audio {
-            if let clip = track.clips.first(where: { $0.id == id }) { return clip }
+            for clip in track.clips where editor.selectedClipIds.contains(clip.id) {
+                return clip
+            }
         }
         return nil
     }
