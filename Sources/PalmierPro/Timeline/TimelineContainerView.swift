@@ -15,13 +15,14 @@ struct TimelineContainerView: NSViewRepresentable {
         // Scroll view for clips/ruler on the right
         let scrollView = NSScrollView()
         scrollView.hasHorizontalScroller = true
-        scrollView.hasVerticalScroller = false
+        scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
         scrollView.horizontalScroller?.controlSize = .mini
+        scrollView.verticalScroller?.controlSize = .mini
 
         let timelineView = TimelineView(editor: editor)
-        timelineView.autoresizingMask = [.height]
+        timelineView.autoresizingMask = []
         scrollView.documentView = timelineView
 
         scrollView.frame = NSRect(x: Layout.trackHeaderWidth, y: 0, width: 0, height: 0)

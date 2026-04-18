@@ -40,7 +40,7 @@ enum Layout {
     // Timeline
     static let timelineMinHeight: CGFloat = 100
     static let timelineMaxHeight: CGFloat = 700
-    static let trackHeight: CGFloat = 60
+    static let trackHeight: CGFloat = 50
     static let rulerHeight: CGFloat = 24
     static let trackHeaderWidth: CGFloat = 100
     static let dropZoneHeight: CGFloat = 60
@@ -52,9 +52,6 @@ enum Layout {
 }
 
 enum Defaults {
-    static let fps = 30
-    static let canvasWidth = 1920
-    static let canvasHeight = 1080
     static let pixelsPerFrame: Double = 4.0
     static let imageDurationSeconds: Double = 5.0
     static let aspectTolerance: Double = 0.02
