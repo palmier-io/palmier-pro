@@ -253,17 +253,21 @@ extension EditorViewModel {
 
     func applyClipProperty(clipId: String, _ modify: (inout Clip) -> Void) {
         guard let loc = findClip(id: clipId) else { return }
+        var clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
         if dragBefore[clipId] == nil {
-            dragBefore[clipId] = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            dragBefore[clipId] = clip
         }
-        modify(&timeline.tracks[loc.trackIndex].clips[loc.clipIndex])
+        modify(&clip)
+        timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
         videoEngine?.refreshVisuals()
     }
 
     func commitClipProperty(clipId: String, _ modify: (inout Clip) -> Void) {
         guard let loc = findClip(id: clipId) else { return }
-        let before = dragBefore.removeValue(forKey: clipId) ?? timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        modify(&timeline.tracks[loc.trackIndex].clips[loc.clipIndex])
+        var clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        let before = dragBefore.removeValue(forKey: clipId) ?? clip
+        modify(&clip)
+        timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
         undoManager?.registerUndo(withTarget: self) { vm in
             if let current = vm.findClip(id: clipId) {
                 vm.timeline.tracks[current.trackIndex].clips[current.clipIndex] = before
