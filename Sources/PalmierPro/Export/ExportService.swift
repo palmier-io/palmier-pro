@@ -98,19 +98,24 @@ final class ExportService {
             }
 
             do {
+                Log.export.notice("export start format=\(String(describing: format)) resolution=\(resolution.rawValue) url=\(outputURL.lastPathComponent)")
                 try await session.export(to: outputURL, as: fileType)
                 progress = 1.0
+                Log.export.notice("export ok")
             } catch {
                 if (error as NSError).domain == NSCocoaErrorDomain && (error as NSError).code == NSUserCancelledError {
                     self.error = "Export was cancelled"
+                    Log.export.notice("export cancelled")
                 } else {
                     self.error = error.localizedDescription
+                    Log.export.error("export failed: \(error.localizedDescription)")
                 }
             }
 
             progressTask.cancel()
         } catch {
             self.error = error.localizedDescription
+            Log.export.error("composition build failed: \(error.localizedDescription)")
         }
 
         isExporting = false

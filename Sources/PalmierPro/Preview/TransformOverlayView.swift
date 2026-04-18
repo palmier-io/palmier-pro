@@ -59,6 +59,10 @@ struct TransformOverlayView: View {
     }
 
     private func movedTransform(_ start: Transform, by translation: CGSize, in videoRect: CGRect) -> Transform {
+        guard videoRect.width > 0, videoRect.height > 0 else {
+            Log.preview.warning("movedTransform: collapsed videoRect \(videoRect.debugDescription) — skipping")
+            return start
+        }
         var t = start
         t.x += translation.width / videoRect.width
         t.y += translation.height / videoRect.height
@@ -83,6 +87,10 @@ struct TransformOverlayView: View {
     }
 
     private func resizedTransform(_ start: Transform, corner: Corner, by translation: CGSize, in videoRect: CGRect, mediaCanvasAspect: Double?) -> Transform {
+        guard videoRect.width > 0, videoRect.height > 0 else {
+            Log.preview.warning("resizedTransform: collapsed videoRect \(videoRect.debugDescription) — skipping")
+            return start
+        }
         let dx = translation.width / videoRect.width
         let dy = translation.height / videoRect.height
         let tl = start.topLeft

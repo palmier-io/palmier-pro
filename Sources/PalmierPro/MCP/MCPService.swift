@@ -59,7 +59,14 @@ final class MCPService {
             return server
         }
         self.httpServer = httpServer
-        Task { try await httpServer.start() }
+        Task {
+            do {
+                try await httpServer.start()
+                Log.mcp.notice("http server started port=\(Self.port)")
+            } catch {
+                Log.mcp.error("http server failed to start: \(error.localizedDescription)")
+            }
+        }
     }
 
     func stop() {
@@ -67,6 +74,7 @@ final class MCPService {
             Task { await server.stop() }
         }
         httpServer = nil
+        Log.mcp.notice("http server stopped")
     }
 
     // MARK: - Tools

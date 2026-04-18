@@ -205,6 +205,6 @@ extension EditorViewModel {
     /// Refuse a ripple edit: beep + log.
     fileprivate func refuseRipple(reason: String) {
         NSSound.beep()
-        NSLog("[palmier] ripple blocked: %@", reason)
+        Log.editor.notice("ripple blocked: \(reason)")
     }
 }

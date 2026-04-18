@@ -27,13 +27,20 @@ final class VideoProject: NSDocument {
 
     override func read(from fileWrapper: FileWrapper, ofType typeName: String) throws {
         guard let data = fileWrapper.fileWrappers?[Project.timelineFilename]?.regularFileContents else {
+            Log.project.error("read: missing \(Project.timelineFilename) in package")
             throw CocoaError(.fileReadCorruptFile)
         }
         packageWrapper = fileWrapper
-        loadedTimeline = try JSONDecoder().decode(Timeline.self, from: data)
+        do {
+            loadedTimeline = try JSONDecoder().decode(Timeline.self, from: data)
+        } catch {
+            Log.project.error("read: timeline decode failed: \(error.localizedDescription)")
+            throw error
+        }
         if let manifestData = fileWrapper.fileWrappers?[Project.manifestFilename]?.regularFileContents {
             loadedManifest = try? JSONDecoder().decode(MediaManifest.self, from: manifestData)
         }
+        Log.project.notice("read ok tracks=\(self.loadedTimeline?.tracks.count ?? 0)")
     }
 
     override func save(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType, completionHandler: @escaping (Error?) -> Void) {
@@ -48,7 +55,10 @@ final class VideoProject: NSDocument {
     }
 
     override func fileWrapper(ofType typeName: String) throws -> FileWrapper {
-        guard let data = snapshotTimeline else { throw CocoaError(.fileWriteUnknown) }
+        guard let data = snapshotTimeline else {
+            Log.project.error("save: snapshotTimeline missing at fileWrapper()")
+            throw CocoaError(.fileWriteUnknown)
+        }
 
         replaceChild(Project.timelineFilename, with: data)
         if let manifest = snapshotManifest { replaceChild(Project.manifestFilename, with: manifest) }
@@ -168,6 +178,7 @@ final class VideoProject: NSDocument {
 
     private func captureThumbnail() -> Data? {
         if let cached = cachedThumbnail { return cached }
+        Log.project.debug("captureThumbnail begin")
 
         for track in editorViewModel.timeline.tracks where track.type == .video {
             for clip in track.clips {

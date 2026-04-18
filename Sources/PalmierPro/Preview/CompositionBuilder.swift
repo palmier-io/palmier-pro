@@ -24,6 +24,10 @@ enum CompositionBuilder {
         resolveURL: @Sendable (String) -> URL?,
         resolveSourceSize: @Sendable (String) -> CGSize? = { _ in nil }
     ) async throws -> CompositionResult {
+        Log.preview.info("build fps=\(timeline.fps) size=\(timeline.width)x\(timeline.height) tracks=\(timeline.tracks.count)")
+        if timeline.fps <= 0 || timeline.width <= 0 || timeline.height <= 0 {
+            Log.preview.fault("build: invalid timeline settings — CMTimeScale/render will corrupt")
+        }
         let composition = AVMutableComposition()
         let timescale = CMTimeScale(timeline.fps)
         let renderSize = CGSize(width: timeline.width, height: timeline.height)

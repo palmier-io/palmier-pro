@@ -15,9 +15,14 @@ actor MCPHTTPServer {
     }
 
     func start() throws {
+        Log.mcp.info("listener start port=\(self.port)")
         let params = NWParameters.tcp
         params.allowLocalEndpointReuse = true
-        listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: port)!)
+        guard let endpointPort = NWEndpoint.Port(rawValue: port) else {
+            Log.mcp.fault("invalid port \(self.port)")
+            throw NSError(domain: "MCPHTTPServer", code: 1, userInfo: [NSLocalizedDescriptionKey: "invalid port \(port)"])
+        }
+        listener = try NWListener(using: params, on: endpointPort)
 
         listener?.newConnectionHandler = { [weak self] connection in
             guard let self else { return }

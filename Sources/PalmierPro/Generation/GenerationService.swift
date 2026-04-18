@@ -71,6 +71,7 @@ final class GenerationService {
                     editor: editor
                 )
             } catch {
+                Log.generation.error("upload failed model=\(genInput.model) error=\(error.localizedDescription)")
                 placeholder.generationStatus = .failed("Upload failed: \(error.localizedDescription)")
             }
         }
@@ -143,6 +144,7 @@ final class GenerationService {
 
         Task { @MainActor in
             do {
+                Log.generation.notice("subscribe start endpoint=\(endpoint) model=\(genInput.model)")
                 let urlString: String? = try await {
                     nonisolated(unsafe) let input = input
                     let responseKeyPath = responseKeyPath
@@ -159,10 +161,12 @@ final class GenerationService {
                 }()
 
                 guard let urlString, let remoteURL = URL(string: urlString) else {
+                    Log.generation.error("subscribe ok but no URL in response model=\(genInput.model)")
                     placeholder.generationStatus = .failed("No URL in response")
                     return
                 }
 
+                Log.generation.notice("downloading \(remoteURL.host ?? "?")")
                 let (tempURL, _) = try await URLSession.shared.download(from: remoteURL)
                 let filename = "gen-\(placeholderId.prefix(8)).\(fileExtension)"
                 let data = try Data(contentsOf: tempURL)
@@ -192,6 +196,7 @@ final class GenerationService {
                     Task { await asset.loadMetadata() }
                 }
             } catch {
+                Log.generation.error("generation failed model=\(genInput.model) error=\(error.localizedDescription)")
                 placeholder.generationStatus = .failed(error.localizedDescription)
             }
         }
