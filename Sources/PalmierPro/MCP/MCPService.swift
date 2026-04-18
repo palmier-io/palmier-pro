@@ -194,7 +194,7 @@ final class MCPService {
             ),
             Tool(
                 name: ToolName.addClip.rawValue,
-                description: "Places a media asset on an existing track at startFrame for durationFrames. The asset's type must be compatible with the track's type. Call get_timeline first to pick a valid trackIndex and an open frame range.",
+                description: "Places a media asset on an existing track at startFrame for durationFrames. The asset's type must be compatible with the track's type (video/image are interchangeable across video/image tracks; audio requires an audio track). When a video asset with audio is placed on a video track, a linked audio clip is automatically created on an audio track (an existing one if available, otherwise a new one). Call get_timeline first to pick a valid trackIndex and an open frame range.",
                 inputSchema: Self.objectSchema(properties: [
                     "mediaRef": .object(["type": .string("string"), "description": .string("ID of the media asset from get_media")]),
                     "trackIndex": .object(["type": .string("integer"), "description": .string("Track index (0-based)")]),
@@ -204,7 +204,7 @@ final class MCPService {
             ),
             Tool(
                 name: ToolName.removeClip.rawValue,
-                description: "Removes one clip by ID. Undoable.",
+                description: "Removes a clip by ID. If the clip belongs to a link group (e.g. a video with its paired audio), every clip in that group is removed together — matching the UI's linked-delete behavior. Undoable.",
                 inputSchema: Self.objectSchema(properties: [
                     "clipId": .object(["type": .string("string"), "description": .string("The clip ID to remove")]),
                 ], required: ["clipId"])
@@ -421,21 +421,25 @@ final class MCPService {
             return toolError("Media asset not found: \(mediaRef)")
         }
 
-        let clip = Clip(
-            mediaRef: mediaRef,
-            mediaType: asset.type,
-            sourceClipType: asset.type,
+        let targetTrackType = editor.timeline.tracks[trackIndex].type
+        guard asset.type.isCompatible(with: targetTrackType) else {
+            return toolError("Asset type \(asset.type.rawValue) is not compatible with \(targetTrackType.rawValue) track at index \(trackIndex)")
+        }
+
+        let addedIds = editor.placeClip(
+            asset: asset,
+            trackIndex: trackIndex,
             startFrame: startFrame,
             durationFrames: durationFrames
         )
-        editor.timeline.tracks[trackIndex].clips.append(clip)
-        editor.timeline.tracks[trackIndex].clips.sort { $0.startFrame < $1.startFrame }
         editor.undoManager?.registerUndo(withTarget: editor) { vm in
-            vm.removeClips(ids: [clip.id])
+            vm.removeClips(ids: Set(addedIds))
         }
         editor.undoManager?.setActionName("Add Clip (MCP)")
+        editor.notifyTimelineChanged()
 
-        return toolOK("Added clip \(clip.id) to track \(trackIndex) at frame \(startFrame)")
+        let pairedNote = addedIds.count > 1 ? " (+linked audio clip \(addedIds[1]))" : ""
+        return toolOK("Added clip \(addedIds[0]) to track \(trackIndex) at frame \(startFrame)\(pairedNote)")
     }
 
     private func removeClip(_ editor: EditorViewModel, args: [String: Value]) -> CallTool.Result {
@@ -447,8 +451,11 @@ final class MCPService {
             return toolError("Clip not found: \(clipId)")
         }
 
-        editor.removeClips(ids: [clipId])
-        return toolOK("Removed clip \(clipId)")
+        let ids = editor.expandToLinkGroup([clipId])
+        editor.removeClips(ids: ids)
+        let extras = ids.count - 1
+        let extrasNote = extras > 0 ? " (+\(extras) linked clip\(extras == 1 ? "" : "s"))" : ""
+        return toolOK("Removed clip \(clipId)\(extrasNote)")
     }
 
     private func updateClip(_ editor: EditorViewModel, args: [String: Value]) -> CallTool.Result {
