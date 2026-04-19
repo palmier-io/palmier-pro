@@ -86,11 +86,11 @@ struct AgentInputBox<LeadingTools: View>: View {
             TextEditor(text: $draft)
                 .font(.body)
                 .scrollContentBackground(.hidden)
-                .padding(.horizontal, 14)
-                .padding(.top, 12)
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
                 .padding(.bottom, 4)
                 .focused($focused)
-                .frame(minHeight: 68, maxHeight: 160)
+                .frame(minHeight: 32, maxHeight: 64)
                 .onChange(of: draft) { _, new in updateMentionQuery(from: new) }
                 .onPasteCommand(of: [.fileURL, .image, .png, .jpeg, .tiff], perform: handlePaste)
                 .onKeyPress(phases: .down) { press in handleKey(press) }
@@ -106,8 +106,8 @@ struct AgentInputBox<LeadingTools: View>: View {
                 Text("Ask, or @ to reference media")
                     .font(.body)
                     .foregroundStyle(AppTheme.Text.mutedColor)
-                    .padding(.horizontal, 18)
-                    .padding(.top, 16)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
                     .allowsHitTesting(false)
             }
         }
