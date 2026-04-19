@@ -152,32 +152,11 @@ final class MCPService {
                     description: "Generate a video clip",
                     messages: [
                         .user(.text(text: """
-                            You are a creative director generating a \(duration)s video clip\(styleClause) for an editor timeline. Think about how this clip fits into a larger edit, not just how it looks standalone.
+                            Generate a \(duration)s video clip\(styleClause) for the editor timeline. Think about how it fits into a larger edit, not just how it looks standalone.
 
                             Description: \(desc)
 
-                            Model selection priority, in order:
-                            1. Reference frames — if continuity with an existing asset matters, you need a model with supportsFirstFrame (for startFrameMediaRef) or supportsLastFrame (for endFrameMediaRef).
-                            2. Duration — \(duration)s must be in the model's `durations` list.
-                            3. Aspect ratio and resolution — match the project's settings from get_timeline.
-                            4. Cost and speed.
-
-                            Reference-image discipline: if you pass startFrameMediaRef or endFrameMediaRef, call read_media on that asset first and describe what you actually see in the prompt. Never rely on the handle name or filename.
-
-                            Text in video: video models cannot render readable text. For on-screen text, use generate_image to make a still with the text baked in, then pass it as startFrameMediaRef.
-
-                            Permission: generation costs real money and is not undoable. Propose the prompt, chosen model, duration, and aspect ratio to the user and get confirmation before calling generate_video.
-
-                            Placeholder-then-poll: generate_video returns immediately with a placeholder asset ID. The asset appears in get_media with generationStatus: generating. Poll get_media until the status clears; then the ID is drop-in usable in add_clip.
-
-                            Workflow:
-                            1. get_timeline and get_media to see the project settings and existing assets that could be reference frames.
-                            2. list_models with type "video".
-                            3. Pick a model using the priority above; draft a grounded, concrete prompt.
-                            4. Propose the plan to the user and wait for confirmation.
-                            5. Call generate_video.
-                            6. Poll get_media until generationStatus clears.
-                            7. Use the asset in add_clip when the user is ready to drop it on the timeline.
+                            Model selection: pick one whose `durations` includes \(duration)s and whose aspectRatios fit the project. If continuity with an existing asset matters, prefer supportsFirstFrame / supportsLastFrame and pass the asset as startFrameMediaRef / endFrameMediaRef.
                             """))
                     ]
                 )
@@ -190,28 +169,11 @@ final class MCPService {
                     description: "Generate an image",
                     messages: [
                         .user(.text(text: """
-                            You are a creative director generating an image\(styleClause) that will likely become the first frame of a scene. Think about composition, light, and camera — not just subject.
+                            Generate an image\(styleClause) that will likely become the first frame of a scene — think about composition, light, and camera, not just subject.
 
                             Description: \(desc)
 
-                            Model selection priority, in order:
-                            1. Reference support — if you need character/style/location consistency with existing assets, use a model with supportsImageReference and pass those assets via referenceMediaRefs.
-                            2. Aspect ratio and resolution — match the project's settings from get_timeline.
-                            3. Cost and speed.
-
-                            Reference-image discipline: before passing any ID in referenceMediaRefs, call read_media on it and describe what you actually see in the prompt. Never rely on the handle name or filename.
-
-                            Permission: generation costs real money and is not undoable. Propose the prompt, chosen model, and aspect ratio to the user and get confirmation before calling generate_image.
-
-                            Placeholder-then-poll: generate_image returns immediately with a placeholder asset ID. The asset appears in get_media with generationStatus: generating. Poll get_media until the status clears; then the ID is usable as a reference for generate_video or as a clip via add_clip on an image track.
-
-                            Workflow:
-                            1. get_timeline and get_media to see the project settings and existing assets that could serve as references.
-                            2. list_models with type "image".
-                            3. Pick a model using the priority above; draft a grounded, concrete prompt.
-                            4. Propose the plan to the user and wait for confirmation.
-                            5. Call generate_image.
-                            6. Poll get_media until generationStatus clears.
+                            Model selection: pick one whose aspectRatios fit the project. If you need character / style / location consistency with existing assets, prefer supportsImageReference and pass those via referenceMediaRefs.
                             """))
                     ]
                 )

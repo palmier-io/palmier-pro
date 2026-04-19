@@ -43,9 +43,9 @@ enum AgentInstructions {
         - Generation is asynchronous and costs real money. Propose the prompt, chosen model, \
           duration, and aspect ratio to the user and wait for confirmation before calling \
           generate_video or generate_image.
-        - Both tools return a placeholder asset ID immediately. The asset appears in get_media \
-          with generationStatus: "generating". Poll get_media until the status clears; then the \
-          asset is drop-in usable in add_clip.
+        - Both tools return a placeholder asset ID immediately and generation runs in the \
+          background. Don't poll or wait — fire it off and move on. The asset resolves in \
+          get_media and becomes usable in add_clip once ready.
         - Video models cannot render readable text. For on-screen text, generate a still via \
           generate_image (text baked into the image) and pass it as startFrameMediaRef.
         - For character / location / style consistency across multiple generations, reuse \

@@ -32,7 +32,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .getMedia,
-            description: "Call before referencing any asset. Every mediaRef/reference ID in other tools comes from the IDs returned here. Also exposes generationStatus for async-generated assets — poll this to know when a generation is done.",
+            description: "Call before referencing any asset. Every mediaRef/reference ID in other tools comes from the IDs returned here. Also exposes generationStatus (generating | failed | none) for async-generated assets.",
             inputSchema: objectSchema()
         ),
         AgentTool(
@@ -132,7 +132,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .generateVideo,
-            description: "Starts an async AI video generation. Returns a placeholder asset ID immediately; the asset's generationStatus in get_media goes from 'generating' to 'none' when ready, then it is drop-in usable in add_clip. Always call list_models first to pick a model whose durations, aspectRatios, and supportsFirstFrame/supportsLastFrame fit your needs. Video models cannot render readable text — if you need on-screen text, bake it into a still via generate_image and pass it as startFrameMediaRef. Costs real money and is not undoable; get user confirmation before calling.",
+            description: "Starts an async AI video generation. Returns a placeholder asset ID immediately; generation runs in the background and the asset becomes usable in add_clip once ready. Costs real money and is not undoable.",
             inputSchema: objectSchema(
                 properties: [
                     "prompt": ["type": "string", "description": "Text description of the video to generate"],
@@ -149,7 +149,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .generateImage,
-            description: "Starts an async AI image generation. Returns a placeholder asset ID immediately; poll generationStatus via get_media for completion. Call list_models first to pick a model. Pass existing media IDs via referenceMediaRefs for character/style/location consistency across generations. Costs real money and is not undoable; get user confirmation before calling.",
+            description: "Starts an async AI image generation. Returns a placeholder asset ID immediately; generation runs in the background. Costs real money and is not undoable.",
             inputSchema: objectSchema(
                 properties: [
                     "prompt": ["type": "string", "description": "Text description of the image to generate"],
