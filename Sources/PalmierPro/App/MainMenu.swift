@@ -95,6 +95,20 @@ enum MainMenuBuilder {
     private static func viewMenu() -> NSMenuItem {
         let item = NSMenuItem()
         let menu = NSMenu(title: "View")
+
+        let mediaItem = NSMenuItem(title: "Media Panel", action: #selector(EditorActions.toggleMediaPanel(_:)), keyEquivalent: "0")
+        mediaItem.keyEquivalentModifierMask = [.command]
+        menu.addItem(mediaItem)
+
+        let inspectorItem = NSMenuItem(title: "Inspector", action: #selector(EditorActions.toggleInspectorPanel(_:)), keyEquivalent: "0")
+        inspectorItem.keyEquivalentModifierMask = [.command, .option]
+        menu.addItem(inspectorItem)
+
+        let agentItem = NSMenuItem(title: "Agent Panel", action: #selector(EditorActions.toggleAgentPanel(_:)), keyEquivalent: "a")
+        agentItem.keyEquivalentModifierMask = [.command, .option]
+        menu.addItem(agentItem)
+
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
         item.submenu = menu
         return item
@@ -125,4 +139,7 @@ enum MainMenuBuilder {
     func skipFramesBackward(_ sender: Any?)
     func showExport(_ sender: Any?)
     func showKeyboardShortcuts(_ sender: Any?)
+    func toggleMediaPanel(_ sender: Any?)
+    func toggleInspectorPanel(_ sender: Any?)
+    func toggleAgentPanel(_ sender: Any?)
 }
