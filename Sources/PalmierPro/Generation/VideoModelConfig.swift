@@ -133,7 +133,7 @@ extension VideoModelConfig {
                     return "\(prefix)/first-last-frame-to-video"
                 }
                 if input.startFrameURL != nil { return "\(prefix)/image-to-video" }
-                return variant != nil ? prefix : "\(base)/text-to-video"
+                return variant != nil ? prefix : "\(base)"
             },
             buildFalInput: buildVeoInput
         )
