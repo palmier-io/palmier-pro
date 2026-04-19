@@ -218,6 +218,9 @@ struct MediaPanelView: View {
             }
             .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
             .foregroundStyle(AppTheme.Text.secondaryColor)
+            .padding(.horizontal, AppTheme.Spacing.sm)
+            .padding(.vertical, 4)
+            .hoverHighlight()
             .help(title)
         }
         .buttonStyle(.plain)
@@ -239,11 +242,13 @@ struct MediaPanelView: View {
             Image(systemName: systemName)
                 .font(.system(size: 10))
                 .foregroundStyle(foregroundStyle)
+                .frame(width: 22, height: 22)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
         .focusable(false)
+        .hoverHighlight()
     }
 
     // MARK: - Multi-drag payload

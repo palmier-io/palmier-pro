@@ -108,6 +108,8 @@ struct GenerationView: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .frame(width: 22, height: 22)
+                        .hoverHighlight()
                 }
                 .buttonStyle(.plain)
             }
@@ -279,9 +281,10 @@ struct GenerationView: View {
                             .font(.system(size: 12))
                             .foregroundStyle(.white.opacity(0.8))
                             .shadow(radius: 2)
+                            .frame(width: 20, height: 20)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .padding(2)
                 }
             } else {
                 dropZone(isTargeted: isTargeted) { onDrop($0) }
@@ -331,9 +334,10 @@ struct GenerationView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.white.opacity(0.8))
                     .shadow(radius: 2)
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(2)
         }
     }
 
@@ -439,10 +443,13 @@ struct GenerationView: View {
                     .font(.system(size: 7, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
+            .padding(.horizontal, AppTheme.Spacing.xs)
+            .padding(.vertical, 3)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        .hoverHighlight()
     }
 
     // MARK: - Settings
@@ -458,6 +465,9 @@ struct GenerationView: View {
                     .font(.system(size: 9))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
+            .padding(.horizontal, AppTheme.Spacing.xs)
+            .padding(.vertical, 3)
+            .hoverHighlight()
         }
         .buttonStyle(.plain)
         .popover(isPresented: $showSettingsPopover, arrowEdge: .bottom) {
@@ -528,6 +538,7 @@ struct GenerationView: View {
             .foregroundStyle(service.hasApiKey ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
             .padding(.horizontal, AppTheme.Spacing.sm)
             .padding(.vertical, 3)
+            .hoverHighlight()
         }
         .buttonStyle(.plain)
         .popover(isPresented: $showApiKeyPopover, arrowEdge: .bottom) {

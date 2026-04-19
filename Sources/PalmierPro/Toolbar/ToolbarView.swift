@@ -54,8 +54,9 @@ struct ToolbarView: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: AppTheme.FontSize.md))
-                .frame(width: 24, height: 24)
                 .foregroundStyle(AppTheme.Text.secondaryColor)
+                .frame(width: 24, height: 24)
+                .hoverHighlight()
         }
         .buttonStyle(.plain)
     }
@@ -65,8 +66,9 @@ struct ToolbarView: View {
         return Button { editor.toolMode = mode } label: {
             Image(systemName: systemName)
                 .font(.system(size: AppTheme.FontSize.md))
-                .frame(width: 24, height: 24)
                 .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
+                .frame(width: 24, height: 24)
+                .hoverHighlight(isActive: isActive)
         }
         .buttonStyle(.plain)
     }
@@ -75,8 +77,9 @@ struct ToolbarView: View {
         Button(action: action) {
             Text(bracket)
                 .font(.system(size: 16, weight: .semibold, design: .monospaced))
-                .frame(width: 24, height: 24)
                 .foregroundStyle(AppTheme.Text.secondaryColor)
+                .frame(width: 24, height: 24)
+                .hoverHighlight()
         }
         .buttonStyle(.plain)
     }

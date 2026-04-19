@@ -108,6 +108,7 @@ struct PreviewContainerView: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
+            .hoverHighlight()
         }
     }
 
@@ -219,12 +220,14 @@ struct PreviewContainerView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        .hoverHighlight()
     }
 
     private func badgeLabel(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 9, weight: .bold, design: .rounded))
             .foregroundStyle(AppTheme.Text.secondaryColor)
+            .padding(.horizontal, AppTheme.Spacing.sm)
             .frame(height: 24)
     }
 
@@ -298,8 +301,8 @@ struct PreviewContainerView: View {
             Image(systemName: "xmark")
                 .font(.system(size: 8, weight: .bold))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: 14, height: 14)
-                .contentShape(Rectangle())
+                .frame(width: 18, height: 18)
+                .hoverHighlight(cornerRadius: 9)
         }
         .buttonStyle(.plain)
     }
@@ -386,7 +389,7 @@ struct PreviewContainerView: View {
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .frame(width: 32, height: 28)
-                .contentShape(Rectangle())
+                .hoverHighlight()
         }
         .buttonStyle(.plain)
     }
