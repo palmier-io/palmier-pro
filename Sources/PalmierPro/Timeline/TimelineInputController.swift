@@ -135,7 +135,26 @@ final class TimelineInputController {
 
         switch dragState {
         case .scrubPlayhead:
-            scrubToFrame(frame)
+            let targets = SnapEngine.collectTargets(
+                tracks: editor.timeline.tracks,
+                playheadFrame: editor.currentFrame,
+                includePlayhead: false
+            )
+            let snappedFrame: Int
+            if let snap = SnapEngine.findSnap(
+                position: frame,
+                targets: targets,
+                state: &snapState,
+                baseThreshold: Snap.thresholdPixels,
+                pixelsPerFrame: geometry.pixelsPerFrame
+            ) {
+                snapIndicatorX = snap.x
+                snappedFrame = snap.frame
+            } else {
+                snapIndicatorX = nil
+                snappedFrame = frame
+            }
+            scrubToFrame(snappedFrame)
 
         case .moveClip(var drag):
             let candidateFrame = frame - drag.grabOffsetFrames
