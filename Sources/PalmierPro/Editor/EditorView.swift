@@ -11,6 +11,8 @@ struct EditorView: NSViewControllerRepresentable {
     func updateNSViewController(_ controller: EditorSplitViewController, context: Context) {
         controller.applyLayoutIfNeeded(editor.layoutPreset)
         controller.applyAgentVisibility(editor.agentPanelVisible)
+        controller.applyMediaVisibility(editor.mediaPanelVisible)
+        controller.applyInspectorVisibility(editor.inspectorPanelVisible)
     }
 }
 
@@ -21,6 +23,8 @@ final class EditorSplitViewController: NSSplitViewController {
     private var currentPreset: LayoutPreset?
     private var pendingLayout: DispatchWorkItem?
     private weak var agentSplitItem: NSSplitViewItem?
+    private weak var mediaSplitItem: NSSplitViewItem?
+    private weak var inspectorSplitItem: NSSplitViewItem?
 
     private lazy var mediaHC: NSViewController     = makeHosting(MediaPanelView(), panel: .media)
     private lazy var previewHC: NSViewController   = makeHosting(PreviewContainerView(), panel: .preview)
@@ -59,7 +63,19 @@ final class EditorSplitViewController: NSSplitViewController {
     }
 
     func applyAgentVisibility(_ visible: Bool) {
-        guard let item = agentSplitItem else { return }
+        applyVisibility(item: agentSplitItem, visible: visible)
+    }
+
+    func applyMediaVisibility(_ visible: Bool) {
+        applyVisibility(item: mediaSplitItem, visible: visible)
+    }
+
+    func applyInspectorVisibility(_ visible: Bool) {
+        applyVisibility(item: inspectorSplitItem, visible: visible)
+    }
+
+    private func applyVisibility(item: NSSplitViewItem?, visible: Bool) {
+        guard let item else { return }
         let targetCollapsed = !visible
         guard item.isCollapsed != targetCollapsed else { return }
         DispatchQueue.main.async {
@@ -74,6 +90,8 @@ final class EditorSplitViewController: NSSplitViewController {
             removeSplitViewItem(splitViewItems.last!)
         }
         agentSplitItem = nil
+        mediaSplitItem = nil
+        inspectorSplitItem = nil
 
         currentPreset = preset
         splitView.isVertical = true
@@ -193,7 +211,9 @@ final class EditorSplitViewController: NSSplitViewController {
         let item = NSSplitViewItem(viewController: mediaHC)
         item.minimumThickness = Layout.mediaPanelMin
         item.maximumThickness = Layout.mediaPanelMax
-        item.canCollapse = false
+        item.canCollapse = true
+        item.isCollapsed = !editor.mediaPanelVisible
+        mediaSplitItem = item
         return item
     }
 
@@ -208,7 +228,9 @@ final class EditorSplitViewController: NSSplitViewController {
         let item = NSSplitViewItem(viewController: inspectorHC)
         item.minimumThickness = Layout.inspectorMin
         item.maximumThickness = Layout.inspectorMax
-        item.canCollapse = false
+        item.canCollapse = true
+        item.isCollapsed = !editor.inspectorPanelVisible
+        inspectorSplitItem = item
         return item
     }
 

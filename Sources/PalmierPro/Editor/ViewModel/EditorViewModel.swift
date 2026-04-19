@@ -69,6 +69,18 @@ final class EditorViewModel {
         didSet { UserDefaults.standard.set(agentPanelVisible, forKey: "agentPanelVisible") }
     }
 
+    var mediaPanelVisible: Bool = {
+        UserDefaults.standard.object(forKey: "mediaPanelVisible") as? Bool ?? true
+    }() {
+        didSet { UserDefaults.standard.set(mediaPanelVisible, forKey: "mediaPanelVisible") }
+    }
+
+    var inspectorPanelVisible: Bool = {
+        UserDefaults.standard.object(forKey: "inspectorPanelVisible") as? Bool ?? true
+    }() {
+        didSet { UserDefaults.standard.set(inspectorPanelVisible, forKey: "inspectorPanelVisible") }
+    }
+
     init() {
         mediaResolver = MediaResolver(
             manifest: { [weak self] in self?.mediaManifest ?? MediaManifest() },
