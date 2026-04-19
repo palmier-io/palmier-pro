@@ -16,6 +16,7 @@ struct TitleBarLeadingView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .frame(width: 26, height: 26)
+                    .hoverHighlight()
             }
             .buttonStyle(.plain)
 
@@ -42,6 +43,7 @@ struct TitleBarTrailingView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .frame(width: 26, height: 26)
+                    .hoverHighlight()
             }
             .buttonStyle(.plain)
             .help("Keyboard Shortcuts (Cmd+?)")
@@ -53,6 +55,7 @@ struct TitleBarTrailingView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .frame(width: 26, height: 26)
+                    .hoverHighlight()
             }
             .buttonStyle(.plain)
         }
@@ -160,5 +163,6 @@ struct LayoutPresetMenu: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        .hoverHighlight()
     }
 }

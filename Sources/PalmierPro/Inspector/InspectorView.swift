@@ -156,10 +156,7 @@ struct InspectorView: View {
                 .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
                 .padding(.horizontal, AppTheme.Spacing.md)
                 .padding(.vertical, AppTheme.Spacing.xs)
-                .background(
-                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                        .fill(isActive ? Color.white.opacity(0.08) : Color.clear)
-                )
+                .hoverHighlight(isActive: isActive)
         }
         .buttonStyle(.plain)
     }
@@ -282,6 +279,8 @@ struct InspectorView: View {
                     Image(systemName: "arrow.counterclockwise")
                         .font(.system(size: AppTheme.FontSize.sm))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .frame(width: 22, height: 22)
+                        .hoverHighlight()
                 }
                 .buttonStyle(.plain)
                 .help("Reset transform")
