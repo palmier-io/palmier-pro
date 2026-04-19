@@ -45,11 +45,11 @@ struct MediaPanelView: View {
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: AppTheme.Spacing.xs) {
                             toolbarButton(title: "Import", systemImage: "plus", compact: false, action: importMedia)
-                            toolbarButton(title: "Generate", systemImage: "sparkles", compact: false, action: toggleGenerationPanel)
+                            toolbarButton(title: "Generate", systemImage: "sparkles", compact: false, accentStyle: AnyShapeStyle(AppTheme.aiGradient), action: toggleGenerationPanel)
                         }
                         HStack(spacing: AppTheme.Spacing.xs) {
                             toolbarButton(title: "Import", systemImage: "plus", compact: true, action: importMedia)
-                            toolbarButton(title: "Generate", systemImage: "sparkles", compact: true, action: toggleGenerationPanel)
+                            toolbarButton(title: "Generate", systemImage: "sparkles", compact: true, accentStyle: AnyShapeStyle(AppTheme.aiGradient), action: toggleGenerationPanel)
                         }
                     }
 
@@ -207,17 +207,22 @@ struct MediaPanelView: View {
         }
     }
 
-    private func toolbarButton(title: String, systemImage: String, compact: Bool, action: @escaping () -> Void) -> some View {
+    private func toolbarButton(
+        title: String,
+        systemImage: String,
+        compact: Bool,
+        accentStyle: AnyShapeStyle? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
-            Group {
-                if compact {
-                    Image(systemName: systemImage)
-                } else {
-                    Label(title, systemImage: systemImage)
+            HStack(spacing: 4) {
+                Image(systemName: systemImage)
+                if !compact {
+                    Text(title)
                 }
             }
             .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-            .foregroundStyle(AppTheme.Text.secondaryColor)
+            .foregroundStyle(accentStyle ?? AnyShapeStyle(AppTheme.Text.secondaryColor))
             .help(title)
         }
         .buttonStyle(.plain)
@@ -398,7 +403,7 @@ struct MediaPanelView: View {
         panel.begin { response in
             guard response == .OK else { return }
             for url in panel.urls {
-                addMediaAsset(from: url)
+                editor.addMediaAsset(from: url)
             }
         }
     }
@@ -408,20 +413,10 @@ struct MediaPanelView: View {
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
                 guard let url else { return }
                 Task { @MainActor in
-                    addMediaAsset(from: url)
+                    editor.addMediaAsset(from: url)
                 }
             }
         }
-    }
-
-    private func addMediaAsset(from url: URL) {
-        guard let type = ClipType(fileExtension: url.pathExtension.lowercased()) else { return }
-
-        let name = url.deletingPathExtension().lastPathComponent
-        let asset = MediaAsset(url: url, type: type, name: name)
-        editor.importMediaAsset(asset)
-
-        Task { await editor.finalizeImportedAsset(asset) }
     }
 }
 
