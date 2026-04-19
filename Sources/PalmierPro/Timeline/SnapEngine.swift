@@ -26,12 +26,17 @@ enum SnapEngine {
 
     /// Collects all clip edges and the playhead as snap targets.
     /// Optionally excludes specific clip IDs (e.g., the clip being dragged).
+    /// Pass `includePlayhead: false` when the playhead itself is what's being dragged.
     static func collectTargets(
         tracks: [Track],
         playheadFrame: Int,
-        excludeClipIds: Set<String> = []
+        excludeClipIds: Set<String> = [],
+        includePlayhead: Bool = true
     ) -> [SnapTarget] {
-        var targets = [SnapTarget(frame: playheadFrame, kind: .playhead)]
+        var targets: [SnapTarget] = []
+        if includePlayhead {
+            targets.append(SnapTarget(frame: playheadFrame, kind: .playhead))
+        }
         for track in tracks {
             for clip in track.clips where !excludeClipIds.contains(clip.id) {
                 targets.append(SnapTarget(frame: clip.startFrame, kind: .clipEdge))
