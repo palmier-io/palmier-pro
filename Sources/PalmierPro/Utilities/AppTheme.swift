@@ -29,6 +29,18 @@ enum AppTheme {
         static let timecodeColor = Color(red: 0.95, green: 0.6, blue: 0.2) // warm amber
     }
 
+    static let aiGradient = LinearGradient(
+        colors: [
+            Color(red: 1.00, green: 0.55, blue: 0.20),
+            Color(red: 0.98, green: 0.36, blue: 0.58),
+            Color(red: 0.67, green: 0.36, blue: 0.96),
+            Color(red: 0.29, green: 0.60, blue: 0.99),
+            Color(red: 0.25, green: 0.85, blue: 0.95),
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
     // MARK: - Glass
 
     enum Glass {

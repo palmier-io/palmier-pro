@@ -20,6 +20,7 @@ final class VideoProject: NSDocument {
     private nonisolated(unsafe) var snapshotTimeline: Data?
     private nonisolated(unsafe) var snapshotManifest: Data?
     private nonisolated(unsafe) var snapshotThumbnail: Data?
+    private nonisolated(unsafe) var snapshotChatSessionFiles: [(name: String, data: Data)] = []
 
     // MARK: - Persistence
 
@@ -51,6 +52,9 @@ final class VideoProject: NSDocument {
         snapshotTimeline = try? JSONEncoder().encode(editorViewModel.timeline)
         snapshotManifest = try? JSONEncoder().encode(editorViewModel.mediaManifest)
         snapshotThumbnail = captureThumbnail()
+        snapshotChatSessionFiles = editorViewModel.agentService.sessions.compactMap { session in
+            ChatSessionStore.encodeSession(session).map { (name: "\(session.id.uuidString).json", data: $0) }
+        }
         super.save(to: url, ofType: typeName, for: saveOperation, completionHandler: completionHandler)
     }
 
@@ -63,6 +67,7 @@ final class VideoProject: NSDocument {
         replaceChild(Project.timelineFilename, with: data)
         if let manifest = snapshotManifest { replaceChild(Project.manifestFilename, with: manifest) }
         if let thumb = snapshotThumbnail { replaceChild(Project.thumbnailFilename, with: thumb) }
+        replaceChild(ChatSessionStore.dirName, with: chatDirWrapper())
         if let mediaDir = mediaDirWrapper() { replaceChild(Project.mediaDirectoryName, with: mediaDir) }
 
         return packageWrapper
@@ -73,6 +78,17 @@ final class VideoProject: NSDocument {
         let mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
         guard FileManager.default.fileExists(atPath: mediaDir.path) else { return nil }
         return try? FileWrapper(url: mediaDir, options: .immediate)
+    }
+
+    private nonisolated func chatDirWrapper() -> FileWrapper {
+        let dir = FileWrapper(directoryWithFileWrappers: [:])
+        for file in snapshotChatSessionFiles {
+            let child = FileWrapper(regularFileWithContents: file.data)
+            child.preferredFilename = file.name
+            dir.addFileWrapper(child)
+        }
+        dir.preferredFilename = ChatSessionStore.dirName
+        return dir
     }
 
     override func updateChangeCount(_ change: NSDocument.ChangeType) {
@@ -121,6 +137,10 @@ final class VideoProject: NSDocument {
         }
         editorViewModel.undoManager = undoManager
         editorViewModel.projectURL = fileURL
+        editorViewModel.agentService.loadSessions(from: fileURL)
+        editorViewModel.agentService.onSessionsChanged = { [weak self] in
+            self?.updateChangeCount(.changeDone)
+        }
 
         let editorView = EditorView()
             .environment(editorViewModel)
@@ -153,7 +173,7 @@ final class VideoProject: NSDocument {
         window.center()
 
         window.addTitlebarSwiftUI(TitleBarLeadingView().environment(editorViewModel), side: .leading, width: 240)
-        window.addTitlebarSwiftUI(TitleBarTrailingView().environment(editorViewModel), side: .trailing, width: 110)
+        window.addTitlebarSwiftUI(TitleBarTrailingView().environment(editorViewModel), side: .trailing, width: 136)
 
         let controller = EditorWindowController(editorViewModel: editorViewModel, window: window)
         controller.shouldCascadeWindows = true

@@ -10,6 +10,7 @@ struct EditorView: NSViewControllerRepresentable {
 
     func updateNSViewController(_ controller: EditorSplitViewController, context: Context) {
         controller.applyLayoutIfNeeded(editor.layoutPreset)
+        controller.applyAgentVisibility(editor.agentPanelVisible)
     }
 }
 
@@ -19,10 +20,12 @@ final class EditorSplitViewController: NSSplitViewController {
     private let editor: EditorViewModel
     private var currentPreset: LayoutPreset?
     private var pendingLayout: DispatchWorkItem?
+    private weak var agentSplitItem: NSSplitViewItem?
 
     private lazy var mediaHC: NSViewController     = makeHosting(MediaPanelView(), panel: .media)
     private lazy var previewHC: NSViewController   = makeHosting(PreviewContainerView(), panel: .preview)
     private lazy var inspectorHC: NSViewController = makeHosting(InspectorView(), panel: .inspector)
+    private lazy var agentHC: NSViewController     = makeHosting(AgentPanelView(), panel: .agent)
     private lazy var timelineHC: NSViewController  = makeHosting(
         VStack(spacing: 0) {
             ToolbarView().frame(height: Layout.toolbarHeight)
@@ -55,47 +58,77 @@ final class EditorSplitViewController: NSSplitViewController {
         }
     }
 
+    func applyAgentVisibility(_ visible: Bool) {
+        guard let item = agentSplitItem else { return }
+        let targetCollapsed = !visible
+        guard item.isCollapsed != targetCollapsed else { return }
+        DispatchQueue.main.async {
+            item.animator().isCollapsed = targetCollapsed
+        }
+    }
+
     private func buildLayout(_ preset: LayoutPreset) {
         pendingLayout?.cancel()
 
         while !splitViewItems.isEmpty {
             removeSplitViewItem(splitViewItems.last!)
         }
+        agentSplitItem = nil
 
         currentPreset = preset
+        splitView.isVertical = true
 
+        // Preset layout lives in an inner VC so the agent can be a sibling column.
+        let presetRoot = makeChildSplit(isVertical: false)
         switch preset {
-        case .default: buildDefaultLayout()
-        case .media:   buildMediaLayout()
-        case .vertical: buildVerticalLayout()
+        case .default:  buildDefaultLayout(into: presetRoot)
+        case .media:    buildMediaLayout(into: presetRoot)
+        case .vertical: buildVerticalLayout(into: presetRoot)
         }
+
+        let presetItem = NSSplitViewItem(viewController: presetRoot)
+        presetItem.minimumThickness = 400
+        addSplitViewItem(presetItem)
+
+        let agentItem = NSSplitViewItem(viewController: agentHC)
+        agentItem.canCollapse = true
+        agentItem.isCollapsed = !editor.agentPanelVisible
+        agentItem.minimumThickness = Layout.agentPanelMin
+        agentItem.maximumThickness = Layout.agentPanelMax
+        addSplitViewItem(agentItem)
+        agentSplitItem = agentItem
     }
 
     // MARK: - Default layout
 
-    private func buildDefaultLayout() {
-        splitView.isVertical = false
+    private func buildDefaultLayout(into target: NSSplitViewController) {
+        target.splitView.isVertical = false
 
         let hSplit = makeChildSplit(isVertical: true)
         hSplit.addSplitViewItem(makeMediaItem())
         hSplit.addSplitViewItem(makePreviewItem())
         hSplit.addSplitViewItem(makeInspectorItem())
 
-        addSplitViewItem(NSSplitViewItem(viewController: hSplit))
-        addSplitViewItem(makeTimelineItem())
+        target.addSplitViewItem(NSSplitViewItem(viewController: hSplit))
+        target.addSplitViewItem(makeTimelineItem())
 
-        scheduleDividerPositions { size in
-            self.splitView.setPosition(round(size.height * 0.55), ofDividerAt: 0)
+        // Positions are set against each inner split's own bounds — not
+        // self.view.bounds, which includes the agent column's width.
+        applyAfterLayout { [weak target, weak hSplit] in
+            guard let target, let hSplit else { return }
+            let targetH = target.view.bounds.height
+            let hW = hSplit.view.bounds.width
+            target.splitView.setPosition(round(targetH * 0.55), ofDividerAt: 0)
             hSplit.splitView.setPosition(Layout.mediaPanelDefault, ofDividerAt: 0)
-            hSplit.splitView.setPosition(size.width - Layout.inspectorDefault, ofDividerAt: 1)
+            hSplit.splitView.setPosition(hW - Layout.inspectorDefault, ofDividerAt: 1)
         }
     }
 
     // MARK: - Media layout
     // [Media] | [Preview | Inspector] / [Toolbar + Timeline]
 
-    private func buildMediaLayout() {
-        splitView.isVertical = true
+    private func buildMediaLayout(into target: NSSplitViewController) {
+        target.splitView.isVertical = true
 
         let topSplit = makeChildSplit(isVertical: true)
         topSplit.addSplitViewItem(makePreviewItem())
@@ -105,22 +138,26 @@ final class EditorSplitViewController: NSSplitViewController {
         rightSplit.addSplitViewItem(NSSplitViewItem(viewController: topSplit))
         rightSplit.addSplitViewItem(makeTimelineItem())
 
-        addSplitViewItem(makeMediaItem())
-        addSplitViewItem(NSSplitViewItem(viewController: rightSplit))
+        target.addSplitViewItem(makeMediaItem())
+        target.addSplitViewItem(NSSplitViewItem(viewController: rightSplit))
 
-        scheduleDividerPositions { size in
-            let mediaWidth = round(size.width * 0.3)
-            self.splitView.setPosition(mediaWidth, ofDividerAt: 0)
-            rightSplit.splitView.setPosition(round(size.height * 0.55), ofDividerAt: 0)
-            topSplit.splitView.setPosition(size.width - mediaWidth - Layout.inspectorDefault, ofDividerAt: 0)
+        applyAfterLayout { [weak target, weak rightSplit, weak topSplit] in
+            guard let target, let rightSplit, let topSplit else { return }
+            let targetW = target.view.bounds.width
+            let rightH = rightSplit.view.bounds.height
+            let topW = topSplit.view.bounds.width
+            let mediaWidth = round(targetW * 0.3)
+            target.splitView.setPosition(mediaWidth, ofDividerAt: 0)
+            rightSplit.splitView.setPosition(round(rightH * 0.55), ofDividerAt: 0)
+            topSplit.splitView.setPosition(topW - Layout.inspectorDefault, ofDividerAt: 0)
         }
     }
 
     // MARK: - Vertical layout
     // [Media | Inspector] / [Toolbar + Timeline] | [Preview]
 
-    private func buildVerticalLayout() {
-        splitView.isVertical = true
+    private func buildVerticalLayout(into target: NSSplitViewController) {
+        target.splitView.isVertical = true
 
         let topSplit = makeChildSplit(isVertical: true)
         topSplit.addSplitViewItem(makeMediaItem())
@@ -130,12 +167,15 @@ final class EditorSplitViewController: NSSplitViewController {
         leftSplit.addSplitViewItem(NSSplitViewItem(viewController: topSplit))
         leftSplit.addSplitViewItem(makeTimelineItem())
 
-        addSplitViewItem(NSSplitViewItem(viewController: leftSplit))
-        addSplitViewItem(makePreviewItem())
+        target.addSplitViewItem(NSSplitViewItem(viewController: leftSplit))
+        target.addSplitViewItem(makePreviewItem())
 
-        scheduleDividerPositions { size in
-            self.splitView.setPosition(round(size.width * 0.5), ofDividerAt: 0)
-            leftSplit.splitView.setPosition(round(size.height * 0.55), ofDividerAt: 0)
+        applyAfterLayout { [weak target, weak leftSplit, weak topSplit] in
+            guard let target, let leftSplit, let topSplit else { return }
+            let targetW = target.view.bounds.width
+            let leftH = leftSplit.view.bounds.height
+            target.splitView.setPosition(round(targetW * 0.5), ofDividerAt: 0)
+            leftSplit.splitView.setPosition(round(leftH * 0.55), ofDividerAt: 0)
             topSplit.splitView.setPosition(Layout.mediaPanelDefault, ofDividerAt: 0)
         }
     }
@@ -194,16 +234,13 @@ final class EditorSplitViewController: NSSplitViewController {
         return hc
     }
 
-    private func scheduleDividerPositions(_ apply: @escaping (CGSize) -> Void) {
+    private func applyAfterLayout(_ apply: @escaping () -> Void) {
         pendingLayout?.cancel()
-        view.layoutSubtreeIfNeeded()
-        if view.bounds.size.width > 0 {
-            apply(view.bounds.size)
-            return
-        }
         let work = DispatchWorkItem { [weak self] in
-            guard let self, self.view.bounds.size.width > 0 else { return }
-            apply(self.view.bounds.size)
+            guard let self else { return }
+            self.view.layoutSubtreeIfNeeded()
+            guard self.view.bounds.width > 0 else { return }
+            apply()
         }
         pendingLayout = work
         DispatchQueue.main.async(execute: work)
