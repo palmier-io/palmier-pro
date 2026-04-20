@@ -16,6 +16,9 @@ enum ImageVideoGenerator {
     /// Generated a long enough video so it can be freely resized (2 frames at 1fps for 30 minutes — tiny file).
     private static let generatedDuration: Double = 1800
 
+    /// Capping frame dimensions for H.264.
+    private static let maxEncoderDimension: CGFloat = 4096
+
     /// Returns a cached or newly-generated still-frame .mov for the given image.
     static func stillVideo(
         for imageURL: URL,
@@ -23,6 +26,7 @@ enum ImageVideoGenerator {
         size: CGSize
     ) async throws -> URL {
         let duration = generatedDuration
+        let size = clampedForEncoder(size)
         let filename = "\(mediaRef)_\(Int(size.width))x\(Int(size.height)).mov"
         let outputURL = cacheDirectory.appendingPathComponent(filename)
 
@@ -37,6 +41,13 @@ enum ImageVideoGenerator {
         let pixelBuffer = try createPixelBuffer(from: nsImage, size: size)
         try await writeStillVideo(pixelBuffer: pixelBuffer, to: outputURL, size: size, duration: duration)
         return outputURL
+    }
+
+    private static func clampedForEncoder(_ size: CGSize) -> CGSize {
+        let longest = max(size.width, size.height)
+        guard longest > maxEncoderDimension else { return size }
+        let scale = maxEncoderDimension / longest
+        return CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
     }
 
     static func imageNativeSize(url: URL) -> CGSize? {
@@ -98,7 +109,9 @@ enum ImageVideoGenerator {
         size: CGSize,
         duration: Double
     ) async throws {
-        let tempURL = outputURL.appendingPathExtension("writing")
+
+        let tempURL = outputURL.deletingLastPathComponent()
+            .appendingPathComponent(".writing-" + outputURL.lastPathComponent)
         try? FileManager.default.removeItem(at: tempURL)
 
         let writer = try AVAssetWriter(outputURL: tempURL, fileType: .mov)
