@@ -87,11 +87,17 @@ final class VideoEngine {
             }
         )
         rebuildTask = Task {
-            guard let result = try? await CompositionBuilder.build(
-                timeline: editor.timeline,
-                resolveURL: { resolver.resolveURL(for: $0) },
-                resolveSourceSize: { assetSizes[$0] }
-            ) else {
+            let result: CompositionResult
+            do {
+                result = try await CompositionBuilder.build(
+                    timeline: editor.timeline,
+                    resolveURL: { resolver.resolveURL(for: $0) },
+                    resolveSourceSize: { assetSizes[$0] }
+                )
+            } catch {
+                if !Task.isCancelled {
+                    Log.preview.error("rebuild failed: \(error.localizedDescription)")
+                }
                 rebuildTask = nil
                 return
             }

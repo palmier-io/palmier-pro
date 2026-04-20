@@ -57,10 +57,14 @@ enum CompositionBuilder {
                 guard var mediaURL = resolveURL(clip.mediaRef) else { continue }
                 if clip.mediaType == .image {
                     let imageSize = resolveSourceSize(clip.mediaRef) ?? ImageVideoGenerator.imageNativeSize(url: mediaURL) ?? renderSize
-                    guard let videoURL = try? await ImageVideoGenerator.stillVideo(
-                        for: mediaURL, mediaRef: clip.mediaRef, size: imageSize
-                    ) else { continue }
-                    mediaURL = videoURL
+                    do {
+                        mediaURL = try await ImageVideoGenerator.stillVideo(
+                            for: mediaURL, mediaRef: clip.mediaRef, size: imageSize
+                        )
+                    } catch {
+                        Log.preview.error("stillVideo failed mediaRef=\(clip.mediaRef) size=\(Int(imageSize.width))x\(Int(imageSize.height)): \(error.localizedDescription)")
+                        continue
+                    }
                 }
 
                 guard !Task.isCancelled else { throw CancellationError() }
