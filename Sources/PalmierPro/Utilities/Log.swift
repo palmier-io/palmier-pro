@@ -4,20 +4,17 @@ import os
 
 /// Categorized logger + crash handler.
 ///
-/// Normal logs go to the unified log. To retrieve:
-///   log show --predicate 'subsystem == "io.palmier.pro"' --info --last 1h
-///
 /// Uncaught exceptions and fatal signals are written to
 /// `~/Library/Logs/PalmierPro/crash.log` with a backtrace.
 enum Log {
     static let subsystem  = "io.palmier.pro"
-    static let app        = Logger(subsystem: subsystem, category: "app")
-    static let editor     = Logger(subsystem: subsystem, category: "editor")
-    static let export     = Logger(subsystem: subsystem, category: "export")
-    static let preview    = Logger(subsystem: subsystem, category: "preview")
-    static let mcp        = Logger(subsystem: subsystem, category: "mcp")
-    static let generation = Logger(subsystem: subsystem, category: "generation")
-    static let project    = Logger(subsystem: subsystem, category: "project")
+    static let app        = CategoryLog("app")
+    static let editor     = CategoryLog("editor")
+    static let export     = CategoryLog("export")
+    static let preview    = CategoryLog("preview")
+    static let mcp        = CategoryLog("mcp")
+    static let generation = CategoryLog("generation")
+    static let project    = CategoryLog("project")
 
     static let crashLogURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Logs/PalmierPro/crash.log")
@@ -26,6 +23,27 @@ enum Log {
     static func bootstrap() {
         CrashHandler.install()
         app.notice("launch pid=\(ProcessInfo.processInfo.processIdentifier)")
+    }
+}
+
+struct CategoryLog {
+    let logger: Logger
+    let category: String
+
+    init(_ category: String) {
+        self.logger = Logger(subsystem: Log.subsystem, category: category)
+        self.category = category
+    }
+
+    func debug(_ m: String)   { logger.debug("\(m, privacy: .public)") }
+    func info(_ m: String)    { logger.info("\(m, privacy: .public)") }
+    func notice(_ m: String)  { mirror("NOTICE", m); logger.notice("\(m, privacy: .public)") }
+    func warning(_ m: String) { mirror("WARN",   m); logger.warning("\(m, privacy: .public)") }
+    func error(_ m: String)   { mirror("ERROR",  m); logger.error("\(m, privacy: .public)") }
+    func fault(_ m: String)   { mirror("FAULT",  m); logger.fault("\(m, privacy: .public)") }
+
+    private func mirror(_ level: String, _ msg: String) {
+        FileHandle.standardError.write(Data("[\(category)] \(level): \(msg)\n".utf8))
     }
 }
 
