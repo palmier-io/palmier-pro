@@ -98,10 +98,10 @@ enum ImageVideoGenerator {
         size: CGSize,
         duration: Double
     ) async throws {
-        // Clean up any partial file from a previous failed attempt
-        try? FileManager.default.removeItem(at: outputURL)
+        let tempURL = outputURL.appendingPathExtension("writing")
+        try? FileManager.default.removeItem(at: tempURL)
 
-        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
+        let writer = try AVAssetWriter(outputURL: tempURL, fileType: .mov)
         let videoSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: Int(size.width),
@@ -137,6 +137,9 @@ enum ImageVideoGenerator {
         guard writer.status == .completed else {
             throw writer.error ?? ImageVideoError.writeFailed
         }
+
+        try? FileManager.default.removeItem(at: outputURL)
+        try FileManager.default.moveItem(at: tempURL, to: outputURL)
     }
 
     enum ImageVideoError: Error {
