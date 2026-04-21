@@ -169,10 +169,10 @@ extension VideoModelConfig {
 
     // MARK: Seedance
 
-    private static func seedance(_ variant: String?, id: String, displayName: String) -> VideoModelConfig {
+    private static func seedance(_ variant: String?, id: String, displayName: String, resolutions: [String]) -> VideoModelConfig {
         VideoModelConfig(
             id: id, displayName: displayName, baseEndpoint: "bytedance/seedance-2.0",
-            durations: Array(4...15), resolutions: ["480p", "720p"],
+            durations: Array(4...15), resolutions: resolutions,
             aspectRatios: ["16:9", "9:16", "1:1"],
             supportsLastFrame: true, supportsReferences: true, maxReferences: 9,
             resolveEndpoint: { base, input in
@@ -183,8 +183,8 @@ extension VideoModelConfig {
         )
     }
 
-    static let seedance2     = seedance(nil,    id: "seedance-2",      displayName: "Seedance 2")
-    static let seedance2Fast = seedance("fast", id: "seedance-2-fast", displayName: "Seedance 2 Fast")
+    static let seedance2     = seedance(nil,    id: "seedance-2",      displayName: "Seedance 2",      resolutions: ["480p", "720p", "1080p"])
+    static let seedance2Fast = seedance("fast", id: "seedance-2-fast", displayName: "Seedance 2 Fast", resolutions: ["480p", "720p"])
 
     // MARK: Grok
 

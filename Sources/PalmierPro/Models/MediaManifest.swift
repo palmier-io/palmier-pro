@@ -24,6 +24,7 @@ struct GenerationInput: Codable, Sendable, Equatable {
     var duration: Int
     var aspectRatio: String
     var resolution: String?
+    var quality: String?
     var imageURLs: [String]?
     /// Audio
     var voice: String?
