@@ -64,32 +64,21 @@ if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
   exit 1
 fi
 
-echo "==> Drafting release notes"
-NOTES_FILE="$(mktemp -t palmier-release.XXXXXX).md"
-trap 'rm -f "$NOTES_FILE"' EXIT
+echo "==> Generating release notes from commit log"
+NOTES_CLEAN="$(mktemp -t palmier-release.XXXXXX).md"
+trap 'rm -f "$NOTES_CLEAN"' EXIT
+LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || echo '')"
 {
+  echo "## What's new"
   echo ""
-  echo "# Release notes for $TAG. Lines starting with # are ignored."
-  echo "# Save and quit when done. Leaving this blank aborts the release."
-  echo "#"
-  LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || echo '')"
   if [ -n "$LAST_TAG" ]; then
-    echo "# Commits since $LAST_TAG:"
-    git log --pretty=format:"#   - %s" "$LAST_TAG..HEAD"
+    git log --pretty=format:"- %s" "$LAST_TAG..HEAD"
     echo ""
+  else
+    echo "First release."
   fi
-} >"$NOTES_FILE"
-
-${EDITOR:-vi} "$NOTES_FILE"
-
-NOTES_CLEAN="$(mktemp -t palmier-release-clean.XXXXXX).md"
-trap 'rm -f "$NOTES_FILE" "$NOTES_CLEAN"' EXIT
-grep -v '^#' "$NOTES_FILE" | awk 'NF{flag=1} flag' >"$NOTES_CLEAN"
-
-if [ ! -s "$NOTES_CLEAN" ]; then
-  echo "error: release notes are empty, aborting" >&2
-  exit 1
-fi
+} >"$NOTES_CLEAN"
+echo "    (edit on GitHub later if you want to polish)"
 
 echo "==> Bumping version"
 CURRENT_BUILD="$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST")"
@@ -100,7 +89,7 @@ echo "    $VERSION (build $NEW_BUILD)"
 
 echo "==> Building signed + notarized DMG"
 BUILD_LOG="$(mktemp -t palmier-build.XXXXXX).log"
-trap 'rm -f "$NOTES_FILE" "$NOTES_CLEAN" "$BUILD_LOG"' EXIT
+trap 'rm -f "$NOTES_CLEAN" "$BUILD_LOG"' EXIT
 ./scripts/bundle.sh release --dist 2>&1 | tee "$BUILD_LOG"
 
 SIG_LINE="$(grep 'sparkle:edSignature' "$BUILD_LOG" | tail -1)"
