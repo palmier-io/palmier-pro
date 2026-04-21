@@ -125,6 +125,7 @@ enum MainMenuBuilder {
         let item = NSMenuItem()
         let menu = NSMenu(title: "Help")
         menu.addItem(withTitle: "Keyboard Shortcuts", action: #selector(EditorActions.showKeyboardShortcuts(_:)), keyEquivalent: "?")
+        menu.addItem(withTitle: "MCP Instructions", action: #selector(EditorActions.showMCPInstructions(_:)), keyEquivalent: "")
         item.submenu = menu
         return item
     }
@@ -144,6 +145,7 @@ enum MainMenuBuilder {
     func skipFramesBackward(_ sender: Any?)
     func showExport(_ sender: Any?)
     func showKeyboardShortcuts(_ sender: Any?)
+    func showMCPInstructions(_ sender: Any?)
     func toggleMediaPanel(_ sender: Any?)
     func toggleInspectorPanel(_ sender: Any?)
     func toggleAgentPanel(_ sender: Any?)

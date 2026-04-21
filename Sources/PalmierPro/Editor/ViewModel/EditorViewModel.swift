@@ -43,7 +43,8 @@ final class EditorViewModel {
     var pendingEditTrimmedSource: TrimmedSource?
     /// Clip ids currently awaiting an AI-generated replacement.
     var pendingReplacements: Set<String> = []
-    var showKeyboardShortcuts: Bool = false
+    var showHelp: Bool = false
+    var helpTab: HelpTab = .shortcuts
     var previewTabs: [PreviewTab] = [.timeline]
     var activePreviewTabId: String = PreviewTab.timeline.id
     var sourcePlayheadFrame: Int = 0

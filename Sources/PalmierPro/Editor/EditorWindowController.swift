@@ -153,7 +153,13 @@ extension EditorWindowController: EditorActions {
     }
 
     @objc func showKeyboardShortcuts(_ sender: Any?) {
-        editorViewModel.showKeyboardShortcuts = true
+        editorViewModel.helpTab = .shortcuts
+        editorViewModel.showHelp = true
+    }
+
+    @objc func showMCPInstructions(_ sender: Any?) {
+        editorViewModel.helpTab = .mcp
+        editorViewModel.showHelp = true
     }
 
     @objc func toggleMediaPanel(_ sender: Any?) { editorViewModel.mediaPanelVisible.toggle() }
