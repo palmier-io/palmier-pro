@@ -85,7 +85,7 @@ final class EditorSplitViewController: NSSplitViewController {
         addSplitViewItem(makeTimelineItem())
 
         scheduleDividerPositions { size in
-            self.splitView.setPosition(round(size.height * 0.55), ofDividerAt: 0)
+            self.splitView.setPosition(round(size.height * 0.7), ofDividerAt: 0)
             hSplit.splitView.setPosition(Layout.mediaPanelDefault, ofDividerAt: 0)
             hSplit.splitView.setPosition(size.width - Layout.inspectorDefault, ofDividerAt: 1)
         }
