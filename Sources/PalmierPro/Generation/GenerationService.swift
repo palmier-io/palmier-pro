@@ -8,7 +8,7 @@ final class GenerationService {
 
     private static let credentialsFilename = "fal-credentials"
 
-    private var apiKey: String = FileCredentialStore.load(filename: credentialsFilename) ?? ""
+    private(set) var apiKey: String = FileCredentialStore.load(filename: credentialsFilename) ?? ""
 
     var hasApiKey: Bool { !apiKey.isEmpty }
 
@@ -104,18 +104,7 @@ final class GenerationService {
             for (i, url) in urls.enumerated() {
                 group.addTask {
                     let data = try Data(contentsOf: url)
-                    let ext = url.pathExtension.lowercased()
-                    let fileType: FileType = switch ext {
-                    case "png": .imagePng
-                    case "webp": .imageWebp
-                    case "gif": .imageGif
-                    case "jpg", "jpeg": .imageJpeg
-                    case "mp4", "m4v", "mov": .videoMp4
-                    case "mp3": .audioMp3
-                    case "wav": .audioWav
-                    default: .applicationStream
-                    }
-                    let uploaded = try await client.storage.upload(data: data, ofType: fileType)
+                    let uploaded = try await client.storage.upload(data: data, ofType: .inferred(from: url))
                     return (i, uploaded)
                 }
             }

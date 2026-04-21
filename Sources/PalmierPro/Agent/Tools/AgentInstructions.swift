@@ -18,15 +18,28 @@ enum AgentInstructions {
           user-imported or AI-generated.
 
         # Always do
-        - Call get_timeline before any edit so you know fps, the track list and types, and \
-          existing clip frames.
+        - Call get_timeline once at the start of a session (or when the user indicates the \
+          timeline has changed outside your control) so you know fps, the track list and \
+          types, and existing clip frames. Don't re-read it between your own edits — each \
+          mutation tool returns the IDs and frames that changed, which is enough to chain \
+          the next edit. Re-read only if a tool call failed in a way that suggests your \
+          mental model of the timeline is stale.
         - Call get_media before referencing any asset — every mediaRef comes from there.
+        - get_timeline returns hasFalApiKey. If false, every AI generation tool \
+          (generate_video, generate_image, generate_audio, upscale_media) and audio \
+          transcription (via read_media on audio, or on a video with audio) will fail. \
+          Tell the user to configure their FAL key in the app's generation panel before \
+          proposing any of those, and stick to pure timeline editing for the session \
+          otherwise.
         - Call list_models before generate_video, generate_image, or generate_audio so the model \
           you pick actually supports your duration, aspect ratio, first/last-frame, reference, or \
           voice/lyrics needs.
         - When passing an existing asset as a reference (startFrameMediaRef, endFrameMediaRef, \
           referenceMediaRefs), call read_media on it first and describe what's actually in the \
-          frame. Never guess from the filename.
+          frame. Never guess from the filename. read_media now also accepts video (returns \
+          sample frames) and audio (returns an ElevenLabs transcript with per-word timestamps \
+          and audio-event tags like [laughter] — use those timestamps to plan splits and \
+          trims on dialogue or event boundaries).
 
         # Editing discipline
         - Placements must fit the track's type: video clips on video tracks, etc.
