@@ -5,10 +5,10 @@ enum EditAction {
     case edit
     case rerun
 
-    static let editMaxDurationSeconds: Double = 15.0
+    static let editMaxDurationSeconds: Double = 10.0
 
     @MainActor
-    func availability(for asset: MediaAsset) -> EditActionAvailability {
+    func availability(for asset: MediaAsset, effectiveDurationOverride: Double? = nil) -> EditActionAvailability {
         switch self {
         case .upscale:
             guard asset.type == .video || asset.type == .image else {
@@ -33,7 +33,7 @@ enum EditAction {
         case .edit:
             switch asset.type {
             case .video:
-                let duration = Self.effectiveDuration(of: asset)
+                let duration = effectiveDurationOverride ?? Self.effectiveDuration(of: asset)
                 guard duration > 0 else {
                     return .disabled(reason: "Loading video metadata…")
                 }

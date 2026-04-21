@@ -11,6 +11,7 @@ struct GenerationView: View {
     @State private var selectedDuration = 5
     @State private var selectedAspectRatio = "16:9"
     @State private var selectedResolution = "1080p"
+    @State private var selectedQuality = "high"
 
     // Audio extras
     @State private var selectedVoice = ""
@@ -83,7 +84,7 @@ struct GenerationView: View {
     private var hasAnySettings: Bool {
         switch selectedType {
         case .video: return !videoModel.durations.isEmpty || !videoModel.aspectRatios.isEmpty || videoModel.resolutions != nil
-        case .image: return !imageModel.aspectRatios.isEmpty || imageModel.resolutions != nil
+        case .image: return !imageModel.aspectRatios.isEmpty || imageModel.resolutions != nil || imageModel.qualities != nil
         case .audio: return audioModel.supportsInstrumental || audioModel.durations != nil
         }
     }
@@ -120,6 +121,10 @@ struct GenerationView: View {
         }
     }
 
+    private var currentQualities: [String]? {
+        selectedType == .image ? imageModel.qualities : nil
+    }
+
     private var audioPromptHint: String {
         audioModel.minPromptLength > 1 ? " (min \(audioModel.minPromptLength) chars)" : ""
     }
@@ -144,6 +149,7 @@ struct GenerationView: View {
             return parts.isEmpty ? "Settings" : parts.joined(separator: " \u{00B7} ")
         }
         if currentResolutions != nil { parts.append(selectedResolution) }
+        if currentQualities != nil { parts.append(selectedQuality) }
         if selectedType == .video { parts.append("\(selectedDuration)s") }
         parts.append(selectedAspectRatio)
         return parts.joined(separator: " \u{00B7} ")
@@ -160,6 +166,7 @@ struct GenerationView: View {
                 apiKeyButton
                 Button {
                     editor.pendingEditReplacementClipId = nil
+                    editor.pendingEditTrimmedSource = nil
                     editor.showGenerationPanel = false
                 } label: {
                     Image(systemName: "xmark")
@@ -682,6 +689,9 @@ struct GenerationView: View {
             if let resolutions = currentResolutions {
                 settingsPicker("Resolution", selection: $selectedResolution, options: resolutions) { $0 }
             }
+            if let qualities = currentQualities {
+                settingsPicker("Quality", selection: $selectedQuality, options: qualities) { $0.capitalized }
+            }
             if selectedType == .audio && audioModel.supportsInstrumental {
                 Toggle("Instrumental", isOn: $instrumental)
                     .controlSize(.small)
@@ -755,6 +765,7 @@ struct GenerationView: View {
             resolution: selectedType == .video
                 ? (videoModel.resolutions != nil ? selectedResolution : nil)
                 : (selectedType == .image && imageModel.resolutions != nil ? selectedResolution : nil),
+            quality: selectedType == .image && imageModel.qualities != nil ? selectedQuality : nil,
             voice: selectedType == .audio && audioModel.voices != nil && !selectedVoice.isEmpty
                 ? selectedVoice : nil,
             lyrics: selectedType == .audio && audioModel.supportsLyrics && !lyrics.isEmpty
@@ -801,14 +812,30 @@ struct GenerationView: View {
                 if let f = firstFrame { refs.append(f) }
                 if let l = lastFrame { refs.append(l) }
             }
-            let placeholderDuration: Double = model.requiresSourceVideo
-                ? (sourceVideo?.duration ?? 5)
-                : Double(selectedDuration)
+            let trimmedSource: TrimmedSource? = {
+                guard model.requiresSourceVideo,
+                      let trim = editor.pendingEditTrimmedSource,
+                      let sv = sourceVideo,
+                      trim.sourceURL == sv.url else { return nil }
+                return trim
+            }()
+            editor.pendingEditTrimmedSource = nil
+            let placeholderDuration: Double
+            if model.requiresSourceVideo {
+                if let trim = trimmedSource, trim.hasTrim {
+                    placeholderDuration = trim.durationSeconds
+                } else {
+                    placeholderDuration = sourceVideo?.duration ?? 5
+                }
+            } else {
+                placeholderDuration = Double(selectedDuration)
+            }
             editor.generationService.generate(
                 genInput: genInput,
                 assetType: .video,
                 placeholderDuration: placeholderDuration,
                 references: refs,
+                trimmedSourceOverride: trimmedSource,
                 name: name,
                 buildInput: { uploaded in
                     let params = VideoGenerationParams(
@@ -841,7 +868,8 @@ struct GenerationView: View {
                 buildInput: { uploaded in
                     let input = model.buildInput(
                         prompt: genInput.prompt, aspectRatio: genInput.aspectRatio,
-                        resolution: genInput.resolution, imageURLs: uploaded
+                        resolution: genInput.resolution, quality: genInput.quality,
+                        imageURLs: uploaded
                     )
                     return (model.resolvedEndpoint(imageURLs: uploaded), input)
                 },
@@ -958,6 +986,9 @@ struct GenerationView: View {
         }
         if let resolutions = currentResolutions, !resolutions.contains(selectedResolution) {
             selectedResolution = resolutions.first ?? "1080p"
+        }
+        if let qualities = currentQualities, !qualities.contains(selectedQuality) {
+            selectedQuality = qualities.last ?? "high"
         }
         if selectedType == .video, !videoModel.durations.contains(selectedDuration) {
             selectedDuration = videoModel.durations.first ?? 5

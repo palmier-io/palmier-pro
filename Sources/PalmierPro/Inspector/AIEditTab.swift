@@ -8,6 +8,7 @@ struct AIEditTab: View {
     @State private var service = GenerationService()
     @State private var rerunError: String?
     @State private var replaceClipSource: Bool = false
+    @State private var useTrimmedClip: Bool = true
 
     init(asset: MediaAsset, clipId: String? = nil) {
         self.asset = asset
@@ -23,6 +24,10 @@ struct AIEditTab: View {
 
                 if clipId != nil {
                     replaceToggle
+                }
+
+                if trimmedClipAvailable {
+                    trimmedClipToggle
                 }
 
                 actionCard(
@@ -77,6 +82,52 @@ struct AIEditTab: View {
         .help("Swap the clip's media when generation completes. Speed, volume, trim, and transform are preserved.")
     }
 
+    // MARK: - Trimmed clip toggle
+
+    private var trimmedClipToggle: some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Image(systemName: "scissors")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(useTrimmedClip ? Color.accentColor : AppTheme.Text.tertiaryColor)
+            Text("Use trimmed portion only")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+            Spacer(minLength: AppTheme.Spacing.xs)
+            Toggle("", isOn: $useTrimmedClip)
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .labelsHidden()
+        }
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.vertical, AppTheme.Spacing.xs)
+        .help("Send only the visible clip range to the model, not the full source.")
+    }
+
+    private var timelineClip: Clip? {
+        guard let clipId else { return nil }
+        return editor.clipFor(id: clipId)
+    }
+
+    private var trimmedClipAvailable: Bool {
+        guard asset.type == .video, let clip = timelineClip else { return false }
+        return clip.trimStartFrame > 0 || clip.trimEndFrame > 0
+    }
+
+    private func trimmedSourceIfEnabled() -> TrimmedSource? {
+        guard trimmedClipAvailable, useTrimmedClip, let clip = timelineClip else { return nil }
+        return TrimmedSource(
+            sourceURL: asset.url,
+            trimStartFrame: clip.trimStartFrame,
+            trimEndFrame: clip.trimEndFrame,
+            sourceFramesConsumed: clip.sourceFramesConsumed,
+            fps: editor.timeline.fps
+        )
+    }
+
+    private var effectiveDurationForAvailability: Double? {
+        trimmedSourceIfEnabled()?.durationSeconds
+    }
+
     // MARK: - API key banner
 
     private var apiKeyBanner: some View {
@@ -106,7 +157,10 @@ struct AIEditTab: View {
         title: String,
         description: String
     ) -> some View {
-        let availability = action.availability(for: asset)
+        let availability = action.availability(
+            for: asset,
+            effectiveDurationOverride: effectiveDurationForAvailability
+        )
         let isEnabled = availability.isAvailable && service.hasApiKey
         let disabledReason = service.hasApiKey ? availability.reason : "API key required"
 
@@ -171,6 +225,7 @@ struct AIEditTab: View {
         case .edit:
             editor.pendingEditSource = asset
             editor.pendingEditReplacementClipId = (shouldReplace ? clipId : nil)
+            editor.pendingEditTrimmedSource = trimmedSourceIfEnabled()
             editor.showGenerationPanel = true
         case .rerun:
             do {
@@ -191,6 +246,7 @@ struct AIEditTab: View {
         markReplacementPendingIfNeeded()
         _ = EditSubmitter.submitUpscale(
             asset: asset, model: model, editor: editor, service: service,
+            trimmedSource: trimmedSourceIfEnabled(),
             onComplete: replacementCompletion(),
             onFailure: replacementFailure()
         )
