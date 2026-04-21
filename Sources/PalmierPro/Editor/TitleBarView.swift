@@ -48,7 +48,7 @@ struct TitleBarTrailingView: View {
 
     var body: some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            Button(action: { editor.showKeyboardShortcuts = true }) {
+            Button(action: { editor.showHelp = true }) {
                 Image(systemName: "questionmark.circle")
                     .font(.system(size: 11))
                     .foregroundStyle(AppTheme.Text.secondaryColor)

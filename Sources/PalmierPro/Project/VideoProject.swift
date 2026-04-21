@@ -149,8 +149,8 @@ final class VideoProject: NSDocument {
                 ExportView()
                     .environment(editorViewModel)
             }
-            .sheet(isPresented: Bindable(editorViewModel).showKeyboardShortcuts) { [editorViewModel] in
-                KeyboardShortcutsView()
+            .sheet(isPresented: Bindable(editorViewModel).showHelp) { [editorViewModel] in
+                HelpView()
                     .environment(editorViewModel)
                     .presentationSizing(.fitted)
                     .presentationBackground(.ultraThinMaterial)

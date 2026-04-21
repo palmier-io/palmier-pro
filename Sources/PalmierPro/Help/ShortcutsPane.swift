@@ -1,8 +1,6 @@
 import SwiftUI
 
-struct KeyboardShortcutsView: View {
-    @Environment(\.dismiss) private var dismiss
-
+struct ShortcutsPane: View {
     private static let shortcutKeyColumnWidth: CGFloat = 118
 
     private static let allShortcuts: [ShortcutGroup] = [
@@ -50,30 +48,13 @@ struct KeyboardShortcutsView: View {
     private static let rightColumn = Array(allShortcuts.dropFirst(3))
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Keyboard Shortcuts")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(AppTheme.Text.primaryColor)
-                Spacer()
-                Button(action: { dismiss() }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .semibold))
-                }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-
-            HStack(alignment: .top, spacing: 24) {
-                shortcutColumn(groups: Self.leftColumn)
-                shortcutColumn(groups: Self.rightColumn)
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
+        HStack(alignment: .top, spacing: 24) {
+            shortcutColumn(groups: Self.leftColumn)
+            shortcutColumn(groups: Self.rightColumn)
         }
-        .frame(minWidth: 680, idealWidth: 760)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func shortcutColumn(groups: [ShortcutGroup]) -> some View {
@@ -115,6 +96,7 @@ struct ShortcutGroup {
 }
 
 #Preview {
-    KeyboardShortcutsView()
-        .environment(EditorViewModel())
+    ShortcutsPane()
+        .frame(width: 700, height: 520)
+        .background(AppTheme.Background.surfaceColor)
 }
