@@ -170,15 +170,23 @@ struct InspectorView: View {
         HStack(spacing: 2) {
             ForEach(titles, id: \.self) { title in
                 let isActive = selected == title
+                let isAI = title == "AI Edit"
                 Button {
                     onSelect(title)
                 } label: {
-                    Text(title)
-                        .font(.system(size: AppTheme.FontSize.sm, weight: isActive ? .medium : .regular))
-                        .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
-                        .padding(.horizontal, AppTheme.Spacing.md)
-                        .padding(.vertical, AppTheme.Spacing.xs)
-                        .hoverHighlight(isActive: isActive)
+                    Group {
+                        if isAI {
+                            Text(title)
+                                .foregroundStyle(isActive ? AnyShapeStyle(AppTheme.aiGradient) : AnyShapeStyle(AppTheme.aiGradient.opacity(0.6)))
+                        } else {
+                            Text(title)
+                                .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
+                        }
+                    }
+                    .font(.system(size: AppTheme.FontSize.sm, weight: isActive ? .medium : .regular))
+                    .padding(.horizontal, AppTheme.Spacing.md)
+                    .padding(.vertical, AppTheme.Spacing.xs)
+                    .hoverHighlight(isActive: isActive)
                 }
                 .buttonStyle(.plain)
             }
@@ -387,14 +395,9 @@ struct InspectorView: View {
                 if let gen = asset.generationInput {
                     inspectorCard {
                         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-                            HStack(spacing: AppTheme.Spacing.xs) {
-                                Image(systemName: "sparkles")
-                                    .font(.system(size: AppTheme.FontSize.sm))
-                                    .foregroundStyle(.purple)
-                                Text("AI Generated")
-                                    .font(.system(size: AppTheme.FontSize.md, weight: .medium))
-                                    .foregroundStyle(AppTheme.Text.primaryColor)
-                            }
+                            Text("AI Generated")
+                                .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+                                .foregroundStyle(AppTheme.aiGradient)
 
                             metadataRow("cpu", label: "Model", value: ModelRegistry.displayName(for: gen.model))
                             if !gen.aspectRatio.isEmpty {

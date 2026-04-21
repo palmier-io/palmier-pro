@@ -25,7 +25,7 @@ enum LayoutPreset: String, CaseIterable {
 enum Layout {
     // Media panel
     static let mediaPanelDefault: CGFloat = 220
-    static let mediaPanelMin: CGFloat = 200
+    static let mediaPanelMin: CGFloat = 240
     static let mediaPanelMax: CGFloat = 900
 
     // Inspector
@@ -35,7 +35,7 @@ enum Layout {
 
     // Agent panel
     static let agentPanelDefault: CGFloat = 240
-    static let agentPanelMin: CGFloat = 200
+    static let agentPanelMin: CGFloat = 240
     static let agentPanelMax: CGFloat = 600
 
     // Headers & toolbars
