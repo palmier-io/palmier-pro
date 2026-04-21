@@ -13,6 +13,7 @@ enum EditSubmitter {
         model: UpscaleModelConfig,
         editor: EditorViewModel,
         service: GenerationService,
+        trimmedSource: TrimmedSource? = nil,
         onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
         onFailure: (@MainActor () -> Void)? = nil
     ) -> String? {
@@ -28,15 +29,21 @@ enum EditSubmitter {
         )
 
         let isImage = asset.type == .image
-        let placeholderDuration: Double = isImage
-            ? Defaults.imageDurationSeconds
-            : (asset.duration > 0 ? asset.duration : Double(duration))
+        let placeholderDuration: Double
+        if isImage {
+            placeholderDuration = Defaults.imageDurationSeconds
+        } else if let trim = trimmedSource, trim.hasTrim {
+            placeholderDuration = trim.durationSeconds
+        } else {
+            placeholderDuration = asset.duration > 0 ? asset.duration : Double(duration)
+        }
 
         return service.generate(
             genInput: genInput,
             assetType: asset.type,
             placeholderDuration: placeholderDuration,
             references: [asset],
+            trimmedSourceOverride: trimmedSource,
             name: upscaleName(for: asset),
             buildInput: { uploaded in
                 let src = uploaded.first ?? ""
@@ -158,6 +165,7 @@ enum EditSubmitter {
                         prompt: gen.prompt,
                         aspectRatio: gen.aspectRatio,
                         resolution: gen.resolution,
+                        quality: gen.quality,
                         imageURLs: uploaded
                     )
                     return (imageModel.resolvedEndpoint(imageURLs: uploaded), input)

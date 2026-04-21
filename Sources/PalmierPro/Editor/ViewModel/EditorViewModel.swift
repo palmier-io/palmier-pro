@@ -40,6 +40,7 @@ final class EditorViewModel {
     /// Set by AIEditTab; Consumed by GenerationView
     var pendingEditSource: MediaAsset?
     var pendingEditReplacementClipId: String?
+    var pendingEditTrimmedSource: TrimmedSource?
     /// Clip ids currently awaiting an AI-generated replacement.
     var pendingReplacements: Set<String> = []
     var showKeyboardShortcuts: Bool = false
@@ -216,6 +217,11 @@ final class EditorViewModel {
             }
         }
         return nil
+    }
+
+    func clipFor(id: String) -> Clip? {
+        guard let loc = findClip(id: id) else { return nil }
+        return timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
     }
 
     func sortClips(trackIndex: Int) {

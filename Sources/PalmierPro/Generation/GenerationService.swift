@@ -35,6 +35,7 @@ final class GenerationService {
         assetType: ClipType,
         placeholderDuration: Double,
         references: [MediaAsset] = [],
+        trimmedSourceOverride: TrimmedSource? = nil,
         preUploadedURLs: [String]? = nil,
         name: String? = nil,
         buildInput: @escaping ([String]) -> (endpoint: String, input: Payload),
@@ -57,12 +58,21 @@ final class GenerationService {
         let refURLs = references.map(\.url)
 
         Task { @MainActor in
+            var tempToCleanup: [URL] = []
+            defer { Self.cleanupTempFiles(tempToCleanup) }
             do {
                 let uploaded: [String]
                 if let preUploadedURLs, !preUploadedURLs.isEmpty {
                     uploaded = preUploadedURLs
                 } else {
-                    uploaded = try await uploadReferences(at: refURLs)
+                    var urlsToUpload = refURLs
+                    if let trim = trimmedSourceOverride, trim.hasTrim, !urlsToUpload.isEmpty {
+                        Log.generation.notice("using trimmed source: frames \(trim.trimStartFrame)+\(trim.sourceFramesConsumed) of \(urlsToUpload[0].lastPathComponent)")
+                        let extracted = try await VideoTrimExtractor.extract(trim)
+                        urlsToUpload[0] = extracted
+                        tempToCleanup.append(extracted)
+                    }
+                    uploaded = try await uploadReferences(at: urlsToUpload)
                 }
 
                 var finalGenInput = genInput
@@ -92,6 +102,12 @@ final class GenerationService {
         }
 
         return placeholderId
+    }
+
+    private static func cleanupTempFiles(_ urls: [URL]) {
+        for url in urls {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     // MARK: - Reference upload
