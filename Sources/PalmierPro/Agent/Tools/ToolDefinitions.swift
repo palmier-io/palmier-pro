@@ -13,6 +13,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case splitClip = "split_clip"
     case generateVideo = "generate_video"
     case generateImage = "generate_image"
+    case generateAudio = "generate_audio"
     case upscaleMedia = "upscale_media"
     case listModels = "list_models"
     case readMedia = "read_media"
@@ -166,6 +167,23 @@ enum ToolDefinitions {
             )
         ),
         AgentTool(
+            name: .generateAudio,
+            description: "Starts an async AI audio generation (text-to-speech or music). Returns a placeholder asset ID immediately; the asset appears in get_media and becomes usable in add_clip once ready. TTS models (elevenlabs-tts-v3, gemini-3.1-flash-tts) convert the prompt into speech and accept a 'voice' name. Music models (minimax-music-v2.6, elevenlabs-music) generate background tracks; pass 'lyrics' for MiniMax vocals or set 'instrumental' true for either music model. Only elevenlabs-music accepts 'duration'. Use list_models with type='audio' to see voices/capabilities. Costs real money and is not undoable.",
+            inputSchema: objectSchema(
+                properties: [
+                    "prompt": ["type": "string", "description": "TTS: the text to speak. Music: a description of the style, mood, genre, or scenario. MiniMax requires ≥10 chars."],
+                    "name": ["type": "string", "description": "Display name for the asset in the media library. Defaults to first 30 chars of prompt."],
+                    "model": ["type": "string", "description": "Model ID. Use list_models with type='audio' to see options. Defaults to the first model."],
+                    "voice": ["type": "string", "description": "TTS only. Voice preset name. list_models shows voicesSample (first 3) + voiceCount; any voice supported by the model is accepted. Defaults to the model's defaultVoice. Ignored by music models."],
+                    "lyrics": ["type": "string", "description": "MiniMax Music only. Lyrics with optional [Verse]/[Chorus] section tags. If omitted and instrumental=false, MiniMax auto-writes lyrics from the prompt."],
+                    "styleInstructions": ["type": "string", "description": "Gemini TTS only. Optional delivery instructions (e.g. 'warm and slow', 'British accent')."],
+                    "instrumental": ["type": "boolean", "description": "Music models only. true = no vocals. Defaults to false."],
+                    "duration": ["type": "integer", "description": "ElevenLabs Music only. Length in seconds (3–600). Ignored by other models."],
+                ],
+                required: ["prompt"]
+            )
+        ),
+        AgentTool(
             name: .upscaleMedia,
             description: "Upscales an existing video or image asset to higher resolution using an AI upscaler. Returns a placeholder asset ID immediately; the upscaled asset appears in get_media once ready. Use list_models with type='upscale' to pick a model that supports the asset's type. Costs real money and is not undoable.",
             inputSchema: objectSchema(
@@ -178,10 +196,10 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .listModels,
-            description: "Lists AI models with their capabilities (durations, aspect ratios, resolutions, first/last frame support, reference support, upscaler speed). Always call before generate_video, generate_image, or upscale_media so the model you pick actually supports the constraints you need.",
+            description: "Lists AI models with their capabilities (durations, aspect ratios, resolutions, first/last frame support, reference support, voices/category for audio, upscaler speed). Always call before generate_video, generate_image, generate_audio, or upscale_media so the model you pick actually supports the constraints you need.",
             inputSchema: objectSchema(
                 properties: [
-                    "type": ["type": "string", "enum": ["video", "image", "upscale"], "description": "Filter by type. Omit to list all models."],
+                    "type": ["type": "string", "enum": ["video", "image", "audio", "upscale"], "description": "Filter by type. Omit to list all models."],
                 ]
             )
         ),

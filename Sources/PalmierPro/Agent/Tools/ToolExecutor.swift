@@ -30,6 +30,7 @@ final class ToolExecutor {
             case .splitClip:     return try splitClip(editor, args)
             case .generateVideo: return try generate(editor, args, type: .video)
             case .generateImage: return try generate(editor, args, type: .image)
+            case .generateAudio: return try generate(editor, args, type: .audio)
             case .upscaleMedia:  return try upscaleMedia(editor, args)
             case .listModels:    return listModels(args)
             }
@@ -221,7 +222,7 @@ final class ToolExecutor {
         case .image:
             return try generateImage(editor, args, prompt: prompt)
         case .audio:
-            throw ToolError("Audio generation is not supported")
+            return try generateAudio(editor, args, prompt: prompt)
         }
     }
 
@@ -351,6 +352,68 @@ final class ToolExecutor {
         return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), aspect: \(aspectRatio)")
     }
 
+    private func generateAudio(
+        _ editor: EditorViewModel, _ args: [String: Any], prompt: String
+    ) throws -> ToolResult {
+        let modelId = args.string("model") ?? AudioModelConfig.allModels[0].id
+        guard let model = AudioModelConfig.allModels.first(where: { $0.id == modelId }) else {
+            throw ToolError("Unknown model '\(modelId)'. Available: \(AudioModelConfig.allModels.map(\.id).joined(separator: ", "))")
+        }
+
+        let trimmed = prompt.trimmingCharacters(in: .whitespaces)
+        guard trimmed.count >= model.minPromptLength else {
+            throw ToolError("Model '\(model.id)' requires prompt ≥ \(model.minPromptLength) chars (got \(trimmed.count))")
+        }
+        if let voice = args.string("voice"),
+           let voices = model.voices,
+           !voices.contains(voice) {
+            throw ToolError("Voice '\(voice)' not supported by \(model.id). Available: \(voices.joined(separator: ", "))")
+        }
+
+        let instrumental = args.bool("instrumental") ?? false
+        let duration = args.int("duration")
+        let params = AudioGenerationParams(
+            prompt: trimmed,
+            voice: model.voices != nil ? (args.string("voice") ?? model.defaultVoice) : nil,
+            lyrics: model.supportsLyrics ? args.string("lyrics") : nil,
+            styleInstructions: model.supportsStyleInstructions ? args.string("styleInstructions") : nil,
+            instrumental: model.supportsInstrumental ? instrumental : false,
+            durationSeconds: model.durations != nil ? duration : nil
+        )
+
+        let placeholderDuration: Double = {
+            if let secs = params.durationSeconds { return Double(secs) }
+            return model.category == .music
+                ? Defaults.audioMusicDurationSeconds
+                : Defaults.audioTTSDurationSeconds
+        }()
+
+        let genInput = GenerationInput(
+            prompt: trimmed,
+            model: model.id,
+            duration: model.durations != nil ? (duration ?? 0) : 0,
+            aspectRatio: "",
+            resolution: nil,
+            voice: params.voice,
+            lyrics: params.lyrics,
+            styleInstructions: params.styleInstructions,
+            instrumental: model.supportsInstrumental ? instrumental : nil
+        )
+
+        let placeholderId = editor.generationService.generate(
+            genInput: genInput, assetType: .audio,
+            placeholderDuration: placeholderDuration,
+            name: args.string("name"),
+            buildInput: { _ in
+                (model.baseEndpoint, model.buildInput(params: params))
+            },
+            responseKeyPath: FalResponsePaths.audio,
+            fileExtension: "mp3",
+            projectURL: editor.projectURL, editor: editor
+        )
+        return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), category: \(model.category == .music ? "music" : "tts")")
+    }
+
     private func upscaleMedia(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let mediaRef = try args.requireString("mediaRef")
         let asset = try asset(mediaRef, editor: editor)
@@ -393,6 +456,9 @@ final class ToolExecutor {
         if filter == nil || filter == "image" {
             out += ImageModelConfig.allModels.map { Self.imageModelInfo($0, includeType: true) }
         }
+        if filter == nil || filter == "audio" {
+            out += AudioModelConfig.allModels.map { Self.audioModelInfo($0) }
+        }
         if filter == nil || filter == "upscale" {
             out += UpscaleModelConfig.allModels.map { Self.upscaleModelInfo($0) }
         }
@@ -425,6 +491,25 @@ final class ToolExecutor {
         return info
     }
 
+    nonisolated static func audioModelInfo(_ m: AudioModelConfig) -> [String: Any] {
+        var info: [String: Any] = [
+            "id": m.id, "displayName": m.displayName,
+            "type": "audio",
+            "category": m.category == .music ? "music" : "tts",
+            "minPromptLength": m.minPromptLength,
+            "supportsLyrics": m.supportsLyrics,
+            "supportsInstrumental": m.supportsInstrumental,
+            "supportsStyleInstructions": m.supportsStyleInstructions,
+        ]
+        if let voices = m.voices {
+            info["voicesSample"] = Array(voices.prefix(3))
+            info["voiceCount"] = voices.count
+        }
+        if let defaultVoice = m.defaultVoice { info["defaultVoice"] = defaultVoice }
+        if let durations = m.durations { info["durations"] = durations }
+        return info
+    }
+
     nonisolated static func upscaleModelInfo(_ m: UpscaleModelConfig) -> [String: Any] {
         [
             "id": m.id, "displayName": m.displayName,
@@ -435,7 +520,7 @@ final class ToolExecutor {
     }
 
     nonisolated static func jsonString(_ obj: Any) -> String? {
-        guard let data = try? JSONSerialization.data(withJSONObject: obj, options: .prettyPrinted) else { return nil }
+        guard let data = try? JSONSerialization.data(withJSONObject: obj) else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
@@ -499,6 +584,12 @@ extension Dictionary where Key == String, Value == Any {
         if let v = self[key] as? Int { return Double(v) }
         if let v = self[key] as? NSNumber { return v.doubleValue }
         if let v = self[key] as? String { return Double(v) }
+        return nil
+    }
+    func bool(_ key: String) -> Bool? {
+        if let v = self[key] as? Bool { return v }
+        if let v = self[key] as? NSNumber { return v.boolValue }
+        if let v = self[key] as? String { return Bool(v) }
         return nil
     }
     func stringArray(_ key: String) -> [String] {
