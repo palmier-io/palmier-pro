@@ -4,6 +4,8 @@ import Foundation
 @Observable
 @MainActor
 final class GenerationService {
+    static let subscribeTimeoutSeconds: Int = 1800
+
     private var apiKey: String = FalKeychain.load() ?? ""
 
     var hasApiKey: Bool { !apiKey.isEmpty }
@@ -31,12 +33,15 @@ final class GenerationService {
         assetType: ClipType,
         placeholderDuration: Double,
         references: [MediaAsset] = [],
+        preUploadedURLs: [String]? = nil,
         name: String? = nil,
         buildInput: @escaping ([String]) -> (endpoint: String, input: Payload),
         responseKeyPath: @escaping @Sendable (Payload) -> String?,
         fileExtension: String,
         projectURL: URL?,
-        editor: EditorViewModel
+        editor: EditorViewModel,
+        onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
+        onFailure: (@MainActor () -> Void)? = nil
     ) -> String {
         let placeholder = createPlaceholder(
             type: assetType,
@@ -51,7 +56,12 @@ final class GenerationService {
 
         Task { @MainActor in
             do {
-                let uploaded = try await uploadImages(at: refURLs)
+                let uploaded: [String]
+                if let preUploadedURLs, !preUploadedURLs.isEmpty {
+                    uploaded = preUploadedURLs
+                } else {
+                    uploaded = try await uploadReferences(at: refURLs)
+                }
 
                 var finalGenInput = genInput
                 finalGenInput.imageURLs = uploaded.isEmpty ? nil : uploaded
@@ -68,20 +78,23 @@ final class GenerationService {
                     assetType: assetType,
                     genInput: finalGenInput,
                     projectURL: projectURL,
-                    editor: editor
+                    editor: editor,
+                    onComplete: onComplete,
+                    onFailure: onFailure
                 )
             } catch {
                 Log.generation.error("upload failed model=\(genInput.model) error=\(error.localizedDescription)")
                 placeholder.generationStatus = .failed("Upload failed: \(error.localizedDescription)")
+                onFailure?()
             }
         }
 
         return placeholderId
     }
 
-    // MARK: - Image upload
+    // MARK: - Reference upload
 
-    private func uploadImages(at urls: [URL]) async throws -> [String] {
+    private func uploadReferences(at urls: [URL]) async throws -> [String] {
         guard !urls.isEmpty else { return [] }
         let key = apiKey
         let client = FalClient.withCredentials(.keyPair(key))
@@ -94,7 +107,11 @@ final class GenerationService {
                     case "png": .imagePng
                     case "webp": .imageWebp
                     case "gif": .imageGif
-                    default: .imageJpeg
+                    case "jpg", "jpeg": .imageJpeg
+                    case "mp4", "m4v", "mov": .videoMp4
+                    case "mp3": .audioMp3
+                    case "wav": .audioWav
+                    default: .applicationStream
                     }
                     let uploaded = try await client.storage.upload(data: data, ofType: fileType)
                     return (i, uploaded)
@@ -136,7 +153,9 @@ final class GenerationService {
         assetType: ClipType,
         genInput: GenerationInput,
         projectURL: URL?,
-        editor: EditorViewModel
+        editor: EditorViewModel,
+        onComplete: (@MainActor (MediaAsset) -> Void)?,
+        onFailure: (@MainActor () -> Void)?
     ) {
         guard hasApiKey else { return }
         let key = apiKey
@@ -153,7 +172,7 @@ final class GenerationService {
                         to: endpoint,
                         input: input,
                         pollInterval: .seconds(2),
-                        timeout: .seconds(300),
+                        timeout: .seconds(Self.subscribeTimeoutSeconds),
                         includeLogs: false,
                         onQueueUpdate: nil
                     )
@@ -163,6 +182,7 @@ final class GenerationService {
                 guard let urlString, let remoteURL = URL(string: urlString) else {
                     Log.generation.error("subscribe ok but no URL in response model=\(genInput.model)")
                     placeholder.generationStatus = .failed("No URL in response")
+                    onFailure?()
                     return
                 }
 
@@ -194,10 +214,12 @@ final class GenerationService {
                     editor.mediaAssets[idx] = asset
                     editor.importMediaAsset(asset, skipAppend: true)
                     await editor.finalizeImportedAsset(asset)
+                    onComplete?(asset)
                 }
             } catch {
                 Log.generation.error("generation failed model=\(genInput.model) error=\(error.localizedDescription)")
                 placeholder.generationStatus = .failed(error.localizedDescription)
+                onFailure?()
             }
         }
     }
