@@ -59,6 +59,52 @@ struct AssetThumbnailView: View {
         .onChange(of: isRenaming) { _, focused in
             if !focused { commitRename() }
         }
+        .contextMenu { contextMenuItems }
+    }
+
+    // MARK: - Context Menu
+
+    @ViewBuilder
+    private var contextMenuItems: some View {
+        let ids = contextTargetIds
+        Button("Reveal in Finder") { revealInFinder(ids: ids) }
+        Button("Copy Path") { copyPaths(ids: ids) }
+        Divider()
+        Button("Delete", role: .destructive) { deleteAssets(ids: ids) }
+    }
+
+    /// Scope for a context-menu action: the full selection when the
+    /// right-clicked asset is part of it, otherwise just this asset.
+    private var contextTargetIds: [String] {
+        if editor.selectedMediaAssetIds.contains(asset.id) {
+            return editor.mediaAssets
+                .filter { editor.selectedMediaAssetIds.contains($0.id) }
+                .map(\.id)
+        }
+        return [asset.id]
+    }
+
+    private func revealInFinder(ids: [String]) {
+        let urls = editor.mediaAssets
+            .filter { ids.contains($0.id) }
+            .map(\.url)
+        guard !urls.isEmpty else { return }
+        NSWorkspace.shared.activateFileViewerSelecting(urls)
+    }
+
+    private func copyPaths(ids: [String]) {
+        let paths = editor.mediaAssets
+            .filter { ids.contains($0.id) }
+            .map(\.url.path)
+        guard !paths.isEmpty else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(paths.joined(separator: "\n"), forType: .string)
+    }
+
+    private func deleteAssets(ids: [String]) {
+        editor.selectedMediaAssetIds = Set(ids)
+        editor.deleteSelectedMediaAssets()
     }
 
     private var thumbnailContent: some View {
