@@ -12,7 +12,7 @@ final class EditorViewModel {
     // MARK: - Panel focus
 
     enum FocusedPanel: String {
-        case media, preview, inspector, timeline
+        case media, preview, inspector, timeline, agent
 
         var accessibilityID: String { rawValue + "Panel" }
 
@@ -65,11 +65,33 @@ final class EditorViewModel {
         manifest: { MediaManifest() }, projectURL: { nil }
     )
 
+    let generationService = GenerationService()
+    let agentService = AgentService()
+
+    var agentPanelVisible: Bool = {
+        UserDefaults.standard.object(forKey: "agentPanelVisible") as? Bool ?? false
+    }() {
+        didSet { UserDefaults.standard.set(agentPanelVisible, forKey: "agentPanelVisible") }
+    }
+
+    var mediaPanelVisible: Bool = {
+        UserDefaults.standard.object(forKey: "mediaPanelVisible") as? Bool ?? true
+    }() {
+        didSet { UserDefaults.standard.set(mediaPanelVisible, forKey: "mediaPanelVisible") }
+    }
+
+    var inspectorPanelVisible: Bool = {
+        UserDefaults.standard.object(forKey: "inspectorPanelVisible") as? Bool ?? true
+    }() {
+        didSet { UserDefaults.standard.set(inspectorPanelVisible, forKey: "inspectorPanelVisible") }
+    }
+
     init() {
         mediaResolver = MediaResolver(
             manifest: { [weak self] in self?.mediaManifest ?? MediaManifest() },
             projectURL: { [weak self] in self?.projectURL }
         )
+        agentService.editor = self
     }
 
     // MARK: - Document bridge

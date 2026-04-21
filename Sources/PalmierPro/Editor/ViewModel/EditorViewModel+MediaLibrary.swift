@@ -12,6 +12,36 @@ extension EditorViewModel {
         mediaManifest.entries.append(entry)
     }
 
+    @discardableResult
+    func addMediaAsset(from url: URL) -> MediaAsset? {
+        guard let type = ClipType(fileExtension: url.pathExtension.lowercased()) else { return nil }
+        let name = url.deletingPathExtension().lastPathComponent
+        let asset = MediaAsset(url: url, type: type, name: name)
+        importMediaAsset(asset)
+        Task { await finalizeImportedAsset(asset) }
+        return asset
+    }
+
+    @discardableResult
+    func importPastedImageData(_ data: Data, fileExtension: String = "png") -> MediaAsset? {
+        let filename = "pasted-\(UUID().uuidString.prefix(8)).\(fileExtension)"
+        let destURL: URL
+        if let projectURL {
+            let mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
+            try? FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
+            destURL = mediaDir.appendingPathComponent(filename)
+        } else {
+            destURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        }
+        do {
+            try data.write(to: destURL)
+        } catch {
+            Log.project.error("importPastedImageData: write failed \(error.localizedDescription)")
+            return nil
+        }
+        return addMediaAsset(from: destURL)
+    }
+
     func renameMediaAsset(id: String, name: String) {
         guard let asset = mediaAssets.first(where: { $0.id == id }) else { return }
         let oldName = asset.name
