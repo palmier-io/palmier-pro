@@ -6,6 +6,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
 
+        // Start Sparkle updater
+        _ = Updater.shared
+
         // Seed registry from default directory on first launch
         ProjectRegistry.shared.migrateDefaultDirectoryIfNeeded()
 
