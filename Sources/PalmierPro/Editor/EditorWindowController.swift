@@ -155,4 +155,24 @@ extension EditorWindowController: EditorActions {
     @objc func showKeyboardShortcuts(_ sender: Any?) {
         editorViewModel.showKeyboardShortcuts = true
     }
+
+    @objc func toggleMediaPanel(_ sender: Any?) { editorViewModel.mediaPanelVisible.toggle() }
+    @objc func toggleInspectorPanel(_ sender: Any?) { editorViewModel.inspectorPanelVisible.toggle() }
+    @objc func toggleAgentPanel(_ sender: Any?) { editorViewModel.agentPanelVisible.toggle() }
+
+    @objc func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(toggleMediaPanel(_:)):
+            menuItem.state = editorViewModel.mediaPanelVisible ? .on : .off
+            return true
+        case #selector(toggleInspectorPanel(_:)):
+            menuItem.state = editorViewModel.inspectorPanelVisible ? .on : .off
+            return true
+        case #selector(toggleAgentPanel(_:)):
+            menuItem.state = editorViewModel.agentPanelVisible ? .on : .off
+            return true
+        default:
+            return true
+        }
+    }
 }

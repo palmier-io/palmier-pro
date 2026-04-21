@@ -2,7 +2,6 @@ import SwiftUI
 
 struct GenerationView: View {
     @Environment(EditorViewModel.self) var editor
-    @State private var service = GenerationService()
     @State private var prompt = ""
     @State private var assetName = ""
     @State private var selectedType: GenerationType = .video
@@ -13,10 +12,6 @@ struct GenerationView: View {
     @State private var selectedResolution = "1080p"
     @State private var showSettingsPopover = false
     @FocusState private var isPromptFocused: Bool
-
-    // API key
-    @State private var apiKeyDraft = ""
-    @State private var showApiKeyPopover = false
 
     // Video frame references
     @State private var firstFrame: MediaAsset?
@@ -62,7 +57,7 @@ struct GenerationView: View {
     private var isPromptEmpty: Bool { prompt.trimmingCharacters(in: .whitespaces).isEmpty }
 
     private var canSubmit: Bool {
-        guard service.hasApiKey, selectedType != .audio else { return false }
+        guard editor.generationService.hasApiKey, selectedType != .audio else { return false }
         if selectedType == .video && videoModel.requiresSourceVideo {
             guard sourceVideo != nil else { return false }
             if videoModel.supportsReferences && imageReferences.isEmpty { return false }
@@ -609,60 +604,14 @@ struct GenerationView: View {
     // MARK: - API key
 
     private var apiKeyButton: some View {
-        Button { showApiKeyPopover.toggle() } label: {
-            HStack(spacing: 3) {
-                Image(systemName: "key")
-                    .font(.system(size: 9, weight: .medium))
-                Text("fal")
-                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-            }
-            .foregroundStyle(service.hasApiKey ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .padding(.vertical, 3)
-            .hoverHighlight()
-        }
-        .buttonStyle(.plain)
-        .popover(isPresented: $showApiKeyPopover, arrowEdge: .bottom) {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-                if service.hasApiKey {
-                    HStack(spacing: AppTheme.Spacing.sm) {
-                        Text(service.maskedApiKey)
-                            .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
-                            .foregroundStyle(AppTheme.Text.secondaryColor)
-                        Spacer()
-                        Button(role: .destructive) {
-                            service.removeApiKey()
-                            showApiKeyPopover = false
-                        } label: {
-                            Image(systemName: "trash").font(.system(size: AppTheme.FontSize.xs))
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                    }
-                }
-                HStack(spacing: AppTheme.Spacing.sm) {
-                    SecureField(service.hasApiKey ? "Replace API key" : "Paste fal.ai API key", text: $apiKeyDraft)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: AppTheme.FontSize.sm))
-                        .controlSize(.small)
-                        .onSubmit { saveApiKey() }
-                    Button("Save") { saveApiKey() }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(apiKeyDraft.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-            .padding(AppTheme.Spacing.lg)
-            .frame(width: 320)
-        }
-    }
-
-    private func saveApiKey() {
-        let key = apiKeyDraft.trimmingCharacters(in: .whitespaces)
-        guard !key.isEmpty else { return }
-        service.setApiKey(key)
-        apiKeyDraft = ""
-        showApiKeyPopover = false
+        ApiKeyField(
+            label: "fal",
+            placeholder: "Paste fal.ai API key",
+            hasKey: editor.generationService.hasApiKey,
+            maskedKey: editor.generationService.maskedApiKey,
+            onSave: { editor.generationService.setApiKey($0) },
+            onDelete: { editor.generationService.removeApiKey() }
+        )
     }
 
     // MARK: - Actions
@@ -717,7 +666,7 @@ struct GenerationView: View {
             let placeholderDuration: Double = model.requiresSourceVideo
                 ? (sourceVideo?.duration ?? 5)
                 : Double(selectedDuration)
-            service.generate(
+            editor.generationService.generate(
                 genInput: genInput,
                 assetType: .video,
                 placeholderDuration: placeholderDuration,
@@ -745,7 +694,7 @@ struct GenerationView: View {
             )
         case .image:
             let model = imageModel
-            service.generate(
+            editor.generationService.generate(
                 genInput: genInput,
                 assetType: .image,
                 placeholderDuration: Defaults.imageDurationSeconds,

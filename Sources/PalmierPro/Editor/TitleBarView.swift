@@ -58,6 +58,16 @@ struct TitleBarTrailingView: View {
                     .hoverHighlight()
             }
             .buttonStyle(.plain)
+
+            Button(action: { editor.agentPanelVisible.toggle() }) {
+                Image(systemName: "apple.intelligence")
+                    .font(.system(size: 13))
+                    .foregroundStyle(AppTheme.aiGradient)
+                    .opacity(editor.agentPanelVisible ? 1 : 0.55)
+                    .frame(width: 26, height: 26)
+            }
+            .buttonStyle(.plain)
+            .help("Toggle Agent Panel")
         }
     }
 }
