@@ -98,7 +98,7 @@ struct AssetThumbnailView: View {
     private var sourceBadge: some View {
         Text("AI")
             .font(.system(size: 9, weight: .semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(AppTheme.aiGradient)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
             .glassEffect(.clear, in: .capsule)
