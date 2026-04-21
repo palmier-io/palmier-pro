@@ -124,7 +124,7 @@ enum ClipRenderer {
             let sampleIdx = i * visibleSamples.count / barCount
             let sample = visibleSamples[min(sampleIdx, visibleSamples.count - 1)]
             // sample: 0=loud, 1=silence — invert and scale by volume
-            let amplitude = CGFloat(1.0 - sample) * CGFloat(clip.volume)
+            let amplitude = min(1.0, CGFloat(1.0 - sample) * CGFloat(clip.volume))
             let barHeight = max(1, amplitude * (drawHeight - 2))
             let barY = drawRect.maxY - barHeight - 1
             context.fill(CGRect(x: drawRect.minX + CGFloat(i), y: barY, width: 1, height: barHeight))
