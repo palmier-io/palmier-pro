@@ -104,10 +104,6 @@ final class EditorSplitViewController: NSSplitViewController {
         case .vertical: buildVerticalLayout(into: presetRoot)
         }
 
-        let presetItem = NSSplitViewItem(viewController: presetRoot)
-        presetItem.minimumThickness = 400
-        addSplitViewItem(presetItem)
-
         let agentItem = NSSplitViewItem(viewController: agentHC)
         agentItem.canCollapse = true
         agentItem.isCollapsed = !editor.agentPanelVisible
@@ -115,6 +111,10 @@ final class EditorSplitViewController: NSSplitViewController {
         agentItem.maximumThickness = Layout.agentPanelMax
         addSplitViewItem(agentItem)
         agentSplitItem = agentItem
+
+        let presetItem = NSSplitViewItem(viewController: presetRoot)
+        presetItem.minimumThickness = 400
+        addSplitViewItem(presetItem)
     }
 
     // MARK: - Default layout

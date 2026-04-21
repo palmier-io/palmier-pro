@@ -38,10 +38,22 @@ struct ChatHistoryList: View {
         let isCurrent = session.id == currentId
         return HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(session.title)
-                    .font(.system(size: AppTheme.FontSize.xs, weight: isCurrent ? .semibold : .regular))
-                    .foregroundStyle(AppTheme.Text.primaryColor)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(session.title)
+                        .font(.system(size: AppTheme.FontSize.xs, weight: isCurrent ? .semibold : .regular))
+                        .foregroundStyle(AppTheme.Text.primaryColor)
+                        .lineLimit(1)
+                    if !session.isOpen {
+                        Text("closed")
+                            .font(.system(size: 8, weight: .medium))
+                            .foregroundStyle(AppTheme.Text.mutedColor)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(
+                                Capsule().fill(Color.white.opacity(0.06))
+                            )
+                    }
+                }
                 Text(Self.formatter.localizedString(for: session.updatedAt, relativeTo: Date()))
                     .font(.system(size: 9))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -54,6 +66,8 @@ struct ChatHistoryList: View {
                         .foregroundStyle(AppTheme.Text.mutedColor)
                 }
                 .buttonStyle(.plain)
+                .focusable(false)
+                .help("Delete from history")
             }
         }
         .padding(.horizontal, AppTheme.Spacing.md)
