@@ -2,6 +2,7 @@ import AppKit
 
 /// Builds the application main menu with keyboard shortcuts.
 /// Called from AppDelegate to wire shortcuts into the responder chain.
+@MainActor
 enum MainMenuBuilder {
 
     static func buildMenu() -> NSMenu {
@@ -20,6 +21,10 @@ enum MainMenuBuilder {
         let item = NSMenuItem()
         let menu = NSMenu(title: "Palmier Pro")
         menu.addItem(withTitle: "About Palmier Pro", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
+        let updatesItem = NSMenuItem(title: "Check for Updates...", action: #selector(Updater.checkForUpdates(_:)), keyEquivalent: "")
+        updatesItem.target = Updater.shared
+        menu.addItem(updatesItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings...", action: #selector(NSApplication.sendAction(_:to:from:)), keyEquivalent: ",")
         menu.addItem(.separator())

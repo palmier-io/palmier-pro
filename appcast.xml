@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+    <channel>
+        <title>Palmier Pro</title>
+        <link>https://raw.githubusercontent.com/palmier-io/palmier-pro/main/appcast.xml</link>
+        <description>Updates for Palmier Pro</description>
+        <language>en</language>
+    </channel>
+</rss>
