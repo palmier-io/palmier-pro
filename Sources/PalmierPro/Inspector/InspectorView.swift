@@ -239,16 +239,19 @@ struct InspectorView: View {
         InspectorSlider(
             icon: "speaker.wave.2.fill",
             label: "Volume",
-            value: aClip.volume,
-            range: 0...1,
-            displayMultiplier: 100,
-            valueSuffix: "%",
-            format: "%.0f",
-            onChanged: { newVal in
-                editor.applyClipProperty(clipId: aClip.id) { $0.volume = newVal }
+            value: VolumeScale.dbFromLinear(aClip.volume),
+            range: VolumeScale.floorDb...VolumeScale.ceilingDb,
+            displayMultiplier: 1,
+            valueSuffix: " dB",
+            format: "%.1f",
+            displayTextOverride: { db in
+                db <= VolumeScale.floorDb ? "-∞ dB" : nil
+            },
+            onChanged: { db in
+                editor.applyClipProperty(clipId: aClip.id) { $0.volume = VolumeScale.linearFromDb(db) }
             }
-        ) { newVal in
-            editor.commitClipProperty(clipId: aClip.id) { $0.volume = newVal }
+        ) { db in
+            editor.commitClipProperty(clipId: aClip.id) { $0.volume = VolumeScale.linearFromDb(db) }
         }
     }
 
@@ -520,6 +523,25 @@ struct InspectorView: View {
     }
 }
 
+// MARK: - Volume Scale
+
+/// Maps a linear amplitude multiplier to dB for the volume slider.
+/// Below the floor we snap to true 0 (hard mute) and render "-∞ dB".
+enum VolumeScale {
+    static let floorDb: Double = -60
+    static let ceilingDb: Double = 15
+
+    static func dbFromLinear(_ linear: Double) -> Double {
+        guard linear > 0 else { return floorDb }
+        return min(ceilingDb, max(floorDb, 20 * log10(linear)))
+    }
+
+    static func linearFromDb(_ db: Double) -> Double {
+        guard db > floorDb else { return 0 }
+        return pow(10, min(db, ceilingDb) / 20)
+    }
+}
+
 // MARK: - Inspector Slider
 
 private struct InspectorSlider: View {
@@ -530,6 +552,7 @@ private struct InspectorSlider: View {
     let displayMultiplier: Double
     let valueSuffix: String
     let format: String
+    var displayTextOverride: ((Double) -> String?)? = nil
     var onChanged: ((Double) -> Void)? = nil
     let onCommit: (Double) -> Void
 
@@ -537,6 +560,12 @@ private struct InspectorSlider: View {
     @State private var isDragging = false
 
     private var displayValue: Double { (isDragging ? liveValue : value) * displayMultiplier }
+
+    private var displayText: String {
+        let raw = isDragging ? liveValue : value
+        if let override = displayTextOverride?(raw) { return override }
+        return String(format: format, displayValue) + valueSuffix
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
@@ -549,7 +578,7 @@ private struct InspectorSlider: View {
                     .font(.system(size: AppTheme.FontSize.md, weight: .medium))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                 Spacer()
-                Text(String(format: format, displayValue) + valueSuffix)
+                Text(displayText)
                     .font(.system(size: AppTheme.FontSize.md, weight: .medium))
                     .monospacedDigit()
                     .foregroundStyle(AppTheme.Text.primaryColor)

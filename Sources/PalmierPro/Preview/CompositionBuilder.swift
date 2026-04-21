@@ -140,11 +140,11 @@ enum CompositionBuilder {
             guard timeline.tracks.indices.contains(mapping.timelineTrackIndex) else { return nil }
             let track = timeline.tracks[mapping.timelineTrackIndex]
             let params = AVMutableAudioMixInputParameters(track: mapping.compositionTrack)
-            params.setVolume(0, at: .zero)
             for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) {
                 let vol: Float = track.muted ? 0 : Float(clip.volume)
-                params.setVolume(vol, at: CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale))
-                params.setVolume(0, at: CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale))
+                let start = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
+                let end = CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale)
+                params.setVolumeRamp(fromStartVolume: vol, toEndVolume: vol, timeRange: CMTimeRange(start: start, end: end))
             }
             return params
         }
