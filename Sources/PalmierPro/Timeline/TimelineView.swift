@@ -1,10 +1,14 @@
 import AppKit
+import SwiftUI
 
 /// The core AppKit timeline view. Handles drawing only.
 /// All input is delegated to TimelineInputController.
 final class TimelineView: NSView {
     unowned var editor: EditorViewModel
     private(set) var inputController: TimelineInputController!
+
+    /// NSHostingView per clip id awaiting a Replace-mode AI generation.
+    private var pendingReplacementOverlays: [String: NSHostingView<ClipGeneratingOverlay>] = [:]
 
     // MARK: - Init
 
@@ -97,6 +101,7 @@ final class TimelineView: NSView {
 
         drawTrackBackgrounds(geometry: geo, context: ctx)
         drawClips(geometry: geo, dirtyRect: bounds, context: ctx)
+        syncPendingReplacementOverlays(geometry: geo)
 
         if let assets = externalDragAssets, !assets.isEmpty, let target = externalDropTarget {
             drawExternalDragGhosts(assets: assets, target: target, frame: externalDragFrame, geometry: geo, dirtyRect: bounds, context: ctx)
@@ -295,6 +300,38 @@ final class TimelineView: NSView {
                                   linkOffset: linkOffsets[clip.id])
             }
         }
+    }
+
+    // MARK: - Pending replacement overlays
+
+    /// Reconciles hosting-view overlays with `editor.pendingReplacements`:
+    /// `pendingReplacementOverlays` is a view-layer cache; the source of truth is `editor.pendingReplacements`.
+    private func syncPendingReplacementOverlays(geometry geo: TimelineGeometry) {
+        let pending = editor.pendingReplacements
+
+        // Drop overlays whose clip is no longer pending or has been deleted.
+        for (clipId, view) in pendingReplacementOverlays
+            where !pending.contains(clipId) || editor.findClip(id: clipId) == nil {
+            view.removeFromSuperview()
+            pendingReplacementOverlays.removeValue(forKey: clipId)
+        }
+
+        // Ensure each pending clip has an overlay positioned over its rect.
+        for clipId in pending {
+            guard let loc = editor.findClip(id: clipId) else { continue }
+            let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            let rect = geo.clipRect(for: clip, trackIndex: loc.trackIndex)
+            let view = pendingReplacementOverlays[clipId] ?? makePendingReplacementOverlay(for: clipId)
+            if view.frame != rect { view.frame = rect }
+        }
+    }
+
+    private func makePendingReplacementOverlay(for clipId: String) -> NSHostingView<ClipGeneratingOverlay> {
+        let view = NSHostingView(rootView: ClipGeneratingOverlay())
+        view.autoresizingMask = []
+        addSubview(view)
+        pendingReplacementOverlays[clipId] = view
+        return view
     }
 
     // MARK: - External drag ghost clips

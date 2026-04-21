@@ -61,8 +61,9 @@ struct TimelineContainerView: NSViewRepresentable {
     }
 
     func updateNSView(_ container: NSView, context: Context) {
-        // Read zoomScale so SwiftUI re-invokes this when zoom changes
+        // Read observed properties so SwiftUI re-invokes this on change.
         _ = editor.zoomScale
+        _ = editor.pendingReplacements
         let coordinator = context.coordinator
         DispatchQueue.main.async { coordinator.timelineView?.updateContentSize() }
         context.coordinator.timelineView?.needsDisplay = true
