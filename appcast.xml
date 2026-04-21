@@ -25,9 +25,9 @@
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure
                 url="https://github.com/palmier-io/palmier-pro/releases/download/v0.1.3/PalmierPro.dmg"
-                length="  - the sparkle:edSignature from above"
+                length="8855055"
                 type="application/octet-stream"
-                sparkle:edSignature="  - the sparkle:edSignature from above"/>
+                sparkle:edSignature="qdBGG2ByBDn5SSaK4VrOGcQm1u5mCPXA3uNZ8QgpHbWIcKs+EwdSmAtYx0lL0SuGvb4OR3AbUCtnEpH+YLZXAw=="/>
         </item>
     </channel>
 </rss>

@@ -92,11 +92,15 @@ BUILD_LOG="$(mktemp -t palmier-build.XXXXXX).log"
 trap 'rm -f "$NOTES_CLEAN" "$BUILD_LOG"' EXIT
 ./scripts/bundle.sh release --dist 2>&1 | tee "$BUILD_LOG"
 
-SIG_LINE="$(grep 'sparkle:edSignature' "$BUILD_LOG" | tail -1)"
+# Only match the real signature line (which has length="<digits>"), not the
+# instruction hint text that bundle.sh also prints.
+SIG_LINE="$(grep -E 'edSignature="[^"]+".*length="[0-9]+"' "$BUILD_LOG" | tail -1)"
 SIGNATURE="$(echo "$SIG_LINE" | sed -E 's/.*edSignature="([^"]+)".*/\1/')"
-LENGTH="$(echo "$SIG_LINE" | sed -E 's/.*length="([^"]+)".*/\1/')"
-if [ -z "$SIGNATURE" ] || [ -z "$LENGTH" ]; then
-  echo "error: couldn't extract Sparkle signature or length from build output" >&2
+LENGTH="$(echo "$SIG_LINE" | sed -E 's/.*length="([0-9]+)".*/\1/')"
+if [ -z "$SIGNATURE" ] || ! [[ "$LENGTH" =~ ^[0-9]+$ ]]; then
+  echo "error: couldn't extract Sparkle signature or numeric length from build output" >&2
+  echo "  got SIGNATURE=$SIGNATURE" >&2
+  echo "  got LENGTH=$LENGTH" >&2
   exit 1
 fi
 
