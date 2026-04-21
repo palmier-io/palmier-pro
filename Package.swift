@@ -22,7 +22,12 @@ let package = Package(
                 .product(name: "MCP", package: "swift-sdk"),
             ],
             path: "Sources/PalmierPro",
-            exclude: ["Resources/Info.plist"]
+            exclude: [
+                "Resources/Info.plist",
+                "Resources/AppIcon.icon",
+                "Resources/AppIcon.icns",
+                "Resources/AppIcon.png",
+            ]
         ),
     ]
 )
