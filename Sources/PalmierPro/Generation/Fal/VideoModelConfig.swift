@@ -210,47 +210,6 @@ extension VideoModelConfig {
         }
     )
 
-    // MARK: LTX
-
-    static let ltx23 = VideoModelConfig(
-        id: "ltx-2.3", displayName: "LTX 2.3",
-        baseEndpoint: "fal-ai/ltx-2.3",
-        durations: [6, 8, 10], resolutions: ["1080p", "1440p", "2160p"],
-        aspectRatios: ["16:9", "9:16"],
-        supportsLastFrame: true,
-        resolveEndpoint: frameOnlyEndpoint,
-        buildFalInput: { input in
-            var d: [String: Payload] = ["prompt": .string(input.prompt)]
-            if let s = input.startFrameURL { d["image_url"] = .string(s) }
-            if let e = input.endFrameURL { d["end_image_url"] = .string(e) }
-            if !input.aspectRatio.isEmpty && input.startFrameURL == nil {
-                d["aspect_ratio"] = .string(input.aspectRatio)
-            }
-            d["generate_audio"] = .bool(input.generateAudio)
-            d["duration"] = .int(input.duration)
-            return .dict(d)
-        }
-    )
-
-    // MARK: Minimax
-
-    static let minimaxHailuo23 = VideoModelConfig(
-        id: "minimax-hailuo-2.3", displayName: "Minimax Hailuo 2.3",
-        baseEndpoint: "fal-ai/minimax/hailuo-2.3",
-        durations: [5], resolutions: ["720p", "1080p"],
-        aspectRatios: ["16:9", "9:16"],
-        resolveEndpoint: { base, input in
-            let quality = input.resolution == "720p" ? "standard" : "pro"
-            let variant = input.startFrameURL != nil ? "image-to-video" : "text-to-video"
-            return "\(base)/\(quality)/\(variant)"
-        },
-        buildFalInput: { input in
-            var d: [String: Payload] = ["prompt": .string(input.prompt)]
-            if let s = input.startFrameURL { d["image_url"] = .string(s) }
-            return .dict(d)
-        }
-    )
-
     // MARK: Edit models (video-to-video)
 
     static let klingO3Edit = VideoModelConfig(
@@ -286,10 +245,10 @@ extension VideoModelConfig {
     )
 
     static let allModels: [VideoModelConfig] = [
-        veo31Fast, veo31, veo31Lite,
-        klingO3, klingV3,
         seedance2, seedance2Fast,
-        grokImagineVideo, ltx23, minimaxHailuo23,
+        klingO3, klingV3,
+        veo31Fast, veo31, veo31Lite,
+        grokImagineVideo,
         klingO3Edit, klingV3MotionControl,
     ]
 }
