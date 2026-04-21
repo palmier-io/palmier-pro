@@ -1,18 +1,16 @@
 import Foundation
 import MCP
 
-/// MCP HTTP adapter on localhost:19789. Tool handling lives in `ToolExecutor`.
+/// HTTP adapter. Tool handling lives in `ToolExecutor`.
 @MainActor
 final class MCPService {
 
     static let port: UInt16 = 19789
 
-    private weak var editor: EditorViewModel?
     private let toolExecutor: ToolExecutor
     private var httpServer: MCPHTTPServer?
 
     init(editor: EditorViewModel) {
-        self.editor = editor
         self.toolExecutor = ToolExecutor(editor: editor)
     }
 
@@ -23,14 +21,12 @@ final class MCPService {
                 version: "1.0.0",
                 instructions: AgentInstructions.serverInstructions,
                 capabilities: .init(
-                    prompts: .init(listChanged: false),
                     resources: .init(subscribe: false, listChanged: false),
                     tools: .init(listChanged: false)
                 )
             )
             await self?.registerTools(on: server)
             await self?.registerResources(on: server)
-            await self?.registerPrompts(on: server)
             return server
         }
         self.httpServer = httpServer
@@ -116,71 +112,4 @@ final class MCPService {
         }
     }
 
-    private func registerPrompts(on server: Server) async {
-        let prompts = [
-            Prompt(
-                name: "generate_video",
-                description: "Generate an AI video clip from a text description",
-                arguments: [
-                    .init(name: "description", description: "What the video should depict", required: true),
-                    .init(name: "style", description: "Visual style (e.g. cinematic, anime, documentary)", required: false),
-                    .init(name: "duration", description: "Length in seconds", required: false),
-                ]
-            ),
-            Prompt(
-                name: "generate_image",
-                description: "Generate an AI image from a text description",
-                arguments: [
-                    .init(name: "description", description: "What the image should depict", required: true),
-                    .init(name: "style", description: "Visual style (e.g. photorealistic, illustration, 3D render)", required: false),
-                ]
-            ),
-        ]
-
-        await server.withMethodHandler(ListPrompts.self) { _ in
-            .init(prompts: prompts)
-        }
-
-        await server.withMethodHandler(GetPrompt.self) { params in
-            switch params.name {
-            case "generate_video":
-                let desc = params.arguments?["description"] ?? "a beautiful scene"
-                let style = params.arguments?["style"] ?? ""
-                let duration = params.arguments?["duration"] ?? "6"
-                let styleClause = style.isEmpty ? "" : " in a \(style) style"
-                return .init(
-                    description: "Generate a video clip",
-                    messages: [
-                        .user(.text(text: """
-                            Generate a \(duration)s video clip\(styleClause) for the editor timeline. Think about how it fits into a larger edit, not just how it looks standalone.
-
-                            Description: \(desc)
-
-                            Model selection: pick one whose `durations` includes \(duration)s and whose aspectRatios fit the project. If continuity with an existing asset matters, prefer supportsFirstFrame / supportsLastFrame and pass the asset as startFrameMediaRef / endFrameMediaRef.
-                            """))
-                    ]
-                )
-
-            case "generate_image":
-                let desc = params.arguments?["description"] ?? "a beautiful scene"
-                let style = params.arguments?["style"] ?? ""
-                let styleClause = style.isEmpty ? "" : " in a \(style) style"
-                return .init(
-                    description: "Generate an image",
-                    messages: [
-                        .user(.text(text: """
-                            Generate an image\(styleClause) that will likely become the first frame of a scene — think about composition, light, and camera, not just subject.
-
-                            Description: \(desc)
-
-                            Model selection: pick one whose aspectRatios fit the project. If you need character / style / location consistency with existing assets, prefer supportsImageReference and pass those via referenceMediaRefs.
-                            """))
-                    ]
-                )
-
-            default:
-                throw MCPError.invalidRequest("Unknown prompt: \(params.name)")
-            }
-        }
-    }
 }

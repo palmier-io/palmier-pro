@@ -22,8 +22,7 @@ enum MentionTab: CaseIterable, Hashable {
     }
 }
 
-/// Candidates + highlight index + tab live on `AgentInputBox` so keyboard nav
-/// can run off the focused TextEditor; this view is pure render.
+/// Pure render. State lives on `AgentInputBox` so keyboard nav follows the focused TextEditor.
 struct MentionPopover: View {
     let query: String
     let candidates: [MediaAsset]

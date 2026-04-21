@@ -148,7 +148,7 @@ struct AgentPanelView: View {
                             .id(msg.id)
                     }
                     if service.isStreaming {
-                        thinkingChip.id("streaming-indicator")
+                        ThinkingDots().id("streaming-indicator")
                     }
                     if let err = service.streamError {
                         Text(err)
@@ -165,10 +165,6 @@ struct AgentPanelView: View {
             .onChange(of: service.messages.count) { _, _ in scrollToBottom(proxy) }
             .onChange(of: service.isStreaming) { _, _ in scrollToBottom(proxy) }
         }
-    }
-
-    private var thinkingChip: some View {
-        ThinkingDots()
     }
 
     private var emptyState: some View {

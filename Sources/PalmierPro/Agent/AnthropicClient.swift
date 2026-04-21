@@ -43,9 +43,9 @@ struct AnthropicToolSchema: @unchecked Sendable {
     let inputSchema: [String: Any]
 }
 
-enum AnthropicStreamEvent: @unchecked Sendable {
+enum AnthropicStreamEvent: Sendable {
     case textDelta(String)
-    case toolUseComplete(id: String, name: String, input: [String: Any])
+    case toolUseComplete(id: String, name: String, inputJSON: String)
     case messageStop(stopReason: AnthropicStopReason)
 }
 
@@ -113,7 +113,7 @@ struct AnthropicClient: Sendable {
             throw AnthropicClientError.httpError(status: http.statusCode, body: body)
         }
 
-        var tools: [Int: (id: String, name: String, json: String)] = [:]
+        var pendingTools: [Int: (id: String, name: String, json: String)] = [:]
         for try await line in bytes.lines {
             try Task.checkCancellation()
             guard line.hasPrefix("data:"),
@@ -128,7 +128,7 @@ struct AnthropicClient: Sendable {
                    block["type"] as? String == "tool_use",
                    let id = block["id"] as? String,
                    let name = block["name"] as? String {
-                    tools[index] = (id, name, "")
+                    pendingTools[index] = (id, name, "")
                 }
 
             case "content_block_delta":
@@ -139,23 +139,15 @@ struct AnthropicClient: Sendable {
                     continuation.yield(.textDelta(text))
                 } else if deltaType == "input_json_delta",
                           let partial = delta["partial_json"] as? String,
-                          var acc = tools[index] {
+                          var acc = pendingTools[index] {
                     acc.json += partial
-                    tools[index] = acc
+                    pendingTools[index] = acc
                 }
 
             case "content_block_stop":
-                if let index = event["index"] as? Int, let acc = tools.removeValue(forKey: index) {
-                    let input: [String: Any]
-                    if acc.json.isEmpty {
-                        input = [:]
-                    } else if let d = acc.json.data(using: .utf8),
-                              let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
-                        input = obj
-                    } else {
-                        input = [:]
-                    }
-                    continuation.yield(.toolUseComplete(id: acc.id, name: acc.name, input: input))
+                if let index = event["index"] as? Int, let acc = pendingTools.removeValue(forKey: index) {
+                    let json = acc.json.isEmpty ? "{}" : acc.json
+                    continuation.yield(.toolUseComplete(id: acc.id, name: acc.name, inputJSON: json))
                 }
 
             case "message_delta":
@@ -181,7 +173,7 @@ struct AnthropicClient: Sendable {
         var toolBlocks: [[String: Any]] = tools.map {
             ["name": $0.name, "description": $0.description, "input_schema": $0.inputSchema]
         }
-        // Cache-break the static prefix (system prompt + tool list).
+        // Prompt-cache boundary covers system + tools.
         if var last = toolBlocks.popLast() {
             last["cache_control"] = ["type": "ephemeral"]
             toolBlocks.append(last)

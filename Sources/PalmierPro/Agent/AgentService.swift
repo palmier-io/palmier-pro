@@ -162,9 +162,9 @@ final class AgentService {
                     switch event {
                     case .textDelta(let chunk):
                         appendTextDelta(chunk, toAssistantAt: assistantIndex)
-                    case .toolUseComplete(let id, let name, let input):
+                    case .toolUseComplete(let id, let name, let inputJSON):
                         messages[assistantIndex].blocks.append(
-                            .toolUse(id: id, name: name, input: AnyJSON(input))
+                            .toolUse(id: id, name: name, inputJSON: inputJSON)
                         )
                     case .messageStop(let reason):
                         stopReason = reason
@@ -203,8 +203,8 @@ final class AgentService {
 
         var resultBlocks: [AgentContentBlock] = []
         for block in messages[assistantIndex].blocks {
-            guard case let .toolUse(id, name, input) = block else { continue }
-            let result = await executor.execute(name: name, args: input.value)
+            guard case let .toolUse(id, name, inputJSON) = block else { continue }
+            let result = await executor.execute(name: name, args: Self.parseJSONObject(inputJSON))
             resultBlocks.append(.toolResult(toolUseId: id, content: result.content, isError: result.isError))
         }
         if !resultBlocks.isEmpty {
@@ -212,10 +212,12 @@ final class AgentService {
         }
     }
 
-    /// Push the live `messages` array into the current session catalog entry.
-    /// Called at turn boundaries (send finish, new/select/delete session, clear)
-    /// so `sessions` stays in sync without paying for a computed-property walk
-    /// on every streaming delta.
+    private static func parseJSONObject(_ json: String) -> [String: Any] {
+        guard let data = json.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return obj
+    }
+
     private func syncMessagesIntoCurrentSession() {
         guard let id = currentSessionId,
               let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
@@ -243,10 +245,10 @@ final class AgentService {
         case .text(let s):
             guard !s.isEmpty else { return nil }
             return ["type": "text", "text": s]
-        case .toolUse(let id, let name, let input):
+        case .toolUse(let id, let name, let inputJSON):
             return [
                 "type": "tool_use", "id": id, "name": name,
-                "input": input.value.isEmpty ? [String: Any]() : input.value,
+                "input": parseJSONObject(inputJSON),
             ]
         case .toolResult(let toolUseId, let content, let isError):
             let contentJSON: [[String: Any]] = content.map {
@@ -300,7 +302,7 @@ struct AgentMessage: Identifiable, Codable {
 
 enum AgentContentBlock: Codable {
     case text(String)
-    case toolUse(id: String, name: String, input: AnyJSON)
+    case toolUse(id: String, name: String, inputJSON: String)
     case toolResult(toolUseId: String, content: [ToolResult.Block], isError: Bool)
 
     private enum Kind: String, Codable { case text, toolUse, toolResult }
@@ -317,7 +319,7 @@ enum AgentContentBlock: Codable {
             self = .toolUse(
                 id: try c.decode(String.self, forKey: .id),
                 name: try c.decode(String.self, forKey: .name),
-                input: try c.decode(AnyJSON.self, forKey: .input)
+                inputJSON: try c.decode(String.self, forKey: .input)
             )
         case .toolResult:
             self = .toolResult(
@@ -334,11 +336,11 @@ enum AgentContentBlock: Codable {
         case .text(let s):
             try c.encode(Kind.text, forKey: .kind)
             try c.encode(s, forKey: .text)
-        case .toolUse(let id, let name, let input):
+        case .toolUse(let id, let name, let inputJSON):
             try c.encode(Kind.toolUse, forKey: .kind)
             try c.encode(id, forKey: .id)
             try c.encode(name, forKey: .name)
-            try c.encode(input, forKey: .input)
+            try c.encode(inputJSON, forKey: .input)
         case .toolResult(let toolUseId, let content, let isError):
             try c.encode(Kind.toolResult, forKey: .kind)
             try c.encode(toolUseId, forKey: .toolUseId)
@@ -362,54 +364,3 @@ struct AgentMention: Identifiable, Hashable, Codable {
     }
 }
 
-/// `@unchecked Sendable` wrapper around `[String: Any]` so `AgentContentBlock`
-/// can live in `@Observable`-tracked arrays without Swift 6 complaining.
-/// Codable round-trips as a JSON string.
-struct AnyJSON: @unchecked Sendable, Codable {
-    let value: [String: Any]
-    init(_ value: [String: Any]) { self.value = value }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.singleValueContainer()
-        let str = try c.decode(String.self)
-        let data = str.data(using: .utf8) ?? Data()
-        self.value = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.singleValueContainer()
-        let data = (try? JSONSerialization.data(withJSONObject: value)) ?? Data("{}".utf8)
-        try c.encode(String(data: data, encoding: .utf8) ?? "{}")
-    }
-}
-
-extension ToolResult.Block: Codable {
-    private enum Kind: String, Codable { case text, image }
-    private enum CodingKeys: String, CodingKey { case kind, text, base64, mediaType }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        switch try c.decode(Kind.self, forKey: .kind) {
-        case .text:
-            self = .text(try c.decode(String.self, forKey: .text))
-        case .image:
-            self = .image(
-                base64: try c.decode(String.self, forKey: .base64),
-                mediaType: try c.decode(String.self, forKey: .mediaType)
-            )
-        }
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        switch self {
-        case .text(let s):
-            try c.encode(Kind.text, forKey: .kind)
-            try c.encode(s, forKey: .text)
-        case .image(let base64, let mediaType):
-            try c.encode(Kind.image, forKey: .kind)
-            try c.encode(base64, forKey: .base64)
-            try c.encode(mediaType, forKey: .mediaType)
-        }
-    }
-}

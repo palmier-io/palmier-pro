@@ -2,8 +2,6 @@ import SwiftUI
 
 struct AgentMessageView: View {
     let message: AgentMessage
-    /// Indexed by `tool_use_id` — an assistant's `tool_use` block renders with
-    /// its matching result inline so the UI shows one combined row.
     let toolResults: [String: ToolRunResult]
 
     var body: some View {
@@ -35,8 +33,7 @@ struct AgentMessageView: View {
                     .textSelection(.enabled)
             }
         }
-        // Tool-result messages are merged into the preceding assistant row, so we
-        // render nothing for pure tool_result user messages.
+        // Tool-result user messages render merged into the preceding assistant row.
     }
 
     @ViewBuilder
@@ -47,8 +44,8 @@ struct AgentMessageView: View {
                 case .text(let text):
                     MarkdownText(text: text)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                case .toolUse(let id, let name, let input):
-                    ToolRunRow(name: name, input: input.value, result: toolResults[id])
+                case .toolUse(let id, let name, let inputJSON):
+                    ToolRunRow(name: name, inputJSON: inputJSON, result: toolResults[id])
                 case .toolResult:
                     EmptyView()
                 }
@@ -64,7 +61,7 @@ struct ToolRunResult {
 
 private struct ToolRunRow: View {
     let name: String
-    let input: [String: Any]
+    let inputJSON: String
     let result: ToolRunResult?
     @State private var expanded = false
 
@@ -121,7 +118,7 @@ private struct ToolRunRow: View {
     private var argsSection: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("args").font(.system(size: 9)).foregroundStyle(AppTheme.Text.mutedColor)
-            Text(jsonPreview(input))
+            Text(prettyPrinted(inputJSON))
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -143,10 +140,12 @@ private struct ToolRunRow: View {
         }
     }
 
-    private func jsonPreview(_ input: [String: Any]) -> String {
-        guard !input.isEmpty,
-              let data = try? JSONSerialization.data(withJSONObject: input, options: [.prettyPrinted]),
-              let s = String(data: data, encoding: .utf8) else {
+    private func prettyPrinted(_ json: String) -> String {
+        guard let data = json.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data),
+              let pretty = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted]),
+              let s = String(data: pretty, encoding: .utf8),
+              !s.isEmpty, s != "{}" else {
             return "(no args)"
         }
         return s
