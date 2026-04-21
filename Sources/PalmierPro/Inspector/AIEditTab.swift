@@ -122,7 +122,7 @@ struct AIEditTab: View {
                         .foregroundStyle(isEnabled ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
                     Text(disabledReason ?? description)
                         .font(.system(size: AppTheme.FontSize.xs))
-                        .foregroundStyle(isEnabled ? AppTheme.Text.tertiaryColor : AppTheme.Text.mutedColor)
+                        .foregroundStyle(disabledReason != nil ? AppTheme.Text.secondaryColor : AppTheme.Text.tertiaryColor)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: AppTheme.Spacing.sm)
