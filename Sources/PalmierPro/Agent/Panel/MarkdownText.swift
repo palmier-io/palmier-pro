@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Renders fenced code blocks as styled panels; everything else goes through
-/// `AttributedString(markdown:)` for inline formatting.
+/// Fenced code blocks render as styled panels; inline formatting uses `AttributedString(markdown:)`.
 struct MarkdownText: View {
     let text: String
 

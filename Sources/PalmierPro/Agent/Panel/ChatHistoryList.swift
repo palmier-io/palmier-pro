@@ -47,13 +47,14 @@ struct ChatHistoryList: View {
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
             Spacer()
-            Button { onDelete(session.id) } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9))
-                    .foregroundStyle(AppTheme.Text.mutedColor)
+            if !isCurrent {
+                Button { onDelete(session.id) } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9))
+                        .foregroundStyle(AppTheme.Text.mutedColor)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-            .opacity(isCurrent ? 0.3 : 1)
         }
         .padding(.horizontal, AppTheme.Spacing.md)
         .padding(.vertical, 6)

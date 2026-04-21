@@ -13,6 +13,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case splitClip = "split_clip"
     case generateVideo = "generate_video"
     case generateImage = "generate_image"
+    case upscaleMedia = "upscale_media"
     case listModels = "list_models"
     case readMedia = "read_media"
 }
@@ -165,11 +166,22 @@ enum ToolDefinitions {
             )
         ),
         AgentTool(
-            name: .listModels,
-            description: "Lists AI models with their capabilities (durations, aspect ratios, resolutions, first/last frame support, reference support). Always call before generate_video or generate_image so the model you pick actually supports the constraints you need.",
+            name: .upscaleMedia,
+            description: "Upscales an existing video or image asset to higher resolution using an AI upscaler. Returns a placeholder asset ID immediately; the upscaled asset appears in get_media once ready. Use list_models with type='upscale' to pick a model that supports the asset's type. Costs real money and is not undoable.",
             inputSchema: objectSchema(
                 properties: [
-                    "type": ["type": "string", "enum": ["video", "image"], "description": "Filter by type. Omit to list all models."],
+                    "mediaRef": ["type": "string", "description": "ID of the video or image asset to upscale"],
+                    "model": ["type": "string", "description": "Upscaler model ID (e.g. 'bytedance-upscaler', 'seedvr-image-upscaler'). Defaults to the first model that supports the asset's type."],
+                ],
+                required: ["mediaRef"]
+            )
+        ),
+        AgentTool(
+            name: .listModels,
+            description: "Lists AI models with their capabilities (durations, aspect ratios, resolutions, first/last frame support, reference support, upscaler speed). Always call before generate_video, generate_image, or upscale_media so the model you pick actually supports the constraints you need.",
+            inputSchema: objectSchema(
+                properties: [
+                    "type": ["type": "string", "enum": ["video", "image", "upscale"], "description": "Filter by type. Omit to list all models."],
                 ]
             )
         ),

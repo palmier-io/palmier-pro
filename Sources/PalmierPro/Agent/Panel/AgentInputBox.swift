@@ -94,8 +94,7 @@ struct AgentInputBox<LeadingTools: View>: View {
                 .onChange(of: draft) { _, new in updateMentionQuery(from: new) }
                 .onPasteCommand(of: [.fileURL, .image, .png, .jpeg, .tiff], perform: handlePaste)
                 .onKeyPress(phases: .down) { press in handleKey(press) }
-                // Targeted handler because NSTextView consumes Tab before the
-                // general `onKeyPress` fires.
+                // NSTextView eats Tab before the general onKeyPress fires.
                 .onKeyPress(.tab, phases: .down) { press in
                     guard showMentionPicker else { return .ignored }
                     cycleMentionTab(reverse: press.modifiers.contains(.shift))
@@ -204,7 +203,6 @@ struct AgentInputBox<LeadingTools: View>: View {
     }
 
     private func updateMentionQuery(from text: String) {
-        // `@` at string start or after whitespace, followed by non-space tail.
         let newQuery: String? = {
             guard let lastAt = text.lastIndex(of: "@") else { return nil }
             let after = text[text.index(after: lastAt)...]
