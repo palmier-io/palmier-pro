@@ -171,6 +171,39 @@ enum EditSubmitter {
             )
         }
 
+        if let audioModel = AudioModelConfig.allModels.first(where: { $0.id == modelId }) {
+            let placeholderDuration: Double = asset.duration > 0
+                ? asset.duration
+                : (audioModel.category == .music
+                    ? Defaults.audioMusicDurationSeconds
+                    : Defaults.audioTTSDurationSeconds)
+            let params = AudioGenerationParams(
+                prompt: gen.prompt,
+                voice: gen.voice,
+                lyrics: gen.lyrics,
+                styleInstructions: gen.styleInstructions,
+                instrumental: gen.instrumental ?? false,
+                durationSeconds: audioModel.durations != nil && gen.duration > 0 ? gen.duration : nil
+            )
+            return service.generate(
+                genInput: gen,
+                assetType: .audio,
+                placeholderDuration: placeholderDuration,
+                references: [],
+                preUploadedURLs: preUploaded,
+                name: rerunName(for: asset),
+                buildInput: { _ in
+                    (audioModel.baseEndpoint, audioModel.buildInput(params: params))
+                },
+                responseKeyPath: FalResponsePaths.audio,
+                fileExtension: "mp3",
+                projectURL: editor.projectURL,
+                editor: editor,
+                onComplete: onComplete,
+                onFailure: onFailure
+            )
+        }
+
         if let upscaleModel = UpscaleModelConfig.allModels.first(where: { $0.id == modelId }) {
             guard let source = preUploaded?.first else { throw RerunError.missingSource }
             let isImage = asset.type == .image

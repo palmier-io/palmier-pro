@@ -7,9 +7,17 @@ struct GenerationView: View {
     @State private var selectedType: GenerationType = .video
     @State private var selectedVideoModelIndex = 0
     @State private var selectedImageModelIndex = 0
+    @State private var selectedAudioModelIndex = 0
     @State private var selectedDuration = 5
     @State private var selectedAspectRatio = "16:9"
     @State private var selectedResolution = "1080p"
+
+    // Audio extras
+    @State private var selectedVoice = ""
+    @State private var lyrics = ""
+    @State private var styleInstructions = ""
+    @State private var instrumental = false
+    @State private var selectedAudioDuration = 30
     @State private var showSettingsPopover = false
     @FocusState private var isPromptFocused: Bool
 
@@ -54,15 +62,20 @@ struct GenerationView: View {
 
     private var videoModel: VideoModelConfig { VideoModelConfig.allModels[selectedVideoModelIndex] }
     private var imageModel: ImageModelConfig { ImageModelConfig.allModels[selectedImageModelIndex] }
-    private var isPromptEmpty: Bool { prompt.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var audioModel: AudioModelConfig { AudioModelConfig.allModels[selectedAudioModelIndex] }
+    private var trimmedPrompt: String { prompt.trimmingCharacters(in: .whitespaces) }
+    private var isPromptEmpty: Bool { trimmedPrompt.isEmpty }
 
     private var canSubmit: Bool {
-        guard editor.generationService.hasApiKey, selectedType != .audio else { return false }
+        guard editor.generationService.hasApiKey else { return false }
         if selectedType == .video && videoModel.requiresSourceVideo {
             guard sourceVideo != nil else { return false }
             if videoModel.supportsReferences && imageReferences.isEmpty { return false }
             if !videoModel.supportsReferences && isPromptEmpty { return false }
             return true
+        }
+        if selectedType == .audio {
+            return trimmedPrompt.count >= audioModel.minPromptLength
         }
         return !isPromptEmpty
     }
@@ -71,7 +84,7 @@ struct GenerationView: View {
         switch selectedType {
         case .video: return !videoModel.durations.isEmpty || !videoModel.aspectRatios.isEmpty || videoModel.resolutions != nil
         case .image: return !imageModel.aspectRatios.isEmpty || imageModel.resolutions != nil
-        case .audio: return false
+        case .audio: return audioModel.supportsInstrumental || audioModel.durations != nil
         }
     }
 
@@ -79,7 +92,7 @@ struct GenerationView: View {
         switch selectedType {
         case .video: videoModel.displayName
         case .image: imageModel.displayName
-        case .audio: "Coming soon"
+        case .audio: audioModel.displayName
         }
     }
 
@@ -87,7 +100,7 @@ struct GenerationView: View {
         switch selectedType {
         case .video: videoModel.id
         case .image: imageModel.id
-        case .audio: ""
+        case .audio: audioModel.id
         }
     }
 
@@ -107,16 +120,29 @@ struct GenerationView: View {
         }
     }
 
+    private var audioPromptHint: String {
+        audioModel.minPromptLength > 1 ? " (min \(audioModel.minPromptLength) chars)" : ""
+    }
+
     private var promptPlaceholder: String {
         switch selectedType {
         case .image: "Describe the image..."
         case .video: "Describe the video..."
-        case .audio: "Describe the audio..."
+        case .audio:
+            switch audioModel.category {
+            case .tts: "Text to speak\(audioPromptHint)..."
+            case .music: "Describe the music style or mood\(audioPromptHint)..."
+            }
         }
     }
 
     private var settingsSummary: String {
         var parts: [String] = []
+        if selectedType == .audio {
+            if audioModel.durations != nil { parts.append("\(selectedAudioDuration)s") }
+            if audioModel.supportsInstrumental && instrumental { parts.append("Instrumental") }
+            return parts.isEmpty ? "Settings" : parts.joined(separator: " \u{00B7} ")
+        }
         if currentResolutions != nil { parts.append(selectedResolution) }
         if selectedType == .video { parts.append("\(selectedDuration)s") }
         parts.append(selectedAspectRatio)
@@ -167,6 +193,22 @@ struct GenerationView: View {
             // Unified input box
             VStack(spacing: 0) {
                 promptArea
+                if selectedType == .audio && audioModel.supportsLyrics {
+                    inputDivider
+                    secondaryField(
+                        placeholder: "Lyrics (optional) — [Verse], [Chorus] tags supported",
+                        text: $lyrics,
+                        minHeight: 60, maxHeight: 120
+                    )
+                }
+                if selectedType == .audio && audioModel.supportsStyleInstructions {
+                    inputDivider
+                    secondaryField(
+                        placeholder: "Style instructions (optional) — e.g. warm and slow, British accent",
+                        text: $styleInstructions,
+                        minHeight: 36, maxHeight: 72
+                    )
+                }
                 inputToolbar
             }
             .background {
@@ -200,10 +242,11 @@ struct GenerationView: View {
         .padding(AppTheme.Spacing.sm)
         .onAppear { consumePendingEditSource() }
         .onChange(of: editor.pendingEditSource?.id) { _, _ in consumePendingEditSource() }
-        .onChange(of: selectedType) { _, _ in
+        .onChange(of: selectedType) { _, newValue in
             guard !isConsumingEditSource else { return }
             resetSettings()
             clearReferences()
+            if newValue == .audio { resetAudioState() }
         }
         .onChange(of: selectedVideoModelIndex) { _, _ in
             guard !isConsumingEditSource else { return }
@@ -221,6 +264,10 @@ struct GenerationView: View {
                 resetSettings()
                 clearReferences()
             }
+        }
+        .onChange(of: selectedAudioModelIndex) { _, _ in
+            guard !isConsumingEditSource else { return }
+            if selectedType == .audio { resetAudioState() }
         }
     }
 
@@ -268,13 +315,48 @@ struct GenerationView: View {
         .frame(minHeight: 70, maxHeight: 120)
     }
 
+    // MARK: - Secondary fields (lyrics / style instructions)
+
+    private var inputDivider: some View {
+        Rectangle().fill(Color.white.opacity(0.06)).frame(height: 0.5)
+    }
+
+    private func secondaryField(
+        placeholder: String,
+        text: Binding<String>,
+        minHeight: CGFloat,
+        maxHeight: CGFloat
+    ) -> some View {
+        ZStack(alignment: .topLeading) {
+            TextEditor(text: text)
+                .font(.system(size: AppTheme.FontSize.sm))
+                .scrollContentBackground(.hidden)
+                .scrollIndicators(.automatic)
+                .padding(.horizontal, AppTheme.Spacing.sm)
+                .padding(.vertical, AppTheme.Spacing.xs)
+
+            if text.wrappedValue.isEmpty {
+                Text(placeholder)
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+                    .padding(.horizontal, AppTheme.Spacing.md)
+                    .padding(.top, AppTheme.Spacing.sm)
+                    .allowsHitTesting(false)
+            }
+        }
+        .frame(minHeight: minHeight, maxHeight: maxHeight)
+    }
+
     // MARK: - Input toolbar (bottom of input box)
 
     private var inputToolbar: some View {
         VStack(spacing: 0) {
-            Rectangle().fill(Color.white.opacity(0.06)).frame(height: 0.5)
+            inputDivider
             HStack(spacing: AppTheme.Spacing.sm) {
                 modelPicker
+                if selectedType == .audio, audioModel.voices != nil {
+                    voicePicker
+                }
                 if hasAnySettings { settingsButton }
 
                 Spacer()
@@ -284,6 +366,34 @@ struct GenerationView: View {
             .padding(.horizontal, AppTheme.Spacing.md)
             .padding(.vertical, AppTheme.Spacing.sm)
         }
+    }
+
+    private var voicePicker: some View {
+        Menu {
+            if let voices = audioModel.voices {
+                ForEach(voices, id: \.self) { voice in
+                    Button(voice) { selectedVoice = voice }
+                }
+            }
+        } label: {
+            HStack(spacing: AppTheme.Spacing.xs) {
+                Image(systemName: "person.wave.2")
+                    .font(.system(size: 9))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                Text(selectedVoice.isEmpty ? (audioModel.defaultVoice ?? "Voice") : selectedVoice)
+                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 7, weight: .semibold))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+            }
+            .padding(.horizontal, AppTheme.Spacing.xs)
+            .padding(.vertical, 3)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .hoverHighlight()
     }
 
     // MARK: - Video frame references
@@ -513,7 +623,9 @@ struct GenerationView: View {
                     Button(m.displayName) { selectedImageModelIndex = index }
                 }
             case .audio:
-                Text("Coming soon")
+                ForEach(Array(AudioModelConfig.allModels.enumerated()), id: \.offset) { index, m in
+                    Button(m.displayName) { selectedAudioModelIndex = index }
+                }
             }
         } label: {
             HStack(spacing: AppTheme.Spacing.xs) {
@@ -561,11 +673,20 @@ struct GenerationView: View {
             if selectedType == .video {
                 settingsPicker("Duration", selection: $selectedDuration, options: videoModel.durations) { "\($0)s" }
             }
+            if selectedType == .audio, let durations = audioModel.durations {
+                settingsPicker("Duration", selection: $selectedAudioDuration, options: durations) { "\($0)s" }
+            }
             if !currentAspectRatios.isEmpty {
                 settingsPicker("Aspect Ratio", selection: $selectedAspectRatio, options: currentAspectRatios) { $0 }
             }
             if let resolutions = currentResolutions {
                 settingsPicker("Resolution", selection: $selectedResolution, options: resolutions) { $0 }
+            }
+            if selectedType == .audio && audioModel.supportsInstrumental {
+                Toggle("Instrumental", isOn: $instrumental)
+                    .controlSize(.small)
+                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
         }
         .padding(AppTheme.Spacing.lg)
@@ -622,14 +743,26 @@ struct GenerationView: View {
     // MARK: - Actions
 
     private func submitGeneration() {
+        let audioDuration: Int = {
+            guard selectedType == .audio else { return 0 }
+            return audioModel.durations != nil ? selectedAudioDuration : 0
+        }()
         let genInput = GenerationInput(
             prompt: prompt,
             model: currentModelId,
-            duration: selectedType == .video ? selectedDuration : 0,
+            duration: selectedType == .video ? selectedDuration : audioDuration,
             aspectRatio: selectedAspectRatio,
             resolution: selectedType == .video
                 ? (videoModel.resolutions != nil ? selectedResolution : nil)
-                : (imageModel.resolutions != nil ? selectedResolution : nil)
+                : (selectedType == .image && imageModel.resolutions != nil ? selectedResolution : nil),
+            voice: selectedType == .audio && audioModel.voices != nil && !selectedVoice.isEmpty
+                ? selectedVoice : nil,
+            lyrics: selectedType == .audio && audioModel.supportsLyrics && !lyrics.isEmpty
+                ? lyrics : nil,
+            styleInstructions: selectedType == .audio && audioModel.supportsStyleInstructions && !styleInstructions.isEmpty
+                ? styleInstructions : nil,
+            instrumental: selectedType == .audio && audioModel.supportsInstrumental
+                ? instrumental : nil
         )
 
         let trimmedName = assetName.trimmingCharacters(in: .whitespaces)
@@ -719,8 +852,38 @@ struct GenerationView: View {
                 onFailure: onFailure
             )
         case .audio:
-            return
+            let model = audioModel
+            let placeholderDuration: Double = {
+                if model.durations != nil { return Double(audioDuration) }
+                return model.category == .music
+                    ? Defaults.audioMusicDurationSeconds
+                    : Defaults.audioTTSDurationSeconds
+            }()
+            let params = AudioGenerationParams(
+                prompt: genInput.prompt,
+                voice: genInput.voice,
+                lyrics: genInput.lyrics,
+                styleInstructions: genInput.styleInstructions,
+                instrumental: genInput.instrumental ?? false,
+                durationSeconds: model.durations != nil ? audioDuration : nil
+            )
+            editor.generationService.generate(
+                genInput: genInput,
+                assetType: .audio,
+                placeholderDuration: placeholderDuration,
+                name: name,
+                buildInput: { _ in
+                    (model.baseEndpoint, model.buildInput(params: params))
+                },
+                responseKeyPath: FalResponsePaths.audio,
+                fileExtension: "mp3",
+                projectURL: editor.projectURL, editor: editor,
+                onComplete: onComplete,
+                onFailure: onFailure
+            )
         }
+        lyrics = ""
+        styleInstructions = ""
         prompt = ""
         assetName = ""
         clearReferences()
@@ -776,6 +939,17 @@ struct GenerationView: View {
             assetName = "Edited \(source.name)"
         }
         editor.pendingEditSource = nil
+    }
+
+    private func resetAudioState() {
+        let model = audioModel
+        selectedVoice = model.defaultVoice ?? ""
+        if !model.supportsLyrics { lyrics = "" }
+        if !model.supportsStyleInstructions { styleInstructions = "" }
+        if !model.supportsInstrumental { instrumental = false }
+        if let durations = model.durations, !durations.contains(selectedAudioDuration) {
+            selectedAudioDuration = durations.first ?? 30
+        }
     }
 
     private func resetSettings() {
