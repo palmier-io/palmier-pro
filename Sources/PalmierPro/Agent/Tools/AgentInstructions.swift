@@ -81,9 +81,9 @@ enum AgentInstructions {
           exist, then add_clip once the asset is ready.
 
         # Prompt craft
-        - Images (nano-banana-pro, nano-banana-2, recraft-v4): 15–30 words. Formula: subject + \
-          setting + shot type + lighting/mood. Concrete nouns beat adjectives. grok-imagine \
-          prefers a natural-language sentence with looser style.
+        - Images (nano-banana-pro, nano-banana-2, gpt-image-2, recraft-v4): 15–30 words. \
+          Formula: subject + setting + shot type + lighting/mood. Concrete nouns beat \
+          adjectives. grok-imagine prefers a natural-language sentence with looser style.
         - Videos (veo3.1 family, kling-v3/o3, seedance-2, minimax-hailuo-2.3, ltx-2.3, \
           grok-imagine-video): 8–20 words. Formula: camera movement + subject action. When the \
           video has a startFrameMediaRef, do not re-describe what's in that frame — the model \

@@ -448,13 +448,14 @@ final class ToolExecutor {
         }
         let aspectRatio = args.string("aspectRatio") ?? model.aspectRatios[0]
         let resolution = args.string("resolution") ?? model.resolutions?.first
+        let quality = args.string("quality") ?? model.qualities?.last
         let refs: [MediaAsset] = args.stringArray("referenceMediaRefs").compactMap { id in
             editor.mediaAssets.first(where: { $0.id == id })
         }
 
         let genInput = GenerationInput(
             prompt: prompt, model: modelId, duration: 0,
-            aspectRatio: aspectRatio, resolution: resolution
+            aspectRatio: aspectRatio, resolution: resolution, quality: quality
         )
         let placeholderId = editor.generationService.generate(
             genInput: genInput, assetType: .image,
@@ -463,7 +464,7 @@ final class ToolExecutor {
             buildInput: { uploaded in
                 let input = model.buildInput(
                     prompt: prompt, aspectRatio: aspectRatio,
-                    resolution: resolution, imageURLs: uploaded
+                    resolution: resolution, quality: quality, imageURLs: uploaded
                 )
                 return (model.resolvedEndpoint(imageURLs: uploaded), input)
             },
@@ -610,6 +611,7 @@ final class ToolExecutor {
         ]
         if includeType { info["type"] = "image" }
         if let r = m.resolutions { info["resolutions"] = r }
+        if let q = m.qualities { info["qualities"] = q }
         return info
     }
 
