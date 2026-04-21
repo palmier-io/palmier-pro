@@ -10,6 +10,16 @@ struct TitleBarLeadingView: View {
                 .frame(width: 6, height: 6)
                 .help(editor.isDocumentEdited ? "Unsaved changes" : "")
 
+            Button(action: { editor.agentPanelVisible.toggle() }) {
+                Image(systemName: "apple.intelligence")
+                    .font(.system(size: 13))
+                    .foregroundStyle(AppTheme.aiGradient)
+                    .opacity(editor.agentPanelVisible ? 1 : 0.55)
+                    .frame(width: 26, height: 26)
+            }
+            .buttonStyle(.plain)
+            .help("Toggle Agent Panel")
+
             // Home button
             Button(action: { AppState.shared.showHome() }) {
                 Image(systemName: "house")
@@ -58,16 +68,6 @@ struct TitleBarTrailingView: View {
                     .hoverHighlight()
             }
             .buttonStyle(.plain)
-
-            Button(action: { editor.agentPanelVisible.toggle() }) {
-                Image(systemName: "apple.intelligence")
-                    .font(.system(size: 13))
-                    .foregroundStyle(AppTheme.aiGradient)
-                    .opacity(editor.agentPanelVisible ? 1 : 0.55)
-                    .frame(width: 26, height: 26)
-            }
-            .buttonStyle(.plain)
-            .help("Toggle Agent Panel")
         }
     }
 }

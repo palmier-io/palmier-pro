@@ -124,8 +124,8 @@ struct AgentInputBox<LeadingTools: View>: View {
                     sendStopButton
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
         }
     }
 
@@ -134,12 +134,12 @@ struct AgentInputBox<LeadingTools: View>: View {
         if isSending {
             Button(action: onCancel) {
                 Image(systemName: "stop.fill")
-                    .font(.system(size: 12, weight: .bold))
-                    .frame(width: 22, height: 22)
+                    .font(.system(size: 10, weight: .bold))
+                    .frame(width: 18, height: 18)
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)
-            .controlSize(.large)
+            .controlSize(.regular)
             .tint(AppTheme.Text.secondaryColor)
             .glassEffectID("sendStop", in: sendStopNamespace)
             .help("Stop")
@@ -147,12 +147,12 @@ struct AgentInputBox<LeadingTools: View>: View {
         } else {
             Button(action: onSend) {
                 Image(systemName: "arrow.up")
-                    .font(.system(size: 13, weight: .bold))
-                    .frame(width: 22, height: 22)
+                    .font(.system(size: 11, weight: .bold))
+                    .frame(width: 18, height: 18)
             }
             .buttonStyle(.glassProminent)
             .buttonBorderShape(.circle)
-            .controlSize(.large)
+            .controlSize(.regular)
             .tint(.accentColor)
             .glassEffectID("sendStop", in: sendStopNamespace)
             .disabled(!canSend)

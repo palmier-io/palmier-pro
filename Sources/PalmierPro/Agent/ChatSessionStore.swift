@@ -5,12 +5,25 @@ struct ChatSession: Codable, Identifiable {
     var title: String
     var updatedAt: Date
     var messages: [AgentMessage]
+    var isOpen: Bool
 
-    init(id: UUID = UUID(), title: String = "New chat", messages: [AgentMessage] = []) {
+    init(id: UUID = UUID(), title: String = "New chat", messages: [AgentMessage] = [], isOpen: Bool = true) {
         self.id = id
         self.title = title
         self.updatedAt = Date()
         self.messages = messages
+        self.isOpen = isOpen
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, title, updatedAt, messages, isOpen }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(UUID.self, forKey: .id)
+        self.title = try c.decode(String.self, forKey: .title)
+        self.updatedAt = try c.decode(Date.self, forKey: .updatedAt)
+        self.messages = try c.decode([AgentMessage].self, forKey: .messages)
+        self.isOpen = try c.decodeIfPresent(Bool.self, forKey: .isOpen) ?? true
     }
 }
 

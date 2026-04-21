@@ -16,29 +16,83 @@ struct AgentPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            messageList
+            GlassEffectContainer {
+                ZStack(alignment: .top) {
+                    messageList
+                    floatingTabBar
+                }
+            }
             footer
         }
         .background(AppTheme.Background.surfaceColor)
     }
 
-    private var header: some View {
-        HStack(spacing: AppTheme.Spacing.sm) {
-            HStack(spacing: 5) {
-                Image(systemName: "apple.intelligence")
-                    .font(.system(size: 13))
-                    .foregroundStyle(AppTheme.aiGradient)
-                Text("Agent")
-                    .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
+    private var floatingTabBar: some View {
+        HStack(spacing: AppTheme.Spacing.xs) {
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 2) {
+                        ForEach(service.openSessions) { session in
+                            ChatTabView(
+                                session: session,
+                                isActive: session.id == service.currentSessionId,
+                                onSelect: { service.selectSession(session.id) },
+                                onClose: { service.closeTab(session.id) }
+                            )
+                            .id(session.id)
+                        }
+                    }
+                }
+                .onChange(of: service.currentSessionId) { _, new in
+                    guard let new else { return }
+                    withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(new, anchor: .center) }
+                }
             }
-            Spacer()
-            newChatButton
+            newTabButton
             historyButton
         }
-        .padding(.horizontal, AppTheme.Spacing.md)
-        .frame(height: Layout.panelHeaderHeight)
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.vertical, AppTheme.Spacing.xs)
+        .glassEffect(.regular, in: .capsule)
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.top, AppTheme.Spacing.xs)
+    }
+
+    private var newTabButton: some View {
+        Button { service.newChat() } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .frame(width: 20, height: 20)
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .help("New chat")
+    }
+
+    @State private var showHistory = false
+
+    private var historyButton: some View {
+        Button { showHistory.toggle() } label: {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .frame(width: 20, height: 20)
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .help("Chat history")
+        .popover(isPresented: $showHistory, arrowEdge: .top) {
+            ChatHistoryList(
+                sessions: service.sessions.sorted { $0.updatedAt > $1.updatedAt },
+                currentId: service.currentSessionId,
+                onSelect: { id in
+                    service.selectSession(id)
+                    showHistory = false
+                },
+                onDelete: { service.deleteSession($0) }
+            )
+        }
     }
 
     private var modelPicker: some View {
@@ -59,41 +113,6 @@ struct AgentPanelView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-    }
-
-    private var newChatButton: some View {
-        Button { service.newChat() } label: {
-            Image(systemName: "square.and.pencil")
-                .font(.system(size: 12))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: 22, height: 22)
-        }
-        .buttonStyle(.plain)
-        .help("New chat")
-    }
-
-    @State private var showHistory = false
-
-    private var historyButton: some View {
-        Button { showHistory.toggle() } label: {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 12))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: 22, height: 22)
-        }
-        .buttonStyle(.plain)
-        .help("Chat history")
-        .popover(isPresented: $showHistory, arrowEdge: .top) {
-            ChatHistoryList(
-                sessions: service.sessions,
-                currentId: service.currentSessionId,
-                onSelect: { id in
-                    service.selectSession(id)
-                    showHistory = false
-                },
-                onDelete: { service.deleteSession($0) }
-            )
-        }
     }
 
     private var apiKeyButton: some View {
@@ -158,7 +177,7 @@ struct AgentPanelView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 12)
+                .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.sm)
                 .padding(.bottom, 8)
             }
             .scrollEdgeEffectStyle(.soft, for: .bottom)
@@ -208,5 +227,51 @@ struct AgentPanelView: View {
         service.send(text: draft, mentions: mentions)
         draft = ""
         mentions.removeAll()
+    }
+}
+
+private struct ChatTabView: View {
+    let session: ChatSession
+    let isActive: Bool
+    let onSelect: () -> Void
+    let onClose: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: onSelect) {
+            VStack(spacing: 3) {
+                HStack(spacing: 4) {
+                    Text(displayTitle)
+                        .font(.system(size: AppTheme.FontSize.xs, weight: isActive ? .semibold : .regular))
+                        .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
+                        .lineLimit(1)
+                        .fixedSize()
+                    if hovering || isActive {
+                        Button(action: onClose) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(AppTheme.Text.mutedColor)
+                                .frame(width: 12, height: 12)
+                        }
+                        .buttonStyle(.plain)
+                        .focusable(false)
+                    }
+                }
+                Rectangle()
+                    .fill(isActive ? AppTheme.Text.primaryColor : Color.clear)
+                    .frame(height: 1.5)
+            }
+            .padding(.horizontal, 6)
+            .padding(.top, 2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .onHover { hovering = $0 }
+    }
+
+    private var displayTitle: String {
+        let t = session.title
+        return t.count > 20 ? String(t.prefix(20)) + "…" : t
     }
 }

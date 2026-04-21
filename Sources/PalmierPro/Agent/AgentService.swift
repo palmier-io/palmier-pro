@@ -76,22 +76,45 @@ final class AgentService {
         onSessionsChanged?()
     }
 
+    var openSessions: [ChatSession] { sessions.filter { $0.isOpen } }
+
     func selectSession(_ id: UUID) {
-        guard let session = sessions.first(where: { $0.id == id }) else { return }
+        guard let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
         currentTask?.cancel()
         syncMessagesIntoCurrentSession()
+        if !sessions[idx].isOpen {
+            sessions[idx].isOpen = true
+            onSessionsChanged?()
+        }
         currentSessionId = id
-        messages = session.messages
+        messages = sessions[idx].messages
         streamError = nil
+    }
+
+    func closeTab(_ id: UUID) {
+        guard let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
+        sessions[idx].isOpen = false
+        if currentSessionId == id {
+            if let next = sessions.first(where: { $0.isOpen }) {
+                currentSessionId = next.id
+                messages = next.messages
+            } else {
+                newChat()
+                return
+            }
+        }
+        onSessionsChanged?()
     }
 
     func deleteSession(_ id: UUID) {
         sessions.removeAll { $0.id == id }
         if currentSessionId == id {
-            currentSessionId = sessions.first?.id
-            messages = sessions.first?.messages ?? []
+            currentSessionId = sessions.first(where: { $0.isOpen })?.id
+            messages = currentSessionId
+                .flatMap { id in sessions.first { $0.id == id }?.messages }
+                ?? []
         }
-        if sessions.isEmpty { newChat(); return }
+        if openSessions.isEmpty { newChat(); return }
         onSessionsChanged?()
     }
 

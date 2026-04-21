@@ -187,11 +187,16 @@ struct GenerationView: View {
             .padding(.bottom, AppTheme.Spacing.sm)
         }
         .padding(.top, AppTheme.Spacing.sm)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.lg)
-                .fill(.ultraThinMaterial)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.lg))
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: AppTheme.Radius.lg)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: AppTheme.Radius.lg)
+                    .fill(.clear)
+                    .glassEffect(.regular, in: .rect(cornerRadius: AppTheme.Radius.lg))
+            }
+            .allowsHitTesting(false)
+        }
         .padding(AppTheme.Spacing.sm)
         .onAppear { consumePendingEditSource() }
         .onChange(of: editor.pendingEditSource?.id) { _, _ in consumePendingEditSource() }
