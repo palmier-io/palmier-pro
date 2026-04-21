@@ -13,3 +13,14 @@ timeline.xctimeline
 playground.xcworkspace
 
 wwdc/
+
+# Secrets
+.env
+.env.*
+*.pem
+*.p12
+*.p8
+AuthKey_*.p8
+credentials.json
+secrets.json
+*.local
