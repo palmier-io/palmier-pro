@@ -78,8 +78,10 @@ extension EditorViewModel {
     // MARK: - Split / remove
 
     /// Split `clipId` at `atFrame`. Also splits linked partners.
-    func splitClip(clipId: String, atFrame: Int) {
-        guard let loc = findClip(id: clipId) else { return }
+    /// Returns the IDs of the right-half clips created by the split.
+    @discardableResult
+    func splitClip(clipId: String, atFrame: Int) -> [String] {
+        guard let loc = findClip(id: clipId) else { return [] }
         let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
         let groupIds: Set<String> = clip.linkGroupId != nil
             ? Set([clipId] + linkedPartnerIds(of: clipId))
@@ -99,6 +101,7 @@ extension EditorViewModel {
         }
         undoManager?.endUndoGrouping()
         undoManager?.setActionName(groupIds.count > 1 ? "Split Clips" : "Split Clip")
+        return rightIds
     }
 
     @discardableResult

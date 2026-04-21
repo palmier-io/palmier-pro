@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import ImageIO
 
@@ -6,6 +7,10 @@ import ImageIO
 final class ToolExecutor {
 
     private static let defaultReadImageMaxBytes = 20 * 1024 * 1024
+    private static let defaultReadVideoFrames = 6
+    private static let readVideoMaxFrames = 12
+    private static let readVideoFrameMaxDimension: CGFloat = 512
+    private static let readVideoJPEGQuality: CGFloat = 0.7
 
     weak var editor: EditorViewModel?
 
@@ -20,7 +25,7 @@ final class ToolExecutor {
             switch tool {
             case .getTimeline:   return try getTimeline(editor)
             case .getMedia:      return try getMedia(editor)
-            case .readMedia:     return try readMedia(editor, args)
+            case .readMedia:     return try await readMedia(editor, args)
             case .addTrack:      return try addTrack(editor, args)
             case .removeTrack:   return try removeTrack(editor, args)
             case .addClip:       return try addClip(editor, args)
@@ -46,6 +51,7 @@ final class ToolExecutor {
             with: JSONEncoder().encode(editor.timeline)
         ) as? [String: Any] else { throw ToolError("Failed to encode timeline") }
         dict["currentFrame"] = editor.currentFrame
+        dict["hasFalApiKey"] = editor.generationService.hasApiKey
         guard let json = Self.jsonString(dict) else { throw ToolError("Failed to encode timeline") }
         return .ok(json)
     }
@@ -58,16 +64,22 @@ final class ToolExecutor {
         return .ok(json)
     }
 
-    private func readMedia(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+    private func readMedia(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         let mediaRef = try args.requireString("mediaRef")
         let asset = try asset(mediaRef, editor: editor)
-        guard asset.type == .image else {
-            throw ToolError("read_media currently supports only image assets.")
-        }
         let url = asset.url
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw ToolError("Media file not on disk: \(url.lastPathComponent)")
         }
+        switch asset.type {
+        case .image: return try readImage(asset: asset, args: args)
+        case .video: return try await readVideo(editor: editor, asset: asset, args: args)
+        case .audio: return try await readAudio(editor: editor, asset: asset)
+        }
+    }
+
+    private func readImage(asset: MediaAsset, args: [String: Any]) throws -> ToolResult {
+        let url = asset.url
         let maxBytes = args.int("maxImageBytes") ?? Self.defaultReadImageMaxBytes
         let fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.uint64Value ?? 0
         guard fileSize <= UInt64(maxBytes) else {
@@ -78,20 +90,9 @@ final class ToolExecutor {
         }
 
         let mime = Self.mimeTypeForImagePath(url.path)
-        var meta: [String: Any] = [
-            "mimeType": mime, "id": asset.id, "name": asset.name,
-            "type": asset.type.rawValue, "duration": asset.duration,
-            "fileName": url.lastPathComponent, "byteSize": fileSize,
-            "generationStatus": Self.generationStatusString(asset.generationStatus),
-        ]
-        if let w = asset.sourceWidth { meta["sourceWidth"] = w }
-        if let h = asset.sourceHeight { meta["sourceHeight"] = h }
-        if let fps = asset.sourceFPS { meta["sourceFPS"] = fps }
-        if let gi = asset.generationInput,
-           let encoded = try? JSONEncoder().encode(gi),
-           let obj = try? JSONSerialization.jsonObject(with: encoded) {
-            meta["generationInput"] = obj
-        }
+        var meta = Self.baseMeta(for: asset)
+        meta["mimeType"] = mime
+        meta["byteSize"] = fileSize
         if let props = Self.imagePropertiesSummary(at: url) {
             meta["imageProperties"] = props
         }
@@ -101,6 +102,121 @@ final class ToolExecutor {
             content: [.image(base64: data.base64EncodedString(), mediaType: mime), .text(metaJSON)],
             isError: false
         )
+    }
+
+    private func readVideo(editor: EditorViewModel, asset: MediaAsset, args: [String: Any]) async throws -> ToolResult {
+        guard asset.duration > 0 else { throw ToolError("Video has zero duration: \(asset.name)") }
+
+        let requested = args.int("maxFrames") ?? Self.defaultReadVideoFrames
+        let frameCount = max(1, min(requested, Self.readVideoMaxFrames))
+
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: asset.url))
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(
+            width: Self.readVideoFrameMaxDimension,
+            height: Self.readVideoFrameMaxDimension
+        )
+        generator.requestedTimeToleranceBefore = CMTime(seconds: 0.25, preferredTimescale: 600)
+        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.25, preferredTimescale: 600)
+
+        var frames: [(timestamp: Double, data: Data)] = []
+        for i in 0..<frameCount {
+            let t = asset.duration * (Double(i) + 0.5) / Double(frameCount)
+            let cmTime = CMTime(seconds: t, preferredTimescale: 600)
+            guard let cgImage = try? await generator.image(at: cmTime).image else { continue }
+            guard let jpeg = Self.jpegData(from: cgImage, quality: Self.readVideoJPEGQuality) else { continue }
+            frames.append((timestamp: t, data: jpeg))
+        }
+        guard !frames.isEmpty else { throw ToolError("Failed to extract frames from \(asset.name)") }
+
+        var meta = Self.baseMeta(for: asset)
+        meta["hasAudio"] = asset.hasAudio
+        meta["frameTimestamps"] = frames.map(\.timestamp)
+
+        if asset.hasAudio {
+            do {
+                let transcript = try await editor.generationService.transcribeVideoAudio(videoURL: asset.url)
+                meta["transcription"] = Self.transcriptionMeta(from: transcript)
+            } catch {
+                Log.generation.error("video transcription failed: \(error.localizedDescription)")
+                meta["transcriptionError"] = error.localizedDescription
+            }
+        }
+
+        guard let metaJSON = Self.jsonString(meta) else { throw ToolError("Failed to encode metadata") }
+
+        var blocks: [ToolResult.Block] = frames.map {
+            .image(base64: $0.data.base64EncodedString(), mediaType: "image/jpeg")
+        }
+        blocks.append(.text(metaJSON))
+        return ToolResult(content: blocks, isError: false)
+    }
+
+    private func readAudio(editor: EditorViewModel, asset: MediaAsset) async throws -> ToolResult {
+        guard editor.generationService.hasApiKey else {
+            throw ToolError("No FAL API key configured — required for audio transcription. Set one in the app's generation panel.")
+        }
+        let transcript: GenerationService.TranscriptionResult
+        do {
+            transcript = try await editor.generationService.transcribe(fileURL: asset.url)
+        } catch {
+            throw ToolError("Transcription failed: \(error.localizedDescription)")
+        }
+
+        var meta = Self.baseMeta(for: asset)
+        for (k, v) in Self.transcriptionMeta(from: transcript) { meta[k] = v }
+        guard let metaJSON = Self.jsonString(meta) else { throw ToolError("Failed to encode metadata") }
+        return .ok(metaJSON)
+    }
+
+    private static func transcriptionMeta(from transcript: GenerationService.TranscriptionResult) -> [String: Any] {
+        var out: [String: Any] = [
+            "text": transcript.text,
+            "words": transcript.words.map { w -> [String: Any] in
+                var entry: [String: Any] = ["text": w.text, "type": w.type]
+                if let s = w.start { entry["start"] = s }
+                if let e = w.end { entry["end"] = e }
+                if let sid = w.speakerId { entry["speakerId"] = sid }
+                return entry
+            },
+        ]
+        if let lang = transcript.language { out["language"] = lang }
+        if let p = transcript.languageProbability { out["languageProbability"] = p }
+        return out
+    }
+
+    private static func baseMeta(for asset: MediaAsset) -> [String: Any] {
+        var meta: [String: Any] = [
+            "id": asset.id, "name": asset.name,
+            "type": asset.type.rawValue, "duration": asset.duration,
+            "fileName": asset.url.lastPathComponent,
+            "generationStatus": generationStatusString(asset.generationStatus),
+        ]
+        if let w = asset.sourceWidth { meta["sourceWidth"] = w }
+        if let h = asset.sourceHeight { meta["sourceHeight"] = h }
+        if let fps = asset.sourceFPS { meta["sourceFPS"] = fps }
+        if let gi = asset.generationInput, let obj = encodeAsJSONObject(gi) {
+            meta["generationInput"] = obj
+        }
+        return meta
+    }
+
+    private static func encodeAsJSONObject<T: Encodable>(_ value: T) -> Any? {
+        guard let data = try? JSONEncoder().encode(value),
+              let obj = try? JSONSerialization.jsonObject(with: data)
+        else { return nil }
+        return obj
+    }
+
+    private static func jpegData(from cgImage: CGImage, quality: CGFloat) -> Data? {
+        let data = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(
+            data as CFMutableData, "public.jpeg" as CFString, 1, nil
+        ) else { return nil }
+        let options: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: quality]
+        CGImageDestinationAddImage(dest, cgImage, options as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else { return nil }
+        return data as Data
     }
 
     private func addTrack(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
@@ -201,8 +317,14 @@ final class ToolExecutor {
         guard atFrame > clip.startFrame && atFrame < clip.endFrame else {
             throw ToolError("Frame \(atFrame) is outside clip range (\(clip.startFrame)..\(clip.endFrame))")
         }
-        editor.splitClip(clipId: clipId, atFrame: atFrame)
-        return .ok("Split clip \(clipId) at frame \(atFrame)")
+        let rightIds = editor.splitClip(clipId: clipId, atFrame: atFrame)
+        let rightEndFrame = clip.endFrame
+        let leftSummary = "\(clipId) (frames \(clip.startFrame)..\(atFrame))"
+        let rightList = rightIds
+            .map { "\($0) (frames \(atFrame)..\(rightEndFrame))" }
+            .joined(separator: ", ")
+        let rightNote = rightIds.isEmpty ? "" : " → new right clip(s): \(rightList)"
+        return .ok("Split clip \(clipId) at frame \(atFrame). Left: \(leftSummary)\(rightNote)")
     }
 
     private func generate(_ editor: EditorViewModel, _ args: [String: Any], type: ClipType) throws -> ToolResult {

@@ -9,6 +9,21 @@ enum FalResponsePaths {
     static let audio: @Sendable (Payload) -> String? = { $0["audio"]["url"].stringValue }
 }
 
+extension FileType {
+    static func inferred(from url: URL) -> FileType {
+        switch url.pathExtension.lowercased() {
+        case "png": .imagePng
+        case "webp": .imageWebp
+        case "gif": .imageGif
+        case "jpg", "jpeg": .imageJpeg
+        case "mp4", "m4v", "mov": .videoMp4
+        case "mp3": .audioMp3
+        case "wav": .audioWav
+        default: .applicationStream
+        }
+    }
+}
+
 /// Lookups across the fal model registries (Video/Image/Audio/Upscale).
 @MainActor
 enum ModelRegistry {

@@ -29,7 +29,7 @@ enum ToolDefinitions {
     static let all: [AgentTool] = [
         AgentTool(
             name: .getTimeline,
-            description: "Always call before any edit. Returns project settings (fps, resolution), track list with types and order, and all clips with their frames and properties. The clipId/trackId values here are what every other tool accepts.",
+            description: "Always call at the start of a session. Returns project settings (fps, resolution), track list with types and order, all clips with their frames and properties, and hasFalApiKey (if false, generation/transcription/upscale tools will fail — warn the user to configure the key in the app's generation panel before attempting them). The clipId/trackId values here are what every other tool accepts.",
             inputSchema: objectSchema()
         ),
         AgentTool(
@@ -39,11 +39,12 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .readMedia,
-            description: "Visually inspect an image asset — use this before passing it as a reference to generate_video/generate_image so your prompt describes what's actually in the frame rather than guessing from the filename. Returns image content (base64) plus JSON metadata (dimensions, file size, optional EXIF subset). Images only for now; default max 20MB, override via maxImageBytes.",
+            description: "Inspect a media asset's content. Images: returns the image (base64) plus metadata (dimensions, file size, EXIF subset); default max 20MB, override via maxImageBytes. Videos: returns evenly-spaced sample frames as JPEGs plus metadata with frame timestamps; default 6 frames, override via maxFrames (cap 12). If the video has an audio track and a FAL API key is configured, the audio track is auto-extracted and transcribed; the transcription nests under the \"transcription\" key (or \"transcriptionError\" if it fails — frames still return). Audio: transcribes the file via fal-ai/elevenlabs/speech-to-text/scribe-v2 and returns JSON with full text, detected language, and per-word entries (each with start/end timestamps, type = word | audio_event, and speakerId when diarization applies) — requires FAL API key. Call before passing an asset as a reference so your prompt describes what's actually there, or to plan splits/trims on dialogue boundaries.",
             inputSchema: objectSchema(
                 properties: [
                     "mediaRef": ["type": "string", "description": "ID of the media asset from get_media"],
-                    "maxImageBytes": ["type": "integer", "description": "Maximum file size in bytes (default 20971520)"],
+                    "maxImageBytes": ["type": "integer", "description": "Image only. Maximum file size in bytes (default 20971520)."],
+                    "maxFrames": ["type": "integer", "description": "Video only. Number of sample frames to return (default 6, cap 12)."],
                 ],
                 required: ["mediaRef"]
             )
