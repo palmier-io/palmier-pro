@@ -12,6 +12,7 @@ struct VideoModelConfig: Identifiable, Sendable {
     let supportsLastFrame: Bool
     let supportsReferences: Bool
     let maxReferences: Int
+    let requiresSourceVideo: Bool
     let resolveEndpoint: @Sendable (_ base: String, _ input: VideoGenerationParams) -> String
     let buildFalInput: @Sendable (_ input: VideoGenerationParams) -> Payload
 
@@ -20,6 +21,7 @@ struct VideoModelConfig: Identifiable, Sendable {
         durations: [Int], resolutions: [String]? = nil, aspectRatios: [String],
         supportsFirstFrame: Bool = true, supportsLastFrame: Bool = false,
         supportsReferences: Bool = false, maxReferences: Int = 0,
+        requiresSourceVideo: Bool = false,
         resolveEndpoint: @escaping @Sendable (String, VideoGenerationParams) -> String,
         buildFalInput: @escaping @Sendable (VideoGenerationParams) -> Payload
     ) {
@@ -27,6 +29,7 @@ struct VideoModelConfig: Identifiable, Sendable {
         self.durations = durations; self.resolutions = resolutions; self.aspectRatios = aspectRatios
         self.supportsFirstFrame = supportsFirstFrame; self.supportsLastFrame = supportsLastFrame
         self.supportsReferences = supportsReferences; self.maxReferences = maxReferences
+        self.requiresSourceVideo = requiresSourceVideo
         self.resolveEndpoint = resolveEndpoint; self.buildFalInput = buildFalInput
     }
 
@@ -44,6 +47,7 @@ struct VideoGenerationParams: Sendable {
     let duration: Int
     let aspectRatio: String
     let resolution: String?
+    let sourceVideoURL: String?
     let startFrameURL: String?
     let endFrameURL: String?
     let referenceImageURLs: [String]
@@ -247,10 +251,45 @@ extension VideoModelConfig {
         }
     )
 
+    // MARK: Edit models (video-to-video)
+
+    static let klingO3Edit = VideoModelConfig(
+        id: "kling-o3-edit", displayName: "Kling O3 Edit",
+        baseEndpoint: "fal-ai/kling-video/o3/pro/video-to-video/edit",
+        durations: [], resolutions: nil, aspectRatios: [],
+        supportsFirstFrame: false, supportsLastFrame: false,
+        supportsReferences: false, maxReferences: 0,
+        requiresSourceVideo: true,
+        resolveEndpoint: { base, _ in base },
+        buildFalInput: { input in
+            var d: [String: Payload] = ["prompt": .string(input.prompt)]
+            if let src = input.sourceVideoURL { d["video_url"] = .string(src) }
+            return .dict(d)
+        }
+    )
+
+    static let klingV3MotionControl = VideoModelConfig(
+        id: "kling-v3-motion-control", displayName: "Kling V3 Motion Control",
+        baseEndpoint: "fal-ai/kling-video/v3/pro/motion-control",
+        durations: [], resolutions: nil, aspectRatios: [],
+        supportsFirstFrame: false, supportsLastFrame: false,
+        supportsReferences: true, maxReferences: 1,
+        requiresSourceVideo: true,
+        resolveEndpoint: { base, _ in base },
+        buildFalInput: { input in
+            var d: [String: Payload] = ["character_orientation": .string("video")]
+            if let src = input.sourceVideoURL { d["video_url"] = .string(src) }
+            if let img = input.referenceImageURLs.first { d["image_url"] = .string(img) }
+            if !input.prompt.isEmpty { d["prompt"] = .string(input.prompt) }
+            return .dict(d)
+        }
+    )
+
     static let allModels: [VideoModelConfig] = [
         veo31Fast, veo31, veo31Lite,
         klingO3, klingV3,
         seedance2, seedance2Fast,
         grokImagineVideo, ltx23, minimaxHailuo23,
+        klingO3Edit, klingV3MotionControl,
     ]
 }

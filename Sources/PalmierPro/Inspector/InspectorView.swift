@@ -7,9 +7,16 @@ struct InspectorView: View {
         case video = "Video"
         case audio = "Audio"
         case speed = "Speed"
+        case ai = "AI Edit"
+    }
+
+    enum AssetTab: String, Hashable {
+        case details = "Details"
+        case ai = "AI Edit"
     }
 
     @State private var preferredTab: ClipTab = .video
+    @State private var preferredAssetTab: AssetTab = .details
 
     private var headerTitle: String {
         if selectedVisualClip != nil || selectedAudioClip != nil { return "Inspector" }
@@ -100,6 +107,7 @@ struct InspectorView: View {
         if selectedVisualClip != nil { tabs.append(.video) }
         if selectedAudioClip != nil { tabs.append(.audio) }
         if selectedVisualClip != nil || selectedAudioClip != nil { tabs.append(.speed) }
+        if resolvedClipAsset != nil { tabs.append(.ai) }
         return tabs
     }
 
@@ -109,6 +117,12 @@ struct InspectorView: View {
         return tabs.contains(preferredTab) ? preferredTab : tabs.first
     }
 
+    /// The visual-or-image MediaAsset backing the currently selected visual clip.
+    private var resolvedClipAsset: MediaAsset? {
+        guard let clip = selectedVisualClip, clip.mediaType.isVisual else { return nil }
+        return editor.mediaAssets.first { $0.id == clip.mediaRef }
+    }
+
     @ViewBuilder
     private func clipInspectorContent() -> some View {
         let tabs = availableTabs
@@ -116,49 +130,63 @@ struct InspectorView: View {
             if tabs.count > 1 {
                 tabBar(tabs)
             }
-            ScrollView {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
-                    switch activeTab {
-                    case .video:
-                        if let v = selectedVisualClip { videoTabContent(v) }
-                    case .audio:
-                        if let a = selectedAudioClip { audioTabContent(a) }
-                    case .speed:
-                        if let s = selectedVisualClip ?? selectedAudioClip { speedTabContent(s) }
-                    case .none:
-                        EmptyView()
+            Group {
+                if activeTab == .ai, let asset = resolvedClipAsset {
+                    AIEditTab(asset: asset, clipId: selectedVisualClip?.id)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
+                            switch activeTab {
+                            case .video:
+                                if let v = selectedVisualClip { videoTabContent(v) }
+                            case .audio:
+                                if let a = selectedAudioClip { audioTabContent(a) }
+                            case .speed:
+                                if let s = selectedVisualClip ?? selectedAudioClip { speedTabContent(s) }
+                            case .ai, .none:
+                                EmptyView()
+                            }
+                        }
+                        .padding(AppTheme.Spacing.lg)
                     }
                 }
-                .padding(AppTheme.Spacing.lg)
             }
         }
     }
 
     private func tabBar(_ tabs: [ClipTab]) -> some View {
+        genericTabBar(titles: tabs.map(\.rawValue), selected: activeTab?.rawValue) { title in
+            if let tab = tabs.first(where: { $0.rawValue == title }) { preferredTab = tab }
+        }
+    }
+
+    private func assetTabBar(_ tabs: [AssetTab]) -> some View {
+        genericTabBar(titles: tabs.map(\.rawValue), selected: preferredAssetTab.rawValue) { title in
+            if let tab = tabs.first(where: { $0.rawValue == title }) { preferredAssetTab = tab }
+        }
+    }
+
+    private func genericTabBar(titles: [String], selected: String?, onSelect: @escaping (String) -> Void) -> some View {
         HStack(spacing: 2) {
-            ForEach(tabs, id: \.self) { tab in
-                tabButton(tab)
+            ForEach(titles, id: \.self) { title in
+                let isActive = selected == title
+                Button {
+                    onSelect(title)
+                } label: {
+                    Text(title)
+                        .font(.system(size: AppTheme.FontSize.sm, weight: isActive ? .medium : .regular))
+                        .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
+                        .padding(.horizontal, AppTheme.Spacing.md)
+                        .padding(.vertical, AppTheme.Spacing.xs)
+                        .hoverHighlight(isActive: isActive)
+                }
+                .buttonStyle(.plain)
             }
             Spacer()
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .padding(.top, AppTheme.Spacing.xs)
         .padding(.bottom, AppTheme.Spacing.xs)
-    }
-
-    private func tabButton(_ tab: ClipTab) -> some View {
-        let isActive = activeTab == tab
-        return Button {
-            preferredTab = tab
-        } label: {
-            Text(tab.rawValue)
-                .font(.system(size: AppTheme.FontSize.sm, weight: isActive ? .medium : .regular))
-                .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
-                .padding(.horizontal, AppTheme.Spacing.md)
-                .padding(.vertical, AppTheme.Spacing.xs)
-                .hoverHighlight(isActive: isActive)
-        }
-        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -311,6 +339,22 @@ struct InspectorView: View {
 
     @ViewBuilder
     private func mediaAssetInspectorContent(_ asset: MediaAsset) -> some View {
+        if asset.type.isVisual {
+            VStack(spacing: 0) {
+                assetTabBar([.details, .ai])
+                if preferredAssetTab == .ai {
+                    AIEditTab(asset: asset)
+                } else {
+                    assetDetailsContent(asset)
+                }
+            }
+        } else {
+            assetDetailsContent(asset)
+        }
+    }
+
+    @ViewBuilder
+    private func assetDetailsContent(_ asset: MediaAsset) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
                 if asset.generationInput == nil {
@@ -352,8 +396,10 @@ struct InspectorView: View {
                                     .foregroundStyle(AppTheme.Text.primaryColor)
                             }
 
-                            metadataRow("cpu", label: "Model", value: modelDisplayName(for: gen.model))
-                            metadataRow("aspectratio", label: "Aspect Ratio", value: gen.aspectRatio)
+                            metadataRow("cpu", label: "Model", value: ModelRegistry.displayName(for: gen.model))
+                            if !gen.aspectRatio.isEmpty {
+                                metadataRow("aspectratio", label: "Aspect Ratio", value: gen.aspectRatio)
+                            }
 
                             if let resolution = gen.resolution {
                                 metadataRow("rectangle.split.3x3", label: "Resolution", value: resolution)
@@ -363,15 +409,17 @@ struct InspectorView: View {
                                 metadataRow("clock", label: "Duration", value: "\(gen.duration)s")
                             }
 
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Prompt")
-                                    .font(.system(size: AppTheme.FontSize.xs))
-                                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                                Text(gen.prompt)
-                                    .font(.system(size: AppTheme.FontSize.xs))
-                                    .foregroundStyle(AppTheme.Text.secondaryColor)
-                                    .textSelection(.enabled)
-                                    .fixedSize(horizontal: false, vertical: true)
+                            if !gen.prompt.isEmpty {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Prompt")
+                                        .font(.system(size: AppTheme.FontSize.xs))
+                                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                                    Text(gen.prompt)
+                                        .font(.system(size: AppTheme.FontSize.xs))
+                                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                                        .textSelection(.enabled)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
                             }
                         }
                     }
@@ -431,15 +479,6 @@ struct InspectorView: View {
         return editor.mediaAssets.first { $0.id == id }
     }
 
-    private func modelDisplayName(for modelId: String) -> String {
-        if let config = ImageModelConfig.allModels.first(where: { $0.id == modelId }) {
-            return config.displayName
-        }
-        if let config = VideoModelConfig.allModels.first(where: { $0.id == modelId }) {
-            return config.displayName
-        }
-        return modelId
-    }
 
     private func fileSize(for url: URL) -> String? {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),

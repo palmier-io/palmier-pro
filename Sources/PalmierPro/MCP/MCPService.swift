@@ -541,7 +541,7 @@ final class MCPService {
     // MARK: - Generation
 
     private func generateVideo(_ editor: EditorViewModel, args: [String: Value]) -> CallTool.Result {
-        guard let prompt = args["prompt"]?.stringValue, !prompt.isEmpty else {
+        guard let prompt = args["prompt"]?.stringValue else {
             return toolError("Missing required argument: prompt")
         }
         guard generationService.hasApiKey else {
@@ -554,8 +554,59 @@ final class MCPService {
             return toolError("Unknown model '\(modelId)'. Available: \(available)")
         }
 
-        let duration = args["duration"]?.intValue ?? model.durations[0]
-        let aspectRatio = args["aspectRatio"]?.stringValue ?? model.aspectRatios[0]
+        // Edit models (video-to-video) require a source video and ignore duration/aspect/resolution.
+        if model.requiresSourceVideo {
+            guard let sourceRef = args["sourceVideoMediaRef"]?.stringValue,
+                  let sourceAsset = mediaAsset(id: sourceRef, editor: editor) else {
+                return toolError("Model '\(modelId)' requires 'sourceVideoMediaRef' pointing to a video asset.")
+            }
+            guard sourceAsset.type == .video else {
+                return toolError("sourceVideoMediaRef must reference a video asset")
+            }
+
+            var refs: [MediaAsset] = [sourceAsset]
+            if model.supportsReferences, let imgRef = args["referenceImageMediaRef"]?.stringValue {
+                guard let imgAsset = mediaAsset(id: imgRef, editor: editor), imgAsset.type == .image else {
+                    return toolError("referenceImageMediaRef must reference an image asset")
+                }
+                refs.append(imgAsset)
+            }
+
+            let genInput = GenerationInput(
+                prompt: prompt, model: modelId, duration: Int(sourceAsset.duration.rounded()),
+                aspectRatio: "", resolution: nil
+            )
+
+            let placeholderId = generationService.generate(
+                genInput: genInput,
+                assetType: .video,
+                placeholderDuration: sourceAsset.duration > 0 ? sourceAsset.duration : 5,
+                references: refs,
+                name: args["name"]?.stringValue,
+                buildInput: { uploaded in
+                    let params = VideoGenerationParams(
+                        prompt: prompt, duration: 0, aspectRatio: "", resolution: nil,
+                        sourceVideoURL: uploaded.first,
+                        startFrameURL: nil, endFrameURL: nil,
+                        referenceImageURLs: Array(uploaded.dropFirst()),
+                        generateAudio: true
+                    )
+                    return (model.resolvedEndpoint(params: params), model.buildInput(params: params))
+                },
+                responseKeyPath: FalResponsePaths.video,
+                fileExtension: "mp4",
+                projectURL: editor.projectURL, editor: editor
+            )
+
+            return toolOK("Edit started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), source: \(sourceAsset.name)")
+        }
+
+        guard !prompt.isEmpty else {
+            return toolError("Missing required argument: prompt")
+        }
+
+        let duration = args["duration"]?.intValue ?? model.durations.first ?? 0
+        let aspectRatio = args["aspectRatio"]?.stringValue ?? model.aspectRatios.first ?? ""
         let resolution = args["resolution"]?.stringValue ?? model.resolutions?.first
 
         var frameRefs: [MediaAsset] = []
@@ -580,13 +631,14 @@ final class MCPService {
         let placeholderId = generationService.generate(
             genInput: genInput,
             assetType: .video,
-            placeholderDuration: Double(duration),
+            placeholderDuration: Double(max(1, duration)),
             references: frameRefs,
             name: args["name"]?.stringValue,
             buildInput: { uploaded in
                 let params = VideoGenerationParams(
                     prompt: prompt, duration: duration,
                     aspectRatio: aspectRatio, resolution: resolution,
+                    sourceVideoURL: nil,
                     startFrameURL: uploaded.first,
                     endFrameURL: uploaded.count > 1 ? uploaded[1] : nil,
                     referenceImageURLs: [],
@@ -642,7 +694,7 @@ final class MCPService {
                 )
                 return (model.resolvedEndpoint(imageURLs: uploaded), input)
             },
-            responseKeyPath: { $0["images"][0]["url"].stringValue },
+            responseKeyPath: FalResponsePaths.generatedImage,
             fileExtension: "jpg",
             projectURL: editor.projectURL, editor: editor
         )

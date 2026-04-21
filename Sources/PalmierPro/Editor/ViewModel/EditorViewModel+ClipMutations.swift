@@ -277,6 +277,63 @@ extension EditorViewModel {
         notifyTimelineChanged()
     }
 
+    /// Flag the selected clip (and any linked clips sharing its `mediaRef`)
+    /// as awaiting an AI-generated replacement.
+    func markPendingReplacement(clipId: String) {
+        let ids = linkedClipIdsSharingMedia(anchor: clipId)
+        pendingReplacements.formUnion(ids)
+    }
+
+    /// Clear the pending-replacement flag on the selected clip and any linked
+    /// clips that were marked together.
+    func clearPendingReplacement(clipId: String) {
+        let ids = linkedClipIdsSharingMedia(anchor: clipId)
+        pendingReplacements.subtract(ids)
+        pendingReplacements.remove(clipId)
+    }
+
+    private func linkedClipIdsSharingMedia(anchor: String) -> Set<String> {
+        guard let loc = findClip(id: anchor) else { return [anchor] }
+        let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        var ids: Set<String> = [anchor]
+        if let groupId = clip.linkGroupId {
+            let mediaRef = clip.mediaRef
+            for track in timeline.tracks {
+                for c in track.clips where c.linkGroupId == groupId && c.mediaRef == mediaRef {
+                    ids.insert(c.id)
+                }
+            }
+        }
+        return ids
+    }
+
+    /// Replace the source asset a clip points at, preserving states. 
+    /// Registered as a single undo step.
+    func replaceClipMediaRef(clipId: String, newAssetId: String) {
+        guard let loc = findClip(id: clipId) else { return }
+        let oldMediaRef = timeline.tracks[loc.trackIndex].clips[loc.clipIndex].mediaRef
+        guard oldMediaRef != newAssetId else { return }
+
+        let targetIds = linkedClipIdsSharingMedia(anchor: clipId)
+
+        for id in targetIds {
+            if let l = findClip(id: id) {
+                timeline.tracks[l.trackIndex].clips[l.clipIndex].mediaRef = newAssetId
+            }
+        }
+
+        undoManager?.registerUndo(withTarget: self) { vm in
+            for id in targetIds {
+                if let l = vm.findClip(id: id) {
+                    vm.timeline.tracks[l.trackIndex].clips[l.clipIndex].mediaRef = oldMediaRef
+                }
+            }
+            vm.notifyTimelineChanged()
+        }
+        undoManager?.setActionName("Replace Clip Source")
+        notifyTimelineChanged()
+    }
+
     // MARK: - Playhead-relative operations
 
     func splitAtPlayhead() {

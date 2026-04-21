@@ -37,6 +37,11 @@ final class EditorViewModel {
     var toolMode: ToolMode = .pointer
     var showExportDialog: Bool = false
     var showGenerationPanel: Bool = false
+    /// Set by AIEditTab; Consumed by GenerationView
+    var pendingEditSource: MediaAsset?
+    var pendingEditReplacementClipId: String?
+    /// Clip ids currently awaiting an AI-generated replacement.
+    var pendingReplacements: Set<String> = []
     var showKeyboardShortcuts: Bool = false
     var previewTabs: [PreviewTab] = [.timeline]
     var activePreviewTabId: String = PreviewTab.timeline.id
@@ -231,6 +236,7 @@ final class EditorViewModel {
         for i in timeline.tracks.indices {
             timeline.tracks[i].clips.removeAll { $0.id == id }
         }
+        pendingReplacements.remove(id)
     }
 
 }

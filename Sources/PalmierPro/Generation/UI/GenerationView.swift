@@ -28,6 +28,13 @@ struct GenerationView: View {
     @State private var imageReferences: [MediaAsset] = []
     @State private var imageRefTargeted = false
 
+    // Source video (for video-to-video edit models)
+    @State private var sourceVideo: MediaAsset?
+    @State private var sourceVideoTargeted = false
+    @State private var motionReferenceTargeted = false
+
+    @State private var isConsumingEditSource = false
+
     enum GenerationType: String, CaseIterable {
         case image = "Image"
         case video = "Video"
@@ -53,13 +60,39 @@ struct GenerationView: View {
     private var videoModel: VideoModelConfig { VideoModelConfig.allModels[selectedVideoModelIndex] }
     private var imageModel: ImageModelConfig { ImageModelConfig.allModels[selectedImageModelIndex] }
     private var isPromptEmpty: Bool { prompt.trimmingCharacters(in: .whitespaces).isEmpty }
-    private var canSubmit: Bool { !isPromptEmpty && selectedType != .audio && service.hasApiKey }
+
+    private var canSubmit: Bool {
+        guard service.hasApiKey, selectedType != .audio else { return false }
+        if selectedType == .video && videoModel.requiresSourceVideo {
+            guard sourceVideo != nil else { return false }
+            if videoModel.supportsReferences && imageReferences.isEmpty { return false }
+            if !videoModel.supportsReferences && isPromptEmpty { return false }
+            return true
+        }
+        return !isPromptEmpty
+    }
+
+    private var hasAnySettings: Bool {
+        switch selectedType {
+        case .video: return !videoModel.durations.isEmpty || !videoModel.aspectRatios.isEmpty || videoModel.resolutions != nil
+        case .image: return !imageModel.aspectRatios.isEmpty || imageModel.resolutions != nil
+        case .audio: return false
+        }
+    }
 
     private var currentModelName: String {
         switch selectedType {
         case .video: videoModel.displayName
         case .image: imageModel.displayName
         case .audio: "Coming soon"
+        }
+    }
+
+    private var currentModelId: String {
+        switch selectedType {
+        case .video: videoModel.id
+        case .image: imageModel.id
+        case .audio: ""
         }
     }
 
@@ -104,7 +137,10 @@ struct GenerationView: View {
                 typeTabs
                 Spacer()
                 apiKeyButton
-                Button { editor.showGenerationPanel = false } label: {
+                Button {
+                    editor.pendingEditReplacementClipId = nil
+                    editor.showGenerationPanel = false
+                } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -116,7 +152,10 @@ struct GenerationView: View {
             .padding(.horizontal, AppTheme.Spacing.sm)
 
             // Frame/image references
-            if selectedType == .video && videoModel.supportsFirstFrame {
+            if selectedType == .video && videoModel.requiresSourceVideo {
+                editVideoStrip
+                    .padding(.horizontal, AppTheme.Spacing.md)
+            } else if selectedType == .video && videoModel.supportsFirstFrame {
                 videoFrameStrip
                     .padding(.horizontal, AppTheme.Spacing.md)
             } else if selectedType == .image && imageModel.supportsImageReference {
@@ -159,17 +198,25 @@ struct GenerationView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.lg))
         .padding(AppTheme.Spacing.sm)
+        .onAppear { consumePendingEditSource() }
+        .onChange(of: editor.pendingEditSource?.id) { _, _ in consumePendingEditSource() }
         .onChange(of: selectedType) { _, _ in
+            guard !isConsumingEditSource else { return }
             resetSettings()
             clearReferences()
         }
         .onChange(of: selectedVideoModelIndex) { _, _ in
+            guard !isConsumingEditSource else { return }
             if selectedType == .video {
                 resetSettings()
-                clearReferences()
+                if !videoModel.requiresSourceVideo {
+                    sourceVideo = nil
+                }
+                clearFrameReferencesOnly()
             }
         }
         .onChange(of: selectedImageModelIndex) { _, _ in
+            guard !isConsumingEditSource else { return }
             if selectedType == .image {
                 resetSettings()
                 clearReferences()
@@ -228,7 +275,7 @@ struct GenerationView: View {
             Rectangle().fill(Color.white.opacity(0.06)).frame(height: 0.5)
             HStack(spacing: AppTheme.Spacing.sm) {
                 modelPicker
-                if selectedType != .audio { settingsButton }
+                if hasAnySettings { settingsButton }
 
                 Spacer()
 
@@ -255,6 +302,8 @@ struct GenerationView: View {
     private func frameSlot(
         label: String, asset: MediaAsset?,
         isTargeted: Binding<Bool>,
+        accepting acceptedTypes: Set<ClipType> = [.image],
+        iconName: String = "photo.badge.plus",
         onDrop: @escaping (MediaAsset) -> Void,
         onClear: @escaping () -> Void
     ) -> some View {
@@ -287,7 +336,7 @@ struct GenerationView: View {
                     .buttonStyle(.plain)
                 }
             } else {
-                dropZone(isTargeted: isTargeted) { onDrop($0) }
+                dropZone(isTargeted: isTargeted, accepting: acceptedTypes, iconName: iconName) { onDrop($0) }
             }
         }
     }
@@ -341,10 +390,42 @@ struct GenerationView: View {
         }
     }
 
+    // MARK: - Edit (video-to-video) strip
+
+    private var editVideoStrip: some View {
+        HStack(spacing: AppTheme.Spacing.xs) {
+            frameSlot(
+                label: "Source Video",
+                asset: sourceVideo,
+                isTargeted: $sourceVideoTargeted,
+                accepting: [.video],
+                iconName: "video.badge.plus",
+                onDrop: { sourceVideo = $0 },
+                onClear: { sourceVideo = nil }
+            )
+            if videoModel.supportsReferences {
+                frameSlot(
+                    label: "Reference Image",
+                    asset: imageReferences.first,
+                    isTargeted: $motionReferenceTargeted,
+                    accepting: [.image],
+                    iconName: "photo.badge.plus",
+                    onDrop: { imageReferences = [$0] },
+                    onClear: { imageReferences.removeAll() }
+                )
+            }
+        }
+    }
+
     // MARK: - Shared drop zone
 
-    private func dropZone(isTargeted: Binding<Bool>, onDrop: @escaping (MediaAsset) -> Void) -> some View {
-        Image(systemName: "photo.badge.plus")
+    private func dropZone(
+        isTargeted: Binding<Bool>,
+        accepting acceptedTypes: Set<ClipType> = [.image],
+        iconName: String = "photo.badge.plus",
+        onDrop: @escaping (MediaAsset) -> Void
+    ) -> some View {
+        Image(systemName: iconName)
             .font(.system(size: 12))
             .foregroundStyle(isTargeted.wrappedValue ? Color.accentColor : AppTheme.Text.mutedColor)
             .frame(width: 80, height: 56)
@@ -362,7 +443,7 @@ struct GenerationView: View {
             .overlay {
                 DropTargetOverlay(isTargeted: isTargeted) { urlString in
                     if let asset = editor.mediaAssets.first(where: {
-                        $0.url.absoluteString == urlString && $0.type == .image
+                        $0.url.absoluteString == urlString && acceptedTypes.contains($0.type)
                     }) {
                         onDrop(asset)
                     }
@@ -589,7 +670,7 @@ struct GenerationView: View {
     private func submitGeneration() {
         let genInput = GenerationInput(
             prompt: prompt,
-            model: currentModelName,
+            model: currentModelId,
             duration: selectedType == .video ? selectedDuration : 0,
             aspectRatio: selectedAspectRatio,
             resolution: selectedType == .video
@@ -600,17 +681,47 @@ struct GenerationView: View {
         let trimmedName = assetName.trimmingCharacters(in: .whitespaces)
         let name: String? = trimmedName.isEmpty ? nil : trimmedName
 
+        // Set "Generating..." overlay on the target clip.
+        let replacementClipId = editor.pendingEditReplacementClipId
+        editor.pendingEditReplacementClipId = nil
+        let editorRef = editor
+        let onComplete: (@MainActor (MediaAsset) -> Void)?
+        let onFailure: (@MainActor () -> Void)?
+        if let clipId = replacementClipId {
+            editor.markPendingReplacement(clipId: clipId)
+            onComplete = { [weak editorRef] newAsset in
+                editorRef?.replaceClipMediaRef(clipId: clipId, newAssetId: newAsset.id)
+                editorRef?.clearPendingReplacement(clipId: clipId)
+            }
+            onFailure = { [weak editorRef] in
+                editorRef?.clearPendingReplacement(clipId: clipId)
+            }
+        } else {
+            onComplete = nil
+            onFailure = nil
+        }
+
         switch selectedType {
         case .video:
             let model = videoModel
-            var frameRefs: [MediaAsset] = []
-            if let f = firstFrame { frameRefs.append(f) }
-            if let l = lastFrame { frameRefs.append(l) }
+            var refs: [MediaAsset] = []
+            if model.requiresSourceVideo {
+                if let sv = sourceVideo { refs.append(sv) }
+                if model.supportsReferences, let imgRef = imageReferences.first {
+                    refs.append(imgRef)
+                }
+            } else {
+                if let f = firstFrame { refs.append(f) }
+                if let l = lastFrame { refs.append(l) }
+            }
+            let placeholderDuration: Double = model.requiresSourceVideo
+                ? (sourceVideo?.duration ?? 5)
+                : Double(selectedDuration)
             service.generate(
                 genInput: genInput,
                 assetType: .video,
-                placeholderDuration: Double(selectedDuration),
-                references: frameRefs,
+                placeholderDuration: placeholderDuration,
+                references: refs,
                 name: name,
                 buildInput: { uploaded in
                     let params = VideoGenerationParams(
@@ -618,16 +729,19 @@ struct GenerationView: View {
                         duration: genInput.duration,
                         aspectRatio: genInput.aspectRatio,
                         resolution: genInput.resolution,
-                        startFrameURL: uploaded.first,
-                        endFrameURL: uploaded.count > 1 ? uploaded[1] : nil,
-                        referenceImageURLs: [],
+                        sourceVideoURL: model.requiresSourceVideo ? uploaded.first : nil,
+                        startFrameURL: model.requiresSourceVideo ? nil : uploaded.first,
+                        endFrameURL: model.requiresSourceVideo ? nil : (uploaded.count > 1 ? uploaded[1] : nil),
+                        referenceImageURLs: model.requiresSourceVideo ? Array(uploaded.dropFirst()) : [],
                         generateAudio: true
                     )
                     return (model.resolvedEndpoint(params: params), model.buildInput(params: params))
                 },
-                responseKeyPath: { $0["video"]["url"].stringValue },
+                responseKeyPath: FalResponsePaths.video,
                 fileExtension: "mp4",
-                projectURL: editor.projectURL, editor: editor
+                projectURL: editor.projectURL, editor: editor,
+                onComplete: onComplete,
+                onFailure: onFailure
             )
         case .image:
             let model = imageModel
@@ -644,9 +758,11 @@ struct GenerationView: View {
                     )
                     return (model.resolvedEndpoint(imageURLs: uploaded), input)
                 },
-                responseKeyPath: { $0["images"][0]["url"].stringValue },
+                responseKeyPath: FalResponsePaths.generatedImage,
                 fileExtension: "jpg",
-                projectURL: editor.projectURL, editor: editor
+                projectURL: editor.projectURL, editor: editor,
+                onComplete: onComplete,
+                onFailure: onFailure
             )
         case .audio:
             return
@@ -660,6 +776,52 @@ struct GenerationView: View {
         firstFrame = nil
         lastFrame = nil
         imageReferences.removeAll()
+        sourceVideo = nil
+    }
+
+    /// Clears only first/last frame + image references.
+    private func clearFrameReferencesOnly() {
+        firstFrame = nil
+        lastFrame = nil
+        if !videoModel.supportsReferences {
+            imageReferences.removeAll()
+        }
+    }
+
+    /// Read `editor.pendingEditSource`, set up the edit flow, and clear the signal.
+    private func consumePendingEditSource() {
+        guard let source = editor.pendingEditSource else { return }
+        isConsumingEditSource = true
+        defer {
+            DispatchQueue.main.async { isConsumingEditSource = false }
+        }
+        switch source.type {
+        case .video:
+            selectedType = .video
+            if let idx = VideoModelConfig.allModels.firstIndex(where: { $0.requiresSourceVideo }) {
+                selectedVideoModelIndex = idx
+            }
+            sourceVideo = source
+            firstFrame = nil
+            lastFrame = nil
+            imageReferences.removeAll()
+        case .image:
+            selectedType = .image
+            if let idx = ImageModelConfig.allModels.firstIndex(where: { $0.id == ImageModelConfig.nanoBananaPro.id }) {
+                selectedImageModelIndex = idx
+            }
+            imageReferences = [source]
+            sourceVideo = nil
+            firstFrame = nil
+            lastFrame = nil
+        case .audio:
+            editor.pendingEditSource = nil
+            return
+        }
+        if assetName.isEmpty {
+            assetName = "Edited \(source.name)"
+        }
+        editor.pendingEditSource = nil
     }
 
     private func resetSettings() {
