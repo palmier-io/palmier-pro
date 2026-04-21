@@ -5,5 +5,17 @@
         <link>https://raw.githubusercontent.com/palmier-io/palmier-pro/main/appcast.xml</link>
         <description>Updates for Palmier Pro</description>
         <language>en</language>
+        <item>
+            <title>Version 0.1.2</title>
+            <pubDate>Tue, 21 Apr 2026 15:02:28 -0700</pubDate>
+            <sparkle:version>3</sparkle:version>
+            <sparkle:shortVersionString>0.1.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/palmier-io/palmier-pro/releases/download/v0.1.2/PalmierPro.dmg"
+                length="8846332"
+                type="application/octet-stream"
+                sparkle:edSignature="SgSKI6XsOlixyKMhI4Id5iauE8KPH5fCVYJylRVQlUWIvyp3TPHredlmwW2RKCaBtBFgnWRmudoEIaoqOF3nBQ=="/>
+        </item>
     </channel>
 </rss>
