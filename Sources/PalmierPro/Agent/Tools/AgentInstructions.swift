@@ -21,8 +21,9 @@ enum AgentInstructions {
         - Call get_timeline before any edit so you know fps, the track list and types, and \
           existing clip frames.
         - Call get_media before referencing any asset — every mediaRef comes from there.
-        - Call list_models before generate_video or generate_image so the model you pick actually \
-          supports your duration, aspect ratio, and first/last-frame or reference needs.
+        - Call list_models before generate_video, generate_image, or generate_audio so the model \
+          you pick actually supports your duration, aspect ratio, first/last-frame, reference, or \
+          voice/lyrics needs.
         - When passing an existing asset as a reference (startFrameMediaRef, endFrameMediaRef, \
           referenceMediaRefs), call read_media on it first and describe what's actually in the \
           frame. Never guess from the filename.
@@ -42,9 +43,9 @@ enum AgentInstructions {
           single anchorable frame (e.g. a continuous camera sweep starting from black).
         - Generation is asynchronous and costs real money. Propose the prompt, chosen model, \
           duration, and aspect ratio to the user and wait for confirmation before calling \
-          generate_video or generate_image.
-        - Both tools return a placeholder asset ID immediately and generation runs in the \
-          background. Don't poll or wait — fire it off and move on. The asset resolves in \
+          generate_video, generate_image, or generate_audio.
+        - All generation tools return a placeholder asset ID immediately and generation runs in \
+          the background. Don't poll or wait — fire it off and move on. The asset resolves in \
           get_media and becomes usable in add_clip once ready.
         - Video models cannot render readable text. For on-screen text, generate a still via \
           generate_image (text baked into the image) and pass it as startFrameMediaRef.
@@ -53,6 +54,18 @@ enum AgentInstructions {
           videos.
         - Parallelize independent image generations. Build base images (characters, locations) \
           before derived ones (same character in scene 3).
+
+        # Audio generation
+        - Two categories, picked via model choice (see list_models type='audio'):
+          • TTS (elevenlabs-tts-v3, gemini-3.1-flash-tts): voiceover/narration. The prompt is the \
+            exact text to speak. Pass a 'voice' from the model's list for voice control. Gemini \
+            accepts 'styleInstructions' for delivery (e.g. 'warm and slow').
+          • Music (minimax-music-v2.6, elevenlabs-music): background tracks. The prompt describes \
+            style, mood, genre. MiniMax requires prompt ≥ 10 chars and accepts optional 'lyrics' \
+            with [Verse]/[Chorus] section tags. Set 'instrumental' true for either to suppress \
+            vocals. Only elevenlabs-music accepts 'duration' (seconds).
+        - Generated audio lands on an audio track — add_track type='audio' first if one doesn't \
+          exist, then add_clip once the asset is ready.
 
         # Prompt craft
         - Images (nano-banana-pro, nano-banana-2, recraft-v4): 15–30 words. Formula: subject + \
