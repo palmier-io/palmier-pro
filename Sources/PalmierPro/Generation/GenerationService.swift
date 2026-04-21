@@ -6,7 +6,9 @@ import Foundation
 final class GenerationService {
     static let subscribeTimeoutSeconds: Int = 1800
 
-    private var apiKey: String = FalKeychain.load() ?? ""
+    private static let credentialsFilename = "fal-credentials"
+
+    private var apiKey: String = FileCredentialStore.load(filename: credentialsFilename) ?? ""
 
     var hasApiKey: Bool { !apiKey.isEmpty }
 
@@ -16,12 +18,12 @@ final class GenerationService {
     }
 
     func setApiKey(_ key: String) {
-        FalKeychain.save(key)
+        FileCredentialStore.save(key, filename: Self.credentialsFilename)
         apiKey = key
     }
 
     func removeApiKey() {
-        FalKeychain.delete()
+        FileCredentialStore.delete(filename: Self.credentialsFilename)
         apiKey = ""
     }
 
