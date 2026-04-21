@@ -59,6 +59,8 @@ struct MediaPanelView: View {
                         .font(.system(size: AppTheme.FontSize.xs))
                         .foregroundStyle(AppTheme.Text.mutedColor)
                         .monospacedDigit()
+                        .lineLimit(1)
+                        .fixedSize()
 
                     Slider(
                         value: $thumbnailSize,
