@@ -273,7 +273,10 @@ struct AIEditTab: View {
 
     private func replacementCompletion(resetTrim: Bool = false) -> (@MainActor (MediaAsset) -> Void)? {
         guard shouldReplace, let clipId else { return nil }
+        // if generating more than one image, only replace with the first one
+        let fired = FirstOnlyFlag()
         return { [weak editor] newAsset in
+            guard fired.fire() else { return }
             editor?.replaceClipMediaRef(clipId: clipId, newAssetId: newAsset.id, resetTrim: resetTrim)
             editor?.clearPendingReplacement(clipId: clipId)
         }

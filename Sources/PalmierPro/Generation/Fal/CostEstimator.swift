@@ -24,18 +24,21 @@ enum CostEstimator {
     static func imageCost(
         model: ImageModelConfig,
         resolution: String?,
-        quality: String?
+        quality: String?,
+        numImages: Int = 1
     ) -> Double? {
         guard !model.pricePerImage.isEmpty else { return nil }
+        let count = Double(max(1, numImages))
         // 2D matrix lookup first (e.g. GPT Image 2 varies on both axes).
         if let r = resolution, let q = quality, let price = model.pricePerImage["\(r)|\(q)"] {
-            return price
+            return price * count
         }
         // Quality-only lookup when the model varies on quality but not resolution.
         if model.qualities != nil, let q = quality, let price = model.pricePerImage[q] {
-            return price
+            return price * count
         }
-        return resolvedRate(model.pricePerImage, key: resolution)
+        guard let rate = resolvedRate(model.pricePerImage, key: resolution) else { return nil }
+        return rate * count
     }
 
     // MARK: - Audio
@@ -79,7 +82,12 @@ enum CostEstimator {
                 generateAudio: true
             )
         case .image(let m):
-            return imageCost(model: m, resolution: genInput.resolution, quality: genInput.quality)
+            return imageCost(
+                model: m,
+                resolution: genInput.resolution,
+                quality: genInput.quality,
+                numImages: genInput.numImages ?? 1
+            )
         case .audio(let m):
             let duration = m.durations != nil ? genInput.duration : nil
             return audioCost(model: m, prompt: genInput.prompt, durationSeconds: duration)

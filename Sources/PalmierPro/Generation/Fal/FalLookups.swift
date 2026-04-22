@@ -1,12 +1,22 @@
 import Foundation
 import FalClient
 
-/// Output URL extractors keyed to each fal response shape.
+/// Output URL extractors keyed to each fal response shape. Returns every URL
+/// the response carries — most models yield one, image models with
+/// `num_images > 1` yield several.
 enum FalResponsePaths {
-    static let video: @Sendable (Payload) -> String? = { $0["video"]["url"].stringValue }
-    static let generatedImage: @Sendable (Payload) -> String? = { $0["images"][0]["url"].stringValue }
-    static let upscaledImage: @Sendable (Payload) -> String? = { $0["image"]["url"].stringValue }
-    static let audio: @Sendable (Payload) -> String? = { $0["audio"]["url"].stringValue }
+    static let video: @Sendable (Payload) -> [String] = { wrapSingle($0["video"]["url"].stringValue) }
+    static let generatedImage: @Sendable (Payload) -> [String] = { payload in
+        guard case .array(let items) = payload["images"] else { return [] }
+        return items.compactMap { $0["url"].stringValue }
+    }
+    static let upscaledImage: @Sendable (Payload) -> [String] = { wrapSingle($0["image"]["url"].stringValue) }
+    static let audio: @Sendable (Payload) -> [String] = { wrapSingle($0["audio"]["url"].stringValue) }
+
+    private static func wrapSingle(_ url: String?) -> [String] {
+        guard let url else { return [] }
+        return [url]
+    }
 }
 
 extension FileType {
