@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 
 /// Media library bookkeeping: import, rename, and manifest metadata sync for
 /// the in-memory asset catalog and the persisted `MediaManifest`.
@@ -62,6 +63,51 @@ extension EditorViewModel {
             mediaManifest.entries[idx].sourceHeight = asset.sourceHeight
             mediaManifest.entries[idx].sourceFPS = asset.sourceFPS
             mediaManifest.entries[idx].hasAudio = asset.hasAudio
+        }
+    }
+
+    /// Render the current timeline frame through the preview composition and
+    /// import it as a PNG in the media panel.
+    func captureCurrentFrameToMedia() {
+        guard let currentItem = videoEngine?.player.currentItem else {
+            Log.project.error("captureCurrentFrameToMedia: no preview item")
+            return
+        }
+        let asset = currentItem.asset
+        let videoComposition = currentItem.videoComposition
+        let fps = timeline.fps
+        let frame = currentFrame
+        let maxSize = CGSize(width: timeline.width, height: timeline.height)
+        let time = CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(fps))
+
+        Task.detached {
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
+            generator.videoComposition = videoComposition
+            generator.maximumSize = maxSize
+
+            let cgImage: CGImage
+            do {
+                cgImage = try await generator.image(at: time).image
+            } catch {
+                Log.project.error("captureCurrentFrameToMedia: generate failed \(error.localizedDescription)")
+                return
+            }
+            let rep = NSBitmapImageRep(cgImage: cgImage)
+            guard let data = rep.representation(using: .png, properties: [:]) else {
+                Log.project.error("captureCurrentFrameToMedia: png encode failed")
+                return
+            }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                guard let mediaAsset = self.importPastedImageData(data, fileExtension: "png") else { return }
+                mediaAsset.name = "Frame \(frame)"
+                if let idx = self.mediaManifest.entries.firstIndex(where: { $0.id == mediaAsset.id }) {
+                    self.mediaManifest.entries[idx].name = mediaAsset.name
+                }
+            }
         }
     }
 
