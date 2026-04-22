@@ -311,6 +311,7 @@ struct PreviewContainerView: View {
 
     @State private var isScrubbing = false
     @State private var isScrubHovered = false
+    @State private var scrubWasPlaying = false
 
     private var scrubBar: some View {
         GeometryReader { geo in
@@ -344,6 +345,10 @@ struct PreviewContainerView: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
+                        if !isScrubbing {
+                            scrubWasPlaying = editor.isPlaying
+                            if scrubWasPlaying { editor.pause() }
+                        }
                         isScrubbing = true
                         let fraction = max(0, min(1, value.location.x / geo.size.width))
                         let frame = Int(fraction * CGFloat(durationFrames))
@@ -351,6 +356,10 @@ struct PreviewContainerView: View {
                     }
                     .onEnded { _ in
                         isScrubbing = false
+                        if scrubWasPlaying {
+                            scrubWasPlaying = false
+                            editor.play()
+                        }
                     }
             )
         }
