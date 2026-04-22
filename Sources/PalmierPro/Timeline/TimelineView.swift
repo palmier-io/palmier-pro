@@ -47,6 +47,10 @@ final class TimelineView: NSView {
 
     private var isUpdatingContentSize = false
 
+    // nil until the first layout; compared against `editor.zoomScale` to detect
+    // zoom changes that need the playhead-anchor adjustment.
+    private var lastAppliedZoomScale: Double?
+
     func updateContentSize() {
         guard !isUpdatingContentSize else { return }
         isUpdatingContentSize = true
@@ -89,6 +93,33 @@ final class TimelineView: NSView {
         if frame.size != newSize {
             setFrameSize(newSize)
         }
+
+        if let previousZoom = lastAppliedZoomScale, previousZoom != editor.zoomScale {
+            applyPlayheadAnchoredScroll(previousZoom: previousZoom, scrollView: scrollView)
+        }
+        lastAppliedZoomScale = editor.zoomScale
+    }
+
+    func markZoomApplied() {
+        lastAppliedZoomScale = editor.zoomScale
+    }
+
+    private func applyPlayheadAnchoredScroll(previousZoom: Double, scrollView: NSScrollView) {
+        let origin = scrollView.contentView.bounds.origin
+        let visibleWidth = scrollView.contentView.bounds.size.width
+        guard visibleWidth > 0 else { return }
+
+        let playheadPrevX = Double(editor.currentFrame) * previousZoom
+        let anchorViewportX: Double
+        if playheadPrevX >= origin.x, playheadPrevX <= origin.x + visibleWidth {
+            anchorViewportX = playheadPrevX - origin.x
+        } else {
+            anchorViewportX = visibleWidth * 0.5
+        }
+        let playheadNewX = Double(editor.currentFrame) * editor.zoomScale
+        let newScrollX = max(0, playheadNewX - anchorViewportX)
+        guard newScrollX != origin.x else { return }
+        scrollView.contentView.setBoundsOrigin(NSPoint(x: newScrollX, y: origin.y))
     }
 
     // MARK: - Drawing
