@@ -12,6 +12,7 @@ final class TimelineInputController {
     private(set) var snapIndicatorX: Double?
     private(set) var razorPreviewFrame: Int?
     private var snapState = SnapEngine.SnapState()
+    private var scrubWasPlaying = false
 
     init(editor: EditorViewModel, view: TimelineView) {
         self.editor = editor
@@ -32,6 +33,9 @@ final class TimelineInputController {
         // Ruler area — scrub playhead
         if point.y >= scrollOffsetY && point.y < scrollOffsetY + geometry.rulerHeight {
             dragState = .scrubPlayhead
+            // Pause during scrub so tolerant/coalesced seeks can't race
+            scrubWasPlaying = editor.isPlaying
+            if scrubWasPlaying { editor.pause() }
             editor.isScrubbing = true
             scrubToFrame(geometry.frameAt(x: point.x))
             return
@@ -359,6 +363,10 @@ final class TimelineInputController {
         case .scrubPlayhead:
             editor.seekToFrame(editor.currentFrame)
             editor.isScrubbing = false
+            if scrubWasPlaying {
+                scrubWasPlaying = false
+                editor.play()
+            }
 
         case .idle:
             break
