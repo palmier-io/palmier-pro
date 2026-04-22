@@ -312,15 +312,22 @@ extension EditorViewModel {
 
     /// Replace the source asset a clip points at, preserving states. 
     /// Registered as a single undo step.
-    func replaceClipMediaRef(clipId: String, newAssetId: String) {
+    func replaceClipMediaRef(clipId: String, newAssetId: String, resetTrim: Bool = false) {
         guard let loc = findClip(id: clipId) else { return }
         let oldMediaRef = timeline.tracks[loc.trackIndex].clips[loc.clipIndex].mediaRef
         guard oldMediaRef != newAssetId else { return }
 
         let targetIds = linkedClipIdsSharingMedia(anchor: clipId)
 
+        var oldTrims: [String: (start: Int, end: Int)] = [:]
         for id in targetIds {
             if let l = findClip(id: id) {
+                if resetTrim {
+                    let c = timeline.tracks[l.trackIndex].clips[l.clipIndex]
+                    oldTrims[id] = (c.trimStartFrame, c.trimEndFrame)
+                    timeline.tracks[l.trackIndex].clips[l.clipIndex].trimStartFrame = 0
+                    timeline.tracks[l.trackIndex].clips[l.clipIndex].trimEndFrame = 0
+                }
                 timeline.tracks[l.trackIndex].clips[l.clipIndex].mediaRef = newAssetId
             }
         }
@@ -329,6 +336,10 @@ extension EditorViewModel {
             for id in targetIds {
                 if let l = vm.findClip(id: id) {
                     vm.timeline.tracks[l.trackIndex].clips[l.clipIndex].mediaRef = oldMediaRef
+                    if let old = oldTrims[id] {
+                        vm.timeline.tracks[l.trackIndex].clips[l.clipIndex].trimStartFrame = old.start
+                        vm.timeline.tracks[l.trackIndex].clips[l.clipIndex].trimEndFrame = old.end
+                    }
                 }
             }
             vm.notifyTimelineChanged()
