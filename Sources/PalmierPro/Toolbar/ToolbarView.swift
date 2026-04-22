@@ -30,6 +30,12 @@ struct ToolbarView: View {
                 bracketButton("]", action: editor.trimEndToPlayhead)
             }
 
+            Divider()
+                .frame(height: 20)
+
+            // Capture current frame to media panel
+            toolbarButton("camera", action: editor.captureCurrentFrameToMedia)
+
             Spacer()
 
             // Zoom
