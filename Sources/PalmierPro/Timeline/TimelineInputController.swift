@@ -357,6 +357,7 @@ final class TimelineInputController {
             break
 
         case .scrubPlayhead:
+            editor.seekToFrame(editor.currentFrame)
             editor.isScrubbing = false
 
         case .idle:
@@ -458,6 +459,6 @@ final class TimelineInputController {
     // MARK: - Helpers
 
     private func scrubToFrame(_ frame: Int) {
-        editor.seekToFrame(frame)
+        editor.seekToFrame(frame, tolerant: true)
     }
 }

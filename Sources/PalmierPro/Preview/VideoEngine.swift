@@ -10,6 +10,8 @@ final class VideoEngine {
     private var trackMappings: [TrackMapping] = []
     private var clipNaturalSizes: [String: CGSize] = [:]
     private var compositionDuration: CMTime = .zero
+    private var isSeeking = false
+    private var pendingSeek: (time: CMTime, tolerance: CMTime)?
 
     weak var editor: EditorViewModel?
 
@@ -44,10 +46,40 @@ final class VideoEngine {
         if editor?.isPlaying == true { pause() } else { play() }
     }
 
-    func seek(to frame: Int) {
+    func seek(to frame: Int, tolerant: Bool = false) {
         guard let editor else { return }
         let time = CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(editor.timeline.fps))
-        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        let tolerance: CMTime
+        if tolerant {
+            // Each concurrent decoder contends for the same HW block, so give each one
+            // a bigger window to land on a cheap I-frame.
+            let videoTracks = editor.timeline.tracks.filter { $0.type == .video && !$0.clips.isEmpty }.count
+            let seconds = 0.5 * Double(max(1, videoTracks))
+            tolerance = CMTime(seconds: seconds, preferredTimescale: 600)
+        } else {
+            tolerance = .zero
+        }
+        scheduleSeek(to: time, tolerance: tolerance)
+    }
+
+    /// Coalesces seeks: if one is in flight, stash the latest target and fire it on completion.
+    /// Prevents drag ticks from piling up a queue AVPlayer can't drain in real time.
+    private func scheduleSeek(to time: CMTime, tolerance: CMTime) {
+        if isSeeking {
+            pendingSeek = (time, tolerance)
+            return
+        }
+        isSeeking = true
+        player.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.isSeeking = false
+                if let next = self.pendingSeek {
+                    self.pendingSeek = nil
+                    self.scheduleSeek(to: next.time, tolerance: next.tolerance)
+                }
+            }
+        }
     }
 
     // MARK: - Preview modes
