@@ -9,6 +9,8 @@ struct ImageModelConfig: Identifiable, Sendable {
     let aspectRatios: [String]
     let qualities: [String]?
     let supportsImageReference: Bool
+    /// USD per image, keyed by the dimension the model varies on quality/resolution
+    let pricePerImage: [String: Double]
     let resolveEndpoint: @Sendable (_ base: String, _ imageURLs: [String]) -> String
     let buildFalInput: @Sendable (_ prompt: String, _ aspectRatio: String, _ resolution: String?, _ quality: String?, _ imageURLs: [String]) -> Payload
 
@@ -17,6 +19,7 @@ struct ImageModelConfig: Identifiable, Sendable {
         resolutions: [String]? = nil, aspectRatios: [String],
         qualities: [String]? = nil,
         supportsImageReference: Bool,
+        pricePerImage: [String: Double] = [:],
         resolveEndpoint: @escaping @Sendable (String, [String]) -> String,
         buildFalInput: @escaping @Sendable (String, String, String?, String?, [String]) -> Payload
     ) {
@@ -24,6 +27,7 @@ struct ImageModelConfig: Identifiable, Sendable {
         self.resolutions = resolutions; self.aspectRatios = aspectRatios
         self.qualities = qualities
         self.supportsImageReference = supportsImageReference
+        self.pricePerImage = pricePerImage
         self.resolveEndpoint = resolveEndpoint; self.buildFalInput = buildFalInput
     }
 
@@ -58,6 +62,7 @@ extension ImageModelConfig {
         baseEndpoint: "fal-ai/nano-banana-pro",
         resolutions: ["2K", "4K"], aspectRatios: ["16:9", "9:16"],
         supportsImageReference: true,
+        pricePerImage: ["2K": 0.15, "4K": 0.30],
         resolveEndpoint: editEndpoint, buildFalInput: standardInput
     )
 
@@ -66,6 +71,7 @@ extension ImageModelConfig {
         baseEndpoint: "fal-ai/nano-banana-2",
         resolutions: ["2K", "4K"], aspectRatios: ["16:9", "9:16"],
         supportsImageReference: true,
+        pricePerImage: ["2K": 0.12, "4K": 0.16],
         resolveEndpoint: editEndpoint, buildFalInput: standardInput
     )
 
@@ -74,6 +80,7 @@ extension ImageModelConfig {
         baseEndpoint: "xai/grok-imagine-image",
         resolutions: nil, aspectRatios: ["16:9", "9:16"],
         supportsImageReference: true,
+        pricePerImage: ["": 0.02],
         resolveEndpoint: editEndpoint,
         buildFalInput: { prompt, aspectRatio, _, _, imageURLs in
             var d: [String: Payload] = ["prompt": .string(prompt)]
@@ -91,6 +98,7 @@ extension ImageModelConfig {
         baseEndpoint: "fal-ai/recraft/v4/pro/text-to-image",
         resolutions: nil, aspectRatios: ["landscape_16_9", "portrait_16_9"],
         supportsImageReference: false,
+        pricePerImage: ["": 0.25],
         resolveEndpoint: { base, _ in base },
         buildFalInput: { prompt, aspectRatio, _, _, _ in
             var d: [String: Payload] = ["prompt": .string(prompt)]
@@ -102,27 +110,57 @@ extension ImageModelConfig {
     static let gptImage2 = ImageModelConfig(
         id: "gpt-image-2", displayName: "GPT Image 2",
         baseEndpoint: "openai/gpt-image-2",
-        resolutions: nil, aspectRatios: ["16:9", "9:16", "1:1"],
+        resolutions: ["1024x768", "1024x1024", "1024x1536", "1920x1080", "2560x1440", "3840x2160"],
+        aspectRatios: [],
         qualities: ["low", "medium", "high"],
         supportsImageReference: true,
+        pricePerImage: [
+            "1024x768|low":   0.01, "1024x768|medium":   0.04, "1024x768|high":   0.15,
+            "1024x1024|low":  0.01, "1024x1024|medium":  0.06, "1024x1024|high":  0.22,
+            "1024x1536|low":  0.01, "1024x1536|medium":  0.05, "1024x1536|high":  0.17,
+            "1920x1080|low":  0.01, "1920x1080|medium":  0.04, "1920x1080|high":  0.16,
+            "2560x1440|low":  0.01, "2560x1440|medium":  0.06, "2560x1440|high":  0.23,
+            "3840x2160|low":  0.02, "3840x2160|medium":  0.11, "3840x2160|high":  0.41,
+        ],
         resolveEndpoint: editEndpoint,
-        buildFalInput: { prompt, aspectRatio, _, quality, imageURLs in
+        buildFalInput: { prompt, _, resolution, quality, imageURLs in
             var d: [String: Payload] = [
                 "prompt": .string(prompt),
                 "output_format": .string("jpeg"),
             ]
-            let imageSize: String? = switch aspectRatio {
-                case "16:9": "landscape_16_9"
-                case "9:16": "portrait_16_9"
-                case "1:1":  "square_hd"
-                default:     nil
+            if let resolution, let (w, h) = Self.parseWxH(resolution) {
+                d["image_size"] = .dict(["width": .int(w), "height": .int(h)])
             }
-            if let imageSize { d["image_size"] = .string(imageSize) }
             if let quality, !quality.isEmpty { d["quality"] = .string(quality) }
             if !imageURLs.isEmpty { d["image_urls"] = .array(imageURLs.map { .string($0) }) }
             return .dict(d)
         }
     )
+
+    /// Parse a "WxH" resolution label (e.g. "1920x1080") into pixel dims.
+    static func parseWxH(_ s: String) -> (Int, Int)? {
+        let parts = s.lowercased().split(separator: "x")
+        guard parts.count == 2, let w = Int(parts[0]), let h = Int(parts[1]) else { return nil }
+        return (w, h)
+    }
+
+    /// Human-readable label for a resolution ID.
+    static func resolutionDisplayLabel(_ id: String) -> String {
+        guard let (w, h) = parseWxH(id) else { return id }
+        if w == h { return "Square" }
+        let orientation = w > h ? "Landscape" : "Portrait"
+        // Name by the larger edge when it's a recognizable video tier.
+        let longEdge = max(w, h)
+        let tier: String
+        switch longEdge {
+        case 3840:        tier = "4K"
+        case 2560:        tier = "2K"
+        case 1920:        tier = "1080p"
+        case 1024, 1536:  tier = ""
+        default:          tier = "\(longEdge)p"
+        }
+        return tier.isEmpty ? orientation : "\(orientation) \(tier)"
+    }
 
     static let allModels: [ImageModelConfig] = [
         nanoBananaPro, nanoBanana2, gptImage2, grokImagine, recraftV4,
