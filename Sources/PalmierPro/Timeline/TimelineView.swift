@@ -196,18 +196,6 @@ final class TimelineView: NSView {
             return Set(drag.all.map(\.clipId))
         }()
 
-        let ripplePreview: (ids: Set<String>, delta: Int) = {
-            guard let (drag, isLeft) = trimDrag, drag.deltaFrames != 0,
-                  editor.timeline.tracks.indices.contains(drag.trackIndex) else { return ([], 0) }
-            let oldEnd = drag.originalStartFrame + drag.originalDuration
-            let newStart = isLeft ? drag.originalStartFrame + drag.deltaFrames : drag.originalStartFrame
-            let newDuration = isLeft ? drag.originalDuration - drag.deltaFrames : drag.originalDuration + drag.deltaFrames
-            let delta = newStart + newDuration - oldEnd
-            guard delta != 0 else { return ([], 0) }
-            let ids = editor.timeline.tracks[drag.trackIndex].contiguousClipIds(fromEnd: oldEnd, excludeId: drag.clipId)
-            return (ids, delta)
-        }()
-
         /// Linked partners that should mirror the trim preview live.
         let trimPartnerIds: Set<String> = {
             guard let (drag, _) = trimDrag, drag.propagateToLinked else { return [] }
@@ -269,20 +257,6 @@ final class TimelineView: NSView {
                     let previewRect = geo.clipRect(for: previewClip, trackIndex: ti)
                     if previewRect.intersects(dirtyRect) {
                         ClipRenderer.draw(previewClip, type: clip.mediaType, in: previewRect,
-                                          isSelected: isSelected, context: ctx,
-                                          cache: editor.mediaVisualCache,
-                                          displayName: editor.mediaResolver.displayName(for: clip.mediaRef))
-                    }
-                    continue
-                }
-
-                // Ripple preview: draw adjacent clips shifted
-                if ripplePreview.ids.contains(clip.id) {
-                    var shifted = clip
-                    shifted.startFrame += ripplePreview.delta
-                    let rect = geo.clipRect(for: shifted, trackIndex: ti)
-                    if rect.intersects(dirtyRect) {
-                        ClipRenderer.draw(shifted, type: clip.mediaType, in: rect,
                                           isSelected: isSelected, context: ctx,
                                           cache: editor.mediaVisualCache,
                                           displayName: editor.mediaResolver.displayName(for: clip.mediaRef))

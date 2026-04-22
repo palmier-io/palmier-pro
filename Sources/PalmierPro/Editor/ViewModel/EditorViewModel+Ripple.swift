@@ -6,21 +6,14 @@ extension EditorViewModel {
 
     // MARK: - Public API
 
-    /// Ripple-trim one or more clips in a single undo group. Adjacent clips on
-    /// each edit's track shift to stay contiguous. A multi-edit call (linked
-    /// partners trimmed together) skips cross-track sync-lock push so the
-    /// caller's own per-partner trim doesn't double-shift other tracks.
+    /// Trim one or more clips in a single undo group. Overwrite-style: each clip
+    /// resizes in place — no adjacent-clip shift on the same track, no sync-lock
+    /// push to other tracks.
     func trimClips(_ edits: [(clipId: String, trimStartFrame: Int, trimEndFrame: Int)]) {
         guard !edits.isEmpty else { return }
-        let applySyncLock = edits.count == 1
         undoManager?.beginUndoGrouping()
         for e in edits {
-            trimClipInternal(
-                clipId: e.clipId,
-                trimStartFrame: e.trimStartFrame,
-                trimEndFrame: e.trimEndFrame,
-                applySyncLock: applySyncLock
-            )
+            trimClipInternal(clipId: e.clipId, trimStartFrame: e.trimStartFrame, trimEndFrame: e.trimEndFrame)
         }
         undoManager?.endUndoGrouping()
         undoManager?.setActionName(edits.count == 1 ? "Trim Clip" : "Trim Clips")
@@ -87,16 +80,13 @@ extension EditorViewModel {
 
     // MARK: - Internal
 
-    /// `applySyncLock=false` on the undo path: per-clip undos in `applySyncLockShift` already
-    /// reverse the forward push; re-applying here would double-shift clips in the delta zone.
-    fileprivate func trimClipInternal(clipId: String, trimStartFrame: Int, trimEndFrame: Int, applySyncLock: Bool) {
+    fileprivate func trimClipInternal(clipId: String, trimStartFrame: Int, trimEndFrame: Int) {
         guard let loc = findClip(id: clipId) else { return }
         let ti = loc.trackIndex
         let clip = timeline.tracks[ti].clips[loc.clipIndex]
         let prevStart = clip.trimStartFrame
         let prevEnd = clip.trimEndFrame
         let prevDuration = clip.durationFrames
-        let oldEnd = clip.startFrame + clip.durationFrames
         // The incoming trim values are source frames; translate their deltas
         // into timeline frames before applying to `startFrame` / `durationFrames`.
         let deltaStartSource = trimStartFrame - prevStart
@@ -105,13 +95,6 @@ extension EditorViewModel {
         let deltaEndTimeline = Int((Double(deltaEndSource) / clip.speed).rounded())
         let newDuration = prevDuration - deltaStartTimeline - deltaEndTimeline
         let newStartFrame = clip.startFrame + deltaStartTimeline
-        let rippleDelta = (newStartFrame + newDuration) - oldEnd
-
-        if applySyncLock && rippleDelta != 0,
-           let reason = firstSyncLockConflict(excludingTrack: ti, insertFrame: oldEnd, pushAmount: rippleDelta) {
-            refuseRipple(reason: reason)
-            return
-        }
 
         undoManager?.beginUndoGrouping()
 
@@ -120,19 +103,10 @@ extension EditorViewModel {
         timeline.tracks[ti].clips[loc.clipIndex].startFrame = newStartFrame
         timeline.tracks[ti].clips[loc.clipIndex].durationFrames = newDuration
 
-        if rippleDelta != 0 {
-            let chainIds = timeline.tracks[ti].contiguousClipIds(fromEnd: oldEnd, excludeId: clipId)
-            for ci in timeline.tracks[ti].clips.indices where chainIds.contains(timeline.tracks[ti].clips[ci].id) {
-                timeline.tracks[ti].clips[ci].startFrame += rippleDelta
-            }
-            if applySyncLock {
-                applySyncLockShift(excludingTrack: ti, insertFrame: oldEnd, pushAmount: rippleDelta)
-            }
-        }
         sortClips(trackIndex: ti)
 
         undoManager?.registerUndo(withTarget: self) { vm in
-            vm.trimClipInternal(clipId: clipId, trimStartFrame: prevStart, trimEndFrame: prevEnd, applySyncLock: !applySyncLock)
+            vm.trimClipInternal(clipId: clipId, trimStartFrame: prevStart, trimEndFrame: prevEnd)
         }
         undoManager?.endUndoGrouping()
         undoManager?.setActionName("Trim Clip")
@@ -154,19 +128,6 @@ extension EditorViewModel {
         }
     }
 
-    /// Push clips on every sync-locked track other than `excludingTrack`. Per-clip undos
-    /// are required — the re-entrant trim undo can't recompute the inverse correctly.
-    fileprivate func applySyncLockShift(excludingTrack: Int, insertFrame: Int, pushAmount: Int) {
-        for ti in timeline.tracks.indices where ti != excludingTrack && timeline.tracks[ti].syncLocked {
-            RippleEngine.computeRipplePush(
-                clips: timeline.tracks[ti].clips,
-                insertFrame: insertFrame,
-                pushAmount: pushAmount
-            ).forEach(applyShiftWithUndo)
-            sortClips(trackIndex: ti)
-        }
-    }
-
     // MARK: - Validation
 
     /// Dry-run: returns a blocking reason (collision or negative startFrame) or nil if safe.
@@ -185,19 +146,6 @@ extension EditorViewModel {
         intervals.sort { $0.start < $1.start }
         for i in 1..<intervals.count where intervals[i].start < intervals[i-1].end {
             return "Sync-locked track \"\(track.label)\" doesn't have room to ripple."
-        }
-        return nil
-    }
-
-    /// Dry-run of `applySyncLockShift`; returns the first blocking reason or nil.
-    fileprivate func firstSyncLockConflict(excludingTrack: Int, insertFrame: Int, pushAmount: Int) -> String? {
-        for ti in timeline.tracks.indices where ti != excludingTrack && timeline.tracks[ti].syncLocked {
-            let shifts = RippleEngine.computeRipplePush(
-                clips: timeline.tracks[ti].clips,
-                insertFrame: insertFrame,
-                pushAmount: pushAmount
-            )
-            if let reason = validateShifts(trackIndex: ti, shifts: shifts) { return reason }
         }
         return nil
     }
