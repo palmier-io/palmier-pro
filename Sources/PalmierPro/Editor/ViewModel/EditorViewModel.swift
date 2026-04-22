@@ -117,9 +117,9 @@ final class EditorViewModel {
     func play() { isPlaying = true }
     func pause() { isPlaying = false }
 
-    func seekToFrame(_ frame: Int) {
+    func seekToFrame(_ frame: Int, tolerant: Bool = false) {
         currentFrame = max(0, frame)
-        videoEngine?.seek(to: currentFrame)
+        videoEngine?.seek(to: currentFrame, tolerant: tolerant)
     }
 
     // MARK: - Source playback (for preview tabs)
