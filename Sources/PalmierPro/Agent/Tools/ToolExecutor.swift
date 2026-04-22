@@ -85,21 +85,21 @@ final class ToolExecutor {
         guard fileSize <= UInt64(maxBytes) else {
             throw ToolError("Image file (\(fileSize) bytes) exceeds maxImageBytes (\(maxBytes))")
         }
-        guard let data = try? Data(contentsOf: url, options: [.mappedIfSafe]) else {
-            throw ToolError("Failed to read image file")
+        guard let encoded = ImageEncoder.encode(url: url) else {
+            throw ToolError("Failed to read or decode image file")
         }
 
-        let mime = Self.mimeTypeForImagePath(url.path)
         var meta = Self.baseMeta(for: asset)
-        meta["mimeType"] = mime
+        meta["mimeType"] = encoded.mime
         meta["byteSize"] = fileSize
+        meta["encodedByteSize"] = encoded.data.count
         if let props = Self.imagePropertiesSummary(at: url) {
             meta["imageProperties"] = props
         }
 
         guard let metaJSON = Self.jsonString(meta) else { throw ToolError("Failed to encode metadata") }
         return ToolResult(
-            content: [.image(base64: data.base64EncodedString(), mediaType: mime), .text(metaJSON)],
+            content: [.image(base64: encoded.data.base64EncodedString(), mediaType: encoded.mime), .text(metaJSON)],
             isError: false
         )
     }
@@ -124,7 +124,7 @@ final class ToolExecutor {
             let t = asset.duration * (Double(i) + 0.5) / Double(frameCount)
             let cmTime = CMTime(seconds: t, preferredTimescale: 600)
             guard let cgImage = try? await generator.image(at: cmTime).image else { continue }
-            guard let jpeg = Self.jpegData(from: cgImage, quality: Self.readVideoJPEGQuality) else { continue }
+            guard let jpeg = ImageEncoder.encodeJPEG(cgImage, quality: Self.readVideoJPEGQuality) else { continue }
             frames.append((timestamp: t, data: jpeg))
         }
         guard !frames.isEmpty else { throw ToolError("Failed to extract frames from \(asset.name)") }
@@ -206,17 +206,6 @@ final class ToolExecutor {
               let obj = try? JSONSerialization.jsonObject(with: data)
         else { return nil }
         return obj
-    }
-
-    private static func jpegData(from cgImage: CGImage, quality: CGFloat) -> Data? {
-        let data = NSMutableData()
-        guard let dest = CGImageDestinationCreateWithData(
-            data as CFMutableData, "public.jpeg" as CFString, 1, nil
-        ) else { return nil }
-        let options: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: quality]
-        CGImageDestinationAddImage(dest, cgImage, options as CFDictionary)
-        guard CGImageDestinationFinalize(dest) else { return nil }
-        return data as Data
     }
 
     private func addTrack(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
@@ -653,18 +642,6 @@ final class ToolExecutor {
             throw ToolError("\(label) not found: \(id)")
         }
         return asset
-    }
-
-    private static func mimeTypeForImagePath(_ path: String) -> String {
-        switch (path as NSString).pathExtension.lowercased() {
-        case "png": "image/png"
-        case "jpg", "jpeg": "image/jpeg"
-        case "gif": "image/gif"
-        case "tiff", "tif": "image/tiff"
-        case "heic", "heif": "image/heic"
-        case "webp": "image/webp"
-        default: "application/octet-stream"
-        }
     }
 
     private static func generationStatusString(_ status: MediaAsset.GenerationStatus) -> String {

@@ -230,7 +230,7 @@ struct AgentInputBox<LeadingTools: View>: View {
     }
 
     private func pickMention(_ asset: MediaAsset) {
-        let displayName = Self.disambiguatedName(for: asset, existing: mentions)
+        let displayName = AgentService.disambiguatedMentionName(for: asset, existing: mentions)
         if let lastAt = draft.lastIndex(of: "@") {
             let prefix = draft[..<lastAt]
             draft = String(prefix) + "@\(displayName) "
@@ -246,15 +246,6 @@ struct AgentInputBox<LeadingTools: View>: View {
         highlightedMentionIndex = 0
     }
 
-    private static func disambiguatedName(for asset: MediaAsset, existing: [AgentMention]) -> String {
-        let base = asset.mentionDisplayName
-        if !existing.contains(where: { $0.displayName == base && $0.mediaRef != asset.id }) {
-            return base
-        }
-        let short = String(asset.id.prefix(6))
-        return "\(base)#\(short)"
-    }
-
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
         var handled = false
         for provider in providers where provider.canLoadObject(ofClass: URL.self) {
@@ -263,7 +254,7 @@ struct AgentInputBox<LeadingTools: View>: View {
                 guard let url else { return }
                 Task { @MainActor in
                     if let asset = editor.addMediaAsset(from: url) {
-                        insertChipForImport(asset)
+                        editor.agentService.attachMention(for: asset)
                     }
                 }
             }
@@ -274,24 +265,18 @@ struct AgentInputBox<LeadingTools: View>: View {
     private func handlePaste(_: [NSItemProvider]) {
         let pb = NSPasteboard.general
         if let urls = pb.readObjects(forClasses: [NSURL.self]) as? [URL], !urls.isEmpty {
-            urls.compactMap { editor.addMediaAsset(from: $0) }.forEach(insertChipForImport)
+            urls.compactMap { editor.addMediaAsset(from: $0) }
+                .forEach { editor.agentService.attachMention(for: $0) }
             return
         }
         for (type, ext) in [(NSPasteboard.PasteboardType.png, "png"), (.tiff, "tiff")] {
             if let data = pb.data(forType: type),
                let asset = editor.importPastedImageData(data, fileExtension: ext) {
-                insertChipForImport(asset)
+                editor.agentService.attachMention(for: asset)
                 return
             }
         }
         // onPasteCommand swallows the default paste, so echo text manually.
         if let text = pb.string(forType: .string) { draft += text }
-    }
-
-    private func insertChipForImport(_ asset: MediaAsset) {
-        let displayName = Self.disambiguatedName(for: asset, existing: mentions)
-        let needsSpace = !draft.isEmpty && !draft.hasSuffix(" ") && !draft.hasSuffix("\n")
-        draft += (needsSpace ? " " : "") + "@\(displayName) "
-        mentions.append(AgentMention(displayName: displayName, mediaRef: asset.id, type: asset.type))
     }
 }

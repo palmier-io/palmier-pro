@@ -3,15 +3,12 @@ import SwiftUI
 struct AgentPanelView: View {
     @Environment(EditorViewModel.self) var editor
 
-    @State private var draft = ""
-    @State private var mentions: [AgentMention] = []
-
     private var service: AgentService { editor.agentService }
 
     private var canSend: Bool {
         !service.isStreaming &&
         service.hasApiKey &&
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !service.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -206,9 +203,10 @@ struct AgentPanelView: View {
     }
 
     private var footer: some View {
-        AgentInputBox(
-            draft: $draft,
-            mentions: $mentions,
+        @Bindable var service = editor.agentService
+        return AgentInputBox(
+            draft: $service.draft,
+            mentions: $service.mentions,
             isSending: service.isStreaming,
             canSend: canSend,
             onSend: submit,
@@ -224,9 +222,9 @@ struct AgentPanelView: View {
 
     private func submit() {
         guard canSend else { return }
-        service.send(text: draft, mentions: mentions)
-        draft = ""
-        mentions.removeAll()
+        service.send(text: service.draft, mentions: service.mentions)
+        service.draft = ""
+        service.mentions.removeAll()
     }
 }
 

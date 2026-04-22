@@ -41,6 +41,26 @@ final class AgentService {
     var streamError: String?
     var onSessionsChanged: (@MainActor () -> Void)?
 
+    var draft: String = ""
+    var mentions: [AgentMention] = []
+
+    func attachMention(for asset: MediaAsset) {
+        let displayName = Self.disambiguatedMentionName(for: asset, existing: mentions)
+        guard !mentions.contains(where: { $0.mediaRef == asset.id }) else { return }
+        let needsSpace = !draft.isEmpty && !draft.hasSuffix(" ") && !draft.hasSuffix("\n")
+        draft += (needsSpace ? " " : "") + "@\(displayName) "
+        mentions.append(AgentMention(displayName: displayName, mediaRef: asset.id, type: asset.type))
+    }
+
+    static func disambiguatedMentionName(for asset: MediaAsset, existing: [AgentMention]) -> String {
+        let base = asset.mentionDisplayName
+        if !existing.contains(where: { $0.displayName == base && $0.mediaRef != asset.id }) {
+            return base
+        }
+        let short = String(asset.id.prefix(6))
+        return "\(base)#\(short)"
+    }
+
     weak var editor: EditorViewModel? {
         didSet { toolExecutor = editor.map { ToolExecutor(editor: $0) } }
     }
@@ -256,11 +276,32 @@ final class AgentService {
         messages.compactMap { msg in
             var content = msg.blocks.compactMap(Self.contentBlockJSON)
             if msg.role == .user, !msg.mentions.isEmpty {
-                content.insert(["type": "text", "text": Self.mentionHint(msg.mentions)], at: 0)
+                let (imageBlocks, inlinedIds) = inlineImageBlocks(for: msg.mentions)
+                let hint = Self.mentionHint(msg.mentions, inlinedImageIds: inlinedIds)
+                content.insert(contentsOf: imageBlocks, at: 0)
+                content.insert(["type": "text", "text": hint], at: 0)
             }
             guard !content.isEmpty else { return nil }
             return AnthropicMessage(role: msg.role == .user ? .user : .assistant, content: content)
         }
+    }
+
+    private func inlineImageBlocks(for mentions: [AgentMention]) -> (blocks: [[String: Any]], inlinedIds: Set<String>) {
+        guard let editor else { return ([], []) }
+        var blocks: [[String: Any]] = []
+        var inlined: Set<String> = []
+        for mention in mentions where mention.type == .image {
+            guard
+                let asset = editor.mediaAssets.first(where: { $0.id == mention.mediaRef }),
+                let encoded = ImageEncoder.encode(url: asset.url)
+            else { continue }
+            blocks.append([
+                "type": "image",
+                "source": ["type": "base64", "media_type": encoded.mime, "data": encoded.data.base64EncodedString()],
+            ])
+            inlined.insert(mention.mediaRef)
+        }
+        return (blocks, inlined)
     }
 
     private static func contentBlockJSON(_ block: AgentContentBlock) -> [String: Any]? {
@@ -288,13 +329,20 @@ final class AgentService {
         }
     }
 
-    private static func mentionHint(_ mentions: [AgentMention]) -> String {
-        let entries: [[String: Any]] = mentions.map {
-            ["mention": "@\($0.displayName)", "mediaRef": $0.mediaRef, "type": $0.type.rawValue]
+    private static func mentionHint(_ mentions: [AgentMention], inlinedImageIds: Set<String> = []) -> String {
+        let entries: [[String: Any]] = mentions.map { m in
+            var e: [String: Any] = [
+                "mention": "@\(m.displayName)", "mediaRef": m.mediaRef, "type": m.type.rawValue,
+            ]
+            if inlinedImageIds.contains(m.mediaRef) { e["inlined"] = true }
+            return e
         }
         let data = (try? JSONSerialization.data(withJSONObject: entries)) ?? Data()
         let json = String(data: data, encoding: .utf8) ?? "[]"
-        return "Referenced assets in this message: \(json)"
+        let suffix = inlinedImageIds.isEmpty
+            ? ""
+            : " Assets marked \"inlined\": true are attached as image blocks in this message — do not call read_media for them."
+        return "Referenced assets in this message: \(json).\(suffix)"
     }
 
     private static func title(from message: AgentMessage) -> String {

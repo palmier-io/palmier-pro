@@ -5,6 +5,7 @@ struct AssetThumbnailView: View {
     @Environment(EditorViewModel.self) var editor
     @FocusState private var isRenaming: Bool
     @State private var renameDraft = ""
+    @State private var isHovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
@@ -19,6 +20,8 @@ struct AssetThumbnailView: View {
 
                 thumbnailBadges
             }
+            .overlay(alignment: .topTrailing) { hoverActions }
+            .overlay(alignment: .bottomTrailing) { durationOverlay }
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
                     .strokeBorder(
@@ -26,6 +29,9 @@ struct AssetThumbnailView: View {
                         lineWidth: isSelected ? 2 : 0
                     )
             )
+            .onHover { hovering in
+                withAnimation(.easeOut(duration: 0.12)) { isHovering = hovering }
+            }
 
             // Timeline indicator
             if isOnTimeline {
@@ -131,11 +137,30 @@ struct AssetThumbnailView: View {
             sourceBadge
                 .padding(4)
         }
+    }
 
+    @ViewBuilder
+    private var durationOverlay: some View {
         if showsDurationBadge {
-            durationBadge
-                .frame(maxWidth: .infinity, alignment: .topTrailing)
-                .padding(4)
+            durationBadge.padding(4)
+        }
+    }
+
+    @ViewBuilder
+    private var hoverActions: some View {
+        if isHovering && !asset.isGenerating {
+            Button { editor.agentService.attachMention(for: asset) } label: {
+                Image(systemName: "text.bubble")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 20, height: 20)
+            }
+            .buttonStyle(.plain)
+            .background(.black.opacity(0.55), in: .circle)
+            .overlay(Circle().strokeBorder(Color.white.opacity(0.15), lineWidth: 0.5))
+            .padding(4)
+            .transition(.opacity)
+            .help("Add to chat")
         }
     }
 
