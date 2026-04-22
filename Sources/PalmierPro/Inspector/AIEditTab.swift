@@ -299,9 +299,13 @@ struct AIEditTab: View {
             }
             if !gen.prompt.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Prompt")
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .foregroundStyle(AppTheme.Text.mutedColor)
+                    HStack(spacing: AppTheme.Spacing.xs) {
+                        Text("Prompt")
+                            .font(.system(size: AppTheme.FontSize.xs))
+                            .foregroundStyle(AppTheme.Text.mutedColor)
+                        Spacer()
+                        PromptCopyButton(text: gen.prompt)
+                    }
                     Text(gen.prompt)
                         .font(.system(size: AppTheme.FontSize.xs))
                         .foregroundStyle(AppTheme.Text.secondaryColor)

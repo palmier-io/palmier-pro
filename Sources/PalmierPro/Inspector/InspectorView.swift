@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct InspectorView: View {
@@ -417,9 +418,13 @@ struct InspectorView: View {
 
                             if !gen.prompt.isEmpty {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("Prompt")
-                                        .font(.system(size: AppTheme.FontSize.xs))
-                                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                                    HStack(spacing: AppTheme.Spacing.xs) {
+                                        Text("Prompt")
+                                            .font(.system(size: AppTheme.FontSize.xs))
+                                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+                                        Spacer()
+                                        PromptCopyButton(text: gen.prompt)
+                                    }
                                     Text(gen.prompt)
                                         .font(.system(size: AppTheme.FontSize.xs))
                                         .foregroundStyle(AppTheme.Text.secondaryColor)
@@ -646,6 +651,33 @@ private struct InspectorNumberField: View {
             onCommit(parsed)
         } else {
             text = String(Int(value.rounded()))
+        }
+    }
+}
+
+struct PromptCopyButton: View {
+    let text: String
+    @State private var copied = false
+
+    var body: some View {
+        Button(action: copy) {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                .foregroundStyle(copied ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(.plain)
+        .help(copied ? "Copied" : "Copy prompt")
+    }
+
+    private func copy() {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        copied = true
+        Task {
+            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            copied = false
         }
     }
 }
