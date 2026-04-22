@@ -262,14 +262,12 @@ struct GenerationView: View {
                 if !videoModel.requiresSourceVideo {
                     sourceVideo = nil
                 }
-                clearFrameReferencesOnly()
             }
         }
         .onChange(of: selectedImageModelIndex) { _, _ in
             guard !isConsumingEditSource else { return }
             if selectedType == .image {
                 resetSettings()
-                clearReferences()
             }
         }
         .onChange(of: selectedAudioModelIndex) { _, _ in
@@ -922,15 +920,6 @@ struct GenerationView: View {
         lastFrame = nil
         imageReferences.removeAll()
         sourceVideo = nil
-    }
-
-    /// Clears only first/last frame + image references.
-    private func clearFrameReferencesOnly() {
-        firstFrame = nil
-        lastFrame = nil
-        if !videoModel.supportsReferences {
-            imageReferences.removeAll()
-        }
     }
 
     /// Read `editor.pendingEditSource`, set up the edit flow, and clear the signal.
