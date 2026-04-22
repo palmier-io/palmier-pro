@@ -27,19 +27,36 @@ extension FileType {
 /// Lookups across the fal model registries (Video/Image/Audio/Upscale).
 @MainActor
 enum ModelRegistry {
+    enum Model {
+        case video(VideoModelConfig)
+        case image(ImageModelConfig)
+        case audio(AudioModelConfig)
+        case upscale(UpscaleModelConfig)
+
+        var displayName: String {
+            switch self {
+            case .video(let m):   m.displayName
+            case .image(let m):   m.displayName
+            case .audio(let m):   m.displayName
+            case .upscale(let m): m.displayName
+            }
+        }
+    }
+
+    static let byId: [String: Model] = {
+        var d: [String: Model] = [:]
+        for m in VideoModelConfig.allModels   { d[m.id] = .video(m) }
+        for m in ImageModelConfig.allModels   { d[m.id] = .image(m) }
+        for m in AudioModelConfig.allModels   { d[m.id] = .audio(m) }
+        for m in UpscaleModelConfig.allModels { d[m.id] = .upscale(m) }
+        return d
+    }()
+
     static func displayName(for modelId: String) -> String {
-        if let v = VideoModelConfig.allModels.first(where: { $0.id == modelId }) { return v.displayName }
-        if let i = ImageModelConfig.allModels.first(where: { $0.id == modelId }) { return i.displayName }
-        if let a = AudioModelConfig.allModels.first(where: { $0.id == modelId }) { return a.displayName }
-        if let u = UpscaleModelConfig.allModels.first(where: { $0.id == modelId }) { return u.displayName }
-        return modelId
+        byId[modelId]?.displayName ?? modelId
     }
 
     static func exists(id: String) -> Bool {
-        if VideoModelConfig.allModels.contains(where: { $0.id == id }) { return true }
-        if ImageModelConfig.allModels.contains(where: { $0.id == id }) { return true }
-        if AudioModelConfig.allModels.contains(where: { $0.id == id }) { return true }
-        if UpscaleModelConfig.allIds.contains(id) { return true }
-        return false
+        byId[id] != nil
     }
 }

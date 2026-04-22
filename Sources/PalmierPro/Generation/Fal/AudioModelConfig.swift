@@ -16,6 +16,17 @@ struct AudioModelConfig: Identifiable, Sendable {
         case music
     }
 
+    enum Pricing: Sendable {
+        /// USD per 1000 characters of prompt text (TTS).
+        case perThousandChars(Double)
+        /// USD per output second (music with duration param).
+        case perSecond(Double)
+        /// USD per generation, duration-agnostic.
+        case flat(Double)
+        /// Price unknown — estimator returns nil.
+        case unknown
+    }
+
     let id: String
     let displayName: String
     let baseEndpoint: String
@@ -27,6 +38,7 @@ struct AudioModelConfig: Identifiable, Sendable {
     let supportsStyleInstructions: Bool
     let durations: [Int]?
     let minPromptLength: Int
+    let pricing: Pricing
     let buildFalInput: @Sendable (_ params: AudioGenerationParams) -> Payload
 
     init(
@@ -35,6 +47,7 @@ struct AudioModelConfig: Identifiable, Sendable {
         supportsLyrics: Bool = false, supportsInstrumental: Bool = false,
         supportsStyleInstructions: Bool = false, durations: [Int]? = nil,
         minPromptLength: Int = 1,
+        pricing: Pricing = .unknown,
         buildFalInput: @escaping @Sendable (AudioGenerationParams) -> Payload
     ) {
         self.id = id; self.displayName = displayName; self.baseEndpoint = baseEndpoint
@@ -44,6 +57,7 @@ struct AudioModelConfig: Identifiable, Sendable {
         self.supportsStyleInstructions = supportsStyleInstructions
         self.durations = durations
         self.minPromptLength = minPromptLength
+        self.pricing = pricing
         self.buildFalInput = buildFalInput
     }
 
@@ -73,6 +87,7 @@ extension AudioModelConfig {
         baseEndpoint: "fal-ai/elevenlabs/tts/eleven-v3",
         category: .tts,
         voices: elevenLabsVoices, defaultVoice: "Rachel",
+        pricing: .perThousandChars(0.10),
         buildFalInput: { p in
             var d: [String: Payload] = ["text": .string(p.prompt)]
             if let v = p.voice, !v.isEmpty { d["voice"] = .string(v) }
@@ -87,6 +102,7 @@ extension AudioModelConfig {
         category: .tts,
         voices: geminiVoices, defaultVoice: "Kore",
         supportsStyleInstructions: true,
+        pricing: .perThousandChars(0.03),
         buildFalInput: { p in
             var d: [String: Payload] = ["prompt": .string(p.prompt)]
             if let v = p.voice, !v.isEmpty { d["voice"] = .string(v) }
@@ -104,6 +120,7 @@ extension AudioModelConfig {
         category: .music,
         supportsLyrics: true, supportsInstrumental: true,
         minPromptLength: 10,
+        pricing: .flat(0.03),
         buildFalInput: { p in
             var d: [String: Payload] = ["prompt": .string(p.prompt)]
             d["is_instrumental"] = .bool(p.instrumental)
@@ -124,6 +141,7 @@ extension AudioModelConfig {
         category: .music,
         supportsInstrumental: true,
         durations: [15, 30, 60, 90, 120, 180],
+        pricing: .perSecond(0.002),
         buildFalInput: { p in
             var d: [String: Payload] = ["prompt": .string(p.prompt)]
             if let secs = p.durationSeconds { d["music_length_ms"] = .int(secs * 1000) }

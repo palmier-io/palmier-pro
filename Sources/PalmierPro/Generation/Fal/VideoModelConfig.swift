@@ -13,6 +13,9 @@ struct VideoModelConfig: Identifiable, Sendable {
     let supportsReferences: Bool
     let maxReferences: Int
     let requiresSourceVideo: Bool
+    let pricePerSecond: [String: Double]
+    /// Multiplier applied to price when `generateAudio == false` (e.g. 2/3 means 33% off).
+    let audioDiscountRate: Double?
     let resolveEndpoint: @Sendable (_ base: String, _ input: VideoGenerationParams) -> String
     let buildFalInput: @Sendable (_ input: VideoGenerationParams) -> Payload
 
@@ -22,6 +25,8 @@ struct VideoModelConfig: Identifiable, Sendable {
         supportsFirstFrame: Bool = true, supportsLastFrame: Bool = false,
         supportsReferences: Bool = false, maxReferences: Int = 0,
         requiresSourceVideo: Bool = false,
+        pricePerSecond: [String: Double] = [:],
+        audioDiscountRate: Double? = nil,
         resolveEndpoint: @escaping @Sendable (String, VideoGenerationParams) -> String,
         buildFalInput: @escaping @Sendable (VideoGenerationParams) -> Payload
     ) {
@@ -30,6 +35,7 @@ struct VideoModelConfig: Identifiable, Sendable {
         self.supportsFirstFrame = supportsFirstFrame; self.supportsLastFrame = supportsLastFrame
         self.supportsReferences = supportsReferences; self.maxReferences = maxReferences
         self.requiresSourceVideo = requiresSourceVideo
+        self.pricePerSecond = pricePerSecond; self.audioDiscountRate = audioDiscountRate
         self.resolveEndpoint = resolveEndpoint; self.buildFalInput = buildFalInput
     }
 
@@ -125,12 +131,17 @@ extension VideoModelConfig {
 
     // MARK: Veo 3.1
 
-    private static func veo(_ variant: String?, id: String, displayName: String, resolutions: [String]) -> VideoModelConfig {
+    private static func veo(
+        _ variant: String?, id: String, displayName: String,
+        resolutions: [String], pricePerSecond: [String: Double]
+    ) -> VideoModelConfig {
         VideoModelConfig(
             id: id, displayName: displayName, baseEndpoint: "fal-ai/veo3.1",
             durations: [4, 6, 8], resolutions: resolutions,
             aspectRatios: ["16:9", "9:16", "1:1"],
             supportsLastFrame: true,
+            pricePerSecond: pricePerSecond,
+            audioDiscountRate: 2.0 / 3.0,
             resolveEndpoint: { base, input in
                 let prefix = variant.map { "\(base)/\($0)" } ?? base
                 if input.startFrameURL != nil && input.endFrameURL != nil {
@@ -143,9 +154,9 @@ extension VideoModelConfig {
         )
     }
 
-    static let veo31     = veo(nil,    id: "veo3.1",      displayName: "Veo 3.1",      resolutions: ["720p", "1080p", "4k"])
-    static let veo31Fast = veo("fast", id: "veo3.1-fast", displayName: "Veo 3.1 Fast", resolutions: ["720p", "1080p", "4k"])
-    static let veo31Lite = veo("lite", id: "veo3.1-lite", displayName: "Veo 3.1 Lite", resolutions: ["720p", "1080p"])
+    static let veo31     = veo(nil,    id: "veo3.1",      displayName: "Veo 3.1",      resolutions: ["720p", "1080p", "4k"], pricePerSecond: ["720p": 0.40, "1080p": 0.40, "4k": 0.60])
+    static let veo31Fast = veo("fast", id: "veo3.1-fast", displayName: "Veo 3.1 Fast", resolutions: ["720p", "1080p", "4k"], pricePerSecond: ["720p": 0.15, "1080p": 0.15, "4k": 0.35])
+    static let veo31Lite = veo("lite", id: "veo3.1-lite", displayName: "Veo 3.1 Lite", resolutions: ["720p", "1080p"],        pricePerSecond: ["720p": 0.05, "1080p": 0.08])
 
     // MARK: Kling
 
@@ -154,6 +165,8 @@ extension VideoModelConfig {
         baseEndpoint: "fal-ai/kling-video/v3/pro",
         durations: Array(3...15), aspectRatios: ["16:9", "9:16"],
         supportsLastFrame: true, supportsReferences: true, maxReferences: 3,
+        pricePerSecond: ["": 0.168],
+        audioDiscountRate: 2.0 / 3.0,
         resolveEndpoint: frameOnlyEndpoint,
         buildFalInput: buildKlingInput(startFrameKey: "image_url")
     )
@@ -163,18 +176,24 @@ extension VideoModelConfig {
         baseEndpoint: "fal-ai/kling-video/o3/pro",
         durations: Array(3...15), aspectRatios: ["16:9", "9:16"],
         supportsLastFrame: true, supportsReferences: true, maxReferences: 7,
+        pricePerSecond: ["": 0.14],
+        audioDiscountRate: 0.8,
         resolveEndpoint: standardVideoEndpoint,
         buildFalInput: buildKlingInput(startFrameKey: "start_image_url")
     )
 
     // MARK: Seedance
 
-    private static func seedance(_ variant: String?, id: String, displayName: String, resolutions: [String]) -> VideoModelConfig {
+    private static func seedance(
+        _ variant: String?, id: String, displayName: String,
+        resolutions: [String], pricePerSecond: [String: Double]
+    ) -> VideoModelConfig {
         VideoModelConfig(
             id: id, displayName: displayName, baseEndpoint: "bytedance/seedance-2.0",
             durations: Array(4...15), resolutions: resolutions,
             aspectRatios: ["16:9", "9:16", "1:1"],
             supportsLastFrame: true, supportsReferences: true, maxReferences: 9,
+            pricePerSecond: pricePerSecond,
             resolveEndpoint: { base, input in
                 let prefix = variant.map { "\(base)/\($0)" } ?? base
                 return standardVideoEndpoint(prefix, input)
@@ -183,8 +202,8 @@ extension VideoModelConfig {
         )
     }
 
-    static let seedance2     = seedance(nil,    id: "seedance-2",      displayName: "Seedance 2",      resolutions: ["480p", "720p", "1080p"])
-    static let seedance2Fast = seedance("fast", id: "seedance-2-fast", displayName: "Seedance 2 Fast", resolutions: ["480p", "720p"])
+    static let seedance2     = seedance(nil,    id: "seedance-2",      displayName: "Seedance 2",      resolutions: ["480p", "720p", "1080p"], pricePerSecond: ["480p": 0.1345, "720p": 0.3024, "1080p": 0.68])
+    static let seedance2Fast = seedance("fast", id: "seedance-2-fast", displayName: "Seedance 2 Fast", resolutions: ["480p", "720p"],           pricePerSecond: ["480p": 0.0843, "720p": 0.2427])
 
     // MARK: Grok
 
@@ -194,6 +213,7 @@ extension VideoModelConfig {
         durations: Array(6...15), resolutions: ["480p", "720p"],
         aspectRatios: ["16:9", "9:16"],
         supportsReferences: true, maxReferences: 7,
+        pricePerSecond: ["480p": 0.05, "720p": 0.07],
         resolveEndpoint: { base, input in
             if input.startFrameURL != nil { return "\(base)/image-to-video" }
             return standardVideoEndpoint(base, input)
@@ -219,6 +239,7 @@ extension VideoModelConfig {
         supportsFirstFrame: false, supportsLastFrame: false,
         supportsReferences: false, maxReferences: 0,
         requiresSourceVideo: true,
+        pricePerSecond: ["": 0.168],
         resolveEndpoint: { base, _ in base },
         buildFalInput: { input in
             var d: [String: Payload] = ["prompt": .string(input.prompt)]
@@ -234,6 +255,7 @@ extension VideoModelConfig {
         supportsFirstFrame: false, supportsLastFrame: false,
         supportsReferences: true, maxReferences: 1,
         requiresSourceVideo: true,
+        pricePerSecond: ["": 0.168],
         resolveEndpoint: { base, _ in base },
         buildFalInput: { input in
             var d: [String: Payload] = ["character_orientation": .string("video")]

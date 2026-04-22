@@ -141,6 +141,32 @@ struct GenerationView: View {
         }
     }
 
+    /// Live USD estimate for the current form state
+    private var estimatedCost: Double? {
+        switch selectedType {
+        case .video:
+            let resolution = videoModel.resolutions != nil ? selectedResolution : nil
+            let seconds = videoModel.requiresSourceVideo
+                ? Int((sourceVideo?.duration ?? 0).rounded())
+                : selectedDuration
+            return CostEstimator.videoCost(
+                model: videoModel,
+                durationSeconds: seconds,
+                resolution: resolution,
+                generateAudio: true
+            )
+        case .image:
+            let resolution = imageModel.resolutions != nil ? selectedResolution : nil
+            let quality = imageModel.qualities != nil ? selectedQuality : nil
+            return CostEstimator.imageCost(model: imageModel, resolution: resolution, quality: quality)
+        case .audio:
+            let duration = audioModel.durations != nil ? selectedAudioDuration : nil
+            return CostEstimator.audioCost(
+                model: audioModel, prompt: trimmedPrompt, durationSeconds: duration
+            )
+        }
+    }
+
     private var settingsSummary: String {
         var parts: [String] = []
         if selectedType == .audio {
@@ -148,11 +174,17 @@ struct GenerationView: View {
             if audioModel.supportsInstrumental && instrumental { parts.append("Instrumental") }
             return parts.isEmpty ? "Settings" : parts.joined(separator: " \u{00B7} ")
         }
-        if currentResolutions != nil { parts.append(selectedResolution) }
+        if currentResolutions != nil { parts.append(resolutionLabel(selectedResolution)) }
         if currentQualities != nil { parts.append(selectedQuality) }
         if selectedType == .video { parts.append("\(selectedDuration)s") }
-        parts.append(selectedAspectRatio)
+        if !selectedAspectRatio.isEmpty, !currentAspectRatios.isEmpty {
+            parts.append(selectedAspectRatio)
+        }
         return parts.joined(separator: " \u{00B7} ")
+    }
+
+    private func resolutionLabel(_ id: String) -> String {
+        selectedType == .image ? ImageModelConfig.resolutionDisplayLabel(id) : id
     }
 
     // MARK: - Body
@@ -365,6 +397,12 @@ struct GenerationView: View {
                 if hasAnySettings { settingsButton }
 
                 Spacer()
+
+                Text(CostEstimator.format(estimatedCost))
+                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .help("Estimated cost at fal's listed prices. Actual billing may differ.")
 
                 submitButton
             }
@@ -685,7 +723,7 @@ struct GenerationView: View {
                 settingsPicker("Aspect Ratio", selection: $selectedAspectRatio, options: currentAspectRatios) { $0 }
             }
             if let resolutions = currentResolutions {
-                settingsPicker("Resolution", selection: $selectedResolution, options: resolutions) { $0 }
+                settingsPicker("Resolution", selection: $selectedResolution, options: resolutions) { resolutionLabel($0) }
             }
             if let qualities = currentQualities {
                 settingsPicker("Quality", selection: $selectedQuality, options: qualities) { $0.capitalized }
@@ -713,7 +751,8 @@ struct GenerationView: View {
                 .pickerStyle(.segmented)
                 .controlSize(.small)
             } else {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 5), spacing: 4) {
+                let cols = options.count == 6 ? 3 : 5
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: cols), spacing: 4) {
                     ForEach(options, id: \.self) { option in
                         Button {
                             selection.wrappedValue = option
@@ -755,7 +794,7 @@ struct GenerationView: View {
             guard selectedType == .audio else { return 0 }
             return audioModel.durations != nil ? selectedAudioDuration : 0
         }()
-        let genInput = GenerationInput(
+        var genInput = GenerationInput(
             prompt: prompt,
             model: currentModelId,
             duration: selectedType == .video ? selectedDuration : audioDuration,
@@ -773,6 +812,7 @@ struct GenerationView: View {
             instrumental: selectedType == .audio && audioModel.supportsInstrumental
                 ? instrumental : nil
         )
+        genInput.estimatedCost = estimatedCost
 
         let trimmedName = assetName.trimmingCharacters(in: .whitespaces)
         let name: String? = trimmedName.isEmpty ? nil : trimmedName

@@ -77,6 +77,9 @@ final class GenerationService {
 
                 var finalGenInput = genInput
                 finalGenInput.imageURLs = uploaded.isEmpty ? nil : uploaded
+                if finalGenInput.createdAt == nil {
+                    finalGenInput.createdAt = Date()
+                }
                 placeholder.generationInput = finalGenInput
 
                 let (endpoint, input) = buildInput(uploaded)

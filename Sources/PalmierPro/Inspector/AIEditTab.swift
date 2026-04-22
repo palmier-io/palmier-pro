@@ -186,7 +186,7 @@ struct AIEditTab: View {
                             Button {
                                 runUpscale(model)
                             } label: {
-                                Text("\(model.displayName) · \(model.speed)")
+                                Text(upscaleLabel(for: model))
                             }
                         }
                     }
@@ -242,6 +242,12 @@ struct AIEditTab: View {
         }
     }
 
+    private func upscaleLabel(for model: UpscaleModelConfig) -> String {
+        let seconds = Int((effectiveDurationForAvailability ?? asset.duration).rounded())
+        let cost = CostEstimator.upscaleCost(model: model, durationSeconds: max(1, seconds))
+        return "\(model.displayName) · \(model.speed) · \(CostEstimator.format(cost))"
+    }
+
     private func runUpscale(_ model: UpscaleModelConfig) {
         markReplacementPendingIfNeeded()
         let trim = trimmedSourceIfEnabled()
@@ -284,6 +290,10 @@ struct AIEditTab: View {
     private func rerunParameters(_ gen: GenerationInput) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             rerunRow("cpu", label: "Model", value: ModelRegistry.displayName(for: gen.model))
+            let rerunCost = gen.estimatedCost ?? CostEstimator.cost(for: gen)
+            if rerunCost != nil {
+                rerunRow("dollarsign.circle", label: "Cost", value: CostEstimator.format(rerunCost))
+            }
             if gen.duration > 0 {
                 rerunRow("clock", label: "Duration", value: "\(gen.duration)s")
             }

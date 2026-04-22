@@ -31,6 +31,9 @@ struct GenerationInput: Codable, Sendable, Equatable {
     var lyrics: String?
     var styleInstructions: String?
     var instrumental: Bool?
+    /// Metadata
+    var estimatedCost: Double?
+    var createdAt: Date?
 }
 
 enum MediaSource: Codable, Sendable, Equatable {

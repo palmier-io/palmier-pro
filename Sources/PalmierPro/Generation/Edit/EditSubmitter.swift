@@ -20,13 +20,20 @@ enum EditSubmitter {
         guard service.hasApiKey else { return nil }
 
         let duration = max(1, Int(asset.duration.rounded()))
-        let genInput = GenerationInput(
+        let effectiveDuration: Int = {
+            if let trim = trimmedSource, trim.hasTrim {
+                return max(1, Int(trim.durationSeconds.rounded()))
+            }
+            return duration
+        }()
+        var genInput = GenerationInput(
             prompt: "",
             model: model.id,
             duration: duration,
             aspectRatio: "",
             resolution: nil
         )
+        genInput.estimatedCost = CostEstimator.upscaleCost(model: model, durationSeconds: effectiveDuration)
 
         let isImage = asset.type == .image
         let placeholderDuration: Double
@@ -85,7 +92,11 @@ enum EditSubmitter {
         guard service.hasApiKey else {
             throw RerunError.unknownModel("no api key")
         }
-        guard let gen = asset.generationInput else { throw RerunError.notGenerated }
+        guard let stored = asset.generationInput else { throw RerunError.notGenerated }
+        var gen = stored
+        // A rerun is a brand-new generation event: recompute cost
+        gen.estimatedCost = CostEstimator.cost(for: gen)
+        gen.createdAt = nil
         let modelId = gen.model
         let preUploaded = gen.imageURLs
 
