@@ -12,7 +12,7 @@ final class MediaResolver: @unchecked Sendable {
     }
 
     func resolveURL(for assetId: String) -> URL? {
-        guard let entry = lookupEntry(assetId) else { return nil }
+        guard let entry = entry(for: assetId) else { return nil }
         let url: URL
         switch entry.source {
         case .external(let absolutePath):
@@ -25,10 +25,10 @@ final class MediaResolver: @unchecked Sendable {
     }
 
     func displayName(for assetId: String) -> String {
-        lookupEntry(assetId)?.name ?? "Offline"
+        entry(for: assetId)?.name ?? "Offline"
     }
 
-    private func lookupEntry(_ assetId: String) -> MediaManifestEntry? {
+    func entry(for assetId: String) -> MediaManifestEntry? {
         let m = manifest()
         if m.entries.count != cachedEntries.count {
             cachedEntries = Dictionary(uniqueKeysWithValues: m.entries.map { ($0.id, $0) })
