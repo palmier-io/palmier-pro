@@ -93,7 +93,20 @@ enum CompositionBuilder {
                 }
                 let sourceRange = CMTimeRange(start: trimStart, duration: sourceDuration)
 
-                try compTrack.insertTimeRange(sourceRange, of: sourceTrack, at: clipStart)
+                do {
+                    try compTrack.insertTimeRange(sourceRange, of: sourceTrack, at: clipStart)
+                } catch {
+                    // Skip the bad clip rather than aborting the whole rebuild
+                    let srcSeconds = (try? await sourceAsset.load(.duration).seconds) ?? 0
+                    Log.preview.error("""
+                        insertTimeRange failed — skipping clip. \
+                        clipId=\(clip.id) mediaRef=\(clip.mediaRef) \
+                        trimStart=\(clip.trimStartFrame)f durationFrames=\(clip.durationFrames)f \
+                        speed=\(clip.speed) sourceSeconds=\(String(format: "%.3f", srcSeconds)) \
+                        error=\(error.localizedDescription)
+                        """)
+                    continue
+                }
                 if clip.speed != 1.0 {
                     compTrack.scaleTimeRange(CMTimeRange(start: clipStart, duration: sourceDuration), toDuration: clipDuration)
                 }
