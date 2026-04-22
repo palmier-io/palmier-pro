@@ -444,6 +444,7 @@ final class TimelineInputController {
             scrollView.contentView.setBoundsOrigin(NSPoint(x: scrollX, y: origin.y))
         }
 
+        view.markZoomApplied()
         view.updateContentSize()
         view.needsDisplay = true
     }
