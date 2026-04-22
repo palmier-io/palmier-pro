@@ -783,10 +783,11 @@ struct GenerationView: View {
         let editorRef = editor
         let onComplete: (@MainActor (MediaAsset) -> Void)?
         let onFailure: (@MainActor () -> Void)?
+        var didTrimSource = false
         if let clipId = replacementClipId {
             editor.markPendingReplacement(clipId: clipId)
             onComplete = { [weak editorRef] newAsset in
-                editorRef?.replaceClipMediaRef(clipId: clipId, newAssetId: newAsset.id)
+                editorRef?.replaceClipMediaRef(clipId: clipId, newAssetId: newAsset.id, resetTrim: didTrimSource)
                 editorRef?.clearPendingReplacement(clipId: clipId)
             }
             onFailure = { [weak editorRef] in
@@ -818,6 +819,7 @@ struct GenerationView: View {
                 return trim
             }()
             editor.pendingEditTrimmedSource = nil
+            didTrimSource = (trimmedSource?.hasTrim == true)
             let placeholderDuration: Double
             if model.requiresSourceVideo {
                 if let trim = trimmedSource, trim.hasTrim {

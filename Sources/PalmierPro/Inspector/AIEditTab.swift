@@ -244,10 +244,11 @@ struct AIEditTab: View {
 
     private func runUpscale(_ model: UpscaleModelConfig) {
         markReplacementPendingIfNeeded()
+        let trim = trimmedSourceIfEnabled()
         _ = EditSubmitter.submitUpscale(
             asset: asset, model: model, editor: editor, service: service,
-            trimmedSource: trimmedSourceIfEnabled(),
-            onComplete: replacementCompletion(),
+            trimmedSource: trim,
+            onComplete: replacementCompletion(resetTrim: trim != nil),
             onFailure: replacementFailure()
         )
     }
@@ -264,10 +265,10 @@ struct AIEditTab: View {
         editor.clearPendingReplacement(clipId: clipId)
     }
 
-    private func replacementCompletion() -> (@MainActor (MediaAsset) -> Void)? {
+    private func replacementCompletion(resetTrim: Bool = false) -> (@MainActor (MediaAsset) -> Void)? {
         guard shouldReplace, let clipId else { return nil }
         return { [weak editor] newAsset in
-            editor?.replaceClipMediaRef(clipId: clipId, newAssetId: newAsset.id)
+            editor?.replaceClipMediaRef(clipId: clipId, newAssetId: newAsset.id, resetTrim: resetTrim)
             editor?.clearPendingReplacement(clipId: clipId)
         }
     }
