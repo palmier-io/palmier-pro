@@ -222,7 +222,7 @@ final class TimelineInputController {
             }
             let delta = snappedStart - drag.originalStartFrame
             let maxDelta = drag.originalDuration - 1
-            let minDelta = -drag.originalTrimStart
+            let minDelta = drag.isImage ? -drag.originalStartFrame : -drag.originalTrimStart
             drag.deltaFrames = max(minDelta, min(maxDelta, delta))
             dragState = .trimLeft(drag)
 
