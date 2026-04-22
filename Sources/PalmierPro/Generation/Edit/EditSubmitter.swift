@@ -164,6 +164,7 @@ enum EditSubmitter {
         }
 
         if let imageModel = ImageModelConfig.allModels.first(where: { $0.id == modelId }) {
+            let count = min(imageModel.maxImages, max(1, gen.numImages ?? 1))
             return service.generate(
                 genInput: gen,
                 assetType: .image,
@@ -171,13 +172,15 @@ enum EditSubmitter {
                 references: [],
                 preUploadedURLs: preUploaded,
                 name: rerunName(for: asset),
+                numImages: count,
                 buildInput: { uploaded in
                     let input = imageModel.buildInput(
                         prompt: gen.prompt,
                         aspectRatio: gen.aspectRatio,
                         resolution: gen.resolution,
                         quality: gen.quality,
-                        imageURLs: uploaded
+                        imageURLs: uploaded,
+                        numImages: count
                     )
                     return (imageModel.resolvedEndpoint(imageURLs: uploaded), input)
                 },

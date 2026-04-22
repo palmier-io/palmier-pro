@@ -1,6 +1,18 @@
 import Foundation
 @preconcurrency import FalClient
 
+/// MainActor-only one-shot flag. Used by replace-clip callbacks so only the
+/// first successful asset of an N-image generation swaps the clip
+@MainActor
+final class FirstOnlyFlag {
+    private var fired = false
+    func fire() -> Bool {
+        guard !fired else { return false }
+        fired = true
+        return true
+    }
+}
+
 @Observable
 @MainActor
 final class GenerationService {
@@ -38,23 +50,27 @@ final class GenerationService {
         trimmedSourceOverride: TrimmedSource? = nil,
         preUploadedURLs: [String]? = nil,
         name: String? = nil,
+        numImages: Int = 1,
         buildInput: @escaping ([String]) -> (endpoint: String, input: Payload),
-        responseKeyPath: @escaping @Sendable (Payload) -> String?,
+        responseKeyPath: @escaping @Sendable (Payload) -> [String],
         fileExtension: String,
         projectURL: URL?,
         editor: EditorViewModel,
         onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
         onFailure: (@MainActor () -> Void)? = nil
     ) -> String {
-        let placeholder = createPlaceholder(
-            type: assetType,
-            name: name ?? String(genInput.prompt.prefix(30)),
-            duration: placeholderDuration,
-            genInput: genInput,
-            editor: editor
-        )
-
-        let placeholderId = placeholder.id
+        let count = max(1, min(4, numImages))
+        let baseName = name ?? String(genInput.prompt.prefix(30))
+        let placeholders: [MediaAsset] = (0..<count).map { _ in
+            createPlaceholder(
+                type: assetType,
+                name: baseName,
+                duration: placeholderDuration,
+                genInput: genInput,
+                editor: editor
+            )
+        }
+        let primaryId = placeholders[0].id
         let refURLs = references.map(\.url)
 
         Task { @MainActor in
@@ -80,12 +96,14 @@ final class GenerationService {
                 if finalGenInput.createdAt == nil {
                     finalGenInput.createdAt = Date()
                 }
-                placeholder.generationInput = finalGenInput
+                for placeholder in placeholders {
+                    placeholder.generationInput = finalGenInput
+                }
 
                 let (endpoint, input) = buildInput(uploaded)
 
                 self.runGeneration(
-                    placeholder: placeholder,
+                    placeholders: placeholders,
                     endpoint: endpoint,
                     input: input,
                     responseKeyPath: responseKeyPath,
@@ -99,12 +117,14 @@ final class GenerationService {
                 )
             } catch {
                 Log.generation.error("upload failed model=\(genInput.model) error=\(error.localizedDescription)")
-                placeholder.generationStatus = .failed("Upload failed: \(error.localizedDescription)")
+                for placeholder in placeholders {
+                    placeholder.generationStatus = .failed("Upload failed: \(error.localizedDescription)")
+                }
                 onFailure?()
             }
         }
 
-        return placeholderId
+        return primaryId
     }
 
     private static func cleanupTempFiles(_ urls: [URL]) {
@@ -155,10 +175,10 @@ final class GenerationService {
     }
 
     private func runGeneration(
-        placeholder: MediaAsset,
+        placeholders: [MediaAsset],
         endpoint: String,
         input: Payload,
-        responseKeyPath: @escaping @Sendable (Payload) -> String?,
+        responseKeyPath: @escaping @Sendable (Payload) -> [String],
         fileExtension: String,
         assetType: ClipType,
         genInput: GenerationInput,
@@ -169,12 +189,11 @@ final class GenerationService {
     ) {
         guard hasApiKey else { return }
         let key = apiKey
-        let placeholderId = placeholder.id
 
         Task { @MainActor in
             do {
                 Log.generation.notice("subscribe start endpoint=\(endpoint) model=\(genInput.model)")
-                let urlString: String? = try await {
+                let urlStrings: [String] = try await {
                     nonisolated(unsafe) let input = input
                     let responseKeyPath = responseKeyPath
                     let client = FalClient.withCredentials(.keyPair(key))
@@ -189,46 +208,71 @@ final class GenerationService {
                     return responseKeyPath(result)
                 }()
 
-                guard let urlString, let remoteURL = URL(string: urlString) else {
+                if urlStrings.isEmpty {
                     Log.generation.error("subscribe ok but no URL in response model=\(genInput.model)")
-                    placeholder.generationStatus = .failed("No URL in response")
+                    for placeholder in placeholders {
+                        placeholder.generationStatus = .failed("No URL in response")
+                    }
                     onFailure?()
                     return
                 }
 
-                Log.generation.notice("downloading \(remoteURL.host ?? "?")")
-                let (tempURL, _) = try await URLSession.shared.download(from: remoteURL)
-                let filename = "gen-\(placeholderId.prefix(8)).\(fileExtension)"
-                let data = try Data(contentsOf: tempURL)
-                try? FileManager.default.removeItem(at: tempURL)
-
-                let destURL: URL
-                if let projectURL {
-                    let mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-                    try FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
-                    destURL = mediaDir.appendingPathComponent(filename)
-                } else {
-                    destURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+                if urlStrings.count < placeholders.count {
+                    Log.generation.notice("fal returned \(urlStrings.count) URL(s) for \(placeholders.count) placeholder(s); marking extras as failed")
                 }
-                try data.write(to: destURL)
 
-                if let idx = editor.mediaAssets.firstIndex(where: { $0.id == placeholderId }) {
-                    let asset = MediaAsset(
-                        id: placeholderId,
-                        url: destURL,
-                        type: assetType,
-                        name: placeholder.name,
-                        duration: placeholder.duration,
-                        generationInput: genInput
-                    )
-                    editor.mediaAssets[idx] = asset
-                    editor.importMediaAsset(asset, skipAppend: true)
-                    await editor.finalizeImportedAsset(asset)
-                    onComplete?(asset)
+                let destDir: URL
+                if let projectURL {
+                    destDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
+                    try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
+                } else {
+                    destDir = FileManager.default.temporaryDirectory
+                }
+
+                var anyFinalized = false
+                for (i, placeholder) in placeholders.enumerated() {
+                    guard i < urlStrings.count, let remoteURL = URL(string: urlStrings[i]) else {
+                        placeholder.generationStatus = .failed("No image in response")
+                        continue
+                    }
+                    let placeholderId = placeholder.id
+                    do {
+                        Log.generation.notice("downloading \(remoteURL.host ?? "?") (\(i + 1)/\(urlStrings.count))")
+                        let (tempURL, _) = try await URLSession.shared.download(from: remoteURL)
+                        let filename = "gen-\(placeholderId.prefix(8)).\(fileExtension)"
+                        let destURL = destDir.appendingPathComponent(filename)
+                        try? FileManager.default.removeItem(at: destURL)
+                        try FileManager.default.moveItem(at: tempURL, to: destURL)
+
+                        if let idx = editor.mediaAssets.firstIndex(where: { $0.id == placeholderId }) {
+                            let asset = MediaAsset(
+                                id: placeholderId,
+                                url: destURL,
+                                type: assetType,
+                                name: placeholder.name,
+                                duration: placeholder.duration,
+                                generationInput: genInput
+                            )
+                            editor.mediaAssets[idx] = asset
+                            editor.importMediaAsset(asset, skipAppend: true)
+                            await editor.finalizeImportedAsset(asset)
+                            onComplete?(asset)
+                            anyFinalized = true
+                        }
+                    } catch {
+                        Log.generation.error("download failed model=\(genInput.model) idx=\(i) error=\(error.localizedDescription)")
+                        placeholder.generationStatus = .failed(error.localizedDescription)
+                    }
+                }
+
+                if !anyFinalized {
+                    onFailure?()
                 }
             } catch {
                 Log.generation.error("generation failed model=\(genInput.model) error=\(error.localizedDescription)")
-                placeholder.generationStatus = .failed(error.localizedDescription)
+                for placeholder in placeholders {
+                    placeholder.generationStatus = .failed(error.localizedDescription)
+                }
                 onFailure?()
             }
         }

@@ -12,6 +12,7 @@ struct GenerationView: View {
     @State private var selectedAspectRatio = "16:9"
     @State private var selectedResolution = "1080p"
     @State private var selectedQuality = "high"
+    @State private var selectedNumImages = 1
 
     // Audio extras
     @State private var selectedVoice = ""
@@ -84,7 +85,7 @@ struct GenerationView: View {
     private var hasAnySettings: Bool {
         switch selectedType {
         case .video: return !videoModel.durations.isEmpty || !videoModel.aspectRatios.isEmpty || videoModel.resolutions != nil
-        case .image: return !imageModel.aspectRatios.isEmpty || imageModel.resolutions != nil || imageModel.qualities != nil
+        case .image: return !imageModel.aspectRatios.isEmpty || imageModel.resolutions != nil || imageModel.qualities != nil || imageModel.maxImages > 1
         case .audio: return audioModel.supportsInstrumental || audioModel.durations != nil
         }
     }
@@ -158,7 +159,12 @@ struct GenerationView: View {
         case .image:
             let resolution = imageModel.resolutions != nil ? selectedResolution : nil
             let quality = imageModel.qualities != nil ? selectedQuality : nil
-            return CostEstimator.imageCost(model: imageModel, resolution: resolution, quality: quality)
+            return CostEstimator.imageCost(
+                model: imageModel,
+                resolution: resolution,
+                quality: quality,
+                numImages: selectedNumImages
+            )
         case .audio:
             let duration = audioModel.durations != nil ? selectedAudioDuration : nil
             return CostEstimator.audioCost(
@@ -179,6 +185,9 @@ struct GenerationView: View {
         if selectedType == .video { parts.append("\(selectedDuration)s") }
         if !selectedAspectRatio.isEmpty, !currentAspectRatios.isEmpty {
             parts.append(selectedAspectRatio)
+        }
+        if selectedType == .image, imageModel.maxImages > 1, selectedNumImages > 1 {
+            parts.append("×\(selectedNumImages)")
         }
         return parts.joined(separator: " \u{00B7} ")
     }
@@ -728,6 +737,13 @@ struct GenerationView: View {
             if let qualities = currentQualities {
                 settingsPicker("Quality", selection: $selectedQuality, options: qualities) { $0.capitalized }
             }
+            if selectedType == .image, imageModel.maxImages > 1 {
+                settingsPicker(
+                    "Count",
+                    selection: $selectedNumImages,
+                    options: Array(1...imageModel.maxImages)
+                ) { "\($0)" }
+            }
             if selectedType == .audio && audioModel.supportsInstrumental {
                 Toggle("Instrumental", isOn: $instrumental)
                     .controlSize(.small)
@@ -812,6 +828,13 @@ struct GenerationView: View {
             instrumental: selectedType == .audio && audioModel.supportsInstrumental
                 ? instrumental : nil
         )
+        let imageCount: Int = {
+            guard selectedType == .image, imageModel.maxImages > 1 else { return 1 }
+            return min(imageModel.maxImages, max(1, selectedNumImages))
+        }()
+        if imageCount > 1 {
+            genInput.numImages = imageCount
+        }
         genInput.estimatedCost = estimatedCost
 
         let trimmedName = assetName.trimmingCharacters(in: .whitespaces)
@@ -826,7 +849,12 @@ struct GenerationView: View {
         var didTrimSource = false
         if let clipId = replacementClipId {
             editor.markPendingReplacement(clipId: clipId)
+            // N-image generations call onComplete once per finalized asset; the
+            // first one swaps the clip, subsequent assets just land in the media
+            // library as siblings.
+            let firstOnly = FirstOnlyFlag()
             onComplete = { [weak editorRef] newAsset in
+                guard firstOnly.fire() else { return }
                 editorRef?.replaceClipMediaRef(clipId: clipId, newAssetId: newAsset.id, resetTrim: didTrimSource)
                 editorRef?.clearPendingReplacement(clipId: clipId)
             }
@@ -905,11 +933,12 @@ struct GenerationView: View {
                 placeholderDuration: Defaults.imageDurationSeconds,
                 references: imageReferences,
                 name: name,
+                numImages: imageCount,
                 buildInput: { uploaded in
                     let input = model.buildInput(
                         prompt: genInput.prompt, aspectRatio: genInput.aspectRatio,
                         resolution: genInput.resolution, quality: genInput.quality,
-                        imageURLs: uploaded
+                        imageURLs: uploaded, numImages: imageCount
                     )
                     return (model.resolvedEndpoint(imageURLs: uploaded), input)
                 },
@@ -1023,6 +1052,9 @@ struct GenerationView: View {
         }
         if selectedType == .video, !videoModel.durations.contains(selectedDuration) {
             selectedDuration = videoModel.durations.first ?? 5
+        }
+        if selectedType == .image {
+            selectedNumImages = min(max(1, selectedNumImages), imageModel.maxImages)
         }
     }
 }

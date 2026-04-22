@@ -9,24 +9,27 @@ struct ImageModelConfig: Identifiable, Sendable {
     let aspectRatios: [String]
     let qualities: [String]?
     let supportsImageReference: Bool
+    let maxImages: Int
     /// USD per image, keyed by the dimension the model varies on quality/resolution
     let pricePerImage: [String: Double]
     let resolveEndpoint: @Sendable (_ base: String, _ imageURLs: [String]) -> String
-    let buildFalInput: @Sendable (_ prompt: String, _ aspectRatio: String, _ resolution: String?, _ quality: String?, _ imageURLs: [String]) -> Payload
+    let buildFalInput: @Sendable (_ prompt: String, _ aspectRatio: String, _ resolution: String?, _ quality: String?, _ imageURLs: [String], _ numImages: Int) -> Payload
 
     init(
         id: String, displayName: String, baseEndpoint: String,
         resolutions: [String]? = nil, aspectRatios: [String],
         qualities: [String]? = nil,
         supportsImageReference: Bool,
+        maxImages: Int = 1,
         pricePerImage: [String: Double] = [:],
         resolveEndpoint: @escaping @Sendable (String, [String]) -> String,
-        buildFalInput: @escaping @Sendable (String, String, String?, String?, [String]) -> Payload
+        buildFalInput: @escaping @Sendable (String, String, String?, String?, [String], Int) -> Payload
     ) {
         self.id = id; self.displayName = displayName; self.baseEndpoint = baseEndpoint
         self.resolutions = resolutions; self.aspectRatios = aspectRatios
         self.qualities = qualities
         self.supportsImageReference = supportsImageReference
+        self.maxImages = max(1, min(4, maxImages))
         self.pricePerImage = pricePerImage
         self.resolveEndpoint = resolveEndpoint; self.buildFalInput = buildFalInput
     }
@@ -35,8 +38,8 @@ struct ImageModelConfig: Identifiable, Sendable {
         resolveEndpoint(baseEndpoint, imageURLs)
     }
 
-    func buildInput(prompt: String, aspectRatio: String, resolution: String?, quality: String? = nil, imageURLs: [String] = []) -> Payload {
-        buildFalInput(prompt, aspectRatio, resolution, quality, imageURLs)
+    func buildInput(prompt: String, aspectRatio: String, resolution: String?, quality: String? = nil, imageURLs: [String] = [], numImages: Int = 1) -> Payload {
+        buildFalInput(prompt, aspectRatio, resolution, quality, imageURLs, numImages)
     }
 }
 
@@ -46,11 +49,12 @@ private func editEndpoint(_ base: String, _ imageURLs: [String]) -> String {
     imageURLs.isEmpty ? base : "\(base)/edit"
 }
 
-private func standardInput(prompt: String, aspectRatio: String, resolution: String?, quality: String?, imageURLs: [String]) -> Payload {
+private func standardInput(prompt: String, aspectRatio: String, resolution: String?, quality: String?, imageURLs: [String], numImages: Int) -> Payload {
     var d: [String: Payload] = ["prompt": .string(prompt), "output_format": .string("jpeg")]
     if !aspectRatio.isEmpty { d["aspect_ratio"] = .string(aspectRatio) }
     if let resolution { d["resolution"] = .string(resolution) }
     if !imageURLs.isEmpty { d["image_urls"] = .array(imageURLs.map { .string($0) }) }
+    if numImages > 1 { d["num_images"] = .int(numImages) }
     return .dict(d)
 }
 
@@ -62,6 +66,7 @@ extension ImageModelConfig {
         baseEndpoint: "fal-ai/nano-banana-pro",
         resolutions: ["2K", "4K"], aspectRatios: ["16:9", "9:16"],
         supportsImageReference: true,
+        maxImages: 4,
         pricePerImage: ["2K": 0.15, "4K": 0.30],
         resolveEndpoint: editEndpoint, buildFalInput: standardInput
     )
@@ -71,6 +76,7 @@ extension ImageModelConfig {
         baseEndpoint: "fal-ai/nano-banana-2",
         resolutions: ["2K", "4K"], aspectRatios: ["16:9", "9:16"],
         supportsImageReference: true,
+        maxImages: 4,
         pricePerImage: ["2K": 0.12, "4K": 0.16],
         resolveEndpoint: editEndpoint, buildFalInput: standardInput
     )
@@ -80,15 +86,17 @@ extension ImageModelConfig {
         baseEndpoint: "xai/grok-imagine-image",
         resolutions: nil, aspectRatios: ["16:9", "9:16"],
         supportsImageReference: true,
+        maxImages: 4,
         pricePerImage: ["": 0.02],
         resolveEndpoint: editEndpoint,
-        buildFalInput: { prompt, aspectRatio, _, _, imageURLs in
+        buildFalInput: { prompt, aspectRatio, _, _, imageURLs, numImages in
             var d: [String: Payload] = ["prompt": .string(prompt)]
             if !imageURLs.isEmpty {
                 d["image_urls"] = .array(imageURLs.map { .string($0) })
             } else if !aspectRatio.isEmpty {
                 d["aspect_ratio"] = .string(aspectRatio)
             }
+            if numImages > 1 { d["num_images"] = .int(numImages) }
             return .dict(d)
         }
     )
@@ -98,11 +106,13 @@ extension ImageModelConfig {
         baseEndpoint: "fal-ai/recraft/v4/pro/text-to-image",
         resolutions: nil, aspectRatios: ["landscape_16_9", "portrait_16_9"],
         supportsImageReference: false,
+        maxImages: 4,
         pricePerImage: ["": 0.25],
         resolveEndpoint: { base, _ in base },
-        buildFalInput: { prompt, aspectRatio, _, _, _ in
+        buildFalInput: { prompt, aspectRatio, _, _, _, numImages in
             var d: [String: Payload] = ["prompt": .string(prompt)]
             if !aspectRatio.isEmpty { d["image_size"] = .string(aspectRatio) }
+            if numImages > 1 { d["num_images"] = .int(numImages) }
             return .dict(d)
         }
     )
@@ -123,7 +133,7 @@ extension ImageModelConfig {
             "3840x2160|low":  0.02, "3840x2160|medium":  0.11, "3840x2160|high":  0.41,
         ],
         resolveEndpoint: editEndpoint,
-        buildFalInput: { prompt, _, resolution, quality, imageURLs in
+        buildFalInput: { prompt, _, resolution, quality, imageURLs, _ in
             var d: [String: Payload] = [
                 "prompt": .string(prompt),
                 "output_format": .string("jpeg"),
