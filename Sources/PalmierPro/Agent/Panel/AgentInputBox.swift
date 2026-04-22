@@ -34,6 +34,7 @@ struct AgentInputBox<LeadingTools: View>: View {
     @State private var mentionQuery: String? = nil
     @State private var highlightedMentionIndex: Int = 0
     @State private var mentionTab: MentionTab = .all
+    @State private var mentionScrollTick: Int = 0
     @State private var isDropTargeted = false
     @Namespace private var sendStopNamespace
 
@@ -43,8 +44,8 @@ struct AgentInputBox<LeadingTools: View>: View {
         let q = (mentionQuery ?? "").lowercased()
         let typed = mentionTab.clipType.map { t in editor.mediaAssets.filter { $0.type == t } }
             ?? editor.mediaAssets
-        let matched = q.isEmpty ? typed : typed.filter { $0.name.lowercased().contains(q) }
-        return Array(matched.prefix(10))
+        let matched = q.isEmpty ? typed : typed.filter { $0.mentionDisplayName.lowercased().contains(q) }
+        return Array(matched.prefix(50))
     }
 
     var body: some View {
@@ -59,6 +60,7 @@ struct AgentInputBox<LeadingTools: View>: View {
                         candidates: mentionCandidates,
                         highlightedIndex: $highlightedMentionIndex,
                         tab: $mentionTab,
+                        scrollTick: mentionScrollTick,
                         onPick: { asset in pickMention(asset) }
                     )
                 }
@@ -93,7 +95,7 @@ struct AgentInputBox<LeadingTools: View>: View {
                 .frame(minHeight: 32, maxHeight: 64)
                 .onChange(of: draft) { _, new in updateMentionQuery(from: new) }
                 .onPasteCommand(of: [.fileURL, .image, .png, .jpeg, .tiff], perform: handlePaste)
-                .onKeyPress(phases: .down) { press in handleKey(press) }
+                .onKeyPress(phases: [.down, .repeat]) { press in handleKey(press) }
                 // NSTextView eats Tab before the general onKeyPress fires.
                 .onKeyPress(.tab, phases: .down) { press in
                     guard showMentionPicker else { return .ignored }
@@ -166,21 +168,20 @@ struct AgentInputBox<LeadingTools: View>: View {
         let step = reverse ? -1 : 1
         let current = tabs.firstIndex(of: mentionTab) ?? 0
         mentionTab = tabs[(current + step + tabs.count) % tabs.count]
+        mentionScrollTick &+= 1
     }
 
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
         if showMentionPicker {
+            let isArrow = press.key == .upArrow || press.key == .downArrow
+            if press.phase == .repeat && !isArrow { return .handled }
             let candidates = mentionCandidates
             switch press.key {
             case .upArrow:
-                if !candidates.isEmpty {
-                    highlightedMentionIndex = max(0, highlightedMentionIndex - 1)
-                }
+                moveMentionHighlight(by: -1, within: candidates)
                 return .handled
             case .downArrow:
-                if !candidates.isEmpty {
-                    highlightedMentionIndex = min(candidates.count - 1, highlightedMentionIndex + 1)
-                }
+                moveMentionHighlight(by: 1, within: candidates)
                 return .handled
             case .return:
                 if candidates.indices.contains(highlightedMentionIndex) {
@@ -195,11 +196,20 @@ struct AgentInputBox<LeadingTools: View>: View {
             }
         }
 
+        guard press.phase == .down else { return .ignored }
         if press.key == .return, !press.modifiers.contains(.shift), canSend {
             onSend()
             return .handled
         }
         return .ignored
+    }
+
+    private func moveMentionHighlight(by delta: Int, within candidates: [MediaAsset]) {
+        guard !candidates.isEmpty else { return }
+        let next = min(candidates.count - 1, max(0, highlightedMentionIndex + delta))
+        guard next != highlightedMentionIndex else { return }
+        highlightedMentionIndex = next
+        mentionScrollTick &+= 1
     }
 
     private func updateMentionQuery(from text: String) {
@@ -237,7 +247,7 @@ struct AgentInputBox<LeadingTools: View>: View {
     }
 
     private static func disambiguatedName(for asset: MediaAsset, existing: [AgentMention]) -> String {
-        let base = asset.name.replacingOccurrences(of: " ", with: "_")
+        let base = asset.mentionDisplayName
         if !existing.contains(where: { $0.displayName == base && $0.mediaRef != asset.id }) {
             return base
         }
