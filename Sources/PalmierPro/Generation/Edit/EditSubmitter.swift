@@ -113,7 +113,7 @@ enum EditSubmitter {
                     startFrameURL: nil,
                     endFrameURL: nil,
                     referenceImageURLs: imageRefs,
-                    generateAudio: true
+                    generateAudio: gen.generateAudio ?? true
                 )
                 return service.generate(
                     genInput: gen,
@@ -142,7 +142,7 @@ enum EditSubmitter {
                 startFrameURL: preUploaded?.first,
                 endFrameURL: (preUploaded?.count ?? 0) > 1 ? preUploaded?[1] : nil,
                 referenceImageURLs: [],
-                generateAudio: true
+                generateAudio: gen.generateAudio ?? true
             )
             return service.generate(
                 genInput: gen,

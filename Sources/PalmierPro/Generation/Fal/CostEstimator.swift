@@ -79,7 +79,7 @@ enum CostEstimator {
                 model: m,
                 durationSeconds: genInput.duration,
                 resolution: genInput.resolution,
-                generateAudio: true
+                generateAudio: genInput.generateAudio ?? true
             )
         case .image(let m):
             return imageCost(

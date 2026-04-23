@@ -20,6 +20,7 @@ struct GenerationView: View {
     @State private var styleInstructions = ""
     @State private var instrumental = false
     @State private var selectedAudioDuration = 30
+    @State private var generateAudio = true
     @State private var showSettingsPopover = false
     @FocusState private var isPromptFocused: Bool
 
@@ -84,7 +85,7 @@ struct GenerationView: View {
 
     private var hasAnySettings: Bool {
         switch selectedType {
-        case .video: return !videoModel.durations.isEmpty || !videoModel.aspectRatios.isEmpty || videoModel.resolutions != nil
+        case .video: return !videoModel.durations.isEmpty || !videoModel.aspectRatios.isEmpty || videoModel.resolutions != nil || videoModel.audioDiscountRate != nil
         case .image: return !imageModel.aspectRatios.isEmpty || imageModel.resolutions != nil || imageModel.qualities != nil || imageModel.maxImages > 1
         case .audio: return audioModel.supportsInstrumental || audioModel.durations != nil
         }
@@ -130,6 +131,14 @@ struct GenerationView: View {
         audioModel.minPromptLength > 1 ? " (min \(audioModel.minPromptLength) chars)" : ""
     }
 
+    private var supportsAudioToggle: Bool {
+        selectedType == .video && videoModel.audioDiscountRate != nil
+    }
+
+    private var effectiveGenerateAudio: Bool {
+        supportsAudioToggle ? generateAudio : true
+    }
+
     private var promptPlaceholder: String {
         switch selectedType {
         case .image: "Describe the image..."
@@ -154,7 +163,7 @@ struct GenerationView: View {
                 model: videoModel,
                 durationSeconds: seconds,
                 resolution: resolution,
-                generateAudio: true
+                generateAudio: effectiveGenerateAudio
             )
         case .image:
             let resolution = imageModel.resolutions != nil ? selectedResolution : nil
@@ -706,6 +715,11 @@ struct GenerationView: View {
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .lineLimit(1)
+                if supportsAudioToggle {
+                    Image(systemName: generateAudio ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
                 Image(systemName: "gearshape")
                     .font(.system(size: 9))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -749,6 +763,14 @@ struct GenerationView: View {
                     .controlSize(.small)
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
+            }
+            if selectedType == .video, let discount = videoModel.audioDiscountRate {
+                let savings = Int(((1 - discount) * 100).rounded())
+                Toggle("Generate audio", isOn: $generateAudio)
+                    .controlSize(.small)
+                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .help("Turn off to save \(savings)% on generation cost.")
             }
         }
         .padding(AppTheme.Spacing.lg)
@@ -826,7 +848,8 @@ struct GenerationView: View {
             styleInstructions: selectedType == .audio && audioModel.supportsStyleInstructions && !styleInstructions.isEmpty
                 ? styleInstructions : nil,
             instrumental: selectedType == .audio && audioModel.supportsInstrumental
-                ? instrumental : nil
+                ? instrumental : nil,
+            generateAudio: supportsAudioToggle ? generateAudio : nil
         )
         let imageCount: Int = {
             guard selectedType == .image, imageModel.maxImages > 1 else { return 1 }
@@ -915,7 +938,7 @@ struct GenerationView: View {
                         startFrameURL: model.requiresSourceVideo ? nil : uploaded.first,
                         endFrameURL: model.requiresSourceVideo ? nil : (uploaded.count > 1 ? uploaded[1] : nil),
                         referenceImageURLs: model.requiresSourceVideo ? Array(uploaded.dropFirst()) : [],
-                        generateAudio: true
+                        generateAudio: effectiveGenerateAudio
                     )
                     return (model.resolvedEndpoint(params: params), model.buildInput(params: params))
                 },
@@ -1053,6 +1076,7 @@ struct GenerationView: View {
         if selectedType == .video, !videoModel.durations.contains(selectedDuration) {
             selectedDuration = videoModel.durations.first ?? 5
         }
+        if selectedType == .video { generateAudio = true }
         if selectedType == .image {
             selectedNumImages = min(max(1, selectedNumImages), imageModel.maxImages)
         }
