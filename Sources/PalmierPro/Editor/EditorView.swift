@@ -263,6 +263,8 @@ final class EditorSplitViewController: NSSplitViewController {
             self.view.layoutSubtreeIfNeeded()
             guard self.view.bounds.width > 0 else { return }
             apply()
+            self.mediaSplitItem?.isCollapsed = !self.editor.mediaPanelVisible
+            self.inspectorSplitItem?.isCollapsed = !self.editor.inspectorPanelVisible
         }
         pendingLayout = work
         DispatchQueue.main.async(execute: work)
