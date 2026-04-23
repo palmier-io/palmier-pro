@@ -68,6 +68,7 @@ struct TitleBarTrailingView: View {
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .frame(width: 26, height: 26)
                     .hoverHighlight()
+                    .help("Export (⌘E)")
             }
             .buttonStyle(.plain)
         }
@@ -176,5 +177,6 @@ struct LayoutPresetMenu: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .hoverHighlight()
+        .help("Layout")
     }
 }

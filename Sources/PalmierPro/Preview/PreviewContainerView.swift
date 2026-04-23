@@ -91,10 +91,10 @@ struct PreviewContainerView: View {
     private var projectSettingsGroup: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: AppTheme.Spacing.md) {
-                settingsMenuButton(label: aspectBadgeLabel) { aspectMenuItems }
-                settingsMenuButton(label: "\(editor.timeline.fps)") { fpsMenuItems }
-                settingsMenuButton(label: qualityBadgeLabel) { qualityMenuItems }
-                settingsMenuButton(label: zoomBadgeLabel) { zoomMenuItems }
+                settingsMenuButton(label: aspectBadgeLabel, help: "Aspect Ratio") { aspectMenuItems }
+                settingsMenuButton(label: "\(editor.timeline.fps)", help: "Frame Rate") { fpsMenuItems }
+                settingsMenuButton(label: qualityBadgeLabel, help: "Resolution") { qualityMenuItems }
+                settingsMenuButton(label: zoomBadgeLabel, help: "Canvas Zoom") { zoomMenuItems }
             }
 
             Menu {
@@ -109,6 +109,7 @@ struct PreviewContainerView: View {
             .menuIndicator(.hidden)
             .fixedSize()
             .hoverHighlight()
+            .help("Project Settings")
         }
     }
 
@@ -210,6 +211,7 @@ struct PreviewContainerView: View {
 
     private func settingsMenuButton<MenuContent: View>(
         label: String,
+        help: String,
         @ViewBuilder menu: @escaping () -> MenuContent
     ) -> some View {
         Menu {
@@ -221,6 +223,7 @@ struct PreviewContainerView: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .hoverHighlight()
+        .help(help)
     }
 
     private func badgeLabel(_ text: String) -> some View {

@@ -7,8 +7,8 @@ struct ToolbarView: View {
         HStack(spacing: AppTheme.Spacing.md) {
             // Undo / Redo
             HStack(spacing: AppTheme.Spacing.md) {
-                toolbarButton("arrow.uturn.backward", action: { editor.undoManager?.undo() })
-                toolbarButton("arrow.uturn.forward", action: { editor.undoManager?.redo() })
+                toolbarButton("arrow.uturn.backward", help: "Undo (⌘Z)", action: { editor.undoManager?.undo() })
+                toolbarButton("arrow.uturn.forward", help: "Redo (⇧⌘Z)", action: { editor.undoManager?.redo() })
             }
 
             Divider()
@@ -16,8 +16,8 @@ struct ToolbarView: View {
 
             // Tool mode
             HStack(spacing: AppTheme.Spacing.md) {
-                toolModeButton("cursorarrow", mode: .pointer)
-                toolModeButton("scissors", mode: .razor)
+                toolModeButton("cursorarrow", mode: .pointer, help: "Pointer (V)")
+                toolModeButton("scissors", mode: .razor, help: "Razor (C)")
             }
 
             Divider()
@@ -25,16 +25,16 @@ struct ToolbarView: View {
 
             // Split, trim buttons
             HStack(spacing: AppTheme.Spacing.md) {
-                toolbarButton("square.split.2x1", action: editor.splitAtPlayhead)
-                bracketButton("[", action: editor.trimStartToPlayhead)
-                bracketButton("]", action: editor.trimEndToPlayhead)
+                toolbarButton("square.split.2x1", help: "Split at Playhead (⌘K)", action: editor.splitAtPlayhead)
+                bracketButton("[", help: "Trim Start to Playhead (Q)", action: editor.trimStartToPlayhead)
+                bracketButton("]", help: "Trim End to Playhead (W)", action: editor.trimEndToPlayhead)
             }
 
             Divider()
                 .frame(height: 20)
 
             // Capture current frame to media panel
-            toolbarButton("camera", action: editor.captureCurrentFrameToMedia)
+            toolbarButton("camera", help: "Capture Frame to Media", action: editor.captureCurrentFrameToMedia)
 
             Spacer()
 
@@ -56,18 +56,19 @@ struct ToolbarView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func toolbarButton(_ systemName: String, action: @escaping () -> Void) -> some View {
+    private func toolbarButton(_ systemName: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: AppTheme.FontSize.md))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .frame(width: 24, height: 24)
                 .hoverHighlight()
+                .help(help)
         }
         .buttonStyle(.plain)
     }
 
-    private func toolModeButton(_ systemName: String, mode: ToolMode) -> some View {
+    private func toolModeButton(_ systemName: String, mode: ToolMode, help: String) -> some View {
         let isActive = editor.toolMode == mode
         return Button { editor.toolMode = mode } label: {
             Image(systemName: systemName)
@@ -75,17 +76,19 @@ struct ToolbarView: View {
                 .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
                 .frame(width: 24, height: 24)
                 .hoverHighlight(isActive: isActive)
+                .help(help)
         }
         .buttonStyle(.plain)
     }
 
-    private func bracketButton(_ bracket: String, action: @escaping () -> Void) -> some View {
+    private func bracketButton(_ bracket: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(bracket)
                 .font(.system(size: 16, weight: .semibold, design: .monospaced))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .frame(width: 24, height: 24)
                 .hoverHighlight()
+                .help(help)
         }
         .buttonStyle(.plain)
     }
