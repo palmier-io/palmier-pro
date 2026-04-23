@@ -115,7 +115,8 @@ struct GenerationView: View {
         return !isPromptEmpty
     }
 
-    private var totalRefCount: Int { refImages.count + refVideos.count + refAudios.count }
+    private var allRefs: [MediaAsset] { refImages + refVideos + refAudios }
+    private var totalRefCount: Int { allRefs.count }
 
     private var isRefCapReached: Bool {
         if let total = videoModel.maxTotalReferences, totalRefCount >= total { return true }
@@ -183,6 +184,10 @@ struct GenerationView: View {
         }
     }
 
+    private var effectiveResolution: String? {
+        currentResolutions != nil ? selectedResolution : nil
+    }
+
     private var currentQualities: [String]? {
         selectedType == .image ? imageModel.qualities : nil
     }
@@ -215,22 +220,20 @@ struct GenerationView: View {
     private var estimatedCost: Double? {
         switch selectedType {
         case .video:
-            let resolution = videoModel.resolutions != nil ? selectedResolution : nil
             let seconds = videoModel.requiresSourceVideo
                 ? Int((sourceVideo?.duration ?? 0).rounded())
                 : selectedDuration
             return CostEstimator.videoCost(
                 model: videoModel,
                 durationSeconds: seconds,
-                resolution: resolution,
+                resolution: effectiveResolution,
                 generateAudio: effectiveGenerateAudio
             )
         case .image:
-            let resolution = imageModel.resolutions != nil ? selectedResolution : nil
             let quality = imageModel.qualities != nil ? selectedQuality : nil
             return CostEstimator.imageCost(
                 model: imageModel,
-                resolution: resolution,
+                resolution: effectiveResolution,
                 quality: quality,
                 numImages: selectedNumImages
             )
@@ -269,12 +272,9 @@ struct GenerationView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            // Type tabs + mode toggle (left) · API key + close (right)
+            // Type tabs (left) · API key + close (right)
             HStack(spacing: AppTheme.Spacing.sm) {
                 typeTabs
-                if selectedType == .video && videoModel.framesAndReferencesExclusive {
-                    framesRefsModePicker
-                }
                 Spacer()
                 apiKeyButton
                 Button {
@@ -298,6 +298,9 @@ struct GenerationView: View {
                     .padding(.horizontal, AppTheme.Spacing.md)
             } else if selectedType == .video {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                    if videoModel.framesAndReferencesExclusive {
+                        framesRefsModePicker
+                    }
                     if showsFrameStrip { videoFrameStrip }
                     if showsRefSections { videoReferenceSections }
                 }
@@ -668,6 +671,7 @@ struct GenerationView: View {
                             RoundedRectangle(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: 2))
                                 .fill(framesRefsMode == mode ? Color.white.opacity(0.08) : .clear)
                         )
+                        .hoverHighlight(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: 2))
                 }
                 .buttonStyle(.plain)
             }
@@ -698,19 +702,21 @@ struct GenerationView: View {
                     .foregroundStyle(AppTheme.Text.mutedColor)
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: AppTheme.Spacing.xs) {
-                    ForEach(ClipType.allCases, id: \.self) { type in
-                        refCards(for: type)
-                    }
-                    if !isRefCapReached {
-                        dropZone(
-                            isTargeted: $refsTargeted,
-                            accepting: Set(ClipType.allCases),
-                            iconName: "plus"
-                        ) { asset in
-                            addRefAsset(asset)
-                        }
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 80), spacing: AppTheme.Spacing.xs)],
+                alignment: .leading,
+                spacing: AppTheme.Spacing.xs
+            ) {
+                ForEach(ClipType.allCases, id: \.self) { type in
+                    refCards(for: type)
+                }
+                if !isRefCapReached {
+                    dropZone(
+                        isTargeted: $refsTargeted,
+                        accepting: Set(ClipType.allCases),
+                        iconName: "plus"
+                    ) { asset in
+                        addRefAsset(asset)
                     }
                 }
             }
@@ -743,6 +749,10 @@ struct GenerationView: View {
     }
 
     private func addRefAsset(_ asset: MediaAsset) {
+        if allRefs.contains(where: { $0.id == asset.id }) {
+            flashDropError("\(asset.name) is already a reference")
+            return
+        }
         if refCap(for: asset.type) == 0 {
             let supported = ClipType.allCases.filter { refCap(for: $0) > 0 }.map(\.rawValue)
             flashDropError("\(videoModel.displayName) only accepts \(supported.joined(separator: "/")) references")
@@ -930,17 +940,25 @@ struct GenerationView: View {
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: AppTheme.Spacing.xs) {
-                    ForEach(Array(imageReferences.enumerated()), id: \.element.id) { index, asset in
-                        refCard(asset: asset) { imageReferences.remove(at: index) }
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 80), spacing: AppTheme.Spacing.xs)],
+                alignment: .leading,
+                spacing: AppTheme.Spacing.xs
+            ) {
+                ForEach(Array(imageReferences.enumerated()), id: \.element.id) { index, asset in
+                    refCard(asset: asset) { imageReferences.remove(at: index) }
+                }
+                validatedDropZone(
+                    isTargeted: $imageRefTargeted,
+                    expects: [.image],
+                    iconName: "photo.badge.plus",
+                    roleLabel: "Reference"
+                ) { asset in
+                    if imageReferences.contains(where: { $0.id == asset.id }) {
+                        flashDropError("\(asset.name) is already a reference")
+                    } else {
+                        imageReferences.append(asset)
                     }
-                    validatedDropZone(
-                        isTargeted: $imageRefTargeted,
-                        expects: [.image],
-                        iconName: "photo.badge.plus",
-                        roleLabel: "Reference"
-                    ) { imageReferences.append($0) }
                 }
             }
         }
@@ -1039,10 +1057,9 @@ struct GenerationView: View {
                     )
             )
             .overlay {
-                DropTargetOverlay(isTargeted: isTargeted) { urlString in
-                    if let asset = editor.mediaAssets.first(where: {
-                        $0.url.absoluteString == urlString && acceptedTypes.contains($0.type)
-                    }) {
+                DropTargetOverlay(isTargeted: isTargeted) { payload in
+                    for asset in editor.assetsFromDragPayload(payload)
+                    where acceptedTypes.contains(asset.type) {
                         onDrop(asset)
                     }
                 }
@@ -1064,6 +1081,13 @@ struct GenerationView: View {
     // MARK: - Type picker
 
     private var typeTabs: some View {
+        ViewThatFits(in: .horizontal) {
+            typeTabsBar(showLabels: true)
+            typeTabsBar(showLabels: false)
+        }
+    }
+
+    private func typeTabsBar(showLabels: Bool) -> some View {
         HStack(spacing: 0) {
             ForEach(GenerationType.allCases, id: \.self) { type in
                 Button {
@@ -1072,8 +1096,11 @@ struct GenerationView: View {
                     HStack(spacing: 4) {
                         Image(systemName: type.icon)
                             .font(.system(size: 9, weight: .medium))
-                        Text(type.rawValue)
-                            .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                        if showLabels {
+                            Text(type.rawValue)
+                                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                                .fixedSize()
+                        }
                     }
                     .foregroundStyle(selectedType == type ? type.accentColor : AppTheme.Text.tertiaryColor)
                     .padding(.horizontal, AppTheme.Spacing.sm)
@@ -1082,6 +1109,7 @@ struct GenerationView: View {
                         RoundedRectangle(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: 2))
                             .fill(selectedType == type ? type.accentColor.opacity(0.12) : .clear)
                     )
+                    .hoverHighlight(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: 2))
                 }
                 .buttonStyle(.plain)
             }
@@ -1191,13 +1219,14 @@ struct GenerationView: View {
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
-            if selectedType == .video, let discount = videoModel.audioDiscountRate {
-                let savings = Int(((1 - discount) * 100).rounded())
+            if selectedType == .video, videoModel.audioDiscountRate != nil {
+                let discount = videoModel.audioDiscount(for: effectiveResolution)
+                let savings = discount.map { Int(((1 - $0) * 100).rounded()) }
                 Toggle("Generate audio", isOn: $generateAudio)
                     .controlSize(.small)
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .help("Turn off to save \(savings)% on generation cost.")
+                    .help(savings.map { "Turn off to save \($0)% on generation cost." } ?? "Turn off to skip audio generation.")
             }
         }
         .padding(AppTheme.Spacing.lg)
@@ -1264,9 +1293,7 @@ struct GenerationView: View {
             model: currentModelId,
             duration: selectedType == .video ? selectedDuration : audioDuration,
             aspectRatio: selectedAspectRatio,
-            resolution: selectedType == .video
-                ? (videoModel.resolutions != nil ? selectedResolution : nil)
-                : (selectedType == .image && imageModel.resolutions != nil ? selectedResolution : nil),
+            resolution: effectiveResolution,
             quality: selectedType == .image && imageModel.qualities != nil ? selectedQuality : nil,
             voice: selectedType == .audio && audioModel.voices != nil && !selectedVoice.isEmpty
                 ? selectedVoice : nil,
