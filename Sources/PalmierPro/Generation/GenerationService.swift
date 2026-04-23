@@ -116,9 +116,10 @@ final class GenerationService {
                     onFailure: onFailure
                 )
             } catch {
-                Log.generation.error("upload failed model=\(genInput.model) error=\(error.localizedDescription)")
+                let message = Self.friendlyMessage(from: error)
+                Log.generation.error("upload failed model=\(genInput.model) error=\(message)")
                 for placeholder in placeholders {
-                    placeholder.generationStatus = .failed("Upload failed: \(error.localizedDescription)")
+                    placeholder.generationStatus = .failed("Upload failed: \(message)")
                 }
                 onFailure?()
             }
@@ -260,8 +261,9 @@ final class GenerationService {
                             anyFinalized = true
                         }
                     } catch {
-                        Log.generation.error("download failed model=\(genInput.model) idx=\(i) error=\(error.localizedDescription)")
-                        placeholder.generationStatus = .failed(error.localizedDescription)
+                        let message = Self.friendlyMessage(from: error)
+                        Log.generation.error("download failed model=\(genInput.model) idx=\(i) error=\(message)")
+                        placeholder.generationStatus = .failed(message)
                     }
                 }
 
@@ -269,12 +271,52 @@ final class GenerationService {
                     onFailure?()
                 }
             } catch {
-                Log.generation.error("generation failed model=\(genInput.model) error=\(error.localizedDescription)")
+                let message = Self.friendlyMessage(from: error)
+                Log.generation.error("generation failed model=\(genInput.model) error=\(message)")
                 for placeholder in placeholders {
-                    placeholder.generationStatus = .failed(error.localizedDescription)
+                    placeholder.generationStatus = .failed(message)
                 }
                 onFailure?()
             }
         }
+    }
+
+    /// Extracts a user-friendly error message from FalError using reflection.
+    static func friendlyMessage(from error: Error) -> String {
+        let mirror = Mirror(reflecting: error)
+        guard mirror.displayStyle == .enum,
+              let child = mirror.children.first,
+              let label = child.label else {
+            return error.localizedDescription
+        }
+        let fields = Dictionary(
+            Mirror(reflecting: child.value).children.compactMap { c in
+                c.label.map { ($0, c.value) }
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+        switch label {
+        case "httpError":
+            let status = fields["status"] as? Int ?? 0
+            let detail = detailMessage(from: fields["payload"] as? Payload)
+                ?? fields["message"] as? String
+            return detail.map { "\($0) (HTTP \(status))" } ?? "HTTP \(status)"
+        case "unauthorized":
+            return (fields["message"] as? String).map { "Unauthorized: \($0)" } ?? "Unauthorized"
+        case "queueTimeout":
+            return "Generation timed out"
+        default:
+            return error.localizedDescription
+        }
+    }
+
+    /// fal returns either `{"detail": "msg"}` or FastAPI's `{"detail": [{"msg": "..."}]}`.
+    private static func detailMessage(from payload: Payload?) -> String? {
+        guard let payload else { return nil }
+        let detail = payload["detail"]
+        if let str = detail.stringValue { return str }
+        guard case let .array(items) = detail else { return nil }
+        let msgs = items.compactMap { $0["msg"].stringValue ?? $0.stringValue }
+        return msgs.isEmpty ? nil : msgs.joined(separator: "; ")
     }
 }
