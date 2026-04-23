@@ -43,7 +43,11 @@ final class DropTargetNSView: NSView {
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         onTargetChanged?(false)
-        guard let payload = sender.draggingPasteboard.string(forType: .string) else { return false }
+        guard let payload = sender.draggingPasteboard.string(forType: .string) else {
+            Log.generation.notice("drop perform: no string payload")
+            return false
+        }
+        Log.generation.notice("drop perform payloadLen=\(payload.count) tail=\(payload.suffix(60))")
         onDrop?(payload)
         return true
     }
