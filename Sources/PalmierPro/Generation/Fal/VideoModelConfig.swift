@@ -10,8 +10,18 @@ struct VideoModelConfig: Identifiable, Sendable {
     let aspectRatios: [String]
     let supportsFirstFrame: Bool
     let supportsLastFrame: Bool
-    let supportsReferences: Bool
-    let maxReferences: Int
+    let maxReferenceImages: Int
+    let maxReferenceVideos: Int
+    let maxReferenceAudios: Int
+    let maxTotalReferences: Int?
+    /// Combined-duration caps on reference inputs (seconds). Seedance = 15 / 15.
+    let maxCombinedVideoRefSeconds: Double?
+    let maxCombinedAudioRefSeconds: Double?
+    /// When true, start/end frames and references are alternate submission modes for the same model
+    let framesAndReferencesExclusive: Bool
+    /// Noun used in `@`-mention tags for image refs. Kling emits `elements` so uses "Element";
+    /// Seedance/Grok use "Image".
+    let referenceTagNoun: String
     let requiresSourceVideo: Bool
     let pricePerSecond: [String: Double]
     /// Multiplier applied to price when `generateAudio == false` (e.g. 2/3 means 33% off).
@@ -23,7 +33,14 @@ struct VideoModelConfig: Identifiable, Sendable {
         id: String, displayName: String, baseEndpoint: String,
         durations: [Int], resolutions: [String]? = nil, aspectRatios: [String],
         supportsFirstFrame: Bool = true, supportsLastFrame: Bool = false,
-        supportsReferences: Bool = false, maxReferences: Int = 0,
+        maxReferenceImages: Int = 0,
+        maxReferenceVideos: Int = 0,
+        maxReferenceAudios: Int = 0,
+        maxTotalReferences: Int? = nil,
+        maxCombinedVideoRefSeconds: Double? = nil,
+        maxCombinedAudioRefSeconds: Double? = nil,
+        framesAndReferencesExclusive: Bool = false,
+        referenceTagNoun: String = "Image",
         requiresSourceVideo: Bool = false,
         pricePerSecond: [String: Double] = [:],
         audioDiscountRate: Double? = nil,
@@ -33,10 +50,26 @@ struct VideoModelConfig: Identifiable, Sendable {
         self.id = id; self.displayName = displayName; self.baseEndpoint = baseEndpoint
         self.durations = durations; self.resolutions = resolutions; self.aspectRatios = aspectRatios
         self.supportsFirstFrame = supportsFirstFrame; self.supportsLastFrame = supportsLastFrame
-        self.supportsReferences = supportsReferences; self.maxReferences = maxReferences
+        self.maxReferenceImages = maxReferenceImages
+        self.maxReferenceVideos = maxReferenceVideos
+        self.maxReferenceAudios = maxReferenceAudios
+        self.maxTotalReferences = maxTotalReferences
+        self.maxCombinedVideoRefSeconds = maxCombinedVideoRefSeconds
+        self.maxCombinedAudioRefSeconds = maxCombinedAudioRefSeconds
+        self.framesAndReferencesExclusive = framesAndReferencesExclusive
+        self.referenceTagNoun = referenceTagNoun
         self.requiresSourceVideo = requiresSourceVideo
         self.pricePerSecond = pricePerSecond; self.audioDiscountRate = audioDiscountRate
         self.resolveEndpoint = resolveEndpoint; self.buildFalInput = buildFalInput
+    }
+
+    var supportsReferences: Bool {
+        maxReferenceImages > 0 || maxReferenceVideos > 0 || maxReferenceAudios > 0
+    }
+
+    /// Total reference count available across types. Used by agent tool info.
+    var maxReferences: Int {
+        maxTotalReferences ?? (maxReferenceImages + maxReferenceVideos + maxReferenceAudios)
     }
 
     func resolvedEndpoint(params: VideoGenerationParams) -> String {
@@ -57,13 +90,38 @@ struct VideoGenerationParams: Sendable {
     let startFrameURL: String?
     let endFrameURL: String?
     let referenceImageURLs: [String]
+    let referenceVideoURLs: [String]
+    let referenceAudioURLs: [String]
     let generateAudio: Bool
+
+    init(
+        prompt: String, duration: Int, aspectRatio: String, resolution: String?,
+        sourceVideoURL: String? = nil,
+        startFrameURL: String? = nil, endFrameURL: String? = nil,
+        referenceImageURLs: [String] = [],
+        referenceVideoURLs: [String] = [],
+        referenceAudioURLs: [String] = [],
+        generateAudio: Bool = true
+    ) {
+        self.prompt = prompt; self.duration = duration
+        self.aspectRatio = aspectRatio; self.resolution = resolution
+        self.sourceVideoURL = sourceVideoURL
+        self.startFrameURL = startFrameURL; self.endFrameURL = endFrameURL
+        self.referenceImageURLs = referenceImageURLs
+        self.referenceVideoURLs = referenceVideoURLs
+        self.referenceAudioURLs = referenceAudioURLs
+        self.generateAudio = generateAudio
+    }
+
+    var hasAnyReferences: Bool {
+        !referenceImageURLs.isEmpty || !referenceVideoURLs.isEmpty || !referenceAudioURLs.isEmpty
+    }
 }
 
 // MARK: - Shared endpoint resolvers
 
 private func standardVideoEndpoint(_ base: String, _ input: VideoGenerationParams) -> String {
-    if !input.referenceImageURLs.isEmpty { return "\(base)/reference-to-video" }
+    if input.hasAnyReferences { return "\(base)/reference-to-video" }
     if input.startFrameURL != nil { return "\(base)/image-to-video" }
     return "\(base)/text-to-video"
 }
@@ -113,10 +171,19 @@ private func buildKlingInput(startFrameKey: String) -> @Sendable (VideoGeneratio
 
 private func buildSeedanceInput(_ input: VideoGenerationParams) -> Payload {
     var d: [String: Payload] = ["prompt": .string(input.prompt)]
-    if let s = input.startFrameURL { d["image_url"] = .string(s) }
-    if let e = input.endFrameURL { d["end_image_url"] = .string(e) }
-    if input.startFrameURL == nil && !input.referenceImageURLs.isEmpty {
-        d["image_urls"] = .array(input.referenceImageURLs.map { .string($0) })
+    if input.hasAnyReferences {
+        if !input.referenceImageURLs.isEmpty {
+            d["image_urls"] = .array(input.referenceImageURLs.map { .string($0) })
+        }
+        if !input.referenceVideoURLs.isEmpty {
+            d["video_urls"] = .array(input.referenceVideoURLs.map { .string($0) })
+        }
+        if !input.referenceAudioURLs.isEmpty {
+            d["audio_urls"] = .array(input.referenceAudioURLs.map { .string($0) })
+        }
+    } else {
+        if let s = input.startFrameURL { d["image_url"] = .string(s) }
+        if let e = input.endFrameURL { d["end_image_url"] = .string(e) }
     }
     if let r = input.resolution { d["resolution"] = .string(r) }
     if !input.aspectRatio.isEmpty { d["aspect_ratio"] = .string(input.aspectRatio) }
@@ -164,7 +231,9 @@ extension VideoModelConfig {
         id: "kling-v3", displayName: "Kling V3",
         baseEndpoint: "fal-ai/kling-video/v3/pro",
         durations: Array(3...15), aspectRatios: ["16:9", "9:16"],
-        supportsLastFrame: true, supportsReferences: true, maxReferences: 3,
+        supportsLastFrame: true,
+        maxReferenceImages: 3,
+        referenceTagNoun: "Element",
         pricePerSecond: ["": 0.168],
         audioDiscountRate: 2.0 / 3.0,
         resolveEndpoint: frameOnlyEndpoint,
@@ -175,7 +244,9 @@ extension VideoModelConfig {
         id: "kling-o3", displayName: "Kling O3",
         baseEndpoint: "fal-ai/kling-video/o3/pro",
         durations: Array(3...15), aspectRatios: ["16:9", "9:16"],
-        supportsLastFrame: true, supportsReferences: true, maxReferences: 7,
+        supportsLastFrame: true,
+        maxReferenceImages: 7,
+        referenceTagNoun: "Element",
         pricePerSecond: ["": 0.14],
         audioDiscountRate: 0.8,
         resolveEndpoint: standardVideoEndpoint,
@@ -192,7 +263,14 @@ extension VideoModelConfig {
             id: id, displayName: displayName, baseEndpoint: "bytedance/seedance-2.0",
             durations: Array(4...15), resolutions: resolutions,
             aspectRatios: ["16:9", "9:16", "1:1"],
-            supportsLastFrame: true, supportsReferences: true, maxReferences: 9,
+            supportsLastFrame: true,
+            maxReferenceImages: 9,
+            maxReferenceVideos: 3,
+            maxReferenceAudios: 3,
+            maxTotalReferences: 12,
+            maxCombinedVideoRefSeconds: 15,
+            maxCombinedAudioRefSeconds: 15,
+            framesAndReferencesExclusive: true,
             pricePerSecond: pricePerSecond,
             resolveEndpoint: { base, input in
                 let prefix = variant.map { "\(base)/\($0)" } ?? base
@@ -212,17 +290,20 @@ extension VideoModelConfig {
         baseEndpoint: "xai/grok-imagine-video",
         durations: Array(6...15), resolutions: ["480p", "720p"],
         aspectRatios: ["16:9", "9:16"],
-        supportsReferences: true, maxReferences: 7,
+        maxReferenceImages: 7,
+        framesAndReferencesExclusive: true,
         pricePerSecond: ["480p": 0.05, "720p": 0.07],
         resolveEndpoint: { base, input in
             if input.startFrameURL != nil { return "\(base)/image-to-video" }
             return standardVideoEndpoint(base, input)
         },
         buildFalInput: { input in
-            let useRefs = input.startFrameURL == nil && !input.referenceImageURLs.isEmpty
             var d: [String: Payload] = ["prompt": .string(input.prompt)]
-            if let s = input.startFrameURL { d["image_url"] = .string(s) }
-            if useRefs { d["reference_image_urls"] = .array(input.referenceImageURLs.map { .string($0) }) }
+            if let s = input.startFrameURL {
+                d["image_url"] = .string(s)
+            } else if !input.referenceImageURLs.isEmpty {
+                d["reference_image_urls"] = .array(input.referenceImageURLs.map { .string($0) })
+            }
             if let r = input.resolution { d["resolution"] = .string(r) }
             if !input.aspectRatio.isEmpty { d["aspect_ratio"] = .string(input.aspectRatio) }
             d["duration"] = .int(input.duration)
@@ -237,7 +318,6 @@ extension VideoModelConfig {
         baseEndpoint: "fal-ai/kling-video/o3/pro/video-to-video/edit",
         durations: [], resolutions: nil, aspectRatios: [],
         supportsFirstFrame: false, supportsLastFrame: false,
-        supportsReferences: false, maxReferences: 0,
         requiresSourceVideo: true,
         pricePerSecond: ["": 0.168],
         resolveEndpoint: { base, _ in base },
@@ -253,7 +333,7 @@ extension VideoModelConfig {
         baseEndpoint: "fal-ai/kling-video/v3/pro/motion-control",
         durations: [], resolutions: nil, aspectRatios: [],
         supportsFirstFrame: false, supportsLastFrame: false,
-        supportsReferences: true, maxReferences: 1,
+        maxReferenceImages: 1,
         requiresSourceVideo: true,
         pricePerSecond: ["": 0.168],
         resolveEndpoint: { base, _ in base },

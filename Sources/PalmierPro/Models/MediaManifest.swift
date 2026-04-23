@@ -35,6 +35,9 @@ struct GenerationInput: Codable, Sendable, Equatable {
     var instrumental: Bool?
     /// Video-only
     var generateAudio: Bool?
+    var referenceImageURLs: [String]?
+    var referenceVideoURLs: [String]?
+    var referenceAudioURLs: [String]?
     /// Metadata
     var estimatedCost: Double?
     var createdAt: Date?

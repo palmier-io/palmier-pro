@@ -30,9 +30,18 @@ struct GenerationView: View {
     @State private var firstFrameTargeted = false
     @State private var lastFrameTargeted = false
 
-    // Image references
+    // Image references (image generation + video edit models' single ref slot)
     @State private var imageReferences: [MediaAsset] = []
     @State private var imageRefTargeted = false
+
+    // Video reference-to-video
+    @State private var refImages: [MediaAsset] = []
+    @State private var refVideos: [MediaAsset] = []
+    @State private var refAudios: [MediaAsset] = []
+    @State private var refsTargeted = false
+
+    /// See frames/references mode for `framesAndReferencesExclusive` models.
+    @State private var framesRefsMode: FramesRefsMode = .firstLast
 
     // Source video (for video-to-video edit models)
     @State private var sourceVideo: MediaAsset?
@@ -40,6 +49,24 @@ struct GenerationView: View {
     @State private var motionReferenceTargeted = false
 
     @State private var isConsumingEditSource = false
+
+    // Prompt @-autocomplete for reference tags (Seedance/Kling/Grok reference mode)
+    @State private var refMentionQuery: String? = nil
+    @State private var highlightedMentionIndex: Int = 0
+
+    @State private var dropError: String? = nil
+    @State private var dropErrorTask: Task<Void, Never>? = nil
+
+    enum FramesRefsMode: String, CaseIterable {
+        case firstLast = "First/Last"
+        case reference = "Reference"
+    }
+
+    struct RefTag: Hashable, Identifiable {
+        let label: String
+        let kindLabel: String
+        var id: String { label }
+    }
 
     enum GenerationType: String, CaseIterable {
         case image = "Image"
@@ -77,10 +104,43 @@ struct GenerationView: View {
             if !videoModel.supportsReferences && isPromptEmpty { return false }
             return true
         }
+        if selectedType == .video && videoModel.framesAndReferencesExclusive
+            && framesRefsMode == .reference && refImages.isEmpty
+            && refVideos.isEmpty && refAudios.isEmpty {
+            return false
+        }
         if selectedType == .audio {
             return trimmedPrompt.count >= audioModel.minPromptLength
         }
         return !isPromptEmpty
+    }
+
+    private var totalRefCount: Int { refImages.count + refVideos.count + refAudios.count }
+
+    private var isRefCapReached: Bool {
+        if let total = videoModel.maxTotalReferences, totalRefCount >= total { return true }
+        let imgFull = videoModel.maxReferenceImages == 0 || refImages.count >= videoModel.maxReferenceImages
+        let vidFull = videoModel.maxReferenceVideos == 0 || refVideos.count >= videoModel.maxReferenceVideos
+        let audFull = videoModel.maxReferenceAudios == 0 || refAudios.count >= videoModel.maxReferenceAudios
+        return imgFull && vidFull && audFull
+    }
+
+    private var showsRefSections: Bool {
+        guard selectedType == .video, videoModel.supportsReferences else { return false }
+        if videoModel.requiresSourceVideo { return false }
+        if videoModel.framesAndReferencesExclusive {
+            return framesRefsMode == .reference
+        }
+        return true
+    }
+
+    private var showsFrameStrip: Bool {
+        guard selectedType == .video, videoModel.supportsFirstFrame else { return false }
+        if videoModel.requiresSourceVideo { return false }
+        if videoModel.framesAndReferencesExclusive {
+            return framesRefsMode == .firstLast
+        }
+        return true
     }
 
     private var hasAnySettings: Bool {
@@ -209,9 +269,12 @@ struct GenerationView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            // Type tabs + API key on top row
-            HStack {
+            // Type tabs + mode toggle (left) · API key + close (right)
+            HStack(spacing: AppTheme.Spacing.sm) {
                 typeTabs
+                if selectedType == .video && videoModel.framesAndReferencesExclusive {
+                    framesRefsModePicker
+                }
                 Spacer()
                 apiKeyButton
                 Button {
@@ -233,12 +296,23 @@ struct GenerationView: View {
             if selectedType == .video && videoModel.requiresSourceVideo {
                 editVideoStrip
                     .padding(.horizontal, AppTheme.Spacing.md)
-            } else if selectedType == .video && videoModel.supportsFirstFrame {
-                videoFrameStrip
-                    .padding(.horizontal, AppTheme.Spacing.md)
+            } else if selectedType == .video {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                    if showsFrameStrip { videoFrameStrip }
+                    if showsRefSections { videoReferenceSections }
+                }
+                .padding(.horizontal, AppTheme.Spacing.md)
             } else if selectedType == .image && imageModel.supportsImageReference {
                 imageReferenceStrip
                     .padding(.horizontal, AppTheme.Spacing.md)
+            }
+
+            if let dropError {
+                Text(dropError)
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(Color.orange)
+                    .padding(.horizontal, AppTheme.Spacing.md)
+                    .transition(.opacity)
             }
 
             // Name field
@@ -312,6 +386,8 @@ struct GenerationView: View {
                 if !videoModel.requiresSourceVideo {
                     sourceVideo = nil
                 }
+                framesRefsMode = .firstLast
+                resetRefPools()
             }
         }
         .onChange(of: selectedImageModelIndex) { _, _ in
@@ -357,6 +433,14 @@ struct GenerationView: View {
                 .padding(.top, AppTheme.Spacing.sm)
                 .padding(.bottom, AppTheme.Spacing.xs)
                 .focused($isPromptFocused)
+                .onChange(of: prompt) { _, new in updateRefMentionQuery(from: new) }
+                .onKeyPress(phases: [.down, .repeat]) { press in handleMentionKey(press) }
+                .popover(isPresented: Binding(
+                    get: { showMentionPicker },
+                    set: { if !$0 { refMentionQuery = nil } }
+                ), attachmentAnchor: .point(.topLeading), arrowEdge: .top) {
+                    refMentionPopover
+                }
 
             if prompt.isEmpty {
                 Text(promptPlaceholder)
@@ -368,6 +452,97 @@ struct GenerationView: View {
             }
         }
         .frame(minHeight: 70, maxHeight: 120)
+    }
+
+    private var refMentionPopover: some View {
+        let tags = matchedRefTags
+        return VStack(alignment: .leading, spacing: 0) {
+            if tags.isEmpty {
+                Text("No matches")
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+                    .padding(AppTheme.Spacing.md)
+            } else {
+                ForEach(Array(tags.enumerated()), id: \.element.id) { index, tag in
+                    HStack(spacing: AppTheme.Spacing.sm) {
+                        Text("@\(tag.label)")
+                            .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                            .foregroundStyle(AppTheme.Text.primaryColor)
+                        Text(tag.kindLabel)
+                            .font(.system(size: 9))
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, AppTheme.Spacing.sm)
+                    .padding(.vertical, 4)
+                    .frame(minWidth: 160, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                            .fill(index == highlightedMentionIndex ? Color.accentColor.opacity(0.22) : .clear)
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture { pickRefTag(tag) }
+                    .onHover { hovering in if hovering { highlightedMentionIndex = index } }
+                }
+            }
+        }
+        .padding(4)
+        .frame(minWidth: 180)
+        .glassEffect(.clear, in: .rect(cornerRadius: AppTheme.Radius.md))
+    }
+
+    private func updateRefMentionQuery(from text: String) {
+        let newQuery: String? = {
+            guard !availableRefTags.isEmpty else { return nil }
+            guard let lastAt = text.lastIndex(of: "@") else { return nil }
+            let after = text[text.index(after: lastAt)...]
+            if after.contains(where: { $0.isWhitespace || $0.isNewline }) { return nil }
+            if lastAt > text.startIndex {
+                let prev = text[text.index(before: lastAt)]
+                if !prev.isWhitespace && !prev.isNewline { return nil }
+            }
+            return String(after)
+        }()
+        guard newQuery != refMentionQuery else { return }
+        refMentionQuery = newQuery
+        highlightedMentionIndex = 0
+    }
+
+    private func handleMentionKey(_ press: KeyPress) -> KeyPress.Result {
+        guard showMentionPicker else { return .ignored }
+        let tags = matchedRefTags
+        switch press.key {
+        case .upArrow:
+            guard !tags.isEmpty else { return .handled }
+            highlightedMentionIndex = max(0, highlightedMentionIndex - 1)
+            return .handled
+        case .downArrow:
+            guard !tags.isEmpty else { return .handled }
+            highlightedMentionIndex = min(tags.count - 1, highlightedMentionIndex + 1)
+            return .handled
+        case .return:
+            if tags.indices.contains(highlightedMentionIndex) {
+                pickRefTag(tags[highlightedMentionIndex])
+                return .handled
+            }
+            return .ignored
+        case .escape:
+            refMentionQuery = nil
+            return .handled
+        default:
+            return .ignored
+        }
+    }
+
+    private func pickRefTag(_ tag: RefTag) {
+        if let lastAt = prompt.lastIndex(of: "@") {
+            let prefix = prompt[..<lastAt]
+            prompt = String(prefix) + "@\(tag.label) "
+        } else {
+            prompt += "@\(tag.label) "
+        }
+        refMentionQuery = nil
+        highlightedMentionIndex = 0
     }
 
     // MARK: - Secondary fields (lyrics / style instructions)
@@ -470,6 +645,235 @@ struct GenerationView: View {
         }
     }
 
+    // MARK: - First/Last / Reference mode picker (Seedance, Grok)
+
+    private var framesRefsModePicker: some View {
+        HStack(spacing: 0) {
+            ForEach(FramesRefsMode.allCases, id: \.self) { mode in
+                Button {
+                    framesRefsMode = mode
+                    switch mode {
+                    case .firstLast: resetRefPools()
+                    case .reference: firstFrame = nil; lastFrame = nil
+                    }
+                } label: {
+                    Text(mode.rawValue)
+                        .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                        .foregroundStyle(framesRefsMode == mode
+                            ? AppTheme.Text.primaryColor
+                            : AppTheme.Text.tertiaryColor)
+                        .padding(.horizontal, AppTheme.Spacing.sm)
+                        .padding(.vertical, 3)
+                        .background(
+                            RoundedRectangle(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: 2))
+                                .fill(framesRefsMode == mode ? Color.white.opacity(0.08) : .clear)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                .fill(Color.white.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                .strokeBorder(AppTheme.Border.primaryColor, lineWidth: 1)
+        )
+        .fixedSize()
+    }
+
+    // MARK: - Unified video references strip (Seedance/Kling/Grok reference-to-video)
+
+    private var videoReferenceSections: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            HStack(spacing: AppTheme.Spacing.xs) {
+                Text("References")
+                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                Text(refCounterLabel)
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .monospacedDigit()
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: AppTheme.Spacing.xs) {
+                    ForEach(ClipType.allCases, id: \.self) { type in
+                        refCards(for: type)
+                    }
+                    if !isRefCapReached {
+                        dropZone(
+                            isTargeted: $refsTargeted,
+                            accepting: Set(ClipType.allCases),
+                            iconName: "plus"
+                        ) { asset in
+                            addRefAsset(asset)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func refCap(for type: ClipType) -> Int {
+        switch type {
+        case .image: videoModel.maxReferenceImages
+        case .video: videoModel.maxReferenceVideos
+        case .audio: videoModel.maxReferenceAudios
+        }
+    }
+
+    private func refCount(for type: ClipType) -> Int {
+        switch type {
+        case .image: refImages.count
+        case .video: refVideos.count
+        case .audio: refAudios.count
+        }
+    }
+
+    /// Tag noun used in `@Image1` / `@Video1` / `@Audio1` / `@Element1` labels.
+    private func tagNoun(for type: ClipType) -> String {
+        switch type {
+        case .image: videoModel.referenceTagNoun
+        case .video: "Video"
+        case .audio: "Audio"
+        }
+    }
+
+    private func addRefAsset(_ asset: MediaAsset) {
+        if refCap(for: asset.type) == 0 {
+            let supported = ClipType.allCases.filter { refCap(for: $0) > 0 }.map(\.rawValue)
+            flashDropError("\(videoModel.displayName) only accepts \(supported.joined(separator: "/")) references")
+            return
+        }
+        if isRefCapReached {
+            flashDropError("Max \(videoModel.maxTotalReferences ?? refCap(for: asset.type)) references")
+            return
+        }
+        if refCount(for: asset.type) >= refCap(for: asset.type) {
+            flashDropError("Max \(refCap(for: asset.type)) \(asset.type.rawValue) references")
+            return
+        }
+        if let cap = combinedDurationCap(for: asset.type),
+           combinedDuration(for: asset.type) + asset.duration > cap {
+            flashDropError("\(asset.type.rawValue.capitalized) refs combined can't exceed \(Int(cap))s")
+            return
+        }
+        switch asset.type {
+        case .image: refImages.append(asset)
+        case .video: refVideos.append(asset)
+        case .audio: refAudios.append(asset)
+        }
+    }
+
+    private func validatedDropZone(
+        isTargeted: Binding<Bool>,
+        expects: Set<ClipType>,
+        iconName: String,
+        roleLabel: String,
+        onDrop: @escaping (MediaAsset) -> Void
+    ) -> some View {
+        dropZone(
+            isTargeted: isTargeted,
+            accepting: Set(ClipType.allCases),
+            iconName: iconName
+        ) { asset in
+            if expects.contains(asset.type) {
+                onDrop(asset)
+            } else {
+                let types = expects.map(\.rawValue).sorted().joined(separator: "/")
+                flashDropError("\(roleLabel) expects \(types)")
+            }
+        }
+    }
+
+    private func flashDropError(_ message: String) {
+        dropErrorTask?.cancel()
+        dropError = message
+        dropErrorTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            if !Task.isCancelled { dropError = nil }
+        }
+    }
+
+    private func combinedDurationCap(for type: ClipType) -> Double? {
+        switch type {
+        case .video: videoModel.maxCombinedVideoRefSeconds
+        case .audio: videoModel.maxCombinedAudioRefSeconds
+        case .image: nil
+        }
+    }
+
+    private func combinedDuration(for type: ClipType) -> Double {
+        switch type {
+        case .video: refVideos.reduce(0) { $0 + $1.duration }
+        case .audio: refAudios.reduce(0) { $0 + $1.duration }
+        case .image: 0
+        }
+    }
+
+    private func removeRef(_ type: ClipType, at index: Int) {
+        switch type {
+        case .image: refImages.remove(at: index)
+        case .video: refVideos.remove(at: index)
+        case .audio: refAudios.remove(at: index)
+        }
+    }
+
+    @ViewBuilder
+    private func refCards(for type: ClipType) -> some View {
+        let assets: [MediaAsset] = {
+            switch type { case .image: refImages; case .video: refVideos; case .audio: refAudios }
+        }()
+        let noun = tagNoun(for: type)
+        ForEach(Array(assets.enumerated()), id: \.element.id) { index, asset in
+            refCard(asset: asset, tag: "@\(noun)\(index + 1)") {
+                removeRef(type, at: index)
+            }
+        }
+    }
+
+    private func resetRefPools() {
+        refImages.removeAll()
+        refVideos.removeAll()
+        refAudios.removeAll()
+    }
+
+    private var refCounterLabel: String {
+        let total = totalRefCount
+        if let cap = videoModel.maxTotalReferences {
+            let shortLabel: (ClipType) -> String = { switch $0 { case .image: "img"; case .video: "vid"; case .audio: "aud" } }
+            let parts = ClipType.allCases
+                .filter { refCap(for: $0) > 0 }
+                .map { "\(refCount(for: $0)) \(shortLabel($0))" }
+            return "\(total)/\(cap) · \(parts.joined(separator: " · "))"
+        }
+        let singleCap = ClipType.allCases.map(refCap(for:)).max() ?? 0
+        return "\(total)/\(singleCap)"
+    }
+
+    private var availableRefTags: [RefTag] {
+        guard showsRefSections else { return [] }
+        return ClipType.allCases.flatMap { type -> [RefTag] in
+            let noun = tagNoun(for: type)
+            return (0..<refCount(for: type)).map { i in
+                RefTag(label: "\(noun)\(i + 1)", kindLabel: type.rawValue)
+            }
+        }
+    }
+
+    private var matchedRefTags: [RefTag] {
+        let q = (refMentionQuery ?? "").lowercased()
+        if q.isEmpty { return availableRefTags }
+        return availableRefTags.filter { $0.label.lowercased().contains(q) }
+    }
+
+    private var showMentionPicker: Bool {
+        refMentionQuery != nil && !availableRefTags.isEmpty
+    }
+
     private func frameSlot(
         label: String, asset: MediaAsset?,
         isTargeted: Binding<Bool>,
@@ -507,7 +911,13 @@ struct GenerationView: View {
                     .buttonStyle(.plain)
                 }
             } else {
-                dropZone(isTargeted: isTargeted, accepting: acceptedTypes, iconName: iconName) { onDrop($0) }
+                validatedDropZone(
+                    isTargeted: isTargeted,
+                    expects: acceptedTypes,
+                    iconName: iconName,
+                    roleLabel: label,
+                    onDrop: onDrop
+                )
             }
         }
     }
@@ -525,13 +935,18 @@ struct GenerationView: View {
                     ForEach(Array(imageReferences.enumerated()), id: \.element.id) { index, asset in
                         refCard(asset: asset) { imageReferences.remove(at: index) }
                     }
-                    dropZone(isTargeted: $imageRefTargeted) { imageReferences.append($0) }
+                    validatedDropZone(
+                        isTargeted: $imageRefTargeted,
+                        expects: [.image],
+                        iconName: "photo.badge.plus",
+                        roleLabel: "Reference"
+                    ) { imageReferences.append($0) }
                 }
             }
         }
     }
 
-    private func refCard(asset: MediaAsset, onRemove: @escaping () -> Void) -> some View {
+    private func refCard(asset: MediaAsset, tag: String? = nil, onRemove: @escaping () -> Void) -> some View {
         Group {
             if let thumb = asset.thumbnail {
                 Image(nsImage: thumb).resizable().aspectRatio(contentMode: .fill)
@@ -548,6 +963,18 @@ struct GenerationView: View {
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
         .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
             .strokeBorder(AppTheme.Border.primaryColor, lineWidth: 1))
+        .overlay(alignment: .bottomLeading) {
+            if let tag {
+                Text(tag)
+                    .font(.system(size: 9, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color.black.opacity(0.55), in: Capsule())
+                    .padding(3)
+            }
+        }
         .overlay(alignment: .topTrailing) {
             Button { onRemove() } label: {
                 Image(systemName: "xmark.circle.fill")
@@ -892,16 +1319,31 @@ struct GenerationView: View {
         switch selectedType {
         case .video:
             let model = videoModel
+            let useRefs = !model.requiresSourceVideo && showsRefSections
+            let useFrames = !model.requiresSourceVideo && showsFrameStrip
             var refs: [MediaAsset] = []
+            var frameSlots: [MediaAsset] = []
             if model.requiresSourceVideo {
                 if let sv = sourceVideo { refs.append(sv) }
                 if model.supportsReferences, let imgRef = imageReferences.first {
                     refs.append(imgRef)
                 }
             } else {
-                if let f = firstFrame { refs.append(f) }
-                if let l = lastFrame { refs.append(l) }
+                if useFrames {
+                    if let f = firstFrame { frameSlots.append(f) }
+                    if let l = lastFrame { frameSlots.append(l) }
+                }
+                refs.append(contentsOf: frameSlots)
+                if useRefs {
+                    refs.append(contentsOf: refImages)
+                    refs.append(contentsOf: refVideos)
+                    refs.append(contentsOf: refAudios)
+                }
             }
+            let frameCount = frameSlots.count
+            let imageRefCount = useRefs ? refImages.count : 0
+            let videoRefCount = useRefs ? refVideos.count : 0
+            let audioRefCount = useRefs ? refAudios.count : 0
             let trimmedSource: TrimmedSource? = {
                 guard model.requiresSourceVideo,
                       let trim = editor.pendingEditTrimmedSource,
@@ -921,6 +1363,28 @@ struct GenerationView: View {
             } else {
                 placeholderDuration = Double(selectedDuration)
             }
+            let generateAudioValue = effectiveGenerateAudio
+            var snapshotRefs: (@Sendable (inout GenerationInput, [String]) -> Void)? = nil
+            if !model.requiresSourceVideo {
+                snapshotRefs = { input, uploaded in
+                    let frames = Array(uploaded.prefix(frameCount))
+                    let rest = Array(uploaded.dropFirst(frameCount))
+                    input.imageURLs = frames.isEmpty ? nil : frames
+                    input.referenceImageURLs = imageRefCount > 0 ? Array(rest.prefix(imageRefCount)) : nil
+                    input.referenceVideoURLs = videoRefCount > 0
+                        ? Array(rest.dropFirst(imageRefCount).prefix(videoRefCount)) : nil
+                    input.referenceAudioURLs = audioRefCount > 0
+                        ? Array(rest.dropFirst(imageRefCount + videoRefCount).prefix(audioRefCount)) : nil
+                }
+            }
+            // Downscale ref videos to fit Seedance's ~1112 px long-side cap before upload.
+            var preprocessRef: (@Sendable (Int, MediaAsset) async throws -> URL?)? = nil
+            if useRefs {
+                preprocessRef = { _, asset in
+                    guard asset.type == .video else { return nil }
+                    return try await VideoCompressor.compressIfNeeded(url: asset.url)
+                }
+            }
             editor.generationService.generate(
                 genInput: genInput,
                 assetType: .video,
@@ -929,19 +1393,43 @@ struct GenerationView: View {
                 trimmedSourceOverride: trimmedSource,
                 name: name,
                 buildInput: { uploaded in
-                    let params = VideoGenerationParams(
-                        prompt: genInput.prompt,
-                        duration: genInput.duration,
-                        aspectRatio: genInput.aspectRatio,
-                        resolution: genInput.resolution,
-                        sourceVideoURL: model.requiresSourceVideo ? uploaded.first : nil,
-                        startFrameURL: model.requiresSourceVideo ? nil : uploaded.first,
-                        endFrameURL: model.requiresSourceVideo ? nil : (uploaded.count > 1 ? uploaded[1] : nil),
-                        referenceImageURLs: model.requiresSourceVideo ? Array(uploaded.dropFirst()) : [],
-                        generateAudio: effectiveGenerateAudio
-                    )
+                    let params: VideoGenerationParams
+                    if model.requiresSourceVideo {
+                        params = VideoGenerationParams(
+                            prompt: genInput.prompt,
+                            duration: genInput.duration,
+                            aspectRatio: genInput.aspectRatio,
+                            resolution: genInput.resolution,
+                            sourceVideoURL: uploaded.first,
+                            startFrameURL: nil,
+                            endFrameURL: nil,
+                            referenceImageURLs: Array(uploaded.dropFirst()),
+                            generateAudio: generateAudioValue
+                        )
+                    } else {
+                        let frames = Array(uploaded.prefix(frameCount))
+                        let rest = Array(uploaded.dropFirst(frameCount))
+                        let images = Array(rest.prefix(imageRefCount))
+                        let videos = Array(rest.dropFirst(imageRefCount).prefix(videoRefCount))
+                        let audios = Array(rest.dropFirst(imageRefCount + videoRefCount).prefix(audioRefCount))
+                        params = VideoGenerationParams(
+                            prompt: genInput.prompt,
+                            duration: genInput.duration,
+                            aspectRatio: genInput.aspectRatio,
+                            resolution: genInput.resolution,
+                            sourceVideoURL: nil,
+                            startFrameURL: frames.first,
+                            endFrameURL: frames.count > 1 ? frames[1] : nil,
+                            referenceImageURLs: images,
+                            referenceVideoURLs: videos,
+                            referenceAudioURLs: audios,
+                            generateAudio: generateAudioValue
+                        )
+                    }
                     return (model.resolvedEndpoint(params: params), model.buildInput(params: params))
                 },
+                snapshotRefs: snapshotRefs,
+                preprocessRef: preprocessRef,
                 responseKeyPath: FalResponsePaths.video,
                 fileExtension: "mp4",
                 projectURL: editor.projectURL, editor: editor,
@@ -1013,6 +1501,7 @@ struct GenerationView: View {
         firstFrame = nil
         lastFrame = nil
         imageReferences.removeAll()
+        resetRefPools()
         sourceVideo = nil
     }
 

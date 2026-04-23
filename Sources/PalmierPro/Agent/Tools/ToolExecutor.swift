@@ -350,12 +350,18 @@ final class ToolExecutor {
         }
 
         var refs: [MediaAsset] = [sourceAsset]
-        if model.supportsReferences, let imgRef = args.string("referenceImageMediaRef") {
-            let imgAsset = try asset(imgRef, editor: editor, label: "Reference image")
-            guard imgAsset.type == .image else {
-                throw ToolError("referenceImageMediaRef must reference an image asset")
+        if model.supportsReferences {
+            let imgRefIds = args.stringArray("referenceImageMediaRefs")
+            if imgRefIds.count > model.maxReferenceImages {
+                throw ToolError("\(model.displayName) accepts at most \(model.maxReferenceImages) image reference(s)")
             }
-            refs.append(imgAsset)
+            for id in imgRefIds {
+                let a = try asset(id, editor: editor, label: "Reference image")
+                guard a.type == .image else {
+                    throw ToolError("referenceImageMediaRefs entry '\(id)' must be an image asset")
+                }
+                refs.append(a)
+            }
         }
 
         let genInput = GenerationInput(
@@ -393,38 +399,115 @@ final class ToolExecutor {
         let aspectRatio = args.string("aspectRatio") ?? model.aspectRatios.first ?? ""
         let resolution = args.string("resolution") ?? model.resolutions?.first
 
-        var frameRefs: [MediaAsset] = []
+        var frameSlots: [MediaAsset] = []
         if let startRef = args.string("startFrameMediaRef") {
-            frameRefs.append(try asset(startRef, editor: editor, label: "Start frame"))
+            frameSlots.append(try asset(startRef, editor: editor, label: "Start frame"))
         }
         if let endRef = args.string("endFrameMediaRef") {
-            frameRefs.append(try asset(endRef, editor: editor, label: "End frame"))
+            frameSlots.append(try asset(endRef, editor: editor, label: "End frame"))
         }
+
+        func typedRefs(_ argName: String, expected: ClipType) throws -> [MediaAsset] {
+            try args.stringArray(argName).map { id in
+                let a = try asset(id, editor: editor, label: "\(expected.rawValue) reference")
+                guard a.type == expected else {
+                    throw ToolError("\(argName) entry '\(id)' must be a \(expected.rawValue) asset")
+                }
+                return a
+            }
+        }
+        let imageRefs = try typedRefs("referenceImageMediaRefs", expected: .image)
+        let videoRefs = try typedRefs("referenceVideoMediaRefs", expected: .video)
+        let audioRefs = try typedRefs("referenceAudioMediaRefs", expected: .audio)
+
+        if model.framesAndReferencesExclusive,
+           !frameSlots.isEmpty, !(imageRefs.isEmpty && videoRefs.isEmpty && audioRefs.isEmpty) {
+            throw ToolError("\(model.displayName) uses frames OR references, not both. Clear one side.")
+        }
+        if imageRefs.count > model.maxReferenceImages {
+            throw ToolError("\(model.displayName) accepts at most \(model.maxReferenceImages) image references")
+        }
+        if videoRefs.count > model.maxReferenceVideos {
+            throw ToolError("\(model.displayName) accepts at most \(model.maxReferenceVideos) video references")
+        }
+        if audioRefs.count > model.maxReferenceAudios {
+            throw ToolError("\(model.displayName) accepts at most \(model.maxReferenceAudios) audio references")
+        }
+        let totalRefs = imageRefs.count + videoRefs.count + audioRefs.count
+        if let totalCap = model.maxTotalReferences, totalRefs > totalCap {
+            throw ToolError("\(model.displayName) accepts at most \(totalCap) references total")
+        }
+        if let cap = model.maxCombinedVideoRefSeconds,
+           videoRefs.reduce(0, { $0 + $1.duration }) > cap {
+            throw ToolError("Combined video reference duration exceeds \(Int(cap))s")
+        }
+        if let cap = model.maxCombinedAudioRefSeconds,
+           audioRefs.reduce(0, { $0 + $1.duration }) > cap {
+            throw ToolError("Combined audio reference duration exceeds \(Int(cap))s")
+        }
+
+        var refs: [MediaAsset] = []
+        refs.append(contentsOf: frameSlots)
+        refs.append(contentsOf: imageRefs)
+        refs.append(contentsOf: videoRefs)
+        refs.append(contentsOf: audioRefs)
+        let frameCount = frameSlots.count
+        let imageRefCount = imageRefs.count
+        let videoRefCount = videoRefs.count
+        let audioRefCount = audioRefs.count
 
         let genInput = GenerationInput(
             prompt: prompt, model: model.id, duration: duration,
             aspectRatio: aspectRatio, resolution: resolution
         )
+        let snapshotRefs: (@Sendable (inout GenerationInput, [String]) -> Void) = { input, uploaded in
+            let frames = Array(uploaded.prefix(frameCount))
+            let rest = Array(uploaded.dropFirst(frameCount))
+            input.imageURLs = frames.isEmpty ? nil : frames
+            input.referenceImageURLs = imageRefCount > 0 ? Array(rest.prefix(imageRefCount)) : nil
+            input.referenceVideoURLs = videoRefCount > 0
+                ? Array(rest.dropFirst(imageRefCount).prefix(videoRefCount)) : nil
+            input.referenceAudioURLs = audioRefCount > 0
+                ? Array(rest.dropFirst(imageRefCount + videoRefCount).prefix(audioRefCount)) : nil
+        }
+        var preprocessRef: (@Sendable (Int, MediaAsset) async throws -> URL?)? = nil
+        if videoRefCount > 0 {
+            preprocessRef = { _, a in
+                guard a.type == .video else { return nil }
+                return try await VideoCompressor.compressIfNeeded(url: a.url)
+            }
+        }
+
         let placeholderId = editor.generationService.generate(
             genInput: genInput, assetType: .video,
             placeholderDuration: Double(max(1, duration)),
-            references: frameRefs, name: args.string("name"),
+            references: refs, name: args.string("name"),
             buildInput: { uploaded in
+                let frames = Array(uploaded.prefix(frameCount))
+                let rest = Array(uploaded.dropFirst(frameCount))
                 let params = VideoGenerationParams(
                     prompt: prompt, duration: duration,
                     aspectRatio: aspectRatio, resolution: resolution,
                     sourceVideoURL: nil,
-                    startFrameURL: uploaded.first,
-                    endFrameURL: uploaded.count > 1 ? uploaded[1] : nil,
-                    referenceImageURLs: [], generateAudio: true
+                    startFrameURL: frames.first,
+                    endFrameURL: frames.count > 1 ? frames[1] : nil,
+                    referenceImageURLs: Array(rest.prefix(imageRefCount)),
+                    referenceVideoURLs: Array(rest.dropFirst(imageRefCount).prefix(videoRefCount)),
+                    referenceAudioURLs: Array(rest.dropFirst(imageRefCount + videoRefCount).prefix(audioRefCount)),
+                    generateAudio: true
                 )
                 return (model.resolvedEndpoint(params: params), model.buildInput(params: params))
             },
+            snapshotRefs: snapshotRefs,
+            preprocessRef: preprocessRef,
             responseKeyPath: FalResponsePaths.video,
             fileExtension: "mp4",
             projectURL: editor.projectURL, editor: editor
         )
-        return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), duration: \(duration)s, aspect: \(aspectRatio)")
+        let refSummary = totalRefs > 0
+            ? ", refs: \(imageRefCount)img/\(videoRefCount)vid/\(audioRefCount)aud"
+            : ""
+        return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), duration: \(duration)s, aspect: \(aspectRatio)\(refSummary)")
     }
 
     private func generateImage(
@@ -588,7 +671,16 @@ final class ToolExecutor {
         ]
         if includeType { info["type"] = "video" }
         if let r = m.resolutions { info["resolutions"] = r }
-        if m.maxReferences > 0 { info["maxReferences"] = m.maxReferences }
+        if m.supportsReferences {
+            if m.maxReferenceImages > 0 { info["maxReferenceImages"] = m.maxReferenceImages }
+            if m.maxReferenceVideos > 0 { info["maxReferenceVideos"] = m.maxReferenceVideos }
+            if m.maxReferenceAudios > 0 { info["maxReferenceAudios"] = m.maxReferenceAudios }
+            if let total = m.maxTotalReferences { info["maxTotalReferences"] = total }
+            if let s = m.maxCombinedVideoRefSeconds { info["maxCombinedVideoRefSeconds"] = Int(s) }
+            if let s = m.maxCombinedAudioRefSeconds { info["maxCombinedAudioRefSeconds"] = Int(s) }
+            if m.framesAndReferencesExclusive { info["framesAndReferencesExclusive"] = true }
+            info["referenceTagNoun"] = m.referenceTagNoun
+        }
         return info
     }
 
