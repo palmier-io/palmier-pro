@@ -141,19 +141,26 @@ enum EditSubmitter {
                 sourceVideoURL: nil,
                 startFrameURL: preUploaded?.first,
                 endFrameURL: (preUploaded?.count ?? 0) > 1 ? preUploaded?[1] : nil,
-                referenceImageURLs: [],
+                referenceImageURLs: gen.referenceImageURLs ?? [],
+                referenceVideoURLs: gen.referenceVideoURLs ?? [],
+                referenceAudioURLs: gen.referenceAudioURLs ?? [],
                 generateAudio: gen.generateAudio ?? true
             )
+            let bundled = (preUploaded ?? [])
+                + (gen.referenceImageURLs ?? [])
+                + (gen.referenceVideoURLs ?? [])
+                + (gen.referenceAudioURLs ?? [])
             return service.generate(
                 genInput: gen,
                 assetType: .video,
                 placeholderDuration: Double(max(1, gen.duration)),
                 references: [],
-                preUploadedURLs: preUploaded,
+                preUploadedURLs: bundled.isEmpty ? nil : bundled,
                 name: rerunName(for: asset),
                 buildInput: { _ in
                     (videoModel.resolvedEndpoint(params: params), videoModel.buildInput(params: params))
                 },
+                snapshotRefs: { _, _ in },
                 responseKeyPath: FalResponsePaths.video,
                 fileExtension: "mp4",
                 projectURL: editor.projectURL,

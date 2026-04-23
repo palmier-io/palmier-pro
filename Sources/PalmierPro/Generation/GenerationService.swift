@@ -52,6 +52,8 @@ final class GenerationService {
         name: String? = nil,
         numImages: Int = 1,
         buildInput: @escaping ([String]) -> (endpoint: String, input: Payload),
+        snapshotRefs: (@Sendable (inout GenerationInput, [String]) -> Void)? = nil,
+        preprocessRef: (@Sendable (Int, MediaAsset) async throws -> URL?)? = nil,
         responseKeyPath: @escaping @Sendable (Payload) -> [String],
         fileExtension: String,
         projectURL: URL?,
@@ -88,11 +90,32 @@ final class GenerationService {
                         urlsToUpload[0] = extracted
                         tempToCleanup.append(extracted)
                     }
+                    if let preprocessRef, !references.isEmpty {
+                        let snapshot = references
+                        let rewrites: [(Int, URL?)] = try await withThrowingTaskGroup(of: (Int, URL?).self) { group in
+                            for (i, asset) in snapshot.enumerated() {
+                                group.addTask { (i, try await preprocessRef(i, asset)) }
+                            }
+                            var results: [(Int, URL?)] = []
+                            for try await r in group { results.append(r) }
+                            return results
+                        }
+                        for (i, rewritten) in rewrites {
+                            if let rewritten {
+                                urlsToUpload[i] = rewritten
+                                tempToCleanup.append(rewritten)
+                            }
+                        }
+                    }
                     uploaded = try await uploadReferences(at: urlsToUpload)
                 }
 
                 var finalGenInput = genInput
-                finalGenInput.imageURLs = uploaded.isEmpty ? nil : uploaded
+                if let snapshotRefs {
+                    snapshotRefs(&finalGenInput, uploaded)
+                } else {
+                    finalGenInput.imageURLs = uploaded.isEmpty ? nil : uploaded
+                }
                 if finalGenInput.createdAt == nil {
                     finalGenInput.createdAt = Date()
                 }
