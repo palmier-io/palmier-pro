@@ -749,6 +749,8 @@ struct GenerationView: View {
     }
 
     private func addRefAsset(_ asset: MediaAsset) {
+        let inflight = editor.mediaAssets.filter(\.isGenerating).count
+        Log.generation.notice("addRefAsset id=\(asset.id.prefix(8)) type=\(asset.type.rawValue) existing=\(refImages.count)+\(refVideos.count)+\(refAudios.count) inflightGen=\(inflight)")
         if allRefs.contains(where: { $0.id == asset.id }) {
             flashDropError("\(asset.name) is already a reference")
             return

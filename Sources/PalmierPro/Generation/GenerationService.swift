@@ -213,8 +213,11 @@ final class GenerationService {
     ) {
         guard hasApiKey else { return }
         let key = apiKey
+        let runId = String(UUID().uuidString.prefix(8))
 
         Task { @MainActor in
+            Log.generation.notice("run \(runId) start endpoint=\(endpoint) model=\(genInput.model) placeholders=\(placeholders.count)")
+            defer { Log.generation.notice("run \(runId) settled") }
             do {
                 Log.generation.notice("subscribe start endpoint=\(endpoint) model=\(genInput.model)")
                 let urlStrings: [String] = try await {
