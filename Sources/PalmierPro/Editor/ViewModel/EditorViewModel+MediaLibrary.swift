@@ -13,6 +13,13 @@ extension EditorViewModel {
         mediaManifest.entries.append(entry)
     }
 
+    /// Resolve a drag pasteboard payload (one URL per line)
+    func assetsFromDragPayload(_ payload: String) -> [MediaAsset] {
+        payload.split(separator: "\n").compactMap { str in
+            mediaAssets.first { $0.url.absoluteString == str }
+        }
+    }
+
     @discardableResult
     func addMediaAsset(from url: URL) -> MediaAsset? {
         guard let type = ClipType(fileExtension: url.pathExtension.lowercased()) else { return nil }

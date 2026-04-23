@@ -547,10 +547,7 @@ final class TimelineView: NSView {
         let geo = geometry
         // Parse assets from pasteboard once on enter
         if externalDragAssets == nil, let urlString = sender.draggingPasteboard.string(forType: .string) {
-            let urlStrings = urlString.split(separator: "\n").map(String.init)
-            externalDragAssets = urlStrings.compactMap { str in
-                editor.mediaAssets.first(where: { $0.url.absoluteString == str })
-            }
+            externalDragAssets = editor.assetsFromDragPayload(urlString)
         }
         externalDropTarget = geo.dropTargetAt(y: point.y)
         externalSnapState = SnapEngine.SnapState()
@@ -623,10 +620,7 @@ final class TimelineView: NSView {
         guard let urlString = sender.draggingPasteboard.string(forType: .string) else { return false }
 
         let editor = self.editor
-        let urlStrings = urlString.split(separator: "\n").map(String.init)
-        let assets = urlStrings.compactMap { str in
-            editor.mediaAssets.first(where: { $0.url.absoluteString == str })
-        }
+        let assets = editor.assetsFromDragPayload(urlString)
         guard !assets.isEmpty else { return false }
 
         let mods = NSEvent.modifierFlags
