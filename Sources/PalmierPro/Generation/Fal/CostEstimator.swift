@@ -13,7 +13,7 @@ enum CostEstimator {
     ) -> Double? {
         guard !model.pricePerSecond.isEmpty, durationSeconds > 0 else { return nil }
         guard var rate = resolvedRate(model.pricePerSecond, key: resolution) else { return nil }
-        if !generateAudio, let discount = model.audioDiscountRate {
+        if !generateAudio, let discount = model.audioDiscount(for: resolution) {
             rate *= discount
         }
         return rate * Double(durationSeconds)

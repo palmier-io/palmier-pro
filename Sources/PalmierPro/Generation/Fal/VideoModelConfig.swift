@@ -24,8 +24,8 @@ struct VideoModelConfig: Identifiable, Sendable {
     let referenceTagNoun: String
     let requiresSourceVideo: Bool
     let pricePerSecond: [String: Double]
-    /// Multiplier applied to price when `generateAudio == false` (e.g. 2/3 means 33% off).
-    let audioDiscountRate: Double?
+    /// Audio-off price multiplier per resolution; `""` key is the default.
+    let audioDiscountRate: [String: Double]?
     let resolveEndpoint: @Sendable (_ base: String, _ input: VideoGenerationParams) -> String
     let buildFalInput: @Sendable (_ input: VideoGenerationParams) -> Payload
 
@@ -43,7 +43,7 @@ struct VideoModelConfig: Identifiable, Sendable {
         referenceTagNoun: String = "Image",
         requiresSourceVideo: Bool = false,
         pricePerSecond: [String: Double] = [:],
-        audioDiscountRate: Double? = nil,
+        audioDiscountRate: [String: Double]? = nil,
         resolveEndpoint: @escaping @Sendable (String, VideoGenerationParams) -> String,
         buildFalInput: @escaping @Sendable (VideoGenerationParams) -> Payload
     ) {
@@ -78,6 +78,12 @@ struct VideoModelConfig: Identifiable, Sendable {
 
     func buildInput(params: VideoGenerationParams) -> Payload {
         buildFalInput(params)
+    }
+
+    func audioDiscount(for resolution: String?) -> Double? {
+        guard let dict = audioDiscountRate else { return nil }
+        if let key = resolution, let v = dict[key] { return v }
+        return dict[""]
     }
 }
 
@@ -147,26 +153,24 @@ private func buildVeoInput(_ input: VideoGenerationParams) -> Payload {
     return .dict(d)
 }
 
-private func buildKlingInput(startFrameKey: String) -> @Sendable (VideoGenerationParams) -> Payload {
-    { input in
-        var d: [String: Payload] = ["prompt": .string(input.prompt)]
-        if !input.aspectRatio.isEmpty && input.startFrameURL == nil {
-            d["aspect_ratio"] = .string(input.aspectRatio)
-        }
-        d["generate_audio"] = .bool(input.generateAudio)
-        d["duration"] = .string("\(input.duration)")
-        if !input.referenceImageURLs.isEmpty {
-            d["elements"] = .array(input.referenceImageURLs.map { url in
-                .dict(["frontal_image_url": .string(url), "reference_image_urls": .array([.string(url)])])
-            })
-            if let s = input.startFrameURL { d[startFrameKey] = .string(s) }
-            if let e = input.endFrameURL { d["end_image_url"] = .string(e) }
-        } else {
-            if let s = input.startFrameURL { d["image_url"] = .string(s) }
-            if let e = input.endFrameURL { d["end_image_url"] = .string(e) }
-        }
-        return .dict(d)
+private func buildKlingInput(_ input: VideoGenerationParams, startFrameKey: String) -> Payload {
+    var d: [String: Payload] = ["prompt": .string(input.prompt)]
+    if !input.aspectRatio.isEmpty && input.startFrameURL == nil {
+        d["aspect_ratio"] = .string(input.aspectRatio)
     }
+    d["generate_audio"] = .bool(input.generateAudio)
+    d["duration"] = .string("\(input.duration)")
+    if !input.referenceImageURLs.isEmpty {
+        d["elements"] = .array(input.referenceImageURLs.map { url in
+            .dict(["frontal_image_url": .string(url), "reference_image_urls": .array([.string(url)])])
+        })
+        if let s = input.startFrameURL { d[startFrameKey] = .string(s) }
+        if let e = input.endFrameURL { d["end_image_url"] = .string(e) }
+    } else {
+        if let s = input.startFrameURL { d["image_url"] = .string(s) }
+        if let e = input.endFrameURL { d["end_image_url"] = .string(e) }
+    }
+    return .dict(d)
 }
 
 private func buildSeedanceInput(_ input: VideoGenerationParams) -> Payload {
@@ -208,7 +212,7 @@ extension VideoModelConfig {
             aspectRatios: ["16:9", "9:16", "1:1"],
             supportsLastFrame: true,
             pricePerSecond: pricePerSecond,
-            audioDiscountRate: 2.0 / 3.0,
+            audioDiscountRate: ["": 2.0 / 3.0],
             resolveEndpoint: { base, input in
                 let prefix = variant.map { "\(base)/\($0)" } ?? base
                 if input.startFrameURL != nil && input.endFrameURL != nil {
@@ -227,30 +231,57 @@ extension VideoModelConfig {
 
     // MARK: Kling
 
-    static let klingV3 = VideoModelConfig(
+    /// `proStartFrameKey`/`fourKStartFrameKey` differ between V3 and O3 and even flip between
+    /// tiers — both fal schemas need to be matched exactly.
+    private static func klingProOr4k(
+        id: String, displayName: String, baseEndpoint: String,
+        maxReferenceImages: Int,
+        pricePerSecond: [String: Double],
+        audioDiscountRate: [String: Double],
+        proResolver: @escaping @Sendable (String, VideoGenerationParams) -> String,
+        proStartFrameKey: String, fourKStartFrameKey: String
+    ) -> VideoModelConfig {
+        VideoModelConfig(
+            id: id, displayName: displayName, baseEndpoint: baseEndpoint,
+            durations: Array(3...15),
+            resolutions: ["1080p", "4k"],
+            aspectRatios: ["16:9", "9:16"],
+            supportsLastFrame: true,
+            maxReferenceImages: maxReferenceImages,
+            referenceTagNoun: "Element",
+            pricePerSecond: pricePerSecond,
+            audioDiscountRate: audioDiscountRate,
+            resolveEndpoint: { base, input in
+                if input.resolution == "4k" {
+                    return frameOnlyEndpoint("\(base)/4k", input)
+                }
+                return proResolver("\(base)/pro", input)
+            },
+            buildFalInput: { input in
+                let key = input.resolution == "4k" ? fourKStartFrameKey : proStartFrameKey
+                return buildKlingInput(input, startFrameKey: key)
+            }
+        )
+    }
+
+    static let klingV3 = klingProOr4k(
         id: "kling-v3", displayName: "Kling V3",
-        baseEndpoint: "fal-ai/kling-video/v3/pro",
-        durations: Array(3...15), aspectRatios: ["16:9", "9:16"],
-        supportsLastFrame: true,
+        baseEndpoint: "fal-ai/kling-video/v3",
         maxReferenceImages: 3,
-        referenceTagNoun: "Element",
-        pricePerSecond: ["": 0.168],
-        audioDiscountRate: 2.0 / 3.0,
-        resolveEndpoint: frameOnlyEndpoint,
-        buildFalInput: buildKlingInput(startFrameKey: "image_url")
+        pricePerSecond: ["1080p": 0.168, "4k": 0.42],
+        audioDiscountRate: ["1080p": 2.0 / 3.0],
+        proResolver: frameOnlyEndpoint,
+        proStartFrameKey: "image_url", fourKStartFrameKey: "start_image_url"
     )
 
-    static let klingO3 = VideoModelConfig(
+    static let klingO3 = klingProOr4k(
         id: "kling-o3", displayName: "Kling O3",
-        baseEndpoint: "fal-ai/kling-video/o3/pro",
-        durations: Array(3...15), aspectRatios: ["16:9", "9:16"],
-        supportsLastFrame: true,
+        baseEndpoint: "fal-ai/kling-video/o3",
         maxReferenceImages: 7,
-        referenceTagNoun: "Element",
-        pricePerSecond: ["": 0.14],
-        audioDiscountRate: 0.8,
-        resolveEndpoint: standardVideoEndpoint,
-        buildFalInput: buildKlingInput(startFrameKey: "start_image_url")
+        pricePerSecond: ["1080p": 0.14, "4k": 0.42],
+        audioDiscountRate: ["1080p": 0.8],
+        proResolver: standardVideoEndpoint,
+        proStartFrameKey: "start_image_url", fourKStartFrameKey: "image_url"
     )
 
     // MARK: Seedance
