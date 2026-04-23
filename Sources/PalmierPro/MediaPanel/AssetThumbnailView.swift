@@ -186,13 +186,20 @@ struct AssetThumbnailView: View {
     }
 
     private func failedThumbnail(error: String) -> some View {
-        VStack(spacing: AppTheme.Spacing.xs) {
+        VStack(spacing: 2) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 16))
+                .font(.system(size: 14))
                 .foregroundStyle(.red.opacity(0.8))
             Text("Failed")
-                .font(.system(size: AppTheme.FontSize.xs))
+                .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+            Text(error)
+                .font(.system(size: 9))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .truncationMode(.tail)
+                .padding(.horizontal, AppTheme.Spacing.xs)
         }
         .help(error)
     }
