@@ -41,6 +41,9 @@ final class TimelineView: NSView {
     private var externalSnapIndicatorX: Double?
     private var externalSnapState = SnapEngine.SnapState()
 
+    /// True when Cmd is held during an external drag — the drop will ripple-insert.
+    private var externalDragIsRippleInsert: Bool = false
+
     var geometry: TimelineGeometry {
         TimelineGeometry(editor: editor, bounds: bounds)
     }
@@ -136,6 +139,9 @@ final class TimelineView: NSView {
 
         if let assets = externalDragAssets, !assets.isEmpty, let target = externalDropTarget {
             drawExternalDragGhosts(assets: assets, target: target, frame: externalDragFrame, geometry: geo, dirtyRect: bounds, context: ctx)
+            if externalDragIsRippleInsert {
+                drawRippleInsertIndicator(atFrame: externalDragFrame, geometry: geo, context: ctx)
+            }
         }
 
         if let snapX = inputController.snapIndicatorX ?? externalSnapIndicatorX {
@@ -411,6 +417,32 @@ final class TimelineView: NSView {
         }
     }
 
+    // MARK: - Ripple-insert indicator
+
+    /// Draws a vertical line across all tracks at the insertion frame
+    private func drawRippleInsertIndicator(atFrame frame: Int, geometry geo: TimelineGeometry, context ctx: CGContext) {
+        let x = geo.xForFrame(frame)
+        let top = Double(geo.rulerHeight)
+        let bottom = Double(bounds.height)
+
+        let color = NSColor.white.cgColor
+        ctx.setStrokeColor(color)
+        ctx.setFillColor(color)
+        ctx.setLineWidth(2)
+        ctx.move(to: CGPoint(x: x, y: top))
+        ctx.addLine(to: CGPoint(x: x, y: bottom))
+        ctx.strokePath()
+
+        // Right-pointing arrow at the top of the line.
+        let arrowW: CGFloat = 7
+        let arrowH: CGFloat = 10
+        ctx.move(to: CGPoint(x: x, y: top))
+        ctx.addLine(to: CGPoint(x: x + arrowW, y: top + Double(arrowH) / 2))
+        ctx.addLine(to: CGPoint(x: x, y: top + Double(arrowH)))
+        ctx.closePath()
+        ctx.fillPath()
+    }
+
     // MARK: - Track drawing
 
     private func drawTrackBackgrounds(geometry geo: TimelineGeometry, context: CGContext) {
@@ -523,6 +555,7 @@ final class TimelineView: NSView {
         externalDropTarget = geo.dropTargetAt(y: point.y)
         externalSnapState = SnapEngine.SnapState()
         externalDragFrame = applyExternalSnap(at: point, geo: geo)
+        externalDragIsRippleInsert = NSEvent.modifierFlags.contains(.command)
         needsDisplay = true
         return .copy
     }
@@ -532,6 +565,7 @@ final class TimelineView: NSView {
         let geo = geometry
         externalDropTarget = geo.dropTargetAt(y: point.y)
         externalDragFrame = applyExternalSnap(at: point, geo: geo)
+        externalDragIsRippleInsert = NSEvent.modifierFlags.contains(.command)
         needsDisplay = true
         return .copy
     }
@@ -541,6 +575,7 @@ final class TimelineView: NSView {
         externalDragAssets = nil
         externalSnapIndicatorX = nil
         externalSnapState = SnapEngine.SnapState()
+        externalDragIsRippleInsert = false
         needsDisplay = true
     }
 
@@ -583,6 +618,7 @@ final class TimelineView: NSView {
         externalDragAssets = nil
         externalSnapIndicatorX = nil
         externalSnapState = SnapEngine.SnapState()
+        externalDragIsRippleInsert = false
 
         guard let urlString = sender.draggingPasteboard.string(forType: .string) else { return false }
 
