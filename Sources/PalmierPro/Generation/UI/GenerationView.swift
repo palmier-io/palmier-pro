@@ -1295,11 +1295,54 @@ struct GenerationView: View {
 
     // MARK: - Actions
 
+    private func preflightValidation(audioDuration: Int) -> String? {
+        switch selectedType {
+        case .video:
+            if videoModel.requiresSourceVideo {
+                return videoModel.validate(duration: 0, aspectRatio: "", resolution: nil)
+            }
+            return videoModel.validate(
+                duration: selectedDuration,
+                aspectRatio: selectedAspectRatio,
+                resolution: effectiveResolution
+            )
+        case .image:
+            let quality = imageModel.qualities != nil ? selectedQuality : nil
+            let imageCount = imageModel.maxImages > 1
+                ? min(imageModel.maxImages, max(1, selectedNumImages)) : 1
+            return imageModel.validate(
+                aspectRatio: selectedAspectRatio,
+                resolution: effectiveResolution,
+                quality: quality,
+                imageRefCount: imageReferences.count,
+                numImages: imageCount
+            )
+        case .audio:
+            return audioModel.validate(params: audioParams(audioDuration: audioDuration))
+        }
+    }
+
+    private func audioParams(audioDuration: Int) -> AudioGenerationParams {
+        AudioGenerationParams(
+            prompt: prompt,
+            voice: audioModel.voices != nil && !selectedVoice.isEmpty ? selectedVoice : nil,
+            lyrics: audioModel.supportsLyrics && !lyrics.isEmpty ? lyrics : nil,
+            styleInstructions: audioModel.supportsStyleInstructions && !styleInstructions.isEmpty
+                ? styleInstructions : nil,
+            instrumental: audioModel.supportsInstrumental ? instrumental : false,
+            durationSeconds: audioModel.durations != nil ? audioDuration : nil
+        )
+    }
+
     private func submitGeneration() {
         let audioDuration: Int = {
             guard selectedType == .audio else { return 0 }
             return audioModel.durations != nil ? selectedAudioDuration : 0
         }()
+        if let err = preflightValidation(audioDuration: audioDuration) {
+            flashDropError(err)
+            return
+        }
         var genInput = GenerationInput(
             prompt: prompt,
             model: currentModelId,
@@ -1506,14 +1549,7 @@ struct GenerationView: View {
                     ? Defaults.audioMusicDurationSeconds
                     : Defaults.audioTTSDurationSeconds
             }()
-            let params = AudioGenerationParams(
-                prompt: genInput.prompt,
-                voice: genInput.voice,
-                lyrics: genInput.lyrics,
-                styleInstructions: genInput.styleInstructions,
-                instrumental: genInput.instrumental ?? false,
-                durationSeconds: model.durations != nil ? audioDuration : nil
-            )
+            let params = audioParams(audioDuration: audioDuration)
             editor.generationService.generate(
                 genInput: genInput,
                 assetType: .audio,

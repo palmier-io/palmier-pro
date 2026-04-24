@@ -64,6 +64,24 @@ struct AudioModelConfig: Identifiable, Sendable {
     func buildInput(params: AudioGenerationParams) -> Payload {
         buildFalInput(params)
     }
+
+    func validate(params: AudioGenerationParams) -> String? {
+        let promptLen = params.prompt.trimmingCharacters(in: .whitespaces).count
+        if promptLen < minPromptLength {
+            return "\(displayName) requires prompt ≥ \(minPromptLength) characters (got \(promptLen))."
+        }
+        if let allowed = voices, let v = params.voice, !v.isEmpty, !allowed.contains(v) {
+            let shown = Array(allowed.prefix(6)) + (allowed.count > 6 ? ["…"] : [])
+            return unsupportedValue(model: displayName, field: "voice", value: v, allowed: shown)
+        }
+        if let allowed = durations, let d = params.durationSeconds, !allowed.contains(d) {
+            return unsupportedValue(
+                model: displayName, field: "duration",
+                value: "\(d)s", allowed: allowed.map { "\($0)s" }
+            )
+        }
+        return nil
+    }
 }
 
 extension AudioModelConfig {

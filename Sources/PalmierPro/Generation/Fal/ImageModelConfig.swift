@@ -41,6 +41,28 @@ struct ImageModelConfig: Identifiable, Sendable {
     func buildInput(prompt: String, aspectRatio: String, resolution: String?, quality: String? = nil, imageURLs: [String] = [], numImages: Int = 1) -> Payload {
         buildFalInput(prompt, aspectRatio, resolution, quality, imageURLs, numImages)
     }
+
+    func validate(aspectRatio: String, resolution: String?, quality: String?, imageRefCount: Int, numImages: Int) -> String? {
+        if !aspectRatios.isEmpty, !aspectRatio.isEmpty, !aspectRatios.contains(aspectRatio) {
+            return unsupportedValue(model: displayName, field: "aspect ratio", value: aspectRatio, allowed: aspectRatios)
+        }
+        if let allowed = resolutions, let r = resolution, !r.isEmpty, !allowed.contains(r) {
+            return unsupportedValue(model: displayName, field: "resolution", value: r, allowed: allowed)
+        }
+        if let allowed = qualities, let q = quality, !q.isEmpty, !allowed.contains(q) {
+            return unsupportedValue(model: displayName, field: "quality", value: q, allowed: allowed)
+        }
+        if imageRefCount > 0, !supportsImageReference {
+            return "\(displayName) does not accept reference images."
+        }
+        if imageRefCount > maxImages {
+            return "\(displayName) accepts at most \(maxImages) reference image\(maxImages == 1 ? "" : "s") (got \(imageRefCount))."
+        }
+        if numImages < 1 || numImages > maxImages {
+            return "\(displayName) supports 1…\(maxImages) image\(maxImages == 1 ? "" : "s") per request (got \(numImages))."
+        }
+        return nil
+    }
 }
 
 // MARK: - Shared builders
