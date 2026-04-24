@@ -52,7 +52,7 @@ final class PreviewNSView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.backgroundColor = NSColor.black.cgColor
+        layer?.backgroundColor = AppTheme.Background.surface.cgColor
         playerLayer.videoGravity = .resizeAspect
         layer?.addSublayer(playerLayer)
     }
@@ -72,9 +72,12 @@ final class PreviewNSView: NSView {
 
     override func layout() {
         super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         playerLayer.frame = bounds
         let videoRect = resolvedVideoRect
         textRoot?.frame = videoRect
+        CATransaction.commit()
         if videoRect != lastVideoRect {
             lastVideoRect = videoRect
             onVideoRectChange?(videoRect)

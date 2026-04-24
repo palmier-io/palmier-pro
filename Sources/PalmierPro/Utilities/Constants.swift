@@ -26,17 +26,14 @@ enum Layout {
     // Media panel
     static let mediaPanelDefault: CGFloat = 220
     static let mediaPanelMin: CGFloat = 240
-    static let mediaPanelMax: CGFloat = 900
 
     // Inspector
     static let inspectorDefault: CGFloat = 260
     static let inspectorMin: CGFloat = 150
-    static let inspectorMax: CGFloat = 600
 
     // Agent panel
     static let agentPanelDefault: CGFloat = 240
     static let agentPanelMin: CGFloat = 240
-    static let agentPanelMax: CGFloat = 600
 
     // Headers & toolbars
     static let panelHeaderHeight: CGFloat = 28
@@ -52,8 +49,8 @@ enum Layout {
     static let insertThreshold: CGFloat = 10
 
     // Preview
-    static let previewMinWidth: CGFloat = 200
-    static let previewMaxWidth: CGFloat = 1200
+    static let previewMinWidth: CGFloat = 400
+    static let previewMinHeight: CGFloat = 320
 }
 
 enum Defaults {

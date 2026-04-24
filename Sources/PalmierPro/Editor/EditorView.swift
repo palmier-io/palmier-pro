@@ -48,7 +48,7 @@ final class EditorSplitViewController: NSSplitViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        splitView.dividerStyle = .thin
+        splitView.dividerStyle = .thick
         buildLayout(editor.layoutPreset)
     }
 
@@ -105,10 +105,9 @@ final class EditorSplitViewController: NSSplitViewController {
         }
 
         let agentItem = NSSplitViewItem(viewController: agentHC)
-        agentItem.canCollapse = true
+        agentItem.canCollapse = false
         agentItem.isCollapsed = !editor.agentPanelVisible
         agentItem.minimumThickness = Layout.agentPanelMin
-        agentItem.maximumThickness = Layout.agentPanelMax
         addSplitViewItem(agentItem)
         agentSplitItem = agentItem
 
@@ -127,7 +126,9 @@ final class EditorSplitViewController: NSSplitViewController {
         hSplit.addSplitViewItem(makePreviewItem())
         hSplit.addSplitViewItem(makeInspectorItem())
 
-        target.addSplitViewItem(NSSplitViewItem(viewController: hSplit))
+        let upper = NSSplitViewItem(viewController: hSplit)
+        upper.minimumThickness = Layout.previewMinHeight
+        target.addSplitViewItem(upper)
         target.addSplitViewItem(makeTimelineItem())
 
         // Positions are set against each inner split's own bounds — not
@@ -153,7 +154,9 @@ final class EditorSplitViewController: NSSplitViewController {
         topSplit.addSplitViewItem(makeInspectorItem())
 
         let rightSplit = makeChildSplit(isVertical: false)
-        rightSplit.addSplitViewItem(NSSplitViewItem(viewController: topSplit))
+        let topItem = NSSplitViewItem(viewController: topSplit)
+        topItem.minimumThickness = Layout.previewMinHeight
+        rightSplit.addSplitViewItem(topItem)
         rightSplit.addSplitViewItem(makeTimelineItem())
 
         target.addSplitViewItem(makeMediaItem())
@@ -203,15 +206,14 @@ final class EditorSplitViewController: NSSplitViewController {
     private func makeChildSplit(isVertical: Bool) -> NSSplitViewController {
         let vc = NSSplitViewController()
         vc.splitView.isVertical = isVertical
-        vc.splitView.dividerStyle = .thin
+        vc.splitView.dividerStyle = .thick
         return vc
     }
 
     private func makeMediaItem() -> NSSplitViewItem {
         let item = NSSplitViewItem(viewController: mediaHC)
         item.minimumThickness = Layout.mediaPanelMin
-        item.maximumThickness = Layout.mediaPanelMax
-        item.canCollapse = true
+        item.canCollapse = false
         item.isCollapsed = !editor.mediaPanelVisible
         mediaSplitItem = item
         return item
@@ -220,15 +222,13 @@ final class EditorSplitViewController: NSSplitViewController {
     private func makePreviewItem() -> NSSplitViewItem {
         let item = NSSplitViewItem(viewController: previewHC)
         item.minimumThickness = Layout.previewMinWidth
-        item.maximumThickness = Layout.previewMaxWidth
         return item
     }
 
     private func makeInspectorItem() -> NSSplitViewItem {
         let item = NSSplitViewItem(viewController: inspectorHC)
         item.minimumThickness = Layout.inspectorMin
-        item.maximumThickness = Layout.inspectorMax
-        item.canCollapse = true
+        item.canCollapse = false
         item.isCollapsed = !editor.inspectorPanelVisible
         inspectorSplitItem = item
         return item
@@ -237,7 +237,6 @@ final class EditorSplitViewController: NSSplitViewController {
     private func makeTimelineItem() -> NSSplitViewItem {
         let item = NSSplitViewItem(viewController: timelineHC)
         item.minimumThickness = Layout.timelineMinHeight
-        item.maximumThickness = Layout.timelineMaxHeight
         return item
     }
 
