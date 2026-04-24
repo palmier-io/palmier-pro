@@ -5,6 +5,7 @@ struct InspectorView: View {
     @Environment(EditorViewModel.self) var editor
 
     enum ClipTab: String, Hashable {
+        case text = "Text"
         case video = "Video"
         case audio = "Audio"
         case speed = "Speed"
@@ -63,6 +64,13 @@ struct InspectorView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onChange(of: editor.selectedClipIds) { _, _ in
+            if selectedVisualClip?.mediaType == .text {
+                preferredTab = .text
+            } else if preferredTab == .text {
+                preferredTab = .video
+            }
+        }
     }
 
     // MARK: - Project Metadata
@@ -105,9 +113,11 @@ struct InspectorView: View {
     /// clip is selected; Video/Audio only when their half is present.
     private var availableTabs: [ClipTab] {
         var tabs: [ClipTab] = []
-        if selectedVisualClip != nil { tabs.append(.video) }
+        let isText = selectedVisualClip?.mediaType == .text
+        if isText { tabs.append(.text) }
+        if selectedVisualClip != nil && !isText { tabs.append(.video) }
         if selectedAudioClip != nil { tabs.append(.audio) }
-        if selectedVisualClip != nil || selectedAudioClip != nil { tabs.append(.speed) }
+        if !isText && (selectedVisualClip != nil || selectedAudioClip != nil) { tabs.append(.speed) }
         if resolvedClipAsset != nil { tabs.append(.ai) }
         return tabs
     }
@@ -136,8 +146,10 @@ struct InspectorView: View {
                     AIEditTab(asset: asset, clipId: selectedVisualClip?.id)
                 } else {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
+                        VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
                             switch activeTab {
+                            case .text:
+                                if let v = selectedVisualClip, v.mediaType == .text { TextTab(clip: v) }
                             case .video:
                                 if let v = selectedVisualClip { videoTabContent(v) }
                             case .audio:
@@ -310,7 +322,7 @@ struct InspectorView: View {
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                 Text("Frame")
-                    .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+                    .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                 Spacer()
                 Button {
@@ -400,7 +412,7 @@ struct InspectorView: View {
                     inspectorCard {
                         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
                             Text("AI Generated")
-                                .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+                                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                                 .foregroundStyle(AppTheme.aiGradient)
 
                             metadataRow("cpu", label: "Model", value: ModelRegistry.displayName(for: gen.model))
@@ -544,114 +556,6 @@ enum VolumeScale {
     static func linearFromDb(_ db: Double) -> Double {
         guard db > floorDb else { return 0 }
         return pow(10, min(db, ceilingDb) / 20)
-    }
-}
-
-// MARK: - Inspector Slider
-
-private struct InspectorSlider: View {
-    let icon: String
-    let label: String
-    let value: Double
-    let range: ClosedRange<Double>
-    let displayMultiplier: Double
-    let valueSuffix: String
-    let format: String
-    var displayTextOverride: ((Double) -> String?)? = nil
-    var onChanged: ((Double) -> Void)? = nil
-    let onCommit: (Double) -> Void
-
-    @State private var liveValue: Double = 0
-    @State private var isDragging = false
-
-    private var displayValue: Double { (isDragging ? liveValue : value) * displayMultiplier }
-
-    private var displayText: String {
-        let raw = isDragging ? liveValue : value
-        if let override = displayTextOverride?(raw) { return override }
-        return String(format: format, displayValue) + valueSuffix
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            HStack {
-                Image(systemName: icon)
-                    .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
-                    .frame(width: 16)
-                Text(label)
-                    .font(.system(size: AppTheme.FontSize.md, weight: .medium))
-                    .foregroundStyle(AppTheme.Text.primaryColor)
-                Spacer()
-                Text(displayText)
-                    .font(.system(size: AppTheme.FontSize.md, weight: .medium))
-                    .monospacedDigit()
-                    .foregroundStyle(AppTheme.Text.primaryColor)
-            }
-
-            Slider(value: $liveValue, in: range) { editing in
-                if editing {
-                    isDragging = true
-                } else {
-                    isDragging = false
-                    onCommit(liveValue)
-                }
-            }
-            .controlSize(.small)
-        }
-        .onAppear { liveValue = value }
-        .onChange(of: value) { _, newValue in
-            if !isDragging { liveValue = newValue }
-        }
-        .onChange(of: liveValue) { _, newValue in
-            if isDragging { onChanged?(newValue) }
-        }
-    }
-}
-
-// MARK: - Inspector Number Field
-
-private struct InspectorNumberField: View {
-    let label: String
-    let value: Double
-    let onCommit: (Double) -> Void
-
-    @State private var text: String = ""
-    @FocusState private var isFocused: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-                .font(.system(size: AppTheme.FontSize.xs))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-            TextField("", text: $text)
-                .textFieldStyle(.plain)
-                .font(.system(size: AppTheme.FontSize.md).monospacedDigit())
-                .foregroundStyle(AppTheme.Text.primaryColor)
-                .padding(.horizontal, AppTheme.Spacing.sm)
-                .padding(.vertical, AppTheme.Spacing.xs)
-                .background(
-                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                        .fill(Color.white.opacity(0.06))
-                )
-                .focused($isFocused)
-                .onSubmit { commitValue() }
-                .onChange(of: isFocused) { _, focused in
-                    if !focused { commitValue() }
-                }
-        }
-        .onAppear { text = String(Int(value.rounded())) }
-        .onChange(of: value) { _, newValue in
-            if !isFocused { text = String(Int(newValue.rounded())) }
-        }
-    }
-
-    private func commitValue() {
-        if let parsed = Double(text) {
-            onCommit(parsed)
-        } else {
-            text = String(Int(value.rounded()))
-        }
     }
 }
 
