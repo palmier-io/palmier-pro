@@ -56,6 +56,7 @@ struct TransformOverlayView: View {
 
     @State private var dragStart: Transform?
     @State private var resizeStart: Transform?
+    @State private var resizeStartFontScale: Double?
     @State private var centerGuideX: Bool = false
     @State private var centerGuideY: Bool = false
 
@@ -100,17 +101,49 @@ struct TransformOverlayView: View {
     private func resizeGesture(clip: Clip, corner: Corner, videoRect: CGRect) -> some Gesture {
         DragGesture()
             .onChanged { value in
-                if resizeStart == nil { resizeStart = clip.transform }
+                if resizeStart == nil {
+                    resizeStart = clip.transform
+                    resizeStartFontScale = clip.mediaType == .text
+                        ? (clip.textStyle ?? TextStyle()).fontScale
+                        : nil
+                }
                 guard let start = resizeStart else { return }
-                let resized = resizedTransform(start, corner: corner, by: value.translation, in: videoRect, mediaCanvasAspect: mediaCanvasAspect)
-                editor.applyClipProperty(clipId: clip.id) { $0.transform = resized }
+
+                if let startScale = resizeStartFontScale {
+                    let newScale = textScale(from: value.translation, corner: corner, start: start, startScale: startScale, videoRect: videoRect)
+                    editor.applyTextStyle(clipId: clip.id) { $0.fontScale = newScale }
+                    editor.fitTextClipToContent(clipId: clip.id)
+                } else {
+                    let resized = resizedTransform(start, corner: corner, by: value.translation, in: videoRect, mediaCanvasAspect: mediaCanvasAspect)
+                    editor.applyClipProperty(clipId: clip.id) { $0.transform = resized }
+                }
             }
             .onEnded { value in
                 guard let start = resizeStart else { return }
-                let resized = resizedTransform(start, corner: corner, by: value.translation, in: videoRect, mediaCanvasAspect: mediaCanvasAspect)
+                let startScale = resizeStartFontScale
                 resizeStart = nil
-                editor.commitClipProperty(clipId: clip.id) { $0.transform = resized }
+                resizeStartFontScale = nil
+
+                if let startScale {
+                    let newScale = textScale(from: value.translation, corner: corner, start: start, startScale: startScale, videoRect: videoRect)
+                    editor.commitTextStyle(clipId: clip.id) { $0.fontScale = newScale }
+                    editor.fitTextClipToContent(clipId: clip.id)
+                } else {
+                    let resized = resizedTransform(start, corner: corner, by: value.translation, in: videoRect, mediaCanvasAspect: mediaCanvasAspect)
+                    editor.commitClipProperty(clipId: clip.id) { $0.transform = resized }
+                }
             }
+    }
+
+    private func textScale(from translation: CGSize, corner: Corner, start: Transform, startScale: Double, videoRect: CGRect) -> Double {
+        guard videoRect.width > 0, videoRect.height > 0, start.width > 0, start.height > 0 else { return startScale }
+        let dx = translation.width / videoRect.width
+        let dy = translation.height / videoRect.height
+        let wSign: Double = (corner == .topLeft || corner == .bottomLeft) ? -1 : 1
+        let hSign: Double = (corner == .topLeft || corner == .topRight) ? -1 : 1
+        let wRatio = max(0.01, (start.width + wSign * dx) / start.width)
+        let hRatio = max(0.01, (start.height + hSign * dy) / start.height)
+        return max(0.05, startScale * sqrt(wRatio * hRatio))
     }
 
     private func resizedTransform(_ start: Transform, corner: Corner, by translation: CGSize, in videoRect: CGRect, mediaCanvasAspect: Double?) -> Transform {

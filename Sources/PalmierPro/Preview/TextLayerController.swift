@@ -157,7 +157,7 @@ final class TextLayerController {
             height: clip.transform.height * containerSize.height
         )
 
-        let fontSize = CGFloat(style.fontSize) * minScale
+        let fontSize = CGFloat(style.fontSize * style.fontScale) * minScale
         layer.string = NSAttributedString(
             string: content,
             attributes: style.attributes(size: fontSize)

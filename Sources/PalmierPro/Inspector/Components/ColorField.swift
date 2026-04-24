@@ -10,11 +10,11 @@ struct ColorField: View {
 
     var body: some View {
         Button(action: open) {
-            RoundedRectangle(cornerRadius: 4)
+            RoundedRectangle(cornerRadius: 3)
                 .fill(displayColor)
-                .frame(width: 36, height: 20)
+                .frame(width: 24, height: 14)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: 3)
                         .stroke(Color.white.opacity(0.3), lineWidth: 1)
                 )
         }

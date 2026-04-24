@@ -13,8 +13,8 @@ struct TextTab: View {
             sizeSlider
             opacitySlider
             colorRow
-            alignmentRow
             shadowSection
+            alignmentRow
             positionSection
         }
     }
@@ -29,12 +29,12 @@ struct TextTab: View {
                     get: { clip.textContent ?? "" },
                     set: { new in
                         editor.applyClipProperty(clipId: clip.id, rebuild: true) { $0.textContent = new }
-                        editor.growTextClipToFitContent(clipId: clip.id)
+                        editor.fitTextClipToContent(clipId: clip.id)
                     }
                 ),
                 onCommit: { new in
                     editor.commitClipProperty(clipId: clip.id) { $0.textContent = new }
-                    editor.growTextClipToFitContent(clipId: clip.id)
+                    editor.fitTextClipToContent(clipId: clip.id)
                 }
             )
             .frame(minHeight: 80)
@@ -55,7 +55,7 @@ struct TextTab: View {
                 },
                 onChange: { newName in
                     editor.commitTextStyle(clipId: clip.id) { $0.fontName = newName }
-                    editor.growTextClipToFitContent(clipId: clip.id)
+                    editor.fitTextClipToContent(clipId: clip.id)
                 },
                 onCancel: {
                     editor.revertClipProperty(clipId: clip.id)
@@ -75,11 +75,11 @@ struct TextTab: View {
             format: "%.0f",
             onChanged: { newVal in
                 editor.applyTextStyle(clipId: clip.id) { $0.fontSize = newVal }
-                editor.growTextClipToFitContent(clipId: clip.id)
+                editor.fitTextClipToContent(clipId: clip.id)
             }
         ) { newVal in
             editor.commitTextStyle(clipId: clip.id) { $0.fontSize = newVal }
-            editor.growTextClipToFitContent(clipId: clip.id)
+            editor.fitTextClipToContent(clipId: clip.id)
         }
     }
 
@@ -152,7 +152,7 @@ struct TextTab: View {
                 )
                 .labelsHidden()
                 .toggleStyle(.switch)
-                .controlSize(.small)
+                .controlSize(.mini)
                 .tint(Color.white.opacity(0.5))
             }
 

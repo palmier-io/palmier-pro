@@ -50,7 +50,7 @@ extension EditorViewModel {
         return addMediaAsset(from: destURL)
     }
 
-    func growTextClipToFitContent(clipId: String) {
+    func fitTextClipToContent(clipId: String) {
         guard let loc = findClip(id: clipId) else { return }
         let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
         guard clip.mediaType == .text else { return }
@@ -65,14 +65,12 @@ extension EditorViewModel {
         let needH = Double(natural.height) / canvasH
         let currentW = clip.transform.width
         let currentH = clip.transform.height
-        if needW <= currentW && needH <= currentH { return }
+        if abs(needW - currentW) < 0.0001 && abs(needH - currentH) < 0.0001 { return }
         let tl = clip.transform.topLeft
         let cx = tl.x + currentW / 2
         let cy = tl.y + currentH / 2
-        let w = max(needW, currentW)
-        let h = max(needH, currentH)
         applyClipProperty(clipId: clipId, rebuild: false) {
-            $0.transform = Transform(topLeft: (cx - w / 2, cy - h / 2), width: w, height: h)
+            $0.transform = Transform(topLeft: (cx - needW / 2, cy - needH / 2), width: needW, height: needH)
         }
     }
 
