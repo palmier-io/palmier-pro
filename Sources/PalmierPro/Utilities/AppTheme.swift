@@ -68,6 +68,7 @@ enum AppTheme {
         static let video = NSColor(red: 0x00/255.0, green: 0x6D/255.0, blue: 0x94/255.0, alpha: 1) // #006d94
         static let audio = NSColor(red: 0x3D/255.0, green: 0x7A/255.0, blue: 0x0A/255.0, alpha: 1) // #3d7a0a
         static let image = NSColor(red: 0x96/255.0, green: 0x15/255.0, blue: 0xAD/255.0, alpha: 1) // #9615ad
+        static let text = NSColor(red: 0x96/255.0, green: 0x15/255.0, blue: 0xAD/255.0, alpha: 1) // #9615ad (same as image)
     }
 
     // MARK: - Clip fills
@@ -127,6 +128,7 @@ extension ClipType {
         case .video: AppTheme.TrackColor.video
         case .audio: AppTheme.TrackColor.audio
         case .image: AppTheme.TrackColor.image
+        case .text: AppTheme.TrackColor.text
         }
     }
 }

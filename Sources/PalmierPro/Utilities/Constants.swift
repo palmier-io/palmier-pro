@@ -61,6 +61,7 @@ enum Defaults {
     static let imageDurationSeconds: Double = 5.0
     static let audioTTSDurationSeconds: Double = 10.0
     static let audioMusicDurationSeconds: Double = 60.0
+    static let textDurationSeconds: Double = 3.0
     static let aspectTolerance: Double = 0.02
 }
 
