@@ -312,10 +312,6 @@ struct InspectorView: View {
 
     @ViewBuilder
     private func frameSection(_ clip: Clip) -> some View {
-        let tl = clip.transform.topLeft
-        let canvasW = Double(editor.timeline.width)
-        let canvasH = Double(editor.timeline.height)
-
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             HStack {
                 Image(systemName: "crop")
@@ -339,18 +335,7 @@ struct InspectorView: View {
             }
 
             HStack(spacing: AppTheme.Spacing.sm) {
-                InspectorNumberField(label: "X", value: tl.x * canvasW) { newX in
-                    editor.commitClipProperty(clipId: clip.id) {
-                        let old = $0.transform.topLeft
-                        $0.transform = Transform(topLeft: (newX / canvasW, old.y), width: $0.transform.width, height: $0.transform.height)
-                    }
-                }
-                InspectorNumberField(label: "Y", value: tl.y * canvasH) { newY in
-                    editor.commitClipProperty(clipId: clip.id) {
-                        let old = $0.transform.topLeft
-                        $0.transform = Transform(topLeft: (old.x, newY / canvasH), width: $0.transform.width, height: $0.transform.height)
-                    }
-                }
+                InspectorPositionFields(clip: clip)
                 InspectorNumberField(label: "Scale", value: clip.transform.width * 100) { newScale in
                     let t = scaledTransform(for: clip, newScale: max(newScale, 1) / 100.0)
                     editor.commitClipProperty(clipId: clip.id) { $0.transform = t }
@@ -520,13 +505,10 @@ struct InspectorView: View {
     }
 
     private func scaledTransform(for clip: Clip, newScale: Double) -> Transform {
-        let old = clip.transform.topLeft
-        let cx = old.x + clip.transform.width / 2.0
-        let cy = old.y + clip.transform.height / 2.0
         let aspect = editor.mediaCanvasAspect(for: clip) ?? 1.0
         let w = newScale
         let h = newScale / aspect
-        return Transform(topLeft: (cx - w / 2.0, cy - h / 2.0), width: w, height: h)
+        return Transform(center: clip.transform.center, width: w, height: h)
     }
 
     private func formatDuration(_ seconds: Double) -> String {
