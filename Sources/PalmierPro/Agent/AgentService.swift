@@ -147,6 +147,7 @@ final class AgentService {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
+        resolveOrphanToolUses()
         messages.append(AgentMessage(role: .user, blocks: [.text(trimmed)], mentions: mentions))
         streamError = nil
         kickOffStream()
@@ -188,6 +189,7 @@ final class AgentService {
         }
 
         loop: while !Task.isCancelled {
+            resolveOrphanToolUses()
             let apiMsgs = apiMessages()
             messages.append(AgentMessage(role: .assistant, blocks: []))
             let assistantIndex = messages.count - 1
@@ -254,14 +256,71 @@ final class AgentService {
             return
         }
 
+        let toolUses: [(id: String, name: String, input: String)] = messages[assistantIndex].blocks.compactMap {
+            if case let .toolUse(id, name, input) = $0 { return (id, name, input) }
+            return nil
+        }
+        let alreadyResolved = resolvedToolUseIds(afterAssistantAt: assistantIndex)
+
         var resultBlocks: [AgentContentBlock] = []
-        for block in messages[assistantIndex].blocks {
-            guard case let .toolUse(id, name, inputJSON) = block else { continue }
-            let result = await executor.execute(name: name, args: Self.parseJSONObject(inputJSON))
-            resultBlocks.append(.toolResult(toolUseId: id, content: result.content, isError: result.isError))
+        for use in toolUses where !alreadyResolved.contains(use.id) {
+            if Task.isCancelled {
+                resultBlocks.append(.toolResult(toolUseId: use.id, content: [.text("Cancelled")], isError: true))
+                continue
+            }
+            let result = await executor.execute(name: use.name, args: Self.parseJSONObject(use.input))
+            resultBlocks.append(.toolResult(toolUseId: use.id, content: result.content, isError: result.isError))
         }
         if !resultBlocks.isEmpty {
             messages.append(AgentMessage(role: .user, blocks: resultBlocks))
+        }
+    }
+
+    private func resolvedToolUseIds(afterAssistantAt index: Int) -> Set<String> {
+        let next = index + 1
+        guard next < messages.count, messages[next].role == .user else { return [] }
+        return Set(messages[next].blocks.compactMap {
+            if case let .toolResult(id, _, _) = $0 { return id }
+            return nil
+        })
+    }
+
+    private func resolveOrphanToolUses(reason: String = "Cancelled") {
+        var i = 0
+        while i < messages.count {
+            defer { i += 1 }
+            guard messages[i].role == .assistant else { continue }
+            let toolUseIds: [String] = messages[i].blocks.compactMap {
+                if case let .toolUse(id, _, _) = $0 { return id }
+                return nil
+            }
+            guard !toolUseIds.isEmpty else { continue }
+
+            let next = i + 1
+            let nextIsToolResult = next < messages.count
+                && messages[next].role == .user
+                && messages[next].blocks.contains(where: {
+                    if case .toolResult = $0 { return true }
+                    return false
+                })
+            let resolved: Set<String> = nextIsToolResult
+                ? Set(messages[next].blocks.compactMap {
+                    if case let .toolResult(id, _, _) = $0 { return id }
+                    return nil
+                })
+                : []
+
+            let orphans = toolUseIds.filter { !resolved.contains($0) }
+            guard !orphans.isEmpty else { continue }
+
+            let synthetic: [AgentContentBlock] = orphans.map {
+                .toolResult(toolUseId: $0, content: [.text(reason)], isError: true)
+            }
+            if nextIsToolResult {
+                messages[next].blocks.insert(contentsOf: synthetic, at: 0)
+            } else {
+                messages.insert(AgentMessage(role: .user, blocks: synthetic), at: next)
+            }
         }
     }
 
