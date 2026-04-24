@@ -75,6 +75,7 @@ final class ToolExecutor {
         case .image: return try readImage(asset: asset, args: args)
         case .video: return try await readVideo(editor: editor, asset: asset, args: args)
         case .audio: return try await readAudio(editor: editor, asset: asset)
+        case .text: throw ToolError("Text clips are not stored as media assets.")
         }
     }
 
@@ -334,6 +335,8 @@ final class ToolExecutor {
             return try generateImage(editor, args, prompt: prompt)
         case .audio:
             return try generateAudio(editor, args, prompt: prompt)
+        case .text:
+            throw ToolError("Text generation is not wired through the generate tool.")
         }
     }
 
@@ -518,11 +521,22 @@ final class ToolExecutor {
         guard let model = ImageModelConfig.allModels.first(where: { $0.id == modelId }) else {
             throw ToolError("Unknown model '\(modelId)'. Available: \(ImageModelConfig.allModels.map(\.id).joined(separator: ", "))")
         }
-        let aspectRatio = args.string("aspectRatio") ?? model.aspectRatios[0]
+        let aspectRatio = args.string("aspectRatio") ?? model.aspectRatios.first ?? ""
         let resolution = args.string("resolution") ?? model.resolutions?.first
         let quality = args.string("quality") ?? model.qualities?.last
-        let refs: [MediaAsset] = args.stringArray("referenceMediaRefs").compactMap { id in
-            editor.mediaAssets.first(where: { $0.id == id })
+        let refIds = args.stringArray("referenceMediaRefs")
+        if !refIds.isEmpty, !model.supportsImageReference {
+            throw ToolError("\(model.displayName) does not accept reference images")
+        }
+        if refIds.count > model.maxImages {
+            throw ToolError("\(model.displayName) accepts at most \(model.maxImages) reference image\(model.maxImages == 1 ? "" : "s")")
+        }
+        let refs: [MediaAsset] = try refIds.map { id in
+            let a = try asset(id, editor: editor, label: "Reference image")
+            guard a.type == .image else {
+                throw ToolError("referenceMediaRefs entry '\(id)' must be an image asset (got \(a.type.rawValue))")
+            }
+            return a
         }
 
         let genInput = GenerationInput(

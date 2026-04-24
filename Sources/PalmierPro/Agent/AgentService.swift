@@ -220,12 +220,21 @@ final class AgentService {
                 }
                 break loop
             } catch is CancellationError {
+                dropEmptyAssistantTurn(at: assistantIndex)
                 break loop
             } catch {
+                dropEmptyAssistantTurn(at: assistantIndex)
                 streamError = error.localizedDescription
                 break loop
             }
         }
+    }
+
+    private func dropEmptyAssistantTurn(at index: Int) {
+        guard messages.indices.contains(index),
+              messages[index].role == .assistant,
+              messages[index].blocks.isEmpty else { return }
+        messages.remove(at: index)
     }
 
     private func appendTextDelta(_ chunk: String, toAssistantAt index: Int) {
@@ -276,9 +285,9 @@ final class AgentService {
         messages.compactMap { msg in
             var content = msg.blocks.compactMap(Self.contentBlockJSON)
             if msg.role == .user, !msg.mentions.isEmpty {
-                let (imageBlocks, inlinedIds) = inlineImageBlocks(for: msg.mentions)
-                let hint = Self.mentionHint(msg.mentions, inlinedImageIds: inlinedIds)
-                content.insert(contentsOf: imageBlocks, at: 0)
+                let inlined = inlineImageBlocks(for: msg.mentions)
+                let hint = Self.mentionHint(msg.mentions, inlined: inlined)
+                content.insert(contentsOf: inlined.blocks, at: 0)
                 content.insert(["type": "text", "text": hint], at: 0)
             }
             guard !content.isEmpty else { return nil }
@@ -286,22 +295,34 @@ final class AgentService {
         }
     }
 
-    private func inlineImageBlocks(for mentions: [AgentMention]) -> (blocks: [[String: Any]], inlinedIds: Set<String>) {
-        guard let editor else { return ([], []) }
+    struct InlinedMentions {
         var blocks: [[String: Any]] = []
-        var inlined: Set<String> = []
+        var inlinedIds: Set<String> = []
+        var failures: [String: String] = [:]  // mediaRef → reason
+    }
+
+    private func inlineImageBlocks(for mentions: [AgentMention]) -> InlinedMentions {
+        var out = InlinedMentions()
+        guard let editor else {
+            for m in mentions where m.type == .image { out.failures[m.mediaRef] = "editor unavailable" }
+            return out
+        }
         for mention in mentions where mention.type == .image {
-            guard
-                let asset = editor.mediaAssets.first(where: { $0.id == mention.mediaRef }),
-                let encoded = ImageEncoder.encode(url: asset.url)
-            else { continue }
-            blocks.append([
+            guard let asset = editor.mediaAssets.first(where: { $0.id == mention.mediaRef }) else {
+                out.failures[mention.mediaRef] = "asset not in media library"
+                continue
+            }
+            guard let encoded = ImageEncoder.encode(url: asset.url) else {
+                out.failures[mention.mediaRef] = "could not read or decode image file"
+                continue
+            }
+            out.blocks.append([
                 "type": "image",
                 "source": ["type": "base64", "media_type": encoded.mime, "data": encoded.data.base64EncodedString()],
             ])
-            inlined.insert(mention.mediaRef)
+            out.inlinedIds.insert(mention.mediaRef)
         }
-        return (blocks, inlined)
+        return out
     }
 
     private static func contentBlockJSON(_ block: AgentContentBlock) -> [String: Any]? {
@@ -329,19 +350,25 @@ final class AgentService {
         }
     }
 
-    private static func mentionHint(_ mentions: [AgentMention], inlinedImageIds: Set<String> = []) -> String {
+    private static func mentionHint(_ mentions: [AgentMention], inlined: InlinedMentions = InlinedMentions()) -> String {
         let entries: [[String: Any]] = mentions.map { m in
             var e: [String: Any] = [
                 "mention": "@\(m.displayName)", "mediaRef": m.mediaRef, "type": m.type.rawValue,
             ]
-            if inlinedImageIds.contains(m.mediaRef) { e["inlined"] = true }
+            if inlined.inlinedIds.contains(m.mediaRef) { e["inlined"] = true }
+            if let reason = inlined.failures[m.mediaRef] { e["inlineError"] = reason }
             return e
         }
         let data = (try? JSONSerialization.data(withJSONObject: entries)) ?? Data()
         let json = String(data: data, encoding: .utf8) ?? "[]"
-        let suffix = inlinedImageIds.isEmpty
-            ? ""
-            : " Assets marked \"inlined\": true are attached as image blocks in this message — do not call read_media for them."
+        var notes: [String] = []
+        if !inlined.inlinedIds.isEmpty {
+            notes.append("Assets marked \"inlined\": true are attached as image blocks in this message — do not call read_media for them.")
+        }
+        if !inlined.failures.isEmpty {
+            notes.append("Assets with \"inlineError\" could not be attached; tell the user the image could not be read rather than describing it.")
+        }
+        let suffix = notes.isEmpty ? "" : " " + notes.joined(separator: " ")
         return "Referenced assets in this message: \(json).\(suffix)"
     }
 
