@@ -263,7 +263,7 @@ extension VideoModelConfig {
     ) -> VideoModelConfig {
         VideoModelConfig(
             id: id, displayName: displayName, baseEndpoint: baseEndpoint,
-            durations: Array(4...15),
+            durations: Array(3...15),
             resolutions: ["1080p", "4k"],
             aspectRatios: ["16:9", "9:16"],
             supportsLastFrame: true,
