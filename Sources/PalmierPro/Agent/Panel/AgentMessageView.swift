@@ -65,6 +65,7 @@ private struct ToolRunRow: View {
     let result: ToolRunResult?
     @State private var expanded = false
 
+    private var isRunning: Bool { result == nil }
     private var statusIcon: String {
         guard let result else { return "circle.dotted" }
         return result.isError ? "xmark.circle.fill" : "checkmark.circle.fill"
@@ -80,12 +81,19 @@ private struct ToolRunRow: View {
                 withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: statusIcon)
-                        .font(.system(size: 10))
-                        .foregroundStyle(statusTint)
+                    if isRunning {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .frame(width: 10, height: 10)
+                    } else {
+                        Image(systemName: statusIcon)
+                            .font(.system(size: 10))
+                            .foregroundStyle(statusTint)
+                    }
                     Text(name)
                         .font(.system(size: 11, weight: .medium, design: .monospaced))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .opacity(isRunning ? 0.7 : 1.0)
                     Image(systemName: "chevron.right")
                         .font(.system(size: 8, weight: .semibold))
                         .rotationEffect(.degrees(expanded ? 90 : 0))
