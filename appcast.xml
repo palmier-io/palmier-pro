@@ -65,5 +65,17 @@
                 type="application/octet-stream"
                 sparkle:edSignature="Szt4N70RnD7ZnY3ZrjKgM030Il+9iIArcP0ceiCYK2xCjXML1N482o5ISNX8M1SLUqdr//39xt6EXr6jChvUCA=="/>
         </item>
+        <item>
+            <title>Version 0.1.7</title>
+            <pubDate>Thu, 23 Apr 2026 18:29:13 -0700</pubDate>
+            <sparkle:version>8</sparkle:version>
+            <sparkle:shortVersionString>0.1.7</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/palmier-io/palmier-pro/releases/download/v0.1.7/PalmierPro.dmg"
+                length="11320166"
+                type="application/octet-stream"
+                sparkle:edSignature="eQvvEZr/0YQNCJbUZ22nv9oXxdwZk8sKB7r5TfltG3FZN7Quh3HCrGgFClsFImq5VSCpdPWPL8yeUZ7dUB3KBQ=="/>
+        </item>
     </channel>
 </rss>
