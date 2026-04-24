@@ -105,7 +105,7 @@ cp -R "$APP" "$STAGING/PalmierPro.app"
 ln -s /Applications "$STAGING/Applications"
 cp "$RESOURCES/AppIcon.icns" "$STAGING/.VolumeIcon.icns"
 hdiutil create \
-  -volname "Palmier Pro" \
+  -volname "PalmierPro" \
   -srcfolder "$STAGING" \
   -ov -format UDZO \
   "$DMG"
