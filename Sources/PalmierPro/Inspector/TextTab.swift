@@ -48,10 +48,19 @@ struct TextTab: View {
 
     private var fontRow: some View {
         InspectorRow(icon: "character", label: "Font") {
-            FontPickerField(current: style.fontName) { newName in
-                editor.commitTextStyle(clipId: clip.id) { $0.fontName = newName }
-                editor.growTextClipToFitContent(clipId: clip.id)
-            }
+            FontPickerField(
+                current: style.fontName,
+                onPreview: { name in
+                    editor.applyTextStyle(clipId: clip.id) { $0.fontName = name }
+                },
+                onChange: { newName in
+                    editor.commitTextStyle(clipId: clip.id) { $0.fontName = newName }
+                    editor.growTextClipToFitContent(clipId: clip.id)
+                },
+                onCancel: {
+                    editor.revertClipProperty(clipId: clip.id)
+                }
+            )
         }
     }
 

@@ -274,6 +274,17 @@ extension EditorViewModel {
         }
     }
 
+    func revertClipProperty(clipId: String) {
+        guard let original = dragBefore.removeValue(forKey: clipId),
+              let loc = findClip(id: clipId) else { return }
+        timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = original
+        if original.mediaType == .text {
+            videoEngine?.syncTextLayers()
+        } else {
+            notifyTimelineChanged()
+        }
+    }
+
     /// Apply live, commit one undo entry after `debounce` of quiet —
     /// for continuous controls without drag-end events (ColorPicker).
     func debouncedCommitClipProperty(
