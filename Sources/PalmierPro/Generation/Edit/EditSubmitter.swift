@@ -71,12 +71,14 @@ enum EditSubmitter {
         case notGenerated
         case unknownModel(String)
         case missingSource
+        case invalid(String)
 
         var errorDescription: String? {
             switch self {
             case .notGenerated: "This asset was not AI-generated"
             case .unknownModel(let id): "Model no longer available: \(id)"
             case .missingSource: "Cannot rerun: source not recorded"
+            case .invalid(let msg): msg
             }
         }
     }
@@ -101,6 +103,11 @@ enum EditSubmitter {
         let preUploaded = gen.imageURLs
 
         if let videoModel = VideoModelConfig.allModels.first(where: { $0.id == modelId }) {
+            if let err = videoModel.validate(
+                duration: gen.duration, aspectRatio: gen.aspectRatio, resolution: gen.resolution
+            ) {
+                throw RerunError.invalid(err)
+            }
             if videoModel.requiresSourceVideo {
                 guard let source = preUploaded?.first else { throw RerunError.missingSource }
                 let imageRefs = Array((preUploaded ?? []).dropFirst())
@@ -172,6 +179,13 @@ enum EditSubmitter {
 
         if let imageModel = ImageModelConfig.allModels.first(where: { $0.id == modelId }) {
             let count = min(imageModel.maxImages, max(1, gen.numImages ?? 1))
+            let refCount = (preUploaded ?? []).count
+            if let err = imageModel.validate(
+                aspectRatio: gen.aspectRatio, resolution: gen.resolution, quality: gen.quality,
+                imageRefCount: refCount, numImages: count
+            ) {
+                throw RerunError.invalid(err)
+            }
             return service.generate(
                 genInput: gen,
                 assetType: .image,
@@ -214,6 +228,9 @@ enum EditSubmitter {
                 instrumental: gen.instrumental ?? false,
                 durationSeconds: audioModel.durations != nil && gen.duration > 0 ? gen.duration : nil
             )
+            if let err = audioModel.validate(params: params) {
+                throw RerunError.invalid(err)
+            }
             return service.generate(
                 genInput: gen,
                 assetType: .audio,

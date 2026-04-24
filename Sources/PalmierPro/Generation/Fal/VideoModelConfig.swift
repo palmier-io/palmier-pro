@@ -1,6 +1,10 @@
 import Foundation
 import FalClient
 
+func unsupportedValue(model displayName: String, field: String, value: String, allowed: [String]) -> String {
+    "\(displayName) does not support \(field) '\(value)'. Valid: \(allowed.joined(separator: ", "))."
+}
+
 struct VideoModelConfig: Identifiable, Sendable {
     let id: String
     let displayName: String
@@ -84,6 +88,22 @@ struct VideoModelConfig: Identifiable, Sendable {
         guard let dict = audioDiscountRate else { return nil }
         if let key = resolution, let v = dict[key] { return v }
         return dict[""]
+    }
+
+    func validate(duration: Int, aspectRatio: String, resolution: String?) -> String? {
+        if !durations.isEmpty, !durations.contains(duration) {
+            return unsupportedValue(
+                model: displayName, field: "duration",
+                value: "\(duration)s", allowed: durations.map { "\($0)s" }
+            )
+        }
+        if !aspectRatios.isEmpty, !aspectRatio.isEmpty, !aspectRatios.contains(aspectRatio) {
+            return unsupportedValue(model: displayName, field: "aspect ratio", value: aspectRatio, allowed: aspectRatios)
+        }
+        if let allowed = resolutions, let r = resolution, !r.isEmpty, !allowed.contains(r) {
+            return unsupportedValue(model: displayName, field: "resolution", value: r, allowed: allowed)
+        }
+        return nil
     }
 }
 
@@ -243,7 +263,7 @@ extension VideoModelConfig {
     ) -> VideoModelConfig {
         VideoModelConfig(
             id: id, displayName: displayName, baseEndpoint: baseEndpoint,
-            durations: Array(3...15),
+            durations: Array(4...15),
             resolutions: ["1080p", "4k"],
             aspectRatios: ["16:9", "9:16"],
             supportsLastFrame: true,
