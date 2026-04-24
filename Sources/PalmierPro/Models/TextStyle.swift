@@ -77,6 +77,33 @@ extension TextStyle.RGBA {
             a: Double(ns.alphaComponent)
         )
     }
+
+    /// Accepts `#RGB`, `#RRGGBB`, or `#RRGGBBAA`. Leading `#` optional.
+    init?(hex: String) {
+        var s = hex.trimmingCharacters(in: .whitespaces)
+        if s.hasPrefix("#") { s.removeFirst() }
+        let chars = Array(s)
+        func component(_ start: Int, _ len: Int) -> Double? {
+            let slice = String(chars[start..<start + len])
+            let byteStr = len == 1 ? slice + slice : slice
+            guard let n = UInt8(byteStr, radix: 16) else { return nil }
+            return Double(n) / 255.0
+        }
+        switch chars.count {
+        case 3:
+            guard let r = component(0, 1), let g = component(1, 1), let b = component(2, 1) else { return nil }
+            self.init(r: r, g: g, b: b, a: 1)
+        case 6:
+            guard let r = component(0, 2), let g = component(2, 2), let b = component(4, 2) else { return nil }
+            self.init(r: r, g: g, b: b, a: 1)
+        case 8:
+            guard let r = component(0, 2), let g = component(2, 2),
+                  let b = component(4, 2), let a = component(6, 2) else { return nil }
+            self.init(r: r, g: g, b: b, a: a)
+        default:
+            return nil
+        }
+    }
 }
 
 extension TextStyle {
