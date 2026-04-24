@@ -29,6 +29,9 @@ let package = Package(
                 "Resources/AppIcon.icon",
                 "Resources/AppIcon.icns",
                 "Resources/AppIcon.png",
+            ],
+            resources: [
+                .copy("Resources/Fonts"),
             ]
         ),
     ]
