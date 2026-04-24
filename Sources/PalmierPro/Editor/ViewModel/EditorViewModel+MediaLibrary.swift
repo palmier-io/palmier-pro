@@ -70,7 +70,7 @@ extension EditorViewModel {
         let cx = tl.x + currentW / 2
         let cy = tl.y + currentH / 2
         applyClipProperty(clipId: clipId, rebuild: false) {
-            $0.transform = Transform(topLeft: (cx - needW / 2, cy - needH / 2), width: needW, height: needH)
+            $0.transform = Transform(center: (cx, cy), width: needW, height: needH)
         }
     }
 
@@ -210,6 +210,68 @@ extension EditorViewModel {
         case .text:
             break
         }
+    }
+
+    struct TextClipSpec {
+        let trackIndex: Int
+        let startFrame: Int
+        let durationFrames: Int
+        let content: String
+        let style: TextStyle
+        /// When nil the box is auto-fit to content and centered on the canvas.
+        let transform: Transform?
+    }
+
+    /// Batch variant of `addTextClip` for agent flows.
+    /// Caller owns undo + track creation.
+    @discardableResult
+    func placeTextClips(_ specs: [TextClipSpec]) -> [String] {
+        guard !specs.isEmpty else { return [] }
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
+        var createdIds = [String?](repeating: nil, count: specs.count)
+
+        let indicesByTrack = Dictionary(grouping: specs.indices, by: { specs[$0].trackIndex })
+        for (_, indices) in indicesByTrack {
+            let ordered = indices.sorted { specs[$0].startFrame < specs[$1].startFrame }
+            for i in ordered {
+                let spec = specs[i]
+                guard timeline.tracks.indices.contains(spec.trackIndex) else { continue }
+                let start = max(0, spec.startFrame)
+                let duration = max(1, spec.durationFrames)
+                clearRegion(trackIndex: spec.trackIndex, start: start, end: start + duration)
+
+                let resolved: Transform
+                if let t = spec.transform {
+                    resolved = t
+                } else {
+                    let natural = TextLayout.naturalSize(
+                        content: spec.content, style: spec.style, maxWidth: CGFloat(canvasW) * 0.9
+                    )
+                    let w = Double(natural.width) / canvasW
+                    let h = Double(natural.height) / canvasH
+                    resolved = Transform(topLeft: ((1 - w) / 2, (1 - h) / 2), width: w, height: h)
+                }
+                var clip = Clip(
+                    mediaRef: "",
+                    mediaType: .text,
+                    sourceClipType: .text,
+                    startFrame: start,
+                    durationFrames: duration,
+                    transform: resolved
+                )
+                clip.textContent = spec.content
+                clip.textStyle = spec.style
+                timeline.tracks[spec.trackIndex].clips.append(clip)
+                createdIds[i] = clip.id
+            }
+        }
+
+        for i in Set(specs.map(\.trackIndex)) where timeline.tracks.indices.contains(i) {
+            sortClips(trackIndex: i)
+        }
+        videoEngine?.syncTextLayers()
+        return createdIds.compactMap { $0 }
     }
 
     @discardableResult

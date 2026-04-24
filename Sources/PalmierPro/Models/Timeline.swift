@@ -97,6 +97,16 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
 
     /// Total source frames the clip references, including both trims.
     var sourceDurationFrames: Int { sourceFramesConsumed + trimStartFrame + trimEndFrame }
+
+    /// Source-seconds → project-timeline-frame through this clip's placement, trim, and speed.
+    func timelineFrame(sourceSeconds t: Double, fps: Int) -> Int? {
+        let sourceFrame = t * Double(fps)
+        let offsetFromTrim = sourceFrame - Double(trimStartFrame)
+        guard offsetFromTrim >= 0 else { return nil }
+        let frame = Int((Double(startFrame) + offsetFromTrim / max(speed, 0.0001)).rounded())
+        guard frame >= startFrame && frame < endFrame else { return nil }
+        return frame
+    }
 }
 
 struct Transform: Codable, Sendable, Equatable {
@@ -119,6 +129,10 @@ struct Transform: Codable, Sendable, Equatable {
         self.height = h
         self.x = tl.x - w / 2.0 + 0.5
         self.y = tl.y - h / 2.0 + 0.5
+    }
+
+    init(center c: (x: Double, y: Double), width w: Double, height h: Double) {
+        self.init(topLeft: (c.x - w / 2.0, c.y - h / 2.0), width: w, height: h)
     }
 
     /// Snap a value to canvas boundaries (0 or 1) within threshold.
