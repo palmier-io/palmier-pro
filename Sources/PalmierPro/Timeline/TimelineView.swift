@@ -252,7 +252,7 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(clip, type: clip.mediaType, in: originalRect,
                                           isSelected: false, opacity: 0.3, context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.mediaResolver.displayName(for: clip.mediaRef))
+                                          displayName: editor.clipDisplayLabel(for: clip))
                     }
 
                     let frameDelta = drag.deltaFrames
@@ -274,7 +274,7 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(ghostClip, type: clip.mediaType, in: ghostRect,
                                           isSelected: true, opacity: 0.7, context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.mediaResolver.displayName(for: clip.mediaRef))
+                                          displayName: editor.clipDisplayLabel(for: clip))
                     }
                     continue
                 }
@@ -296,7 +296,7 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(previewClip, type: clip.mediaType, in: previewRect,
                                           isSelected: isSelected, context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.mediaResolver.displayName(for: clip.mediaRef))
+                                          displayName: editor.clipDisplayLabel(for: clip))
                     }
                     continue
                 }
@@ -307,7 +307,7 @@ final class TimelineView: NSView {
                 ClipRenderer.draw(clip, type: clip.mediaType, in: rect,
                                   isSelected: isSelected, context: ctx,
                                   cache: editor.mediaVisualCache,
-                                  displayName: editor.mediaResolver.displayName(for: clip.mediaRef),
+                                  displayName: editor.clipDisplayLabel(for: clip),
                                   linkOffset: linkOffsets[clip.id])
             }
         }

@@ -37,6 +37,7 @@ extension EditorViewModel {
                 case .video: category = .video
                 case .image: category = .image
                 case .audio: category = .audio
+                case .text: return nil
                 }
             }
             return GenerationLogEntry(

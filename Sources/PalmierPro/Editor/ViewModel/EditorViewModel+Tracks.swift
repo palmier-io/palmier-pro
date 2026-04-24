@@ -20,7 +20,7 @@ extension EditorViewModel {
         let z = zones
         let bounded = max(0, min(requested, z.trackCount))
         switch type {
-        case .video, .image:
+        case .video, .image, .text:
             // Visual tracks must come at or before the first audio track.
             return min(bounded, z.firstAudioIndex)
         case .audio:

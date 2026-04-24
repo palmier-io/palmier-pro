@@ -44,6 +44,8 @@ enum EditAction {
                 break // images have no duration constraint
             case .audio:
                 return .disabled(reason: "Edit doesn't support audio")
+            case .text:
+                return .disabled(reason: "Edit doesn't support text")
             }
             if asset.isGenerating {
                 return .disabled(reason: "Generation in progress")

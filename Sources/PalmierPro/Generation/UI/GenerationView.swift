@@ -728,6 +728,7 @@ struct GenerationView: View {
         case .image: videoModel.maxReferenceImages
         case .video: videoModel.maxReferenceVideos
         case .audio: videoModel.maxReferenceAudios
+        case .text: 0
         }
     }
 
@@ -736,6 +737,7 @@ struct GenerationView: View {
         case .image: refImages.count
         case .video: refVideos.count
         case .audio: refAudios.count
+        case .text: 0
         }
     }
 
@@ -745,6 +747,7 @@ struct GenerationView: View {
         case .image: videoModel.referenceTagNoun
         case .video: "Video"
         case .audio: "Audio"
+        case .text: "Text"
         }
     }
 
@@ -777,6 +780,7 @@ struct GenerationView: View {
         case .image: refImages.append(asset)
         case .video: refVideos.append(asset)
         case .audio: refAudios.append(asset)
+        case .text: break
         }
     }
 
@@ -814,7 +818,7 @@ struct GenerationView: View {
         switch type {
         case .video: videoModel.maxCombinedVideoRefSeconds
         case .audio: videoModel.maxCombinedAudioRefSeconds
-        case .image: nil
+        case .image, .text: nil
         }
     }
 
@@ -822,7 +826,7 @@ struct GenerationView: View {
         switch type {
         case .video: refVideos.reduce(0) { $0 + $1.duration }
         case .audio: refAudios.reduce(0) { $0 + $1.duration }
-        case .image: 0
+        case .image, .text: 0
         }
     }
 
@@ -831,13 +835,19 @@ struct GenerationView: View {
         case .image: refImages.remove(at: index)
         case .video: refVideos.remove(at: index)
         case .audio: refAudios.remove(at: index)
+        case .text: break
         }
     }
 
     @ViewBuilder
     private func refCards(for type: ClipType) -> some View {
         let assets: [MediaAsset] = {
-            switch type { case .image: refImages; case .video: refVideos; case .audio: refAudios }
+            switch type {
+            case .image: refImages
+            case .video: refVideos
+            case .audio: refAudios
+            case .text: []
+            }
         }()
         let noun = tagNoun(for: type)
         ForEach(Array(assets.enumerated()), id: \.element.id) { index, asset in
@@ -856,7 +866,7 @@ struct GenerationView: View {
     private var refCounterLabel: String {
         let total = totalRefCount
         if let cap = videoModel.maxTotalReferences {
-            let shortLabel: (ClipType) -> String = { switch $0 { case .image: "img"; case .video: "vid"; case .audio: "aud" } }
+            let shortLabel: (ClipType) -> String = { switch $0 { case .image: "img"; case .video: "vid"; case .audio: "aud"; case .text: "txt" } }
             let parts = ClipType.allCases
                 .filter { refCap(for: $0) > 0 }
                 .map { "\(refCount(for: $0)) \(shortLabel($0))" }
@@ -1560,7 +1570,7 @@ struct GenerationView: View {
             sourceVideo = nil
             firstFrame = nil
             lastFrame = nil
-        case .audio:
+        case .audio, .text:
             editor.pendingEditSource = nil
             return
         }
