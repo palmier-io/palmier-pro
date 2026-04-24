@@ -4,6 +4,7 @@ import SwiftUI
 struct TextStyle: Codable, Sendable, Equatable {
     var fontName: String = "Helvetica-Bold"
     var fontSize: Double = 96
+    var fontScale: Double = 1.0
     var color: RGBA = RGBA()
     var alignment: Alignment = .center
     var shadow: Shadow = Shadow()
@@ -32,7 +33,7 @@ struct TextStyle: Codable, Sendable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case fontName, fontSize, color, alignment, shadow
+        case fontName, fontSize, fontScale, color, alignment, shadow
     }
 }
 
@@ -43,6 +44,7 @@ extension TextStyle {
         self.init(
             fontName: (try? c.decode(String.self, forKey: .fontName)) ?? "Helvetica-Bold",
             fontSize: (try? c.decode(Double.self, forKey: .fontSize)) ?? 96,
+            fontScale: (try? c.decode(Double.self, forKey: .fontScale)) ?? 1.0,
             color: (try? c.decode(RGBA.self, forKey: .color)) ?? RGBA(),
             alignment: (try? c.decode(Alignment.self, forKey: .alignment)) ?? .center,
             shadow: (try? c.decode(Shadow.self, forKey: .shadow)) ?? Shadow()
