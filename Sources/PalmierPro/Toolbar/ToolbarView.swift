@@ -33,8 +33,11 @@ struct ToolbarView: View {
             Divider()
                 .frame(height: 20)
 
-            // Capture current frame to media panel
-            toolbarButton("camera", help: "Capture Frame to Media", action: editor.captureCurrentFrameToMedia)
+            // Add content
+            HStack(spacing: AppTheme.Spacing.md) {
+                textGlyphButton("T", help: "Add Text", action: { _ = editor.addTextClip() })
+                toolbarButton("camera", help: "Capture Frame to Media", action: editor.captureCurrentFrameToMedia)
+            }
 
             Spacer()
 
@@ -76,6 +79,18 @@ struct ToolbarView: View {
                 .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
                 .frame(width: 24, height: 24)
                 .hoverHighlight(isActive: isActive)
+                .help(help)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func textGlyphButton(_ glyph: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(glyph)
+                .font(.system(size: 17, weight: .bold, design: .serif))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .frame(width: 24, height: 24)
+                .hoverHighlight()
                 .help(help)
         }
         .buttonStyle(.plain)
