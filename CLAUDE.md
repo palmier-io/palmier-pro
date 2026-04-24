@@ -86,6 +86,10 @@ Views get it via `.environment(editorViewModel)`. No `EnvironmentObject`, no sin
 
 `Agent/MCP/MCPHTTPServer.swift` is an `actor` wrapping `NWListener` that speaks HTTP MCP (stateless transport) — **this exposes Palmier's editor tools to external agents**, not the other way around. Each TCP connection gets its own `Server` + `StatelessHTTPServerTransport` pair. Same `ToolDefinitions` are re-used on both sides.
 
+## Code style
+
+- Keep comments minimal. Only write one when the *why* is non-obvious (hidden constraint, subtle invariant, workaround for a specific bug). Don't restate what the code does, don't narrate the current change, don't leave `// removed X` breadcrumbs. One short line max — no multi-line comment blocks or paragraph docstrings.
+
 ## Concurrency & patterns
 
 - Major stateful types are `@Observable @MainActor` (`AppState`, `EditorViewModel`, `VideoEngine`, `AgentService`, `ProjectRegistry`). No `ObservableObject`.
