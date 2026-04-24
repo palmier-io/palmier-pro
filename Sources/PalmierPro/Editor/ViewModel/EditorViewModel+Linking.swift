@@ -131,15 +131,15 @@ extension EditorViewModel {
 
     private func trimValues(for clip: Clip, edge: TrimEdge, delta: Int) -> (trimStart: Int, trimEnd: Int) {
         let sourceDelta = Int((Double(delta) * clip.speed).rounded())
-        // Images have no source-material bound, so their trim fields can go negative
-        let isImage = clip.mediaType == .image
+        // Image/Text clips have no source-material bound, so their trim fields can go negative
+        let unbounded = clip.mediaType == .image || clip.mediaType == .text
         switch edge {
         case .left:
             let newStart = clip.trimStartFrame + sourceDelta
-            return (isImage ? newStart : max(0, newStart), clip.trimEndFrame)
+            return (unbounded ? newStart : max(0, newStart), clip.trimEndFrame)
         case .right:
             let newEnd = clip.trimEndFrame - sourceDelta
-            return (clip.trimStartFrame, isImage ? newEnd : max(0, newEnd))
+            return (clip.trimStartFrame, unbounded ? newEnd : max(0, newEnd))
         }
     }
 

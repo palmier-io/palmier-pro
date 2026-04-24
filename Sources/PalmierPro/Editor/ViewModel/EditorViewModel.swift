@@ -144,11 +144,32 @@ final class EditorViewModel {
     /// property). Keyed by clip id so multiple clips can be edited in tandem
     var dragBefore: [String: Clip] = [:]
 
+    /// Debounced commits, keyed "clipId:property".
+    var pendingDebouncedCommits: [String: Task<Void, Never>] = [:]
+
+    /// Coalesces rapid rebuild requests so `replaceCurrentItem` doesn't fire per keystroke.
+    var pendingRebuildTask: Task<Void, Never>?
+
     func notifyTimelineChanged() {
+        pendingRebuildTask?.cancel()
+        pendingRebuildTask = nil
         if isPlaying {
             videoEngine?.pause()
         }
+        videoEngine?.syncTextLayers()
         videoEngine?.rebuild()
+    }
+
+    /// Coalesce rapid rebuilds. An immediate `notifyTimelineChanged` cancels any pending debounced one.
+    func notifyTimelineChangedDebounced(debounce: Duration = .milliseconds(120)) {
+        pendingRebuildTask?.cancel()
+        pendingRebuildTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: debounce)
+            guard !Task.isCancelled, let self else { return }
+            self.pendingRebuildTask = nil
+            if self.isPlaying { self.videoEngine?.pause() }
+            self.videoEngine?.rebuild()
+        }
     }
 
     /// Place one clip at exact frames, optionally pairing the audio from a video

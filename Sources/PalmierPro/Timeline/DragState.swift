@@ -38,7 +38,8 @@ enum DragState {
         let originalTrimEnd: Int
         let originalStartFrame: Int
         let originalDuration: Int
-        let isImage: Bool
+        /// Image/Text clips can be trimmed/extended freely without hitting a source-material cap.
+        let hasNoSourceMedia: Bool
         /// When true, trim applies to link-group partners too.
         let propagateToLinked: Bool
         var deltaFrames: Int = 0

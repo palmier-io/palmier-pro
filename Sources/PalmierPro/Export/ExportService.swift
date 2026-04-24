@@ -85,7 +85,24 @@ final class ExportService {
             }
 
             session.audioMix = result.audioMix
-            session.videoComposition = result.videoComposition
+
+            // Bake text clips into the export via AVVideoCompositionCoreAnimationTool.
+            // Preview uses AVSynchronizedLayer for the same layer tree; these
+            // paths cannot share a composition because AVPlayer rejects any
+            // videoComposition with an animationTool set.
+            let textController = TextLayerController()
+            let canvas = CGSize(width: timeline.width, height: timeline.height)
+            let (parent, videoLayer) = textController.buildForExport(
+                timeline: timeline,
+                fps: timeline.fps,
+                canvasSize: canvas
+            )
+            let mutableVC = result.videoComposition.mutableCopy() as! AVMutableVideoComposition
+            mutableVC.animationTool = AVVideoCompositionCoreAnimationTool(
+                postProcessingAsVideoLayer: videoLayer,
+                in: parent
+            )
+            session.videoComposition = mutableVC
 
             // Poll progress periodically
             nonisolated(unsafe) let unsafeSession = session

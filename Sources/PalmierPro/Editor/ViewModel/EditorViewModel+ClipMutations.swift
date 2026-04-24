@@ -254,7 +254,7 @@ extension EditorViewModel {
         undoManager?.setActionName(actionName)
     }
 
-    func applyClipProperty(clipId: String, _ modify: (inout Clip) -> Void) {
+    func applyClipProperty(clipId: String, rebuild: Bool = false, _ modify: (inout Clip) -> Void) {
         guard let loc = findClip(id: clipId) else { return }
         var clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
         if dragBefore[clipId] == nil {
@@ -262,7 +262,65 @@ extension EditorViewModel {
         }
         modify(&clip)
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
-        videoEngine?.refreshVisuals()
+        // Text renders via CATextLayer overlay — skip the composition path.
+        if clip.mediaType == .text {
+            videoEngine?.syncTextLayers()
+            return
+        }
+        if rebuild {
+            notifyTimelineChangedDebounced()
+        } else {
+            videoEngine?.refreshVisuals()
+        }
+    }
+
+    /// Apply live, commit one undo entry after `debounce` of quiet —
+    /// for continuous controls without drag-end events (ColorPicker).
+    func debouncedCommitClipProperty(
+        clipId: String,
+        key: String,
+        debounce: Duration = .milliseconds(400),
+        _ modify: @escaping (inout Clip) -> Void
+    ) {
+        applyClipProperty(clipId: clipId, rebuild: true, modify)
+        let taskKey = "\(clipId):\(key)"
+        pendingDebouncedCommits[taskKey]?.cancel()
+        pendingDebouncedCommits[taskKey] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: debounce)
+            guard !Task.isCancelled, let self else { return }
+            self.commitClipProperty(clipId: clipId, modify)
+            self.pendingDebouncedCommits.removeValue(forKey: taskKey)
+        }
+    }
+
+    // MARK: - Text-style mutation helpers
+
+    func applyTextStyle(clipId: String, _ modify: @escaping (inout TextStyle) -> Void) {
+        applyClipProperty(clipId: clipId, rebuild: true) { clip in
+            var style = clip.textStyle ?? TextStyle()
+            modify(&style)
+            clip.textStyle = style
+        }
+    }
+
+    func commitTextStyle(clipId: String, _ modify: @escaping (inout TextStyle) -> Void) {
+        commitClipProperty(clipId: clipId) { clip in
+            var style = clip.textStyle ?? TextStyle()
+            modify(&style)
+            clip.textStyle = style
+        }
+    }
+
+    func debouncedCommitTextStyle(
+        clipId: String,
+        key: String,
+        _ modify: @escaping (inout TextStyle) -> Void
+    ) {
+        debouncedCommitClipProperty(clipId: clipId, key: key) { clip in
+            var style = clip.textStyle ?? TextStyle()
+            modify(&style)
+            clip.textStyle = style
+        }
     }
 
     func commitClipProperty(clipId: String, _ modify: (inout Clip) -> Void) {
@@ -277,7 +335,11 @@ extension EditorViewModel {
             }
         }
         undoManager?.setActionName("Change Clip Property")
-        notifyTimelineChanged()
+        if clip.mediaType == .text {
+            videoEngine?.syncTextLayers()
+        } else {
+            notifyTimelineChanged()
+        }
     }
 
     /// Flag the selected clip (and any linked clips sharing its `mediaRef`)

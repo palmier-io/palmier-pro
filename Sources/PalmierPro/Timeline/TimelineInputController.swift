@@ -90,7 +90,7 @@ final class TimelineInputController {
                     originalTrimEnd: clip.trimEndFrame,
                     originalStartFrame: clip.startFrame,
                     originalDuration: clip.durationFrames,
-                    isImage: clip.mediaType == .image,
+                    hasNoSourceMedia: clip.mediaType == .image || clip.mediaType == .text,
                     propagateToLinked: linkedOn
                 ))
             } else if localX >= rect.width - Trim.handleWidth {
@@ -101,7 +101,7 @@ final class TimelineInputController {
                     originalTrimEnd: clip.trimEndFrame,
                     originalStartFrame: clip.startFrame,
                     originalDuration: clip.durationFrames,
-                    isImage: clip.mediaType == .image,
+                    hasNoSourceMedia: clip.mediaType == .image || clip.mediaType == .text,
                     propagateToLinked: linkedOn
                 ))
             } else {
@@ -226,7 +226,7 @@ final class TimelineInputController {
             }
             let delta = snappedStart - drag.originalStartFrame
             let maxDelta = drag.originalDuration - 1
-            let minDelta = drag.isImage ? -drag.originalStartFrame : -drag.originalTrimStart
+            let minDelta = drag.hasNoSourceMedia ? -drag.originalStartFrame : -drag.originalTrimStart
             drag.deltaFrames = max(minDelta, min(maxDelta, delta))
             dragState = .trimLeft(drag)
 
@@ -255,7 +255,7 @@ final class TimelineInputController {
             drag.deltaFrames = snappedEnd - originalEndFrame
             // Can't shrink past 1 frame; for non-image clips, can't expand past source material
             let minDelta = -(drag.originalDuration - 1)
-            if drag.isImage {
+            if drag.hasNoSourceMedia {
                 drag.deltaFrames = max(minDelta, drag.deltaFrames)
             } else {
                 let maxDelta = drag.originalTrimEnd
