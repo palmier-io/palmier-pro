@@ -45,8 +45,9 @@ final class AgentService {
     var mentions: [AgentMention] = []
 
     func attachMention(for asset: MediaAsset) {
-        let displayName = Self.disambiguatedMentionName(for: asset, existing: mentions)
+        mentions.removeAll { !draft.contains("@\($0.displayName)") }
         guard !mentions.contains(where: { $0.mediaRef == asset.id }) else { return }
+        let displayName = Self.disambiguatedMentionName(for: asset, existing: mentions)
         let needsSpace = !draft.isEmpty && !draft.hasSuffix(" ") && !draft.hasSuffix("\n")
         draft += (needsSpace ? " " : "") + "@\(displayName) "
         mentions.append(AgentMention(displayName: displayName, mediaRef: asset.id, type: asset.type))
