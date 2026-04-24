@@ -39,6 +39,15 @@ cp "$RESOURCES/Info.plist" "$APP/Contents/Info.plist"
 cp "$RESOURCES/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp -R "$SPARKLE_FW" "$APP/Contents/Frameworks/Sparkle.framework"
 
+# SwiftPM emits a resource bundle beside the binary — ship it so Bundle.module resolves.
+RES_BUNDLE="$(dirname "$BIN")/PalmierPro_PalmierPro.bundle"
+if [ -e "$RES_BUNDLE" ]; then
+  cp -R "$RES_BUNDLE" "$APP/Contents/Resources/"
+else
+  echo "!! missing SwiftPM resource bundle at $RES_BUNDLE" >&2
+  exit 1
+fi
+
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/PalmierPro"
 touch "$APP"
 
