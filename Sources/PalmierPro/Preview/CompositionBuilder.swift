@@ -41,7 +41,10 @@ enum CompositionBuilder {
         var clipNaturalSizes: [String: CGSize] = [:]
 
         for (trackIdx, track) in timeline.tracks.enumerated() {
-            let sortedClips = track.clips.sorted { $0.startFrame < $1.startFrame }
+            // Text renders via CATextLayer overlay (preview) + animation tool (export) — never as composition tracks.
+            let sortedClips = track.clips
+                .sorted { $0.startFrame < $1.startFrame }
+                .filter { $0.mediaType != .text }
             guard !sortedClips.isEmpty else { continue }
             let isAudio = track.type == .audio
             let mediaType: AVMediaType = isAudio ? .audio : .video
@@ -54,17 +57,20 @@ enum CompositionBuilder {
 
             var cursor = CMTime.zero
             for clip in sortedClips {
-                guard var mediaURL = resolveURL(clip.mediaRef) else { continue }
+                let mediaURL: URL
+                guard let resolved = resolveURL(clip.mediaRef) else { continue }
                 if clip.mediaType == .image {
-                    let imageSize = resolveSourceSize(clip.mediaRef) ?? ImageVideoGenerator.imageNativeSize(url: mediaURL) ?? renderSize
+                    let imageSize = resolveSourceSize(clip.mediaRef) ?? ImageVideoGenerator.imageNativeSize(url: resolved) ?? renderSize
                     do {
                         mediaURL = try await ImageVideoGenerator.stillVideo(
-                            for: mediaURL, mediaRef: clip.mediaRef, size: imageSize
+                            for: resolved, mediaRef: clip.mediaRef, size: imageSize
                         )
                     } catch {
                         Log.preview.error("stillVideo failed mediaRef=\(clip.mediaRef) size=\(Int(imageSize.width))x\(Int(imageSize.height)): \(error.localizedDescription)")
                         continue
                     }
+                } else {
+                    mediaURL = resolved
                 }
 
                 guard !Task.isCancelled else { throw CancellationError() }
@@ -121,6 +127,13 @@ enum CompositionBuilder {
         }
 
         guard !Task.isCancelled else { throw CancellationError() }
+
+        // Extend the composition so playback advances through text-only tails.
+        let desiredDuration = CMTime(value: CMTimeValue(timeline.totalFrames), timescale: timescale)
+        if !composition.tracks.isEmpty, desiredDuration > composition.duration {
+            let gap = CMTimeRange(start: composition.duration, duration: desiredDuration - composition.duration)
+            composition.insertEmptyTimeRange(gap)
+        }
 
         let (audioMix, videoComposition) = buildVisuals(
             timeline: timeline,

@@ -13,6 +13,9 @@ final class VideoEngine {
     private var isSeeking = false
     private var pendingSeek: (time: CMTime, tolerance: CMTime)?
 
+    let textController = TextLayerController()
+    weak var previewView: PreviewNSView?
+
     weak var editor: EditorViewModel?
 
     init(editor: EditorViewModel) {
@@ -48,6 +51,8 @@ final class VideoEngine {
 
     func seek(to frame: Int, tolerant: Bool = false) {
         guard let editor else { return }
+        // Snap text before AVPlayer resolves the seek.
+        tickTextFrame(frame)
         let time = CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(editor.timeline.fps))
         let tolerance: CMTime
         if tolerant {
@@ -144,9 +149,31 @@ final class VideoEngine {
             item.audioMix = result.audioMix
             item.videoComposition = result.videoComposition
             player.replaceCurrentItem(with: item)
+            syncTextLayers()
+
             seek(to: editor.currentFrame)
             if editor.isPlaying { player.play() }
         }
+    }
+
+    /// Refresh the text layer tree — no composition rebuild, no item swap.
+    func syncTextLayers() {
+        guard let editor else { return }
+        let canvas = CGSize(width: editor.timeline.width, height: editor.timeline.height)
+        let videoRect = previewView?.playerLayer.videoRect ?? .zero
+        let resolvedRect = videoRect.isEmpty ? (previewView?.bounds ?? .zero) : videoRect
+        textController.sync(
+            timeline: editor.timeline,
+            fps: editor.timeline.fps,
+            canvasSize: canvas,
+            videoRect: resolvedRect,
+            currentFrame: editor.currentFrame
+        )
+    }
+
+    /// Flip text visibility to match `frame` — called from the time observer and seek.
+    func tickTextFrame(_ frame: Int) {
+        textController.updateFrameVisibility(frame)
     }
 
     /// Update only visual properties (transform, opacity, volume)
@@ -182,6 +209,7 @@ final class VideoEngine {
                     let frame = secondsToFrame(seconds: time.seconds, fps: editor.timeline.fps)
                     if editor.activePreviewTab == .timeline {
                         editor.currentFrame = frame
+                        self.tickTextFrame(frame)
                     } else {
                         editor.sourcePlayheadFrame = frame
                     }

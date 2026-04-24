@@ -85,6 +85,10 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var transform: Transform = Transform()
     var linkGroupId: String?
 
+    // Text clips only. nil for every other clip kind.
+    var textContent: String?
+    var textStyle: TextStyle?
+
     /// Frame where this clip ends on the timeline
     var endFrame: Int { startFrame + durationFrames }
 

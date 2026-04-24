@@ -8,6 +8,9 @@ struct PreviewView: NSViewRepresentable {
         let view = PreviewNSView()
         let engine = VideoEngine(editor: editor)
         view.playerLayer.player = engine.player
+        engine.previewView = view
+        view.setTextRoot(engine.textController.textRoot)
+        view.onVideoRectChange = { [weak engine] _ in engine?.syncTextLayers() }
         context.coordinator.engine = engine
         editor.videoEngine = engine
         engine.activateTab(editor.activePreviewTab)
@@ -36,9 +39,15 @@ struct PreviewView: NSViewRepresentable {
     }
 }
 
-/// NSView that hosts an AVPlayerLayer for video preview.
+/// Hosts AVPlayerLayer + a direct CALayer tree for text overlays.
 final class PreviewNSView: NSView {
     let playerLayer = AVPlayerLayer()
+    private(set) var textRoot: CALayer?
+
+    /// Fires when `playerLayer.videoRect` changes so text layers can re-scale.
+    var onVideoRectChange: ((CGRect) -> Void)?
+
+    private var lastVideoRect: CGRect = .zero
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -51,8 +60,29 @@ final class PreviewNSView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// Attach the text layer tree above `playerLayer` — persists across item swaps.
+    func setTextRoot(_ new: CALayer?) {
+        textRoot?.removeFromSuperlayer()
+        textRoot = new
+        if let new, let host = layer {
+            host.addSublayer(new)
+            new.frame = resolvedVideoRect
+        }
+    }
+
     override func layout() {
         super.layout()
         playerLayer.frame = bounds
+        let videoRect = resolvedVideoRect
+        textRoot?.frame = videoRect
+        if videoRect != lastVideoRect {
+            lastVideoRect = videoRect
+            onVideoRectChange?(videoRect)
+        }
+    }
+
+    private var resolvedVideoRect: CGRect {
+        let rect = playerLayer.videoRect
+        return rect.isEmpty ? bounds : rect
     }
 }

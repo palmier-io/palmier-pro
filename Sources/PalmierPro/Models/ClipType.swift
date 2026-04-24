@@ -2,12 +2,14 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
     case video
     case audio
     case image
+    case text
 
     var sfSymbolName: String {
         switch self {
         case .video: "film"
         case .audio: "waveform"
         case .image: "photo"
+        case .text: "textformat"
         }
     }
 
@@ -16,13 +18,14 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
         case .video: "Video"
         case .audio: "Audio"
         case .image: "Image"
+        case .text: "Text"
         }
     }
 
     var trackLabelPrefix: String { String(trackLabel.prefix(1)) }
 
     var isVisual: Bool {
-        self == .video || self == .image
+        self == .video || self == .image || self == .text
     }
 
     func isCompatible(with other: ClipType) -> Bool {
