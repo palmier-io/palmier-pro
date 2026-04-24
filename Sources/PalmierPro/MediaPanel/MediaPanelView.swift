@@ -45,12 +45,10 @@ struct MediaPanelView: View {
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: AppTheme.Spacing.xs) {
                             toolbarButton(title: "Import", systemImage: "plus", compact: false, action: importMedia)
-                            toolbarButton(title: "Text", systemImage: "character.textbox", compact: false, action: addText)
                             toolbarButton(title: "Generate", systemImage: "sparkles", compact: false, accentStyle: AnyShapeStyle(AppTheme.aiGradient), action: toggleGenerationPanel)
                         }
                         HStack(spacing: AppTheme.Spacing.xs) {
                             toolbarButton(title: "Import", systemImage: "plus", compact: true, action: importMedia)
-                            toolbarButton(title: "Text", systemImage: "character.textbox", compact: true, action: addText)
                             toolbarButton(title: "Generate", systemImage: "sparkles", compact: true, accentStyle: AnyShapeStyle(AppTheme.aiGradient), action: toggleGenerationPanel)
                         }
                     }
@@ -234,10 +232,6 @@ struct MediaPanelView: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-    }
-
-    private func addText() {
-        editor.addTextClip()
     }
 
     private func toggleGenerationPanel() {
