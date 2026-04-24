@@ -155,4 +155,27 @@ struct Transform: Codable, Sendable, Equatable {
             y = 0
         }
     }
+
+    /// Clip center in normalized canvas space (0–1).
+    var center: (x: Double, y: Double) {
+        let tl = topLeft
+        return (tl.x + width / 2, tl.y + height / 2)
+    }
+
+    /// Snap per-axis within threshold. Return tuple lets callers draw guide indicators.
+    @discardableResult
+    mutating func snapCenterToCanvasCenter(thresholdH: Double, thresholdV: Double) -> (x: Bool, y: Bool) {
+        let c = center
+        var snappedX = false
+        var snappedY = false
+        if abs(c.x - 0.5) < thresholdH {
+            x -= (c.x - 0.5)
+            snappedX = true
+        }
+        if abs(c.y - 0.5) < thresholdV {
+            y -= (c.y - 0.5)
+            snappedY = true
+        }
+        return (snappedX, snappedY)
+    }
 }

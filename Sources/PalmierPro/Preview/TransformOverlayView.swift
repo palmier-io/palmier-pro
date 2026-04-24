@@ -33,6 +33,21 @@ struct TransformOverlayView: View {
                         .gesture(resizeGesture(clip: clip, corner: corner, videoRect: videoRect))
                 }
             }
+
+            if centerGuideX {
+                Rectangle()
+                    .fill(centerGuideColor)
+                    .frame(width: 1, height: videoRect.height)
+                    .position(x: videoRect.midX, y: videoRect.midY)
+                    .allowsHitTesting(false)
+            }
+            if centerGuideY {
+                Rectangle()
+                    .fill(centerGuideColor)
+                    .frame(width: videoRect.width, height: 1)
+                    .position(x: videoRect.midX, y: videoRect.midY)
+                    .allowsHitTesting(false)
+            }
         }
         .allowsHitTesting(selectedClip != nil)
     }
@@ -41,33 +56,45 @@ struct TransformOverlayView: View {
 
     @State private var dragStart: Transform?
     @State private var resizeStart: Transform?
+    @State private var centerGuideX: Bool = false
+    @State private var centerGuideY: Bool = false
+
+    private let centerGuideColor = Color(red: 1.0, green: 0.2, blue: 0.6).opacity(0.9)
 
     private func moveGesture(clip: Clip, videoRect: CGRect) -> some Gesture {
         DragGesture()
             .onChanged { value in
                 if dragStart == nil { dragStart = clip.transform }
                 guard let start = dragStart else { return }
-                let moved = movedTransform(start, by: value.translation, in: videoRect)
+                let (moved, snap) = movedTransform(start, by: value.translation, in: videoRect)
+                if centerGuideX != snap.x { centerGuideX = snap.x }
+                if centerGuideY != snap.y { centerGuideY = snap.y }
                 editor.applyClipProperty(clipId: clip.id) { $0.transform = moved }
             }
             .onEnded { value in
                 guard let start = dragStart else { return }
-                let moved = movedTransform(start, by: value.translation, in: videoRect)
+                let (moved, _) = movedTransform(start, by: value.translation, in: videoRect)
                 dragStart = nil
+                if centerGuideX { centerGuideX = false }
+                if centerGuideY { centerGuideY = false }
                 editor.commitClipProperty(clipId: clip.id) { $0.transform = moved }
             }
     }
 
-    private func movedTransform(_ start: Transform, by translation: CGSize, in videoRect: CGRect) -> Transform {
+    private func movedTransform(_ start: Transform, by translation: CGSize, in videoRect: CGRect) -> (Transform, (x: Bool, y: Bool)) {
         guard videoRect.width > 0, videoRect.height > 0 else {
             Log.preview.warning("movedTransform: collapsed videoRect \(videoRect.debugDescription) — skipping")
-            return start
+            return (start, (false, false))
         }
         var t = start
         t.x += translation.width / videoRect.width
         t.y += translation.height / videoRect.height
         t.snapToCanvasEdges(threshold: Snap.thresholdPixels / Double(videoRect.width))
-        return t
+        let snap = t.snapCenterToCanvasCenter(
+            thresholdH: Snap.thresholdPixels / Double(videoRect.width),
+            thresholdV: Snap.thresholdPixels / Double(videoRect.height)
+        )
+        return (t, snap)
     }
 
     private func resizeGesture(clip: Clip, corner: Corner, videoRect: CGRect) -> some Gesture {
