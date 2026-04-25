@@ -40,6 +40,8 @@ struct PreviewContainerView: View {
             if !isImage {
                 scrubBar
                 transportBar
+            } else {
+                imageSettingsBar
             }
         }
         .background(AppTheme.Background.surfaceColor)
@@ -82,6 +84,17 @@ struct PreviewContainerView: View {
             Spacer()
 
             projectSettingsGroup
+        }
+        .padding(.horizontal, AppTheme.Spacing.lg)
+        .frame(height: 36)
+    }
+
+    // MARK: - Image settings bar
+
+    private var imageSettingsBar: some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Spacer()
+            settingsMenuButton(label: zoomBadgeLabel, help: "Canvas Zoom") { zoomMenuItems }
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .frame(height: 36)
@@ -255,6 +268,7 @@ struct PreviewContainerView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.black)
+        .allowsHitTesting(false)
     }
 
     private func fitSize(in container: CGSize, aspect: CGFloat) -> CGSize {
