@@ -52,7 +52,7 @@ final class VideoEngine {
     func seek(to frame: Int, tolerant: Bool = false) {
         guard let editor else { return }
         // Snap text before AVPlayer resolves the seek.
-        tickTextFrame(frame)
+        textController.tick(frame)
         let time = CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(editor.timeline.fps))
         let tolerance: CMTime
         if tolerant {
@@ -156,24 +156,14 @@ final class VideoEngine {
         }
     }
 
-    /// Refresh the text layer tree — no composition rebuild, no item swap.
     func syncTextLayers() {
-        guard let editor else { return }
+        guard let editor, let previewView else { return }
         let canvas = CGSize(width: editor.timeline.width, height: editor.timeline.height)
-        let videoRect = previewView?.playerLayer.videoRect ?? .zero
-        let resolvedRect = videoRect.isEmpty ? (previewView?.bounds ?? .zero) : videoRect
-        textController.sync(
-            timeline: editor.timeline,
-            fps: editor.timeline.fps,
-            canvasSize: canvas,
-            videoRect: resolvedRect,
-            currentFrame: editor.currentFrame
-        )
-    }
-
-    /// Flip text visibility to match `frame` — called from the time observer and seek.
-    func tickTextFrame(_ frame: Int) {
-        textController.updateFrameVisibility(frame)
+        let videoRect = previewView.playerLayer.videoRect
+        let resolvedRect = videoRect.isEmpty ? previewView.bounds : videoRect
+        textController.sync(timeline: editor.timeline, canvasSize: canvas, videoRect: resolvedRect)
+        let frame = editor.activePreviewTab == .timeline ? editor.currentFrame : editor.sourcePlayheadFrame
+        textController.tick(frame)
     }
 
     /// Update only visual properties (transform, opacity, volume)
@@ -199,20 +189,17 @@ final class VideoEngine {
 
     private func setupTimeObserver() {
         guard let editor else { return }
-        let fps = editor.timeline.fps
-        let interval = CMTime(value: 1, timescale: CMTimeScale(fps))
+        let interval = CMTime(value: 1, timescale: CMTimeScale(editor.timeline.fps))
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            guard let self else { return }
-            Task { @MainActor in
-                guard let editor = self.editor else { return }
-                if editor.isPlaying && !editor.isScrubbing {
-                    let frame = secondsToFrame(seconds: time.seconds, fps: editor.timeline.fps)
-                    if editor.activePreviewTab == .timeline {
-                        editor.currentFrame = frame
-                        self.tickTextFrame(frame)
-                    } else {
-                        editor.sourcePlayheadFrame = frame
-                    }
+            MainActor.assumeIsolated {
+                guard let self, let editor = self.editor else { return }
+                guard editor.isPlaying, !editor.isScrubbing else { return }
+                let frame = secondsToFrame(seconds: time.seconds, fps: editor.timeline.fps)
+                if editor.activePreviewTab == .timeline {
+                    editor.currentFrame = frame
+                    self.textController.tick(frame)
+                } else {
+                    editor.sourcePlayheadFrame = frame
                 }
             }
         }
