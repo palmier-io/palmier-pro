@@ -244,7 +244,8 @@ enum ClipRenderer {
         guard clipRect.width > 20 else { return }
 
         let timecode = formatTimecode(frame: clip.durationFrames, fps: 30)
-        let name = displayName ?? clip.mediaRef
+        let rawName = displayName ?? clip.mediaRef
+        let name = rawName.firstNonEmptyLine()
         let text = "\(name)  \(timecode)"
 
         let baseAttrs: [NSAttributedString.Key: Any] = [
@@ -311,5 +312,15 @@ enum ClipRenderer {
         context.fill(NSRect(x: rect.minX, y: rect.minY, width: w, height: rect.height))
         // Right handle
         context.fill(NSRect(x: rect.maxX - w, y: rect.minY, width: w, height: rect.height))
+    }
+}
+
+private extension String {
+    func firstNonEmptyLine() -> String {
+        for line in split(whereSeparator: \.isNewline) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty { return trimmed }
+        }
+        return self
     }
 }
