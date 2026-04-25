@@ -47,7 +47,9 @@ final class MediaVisualCache {
         let url = asset.url
         Task.detached(priority: .userInitiated) { [weak self] in
             let analyzer = WaveformAnalyzer()
-            let result = try? await analyzer.samples(fromAudioAt: url, count: 4000)
+            let duration = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
+            let count = min(20_000, max(4000, Int(duration * 150)))
+            let result = try? await analyzer.samples(fromAudioAt: url, count: count)
             guard let self else { return }
             await MainActor.run { [self] in
                 self.waveformInFlight.remove(key)
