@@ -90,7 +90,18 @@ final class EditorWindowController: NSWindowController {
             editorViewModel.trimEndToPlayhead()
             return true
 
+        case 50: // ` (backtick) — toggle panel maximize
+            if mods.intersection([.command, .option, .control, .shift]).isEmpty {
+                toggleMaximizePanelAction()
+                return true
+            }
+            return false
+
         case 53: // Escape
+            if editorViewModel.maximizedPanel != nil {
+                editorViewModel.maximizedPanel = nil
+                return true
+            }
             editorViewModel.selectedClipIds.removeAll()
             editorViewModel.toolMode = .pointer
             return true
@@ -101,11 +112,10 @@ final class EditorWindowController: NSWindowController {
     }
 
     private var isTextInputFocused: Bool {
-        if let responder = window?.firstResponder {
-            responder is NSTextView || responder is NSTextField
-        } else {
-            false
-        }
+        guard let responder = window?.firstResponder else { return false }
+        if let textView = responder as? NSTextView { return textView.isEditable }
+        if let textField = responder as? NSTextField { return textField.isEditable }
+        return false
     }
 
     private func handlePanelClick(hitView: NSView?) {
@@ -165,6 +175,15 @@ extension EditorWindowController: EditorActions {
     @objc func toggleMediaPanel(_ sender: Any?) { editorViewModel.mediaPanelVisible.toggle() }
     @objc func toggleInspectorPanel(_ sender: Any?) { editorViewModel.inspectorPanelVisible.toggle() }
     @objc func toggleAgentPanel(_ sender: Any?) { editorViewModel.agentPanelVisible.toggle() }
+    @objc func toggleMaximizePanel(_ sender: Any?) { toggleMaximizePanelAction() }
+
+    private func toggleMaximizePanelAction() {
+        if editorViewModel.maximizedPanel != nil {
+            editorViewModel.maximizedPanel = nil
+        } else if let panel = editorViewModel.focusedPanel {
+            editorViewModel.maximizedPanel = panel
+        }
+    }
 
     @objc func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
@@ -177,6 +196,9 @@ extension EditorWindowController: EditorActions {
         case #selector(toggleAgentPanel(_:)):
             menuItem.state = editorViewModel.agentPanelVisible ? .on : .off
             return true
+        case #selector(toggleMaximizePanel(_:)):
+            menuItem.state = editorViewModel.maximizedPanel != nil ? .on : .off
+            return editorViewModel.maximizedPanel != nil || editorViewModel.focusedPanel != nil
         default:
             return true
         }

@@ -23,6 +23,7 @@ final class EditorViewModel {
     }
 
     var focusedPanel: FocusedPanel?
+    var maximizedPanel: FocusedPanel?
 
     // MARK: - Transient UI state
 
@@ -31,7 +32,12 @@ final class EditorViewModel {
     var selectedClipIds: Set<String> = []
     var selectedMediaAssetIds: Set<String> = []
     var zoomScale: Double = Defaults.pixelsPerFrame
-    var canvasZoom: CGFloat = 1.0
+    var canvasZoom: CGFloat = 1.0 {
+        didSet {
+            if canvasZoom <= 1.0 { canvasOffset = .zero }
+        }
+    }
+    var canvasOffset: CGSize = .zero
     var timelineVisibleWidth: Double = 0
     var isScrubbing: Bool = false
     var toolMode: ToolMode = .pointer
