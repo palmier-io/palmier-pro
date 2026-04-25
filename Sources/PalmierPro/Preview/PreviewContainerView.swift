@@ -34,6 +34,7 @@ struct PreviewContainerView: View {
                         .stroke(Color.white.opacity(editor.canvasZoom < 1.0 ? 0.25 : 0), lineWidth: 1)
                 )
                 .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                .offset(x: editor.canvasOffset.width, y: editor.canvasOffset.height)
             }
             .clipped()
             if !isImage {
@@ -169,6 +170,7 @@ struct PreviewContainerView: View {
     private var zoomMenuItems: some View {
         ForEach(ZoomPreset.allCases, id: \.self) { preset in
             Button {
+                editor.canvasOffset = .zero
                 editor.canvasZoom = preset.value
             } label: {
                 HStack {
