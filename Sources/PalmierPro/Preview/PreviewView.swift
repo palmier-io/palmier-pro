@@ -11,6 +11,27 @@ struct PreviewView: NSViewRepresentable {
         engine.previewView = view
         view.setTextRoot(engine.textController.textRoot)
         view.onVideoRectChange = { [weak engine] _ in engine?.syncTextLayers() }
+        view.onCmdScroll = { [weak editor] deltaY, pointTopDown, viewSize in
+            guard let editor = editor else { return }
+            let oldZoom = editor.canvasZoom
+            let factor = exp(deltaY)
+            let newZoom = min(max(oldZoom * factor, 0.1), 8.0)
+            if abs(newZoom - oldZoom) < 0.0001 { return }
+
+            // F (fit-canvas size) = view bounds / current zoom
+            let fitW = viewSize.width / oldZoom
+            let fitH = viewSize.height / oldZoom
+
+            let dx = fitW * (newZoom - oldZoom) / 2 + pointTopDown.x * (1 - newZoom / oldZoom)
+            let dy = fitH * (newZoom - oldZoom) / 2 + pointTopDown.y * (1 - newZoom / oldZoom)
+
+            let newOffset = CGSize(
+                width: editor.canvasOffset.width + dx,
+                height: editor.canvasOffset.height + dy
+            )
+            editor.canvasOffset = newOffset
+            editor.canvasZoom = newZoom
+        }
         context.coordinator.engine = engine
         editor.videoEngine = engine
         engine.activateTab(editor.activePreviewTab)
@@ -46,6 +67,9 @@ final class PreviewNSView: NSView {
 
     /// Fires when `playerLayer.videoRect` changes so text layers can re-scale.
     var onVideoRectChange: ((CGRect) -> Void)?
+
+    /// Fires on cmd+scroll. (deltaY, pointInTopDownViewCoords, viewSize)
+    var onCmdScroll: ((CGFloat, CGPoint, CGSize) -> Void)?
 
     private var lastVideoRect: CGRect = .zero
 
@@ -87,5 +111,18 @@ final class PreviewNSView: NSView {
     private var resolvedVideoRect: CGRect {
         let rect = playerLayer.videoRect
         return rect.isEmpty ? bounds : rect
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        guard event.modifierFlags.contains(.command), let onCmdScroll else {
+            super.scrollWheel(with: event)
+            return
+        }
+        let locInView = convert(event.locationInWindow, from: nil)
+        let topDown = CGPoint(x: locInView.x, y: bounds.height - locInView.y)
+        let sensitivity: CGFloat = event.hasPreciseScrollingDeltas ? 0.005 : 0.05
+        let delta = event.scrollingDeltaY * sensitivity
+        if delta == 0 { return }
+        onCmdScroll(delta, topDown, bounds.size)
     }
 }
