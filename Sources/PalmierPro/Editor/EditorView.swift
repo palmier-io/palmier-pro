@@ -13,6 +13,7 @@ struct EditorView: NSViewControllerRepresentable {
         controller.applyAgentVisibility(editor.agentPanelVisible)
         controller.applyMediaVisibility(editor.mediaPanelVisible)
         controller.applyInspectorVisibility(editor.inspectorPanelVisible)
+        controller.applyMaximize(editor.maximizedPanel)
     }
 }
 
@@ -21,10 +22,13 @@ struct EditorView: NSViewControllerRepresentable {
 final class EditorSplitViewController: NSSplitViewController {
     private let editor: EditorViewModel
     private var currentPreset: LayoutPreset?
+    private var currentMaximized: EditorViewModel.FocusedPanel?
     private var pendingLayout: DispatchWorkItem?
     private weak var agentSplitItem: NSSplitViewItem?
     private weak var mediaSplitItem: NSSplitViewItem?
+    private weak var previewSplitItem: NSSplitViewItem?
     private weak var inspectorSplitItem: NSSplitViewItem?
+    private weak var timelineSplitItem: NSSplitViewItem?
 
     private lazy var mediaHC: NSViewController     = makeHosting(MediaPanelView(), panel: .media)
     private lazy var previewHC: NSViewController   = makeHosting(PreviewContainerView(), panel: .preview)
@@ -58,28 +62,90 @@ final class EditorSplitViewController: NSSplitViewController {
         guard preset != currentPreset else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, preset != self.currentPreset else { return }
+            if self.currentMaximized != nil {
+                self.currentMaximized = nil
+                self.editor.maximizedPanel = nil
+            }
             self.buildLayout(preset)
         }
     }
 
+    func applyMaximize(_ panel: EditorViewModel.FocusedPanel?) {
+        guard panel != currentMaximized else { return }
+        currentMaximized = panel
+        if let panel, let leaf = leafItem(for: panel) {
+            for sibling in ancestorChainSiblings(of: leaf) {
+                applyCollapsed(item: sibling, collapsed: true)
+            }
+        } else {
+            walkSplitItems(self) { item in
+                applyCollapsed(item: item, collapsed: self.restoredCollapseState(for: item))
+            }
+        }
+    }
+
+    private func leafItem(for panel: EditorViewModel.FocusedPanel) -> NSSplitViewItem? {
+        switch panel {
+        case .agent:     return agentSplitItem
+        case .media:     return mediaSplitItem
+        case .preview:   return previewSplitItem
+        case .inspector: return inspectorSplitItem
+        case .timeline:  return timelineSplitItem
+        }
+    }
+
+    /// Walk up from a leaf split item, collecting siblings at every level up to the root.
+    /// Those siblings are the items that must collapse for the leaf to fill the entire split.
+    private func ancestorChainSiblings(of leaf: NSSplitViewItem) -> [NSSplitViewItem] {
+        var result: [NSSplitViewItem] = []
+        var current = leaf
+        while let parent = current.viewController.parent as? NSSplitViewController {
+            result.append(contentsOf: parent.splitViewItems.filter { $0 !== current })
+            guard
+                let grandparent = parent.parent as? NSSplitViewController,
+                let wrapper = grandparent.splitViewItems.first(where: { $0.viewController === parent })
+            else { break }
+            current = wrapper
+        }
+        return result
+    }
+
+    private func walkSplitItems(_ controller: NSSplitViewController, _ visit: (NSSplitViewItem) -> Void) {
+        for item in controller.splitViewItems {
+            visit(item)
+            if let child = item.viewController as? NSSplitViewController {
+                walkSplitItems(child, visit)
+            }
+        }
+    }
+
+    /// On unmaximize, leaves restore their visibility-flag state
+    private func restoredCollapseState(for item: NSSplitViewItem) -> Bool {
+        if item === agentSplitItem     { return !editor.agentPanelVisible }
+        if item === mediaSplitItem     { return !editor.mediaPanelVisible }
+        if item === inspectorSplitItem { return !editor.inspectorPanelVisible }
+        return false
+    }
+
     func applyAgentVisibility(_ visible: Bool) {
-        applyVisibility(item: agentSplitItem, visible: visible)
+        guard currentMaximized == nil else { return }
+        applyCollapsed(item: agentSplitItem, collapsed: !visible)
     }
 
     func applyMediaVisibility(_ visible: Bool) {
-        applyVisibility(item: mediaSplitItem, visible: visible)
+        guard currentMaximized == nil else { return }
+        applyCollapsed(item: mediaSplitItem, collapsed: !visible)
     }
 
     func applyInspectorVisibility(_ visible: Bool) {
-        applyVisibility(item: inspectorSplitItem, visible: visible)
+        guard currentMaximized == nil else { return }
+        applyCollapsed(item: inspectorSplitItem, collapsed: !visible)
     }
 
-    private func applyVisibility(item: NSSplitViewItem?, visible: Bool) {
-        guard let item else { return }
-        let targetCollapsed = !visible
-        guard item.isCollapsed != targetCollapsed else { return }
+    private func applyCollapsed(item: NSSplitViewItem?, collapsed: Bool) {
+        guard let item, item.isCollapsed != collapsed else { return }
         DispatchQueue.main.async {
-            item.animator().isCollapsed = targetCollapsed
+            item.animator().isCollapsed = collapsed
         }
     }
 
@@ -91,7 +157,9 @@ final class EditorSplitViewController: NSSplitViewController {
         }
         agentSplitItem = nil
         mediaSplitItem = nil
+        previewSplitItem = nil
         inspectorSplitItem = nil
+        timelineSplitItem = nil
 
         currentPreset = preset
         splitView.isVertical = true
@@ -222,6 +290,7 @@ final class EditorSplitViewController: NSSplitViewController {
     private func makePreviewItem() -> NSSplitViewItem {
         let item = NSSplitViewItem(viewController: previewHC)
         item.minimumThickness = Layout.previewMinWidth
+        previewSplitItem = item
         return item
     }
 
@@ -237,6 +306,7 @@ final class EditorSplitViewController: NSSplitViewController {
     private func makeTimelineItem() -> NSSplitViewItem {
         let item = NSSplitViewItem(viewController: timelineHC)
         item.minimumThickness = Layout.timelineMinHeight
+        timelineSplitItem = item
         return item
     }
 

@@ -114,6 +114,12 @@ enum MainMenuBuilder {
         menu.addItem(agentItem)
 
         menu.addItem(.separator())
+
+        let maximizeItem = NSMenuItem(title: "Maximize Focused Panel", action: #selector(EditorActions.toggleMaximizePanel(_:)), keyEquivalent: "`")
+        maximizeItem.keyEquivalentModifierMask = []
+        menu.addItem(maximizeItem)
+
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
         item.submenu = menu
         return item
@@ -149,4 +155,5 @@ enum MainMenuBuilder {
     func toggleMediaPanel(_ sender: Any?)
     func toggleInspectorPanel(_ sender: Any?)
     func toggleAgentPanel(_ sender: Any?)
+    func toggleMaximizePanel(_ sender: Any?)
 }

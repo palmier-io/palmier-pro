@@ -40,6 +40,7 @@ struct ShortcutsPane: View {
         ]),
         ShortcutGroup(title: "View", shortcuts: [
             ("Cmd + F", "Full Screen"),
+            ("`", "Maximize Focused Panel"),
             ("Esc", "Deselect & Reset Tool"),
         ]),
     ]
