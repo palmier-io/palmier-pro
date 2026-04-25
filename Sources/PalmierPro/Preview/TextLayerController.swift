@@ -2,13 +2,11 @@ import AVFoundation
 import AppKit
 import QuartzCore
 
-/// Owns the preview's `CATextLayer` tree (direct sublayer of `PreviewNSView`).
-/// Preview opacity is set imperatively from `currentFrame`; export uses
-/// `AVVideoCompositionCoreAnimationTool` with a freshly built keyframed tree.
+/// Preview owns a long-lived `CATextLayer` tree with imperative opacity;
+/// export hands a one-shot tree to `AVVideoCompositionCoreAnimationTool`.
 @MainActor
 final class TextLayerController {
 
-    /// Kept alive across item swaps; `PreviewNSView.layout()` tracks its frame to `videoRect`.
     let textRoot: CALayer = {
         let layer = CALayer()
         layer.masksToBounds = false
@@ -16,121 +14,118 @@ final class TextLayerController {
         return layer
     }()
 
-    private var layers: [String: CATextLayer] = [:]
-    private var visibilityCache: [String: (startFrame: Int, endFrame: Int, opacity: Double)] = [:]
+    private var clips: [Clip] = []
 
-    // Cached for frame-only ticks that don't carry timeline context.
-    private var cachedCanvasSize: CGSize = CGSize(width: 1920, height: 1080)
-    private var cachedVideoRect: CGRect = .zero
-    private var cachedFPS: Int = 30
-
-    // MARK: - Public API
-
-    /// Diff the layer tree against `timeline`, then refresh visibility at `currentFrame`.
-    func sync(timeline: Timeline, fps: Int, canvasSize: CGSize, videoRect: CGRect, currentFrame: Int) {
-        cachedFPS = max(1, fps)
-        cachedCanvasSize = canvasSize
-        cachedVideoRect = videoRect
+    func sync(timeline: Timeline, canvasSize: CGSize, videoRect: CGRect) {
         textRoot.frame = videoRect
-        apply(timeline: timeline)
-        updateFrameVisibility(currentFrame)
-    }
+        let visible = TextLayerController.visibleTextClips(in: timeline)
 
-    /// Flip each layer's opacity to match visibility at `frame` — driven by the time observer and seek.
-    func updateFrameVisibility(_ frame: Int) {
+        let existing = textRoot.sublayers ?? []
+        let needed = visible.count
+
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        for (id, timing) in visibilityCache {
-            guard let layer = layers[id] else { continue }
-            let visible = frame >= timing.startFrame && frame < timing.endFrame
-            let opacity = visible ? Float(timing.opacity) : 0
-            if layer.opacity != opacity {
-                layer.opacity = opacity
+
+        if existing.count > needed {
+            for layer in existing.suffix(existing.count - needed) {
+                layer.removeFromSuperlayer()
             }
+        } else if existing.count < needed {
+            for _ in 0..<(needed - existing.count) {
+                textRoot.addSublayer(TextLayerController.makeTextLayer())
+            }
+        }
+
+        let updated = textRoot.sublayers ?? []
+        for (clip, sublayer) in zip(visible, updated) {
+            guard let layer = sublayer as? CATextLayer else { continue }
+            TextLayerController.applyStyle(to: layer, clip: clip, containerSize: videoRect.size, canvasSize: canvasSize)
+        }
+
+        CATransaction.commit()
+
+        clips = visible
+    }
+
+    func tick(_ frame: Int) {
+        let sublayers = textRoot.sublayers ?? []
+        guard sublayers.count == clips.count else { return }
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (clip, layer) in zip(clips, sublayers) {
+            let visible = frame >= clip.startFrame && frame < clip.endFrame
+            let target: Float = visible ? Float(clip.opacity) : 0
+            if layer.opacity != target { layer.opacity = target }
         }
         CATransaction.commit()
     }
 
-    /// Standalone tree for `AVVideoCompositionCoreAnimationTool` — opacity is
-    /// keyframed because the tool reads the animation timeline from the layers.
-    func buildForExport(timeline: Timeline, fps: Int, canvasSize: CGSize) -> (parent: CALayer, videoLayer: CALayer) {
+    // MARK: - Static builders
+
+    static func buildForExport(
+        timeline: Timeline,
+        fps: Int,
+        canvasSize: CGSize
+    ) -> (parent: CALayer, videoLayer: CALayer) {
         let parent = CALayer()
         parent.frame = CGRect(origin: .zero, size: canvasSize)
         parent.isGeometryFlipped = true
         parent.backgroundColor = NSColor.clear.cgColor
+        parent.beginTime = AVCoreAnimationBeginTimeAtZero
 
         let videoLayer = CALayer()
         videoLayer.frame = parent.bounds
         parent.addSublayer(videoLayer)
 
-        let previousCanvas = cachedCanvasSize
-        let previousRect = cachedVideoRect
-        cachedCanvasSize = canvasSize
-        cachedVideoRect = CGRect(origin: .zero, size: canvasSize)
-        defer {
-            cachedCanvasSize = previousCanvas
-            cachedVideoRect = previousRect
-        }
-
-        for clip in visibleTextClips(timeline: timeline) {
+        let fpsD = Double(max(1, fps))
+        let totalSeconds = max(0.001, Double(max(1, timeline.totalFrames)) / fpsD)
+        for clip in visibleTextClips(in: timeline) {
             let layer = makeTextLayer()
-            applyStyle(to: layer, clip: clip, containerSize: canvasSize)
-            applyExportOpacity(to: layer, clip: clip, fps: fps)
+            applyStyle(to: layer, clip: clip, containerSize: canvasSize, canvasSize: canvasSize)
+            applyOpacityAnimation(to: layer, clip: clip, fps: fps, totalSeconds: totalSeconds)
             parent.addSublayer(layer)
         }
         return (parent, videoLayer)
     }
 
-    // MARK: - Private
-
-    private func apply(timeline: Timeline) {
-        let desiredClips = visibleTextClips(timeline: timeline)
-        let desiredIds = Set(desiredClips.map(\.id))
-        let existingIds = Set(layers.keys)
-
-        for removed in existingIds.subtracting(desiredIds) {
-            layers[removed]?.removeFromSuperlayer()
-            layers.removeValue(forKey: removed)
-            visibilityCache.removeValue(forKey: removed)
+    static func buildSnapshot(
+        timeline: Timeline,
+        canvasSize: CGSize,
+        atFrame frame: Int
+    ) -> CALayer {
+        let host = CALayer()
+        host.frame = CGRect(origin: .zero, size: canvasSize)
+        host.isGeometryFlipped = true
+        for clip in visibleTextClips(in: timeline) {
+            let layer = makeTextLayer()
+            applyStyle(to: layer, clip: clip, containerSize: canvasSize, canvasSize: canvasSize)
+            let visible = frame >= clip.startFrame && frame < clip.endFrame
+            layer.opacity = visible ? Float(clip.opacity) : 0
+            host.addSublayer(layer)
         }
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-
-        for clip in desiredClips {
-            let layer: CATextLayer
-            if let existing = layers[clip.id] {
-                layer = existing
-            } else {
-                layer = makeTextLayer()
-                textRoot.addSublayer(layer)
-                layers[clip.id] = layer
-            }
-            applyStyle(to: layer, clip: clip, containerSize: cachedVideoRect.size)
-            visibilityCache[clip.id] = (clip.startFrame, clip.endFrame, clip.opacity)
-        }
-
-        CATransaction.commit()
+        return host
     }
 
-    private func visibleTextClips(timeline: Timeline) -> [Clip] {
+    // MARK: - Private
+
+    private static func visibleTextClips(in timeline: Timeline) -> [Clip] {
         var result: [Clip] = []
         for track in timeline.tracks where !track.hidden {
-            for clip in track.clips where clip.mediaType == .text {
+            for clip in track.clips where clip.mediaType == .text && clip.endFrame > clip.startFrame {
                 result.append(clip)
             }
         }
         return result
     }
 
-    private func makeTextLayer() -> CATextLayer {
+    private static func makeTextLayer() -> CATextLayer {
         let layer = CATextLayer()
         layer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
         layer.isWrapped = true
-        // Scale rounding can shave a glyph; grow-to-fit handles the common case.
         layer.truncationMode = .none
         layer.allowsFontSubpixelQuantization = true
-        // NSNull suppresses CATextLayer's implicit cross-fade per-layer (not just per-transaction).
+        // NSNull suppresses CATextLayer's implicit per-property cross-fade.
         layer.actions = [
             "contents": NSNull(),
             "bounds": NSNull(),
@@ -142,11 +137,11 @@ final class TextLayerController {
         return layer
     }
 
-    private func applyStyle(to layer: CATextLayer, clip: Clip, containerSize: CGSize) {
+    private static func applyStyle(to layer: CATextLayer, clip: Clip, containerSize: CGSize, canvasSize: CGSize) {
         let style = clip.textStyle ?? TextStyle()
         let content = clip.textContent ?? ""
-        let scaleX = containerSize.width / max(1, cachedCanvasSize.width)
-        let scaleY = containerSize.height / max(1, cachedCanvasSize.height)
+        let scaleX = containerSize.width / max(1, canvasSize.width)
+        let scaleY = containerSize.height / max(1, canvasSize.height)
         let minScale = min(scaleX, scaleY)
 
         let tl = clip.transform.topLeft
@@ -178,23 +173,39 @@ final class TextLayerController {
         }
     }
 
-    /// Model opacity = 0 (hidden); animation holds `clip.opacity` through the
-    /// clip range; `.removed` fill reverts to model outside it.
-    private func applyExportOpacity(to layer: CATextLayer, clip: Clip, fps: Int) {
-        layer.opacity = 0
+    /// `AVVideoCompositionCoreAnimationTool` ignores the model `opacity` on
+    /// early frames, so visibility must come from animations. `.both` on "on"
+    /// covers t=0 via backward fill; later-added "off" wins after `endFrame`.
+    private static func applyOpacityAnimation(
+        to layer: CATextLayer,
+        clip: Clip,
+        fps: Int,
+        totalSeconds: Double
+    ) {
         let fpsD = Double(max(1, fps))
-        let startSeconds = Double(clip.startFrame) / fpsD
-        let durationSeconds = max(0.001, Double(max(0, clip.endFrame - clip.startFrame)) / fpsD)
+        let opacity = Float(clip.opacity)
+        let startSec = Double(clip.startFrame) / fpsD
+        let endSec = min(totalSeconds, Double(clip.endFrame) / fpsD)
 
-        let anim = CABasicAnimation(keyPath: "opacity")
-        anim.fromValue = Float(clip.opacity)
-        anim.toValue = Float(clip.opacity)
-        anim.duration = durationSeconds
-        // CA treats 0 as CACurrentMediaTime(); use the sentinel for composition-time zero.
-        anim.beginTime = startSeconds > 0 ? startSeconds : AVCoreAnimationBeginTimeAtZero
-        anim.fillMode = .removed
-        anim.isRemovedOnCompletion = false
+        let onAnim = CABasicAnimation(keyPath: "opacity")
+        onAnim.fromValue = opacity
+        onAnim.toValue = opacity
+        onAnim.beginTime = clip.startFrame > 0 ? startSec : AVCoreAnimationBeginTimeAtZero
+        onAnim.duration = max(0.001, endSec - startSec)
+        onAnim.fillMode = clip.startFrame > 0 ? .forwards : .both
+        onAnim.isRemovedOnCompletion = false
+        layer.add(onAnim, forKey: "on")
 
-        layer.add(anim, forKey: "opacity")
+        let remaining = totalSeconds - endSec
+        if remaining > 0 {
+            let offAnim = CABasicAnimation(keyPath: "opacity")
+            offAnim.fromValue = 0
+            offAnim.toValue = 0
+            offAnim.beginTime = endSec
+            offAnim.duration = remaining
+            offAnim.fillMode = .forwards
+            offAnim.isRemovedOnCompletion = false
+            layer.add(offAnim, forKey: "off")
+        }
     }
 }

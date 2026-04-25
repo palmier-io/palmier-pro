@@ -90,9 +90,8 @@ final class ExportService {
             // Preview uses AVSynchronizedLayer for the same layer tree; these
             // paths cannot share a composition because AVPlayer rejects any
             // videoComposition with an animationTool set.
-            let textController = TextLayerController()
             let canvas = CGSize(width: timeline.width, height: timeline.height)
-            let (parent, videoLayer) = textController.buildForExport(
+            let (parent, videoLayer) = TextLayerController.buildForExport(
                 timeline: timeline,
                 fps: timeline.fps,
                 canvasSize: canvas

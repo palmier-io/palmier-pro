@@ -144,16 +144,13 @@ extension EditorViewModel {
 
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                let controller = TextLayerController()
-                controller.sync(
+                let textRoot = TextLayerController.buildSnapshot(
                     timeline: timelineSnapshot,
-                    fps: fps,
                     canvasSize: canvas,
-                    videoRect: CGRect(origin: .zero, size: canvas),
-                    currentFrame: frame
+                    atFrame: frame
                 )
                 guard let composited = Self.compositeCapture(
-                    video: videoCG, textRoot: controller.textRoot, canvas: canvas
+                    video: videoCG, textRoot: textRoot, canvas: canvas
                 ) else {
                     Log.project.error("captureCurrentFrameToMedia: composite failed")
                     return
