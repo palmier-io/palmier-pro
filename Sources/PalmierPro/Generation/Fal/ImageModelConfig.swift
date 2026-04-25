@@ -55,9 +55,6 @@ struct ImageModelConfig: Identifiable, Sendable {
         if imageRefCount > 0, !supportsImageReference {
             return "\(displayName) does not accept reference images."
         }
-        if imageRefCount > maxImages {
-            return "\(displayName) accepts at most \(maxImages) reference image\(maxImages == 1 ? "" : "s") (got \(imageRefCount))."
-        }
         if numImages < 1 || numImages > maxImages {
             return "\(displayName) supports 1…\(maxImages) image\(maxImages == 1 ? "" : "s") per request (got \(numImages))."
         }
