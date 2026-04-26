@@ -38,7 +38,7 @@ final class AppState {
 
     func createNewProject() {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: Project.fileExtension) ?? .data]
+        panel.allowedContentTypes = [Self.projectContentType]
         panel.nameFieldStringValue = Project.defaultProjectName
         panel.directoryURL = Project.storageDirectory
         panel.title = "New Project"
@@ -92,8 +92,9 @@ final class AppState {
 
     func openProjectFromPanel() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: Project.fileExtension) ?? .data]
+        panel.allowedContentTypes = [Self.projectContentType]
         panel.canChooseDirectories = false
+        panel.treatsFilePackagesAsDirectories = false
         panel.allowsMultipleSelection = false
         panel.title = "Open Project"
         panel.begin { response in
@@ -101,5 +102,11 @@ final class AppState {
             AppState.shared.openProject(at: url)
         }
     }
+
+    private static let projectContentType: UTType = {
+        UTType(Project.typeIdentifier)
+            ?? UTType(filenameExtension: Project.fileExtension, conformingTo: .package)
+            ?? .package
+    }()
 
 }
