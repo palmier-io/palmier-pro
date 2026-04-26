@@ -9,6 +9,8 @@ final class MediaVisualCache {
 
     private var waveformSamples: [String: [Float]] = [:]
     private var waveformInFlight: Set<String> = []
+    /// Cap concurrent waveform extractions to avoid starving playback.
+    private static let waveformGate = AsyncSemaphore(value: 2)
 
     // MARK: - Video thumbnails (sorted by time)
 
@@ -45,7 +47,9 @@ final class MediaVisualCache {
         waveformInFlight.insert(key)
 
         let url = asset.url
-        Task.detached(priority: .userInitiated) { [weak self] in
+        Task.detached(priority: .utility) { [weak self] in
+            await Self.waveformGate.wait()
+            defer { Task { await Self.waveformGate.signal() } }
             let analyzer = WaveformAnalyzer()
             let duration = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
             let count = min(20_000, max(4000, Int(duration * 150)))
