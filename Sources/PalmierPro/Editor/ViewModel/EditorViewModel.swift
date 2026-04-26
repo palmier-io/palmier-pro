@@ -189,7 +189,8 @@ final class EditorViewModel {
         addLinkedAudio: Bool = true,
         linkedAudioTrackIndex: Int? = nil
     ) -> [String] {
-        let targetIsVideo = timeline.tracks.indices.contains(trackIndex) && timeline.tracks[trackIndex].type == .video
+        guard timeline.tracks.indices.contains(trackIndex) else { return [] }
+        let targetIsVideo = timeline.tracks[trackIndex].type == .video
         let shouldLink = addLinkedAudio && targetIsVideo && asset.type == .video && asset.hasAudio
         let linkGroupId: String? = shouldLink ? UUID().uuidString : nil
 
@@ -200,8 +201,9 @@ final class EditorViewModel {
         var ids = [clip.id]
 
         if let gid = linkGroupId {
-            let audioTrackIdx = linkedAudioTrackIndex
+            let audioTrackIdx = linkedAudioTrackIndex.flatMap { timeline.tracks.indices.contains($0) ? $0 : nil }
                 ?? resolveOrCreateAudioTrack(startFrame: startFrame, duration: durationFrames)
+            guard timeline.tracks.indices.contains(audioTrackIdx) else { return ids }
             var audioClip = Clip(mediaRef: asset.id, mediaType: .audio, sourceClipType: asset.type, startFrame: startFrame, durationFrames: durationFrames)
             audioClip.linkGroupId = gid
             timeline.tracks[audioTrackIdx].clips.append(audioClip)
