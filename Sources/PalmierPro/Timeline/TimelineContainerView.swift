@@ -61,7 +61,7 @@ struct TimelineContainerView: NSViewRepresentable {
     }
 
     func updateNSView(_ container: NSView, context: Context) {
-        // Read observed properties so SwiftUI re-invokes this on change.
+        // Reads tracked by SwiftUI
         _ = editor.zoomScale
         _ = editor.pendingReplacements
         context.coordinator.timelineView?.updateContentSize()
@@ -96,6 +96,7 @@ struct TimelineContainerView: NSViewRepresentable {
 
         @MainActor @objc func scrollViewBoundsChanged(_ notification: Notification) {
             timelineView?.needsDisplay = true
+            timelineView?.updatePlayheadLayer()
             // Sync header vertical position with scroll view
             if let scrollY = scrollView?.contentView.bounds.origin.y {
                 headerView?.setBoundsOrigin(NSPoint(x: 0, y: scrollY))
@@ -105,6 +106,7 @@ struct TimelineContainerView: NSViewRepresentable {
 
         @MainActor @objc func clipViewFrameChanged(_ notification: Notification) {
             timelineView?.updateContentSize()
+            timelineView?.updatePlayheadLayer()
         }
 
         deinit {

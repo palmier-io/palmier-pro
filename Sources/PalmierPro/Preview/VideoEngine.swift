@@ -51,24 +51,21 @@ final class VideoEngine {
 
     func seek(to frame: Int, tolerant: Bool = false) {
         guard let editor else { return }
-        // Snap text before AVPlayer resolves the seek.
         textController.tick(frame)
         let time = CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(editor.timeline.fps))
-        let tolerance: CMTime
-        if tolerant {
-            // Each concurrent decoder contends for the same HW block, so give each one
-            // a bigger window to land on a cheap I-frame.
-            let videoTracks = editor.timeline.tracks.filter { $0.type == .video && !$0.clips.isEmpty }.count
-            let seconds = 0.5 * Double(max(1, videoTracks))
-            tolerance = CMTime(seconds: seconds, preferredTimescale: 600)
-        } else {
-            tolerance = .zero
-        }
-        scheduleSeek(to: time, tolerance: tolerance)
+        scheduleSeek(to: time, tolerance: seekTolerance(tolerant: tolerant, editor: editor))
     }
 
-    /// Coalesces seeks: if one is in flight, stash the latest target and fire it on completion.
-    /// Prevents drag ticks from piling up a queue AVPlayer can't drain in real time.
+    /// Scaled by active video track count — concurrent decoders need more headroom
+    /// to land on a shared I-frame.
+    private func seekTolerance(tolerant: Bool, editor: EditorViewModel) -> CMTime {
+        guard tolerant else { return .zero }
+        let videoTracks = editor.timeline.tracks.filter { $0.type == .video && !$0.clips.isEmpty }.count
+        let seconds = 0.5 * Double(max(1, videoTracks))
+        return CMTime(seconds: seconds, preferredTimescale: 600)
+    }
+
+    /// Coalesces seeks — AVPlayer can't drain a per-tick queue in real time.
     private func scheduleSeek(to time: CMTime, tolerance: CMTime) {
         if isSeeking {
             pendingSeek = (time, tolerance)
