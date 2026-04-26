@@ -507,12 +507,24 @@ final class TimelineView: NSView {
         }
 
         let menu = NSMenu()
+        if clip.mediaType == .video || clip.mediaType == .audio {
+            let item = NSMenuItem(
+                title: "Save as Media",
+                action: #selector(performSaveAsMedia(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = clip.id
+            menu.addItem(item)
+        }
         if editor.canLinkSelected {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
             let item = NSMenuItem(title: "Link", action: #selector(performLink(_:)), keyEquivalent: "")
             item.target = self
             menu.addItem(item)
         }
         if editor.canUnlinkSelected {
+            if !menu.items.isEmpty && !editor.canLinkSelected { menu.addItem(.separator()) }
             let item = NSMenuItem(title: "Unlink", action: #selector(performUnlink(_:)), keyEquivalent: "")
             item.target = self
             menu.addItem(item)
@@ -528,6 +540,12 @@ final class TimelineView: NSView {
     @objc private func performUnlink(_ sender: Any?) {
         editor.unlinkClips(ids: editor.selectedClipIds)
         needsDisplay = true
+    }
+
+    @objc private func performSaveAsMedia(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let clipId = item.representedObject as? String else { return }
+        editor.saveClipAsMedia(clipId: clipId)
     }
 
     override func updateTrackingAreas() {
