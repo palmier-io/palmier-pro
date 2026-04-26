@@ -157,7 +157,7 @@ struct AgentPanelView: View {
     private var scrollingMessages: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                LazyVStack(alignment: .leading, spacing: 18) {
                     let results = toolResults
                     ForEach(service.messages) { msg in
                         AgentMessageView(message: msg, toolResults: results)
@@ -176,6 +176,8 @@ struct AgentPanelView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.sm)
                 .padding(.bottom, 8)
+                .frame(maxWidth: Layout.chatColumnMax)
+                .frame(maxWidth: .infinity)
             }
             .scrollEdgeEffectStyle(.soft, for: .bottom)
             .onChange(of: service.messages.count) { _, _ in scrollToBottom(proxy) }
@@ -218,6 +220,8 @@ struct AgentPanelView: View {
         .padding(.horizontal, 12)
         .padding(.bottom, 12)
         .padding(.top, 4)
+        .frame(maxWidth: Layout.chatColumnMax)
+        .frame(maxWidth: .infinity)
     }
 
     private func submit() {

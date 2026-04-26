@@ -176,6 +176,7 @@ final class EditorSplitViewController: NSSplitViewController {
         agentItem.canCollapse = false
         agentItem.isCollapsed = !editor.agentPanelVisible
         agentItem.minimumThickness = Layout.agentPanelMin
+        agentItem.maximumThickness = Layout.agentPanelMax
         addSplitViewItem(agentItem)
         agentSplitItem = agentItem
 

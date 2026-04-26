@@ -1,30 +1,22 @@
 import SwiftUI
 
-/// Fenced code blocks render as styled panels; inline formatting uses `AttributedString(markdown:)`.
+/// Fenced code blocks render as styled panels; inline + headings collapse into a single
+/// AttributedString rendered by one Text view to minimize hosted-text count under LazyVStack.
 struct MarkdownText: View {
     let text: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            ForEach(Array(Self.segments(of: text).enumerated()), id: \.offset) { _, seg in
-                switch seg {
-                case .text(let s):
-                    Text(attributed(s))
+            ForEach(Array(Self.cachedParse(text).enumerated()), id: \.offset) { _, block in
+                switch block {
+                case .prose(let attr):
+                    Text(attr)
                         .font(.system(.body, design: .rounded))
                         .foregroundStyle(AppTheme.Text.primaryColor)
                         .lineSpacing(5)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
-
-                case .heading(let level, let s):
-                    Text(attributed(s))
-                        .font(.system(size: headingSize(level), weight: level <= 1 ? .bold : .semibold, design: .rounded))
-                        .foregroundStyle(AppTheme.Text.primaryColor)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 2)
 
                 case .code(let language, let code):
                     VStack(alignment: .leading, spacing: 4) {
@@ -50,7 +42,7 @@ struct MarkdownText: View {
                     Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 6) {
                         GridRow {
                             ForEach(Array(header.enumerated()), id: \.offset) { idx, cell in
-                                Text(attributed(cell))
+                                Text(cell)
                                     .font(.system(.body, design: .rounded).weight(.semibold))
                                     .foregroundStyle(AppTheme.Text.primaryColor)
                                     .textSelection(.enabled)
@@ -61,7 +53,7 @@ struct MarkdownText: View {
                         ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                             GridRow {
                                 ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
-                                    Text(attributed(cell))
+                                    Text(cell)
                                         .font(.system(.body, design: .rounded))
                                         .foregroundStyle(AppTheme.Text.primaryColor)
                                         .textSelection(.enabled)
@@ -79,18 +71,10 @@ struct MarkdownText: View {
         }
     }
 
-    private func attributed(_ raw: String) -> AttributedString {
-        (try? AttributedString(
-            markdown: raw,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        )) ?? AttributedString(raw)
-    }
-
-    private enum Segment {
-        case text(String)
-        case heading(level: Int, text: String)
+    private enum Block {
+        case prose(AttributedString)
         case code(language: String?, code: String)
-        case table(header: [String], rows: [[String]], alignments: [TableAlignment])
+        case table(header: [AttributedString], rows: [[AttributedString]], alignments: [TableAlignment])
     }
 
     enum TableAlignment { case left, center, right }
@@ -104,31 +88,61 @@ struct MarkdownText: View {
         }
     }
 
-    private func headingSize(_ level: Int) -> CGFloat {
-        switch level {
-        case 1: return 19
-        case 2: return 16
-        case 3: return 14
-        default: return 13
-        }
+    private static let cache: NSCache<NSString, CachedBlocks> = {
+        let c = NSCache<NSString, CachedBlocks>()
+        c.countLimit = 512
+        return c
+    }()
+
+    private final class CachedBlocks {
+        let value: [Block]
+        init(_ v: [Block]) { self.value = v }
     }
 
-    private static func segments(of text: String) -> [Segment] {
-        var out: [Segment] = []
+    private static func cachedParse(_ text: String) -> [Block] {
+        if let hit = cache.object(forKey: text as NSString) { return hit.value }
+        let value = parse(text)
+        cache.setObject(CachedBlocks(value), forKey: text as NSString)
+        return value
+    }
+
+    private static func parse(_ text: String) -> [Block] {
+        var out: [Block] = []
+        var prose = AttributedString()
         var buffer: [String] = []
         let lines = text.components(separatedBy: "\n")
         var idx = 0
-        func flushBuffer() {
-            if !buffer.isEmpty {
-                out.append(.text(buffer.joined(separator: "\n")))
-                buffer.removeAll()
+
+        func appendInline(_ raw: String, headingLevel: Int? = nil) {
+            if !prose.characters.isEmpty { prose.append(AttributedString("\n\n")) }
+            var part = parseInline(raw)
+            if let lvl = headingLevel {
+                part.font = .system(
+                    size: headingSize(lvl),
+                    weight: lvl <= 1 ? .bold : .semibold,
+                    design: .rounded
+                )
             }
+            prose.append(part)
         }
+        func flushBuffer() {
+            if buffer.isEmpty { return }
+            appendInline(buffer.joined(separator: "\n"))
+            buffer.removeAll()
+        }
+        func emitProse() {
+            flushBuffer()
+            guard !prose.characters.isEmpty else { return }
+            out.append(.prose(prose))
+            prose = AttributedString()
+        }
+
         while idx < lines.count {
             let line = lines[idx]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
+
             if trimmed.hasPrefix("```") {
-                flushBuffer()
+                emitProse()
                 let language = String(trimmed.dropFirst(3))
                 var codeLines: [String] = []
                 idx += 1
@@ -143,18 +157,20 @@ struct MarkdownText: View {
                     language: language.isEmpty ? nil : language,
                     code: codeLines.joined(separator: "\n")
                 ))
+
             } else if let (level, body) = parseHeading(trimmed) {
                 flushBuffer()
-                out.append(.heading(level: level, text: body))
+                appendInline(body, headingLevel: level)
                 idx += 1
+
             } else if line.contains("|"),
                       idx + 1 < lines.count,
                       let aligns = parseTableSeparator(lines[idx + 1]) {
-                flushBuffer()
                 let header = splitTableRow(line)
                 guard !header.isEmpty else {
                     buffer.append(line); idx += 1; continue
                 }
+                emitProse()
                 idx += 2
                 var rows: [[String]] = []
                 while idx < lines.count, lines[idx].contains("|"),
@@ -168,20 +184,37 @@ struct MarkdownText: View {
                 var fullAligns = aligns
                 while fullAligns.count < header.count { fullAligns.append(.left) }
                 out.append(.table(
-                    header: header,
-                    rows: rows,
+                    header: header.map(parseInline),
+                    rows: rows.map { $0.map(parseInline) },
                     alignments: Array(fullAligns.prefix(header.count))
                 ))
+
             } else {
                 buffer.append(line)
                 idx += 1
             }
         }
-        flushBuffer()
+        emitProse()
         return out
     }
 
-    /// GFM separator row: `|---|:--:|---:|` style, cells are dashes with optional leading/trailing colons for alignment.
+    private static func parseInline(_ raw: String) -> AttributedString {
+        (try? AttributedString(
+            markdown: raw,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )) ?? AttributedString(raw)
+    }
+
+    private static func headingSize(_ level: Int) -> CGFloat {
+        switch level {
+        case 1: return 19
+        case 2: return 16
+        case 3: return 14
+        default: return 13
+        }
+    }
+
+    /// GFM separator row: `|---|:--:|---:|` style — dashes per cell with optional colons for alignment.
     private static func parseTableSeparator(_ line: String) -> [TableAlignment]? {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         guard trimmed.contains("|") else { return nil }
@@ -204,7 +237,6 @@ struct MarkdownText: View {
         return aligns
     }
 
-    /// Split a table row on `|`, honoring `\|` escapes and stripping optional outer pipes.
     private static func splitTableRow(_ line: String) -> [String] {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         var cells: [String] = []
