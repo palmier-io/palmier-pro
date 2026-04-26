@@ -8,18 +8,35 @@ extension EditorViewModel {
 
     func addClips(assets: [MediaAsset], trackIndex: Int, startFrame: Int, linkedAudioTrackIndex: Int? = nil) {
         guard timeline.tracks.indices.contains(trackIndex) else { return }
+        // Pin by id: clearRegion's pruneEmptyTracks can shift indices.
+        let visualTrackId = timeline.tracks[trackIndex].id
+        let audioTrackId: String? = linkedAudioTrackIndex.flatMap {
+            timeline.tracks.indices.contains($0) ? timeline.tracks[$0].id : nil
+        }
+
         undoManager?.beginUndoGrouping()
         let totalDur = assets.reduce(0) { $0 + secondsToFrame(seconds: $1.duration, fps: timeline.fps) }
-        clearRegion(trackIndex: trackIndex, start: startFrame, end: startFrame + totalDur)
-        if let audioIdx = linkedAudioTrackIndex, timeline.tracks.indices.contains(audioIdx) {
-            clearRegion(trackIndex: audioIdx, start: startFrame, end: startFrame + totalDur)
+        clearRegion(trackIndex: trackIndex, start: startFrame, end: startFrame + totalDur, prune: false)
+        if let aid = audioTrackId,
+           let audioIdx = timeline.tracks.firstIndex(where: { $0.id == aid }) {
+            clearRegion(trackIndex: audioIdx, start: startFrame, end: startFrame + totalDur, prune: false)
+        }
+
+        guard let resolvedTrackIndex = timeline.tracks.firstIndex(where: { $0.id == visualTrackId }) else {
+            pruneEmptyTracks()
+            undoManager?.endUndoGrouping()
+            return
+        }
+        let resolvedAudioIndex: Int? = audioTrackId.flatMap { id in
+            timeline.tracks.firstIndex(where: { $0.id == id })
         }
 
         let clipIds = createClips(
-            from: assets, trackIndex: trackIndex, startFrame: startFrame,
-            linkedAudioTrackIndex: linkedAudioTrackIndex
+            from: assets, trackIndex: resolvedTrackIndex, startFrame: startFrame,
+            linkedAudioTrackIndex: resolvedAudioIndex
         )
-        sortClips(trackIndex: trackIndex)
+        sortClips(trackIndex: resolvedTrackIndex)
+        pruneEmptyTracks()
         undoManager?.registerUndo(withTarget: self) { $0.removeClips(ids: Set(clipIds)) }
         undoManager?.endUndoGrouping()
         undoManager?.setActionName("Add Clips")
@@ -55,17 +72,19 @@ extension EditorViewModel {
         }
 
         // Trim / remove any non-moved clips blocking each destination range.
-        // `clearRegion` registers sub-undos so Cmd-Z restores them.
-        for info in clipInfos {
-            clearRegion(trackIndex: info.toTrack, start: info.toFrame, end: info.toFrame + info.clip.durationFrames)
+        // Pin by id: clearRegion's pruneEmptyTracks can shift indices.
+        let toTrackIds = clipInfos.map { timeline.tracks[$0.toTrack].id }
+        for (i, info) in clipInfos.enumerated() {
+            guard let idx = timeline.tracks.firstIndex(where: { $0.id == toTrackIds[i] }) else { continue }
+            clearRegion(trackIndex: idx, start: info.toFrame, end: info.toFrame + info.clip.durationFrames, prune: false)
         }
 
         // Drop each clip at its exact target frame.
-        for info in clipInfos {
-            guard timeline.tracks.indices.contains(info.toTrack) else { continue }
+        for (i, info) in clipInfos.enumerated() {
+            guard let idx = timeline.tracks.firstIndex(where: { $0.id == toTrackIds[i] }) else { continue }
             var clip = info.clip
             clip.startFrame = info.toFrame
-            timeline.tracks[info.toTrack].clips.append(clip)
+            timeline.tracks[idx].clips.append(clip)
         }
         for i in timeline.tracks.indices { sortClips(trackIndex: i) }
         undoManager?.registerUndo(withTarget: self) { $0.moveClips(undoMoves) }
@@ -138,7 +157,7 @@ extension EditorViewModel {
         return right.id
     }
 
-    func removeClips(ids: Set<String>) {
+    func removeClips(ids: Set<String>, prune: Bool = true) {
         var removed: [(clip: Clip, trackIndex: Int)] = []
         for i in timeline.tracks.indices {
             let matching = timeline.tracks[i].clips.filter { ids.contains($0.id) }
@@ -156,7 +175,7 @@ extension EditorViewModel {
                 }
             }
         }
-        pruneEmptyTracks()
+        if prune { pruneEmptyTracks() }
         undoManager?.endUndoGrouping()
         undoManager?.setActionName("Remove Clip\(removed.count == 1 ? "" : "s")")
         notifyTimelineChanged()
@@ -476,7 +495,7 @@ extension EditorViewModel {
     // MARK: - Overwrite region
 
     /// Clear a region on a track by removing, trimming, or splitting the clips that overlap it.
-    func clearRegion(trackIndex: Int, start: Int, end: Int) {
+    func clearRegion(trackIndex: Int, start: Int, end: Int, prune: Bool = true) {
         guard timeline.tracks.indices.contains(trackIndex) else { return }
         let actions = OverwriteEngine.computeOverwrite(
             clips: timeline.tracks[trackIndex].clips,
@@ -487,7 +506,7 @@ extension EditorViewModel {
         for action in actions {
             switch action {
             case .remove(let clipId):
-                removeClips(ids: [clipId])
+                removeClips(ids: [clipId], prune: prune)
 
             case .trimEnd(let clipId, let newDuration):
                 if let loc = findClip(id: clipId) {
@@ -516,9 +535,9 @@ extension EditorViewModel {
                     if let rightClip = rightClips.first {
                         if rightClip.endFrame > end {
                             splitClip(clipId: rightClip.id, atFrame: end)
-                            removeClips(ids: [rightClip.id])
+                            removeClips(ids: [rightClip.id], prune: prune)
                         } else {
-                            removeClips(ids: [rightClip.id])
+                            removeClips(ids: [rightClip.id], prune: prune)
                         }
                     }
                 }
