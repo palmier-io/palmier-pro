@@ -9,7 +9,9 @@ final class TimelineInputController {
     unowned let view: TimelineView
 
     private(set) var dragState: DragState = .idle
-    private(set) var snapIndicatorX: Double?
+    private var snapIndicatorX: Double? {
+        didSet { view.snapOverlay.setLocalX(snapIndicatorX) }
+    }
     private(set) var razorPreviewFrame: Int?
     private var snapState = SnapEngine.SnapState()
     private var scrubWasPlaying = false
@@ -159,6 +161,8 @@ final class TimelineInputController {
                 snappedFrame = frame
             }
             scrubToFrame(snappedFrame)
+            view.updatePlayheadLayer()
+            return // overlays self-update; skip the trailing needsDisplay = true.
 
         case .moveClip(var drag):
             let candidateFrame = frame - drag.grabOffsetFrames

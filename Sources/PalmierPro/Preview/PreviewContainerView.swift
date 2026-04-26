@@ -51,16 +51,7 @@ struct PreviewContainerView: View {
 
     private var transportBar: some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            HStack(spacing: 0) {
-                Text(formatTimecode(frame: playheadFrame, fps: editor.timeline.fps))
-                    .foregroundStyle(AppTheme.Accent.timecodeColor)
-                Text(" / ")
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                Text(formatTimecode(frame: durationFrames, fps: editor.timeline.fps))
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
-            }
-            .monospacedDigit()
-            .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+            PreviewTimecodeText(isTimeline: isTimeline)
 
             Spacer()
 
@@ -334,7 +325,6 @@ struct PreviewContainerView: View {
 
     private var scrubBar: some View {
         GeometryReader { geo in
-            let progress = durationFrames > 0 ? CGFloat(playheadFrame) / CGFloat(durationFrames) : 0
             let active = isScrubbing || isScrubHovered
             let thumbSize: CGFloat = active ? 10 : 6
             let barHeight: CGFloat = active ? 4 : 3
@@ -342,14 +332,14 @@ struct PreviewContainerView: View {
                 Capsule()
                     .fill(Color.white.opacity(0.12))
                     .frame(height: barHeight)
-                Capsule()
-                    .fill(Color.accentColor)
-                    .frame(width: max(0, geo.size.width * progress), height: barHeight)
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: thumbSize, height: thumbSize)
-                    .shadow(color: .black.opacity(0.3), radius: 1, y: 1)
-                    .position(x: geo.size.width * progress, y: geo.size.height / 2)
+                PreviewScrubProgress(
+                    isTimeline: isTimeline,
+                    geometry: .init(
+                        size: geo.size,
+                        barHeight: barHeight,
+                        thumbSize: thumbSize
+                    )
+                )
             }
             .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
@@ -521,6 +511,59 @@ private enum ZoomPreset: CaseIterable {
         case .oneTwentyFivePercent: 1.25
         case .oneFiftyPercent: 1.50
         case .twoHundredPercent: 2.0
+        }
+    }
+}
+
+// MARK: - Hot-path subviews
+// Isolated so scrubbing's currentFrame churn invalidates only these, not the whole pane.
+
+private struct PreviewTimecodeText: View {
+    @Environment(EditorViewModel.self) var editor
+    let isTimeline: Bool
+
+    var body: some View {
+        let frame = isTimeline ? editor.currentFrame : editor.sourcePlayheadFrame
+        let duration = editor.activePreviewDurationFrames
+        let fps = editor.timeline.fps
+        HStack(spacing: 0) {
+            Text(formatTimecode(frame: frame, fps: fps))
+                .foregroundStyle(AppTheme.Accent.timecodeColor)
+            Text(" / ")
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            Text(formatTimecode(frame: duration, fps: fps))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+        }
+        .monospacedDigit()
+        .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+    }
+}
+
+private struct PreviewScrubProgress: View {
+    struct Geometry {
+        let size: CGSize
+        let barHeight: CGFloat
+        let thumbSize: CGFloat
+    }
+
+    @Environment(EditorViewModel.self) var editor
+    let isTimeline: Bool
+    let geometry: Geometry
+
+    var body: some View {
+        let frame = isTimeline ? editor.currentFrame : editor.sourcePlayheadFrame
+        let duration = editor.activePreviewDurationFrames
+        let progress = duration > 0 ? CGFloat(frame) / CGFloat(duration) : 0
+        let g = geometry
+        ZStack(alignment: .leading) {
+            Capsule()
+                .fill(Color.accentColor)
+                .frame(width: max(0, g.size.width * progress), height: g.barHeight)
+            Circle()
+                .fill(Color.white)
+                .frame(width: g.thumbSize, height: g.thumbSize)
+                .shadow(color: .black.opacity(0.3), radius: 1, y: 1)
+                .position(x: g.size.width * progress, y: g.size.height / 2)
         }
     }
 }

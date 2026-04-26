@@ -6,6 +6,8 @@ import SwiftUI
 final class TimelineView: NSView {
     unowned var editor: EditorViewModel
     private(set) var inputController: TimelineInputController!
+    private var playheadOverlay: PlayheadOverlay!
+    private(set) var snapOverlay: SnapIndicatorOverlay!
 
     /// NSHostingView per clip id awaiting a Replace-mode AI generation.
     private var pendingReplacementOverlays: [String: NSHostingView<ClipGeneratingOverlay>] = [:]
@@ -21,6 +23,8 @@ final class TimelineView: NSView {
         layerContentsRedrawPolicy = .onSetNeedsDisplay
         layer?.backgroundColor = AppTheme.Background.surface.cgColor
         registerForDraggedTypes([.string, .fileURL])
+        playheadOverlay = PlayheadOverlay(view: self, editor: editor)
+        snapOverlay = SnapIndicatorOverlay(view: self)
     }
 
     @available(*, unavailable)
@@ -28,9 +32,8 @@ final class TimelineView: NSView {
 
     override var isFlipped: Bool { true }
 
-    // Cached for draw performance — avoid per-frame allocations
-    private static let trackBgEven = AppTheme.Background.surface.cgColor
-    private static let trackBgOdd = AppTheme.Background.surface.cgColor
+    // Cached for draw performance — avoid per-frame allocations.
+    private static let trackBg = AppTheme.Background.surface.cgColor
 
     /// Drop target during external drags (media panel), used for drawing the insertion indicator.
     var externalDropTarget: TrackDropTarget?
@@ -38,7 +41,6 @@ final class TimelineView: NSView {
     var externalDragAssets: [MediaAsset]?
     var externalDragFrame: Int = 0
 
-    private var externalSnapIndicatorX: Double?
     private var externalSnapState = SnapEngine.SnapState()
 
     /// True when Cmd is held during an external drag — the drop will ripple-insert.
@@ -134,7 +136,7 @@ final class TimelineView: NSView {
         let visibleWidth = enclosingScrollView?.contentView.bounds.width ?? bounds.width
 
         drawTrackBackgrounds(geometry: geo, context: ctx)
-        drawClips(geometry: geo, dirtyRect: bounds, context: ctx)
+        drawClips(geometry: geo, dirtyRect: dirtyRect, context: ctx)
         syncPendingReplacementOverlays(geometry: geo)
 
         if let assets = externalDragAssets, !assets.isEmpty, let target = externalDropTarget {
@@ -142,16 +144,6 @@ final class TimelineView: NSView {
             if externalDragIsRippleInsert {
                 drawRippleInsertIndicator(atFrame: externalDragFrame, geometry: geo, context: ctx)
             }
-        }
-
-        if let snapX = inputController.snapIndicatorX ?? externalSnapIndicatorX {
-            ctx.setStrokeColor(NSColor.systemYellow.cgColor)
-            ctx.setLineWidth(1)
-            ctx.setLineDash(phase: 0, lengths: [4, 4])
-            ctx.move(to: CGPoint(x: snapX, y: Double(geo.rulerHeight)))
-            ctx.addLine(to: CGPoint(x: snapX, y: Double(bounds.height)))
-            ctx.strokePath()
-            ctx.setLineDash(phase: 0, lengths: [])
         }
 
         if case .marquee(let marq) = inputController.dragState,
@@ -199,16 +191,10 @@ final class TimelineView: NSView {
             scrollOffsetX: scrollOffset.x,
             context: ctx
         )
-
-        PlayheadRenderer.draw(
-            frame: editor.currentFrame,
-            pixelsPerFrame: geo.pixelsPerFrame,
-            rulerHeight: geo.rulerHeight,
-            scrollOffsetY: scrollOffset.y,
-            visibleHeight: enclosingScrollView?.contentView.bounds.height ?? bounds.height,
-            context: ctx
-        )
+        // Playhead + snap indicator render via PlayheadOverlay / SnapIndicatorOverlay.
     }
+
+    func updatePlayheadLayer() { playheadOverlay.update() }
 
     // MARK: - Clip drawing with ghost support
 
@@ -450,7 +436,7 @@ final class TimelineView: NSView {
         for i in editor.timeline.tracks.indices {
             let y = geo.trackY(at: i)
             let h = geo.trackHeight(at: i)
-            context.setFillColor(Self.trackBgEven)
+            context.setFillColor(Self.trackBg)
             context.fill(NSRect(x: 0, y: y, width: bounds.width, height: h))
 
             // White border at top of first track and bottom of every track
@@ -588,7 +574,7 @@ final class TimelineView: NSView {
     override func draggingExited(_ sender: (any NSDraggingInfo)?) {
         externalDropTarget = nil
         externalDragAssets = nil
-        externalSnapIndicatorX = nil
+        snapOverlay.setExternalX(nil)
         externalSnapState = SnapEngine.SnapState()
         externalDragIsRippleInsert = false
         needsDisplay = true
@@ -598,7 +584,7 @@ final class TimelineView: NSView {
     private func applyExternalSnap(at point: NSPoint, geo: TimelineGeometry) -> Int {
         let candidate = geo.frameAt(x: point.x)
         guard let assets = externalDragAssets, !assets.isEmpty else {
-            externalSnapIndicatorX = nil
+            snapOverlay.setExternalX(nil)
             return candidate
         }
         let fps = editor.timeline.fps
@@ -616,10 +602,10 @@ final class TimelineView: NSView {
             baseThreshold: Snap.thresholdPixels,
             pixelsPerFrame: geo.pixelsPerFrame
         ) {
-            externalSnapIndicatorX = snap.x
+            snapOverlay.setExternalX(snap.x)
             return snap.frame - snap.probeOffset
         }
-        externalSnapIndicatorX = nil
+        snapOverlay.setExternalX(nil)
         return candidate
     }
 
@@ -631,7 +617,7 @@ final class TimelineView: NSView {
 
         externalDropTarget = nil
         externalDragAssets = nil
-        externalSnapIndicatorX = nil
+        snapOverlay.setExternalX(nil)
         externalSnapState = SnapEngine.SnapState()
         externalDragIsRippleInsert = false
 
