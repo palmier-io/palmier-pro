@@ -2,18 +2,23 @@ import SwiftUI
 
 struct InspectorNumberField: View {
     let label: String
-    let value: Double
+    let value: Double?
     let onCommit: (Double) -> Void
 
     @State private var text: String = ""
     @FocusState private var isFocused: Bool
+
+    private var displayText: String {
+        guard let v = value else { return "" }
+        return String(Int(v.rounded()))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-            TextField("", text: $text)
+            TextField("—", text: $text)
                 .textFieldStyle(.plain)
                 .font(.system(size: AppTheme.FontSize.sm).monospacedDigit())
                 .foregroundStyle(AppTheme.Text.primaryColor)
@@ -29,9 +34,9 @@ struct InspectorNumberField: View {
                     if !focused { commitValue() }
                 }
         }
-        .onAppear { text = String(Int(value.rounded())) }
-        .onChange(of: value) { _, newValue in
-            if !isFocused { text = String(Int(newValue.rounded())) }
+        .onAppear { text = displayText }
+        .onChange(of: value) { _, _ in
+            if !isFocused { text = displayText }
         }
     }
 
@@ -39,7 +44,7 @@ struct InspectorNumberField: View {
         if let parsed = Double(text) {
             onCommit(parsed)
         } else {
-            text = String(Int(value.rounded()))
+            text = displayText
         }
     }
 }

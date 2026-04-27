@@ -152,9 +152,11 @@ final class EditorViewModel {
 
     // MARK: - Shared infrastructure
 
-    /// Snapshots captured at drag start for continuous clip edits (speed,
-    /// property). Keyed by clip id so multiple clips can be edited in tandem
+    /// Per-clip snapshot at drag start, keyed by clip id so multiple clips can be edited in tandem.
     var dragBefore: [String: Clip] = [:]
+
+    /// Whole-timeline snapshot at drag start, for ripple mutations whose per-clip undos can't compose cleanly.
+    var preDragTimeline: Timeline?
 
     /// Debounced commits, keyed "clipId:property".
     var pendingDebouncedCommits: [String: Task<Void, Never>] = [:]

@@ -64,7 +64,9 @@ struct InspectorView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: editor.selectedClipIds) { _, _ in
-            if selectedVisualClip?.mediaType == .text {
+            let isSingleText = selectedVisualClips.count + selectedAudioClips.count == 1
+                && selectedVisualClip?.mediaType == .text
+            if isSingleText {
                 preferredTab = .text
             } else if preferredTab == .text {
                 preferredTab = .video
@@ -109,12 +111,17 @@ struct InspectorView: View {
     // MARK: - Clip Inspector
 
     private var availableTabs: [ClipTab] {
+        let visuals = selectedVisualClips
+        let audios = selectedAudioClips
+        let nonText = nonTextVisualClips
+        let isSingle = visuals.count + audios.count == 1
+        let isSingleText = isSingle && visuals.first?.mediaType == .text
+
         var tabs: [ClipTab] = []
-        let isText = selectedVisualClip?.mediaType == .text
-        if isText { tabs.append(.text) }
-        if selectedVisualClip != nil && !isText { tabs.append(.video) }
-        if selectedAudioClip != nil { tabs.append(.audio) }
-        if resolvedClipAsset != nil { tabs.append(.ai) }
+        if isSingleText { tabs.append(.text) }
+        if !nonText.isEmpty { tabs.append(.video) }
+        if !audios.isEmpty { tabs.append(.audio) }
+        if isSingle, resolvedClipAsset != nil { tabs.append(.ai) }
         return tabs
     }
 
@@ -128,6 +135,10 @@ struct InspectorView: View {
     private var resolvedClipAsset: MediaAsset? {
         guard let clip = selectedVisualClip, clip.mediaType.isVisual else { return nil }
         return editor.mediaAssets.first { $0.id == clip.mediaRef }
+    }
+
+    private var nonTextVisualClips: [Clip] {
+        selectedVisualClips.filter { $0.mediaType != .text }
     }
 
     @ViewBuilder
@@ -147,9 +158,9 @@ struct InspectorView: View {
                             case .text:
                                 if let v = selectedVisualClip, v.mediaType == .text { TextTab(clip: v) }
                             case .video:
-                                if let v = selectedVisualClip { videoTabContent(v) }
+                                videoTabContent()
                             case .audio:
-                                if let a = selectedAudioClip { audioTabContent(a) }
+                                audioTabContent()
                             case .ai, .none:
                                 EmptyView()
                             }
@@ -205,52 +216,58 @@ struct InspectorView: View {
     }
 
     @ViewBuilder
-    private func videoTabContent(_ vClip: Clip) -> some View {
-        frameSection(vClip)
+    private func videoTabContent() -> some View {
+        let clips = nonTextVisualClips
+        frameSection(clips: clips)
 
         InspectorSlider(
             icon: "arrow.up.left.and.arrow.down.right",
             label: "Scale",
-            value: vClip.transform.width,
+            value: sharedClipValue(clips) { $0.transform.width },
             range: 0.01...5.0,
             displayMultiplier: 100,
             valueSuffix: "%",
             format: "%.0f",
             onChanged: { newVal in
-                let t = scaledTransform(for: vClip, newScale: newVal)
-                editor.applyClipProperty(clipId: vClip.id) { $0.transform = t }
+                for c in clips {
+                    let t = scaledTransform(for: c, newScale: newVal)
+                    editor.applyClipProperty(clipId: c.id) { $0.transform = t }
+                }
             }
         ) { newVal in
-            let t = scaledTransform(for: vClip, newScale: newVal)
-            editor.commitClipProperty(clipId: vClip.id) { $0.transform = t }
+            commitToClips(clips, actionName: "Change Scale") { c in
+                let t = scaledTransform(for: c, newScale: newVal)
+                editor.commitClipProperty(clipId: c.id) { $0.transform = t }
+            }
         }
 
         InspectorSlider(
             icon: "circle.lefthalf.filled",
             label: "Opacity",
-            value: vClip.opacity,
+            value: sharedClipValue(clips) { $0.opacity },
             range: 0...1,
             displayMultiplier: 100,
             valueSuffix: "%",
             format: "%.0f",
             onChanged: { newVal in
-                editor.applyClipProperty(clipId: vClip.id) { $0.opacity = newVal }
+                for c in clips { editor.applyClipProperty(clipId: c.id) { $0.opacity = newVal } }
             }
         ) { newVal in
-            editor.commitClipProperty(clipId: vClip.id) { $0.opacity = newVal }
+            commitToClips(clips, actionName: "Change Opacity") { c in
+                editor.commitClipProperty(clipId: c.id) { $0.opacity = newVal }
+            }
         }
 
-        if vClip.mediaType != .text {
-            speedSlider(currentSpeed: vClip.speed)
-        }
+        speedSlider(clips: clips + selectedAudioClips)
     }
 
     @ViewBuilder
-    private func audioTabContent(_ aClip: Clip) -> some View {
+    private func audioTabContent() -> some View {
+        let audios = selectedAudioClips
         InspectorSlider(
             icon: "speaker.wave.2.fill",
             label: "Volume",
-            value: VolumeScale.dbFromLinear(aClip.volume),
+            value: sharedClipValue(audios) { VolumeScale.dbFromLinear($0.volume) },
             range: VolumeScale.floorDb...VolumeScale.ceilingDb,
             displayMultiplier: 1,
             valueSuffix: " dB",
@@ -259,45 +276,43 @@ struct InspectorView: View {
                 db <= VolumeScale.floorDb ? "-∞ dB" : nil
             },
             onChanged: { db in
-                editor.applyClipProperty(clipId: aClip.id) { $0.volume = VolumeScale.linearFromDb(db) }
+                let lin = VolumeScale.linearFromDb(db)
+                for c in audios { editor.applyClipProperty(clipId: c.id) { $0.volume = lin } }
             }
         ) { db in
-            editor.commitClipProperty(clipId: aClip.id) { $0.volume = VolumeScale.linearFromDb(db) }
+            let lin = VolumeScale.linearFromDb(db)
+            commitToClips(audios, actionName: "Change Volume") { c in
+                editor.commitClipProperty(clipId: c.id) { $0.volume = lin }
+            }
         }
 
-        if selectedVisualClip == nil {
-            speedSlider(currentSpeed: aClip.speed)
+        if nonTextVisualClips.isEmpty {
+            speedSlider(clips: audios)
         }
     }
 
-    private func speedSlider(currentSpeed: Double) -> some View {
+    private func speedSlider(clips: [Clip]) -> some View {
         InspectorSlider(
             icon: "gauge.with.dots.needle.67percent",
             label: "Speed",
-            value: currentSpeed,
+            value: sharedClipValue(clips) { $0.speed },
             range: 0.25...4.0,
             displayMultiplier: 1,
             valueSuffix: "x",
             format: "%.2f",
             onChanged: { newVal in
-                applySpeedToSelection(newVal)
+                for c in clips { editor.applyClipSpeed(clipId: c.id, newSpeed: newVal) }
             }
         ) { newVal in
-            commitSpeedToSelection(newVal)
+            editor.commitClipSpeed(ids: clips.map(\.id), newSpeed: newVal)
         }
     }
 
-    private func applySpeedToSelection(_ newVal: Double) {
-        if let v = selectedVisualClip { editor.applyClipSpeed(clipId: v.id, newSpeed: newVal) }
-        if let a = selectedAudioClip { editor.applyClipSpeed(clipId: a.id, newSpeed: newVal) }
-    }
-
-    private func commitSpeedToSelection(_ newVal: Double) {
+    private func commitToClips(_ clips: [Clip], actionName: String, _ commit: (Clip) -> Void) {
         editor.undoManager?.beginUndoGrouping()
-        if let v = selectedVisualClip { editor.commitClipSpeed(clipId: v.id, newSpeed: newVal) }
-        if let a = selectedAudioClip { editor.commitClipSpeed(clipId: a.id, newSpeed: newVal) }
+        for c in clips { commit(c) }
         editor.undoManager?.endUndoGrouping()
-        editor.undoManager?.setActionName("Change Speed")
+        editor.undoManager?.setActionName(actionName)
     }
 
     private func inspectorCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -312,7 +327,7 @@ struct InspectorView: View {
     // MARK: - Frame Section
 
     @ViewBuilder
-    private func frameSection(_ clip: Clip) -> some View {
+    private func frameSection(clips: [Clip]) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             HStack {
                 Image(systemName: "crop")
@@ -323,7 +338,9 @@ struct InspectorView: View {
                     .foregroundStyle(AppTheme.Text.primaryColor)
                 Spacer()
                 Button {
-                    editor.commitClipProperty(clipId: clip.id) { $0.transform = Transform() }
+                    commitToClips(clips, actionName: "Reset Transform") { c in
+                        editor.commitClipProperty(clipId: c.id) { $0.transform = Transform() }
+                    }
                 } label: {
                     Image(systemName: "arrow.counterclockwise")
                         .font(.system(size: AppTheme.FontSize.sm))
@@ -336,10 +353,12 @@ struct InspectorView: View {
             }
 
             HStack(spacing: AppTheme.Spacing.sm) {
-                InspectorPositionFields(clip: clip)
-                InspectorNumberField(label: "Scale", value: clip.transform.width * 100) { newScale in
-                    let t = scaledTransform(for: clip, newScale: max(newScale, 1) / 100.0)
-                    editor.commitClipProperty(clipId: clip.id) { $0.transform = t }
+                InspectorPositionFields(clips: clips)
+                InspectorNumberField(label: "Scale", value: sharedClipValue(clips) { $0.transform.width * 100 }) { newScale in
+                    commitToClips(clips, actionName: "Change Scale") { c in
+                        let t = scaledTransform(for: c, newScale: max(newScale, 1) / 100.0)
+                        editor.commitClipProperty(clipId: c.id) { $0.transform = t }
+                    }
                 }
             }
         }
@@ -459,28 +478,30 @@ struct InspectorView: View {
 
     // MARK: - Helpers
 
-    /// The visual half of the current selection, if any. Frame / Scale /
-    /// Opacity controls target this.
-    private var selectedVisualClip: Clip? {
-        guard !editor.selectedClipIds.isEmpty else { return nil }
+    private var selectedVisualClips: [Clip] {
+        guard !editor.selectedClipIds.isEmpty else { return [] }
+        var out: [Clip] = []
         for track in editor.timeline.tracks {
             for clip in track.clips where editor.selectedClipIds.contains(clip.id) && clip.mediaType.isVisual {
-                return clip
+                out.append(clip)
             }
         }
-        return nil
+        return out
     }
 
-    /// The audio half of the current selection, if any. Volume targets this.
-    private var selectedAudioClip: Clip? {
-        guard !editor.selectedClipIds.isEmpty else { return nil }
+    private var selectedAudioClips: [Clip] {
+        guard !editor.selectedClipIds.isEmpty else { return [] }
+        var out: [Clip] = []
         for track in editor.timeline.tracks {
             for clip in track.clips where editor.selectedClipIds.contains(clip.id) && clip.mediaType == .audio {
-                return clip
+                out.append(clip)
             }
         }
-        return nil
+        return out
     }
+
+    private var selectedVisualClip: Clip? { selectedVisualClips.first }
+    private var selectedAudioClip: Clip? { selectedAudioClips.first }
 
     private var selectedMediaAsset: MediaAsset? {
         guard editor.selectedMediaAssetIds.count == 1,
@@ -521,6 +542,13 @@ struct InspectorView: View {
         }
         return String(format: "%d.%02ds", secs, frac)
     }
+}
+
+func sharedClipValue<T: Equatable>(_ clips: [Clip], _ extract: (Clip) -> T) -> T? {
+    guard let first = clips.first else { return nil }
+    let v = extract(first)
+    for c in clips.dropFirst() where extract(c) != v { return nil }
+    return v
 }
 
 // MARK: - Volume Scale
