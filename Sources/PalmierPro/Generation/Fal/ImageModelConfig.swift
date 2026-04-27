@@ -83,7 +83,7 @@ extension ImageModelConfig {
     static let nanoBananaPro = ImageModelConfig(
         id: "nano-banana-pro", displayName: "Nano Banana Pro",
         baseEndpoint: "fal-ai/nano-banana-pro",
-        resolutions: ["2K", "4K"], aspectRatios: ["16:9", "9:16"],
+        resolutions: ["2K", "4K"], aspectRatios: ["auto", "21:9", "16:9", "3:2", "4:3", "5:4", "1:1", "4:5", "3:4", "2:3", "9:16"],
         supportsImageReference: true,
         maxImages: 4,
         pricePerImage: ["2K": 0.15, "4K": 0.30],
@@ -93,7 +93,7 @@ extension ImageModelConfig {
     static let nanoBanana2 = ImageModelConfig(
         id: "nano-banana-2", displayName: "Nano Banana 2",
         baseEndpoint: "fal-ai/nano-banana-2",
-        resolutions: ["2K", "4K"], aspectRatios: ["16:9", "9:16"],
+        resolutions: ["2K", "4K"], aspectRatios: ["auto", "21:9", "16:9", "3:2", "4:3", "5:4", "1:1", "4:5", "3:4", "2:3", "9:16", "4:1", "1:4", "8:1", "1:8"],
         supportsImageReference: true,
         maxImages: 4,
         pricePerImage: ["2K": 0.12, "4K": 0.16],
@@ -103,7 +103,7 @@ extension ImageModelConfig {
     static let grokImagine = ImageModelConfig(
         id: "grok-imagine", displayName: "Grok Imagine",
         baseEndpoint: "xai/grok-imagine-image",
-        resolutions: nil, aspectRatios: ["16:9", "9:16"],
+        resolutions: nil, aspectRatios: ["2:1", "20:9", "19.5:9", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16", "9:19.5", "9:20", "1:2"],
         supportsImageReference: true,
         maxImages: 4,
         pricePerImage: ["": 0.02],
@@ -123,7 +123,7 @@ extension ImageModelConfig {
     static let recraftV4 = ImageModelConfig(
         id: "recraft-v4", displayName: "Recraft V4",
         baseEndpoint: "fal-ai/recraft/v4/pro/text-to-image",
-        resolutions: nil, aspectRatios: ["landscape_16_9", "portrait_16_9"],
+        resolutions: nil, aspectRatios: ["square_hd", "square", "portrait_4_3", "portrait_16_9", "landscape_4_3", "landscape_16_9"],
         supportsImageReference: false,
         maxImages: 4,
         pricePerImage: ["": 0.25],
