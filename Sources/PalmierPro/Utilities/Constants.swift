@@ -65,7 +65,7 @@ enum Defaults {
 
 enum Snap {
     static let thresholdPixels: Double = 8.0
-    static let stickyMultiplier: Double = 2.5
+    static let stickyMultiplier: Double = 1.5
     static let playheadMultiplier: Double = 1.5
 }
 

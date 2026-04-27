@@ -14,6 +14,7 @@ final class TimelineInputController {
     }
     private(set) var razorPreviewFrame: Int?
     private var snapState = SnapEngine.SnapState()
+    private var razorSnapState = SnapEngine.SnapState()
     private var scrubWasPlaying = false
 
     init(editor: EditorViewModel, view: TimelineView) {
@@ -141,26 +142,8 @@ final class TimelineInputController {
 
         switch dragState {
         case .scrubPlayhead:
-            let targets = SnapEngine.collectTargets(
-                tracks: editor.timeline.tracks,
-                playheadFrame: editor.currentFrame,
-                includePlayhead: false
-            )
-            let snappedFrame: Int
-            if let snap = SnapEngine.findSnap(
-                position: frame,
-                targets: targets,
-                state: &snapState,
-                baseThreshold: Snap.thresholdPixels,
-                pixelsPerFrame: geometry.pixelsPerFrame
-            ) {
-                snapIndicatorX = snap.x
-                snappedFrame = snap.frame
-            } else {
-                snapIndicatorX = nil
-                snappedFrame = frame
-            }
-            scrubToFrame(snappedFrame)
+            snapIndicatorX = nil
+            scrubToFrame(frame)
             view.updatePlayheadLayer()
             return // overlays self-update; skip the trailing needsDisplay = true.
 
@@ -169,7 +152,6 @@ final class TimelineInputController {
             let allDraggedIds = Set(drag.all.map(\.clipId))
             let targets = SnapEngine.collectTargets(
                 tracks: editor.timeline.tracks,
-                playheadFrame: editor.currentFrame,
                 excludeClipIds: allDraggedIds
             )
 
@@ -211,7 +193,6 @@ final class TimelineInputController {
             let candidateStart = frame
             let targets = SnapEngine.collectTargets(
                 tracks: editor.timeline.tracks,
-                playheadFrame: editor.currentFrame,
                 excludeClipIds: [drag.clipId]
             )
             let snappedStart: Int
@@ -239,7 +220,6 @@ final class TimelineInputController {
             let candidateEnd = max(drag.originalStartFrame + 1, frame)
             let targets = SnapEngine.collectTargets(
                 tracks: editor.timeline.tracks,
-                playheadFrame: editor.currentFrame,
                 excludeClipIds: [drag.clipId]
             )
             let snappedEnd: Int
@@ -391,23 +371,35 @@ final class TimelineInputController {
         if point.y >= scrollOffsetY && point.y < scrollOffsetY + geometry.rulerHeight {
             NSCursor.pointingHand.set()
             razorPreviewFrame = nil
+            razorSnapState = SnapEngine.SnapState()
             return
         }
 
-        // Razor tool: show preview line
+        // Razor tool: show preview line, snapping to playhead and clip edges
         if editor.toolMode == .razor && point.y >= scrollOffsetY + geometry.rulerHeight {
-            var frame = geometry.frameAt(x: point.x)
-            // Snap razor to playhead
-            let snapThreshold = max(1, Int(Snap.thresholdPixels / geometry.pixelsPerFrame))
-            if abs(frame - editor.currentFrame) <= snapThreshold {
-                frame = editor.currentFrame
+            let candidate = geometry.frameAt(x: point.x)
+            let targets = SnapEngine.collectTargets(
+                tracks: editor.timeline.tracks,
+                playheadFrame: editor.currentFrame,
+                includePlayhead: true
+            )
+            if let snap = SnapEngine.findSnap(
+                position: candidate,
+                targets: targets,
+                state: &razorSnapState,
+                baseThreshold: Snap.thresholdPixels,
+                pixelsPerFrame: geometry.pixelsPerFrame
+            ) {
+                razorPreviewFrame = snap.frame
+            } else {
+                razorPreviewFrame = candidate
             }
-            razorPreviewFrame = frame
             NSCursor.crosshair.set()
             view.needsDisplay = true
             return
         }
         razorPreviewFrame = nil
+        razorSnapState = SnapEngine.SnapState()
 
         let trackIndex = geometry.trackAt(y: point.y)
 
