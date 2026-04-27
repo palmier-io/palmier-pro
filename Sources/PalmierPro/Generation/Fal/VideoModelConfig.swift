@@ -229,7 +229,7 @@ extension VideoModelConfig {
         VideoModelConfig(
             id: id, displayName: displayName, baseEndpoint: "fal-ai/veo3.1",
             durations: [4, 6, 8], resolutions: resolutions,
-            aspectRatios: ["16:9", "9:16", "1:1"],
+            aspectRatios: ["16:9", "9:16"],
             supportsLastFrame: true,
             pricePerSecond: pricePerSecond,
             audioDiscountRate: ["": 2.0 / 3.0],
@@ -265,7 +265,7 @@ extension VideoModelConfig {
             id: id, displayName: displayName, baseEndpoint: baseEndpoint,
             durations: Array(3...15),
             resolutions: ["1080p", "4k"],
-            aspectRatios: ["16:9", "9:16"],
+            aspectRatios: ["16:9", "9:16", "1:1"],
             supportsLastFrame: true,
             maxReferenceImages: maxReferenceImages,
             referenceTagNoun: "Element",
@@ -313,7 +313,7 @@ extension VideoModelConfig {
         VideoModelConfig(
             id: id, displayName: displayName, baseEndpoint: "bytedance/seedance-2.0",
             durations: Array(4...15), resolutions: resolutions,
-            aspectRatios: ["16:9", "9:16", "1:1"],
+            aspectRatios: ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
             supportsLastFrame: true,
             maxReferenceImages: 9,
             maxReferenceVideos: 3,
