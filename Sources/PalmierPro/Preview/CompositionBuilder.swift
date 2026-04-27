@@ -83,7 +83,8 @@ enum CompositionBuilder {
                 }
 
                 let clipStart = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
-                let trimStart = CMTime(value: CMTimeValue(clip.trimStartFrame), timescale: timescale)
+                let trimStartFrame = clip.mediaType == .image ? max(0, clip.trimStartFrame) : clip.trimStartFrame
+                let trimStart = CMTime(value: CMTimeValue(trimStartFrame), timescale: timescale)
                 let clipDuration = CMTime(value: CMTimeValue(clip.durationFrames), timescale: timescale)
 
                 if clipStart > cursor {
