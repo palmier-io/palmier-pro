@@ -185,29 +185,37 @@ extension EditorViewModel {
 
     func applyClipSpeed(clipId: String, newSpeed: Double) {
         guard let loc = findClip(id: clipId) else { return }
+        if preDragTimeline == nil {
+            preDragTimeline = timeline
+        }
         if dragBefore[clipId] == nil {
             dragBefore[clipId] = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
         }
         setClipSpeed(at: loc, newSpeed: newSpeed)
     }
 
-    func commitClipSpeed(clipId: String, newSpeed: Double) {
-        guard let loc = findClip(id: clipId) else { return }
-        let before = dragBefore.removeValue(forKey: clipId) ?? timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        setClipSpeed(at: loc, newSpeed: newSpeed)
-        guard before.speed != newSpeed else { return }
-        undoManager?.registerUndo(withTarget: self) { vm in
-            if let current = vm.findClip(id: clipId) {
-                vm.setClipSpeed(at: current, newSpeed: before.speed)
-                vm.undoManager?.registerUndo(withTarget: vm) { vm2 in
-                    if let loc2 = vm2.findClip(id: clipId) {
-                        vm2.setClipSpeed(at: loc2, newSpeed: newSpeed)
-                    }
-                }
-                vm.undoManager?.setActionName("Change Speed")
+    func commitClipSpeed(ids: [String], newSpeed: Double) {
+        let before: Timeline = preDragTimeline ?? timeline
+        for id in ids {
+            guard let loc = findClip(id: id) else { continue }
+            if timeline.tracks[loc.trackIndex].clips[loc.clipIndex].speed != newSpeed {
+                setClipSpeed(at: loc, newSpeed: newSpeed)
             }
         }
-        undoManager?.setActionName("Change Speed")
+        let after = timeline
+        preDragTimeline = nil
+        for id in ids { dragBefore.removeValue(forKey: id) }
+        guard before != after else { return }
+        registerTimelineSwap(undoState: before, redoState: after, actionName: "Change Speed")
+    }
+
+    private func registerTimelineSwap(undoState: Timeline, redoState: Timeline, actionName: String) {
+        undoManager?.registerUndo(withTarget: self) { vm in
+            vm.timeline = undoState
+            vm.notifyTimelineChanged()
+            vm.registerTimelineSwap(undoState: redoState, redoState: undoState, actionName: actionName)
+        }
+        undoManager?.setActionName(actionName)
     }
 
     fileprivate func setClipSpeed(at loc: ClipLocation, newSpeed: Double) {

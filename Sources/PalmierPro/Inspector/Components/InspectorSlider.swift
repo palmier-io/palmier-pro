@@ -3,7 +3,7 @@ import SwiftUI
 struct InspectorSlider: View {
     let icon: String
     let label: String
-    let value: Double
+    let value: Double?
     let range: ClosedRange<Double>
     let displayMultiplier: Double
     let valueSuffix: String
@@ -17,16 +17,18 @@ struct InspectorSlider: View {
     @State private var fieldText: String = ""
     @FocusState private var fieldFocused: Bool
 
-    private var sourceValue: Double { isDragging ? liveValue : value }
+    private var isMixed: Bool { value == nil && !isDragging }
+    private var sourceValue: Double { isDragging ? liveValue : (value ?? liveValue) }
     private var displayValue: Double { sourceValue * displayMultiplier }
 
     private var displayText: String {
+        if isMixed { return "—" }
         if let override = displayTextOverride?(sourceValue) { return override }
         return String(format: format, displayValue) + valueSuffix
     }
 
     private var editingText: String {
-        String(format: format, displayValue)
+        isMixed ? "" : String(format: format, displayValue)
     }
 
     var body: some View {
@@ -55,11 +57,11 @@ struct InspectorSlider: View {
             .tint(Color.white.opacity(0.5))
         }
         .onAppear {
-            liveValue = value
+            liveValue = value ?? range.lowerBound
             fieldText = displayText
         }
         .onChange(of: value) { _, newValue in
-            if !isDragging { liveValue = newValue }
+            if !isDragging { liveValue = newValue ?? range.lowerBound }
             if !fieldFocused { fieldText = displayText }
         }
         .onChange(of: liveValue) { _, newValue in

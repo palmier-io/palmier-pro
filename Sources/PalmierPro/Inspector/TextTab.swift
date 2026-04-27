@@ -224,7 +224,7 @@ struct TextTab: View {
                 .help("Reset position")
             }
 
-            InspectorPositionFields(clip: clip)
+            InspectorPositionFields(clips: [clip])
         }
     }
 }
