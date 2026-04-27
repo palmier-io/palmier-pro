@@ -580,7 +580,7 @@ final class TimelineView: NSView {
         needsDisplay = true
     }
 
-    /// Snap the external-drag frame to clip edges / playhead
+    /// Snap the external-drag frame to clip edges
     private func applyExternalSnap(at point: NSPoint, geo: TimelineGeometry) -> Int {
         let candidate = geo.frameAt(x: point.x)
         guard let assets = externalDragAssets, !assets.isEmpty else {
@@ -590,9 +590,7 @@ final class TimelineView: NSView {
         let fps = editor.timeline.fps
         let totalDur = assets.reduce(0) { $0 + max(1, secondsToFrame(seconds: $1.duration, fps: fps)) }
         let targets = SnapEngine.collectTargets(
-            tracks: editor.timeline.tracks,
-            playheadFrame: editor.currentFrame,
-            excludeClipIds: []
+            tracks: editor.timeline.tracks
         )
         if let snap = SnapEngine.findSnap(
             position: candidate,
