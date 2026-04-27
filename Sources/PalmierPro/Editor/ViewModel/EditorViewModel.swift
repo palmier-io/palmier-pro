@@ -94,6 +94,12 @@ final class EditorViewModel {
         didSet { UserDefaults.standard.set(inspectorPanelVisible, forKey: "inspectorPanelVisible") }
     }
 
+    // MARK: - Media panel navigation routing
+
+    var mediaPanelOrderedIds: [String] = []
+    var mediaPanelColumnCount: Int = 1
+    var mediaPanelScrollTarget: String?
+
     init() {
         mediaResolver = MediaResolver(
             manifest: { [weak self] in self?.mediaManifest ?? MediaManifest() },

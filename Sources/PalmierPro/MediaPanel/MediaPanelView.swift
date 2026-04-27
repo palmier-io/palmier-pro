@@ -172,24 +172,45 @@ struct MediaPanelView: View {
     }
 
     private var mediaGridView: some View {
-        ScrollView(showsIndicators: false) {
-            LazyVGrid(columns: columns, spacing: AppTheme.Spacing.xl) {
-                ForEach(filteredAndSortedAssets) { asset in
-                    assetCell(for: asset)
+        ScrollViewReader { proxy in
+            ScrollView(showsIndicators: false) {
+                LazyVGrid(columns: columns, spacing: AppTheme.Spacing.xl) {
+                    ForEach(filteredAndSortedAssets) { asset in
+                        assetCell(for: asset)
+                            .id(asset.id)
+                    }
+                }
+                .padding(AppTheme.Spacing.md)
+                .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.sm)
+            }
+            .coordinateSpace(name: "mediaGrid")
+            .onPreferenceChange(AssetFramePreferenceKey.self) { frames in
+                assetFrames = frames
+                if let topY = frames.values.map(\.midY).min() {
+                    editor.mediaPanelColumnCount = frames.values.filter { abs($0.midY - topY) < 1 }.count
                 }
             }
-            .padding(AppTheme.Spacing.md)
-            .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.sm)
+            .onAppear {
+                editor.mediaPanelOrderedIds = filteredAndSortedAssets.map(\.id)
+            }
+            .onChange(of: filteredAndSortedAssets.map(\.id)) { _, ids in
+                editor.mediaPanelOrderedIds = ids
+            }
+            .onChange(of: editor.mediaPanelScrollTarget) { _, target in
+                guard let target else { return }
+                withAnimation(.easeOut(duration: 0.15)) {
+                    proxy.scrollTo(target, anchor: .center)
+                }
+                editor.mediaPanelScrollTarget = nil
+            }
+            .onTapGesture {
+                editor.selectedMediaAssetIds.removeAll()
+            }
+            .overlay {
+                marqueeOverlay
+            }
+            .gesture(marqueeGesture)
         }
-        .coordinateSpace(name: "mediaGrid")
-        .onPreferenceChange(AssetFramePreferenceKey.self) { assetFrames = $0 }
-        .onTapGesture {
-            editor.selectedMediaAssetIds.removeAll()
-        }
-        .overlay {
-            marqueeOverlay
-        }
-        .gesture(marqueeGesture)
     }
 
     private func assetCell(for asset: MediaAsset) -> some View {
