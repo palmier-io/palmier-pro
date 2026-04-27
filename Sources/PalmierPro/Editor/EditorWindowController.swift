@@ -45,6 +45,12 @@ final class EditorWindowController: NSWindowController {
         let shift = mods.contains(.shift)
         let cmd = mods.contains(.command)
 
+        if editorViewModel.focusedPanel == .media, !shift,
+           let direction = mediaArrowDirection(for: event.keyCode) {
+            editorViewModel.moveMediaSelection(direction: direction)
+            return true
+        }
+
         switch event.keyCode {
         case 49: // Space
             editorViewModel.togglePlayback()
@@ -108,6 +114,16 @@ final class EditorWindowController: NSWindowController {
 
         default:
             return false
+        }
+    }
+
+    private func mediaArrowDirection(for keyCode: UInt16) -> EditorViewModel.MediaSelectionDirection? {
+        switch keyCode {
+        case 123: .left
+        case 124: .right
+        case 125: .down
+        case 126: .up
+        default: nil
         }
     }
 

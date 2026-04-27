@@ -86,6 +86,43 @@ extension EditorViewModel {
         return mediaResolver.displayName(for: clip.mediaRef)
     }
 
+    enum MediaSelectionDirection {
+        case left, right, up, down
+
+        func step(columnCount: Int) -> Int {
+            switch self {
+            case .left: -1
+            case .right: +1
+            case .up: -columnCount
+            case .down: +columnCount
+            }
+        }
+
+        var startsFromEnd: Bool { self == .left || self == .up }
+    }
+
+    func moveMediaSelection(direction: MediaSelectionDirection) {
+        let ordered = mediaPanelOrderedIds
+        guard !ordered.isEmpty else { return }
+
+        let next: String
+        if let anchor = ordered.last(where: { selectedMediaAssetIds.contains($0) }),
+           let idx = ordered.firstIndex(of: anchor) {
+            let raw = idx + direction.step(columnCount: max(1, mediaPanelColumnCount))
+            let target = max(0, min(ordered.count - 1, raw))
+            guard target != idx else { return }
+            next = ordered[target]
+        } else {
+            next = direction.startsFromEnd ? ordered[ordered.count - 1] : ordered[0]
+        }
+
+        selectedMediaAssetIds = [next]
+        mediaPanelScrollTarget = next
+        if let asset = mediaAssets.first(where: { $0.id == next }) {
+            openPreviewTab(for: asset)
+        }
+    }
+
     func renameMediaAsset(id: String, name: String) {
         guard let asset = mediaAssets.first(where: { $0.id == id }) else { return }
         let oldName = asset.name
