@@ -13,7 +13,12 @@ struct MCPInstructionsPane: View {
         {
           "mcpServers": {
             "palmier-pro": {
-              "url": "\(serverURL)"
+              "command": "npx",
+              "args": [
+                "-y",
+                "mcp-remote",
+                "\(serverURL)/mcp"
+              ]
             }
           }
         }
@@ -29,7 +34,9 @@ struct MCPInstructionsPane: View {
 
                 claudeCodeSection
 
-                desktopSection
+                claudeDesktopSection
+
+                cursorSection
 
                 tipSection
             }
@@ -85,13 +92,23 @@ struct MCPInstructionsPane: View {
         }
     }
 
-    private var desktopSection: some View {
+    private var claudeDesktopSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionHeading("Connect from Claude Desktop or Cursor")
-            Text("Add this to your client's MCP config, then restart it:")
-                .font(.system(size: 11))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            sectionHeading("Connect from Claude Desktop")
+            stepRow(1, "Open Claude → Settings → Developer → Edit Config.")
+            stepRow(2, "Merge this into the file. If mcpServers already exists, add the palmier-pro entry alongside your other servers:")
             codeBlock(clientJSONConfig)
+            stepRow(3, "Save the file and fully quit + relaunch Claude Desktop. Palmier Pro should appear in the tools menu.")
+        }
+    }
+
+    private var cursorSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeading("Connect from Cursor")
+            stepRow(1, "Open Cursor Settings (⌘,) → Features → MCP → Add New MCP Server. Or edit ~/.cursor/mcp.json (global) or .cursor/mcp.json in your project root.")
+            stepRow(2, "Merge this into the file:")
+            codeBlock(clientJSONConfig)
+            stepRow(3, "Save the file. Cursor picks up the change on the next agent run — no restart needed, but reload the window if it doesn't show up.")
         }
     }
 
@@ -117,6 +134,19 @@ struct MCPInstructionsPane: View {
             .foregroundStyle(AppTheme.Text.tertiaryColor)
             .textCase(.uppercase)
             .tracking(0.3)
+    }
+
+    private func stepRow(_ number: Int, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("\(number).")
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .frame(width: 16, alignment: .trailing)
+            Text(text)
+                .font(.system(size: 11))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func codeBlock(_ content: String) -> some View {
