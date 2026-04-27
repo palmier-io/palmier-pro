@@ -13,11 +13,9 @@ struct AgentPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            GlassEffectContainer {
-                ZStack(alignment: .top) {
-                    messageList
-                    floatingTabBar
-                }
+            ZStack(alignment: .top) {
+                messageList
+                floatingTabBar
             }
             footer
         }
@@ -25,32 +23,34 @@ struct AgentPanelView: View {
     }
 
     private var floatingTabBar: some View {
-        HStack(spacing: AppTheme.Spacing.xs) {
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 2) {
-                        ForEach(service.openSessions) { session in
-                            ChatTabView(
-                                session: session,
-                                isActive: session.id == service.currentSessionId,
-                                onSelect: { service.selectSession(session.id) },
-                                onClose: { service.closeTab(session.id) }
-                            )
-                            .id(session.id)
+        GlassEffectContainer {
+            HStack(spacing: AppTheme.Spacing.xs) {
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 2) {
+                            ForEach(service.openSessions) { session in
+                                ChatTabView(
+                                    session: session,
+                                    isActive: session.id == service.currentSessionId,
+                                    onSelect: { service.selectSession(session.id) },
+                                    onClose: { service.closeTab(session.id) }
+                                )
+                                .id(session.id)
+                            }
                         }
                     }
+                    .onChange(of: service.currentSessionId) { _, new in
+                        guard let new else { return }
+                        withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(new, anchor: .center) }
+                    }
                 }
-                .onChange(of: service.currentSessionId) { _, new in
-                    guard let new else { return }
-                    withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(new, anchor: .center) }
-                }
+                newTabButton
+                historyButton
             }
-            newTabButton
-            historyButton
+            .padding(.horizontal, AppTheme.Spacing.sm)
+            .padding(.vertical, AppTheme.Spacing.xs)
+            .glassEffect(.regular, in: .capsule)
         }
-        .padding(.horizontal, AppTheme.Spacing.sm)
-        .padding(.vertical, AppTheme.Spacing.xs)
-        .glassEffect(.regular, in: .capsule)
         .padding(.horizontal, AppTheme.Spacing.sm)
         .padding(.top, AppTheme.Spacing.xs)
     }
