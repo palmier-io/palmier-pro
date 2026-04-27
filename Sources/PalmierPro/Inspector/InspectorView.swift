@@ -8,7 +8,6 @@ struct InspectorView: View {
         case text = "Text"
         case video = "Video"
         case audio = "Audio"
-        case speed = "Speed"
         case ai = "AI Edit"
     }
 
@@ -109,15 +108,12 @@ struct InspectorView: View {
 
     // MARK: - Clip Inspector
 
-    /// Tabs available for the current selection. Speed shows whenever any
-    /// clip is selected; Video/Audio only when their half is present.
     private var availableTabs: [ClipTab] {
         var tabs: [ClipTab] = []
         let isText = selectedVisualClip?.mediaType == .text
         if isText { tabs.append(.text) }
         if selectedVisualClip != nil && !isText { tabs.append(.video) }
         if selectedAudioClip != nil { tabs.append(.audio) }
-        if !isText && (selectedVisualClip != nil || selectedAudioClip != nil) { tabs.append(.speed) }
         if resolvedClipAsset != nil { tabs.append(.ai) }
         return tabs
     }
@@ -154,8 +150,6 @@ struct InspectorView: View {
                                 if let v = selectedVisualClip { videoTabContent(v) }
                             case .audio:
                                 if let a = selectedAudioClip { audioTabContent(a) }
-                            case .speed:
-                                if let s = selectedVisualClip ?? selectedAudioClip { speedTabContent(s) }
                             case .ai, .none:
                                 EmptyView()
                             }
@@ -245,6 +239,10 @@ struct InspectorView: View {
         ) { newVal in
             editor.commitClipProperty(clipId: vClip.id) { $0.opacity = newVal }
         }
+
+        if vClip.mediaType != .text {
+            speedSlider(currentSpeed: vClip.speed)
+        }
     }
 
     @ViewBuilder
@@ -266,14 +264,17 @@ struct InspectorView: View {
         ) { db in
             editor.commitClipProperty(clipId: aClip.id) { $0.volume = VolumeScale.linearFromDb(db) }
         }
+
+        if selectedVisualClip == nil {
+            speedSlider(currentSpeed: aClip.speed)
+        }
     }
 
-    @ViewBuilder
-    private func speedTabContent(_ clip: Clip) -> some View {
+    private func speedSlider(currentSpeed: Double) -> some View {
         InspectorSlider(
             icon: "gauge.with.dots.needle.67percent",
             label: "Speed",
-            value: clip.speed,
+            value: currentSpeed,
             range: 0.25...4.0,
             displayMultiplier: 1,
             valueSuffix: "x",
