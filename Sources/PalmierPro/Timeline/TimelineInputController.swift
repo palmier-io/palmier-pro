@@ -28,6 +28,22 @@ final class TimelineInputController {
         let point = view.convert(event.locationInWindow, from: nil)
         let scrollOffsetY = view.enclosingScrollView?.contentView.bounds.origin.y ?? 0
 
+        // Double-click a clip → reveal its source in the media panel + preview.
+        if event.clickCount == 2,
+           point.y >= scrollOffsetY + geometry.rulerHeight {
+            let ti = geometry.trackAt(y: point.y)
+            if let hit = hitTestClip(at: point, trackIndex: ti, geometry: geometry) {
+                let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
+                if let asset = editor.mediaAssets.first(where: { $0.id == clip.mediaRef }) {
+                    editor.selectedMediaAssetIds = [asset.id]
+                    editor.openPreviewTab(for: asset)
+                    dragState = .idle
+                    view.needsDisplay = true
+                    return
+                }
+            }
+        }
+
         // Any click on the timeline switches back to the Timeline preview tab
         if editor.activePreviewTab != .timeline {
             editor.selectPreviewTab(id: PreviewTab.timeline.id)
