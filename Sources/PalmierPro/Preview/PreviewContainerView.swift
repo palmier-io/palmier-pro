@@ -26,7 +26,11 @@ struct PreviewContainerView: View {
                     if isImage {
                         imagePreview
                     }
-                    TransformOverlayView()
+                    if editor.cropEditingActive {
+                        CropOverlayView()
+                    } else {
+                        TransformOverlayView()
+                    }
                 }
                 .frame(width: scaledWidth, height: scaledHeight)
                 .overlay(

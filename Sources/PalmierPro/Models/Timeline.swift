@@ -83,11 +83,18 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var volume: Double = 1.0
     var opacity: Double = 1.0
     var transform: Transform = Transform()
+    var crop: Crop = Crop()
     var linkGroupId: String?
 
     // Text clips only. nil for every other clip kind.
     var textContent: String?
     var textStyle: TextStyle?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, mediaRef, mediaType, sourceClipType, startFrame, durationFrames
+        case trimStartFrame, trimEndFrame, speed, volume, opacity, transform, crop
+        case linkGroupId, textContent, textStyle
+    }
 
     /// Frame where this clip ends on the timeline
     var endFrame: Int { startFrame + durationFrames }
@@ -106,6 +113,30 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         let frame = Int((Double(startFrame) + offsetFromTrim / max(speed, 0.0001)).rounded())
         guard frame >= startFrame && frame < endFrame else { return nil }
         return frame
+    }
+}
+
+extension Clip {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString,
+            mediaRef: try c.decode(String.self, forKey: .mediaRef),
+            mediaType: (try? c.decode(ClipType.self, forKey: .mediaType)) ?? .video,
+            sourceClipType: (try? c.decode(ClipType.self, forKey: .sourceClipType)) ?? .video,
+            startFrame: try c.decode(Int.self, forKey: .startFrame),
+            durationFrames: try c.decode(Int.self, forKey: .durationFrames),
+            trimStartFrame: (try? c.decode(Int.self, forKey: .trimStartFrame)) ?? 0,
+            trimEndFrame: (try? c.decode(Int.self, forKey: .trimEndFrame)) ?? 0,
+            speed: (try? c.decode(Double.self, forKey: .speed)) ?? 1.0,
+            volume: (try? c.decode(Double.self, forKey: .volume)) ?? 1.0,
+            opacity: (try? c.decode(Double.self, forKey: .opacity)) ?? 1.0,
+            transform: (try? c.decode(Transform.self, forKey: .transform)) ?? Transform(),
+            crop: (try? c.decode(Crop.self, forKey: .crop)) ?? Crop(),
+            linkGroupId: try? c.decode(String.self, forKey: .linkGroupId),
+            textContent: try? c.decode(String.self, forKey: .textContent),
+            textStyle: try? c.decode(TextStyle.self, forKey: .textStyle)
+        )
     }
 }
 
@@ -191,5 +222,47 @@ struct Transform: Codable, Sendable, Equatable {
             snappedY = true
         }
         return (snappedX, snappedY)
+    }
+}
+
+/// Per-clip crop as edge insets in normalized (0–1) source coordinates.
+struct Crop: Codable, Sendable, Equatable {
+    var left: Double = 0
+    var top: Double = 0
+    var right: Double = 0
+    var bottom: Double = 0
+
+    var isIdentity: Bool { left == 0 && top == 0 && right == 0 && bottom == 0 }
+    var visibleWidthFraction: Double { max(0, 1 - left - right) }
+    var visibleHeightFraction: Double { max(0, 1 - top - bottom) }
+}
+
+/// Aspect-ratio constraint for the Crop overlay.
+enum CropAspectLock: Hashable, CaseIterable {
+    case free, original, r16x9, r9x16, r1x1, r4x3, r3x4, r21x9
+
+    var label: String {
+        switch self {
+        case .free: "Custom"
+        case .original: "Original"
+        case .r16x9: "16:9"
+        case .r9x16: "9:16"
+        case .r1x1: "1:1"
+        case .r4x3: "4:3"
+        case .r3x4: "3:4"
+        case .r21x9: "21:9"
+        }
+    }
+
+    var pixelAspect: Double? {
+        switch self {
+        case .free, .original: nil
+        case .r16x9: 16.0 / 9.0
+        case .r9x16: 9.0 / 16.0
+        case .r1x1: 1.0
+        case .r4x3: 4.0 / 3.0
+        case .r3x4: 3.0 / 4.0
+        case .r21x9: 21.0 / 9.0
+        }
     }
 }

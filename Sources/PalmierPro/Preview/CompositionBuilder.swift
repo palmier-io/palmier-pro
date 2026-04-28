@@ -200,6 +200,16 @@ enum CompositionBuilder {
                             .concatenating(CGAffineTransform(translationX: tl.x * renderSize.width, y: tl.y * renderSize.height)),
                         at: start
                     )
+                    let cp = clip.crop
+                    liConfig.setCropRectangle(
+                        CGRect(
+                            x: cp.left * natSize.width,
+                            y: cp.top * natSize.height,
+                            width: max(1, cp.visibleWidthFraction * natSize.width),
+                            height: max(1, cp.visibleHeightFraction * natSize.height)
+                        ),
+                        at: start
+                    )
                 }
             }
             if mapping.endTime < compositionDuration {

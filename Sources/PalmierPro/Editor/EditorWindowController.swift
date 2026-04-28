@@ -103,7 +103,18 @@ final class EditorWindowController: NSWindowController {
             }
             return false
 
+        case 36: // Return / Enter
+            if editorViewModel.cropEditingActive {
+                editorViewModel.cropEditingActive = false
+                return true
+            }
+            return false
+
         case 53: // Escape
+            if editorViewModel.cropEditingActive {
+                editorViewModel.cropEditingActive = false
+                return true
+            }
             if editorViewModel.maximizedPanel != nil {
                 editorViewModel.maximizedPanel = nil
                 return true
