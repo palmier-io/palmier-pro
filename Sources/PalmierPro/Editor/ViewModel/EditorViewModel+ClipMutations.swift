@@ -136,12 +136,16 @@ extension EditorViewModel {
         var left = clip
         left.durationFrames = splitOffset
         left.trimEndFrame = clip.trimEndFrame + rightSource
+        left.audioFadeOutFrames = 0
+        left.audioFadeInFrames = left.clampedFade(left.audioFadeInFrames, edge: .left)
 
         var right = clip
         right.id = UUID().uuidString
         right.startFrame = atFrame
         right.durationFrames = clip.durationFrames - splitOffset
         right.trimStartFrame = clip.trimStartFrame + leftSource
+        right.audioFadeInFrames = 0
+        right.audioFadeOutFrames = right.clampedFade(right.audioFadeOutFrames, edge: .right)
 
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = left
         timeline.tracks[loc.trackIndex].clips.append(right)
@@ -227,6 +231,7 @@ extension EditorViewModel {
 
         timeline.tracks[ti].clips[loc.clipIndex].speed = newSpeed
         timeline.tracks[ti].clips[loc.clipIndex].durationFrames = newDuration
+        timeline.tracks[ti].clips[loc.clipIndex].clampFadesToDuration()
 
         let rippleDelta = (clip.startFrame + newDuration) - oldEnd
         if rippleDelta != 0 {
@@ -535,6 +540,7 @@ extension EditorViewModel {
                     mutateClips(ids: [clipId], actionName: "Trim Clip") {
                         $0.trimEndFrame = newTrimEnd
                         $0.durationFrames = newDuration
+                        $0.clampFadesToDuration()
                     }
                 }
 
@@ -543,6 +549,7 @@ extension EditorViewModel {
                     $0.startFrame = newStartFrame
                     $0.trimStartFrame = newTrimStart
                     $0.durationFrames = newDuration
+                    $0.clampFadesToDuration()
                 }
 
             case .split(let clipId, _, _, _, _, _):

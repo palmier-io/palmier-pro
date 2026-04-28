@@ -34,6 +34,9 @@ extension EditorViewModel {
                     timeline.tracks[ti].clips[ci].durationFrames = max(1, Int((Double(clip.durationFrames) * scale).rounded()))
                     timeline.tracks[ti].clips[ci].trimStartFrame = Int((Double(clip.trimStartFrame) * scale).rounded())
                     timeline.tracks[ti].clips[ci].trimEndFrame = Int((Double(clip.trimEndFrame) * scale).rounded())
+                    timeline.tracks[ti].clips[ci].audioFadeInFrames = Int((Double(clip.audioFadeInFrames) * scale).rounded())
+                    timeline.tracks[ti].clips[ci].audioFadeOutFrames = Int((Double(clip.audioFadeOutFrames) * scale).rounded())
+                    timeline.tracks[ti].clips[ci].clampFadesToDuration()
                 }
             }
         }

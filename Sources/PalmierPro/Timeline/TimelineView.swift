@@ -214,6 +214,11 @@ final class TimelineView: NSView {
             }
         }()
 
+        let fadeDrag: DragState.AudioFadeDrag? = {
+            if case .audioFade(let drag) = inputController.dragState { return drag }
+            return nil
+        }()
+
         let allDraggedIds: Set<String> = {
             guard let drag = moveDrag else { return [] }
             return Set(drag.all.map(\.clipId))
@@ -288,9 +293,13 @@ final class TimelineView: NSView {
                 }
 
                 // Normal clip
-                let rect = geo.clipRect(for: clip, trackIndex: ti)
+                var renderClip = clip
+                if let fd = fadeDrag, fd.clipId == clip.id {
+                    renderClip[keyPath: fd.edge.fadeKeyPath] = fd.resolvedFadeFrames(for: clip)
+                }
+                let rect = geo.clipRect(for: renderClip, trackIndex: ti)
                 guard rect.intersects(dirtyRect) else { continue }
-                ClipRenderer.draw(clip, type: clip.mediaType, in: rect,
+                ClipRenderer.draw(renderClip, type: renderClip.mediaType, in: rect,
                                   isSelected: isSelected, context: ctx,
                                   cache: editor.mediaVisualCache,
                                   displayName: editor.clipDisplayLabel(for: clip),

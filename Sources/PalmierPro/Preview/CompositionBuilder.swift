@@ -172,8 +172,22 @@ enum CompositionBuilder {
                 return params
             }
             for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) {
-                let start = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
-                params.setVolume(Float(clip.volume), at: start)
+                let v = Float(clip.volume)
+                let dur = clip.durationFrames
+                let fIn = max(0, min(clip.audioFadeInFrames, dur))
+                let fOut = max(0, min(clip.audioFadeOutFrames, dur - fIn))
+                let startT = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
+                let endT = CMTime(value: CMTimeValue(clip.startFrame + dur), timescale: timescale)
+                if fIn > 0 {
+                    let kneeT = CMTime(value: CMTimeValue(clip.startFrame + fIn), timescale: timescale)
+                    params.setVolumeRamp(fromStartVolume: 0, toEndVolume: v, timeRange: CMTimeRange(start: startT, end: kneeT))
+                } else {
+                    params.setVolume(v, at: startT)
+                }
+                if fOut > 0 {
+                    let kneeT = CMTime(value: CMTimeValue(clip.startFrame + dur - fOut), timescale: timescale)
+                    params.setVolumeRamp(fromStartVolume: v, toEndVolume: 0, timeRange: CMTimeRange(start: kneeT, end: endT))
+                }
             }
             return params
         }

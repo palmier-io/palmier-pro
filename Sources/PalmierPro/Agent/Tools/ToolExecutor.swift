@@ -448,7 +448,11 @@ final class ToolExecutor {
             var changed: [String] = []
             editor.commitClipProperty(clipId: u.clipId) { clip in
                 if let v = u.startFrame { clip.startFrame = v; changed.append("startFrame") }
-                if let v = u.durationFrames { clip.durationFrames = v; changed.append("durationFrames") }
+                if let v = u.durationFrames {
+                    clip.durationFrames = v
+                    clip.clampFadesToDuration()
+                    changed.append("durationFrames")
+                }
                 if let v = u.trimStartFrame { clip.trimStartFrame = v; changed.append("trimStartFrame") }
                 if let v = u.trimEndFrame { clip.trimEndFrame = v; changed.append("trimEndFrame") }
                 if let v = u.speed { clip.speed = v; changed.append("speed") }

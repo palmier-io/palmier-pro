@@ -81,6 +81,8 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var trimEndFrame: Int = 0
     var speed: Double = 1.0
     var volume: Double = 1.0
+    var audioFadeInFrames: Int = 0
+    var audioFadeOutFrames: Int = 0
     var opacity: Double = 1.0
     var transform: Transform = Transform()
     var crop: Crop = Crop()
@@ -92,7 +94,8 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case id, mediaRef, mediaType, sourceClipType, startFrame, durationFrames
-        case trimStartFrame, trimEndFrame, speed, volume, opacity, transform, crop
+        case trimStartFrame, trimEndFrame, speed, volume, audioFadeInFrames, audioFadeOutFrames
+        case opacity, transform, crop
         case linkGroupId, textContent, textStyle
     }
 
@@ -116,7 +119,31 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     }
 }
 
+enum FadeEdge: CaseIterable {
+    case left, right
+
+    var fadeKeyPath: WritableKeyPath<Clip, Int> {
+        switch self {
+        case .left: \Clip.audioFadeInFrames
+        case .right: \Clip.audioFadeOutFrames
+        }
+    }
+}
+
 extension Clip {
+    /// Clamp a proposed fade frame count to fit alongside the opposite edge's existing fade.
+    func clampedFade(_ frames: Int, edge: FadeEdge) -> Int {
+        let other = self[keyPath: edge == .left ? \Clip.audioFadeOutFrames : \Clip.audioFadeInFrames]
+        let cap = max(0, durationFrames - other)
+        return max(0, min(cap, frames))
+    }
+
+    /// Clamp both fades to fit within current `durationFrames`. Call after any mutation that shrinks duration.
+    mutating func clampFadesToDuration() {
+        audioFadeInFrames = max(0, min(audioFadeInFrames, durationFrames))
+        audioFadeOutFrames = max(0, min(audioFadeOutFrames, durationFrames - audioFadeInFrames))
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
@@ -130,6 +157,8 @@ extension Clip {
             trimEndFrame: (try? c.decode(Int.self, forKey: .trimEndFrame)) ?? 0,
             speed: (try? c.decode(Double.self, forKey: .speed)) ?? 1.0,
             volume: (try? c.decode(Double.self, forKey: .volume)) ?? 1.0,
+            audioFadeInFrames: (try? c.decode(Int.self, forKey: .audioFadeInFrames)) ?? 0,
+            audioFadeOutFrames: (try? c.decode(Int.self, forKey: .audioFadeOutFrames)) ?? 0,
             opacity: (try? c.decode(Double.self, forKey: .opacity)) ?? 1.0,
             transform: (try? c.decode(Transform.self, forKey: .transform)) ?? Transform(),
             crop: (try? c.decode(Crop.self, forKey: .crop)) ?? Crop(),
