@@ -71,6 +71,10 @@ struct InspectorView: View {
             } else if preferredTab == .text {
                 preferredTab = .video
             }
+            editor.cropEditingActive = false
+        }
+        .onChange(of: preferredTab) { _, newTab in
+            if newTab != .video { editor.cropEditingActive = false }
         }
     }
 
@@ -220,6 +224,10 @@ struct InspectorView: View {
         let clips = nonTextVisualClips
         frameSection(clips: clips)
 
+        if !clips.isEmpty {
+            cropSection(clip: clips.count == 1 ? clips.first : nil)
+        }
+
         InspectorSlider(
             icon: "arrow.up.left.and.arrow.down.right",
             label: "Scale",
@@ -330,10 +338,10 @@ struct InspectorView: View {
     private func frameSection(clips: [Clip]) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             HStack {
-                Image(systemName: "crop")
+                Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
-                Text("Frame")
+                Text("Transform")
                     .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                 Spacer()
@@ -361,6 +369,106 @@ struct InspectorView: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Crop Section
+
+    @ViewBuilder
+    private func cropSection(clip: Clip?) -> some View {
+        let editing = editor.cropEditingActive && clip != nil
+        let cropped = clip.map { !$0.crop.isIdentity } ?? false
+        let multi = clip == nil
+
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            HStack {
+                Button {
+                    editor.cropEditingActive.toggle()
+                } label: {
+                    HStack(spacing: AppTheme.Spacing.xs) {
+                        Image(systemName: "crop.rotate")
+                            .font(.system(size: AppTheme.FontSize.sm))
+                            .foregroundStyle(editing ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
+                        Text("Crop")
+                            .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                            .foregroundStyle(AppTheme.Text.primaryColor)
+                        if !multi {
+                            Image(systemName: editing ? "chevron.up" : "chevron.down")
+                                .font(.system(size: AppTheme.FontSize.xs))
+                                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(multi)
+                .help(multi ? "Crop applies to one clip at a time" : (editing ? "Exit crop editing" : "Edit crop"))
+
+                Spacer()
+
+                if let clip, cropped {
+                    Button {
+                        editor.commitClipProperty(clipId: clip.id) { $0.crop = Crop() }
+                        editor.cropAspectLock = .free
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: AppTheme.FontSize.sm))
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+                            .frame(width: 22, height: 22)
+                            .hoverHighlight()
+                    }
+                    .buttonStyle(.plain)
+                    .help("Reset crop")
+                }
+            }
+            .opacity(multi ? 0.4 : 1)
+
+            if editing, let clip {
+                cropPresetRow(clip: clip)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func cropPresetRow(clip: Clip) -> some View {
+        let active = editor.cropAspectLock
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 56), spacing: AppTheme.Spacing.xs)],
+            alignment: .leading,
+            spacing: AppTheme.Spacing.xs
+        ) {
+            ForEach(CropAspectLock.allCases, id: \.self) { preset in
+                let isActive = preset == active
+                Button {
+                    applyCropPreset(preset, on: clip)
+                } label: {
+                    Text(preset.label)
+                        .font(.system(size: AppTheme.FontSize.xs, weight: isActive ? .medium : .regular))
+                        .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 24)
+                        .background(
+                            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                                .fill(isActive ? Color.white.opacity(0.10) : Color.white.opacity(0.04))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func applyCropPreset(_ preset: CropAspectLock, on clip: Clip) {
+        editor.cropAspectLock = preset
+        switch preset {
+        case .free:
+            // Don't mutate crop; user keeps current shape and drags freely.
+            break
+        case .original:
+            editor.commitClipProperty(clipId: clip.id) { $0.crop = Crop() }
+        default:
+            guard let target = preset.pixelAspect else { return }
+            let newCrop = editor.cropFittingAspect(for: clip, targetPixelAspect: target)
+            editor.commitClipProperty(clipId: clip.id) { $0.crop = newCrop }
         }
     }
 

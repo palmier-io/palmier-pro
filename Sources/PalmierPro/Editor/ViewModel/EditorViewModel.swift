@@ -51,6 +51,8 @@ final class EditorViewModel {
     var pendingReplacements: Set<String> = []
     var showHelp: Bool = false
     var helpTab: HelpTab = .shortcuts
+    var cropEditingActive: Bool = false
+    var cropAspectLock: CropAspectLock = .free
     var previewTabs: [PreviewTab] = [.timeline]
     var activePreviewTabId: String = PreviewTab.timeline.id
     var sourcePlayheadFrame: Int = 0
@@ -296,6 +298,25 @@ final class EditorViewModel {
               sw > 0, sh > 0 else { return nil }
         let canvasAspect = Double(timeline.width) / Double(timeline.height)
         return (Double(sw) / Double(sh)) / canvasAspect
+    }
+
+    /// Largest centered crop of `target` aspect (w/h, source pixels) inside the clip's source.
+    /// Returns identity crop when source dimensions are unknown or already match.
+    func cropFittingAspect(for clip: Clip, targetPixelAspect target: Double) -> Crop {
+        guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }),
+              let sw = asset.sourceWidth, let sh = asset.sourceHeight,
+              sw > 0, sh > 0, target > 0 else { return Crop() }
+        let sourceAspect = Double(sw) / Double(sh)
+        if abs(sourceAspect - target) < 0.0001 { return Crop() }
+        if sourceAspect > target {
+            let visibleWidthFrac = target / sourceAspect
+            let inset = (1 - visibleWidthFrac) / 2
+            return Crop(left: inset, top: 0, right: inset, bottom: 0)
+        } else {
+            let visibleHeightFrac = sourceAspect / target
+            let inset = (1 - visibleHeightFrac) / 2
+            return Crop(left: 0, top: inset, right: 0, bottom: inset)
+        }
     }
 
     func removeClipInternal(id: String) {

@@ -367,17 +367,28 @@ extension EditorViewModel {
         let before = dragBefore.removeValue(forKey: clipId) ?? clip
         modify(&clip)
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
-        undoManager?.registerUndo(withTarget: self) { vm in
-            if let current = vm.findClip(id: clipId) {
-                vm.timeline.tracks[current.trackIndex].clips[current.clipIndex] = before
-            }
-        }
-        undoManager?.setActionName("Change Clip Property")
+        registerClipPropertySwap(clipId: clipId, undoTarget: before, redoTarget: clip)
         if clip.mediaType == .text {
             videoEngine?.syncTextLayers()
         } else {
             notifyTimelineChanged()
         }
+    }
+
+    /// Bidirectional undo/redo for a single clip's property change.
+    fileprivate func registerClipPropertySwap(clipId: String, undoTarget: Clip, redoTarget: Clip) {
+        undoManager?.registerUndo(withTarget: self) { vm in
+            if let loc = vm.findClip(id: clipId) {
+                vm.timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = undoTarget
+            }
+            vm.registerClipPropertySwap(clipId: clipId, undoTarget: redoTarget, redoTarget: undoTarget)
+            if undoTarget.mediaType == .text {
+                vm.videoEngine?.syncTextLayers()
+            } else {
+                vm.notifyTimelineChanged()
+            }
+        }
+        undoManager?.setActionName("Change Clip Property")
     }
 
     /// Flag the selected clip (and any linked clips sharing its `mediaRef`)
