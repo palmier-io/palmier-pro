@@ -2,7 +2,11 @@ import AppKit
 
 enum ClipRenderer {
 
-    private static let labelBarHeight: CGFloat = 16
+    static let labelBarHeight: CGFloat = 16
+
+    static let fadeHandleSize: CGFloat = 7        // visual square edge length
+    static let fadeHandleHitSize: CGFloat = 18    // hit zone edge length
+    static let fadeHandleEdgeInset: CGFloat = 9   // min offset from clip edge so handle never overlaps trim
 
     static func draw(
         _ clip: Clip,
@@ -56,6 +60,10 @@ enum ClipRenderer {
         } else if type == .audio, let samples = cache?.samples(for: clip.mediaRef), !samples.isEmpty {
             let audioRect = CGRect(x: contentX, y: contentY, width: contentWidth, height: mainHeight)
             drawWaveform(samples: samples, clip: clip, type: colorType, in: audioRect, context: context)
+        }
+
+        if type == .audio {
+            drawFadeHandles(clip: clip, in: rect, isSelected: isSelected, context: context)
         }
 
         // Color-coded left edge strip (uses the same source-type as the fill).
@@ -120,14 +128,56 @@ enum ClipRenderer {
         let color = (type.themeColor.blended(withFraction: 0.3, of: .white) ?? type.themeColor).withAlphaComponent(0.85).cgColor
         context.setFillColor(color)
 
+        let fadeIn = CGFloat(clip.audioFadeInFrames)
+        let fadeOut = CGFloat(clip.audioFadeOutFrames)
+        let dur = CGFloat(max(1, clip.durationFrames))
+        let frameStep = dur / CGFloat(barCount)
+        let invFadeIn = fadeIn > 0 ? 1 / fadeIn : 0
+        let invFadeOut = fadeOut > 0 ? 1 / fadeOut : 0
+        let volF = CGFloat(clip.volume)
+
         for i in 0..<barCount {
             let sampleIdx = i * visibleSamples.count / barCount
             let sample = visibleSamples[min(sampleIdx, visibleSamples.count - 1)]
             // sample: 0=loud, 1=silence — invert and scale by volume
-            let amplitude = min(1.0, CGFloat(1.0 - sample) * CGFloat(clip.volume))
+            let posFrames = CGFloat(i) * frameStep
+            let inMul: CGFloat = fadeIn > 0 ? min(1, posFrames * invFadeIn) : 1
+            let outMul: CGFloat = fadeOut > 0 ? min(1, (dur - posFrames) * invFadeOut) : 1
+            let envelope = min(inMul, outMul)
+            let amplitude = min(1.0, CGFloat(1.0 - sample) * volF * envelope)
             let barHeight = max(1, amplitude * (drawHeight - 2))
             let barY = drawRect.maxY - barHeight - 1
             context.fill(CGRect(x: drawRect.minX + CGFloat(i), y: barY, width: 1, height: barHeight))
+        }
+    }
+
+    // MARK: - Fade handles
+
+    private static func drawFadeHandles(clip: Clip, in rect: NSRect, isSelected: Bool, context: CGContext) {
+        let pxPerFrame = clip.durationFrames > 0 ? rect.width / CGFloat(clip.durationFrames) : 0
+        let alpha: CGFloat = isSelected ? 0.95 : (clip.audioFadeInFrames > 0 || clip.audioFadeOutFrames > 0 ? 0.75 : 0.0)
+        guard alpha > 0 else { return }
+
+        let envTop = rect.minY + labelBarHeight
+        let envBottom = rect.maxY - 1
+        let color = NSColor.white.withAlphaComponent(alpha).cgColor
+        let half = fadeHandleSize / 2
+
+        for edge in FadeEdge.allCases {
+            let frames = clip[keyPath: edge.fadeKeyPath]
+            let cx = TimelineGeometry.audioFadeHandleX(in: rect, fadeFrames: frames, edge: edge, pxPerFrame: pxPerFrame)
+
+            if frames > 0 {
+                let cornerX = edge == .left ? rect.minX : rect.maxX
+                context.setStrokeColor(color)
+                context.setLineWidth(1)
+                context.move(to: CGPoint(x: cornerX, y: envBottom))
+                context.addLine(to: CGPoint(x: cx, y: envTop))
+                context.strokePath()
+            }
+
+            context.setFillColor(color)
+            context.fill(CGRect(x: cx - half, y: envTop - half, width: fadeHandleSize, height: fadeHandleSize))
         }
     }
 

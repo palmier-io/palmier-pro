@@ -102,6 +102,7 @@ extension EditorViewModel {
         timeline.tracks[ti].clips[loc.clipIndex].trimEndFrame = trimEndFrame
         timeline.tracks[ti].clips[loc.clipIndex].startFrame = newStartFrame
         timeline.tracks[ti].clips[loc.clipIndex].durationFrames = newDuration
+        timeline.tracks[ti].clips[loc.clipIndex].clampFadesToDuration()
 
         sortClips(trackIndex: ti)
 

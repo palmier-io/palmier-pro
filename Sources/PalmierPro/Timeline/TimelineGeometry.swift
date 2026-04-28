@@ -129,4 +129,20 @@ struct TimelineGeometry {
     func xForFrame(_ frame: Int) -> Double {
         headerWidth + Double(frame) * pixelsPerFrame
     }
+
+    /// Centerline X of an audio fade handle
+    static func audioFadeHandleX(in clipRect: NSRect, fadeFrames: Int, edge: FadeEdge, pxPerFrame: CGFloat) -> CGFloat {
+        let fadePx = CGFloat(fadeFrames) * pxPerFrame
+        let inset = ClipRenderer.fadeHandleEdgeInset
+        let knee = max(inset, min(max(inset, clipRect.width - inset), fadePx))
+        return edge == .left ? clipRect.minX + knee : clipRect.maxX - knee
+    }
+
+    /// Hit rect for an audio fade handle
+    func audioFadeHandleRect(in clipRect: NSRect, fadeFrames: Int, edge: FadeEdge) -> NSRect {
+        let cx = Self.audioFadeHandleX(in: clipRect, fadeFrames: fadeFrames, edge: edge, pxPerFrame: pixelsPerFrame)
+        let cy = clipRect.minY + ClipRenderer.labelBarHeight
+        let half = ClipRenderer.fadeHandleHitSize / 2
+        return NSRect(x: cx - half, y: cy - half, width: half * 2, height: half * 2)
+    }
 }

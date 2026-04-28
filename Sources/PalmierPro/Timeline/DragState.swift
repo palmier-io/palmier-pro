@@ -9,7 +9,20 @@ enum DragState {
     case moveClip(MoveClipDrag)
     case trimLeft(TrimDrag)
     case trimRight(TrimDrag)
+    case audioFade(AudioFadeDrag)
     case marquee(MarqueeDrag)
+
+    struct AudioFadeDrag {
+        let clipId: String
+        let trackIndex: Int
+        let edge: FadeEdge
+        let originalFadeFrames: Int
+        var deltaFrames: Int = 0
+
+        func resolvedFadeFrames(for clip: Clip) -> Int {
+            clip.clampedFade(originalFadeFrames + deltaFrames, edge: edge)
+        }
+    }
 
     struct MoveClipDrag {
         /// Clip the user grabbed. Vertical drag only relocates this clip.

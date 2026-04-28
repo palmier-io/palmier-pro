@@ -99,9 +99,18 @@ final class TimelineInputController {
                 editor.selectedClipIds = linkedOn ? editor.expandToLinkGroup([clip.id]) : [clip.id]
             }
 
-            // Determine drag mode: trim left, trim right, or move
+            // Determine drag mode: trim left, trim right, fade, or move
             let localX = point.x - rect.minX
-            if localX <= Trim.handleWidth {
+            if !Self.isOnTrimZone(localX: localX, clipWidth: rect.width),
+               clip.mediaType == .audio,
+               let fadeEdge = audioFadeHandleHit(at: point, clip: clip, clipRect: rect) {
+                dragState = .audioFade(DragState.AudioFadeDrag(
+                    clipId: clip.id,
+                    trackIndex: hit.trackIndex,
+                    edge: fadeEdge,
+                    originalFadeFrames: clip[keyPath: fadeEdge.fadeKeyPath]
+                ))
+            } else if localX <= Trim.handleWidth {
                 dragState = .trimLeft(DragState.TrimDrag(
                     clipId: clip.id,
                     trackIndex: hit.trackIndex,
@@ -263,6 +272,18 @@ final class TimelineInputController {
             }
             dragState = .trimRight(drag)
 
+        case .audioFade(var drag):
+            guard editor.timeline.tracks.indices.contains(drag.trackIndex),
+                  let clip = editor.timeline.tracks[drag.trackIndex].clips.first(where: { $0.id == drag.clipId }) else {
+                break
+            }
+            let handleOriginFrame = drag.edge == .left
+                ? clip.startFrame + drag.originalFadeFrames
+                : clip.endFrame - drag.originalFadeFrames
+            let raw = frame - handleOriginFrame
+            drag.deltaFrames = drag.edge == .left ? raw : -raw
+            dragState = .audioFade(drag)
+
         case .marquee(var marq):
             marq.current = NSRect(
                 x: min(marq.origin.x, point.x),
@@ -357,6 +378,16 @@ final class TimelineInputController {
                 )
             }
 
+        case .audioFade(let drag):
+            if drag.deltaFrames != 0,
+               let loc = editor.findClip(id: drag.clipId) {
+                let liveClip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+                let resolved = drag.resolvedFadeFrames(for: liveClip)
+                editor.mutateClips(ids: [drag.clipId], actionName: drag.edge == .left ? "Fade In" : "Fade Out") {
+                    $0[keyPath: drag.edge.fadeKeyPath] = resolved
+                }
+            }
+
         case .marquee:
             break
 
@@ -423,12 +454,28 @@ final class TimelineInputController {
             let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
             let rect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
             let localX = point.x - rect.minX
-            if localX <= Trim.handleWidth || localX >= rect.width - Trim.handleWidth {
+            if Self.isOnTrimZone(localX: localX, clipWidth: rect.width) {
                 NSCursor.resizeLeftRight.set()
+                return
+            }
+            if clip.mediaType == .audio,
+               audioFadeHandleHit(at: point, clip: clip, clipRect: rect) != nil {
+                NSCursor.openHand.set()
                 return
             }
         }
         NSCursor.arrow.set()
+    }
+
+    private static func isOnTrimZone(localX: CGFloat, clipWidth: CGFloat) -> Bool {
+        localX <= Trim.handleWidth || localX >= clipWidth - Trim.handleWidth
+    }
+
+    private func audioFadeHandleHit(at point: NSPoint, clip: Clip, clipRect: NSRect) -> FadeEdge? {
+        let geo = view.geometry
+        return FadeEdge.allCases.first { edge in
+            geo.audioFadeHandleRect(in: clipRect, fadeFrames: clip[keyPath: edge.fadeKeyPath], edge: edge).contains(point)
+        }
     }
 
     // MARK: - Scroll wheel (Option+scroll = zoom)

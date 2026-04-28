@@ -294,8 +294,44 @@ struct InspectorView: View {
             }
         }
 
+        fadeSlider(audios: audios, edge: .left)
+        fadeSlider(audios: audios, edge: .right)
+
         if nonTextVisualClips.isEmpty {
             speedSlider(clips: audios)
+        }
+    }
+
+    @ViewBuilder
+    private func fadeSlider(audios: [Clip], edge: FadeEdge) -> some View {
+        let fps = editor.timeline.fps
+        let minDuration = audios.map(\.durationFrames).min() ?? 0
+        if minDuration > 0 {
+            let value = sharedClipValue(audios) { frameToSeconds(frame: $0[keyPath: edge.fadeKeyPath], fps: fps) }
+            InspectorSlider(
+                icon: edge.inspectorIcon,
+                label: edge.inspectorLabel,
+                value: value,
+                range: 0...frameToSeconds(frame: minDuration, fps: fps),
+                displayMultiplier: 1,
+                valueSuffix: "s",
+                format: "%.2f",
+                onChanged: { sec in
+                    let frames = secondsToFrame(seconds: sec, fps: fps)
+                    for c in audios {
+                        editor.applyClipProperty(clipId: c.id) {
+                            $0[keyPath: edge.fadeKeyPath] = $0.clampedFade(frames, edge: edge)
+                        }
+                    }
+                }
+            ) { sec in
+                let frames = secondsToFrame(seconds: sec, fps: fps)
+                commitToClips(audios, actionName: edge.inspectorLabel) { c in
+                    editor.commitClipProperty(clipId: c.id) {
+                        $0[keyPath: edge.fadeKeyPath] = $0.clampedFade(frames, edge: edge)
+                    }
+                }
+            }
         }
     }
 
@@ -657,6 +693,11 @@ func sharedClipValue<T: Equatable>(_ clips: [Clip], _ extract: (Clip) -> T) -> T
     let v = extract(first)
     for c in clips.dropFirst() where extract(c) != v { return nil }
     return v
+}
+
+private extension FadeEdge {
+    var inspectorIcon: String { self == .left ? "arrow.up.right" : "arrow.down.right" }
+    var inspectorLabel: String { self == .left ? "Fade In" : "Fade Out" }
 }
 
 // MARK: - Volume Scale
