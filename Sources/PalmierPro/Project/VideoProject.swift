@@ -13,12 +13,14 @@ final class VideoProject: NSDocument {
     /// Decoded off-main in read(), applied on main in makeWindowControllers.
     private nonisolated(unsafe) var loadedTimeline: Timeline?
     private nonisolated(unsafe) var loadedManifest: MediaManifest?
+    private nonisolated(unsafe) var loadedGenerationLog: GenerationLog?
 
     private nonisolated(unsafe) var packageWrapper = FileWrapper(directoryWithFileWrappers: [:])
 
     /// Captured on main thread in save(to:) before fileWrapper runs (possibly off-main).
     private nonisolated(unsafe) var snapshotTimeline: Data?
     private nonisolated(unsafe) var snapshotManifest: Data?
+    private nonisolated(unsafe) var snapshotGenerationLog: Data?
     private nonisolated(unsafe) var snapshotThumbnail: Data?
     private nonisolated(unsafe) var snapshotChatSessionFiles: [(name: String, data: Data)] = []
 
@@ -41,6 +43,9 @@ final class VideoProject: NSDocument {
         if let manifestData = fileWrapper.fileWrappers?[Project.manifestFilename]?.regularFileContents {
             loadedManifest = try? JSONDecoder().decode(MediaManifest.self, from: manifestData)
         }
+        if let logData = fileWrapper.fileWrappers?[Project.generationLogFilename]?.regularFileContents {
+            loadedGenerationLog = try? JSONDecoder().decode(GenerationLog.self, from: logData)
+        }
         Log.project.notice("read ok tracks=\(self.loadedTimeline?.tracks.count ?? 0)")
     }
 
@@ -51,6 +56,7 @@ final class VideoProject: NSDocument {
 
         snapshotTimeline = try? JSONEncoder().encode(editorViewModel.timeline)
         snapshotManifest = try? JSONEncoder().encode(editorViewModel.mediaManifest)
+        snapshotGenerationLog = try? JSONEncoder().encode(editorViewModel.generationLog)
         snapshotThumbnail = captureThumbnail()
         snapshotChatSessionFiles = editorViewModel.agentService.sessions.compactMap { session in
             ChatSessionStore.encodeSession(session).map { (name: "\(session.id.uuidString).json", data: $0) }
@@ -66,6 +72,7 @@ final class VideoProject: NSDocument {
 
         replaceChild(Project.timelineFilename, with: data)
         if let manifest = snapshotManifest { replaceChild(Project.manifestFilename, with: manifest) }
+        if let log = snapshotGenerationLog { replaceChild(Project.generationLogFilename, with: log) }
         if let thumb = snapshotThumbnail { replaceChild(Project.thumbnailFilename, with: thumb) }
         replaceChild(ChatSessionStore.dirName, with: chatDirWrapper())
         if let mediaDir = mediaDirWrapper() { replaceChild(Project.mediaDirectoryName, with: mediaDir) }
@@ -189,6 +196,12 @@ final class VideoProject: NSDocument {
             editorViewModel.mediaManifest = manifest
             loadedManifest = nil
             restoreAssetsFromManifest()
+        }
+        if let log = loadedGenerationLog {
+            editorViewModel.generationLog = log
+            loadedGenerationLog = nil
+        } else {
+            editorViewModel.seedGenerationLogFromAssets()
         }
     }
 

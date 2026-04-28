@@ -8,6 +8,7 @@ final class EditorViewModel {
 
     var timeline = Timeline()
     var mediaManifest = MediaManifest()
+    var generationLog = GenerationLog()
 
     // MARK: - Panel focus
 

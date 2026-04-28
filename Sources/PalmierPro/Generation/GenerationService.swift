@@ -282,6 +282,7 @@ final class GenerationService {
                             )
                             editor.mediaAssets[idx] = asset
                             editor.importMediaAsset(asset, skipAppend: true)
+                            editor.appendGenerationLog(for: asset)
                             await editor.finalizeImportedAsset(asset)
                             onComplete?(asset)
                             anyFinalized = true

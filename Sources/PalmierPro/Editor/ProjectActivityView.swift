@@ -52,7 +52,7 @@ struct ProjectActivityView: View {
 
     private func row(_ entry: GenerationLogEntry) -> some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            Image(systemName: entry.category.sfSymbolName)
+            Image(systemName: entry.sfSymbolName)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .frame(width: 14)
@@ -97,7 +97,7 @@ struct ProjectActivityButton: View {
         .buttonStyle(.plain)
         .help("Project Activity — \(CostEstimator.format(editor.totalGenerationCost)) used")
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
-            ProjectActivityView(entries: editor.generationLog)
+            ProjectActivityView(entries: editor.generationLogEntries)
         }
     }
 }
