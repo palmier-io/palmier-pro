@@ -1,54 +1,40 @@
 import Foundation
 
+/// Append-only record of every AI generation in the project. Persisted as `generation-log.json`
+struct GenerationLog: Codable, Sendable, Equatable {
+    var version: Int = 1
+    var entries: [GenerationLogEntry] = []
+}
+
 /// One row in the Project Activity log.
-struct GenerationLogEntry: Equatable, Identifiable {
-    enum Category: String {
-        case video, image, audio, upscale
-
-        var sfSymbolName: String {
-            switch self {
-            case .video:   "video.fill"
-            case .image:   "photo.fill"
-            case .audio:   "music.note"
-            case .upscale: "arrow.up.right.square.fill"
-            }
-        }
-    }
-
-    let id: String
-    let category: Category
-    let modelDisplayName: String
+struct GenerationLogEntry: Codable, Sendable, Equatable, Identifiable {
+    var id: String = UUID().uuidString
+    let model: String
     let cost: Double?
     let createdAt: Date?
 }
 
+@MainActor
+extension GenerationLogEntry {
+    var modelDisplayName: String {
+        ModelRegistry.displayName(for: model)
+    }
+
+    var sfSymbolName: String {
+        switch ModelRegistry.byId[model] {
+        case .video?:   "video.fill"
+        case .image?:   "photo.fill"
+        case .audio?:   "music.note"
+        case .upscale?: "arrow.up.right.square.fill"
+        case nil:       "sparkles"
+        }
+    }
+}
+
 extension EditorViewModel {
 
-    /// All AI-generated assets in the project, newest first.
-    var generationLog: [GenerationLogEntry] {
-        let rows: [GenerationLogEntry] = mediaAssets.compactMap { asset in
-            guard let gen = asset.generationInput else { return nil }
-            let model = ModelRegistry.byId[gen.model]
-            let category: GenerationLogEntry.Category
-            if case .upscale = model {
-                category = .upscale
-            } else {
-                switch asset.type {
-                case .video: category = .video
-                case .image: category = .image
-                case .audio: category = .audio
-                case .text: return nil
-                }
-            }
-            return GenerationLogEntry(
-                id: asset.id,
-                category: category,
-                modelDisplayName: model?.displayName ?? gen.model,
-                cost: gen.estimatedCost ?? CostEstimator.cost(for: gen),
-                createdAt: gen.createdAt
-            )
-        }
-        return rows.sorted { lhs, rhs in
+    var generationLogEntries: [GenerationLogEntry] {
+        generationLog.entries.sorted { lhs, rhs in
             switch (lhs.createdAt, rhs.createdAt) {
             case let (l?, r?): return l > r
             case (_?, nil): return true
@@ -58,11 +44,29 @@ extension EditorViewModel {
         }
     }
 
-    /// Sum of all known per-entry estimates.
     var totalGenerationCost: Double {
-        mediaAssets.reduce(0.0) { acc, asset in
-            guard let gen = asset.generationInput else { return acc }
-            return acc + (gen.estimatedCost ?? CostEstimator.cost(for: gen) ?? 0)
+        generationLog.entries.reduce(0.0) { $0 + ($1.cost ?? 0) }
+    }
+
+    func appendGenerationLog(for asset: MediaAsset) {
+        guard let gen = asset.generationInput else { return }
+        generationLog.entries.append(GenerationLogEntry(
+            model: gen.model,
+            cost: gen.estimatedCost ?? CostEstimator.cost(for: gen),
+            createdAt: gen.createdAt
+        ))
+    }
+
+    /// For old projects saved before the persistent log existed:
+    func seedGenerationLogFromAssets() {
+        guard generationLog.entries.isEmpty else { return }
+        generationLog.entries = mediaAssets.compactMap { asset in
+            guard let gen = asset.generationInput else { return nil }
+            return GenerationLogEntry(
+                model: gen.model,
+                cost: gen.estimatedCost ?? CostEstimator.cost(for: gen),
+                createdAt: gen.createdAt
+            )
         }
     }
 }
