@@ -173,9 +173,7 @@ final class TextLayerController {
         }
     }
 
-    /// `AVVideoCompositionCoreAnimationTool` ignores the model `opacity` on
-    /// early frames, so visibility must come from animations. `.both` on "on"
-    /// covers t=0 via backward fill; later-added "off" wins after `endFrame`.
+    /// Drives the layer's export-time opacity: 0 before `startFrame`, `clip.opacity` during, 0 after.
     private static func applyOpacityAnimation(
         to layer: CATextLayer,
         clip: Clip,
@@ -184,28 +182,34 @@ final class TextLayerController {
     ) {
         let fpsD = Double(max(1, fps))
         let opacity = Float(clip.opacity)
-        let startSec = Double(clip.startFrame) / fpsD
-        let endSec = min(totalSeconds, Double(clip.endFrame) / fpsD)
+        let total = max(0.001, totalSeconds)
+        let startFrac = min(1, max(0, Double(clip.startFrame) / fpsD / total))
+        let endFrac = min(1, max(0, Double(clip.endFrame) / fpsD / total))
 
-        let onAnim = CABasicAnimation(keyPath: "opacity")
-        onAnim.fromValue = opacity
-        onAnim.toValue = opacity
-        onAnim.beginTime = clip.startFrame > 0 ? startSec : AVCoreAnimationBeginTimeAtZero
-        onAnim.duration = max(0.001, endSec - startSec)
-        onAnim.fillMode = clip.startFrame > 0 ? .forwards : .both
-        onAnim.isRemovedOnCompletion = false
-        layer.add(onAnim, forKey: "on")
+        // Discrete keyframes: values[i] holds in [keyTimes[i], keyTimes[i+1]),
+        // so values.count == keyTimes.count - 1. https://developer.apple.com/documentation/quartzcore/cakeyframeanimation
+        var keyTimes: [NSNumber] = [0]
+        var values: [Float] = []
 
-        let remaining = totalSeconds - endSec
-        if remaining > 0 {
-            let offAnim = CABasicAnimation(keyPath: "opacity")
-            offAnim.fromValue = 0
-            offAnim.toValue = 0
-            offAnim.beginTime = endSec
-            offAnim.duration = remaining
-            offAnim.fillMode = .forwards
-            offAnim.isRemovedOnCompletion = false
-            layer.add(offAnim, forKey: "off")
+        if startFrac > 0 {
+            values.append(0)
+            keyTimes.append(NSNumber(value: startFrac))
         }
+        values.append(opacity)
+        if endFrac < 1 {
+            keyTimes.append(NSNumber(value: endFrac))
+            values.append(0)
+        }
+        keyTimes.append(1)
+
+        let anim = CAKeyframeAnimation(keyPath: "opacity")
+        anim.calculationMode = .discrete
+        anim.values = values
+        anim.keyTimes = keyTimes
+        anim.beginTime = AVCoreAnimationBeginTimeAtZero
+        anim.duration = total
+        anim.fillMode = .both
+        anim.isRemovedOnCompletion = false
+        layer.add(anim, forKey: "visibility")
     }
 }
