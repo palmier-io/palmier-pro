@@ -125,8 +125,19 @@ struct InspectorView: View {
         if isSingleText { tabs.append(.text) }
         if !nonText.isEmpty { tabs.append(.video) }
         if !audios.isEmpty { tabs.append(.audio) }
-        if isSingle, resolvedClipAsset != nil { tabs.append(.ai) }
+        if aiEditEligible { tabs.append(.ai) }
         return tabs
+    }
+
+    /// True when the selection resolves to a single AI-editable visual clip.
+    /// A linked video+audio pair counts as one
+    private var aiEditEligible: Bool {
+        let visuals = selectedVisualClips
+        let audios = selectedAudioClips
+        guard visuals.count == 1, resolvedClipAsset != nil else { return false }
+        if audios.isEmpty { return true }
+        let partners = Set(editor.linkedPartnerIds(of: visuals[0].id))
+        return audios.allSatisfy { partners.contains($0.id) }
     }
 
     /// Tab the view actually renders (preferred if valid, else first available).
