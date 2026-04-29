@@ -12,9 +12,16 @@ final class ToolExecutor {
     private static let readVideoFrameMaxDimension: CGFloat = 512
     private static let readVideoJPEGQuality: CGFloat = 0.7
 
-    weak var editor: EditorViewModel?
+    private let editorProvider: () -> EditorViewModel?
+    var editor: EditorViewModel? { editorProvider() }
 
-    init(editor: EditorViewModel) { self.editor = editor }
+    init(editor: EditorViewModel) {
+        self.editorProvider = { [weak editor] in editor }
+    }
+
+    init(editorProvider: @escaping () -> EditorViewModel?) {
+        self.editorProvider = editorProvider
+    }
 
     func execute(name: String, args: [String: Any]) async -> ToolResult {
         guard let tool = ToolName(rawValue: name) else {

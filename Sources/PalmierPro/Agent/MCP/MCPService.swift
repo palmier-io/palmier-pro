@@ -10,8 +10,8 @@ final class MCPService {
     private let toolExecutor: ToolExecutor
     private var httpServer: MCPHTTPServer?
 
-    init(editor: EditorViewModel) {
-        self.toolExecutor = ToolExecutor(editor: editor)
+    init(editorProvider: @escaping () -> EditorViewModel?) {
+        self.toolExecutor = ToolExecutor(editorProvider: editorProvider)
     }
 
     func start() {

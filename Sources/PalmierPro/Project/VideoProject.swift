@@ -8,7 +8,6 @@ final class VideoProject: NSDocument {
     static let typeIdentifier = Project.typeIdentifier
 
     let editorViewModel = EditorViewModel()
-    private var mcpService: MCPService?
 
     /// Decoded off-main in read(), applied on main in makeWindowControllers.
     private nonisolated(unsafe) var loadedTimeline: Timeline?
@@ -125,8 +124,6 @@ final class VideoProject: NSDocument {
     // MARK: - Close
 
     override func close() {
-        mcpService?.stop()
-        mcpService = nil
         super.close()
         DispatchQueue.main.async {
             if AppState.shared.activeProject === self {
@@ -188,9 +185,6 @@ final class VideoProject: NSDocument {
         addWindowController(controller)
 
         AppState.shared.showEditor(for: self)
-
-        mcpService = MCPService(editor: editorViewModel)
-        mcpService?.start()
 
         if let manifest = loadedManifest {
             editorViewModel.mediaManifest = manifest
