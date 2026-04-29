@@ -98,8 +98,10 @@ final class VideoEngine {
         pause()
         switch tab {
         case .timeline:
+            textController.textRoot.isHidden = false
             rebuild()
         case .mediaAsset(let id, _, let type):
+            textController.textRoot.isHidden = true
             guard let asset = editor.mediaAssets.first(where: { $0.id == id }) else { return }
             if type == .image {
                 player.replaceCurrentItem(with: nil)
@@ -155,12 +157,16 @@ final class VideoEngine {
 
     func syncTextLayers() {
         guard let editor, let previewView else { return }
+        guard editor.activePreviewTab == .timeline else {
+            textController.textRoot.isHidden = true
+            return
+        }
+        textController.textRoot.isHidden = false
         let canvas = CGSize(width: editor.timeline.width, height: editor.timeline.height)
         let videoRect = previewView.playerLayer.videoRect
         let resolvedRect = videoRect.isEmpty ? previewView.bounds : videoRect
         textController.sync(timeline: editor.timeline, canvasSize: canvas, videoRect: resolvedRect)
-        let frame = editor.activePreviewTab == .timeline ? editor.currentFrame : editor.sourcePlayheadFrame
-        textController.tick(frame)
+        textController.tick(editor.currentFrame)
     }
 
     /// Update only visual properties (transform, opacity, volume)
