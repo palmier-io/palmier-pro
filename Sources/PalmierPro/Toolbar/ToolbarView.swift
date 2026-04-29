@@ -36,7 +36,6 @@ struct ToolbarView: View {
             // Add content
             HStack(spacing: AppTheme.Spacing.md) {
                 textGlyphButton("T", help: "Add Text", action: { _ = editor.addTextClip() })
-                toolbarButton("camera", help: "Capture Frame to Media", action: editor.captureCurrentFrameToMedia)
             }
 
             Spacer()
