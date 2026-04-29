@@ -199,16 +199,14 @@ final class TimelineInputController {
                 snapIndicatorX = nil
                 drag.deltaFrames = candidateFrame - drag.lead.originalFrame
             }
-            // Vertical movement affects only the grabbed clip — a linked
-            // partner keeps its own track and just follows horizontally.
             let rawTarget = geometry.dropTargetAt(y: point.y)
-            if case .existingTrack(let targetTrack) = rawTarget {
-                let tracks = editor.timeline.tracks
-                let leadType = tracks[drag.lead.originalTrack].type
-                let landedTrack = tracks.indices.contains(targetTrack)
-                    && tracks[targetTrack].type.isCompatible(with: leadType)
-                    ? targetTrack : drag.lead.originalTrack
-                drag.dropTarget = .existingTrack(landedTrack)
+            let row: Int? = {
+                if case .existingTrack(let t) = rawTarget { return t }
+                return drag.companions.isEmpty ? nil : geometry.trackAt(y: point.y)
+            }()
+            if let row {
+                let clamped = clampedTrackDelta(for: drag, proposed: row - drag.lead.originalTrack)
+                drag.dropTarget = .existingTrack(drag.lead.originalTrack + clamped)
             } else {
                 drag.dropTarget = rawTarget
             }
@@ -335,9 +333,9 @@ final class TimelineInputController {
 
             switch drag.dropTarget {
             case .existingTrack:
-                // Lead changes track; companions keep their own.
+                let pinned = pinnedCompanionIds(for: drag)
                 editor.moveClips(drag.all.map { p in
-                    let destTrack = drag.isLead(p) ? p.originalTrack + trackDelta : p.originalTrack
+                    let destTrack = pinned.contains(p.clipId) ? p.originalTrack : p.originalTrack + trackDelta
                     return (p.clipId, destTrack, p.originalFrame + clampedDelta)
                 })
             case .newTrackAt(let insertIndex):
@@ -528,5 +526,34 @@ final class TimelineInputController {
 
     private func scrubToFrame(_ frame: Int) {
         editor.seekToFrame(frame, tolerant: true)
+    }
+
+    func pinnedCompanionIds(for drag: DragState.MoveClipDrag) -> Set<String> {
+        let clips = editor.timeline.tracks.flatMap(\.clips)
+        guard let leadLink = clips.first(where: { $0.id == drag.lead.clipId })?.linkGroupId else {
+            return []
+        }
+        return Set(clips.lazy.filter { $0.id != drag.lead.clipId && $0.linkGroupId == leadLink }.map(\.id))
+    }
+
+    /// Largest-magnitude delta in the direction of `proposed` that lands every
+    /// non-pinned participant on a valid, type-compatible track.
+    func clampedTrackDelta(for drag: DragState.MoveClipDrag, proposed: Int) -> Int {
+        let tracks = editor.timeline.tracks
+        let clipsById = Dictionary(uniqueKeysWithValues: tracks.flatMap(\.clips).map { ($0.id, $0) })
+        let pinned = pinnedCompanionIds(for: drag)
+        let movers = drag.all.filter { !pinned.contains($0.clipId) }
+        let step = proposed >= 0 ? -1 : 1
+        var d = proposed
+        while d != 0 {
+            let ok = movers.allSatisfy { p in
+                let dest = p.originalTrack + d
+                guard tracks.indices.contains(dest), let c = clipsById[p.clipId] else { return false }
+                return tracks[dest].type.isCompatible(with: c.mediaType)
+            }
+            if ok { return d }
+            d += step
+        }
+        return 0
     }
 }

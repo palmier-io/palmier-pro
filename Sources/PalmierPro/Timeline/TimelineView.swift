@@ -224,6 +224,12 @@ final class TimelineView: NSView {
             return Set(drag.all.map(\.clipId))
         }()
 
+        let moveTrackDelta = moveDrag.map { d -> Int in
+            if case .existingTrack(let i) = d.dropTarget { return i - d.lead.originalTrack }
+            return 0
+        } ?? 0
+        let movePinnedIds = moveDrag.map(inputController.pinnedCompanionIds(for:)) ?? []
+
         /// Linked partners that should mirror the trim preview live.
         let trimPartnerIds: Set<String> = {
             guard let (drag, _) = trimDrag, drag.propagateToLinked else { return [] }
@@ -259,7 +265,8 @@ final class TimelineView: NSView {
                     } else if isLead, let y = geo.ghostY(for: drag.dropTarget) {
                         ghostRect = geo.clipRect(for: ghostClip, atY: Double(y), height: Layout.trackHeight)
                     } else {
-                        ghostRect = geo.clipRect(for: ghostClip, trackIndex: ti)
+                        let pinned = movePinnedIds.contains(clip.id)
+                        ghostRect = geo.clipRect(for: ghostClip, trackIndex: pinned ? ti : ti + moveTrackDelta)
                     }
                     if ghostRect.intersects(dirtyRect) {
                         ClipRenderer.draw(ghostClip, type: clip.mediaType, in: ghostRect,
