@@ -8,6 +8,18 @@ final class AppState {
 
     private(set) var activeProject: VideoProject?
 
+    @ObservationIgnored
+    private var mcpService: MCPService?
+
+    func startMCPService() {
+        guard mcpService == nil else { return }
+        let service = MCPService(editorProvider: { [weak self] in
+            self?.activeProject?.editorViewModel
+        })
+        service.start()
+        mcpService = service
+    }
+
     func showHome() {
         guard let project = activeProject else {
             HomeWindowController.shared.showWindow(nil)

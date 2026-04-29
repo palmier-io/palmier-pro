@@ -12,8 +12,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Seed registry from default directory on first launch
         ProjectRegistry.shared.migrateDefaultDirectoryIfNeeded()
 
-        // Show the home screen on launch
         HomeWindowController.shared.showWindow(nil)
+
+        AppState.shared.startMCPService()
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
