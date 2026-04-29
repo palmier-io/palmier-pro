@@ -49,33 +49,40 @@ extension EditorViewModel {
             }
         }
 
-        undoManager?.beginUndoGrouping()
-        removeClips(ids: ids)
-        shiftsByTrack.values.forEach { $0.forEach(applyShiftWithUndo) }
-        undoManager?.endUndoGrouping()
-        undoManager?.setActionName("Ripple Delete")
+        withTimelineSwap(actionName: "Ripple Delete") {
+            removeClips(ids: ids)
+            shiftsByTrack.values.forEach { shifts in
+                shifts.forEach { shift in
+                    if let loc = findClip(id: shift.clipId) {
+                        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame = shift.newStartFrame
+                    }
+                }
+            }
+        }
     }
 
     /// Ripple insert: add clips at `atFrame` and push everything past it right by the
     /// insertion's duration on the target track and every sync-locked track.
     func rippleInsertClips(assets: [MediaAsset], trackIndex: Int, atFrame: Int) {
         guard timeline.tracks.indices.contains(trackIndex) else { return }
-        undoManager?.beginUndoGrouping()
-        let totalPush = assets.reduce(0) { $0 + secondsToFrame(seconds: $1.duration, fps: timeline.fps) }
+        withTimelineSwap(actionName: "Ripple Insert Clips") {
+            let totalPush = assets.reduce(0) { $0 + secondsToFrame(seconds: $1.duration, fps: timeline.fps) }
 
-        for ti in timeline.tracks.indices where ti == trackIndex || timeline.tracks[ti].syncLocked {
-            RippleEngine.computeRipplePush(
-                clips: timeline.tracks[ti].clips,
-                insertFrame: atFrame,
-                pushAmount: totalPush
-            ).forEach(applyShiftWithUndo)
+            for ti in timeline.tracks.indices where ti == trackIndex || timeline.tracks[ti].syncLocked {
+                let shifts = RippleEngine.computeRipplePush(
+                    clips: timeline.tracks[ti].clips,
+                    insertFrame: atFrame,
+                    pushAmount: totalPush
+                )
+                for shift in shifts {
+                    if let loc = findClip(id: shift.clipId) {
+                        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame = shift.newStartFrame
+                    }
+                }
+            }
+            createClips(from: assets, trackIndex: trackIndex, startFrame: atFrame)
+            sortClips(trackIndex: trackIndex)
         }
-        let clipIds = createClips(from: assets, trackIndex: trackIndex, startFrame: atFrame)
-        sortClips(trackIndex: trackIndex)
-        undoManager?.registerUndo(withTarget: self) { $0.removeClips(ids: Set(clipIds)) }
-        undoManager?.endUndoGrouping()
-        undoManager?.setActionName("Ripple Insert Clips")
-        notifyTimelineChanged()
     }
 
     // MARK: - Internal
@@ -112,21 +119,6 @@ extension EditorViewModel {
         undoManager?.endUndoGrouping()
         undoManager?.setActionName("Trim Clip")
         notifyTimelineChanged()
-    }
-
-    // MARK: - Shift plumbing
-
-    /// Apply a shift and register an undo that restores the prior startFrame.
-    fileprivate func applyShiftWithUndo(_ shift: ClipShift) {
-        guard let loc = findClip(id: shift.clipId) else { return }
-        let before = timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame
-        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame = shift.newStartFrame
-        let clipId = shift.clipId
-        undoManager?.registerUndo(withTarget: self) { vm in
-            if let l = vm.findClip(id: clipId) {
-                vm.timeline.tracks[l.trackIndex].clips[l.clipIndex].startFrame = before
-            }
-        }
     }
 
     // MARK: - Validation
