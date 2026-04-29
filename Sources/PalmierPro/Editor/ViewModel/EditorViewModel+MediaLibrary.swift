@@ -146,7 +146,6 @@ extension EditorViewModel {
         }
     }
 
-    /// Capture the current frame as a PNG.
     /// Text is composited via `CALayer.render` — `AVAssetImageGenerator`
     /// doesn't evaluate `animationTool` on single-frame extraction.
     func captureCurrentFrameToMedia() {
@@ -154,22 +153,40 @@ extension EditorViewModel {
             Log.project.error("captureCurrentFrameToMedia: no preview item")
             return
         }
+
+        let tab = activePreviewTab
+        let isTimelineTab: Bool
+        let frame: Int
+        let nameBase: String
+        switch tab {
+        case .timeline:
+            isTimelineTab = true
+            frame = currentFrame
+            nameBase = "Frame"
+        case .mediaAsset(let id, _, let type):
+            guard type == .video else { return }
+            isTimelineTab = false
+            frame = sourcePlayheadFrame
+            nameBase = mediaAssets.first(where: { $0.id == id })?.name ?? "Frame"
+        }
+
         let asset = currentItem.asset
         let timelineSnapshot = timeline
         let fps = timeline.fps
-        let frame = currentFrame
         let canvas = CGSize(width: timeline.width, height: timeline.height)
         let time = CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(fps))
 
-        nonisolated(unsafe) let unsafeComposition = currentItem.videoComposition
+        nonisolated(unsafe) let unsafeComposition = isTimelineTab ? currentItem.videoComposition : nil
 
         Task.detached {
             let generator = AVAssetImageGenerator(asset: asset)
             generator.appliesPreferredTrackTransform = true
             generator.requestedTimeToleranceBefore = .zero
             generator.requestedTimeToleranceAfter = .zero
-            generator.videoComposition = unsafeComposition
-            generator.maximumSize = canvas
+            if let unsafeComposition {
+                generator.videoComposition = unsafeComposition
+                generator.maximumSize = canvas
+            }
 
             let videoCG: CGImage
             do {
@@ -181,24 +198,30 @@ extension EditorViewModel {
 
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                let textRoot = TextLayerController.buildSnapshot(
-                    timeline: timelineSnapshot,
-                    canvasSize: canvas,
-                    atFrame: frame
-                )
-                guard let composited = Self.compositeCapture(
-                    video: videoCG, textRoot: textRoot, canvas: canvas
-                ) else {
-                    Log.project.error("captureCurrentFrameToMedia: composite failed")
-                    return
+                let finalCG: CGImage
+                if isTimelineTab {
+                    let textRoot = TextLayerController.buildSnapshot(
+                        timeline: timelineSnapshot,
+                        canvasSize: canvas,
+                        atFrame: frame
+                    )
+                    guard let composited = Self.compositeCapture(
+                        video: videoCG, textRoot: textRoot, canvas: canvas
+                    ) else {
+                        Log.project.error("captureCurrentFrameToMedia: composite failed")
+                        return
+                    }
+                    finalCG = composited
+                } else {
+                    finalCG = videoCG
                 }
-                let rep = NSBitmapImageRep(cgImage: composited)
+                let rep = NSBitmapImageRep(cgImage: finalCG)
                 guard let data = rep.representation(using: .png, properties: [:]) else {
                     Log.project.error("captureCurrentFrameToMedia: png encode failed")
                     return
                 }
                 guard let mediaAsset = self.importPastedImageData(data, fileExtension: "png") else { return }
-                mediaAsset.name = "Frame \(frame)"
+                mediaAsset.name = "\(nameBase) \(frame)"
                 if let idx = self.mediaManifest.entries.firstIndex(where: { $0.id == mediaAsset.id }) {
                     self.mediaManifest.entries[idx].name = mediaAsset.name
                 }

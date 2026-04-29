@@ -78,6 +78,9 @@ struct PreviewContainerView: View {
 
             Spacer()
 
+            if isTimeline || editor.activePreviewTab.clipType == .video {
+                captureFrameButton
+            }
             projectSettingsGroup
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
@@ -93,6 +96,20 @@ struct PreviewContainerView: View {
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .frame(height: 36)
+    }
+
+    // MARK: - Capture frame
+
+    private var captureFrameButton: some View {
+        Button(action: editor.captureCurrentFrameToMedia) {
+            Image(systemName: "camera")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .frame(width: 24, height: 24)
+                .hoverHighlight()
+                .help("Capture Frame to Media")
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Project settings
