@@ -221,7 +221,8 @@ extension EditorViewModel {
     fileprivate func setClipSpeed(at loc: ClipLocation, newSpeed: Double) {
         let ti = loc.trackIndex
         let clip = timeline.tracks[ti].clips[loc.clipIndex]
-        let sourceFrames = Double(clip.durationFrames) * clip.speed
+        let basis = dragBefore[clip.id] ?? clip
+        let sourceFrames = Double(basis.durationFrames) * basis.speed
         let newDuration = max(1, Int((sourceFrames / newSpeed).rounded()))
         let oldEnd = clip.endFrame
 
