@@ -249,7 +249,8 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(clip, type: clip.mediaType, in: originalRect,
                                           isSelected: false, opacity: 0.3, context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.clipDisplayLabel(for: clip))
+                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          fps: editor.timeline.fps)
                     }
 
                     let frameDelta = drag.deltaFrames
@@ -272,7 +273,8 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(ghostClip, type: clip.mediaType, in: ghostRect,
                                           isSelected: true, opacity: 0.7, context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.clipDisplayLabel(for: clip))
+                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          fps: editor.timeline.fps)
                     }
                     continue
                 }
@@ -294,7 +296,8 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(previewClip, type: clip.mediaType, in: previewRect,
                                           isSelected: isSelected, context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.clipDisplayLabel(for: clip))
+                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          fps: editor.timeline.fps)
                     }
                     continue
                 }
@@ -310,7 +313,8 @@ final class TimelineView: NSView {
                                   isSelected: isSelected, context: ctx,
                                   cache: editor.mediaVisualCache,
                                   displayName: editor.clipDisplayLabel(for: clip),
-                                  linkOffset: linkOffsets[clip.id])
+                                  linkOffset: linkOffsets[clip.id],
+                                  fps: editor.timeline.fps)
             }
         }
     }
@@ -386,7 +390,8 @@ final class TimelineView: NSView {
         for ghost in ghosts where ghost.rect.intersects(dirtyRect) {
             ClipRenderer.draw(ghost.clip, type: ghost.clip.mediaType, in: ghost.rect,
                               isSelected: true, opacity: 0.5, context: ctx,
-                              cache: editor.mediaVisualCache)
+                              cache: editor.mediaVisualCache,
+                              fps: editor.timeline.fps)
         }
     }
 
