@@ -7,11 +7,11 @@ extension EditorViewModel {
 
     @discardableResult
     func insertTrack(at index: Int, type: ClipType, label: String) -> Int {
-        let track = Track(type: type, label: label)
         let clamped = partitionedInsertionIndex(for: type, requested: index)
-        timeline.tracks.insert(track, at: clamped)
-        undoManager?.registerUndo(withTarget: self) { $0.removeTrack(id: track.id) }
-        undoManager?.setActionName("Add Track")
+        let track = Track(type: type, label: label)
+        withTimelineSwap(actionName: "Add Track") {
+            timeline.tracks.insert(track, at: clamped)
+        }
         return clamped
     }
 
@@ -30,17 +30,14 @@ extension EditorViewModel {
     }
 
     func removeTrack(id: String) {
-        guard let idx = timeline.tracks.firstIndex(where: { $0.id == id }) else { return }
-        let removed = timeline.tracks.remove(at: idx)
-        undoManager?.registerUndo(withTarget: self) { vm in
-            vm.timeline.tracks.insert(removed, at: min(idx, vm.timeline.tracks.count))
-            vm.undoManager?.setActionName("Add Track")
+        guard timeline.tracks.contains(where: { $0.id == id }) else { return }
+        withTimelineSwap(actionName: "Remove Track") {
+            timeline.tracks.removeAll { $0.id == id }
         }
-        undoManager?.setActionName("Remove Track")
     }
 
     func pruneEmptyTracks() {
-        timeline.tracks.filter(\.clips.isEmpty).forEach { removeTrack(id: $0.id) }
+        timeline.tracks.removeAll(where: \.clips.isEmpty)
     }
 
     // MARK: - Flag toggles

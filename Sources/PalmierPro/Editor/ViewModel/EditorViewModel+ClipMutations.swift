@@ -14,33 +14,29 @@ extension EditorViewModel {
             timeline.tracks.indices.contains($0) ? timeline.tracks[$0].id : nil
         }
 
-        undoManager?.beginUndoGrouping()
-        let totalDur = assets.reduce(0) { $0 + secondsToFrame(seconds: $1.duration, fps: timeline.fps) }
-        clearRegion(trackIndex: trackIndex, start: startFrame, end: startFrame + totalDur, prune: false)
-        if let aid = audioTrackId,
-           let audioIdx = timeline.tracks.firstIndex(where: { $0.id == aid }) {
-            clearRegion(trackIndex: audioIdx, start: startFrame, end: startFrame + totalDur, prune: false)
-        }
+        withTimelineSwap(actionName: "Add Clips") {
+            let totalDur = assets.reduce(0) { $0 + secondsToFrame(seconds: $1.duration, fps: timeline.fps) }
+            clearRegion(trackIndex: trackIndex, start: startFrame, end: startFrame + totalDur, prune: false)
+            if let aid = audioTrackId,
+               let audioIdx = timeline.tracks.firstIndex(where: { $0.id == aid }) {
+                clearRegion(trackIndex: audioIdx, start: startFrame, end: startFrame + totalDur, prune: false)
+            }
 
-        guard let resolvedTrackIndex = timeline.tracks.firstIndex(where: { $0.id == visualTrackId }) else {
+            guard let resolvedTrackIndex = timeline.tracks.firstIndex(where: { $0.id == visualTrackId }) else {
+                pruneEmptyTracks()
+                return
+            }
+            let resolvedAudioIndex: Int? = audioTrackId.flatMap { id in
+                timeline.tracks.firstIndex(where: { $0.id == id })
+            }
+
+            createClips(
+                from: assets, trackIndex: resolvedTrackIndex, startFrame: startFrame,
+                linkedAudioTrackIndex: resolvedAudioIndex
+            )
+            sortClips(trackIndex: resolvedTrackIndex)
             pruneEmptyTracks()
-            undoManager?.endUndoGrouping()
-            return
         }
-        let resolvedAudioIndex: Int? = audioTrackId.flatMap { id in
-            timeline.tracks.firstIndex(where: { $0.id == id })
-        }
-
-        let clipIds = createClips(
-            from: assets, trackIndex: resolvedTrackIndex, startFrame: startFrame,
-            linkedAudioTrackIndex: resolvedAudioIndex
-        )
-        sortClips(trackIndex: resolvedTrackIndex)
-        pruneEmptyTracks()
-        undoManager?.registerUndo(withTarget: self) { $0.removeClips(ids: Set(clipIds)) }
-        undoManager?.endUndoGrouping()
-        undoManager?.setActionName("Add Clips")
-        notifyTimelineChanged()
     }
 
     /// Moved clips share a single delta from the drag, so they don't collide with each other.
@@ -60,38 +56,34 @@ extension EditorViewModel {
         }
         guard !clipInfos.isEmpty else { return }
 
-        undoManager?.beginUndoGrouping()
-        let undoMoves = clipInfos.map { (clipId: $0.clip.id, toTrack: $0.fromTrack, toFrame: $0.clip.startFrame) }
-
-        // Pull moved clips off their source tracks first, so clearRegion on
-        // the destinations never touches them.
-        for info in clipInfos {
-            if let loc = findClip(id: info.clip.id) {
-                timeline.tracks[loc.trackIndex].clips.remove(at: loc.clipIndex)
+        let actionName = moves.count == 1 ? "Move Clip" : "Move Clips"
+        withTimelineSwap(actionName: actionName) {
+            // Pull moved clips off their source tracks first, so clearRegion on
+            // the destinations never touches them.
+            for info in clipInfos {
+                if let loc = findClip(id: info.clip.id) {
+                    timeline.tracks[loc.trackIndex].clips.remove(at: loc.clipIndex)
+                }
             }
-        }
 
-        // Trim / remove any non-moved clips blocking each destination range.
-        // Pin by id: clearRegion's pruneEmptyTracks can shift indices.
-        let toTrackIds = clipInfos.map { timeline.tracks[$0.toTrack].id }
-        for (i, info) in clipInfos.enumerated() {
-            guard let idx = timeline.tracks.firstIndex(where: { $0.id == toTrackIds[i] }) else { continue }
-            clearRegion(trackIndex: idx, start: info.toFrame, end: info.toFrame + info.clip.durationFrames, prune: false)
-        }
+            // Trim / remove any non-moved clips blocking each destination range.
+            // Pin by id: clearRegion's pruneEmptyTracks can shift indices.
+            let toTrackIds = clipInfos.map { timeline.tracks[$0.toTrack].id }
+            for (i, info) in clipInfos.enumerated() {
+                guard let idx = timeline.tracks.firstIndex(where: { $0.id == toTrackIds[i] }) else { continue }
+                clearRegion(trackIndex: idx, start: info.toFrame, end: info.toFrame + info.clip.durationFrames, prune: false)
+            }
 
-        // Drop each clip at its exact target frame.
-        for (i, info) in clipInfos.enumerated() {
-            guard let idx = timeline.tracks.firstIndex(where: { $0.id == toTrackIds[i] }) else { continue }
-            var clip = info.clip
-            clip.startFrame = info.toFrame
-            timeline.tracks[idx].clips.append(clip)
+            // Drop each clip at its exact target frame.
+            for (i, info) in clipInfos.enumerated() {
+                guard let idx = timeline.tracks.firstIndex(where: { $0.id == toTrackIds[i] }) else { continue }
+                var clip = info.clip
+                clip.startFrame = info.toFrame
+                timeline.tracks[idx].clips.append(clip)
+            }
+            for i in timeline.tracks.indices { sortClips(trackIndex: i) }
+            pruneEmptyTracks()
         }
-        for i in timeline.tracks.indices { sortClips(trackIndex: i) }
-        undoManager?.registerUndo(withTarget: self) { $0.moveClips(undoMoves) }
-        pruneEmptyTracks()
-        undoManager?.endUndoGrouping()
-        undoManager?.setActionName(moves.count == 1 ? "Move Clip" : "Move Clips")
-        notifyTimelineChanged()
     }
 
     // MARK: - Split / remove
@@ -162,27 +154,16 @@ extension EditorViewModel {
     }
 
     func removeClips(ids: Set<String>, prune: Bool = true) {
-        var removed: [(clip: Clip, trackIndex: Int)] = []
-        for i in timeline.tracks.indices {
-            let matching = timeline.tracks[i].clips.filter { ids.contains($0.id) }
-            for clip in matching { removed.append((clip, i)) }
-            timeline.tracks[i].clips.removeAll { ids.contains($0.id) }
-        }
-        guard !removed.isEmpty else { return }
+        let hasMatches = timeline.tracks.contains { t in t.clips.contains { ids.contains($0.id) } }
+        guard hasMatches else { return }
+        let count = timeline.tracks.reduce(0) { $0 + $1.clips.lazy.filter { ids.contains($0.id) }.count }
         selectedClipIds.subtract(ids)
-        undoManager?.beginUndoGrouping()
-        undoManager?.registerUndo(withTarget: self) { vm in
-            for entry in removed {
-                if vm.timeline.tracks.indices.contains(entry.trackIndex) {
-                    vm.timeline.tracks[entry.trackIndex].clips.append(entry.clip)
-                    vm.sortClips(trackIndex: entry.trackIndex)
-                }
+        withTimelineSwap(actionName: "Remove Clip\(count == 1 ? "" : "s")") {
+            for i in timeline.tracks.indices {
+                timeline.tracks[i].clips.removeAll { ids.contains($0.id) }
             }
+            if prune { pruneEmptyTracks() }
         }
-        if prune { pruneEmptyTracks() }
-        undoManager?.endUndoGrouping()
-        undoManager?.setActionName("Remove Clip\(removed.count == 1 ? "" : "s")")
-        notifyTimelineChanged()
     }
 
     // MARK: - Speed
@@ -213,13 +194,28 @@ extension EditorViewModel {
         registerTimelineSwap(undoState: before, redoState: after, actionName: "Change Speed")
     }
 
-    private func registerTimelineSwap(undoState: Timeline, redoState: Timeline, actionName: String) {
+    func registerTimelineSwap(undoState: Timeline, redoState: Timeline, actionName: String) {
         undoManager?.registerUndo(withTarget: self) { vm in
             vm.timeline = undoState
             vm.notifyTimelineChanged()
             vm.registerTimelineSwap(undoState: redoState, redoState: undoState, actionName: actionName)
         }
         undoManager?.setActionName(actionName)
+    }
+
+    /// Run `work` as a single atomic mutation, registering one timeline-swap undo
+    func withTimelineSwap(actionName: String, _ work: () -> Void) {
+        let before = timeline
+        undoManager?.disableUndoRegistration()
+        work()
+        undoManager?.enableUndoRegistration()
+        let after = timeline
+        guard before != after else { return }
+        // Skip when nested: an outer withTimelineSwap is still suppressing
+        // registrations and will capture our diff in its own swap.
+        guard undoManager?.isUndoRegistrationEnabled ?? true else { return }
+        registerTimelineSwap(undoState: before, redoState: after, actionName: actionName)
+        notifyTimelineChanged()
     }
 
     fileprivate func setClipSpeed(at loc: ClipLocation, newSpeed: Double) {
