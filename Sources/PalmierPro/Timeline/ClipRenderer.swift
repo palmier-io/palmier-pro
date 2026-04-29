@@ -17,7 +17,8 @@ enum ClipRenderer {
         context: CGContext,
         cache: MediaVisualCache? = nil,
         displayName: String? = nil,
-        linkOffset: Int? = nil
+        linkOffset: Int? = nil,
+        fps: Int
     ) {
         if opacity < 1.0 {
             context.saveGState()
@@ -53,7 +54,7 @@ enum ClipRenderer {
 
         if type == .video, let thumbs = cache?.thumbnails(for: clip.mediaRef), !thumbs.isEmpty, mainHeight > 4 {
             let thumbRect = CGRect(x: contentX, y: contentY, width: contentWidth, height: mainHeight)
-            drawThumbnailStrip(thumbnails: thumbs, clip: clip, in: thumbRect, clipRect: rect, cornerRadius: cornerRadius, context: context)
+            drawThumbnailStrip(thumbnails: thumbs, clip: clip, in: thumbRect, clipRect: rect, cornerRadius: cornerRadius, fps: fps, context: context)
         } else if type == .image, let image = cache?.imageThumbnail(for: clip.mediaRef), mainHeight > 4 {
             let thumbRect = CGRect(x: contentX, y: contentY, width: contentWidth, height: mainHeight)
             drawTiledImage(image: image, in: thumbRect, clipRect: rect, cornerRadius: cornerRadius, context: context)
@@ -86,7 +87,7 @@ enum ClipRenderer {
             context.strokePath()
         }
 
-        drawLabelBar(clip: clip, type: type, in: labelRect, clipRect: rect, context: context, displayName: displayName)
+        drawLabelBar(clip: clip, type: type, in: labelRect, clipRect: rect, context: context, displayName: displayName, fps: fps)
 
         if let linkOffset, linkOffset != 0 {
             drawOffsetBadge(frames: linkOffset, in: rect, context: context)
@@ -189,6 +190,7 @@ enum ClipRenderer {
         in drawRect: NSRect,
         clipRect: NSRect,
         cornerRadius: CGFloat,
+        fps: Int,
         context: CGContext
     ) {
         guard drawRect.width > 4, drawRect.height > 4 else { return }
@@ -199,9 +201,9 @@ enum ClipRenderer {
         let thumbDisplayWidth = max(1, drawRect.height * aspectRatio)
 
         // Visible time range based on trim
-        let fps = 30.0
-        let visibleStartSec = Double(clip.trimStartFrame) / fps
-        let visibleDurationSec = Double(clip.sourceFramesConsumed) / fps
+        let fpsD = Double(max(1, fps))
+        let visibleStartSec = Double(clip.trimStartFrame) / fpsD
+        let visibleDurationSec = Double(clip.sourceFramesConsumed) / fpsD
         guard visibleDurationSec > 0 else { return }
 
         context.saveGState()
@@ -290,10 +292,10 @@ enum ClipRenderer {
 
     // MARK: - Label Bar
 
-    private static func drawLabelBar(clip: Clip, type: ClipType, in labelRect: NSRect, clipRect: NSRect, context: CGContext, displayName: String? = nil) {
+    private static func drawLabelBar(clip: Clip, type: ClipType, in labelRect: NSRect, clipRect: NSRect, context: CGContext, displayName: String? = nil, fps: Int) {
         guard clipRect.width > 20 else { return }
 
-        let timecode = formatTimecode(frame: clip.durationFrames, fps: 30)
+        let timecode = formatTimecode(frame: clip.durationFrames, fps: fps)
         let rawName = displayName ?? clip.mediaRef
         let name = rawName.firstNonEmptyLine()
         let text = "\(name)  \(timecode)"
