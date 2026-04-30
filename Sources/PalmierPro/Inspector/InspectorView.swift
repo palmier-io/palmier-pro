@@ -18,6 +18,7 @@ struct InspectorView: View {
 
     @State private var preferredTab: ClipTab = .video
     @State private var preferredAssetTab: AssetTab = .details
+    @State private var transformExpanded = true
 
     private var headerTitle: String {
         if selectedVisualClip != nil || selectedAudioClip != nil { return "Inspector" }
@@ -200,26 +201,26 @@ struct InspectorView: View {
     }
 
     private func genericTabBar(titles: [String], selected: String?, onSelect: @escaping (String) -> Void) -> some View {
-        HStack(spacing: 2) {
+        HStack(spacing: AppTheme.Spacing.md) {
             ForEach(titles, id: \.self) { title in
                 let isActive = selected == title
                 let isAI = title == "AI Edit"
+                let foreground: AnyShapeStyle = isAI
+                    ? AnyShapeStyle(AppTheme.aiGradient.opacity(isActive ? 1 : 0.6))
+                    : AnyShapeStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
                 Button {
                     onSelect(title)
                 } label: {
-                    Group {
-                        if isAI {
-                            Text(title)
-                                .foregroundStyle(isActive ? AnyShapeStyle(AppTheme.aiGradient) : AnyShapeStyle(AppTheme.aiGradient.opacity(0.6)))
-                        } else {
-                            Text(title)
-                                .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
-                        }
+                    VStack(spacing: AppTheme.Spacing.xs) {
+                        Text(title)
+                            .font(.system(size: AppTheme.FontSize.sm, weight: isActive ? .medium : .regular))
+                            .foregroundStyle(foreground)
+                        Rectangle()
+                            .fill(isActive ? foreground : AnyShapeStyle(Color.clear))
+                            .frame(height: 1.5)
                     }
-                    .font(.system(size: AppTheme.FontSize.sm, weight: isActive ? .medium : .regular))
-                    .padding(.horizontal, AppTheme.Spacing.md)
                     .padding(.vertical, AppTheme.Spacing.xs)
-                    .hoverHighlight(isActive: isActive)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -227,139 +228,111 @@ struct InspectorView: View {
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .padding(.top, AppTheme.Spacing.xs)
-        .padding(.bottom, AppTheme.Spacing.xs)
     }
 
     @ViewBuilder
     private func videoTabContent() -> some View {
         let clips = nonTextVisualClips
-        frameSection(clips: clips)
+        transformSection(clips: clips)
 
         if !clips.isEmpty {
             cropSection(clip: clips.count == 1 ? clips.first : nil)
         }
 
-        InspectorSlider(
-            icon: "arrow.up.left.and.arrow.down.right",
-            label: "Scale",
-            value: sharedClipValue(clips) { $0.transform.width },
-            range: 0.01...5.0,
-            displayMultiplier: 100,
-            valueSuffix: "%",
-            format: "%.0f",
-            onChanged: { newVal in
-                for c in clips {
-                    let t = scaledTransform(for: c, newScale: newVal)
-                    editor.applyClipProperty(clipId: c.id) { $0.transform = t }
-                }
-            }
-        ) { newVal in
-            commitToClips(clips, actionName: "Change Scale") { c in
-                let t = scaledTransform(for: c, newScale: newVal)
-                editor.commitClipProperty(clipId: c.id) { $0.transform = t }
-            }
-        }
-
-        InspectorSlider(
-            icon: "circle.lefthalf.filled",
-            label: "Opacity",
-            value: sharedClipValue(clips) { $0.opacity },
-            range: 0...1,
-            displayMultiplier: 100,
-            valueSuffix: "%",
-            format: "%.0f",
-            onChanged: { newVal in
-                for c in clips { editor.applyClipProperty(clipId: c.id) { $0.opacity = newVal } }
-            }
-        ) { newVal in
-            commitToClips(clips, actionName: "Change Opacity") { c in
-                editor.commitClipProperty(clipId: c.id) { $0.opacity = newVal }
-            }
-        }
-
-        speedSlider(clips: clips + selectedAudioClips)
+        speedSection(clips: clips + selectedAudioClips)
     }
 
     @ViewBuilder
     private func audioTabContent() -> some View {
         let audios = selectedAudioClips
-        InspectorSlider(
-            icon: "speaker.wave.2.fill",
-            label: "Volume",
-            value: sharedClipValue(audios) { VolumeScale.dbFromLinear($0.volume) },
-            range: VolumeScale.floorDb...VolumeScale.ceilingDb,
-            displayMultiplier: 1,
-            valueSuffix: " dB",
-            format: "%.1f",
-            displayTextOverride: { db in
-                db <= VolumeScale.floorDb ? "-∞ dB" : nil
-            },
-            onChanged: { db in
-                let lin = VolumeScale.linearFromDb(db)
-                for c in audios { editor.applyClipProperty(clipId: c.id) { $0.volume = lin } }
-            }
-        ) { db in
-            let lin = VolumeScale.linearFromDb(db)
-            commitToClips(audios, actionName: "Change Volume") { c in
-                editor.commitClipProperty(clipId: c.id) { $0.volume = lin }
-            }
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            InspectorRow(icon: "speaker.wave.2.fill", label: "Audio")
+            volumeRow(audios: audios)
+            fadeRow(audios: audios, edge: .left)
+            fadeRow(audios: audios, edge: .right)
         }
 
-        fadeSlider(audios: audios, edge: .left)
-        fadeSlider(audios: audios, edge: .right)
-
         if nonTextVisualClips.isEmpty {
-            speedSlider(clips: audios)
+            speedSection(clips: audios)
         }
     }
 
     @ViewBuilder
-    private func fadeSlider(audios: [Clip], edge: FadeEdge) -> some View {
+    private func volumeRow(audios: [Clip]) -> some View {
+        propertyRow(label: "Volume") {
+            ScrubbableNumberField(
+                value: sharedClipValue(audios) { VolumeScale.dbFromLinear($0.volume) },
+                range: VolumeScale.floorDb...VolumeScale.ceilingDb,
+                format: "%.1f",
+                valueSuffix: " dB",
+                dragSensitivity: 0.3,
+                fieldWidth: 56,
+                displayTextOverride: { db in db <= VolumeScale.floorDb ? "-∞ dB" : nil },
+                onChanged: { db in
+                    let lin = VolumeScale.linearFromDb(db)
+                    for c in audios { editor.applyClipProperty(clipId: c.id) { $0.volume = lin } }
+                }
+            ) { db in
+                let lin = VolumeScale.linearFromDb(db)
+                commitToClips(audios, actionName: "Change Volume") { c in
+                    editor.commitClipProperty(clipId: c.id) { $0.volume = lin }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func fadeRow(audios: [Clip], edge: FadeEdge) -> some View {
         let fps = editor.timeline.fps
         let minDuration = audios.map(\.durationFrames).min() ?? 0
         if minDuration > 0 {
             let value = sharedClipValue(audios) { frameToSeconds(frame: $0[keyPath: edge.fadeKeyPath], fps: fps) }
-            InspectorSlider(
-                icon: edge.inspectorIcon,
-                label: edge.inspectorLabel,
-                value: value,
-                range: 0...frameToSeconds(frame: minDuration, fps: fps),
-                displayMultiplier: 1,
-                valueSuffix: "s",
-                format: "%.2f",
-                onChanged: { sec in
-                    let frames = secondsToFrame(seconds: sec, fps: fps)
-                    for c in audios {
-                        editor.applyClipProperty(clipId: c.id) {
-                            $0[keyPath: edge.fadeKeyPath] = $0.clampedFade(frames, edge: edge)
+            propertyRow(label: edge.inspectorLabel) {
+                ScrubbableNumberField(
+                    value: value,
+                    range: 0...frameToSeconds(frame: minDuration, fps: fps),
+                    format: "%.2f",
+                    valueSuffix: " s",
+                    dragSensitivity: 0.02,
+                    fieldWidth: 52,
+                    onChanged: { sec in
+                        let frames = secondsToFrame(seconds: sec, fps: fps)
+                        for c in audios {
+                            editor.applyClipProperty(clipId: c.id) {
+                                $0[keyPath: edge.fadeKeyPath] = $0.clampedFade(frames, edge: edge)
+                            }
                         }
                     }
-                }
-            ) { sec in
-                let frames = secondsToFrame(seconds: sec, fps: fps)
-                commitToClips(audios, actionName: edge.inspectorLabel) { c in
-                    editor.commitClipProperty(clipId: c.id) {
-                        $0[keyPath: edge.fadeKeyPath] = $0.clampedFade(frames, edge: edge)
+                ) { sec in
+                    let frames = secondsToFrame(seconds: sec, fps: fps)
+                    commitToClips(audios, actionName: edge.inspectorLabel) { c in
+                        editor.commitClipProperty(clipId: c.id) {
+                            $0[keyPath: edge.fadeKeyPath] = $0.clampedFade(frames, edge: edge)
+                        }
                     }
                 }
             }
         }
     }
 
-    private func speedSlider(clips: [Clip]) -> some View {
-        InspectorSlider(
-            icon: "gauge.with.dots.needle.67percent",
-            label: "Speed",
-            value: sharedClipValue(clips) { $0.speed },
-            range: 0.25...4.0,
-            displayMultiplier: 1,
-            valueSuffix: "x",
-            format: "%.2f",
-            onChanged: { newVal in
-                for c in clips { editor.applyClipSpeed(clipId: c.id, newSpeed: newVal) }
+    @ViewBuilder
+    private func speedSection(clips: [Clip]) -> some View {
+        if !clips.isEmpty {
+            InspectorRow(icon: "gauge.with.dots.needle.67percent", label: "Speed") {
+                ScrubbableNumberField(
+                    value: sharedClipValue(clips) { $0.speed },
+                    range: 0.25...4.0,
+                    format: "%.2f",
+                    valueSuffix: "x",
+                    dragSensitivity: 0.01,
+                    fieldWidth: 50,
+                    onChanged: { newVal in
+                        for c in clips { editor.applyClipSpeed(clipId: c.id, newSpeed: newVal) }
+                    }
+                ) { newVal in
+                    editor.commitClipSpeed(ids: clips.map(\.id), newSpeed: newVal)
+                }
             }
-        ) { newVal in
-            editor.commitClipSpeed(ids: clips.map(\.id), newSpeed: newVal)
         }
     }
 
@@ -379,43 +352,151 @@ struct InspectorView: View {
             )
     }
 
-    // MARK: - Frame Section
+    // MARK: - Transform Section
 
     @ViewBuilder
-    private func frameSection(clips: [Clip]) -> some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            HStack {
-                Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
-                    .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
-                Text("Transform")
-                    .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
-                    .foregroundStyle(AppTheme.Text.primaryColor)
-                Spacer()
-                Button {
+    private func transformSection(clips: [Clip]) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            collapsibleHeader(
+                icon: "arrow.up.and.down.and.arrow.left.and.right",
+                title: "Transform",
+                expanded: transformExpanded,
+                onToggle: { transformExpanded.toggle() },
+                resetHelp: transformExpanded ? "Reset transform" : nil,
+                onReset: transformExpanded ? {
                     commitToClips(clips, actionName: "Reset Transform") { c in
-                        editor.commitClipProperty(clipId: c.id) { $0.transform = Transform() }
+                        editor.commitClipProperty(clipId: c.id) {
+                            $0.transform = Transform()
+                            $0.opacity = 1
+                        }
                     }
-                } label: {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: AppTheme.FontSize.sm))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        .frame(width: 22, height: 22)
-                        .hoverHighlight()
-                }
-                .buttonStyle(.plain)
-                .help("Reset transform")
-            }
+                } : nil
+            )
 
-            HStack(spacing: AppTheme.Spacing.sm) {
-                InspectorPositionFields(clips: clips)
-                InspectorNumberField(label: "Scale", value: sharedClipValue(clips) { $0.transform.width * 100 }) { newScale in
-                    commitToClips(clips, actionName: "Change Scale") { c in
-                        let t = scaledTransform(for: c, newScale: max(newScale, 1) / 100.0)
-                        editor.commitClipProperty(clipId: c.id) { $0.transform = t }
+            if transformExpanded {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+                    propertyRow(label: "Position") {
+                        InspectorPositionFields(clips: clips)
+                    }
+                    transformScaleRow(clips: clips)
+                    transformOpacityRow(clips: clips)
+                }
+                .padding(.leading, sectionContentIndent)
+            }
+        }
+    }
+
+    /// Indent property rows to align with the section header's title text
+    private var sectionContentIndent: CGFloat { 20 }
+
+    @ViewBuilder
+    private func transformScaleRow(clips: [Clip]) -> some View {
+        propertyRow(label: "Scale") {
+            ScrubbableNumberField(
+                value: sharedClipValue(clips) { $0.transform.width },
+                range: 0.01...5.0,
+                displayMultiplier: 100,
+                format: "%.0f",
+                valueSuffix: "%",
+                fieldWidth: 50,
+                onChanged: { newVal in
+                    for c in clips {
+                        let t = scaledTransform(for: c, newScale: newVal)
+                        editor.applyClipProperty(clipId: c.id) { $0.transform = t }
                     }
                 }
+            ) { newVal in
+                commitToClips(clips, actionName: "Change Scale") { c in
+                    let t = scaledTransform(for: c, newScale: newVal)
+                    editor.commitClipProperty(clipId: c.id) { $0.transform = t }
+                }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func transformOpacityRow(clips: [Clip]) -> some View {
+        propertyRow(label: "Opacity") {
+            ScrubbableNumberField(
+                value: sharedClipValue(clips) { $0.opacity },
+                range: 0...1,
+                displayMultiplier: 100,
+                format: "%.0f",
+                valueSuffix: "%",
+                fieldWidth: 50,
+                onChanged: { newVal in
+                    for c in clips { editor.applyClipProperty(clipId: c.id) { $0.opacity = newVal } }
+                }
+            ) { newVal in
+                commitToClips(clips, actionName: "Change Opacity") { c in
+                    editor.commitClipProperty(clipId: c.id) { $0.opacity = newVal }
+                }
+            }
+        }
+    }
+
+    // MARK: - Section helpers
+
+    private func collapsibleHeader(
+        icon: String,
+        title: String,
+        expanded: Bool,
+        onToggle: @escaping () -> Void,
+        resetHelp: String? = nil,
+        onReset: (() -> Void)? = nil
+    ) -> some View {
+        HStack {
+            Button(action: onToggle) {
+                HStack(spacing: AppTheme.Spacing.xs) {
+                    sectionTitleLabel(icon: icon, title: title)
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            if let onReset {
+                resetButton(onReset: onReset, help: resetHelp)
+            }
+        }
+    }
+
+    private func sectionTitleLabel(icon: String, title: String) -> some View {
+        HStack(spacing: AppTheme.Spacing.xs) {
+            Image(systemName: icon)
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .frame(width: 16, alignment: .leading)
+            Text(title)
+                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+        }
+    }
+
+    private func resetButton(onReset: @escaping () -> Void, help: String?) -> some View {
+        Button(action: onReset) {
+            Image(systemName: "arrow.counterclockwise")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .frame(width: 22, height: 22)
+                .hoverHighlight()
+        }
+        .buttonStyle(.plain)
+        .help(help ?? "Reset")
+    }
+
+    private func propertyRow<Trailing: View>(
+        label: String,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Text(label)
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+            Spacer()
+            trailing()
         }
     }
 
@@ -429,49 +510,42 @@ struct InspectorView: View {
 
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             HStack {
-                Button {
-                    editor.cropEditingActive.toggle()
-                } label: {
-                    HStack(spacing: AppTheme.Spacing.xs) {
-                        Image(systemName: "crop.rotate")
-                            .font(.system(size: AppTheme.FontSize.sm))
-                            .foregroundStyle(editing ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
-                        Text("Crop")
-                            .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
-                            .foregroundStyle(AppTheme.Text.primaryColor)
-                        if !multi {
-                            Image(systemName: editing ? "chevron.up" : "chevron.down")
+                if multi {
+                    sectionTitleLabel(icon: "crop.rotate", title: "Crop")
+                        .help("Crop applies to one clip at a time")
+                } else {
+                    Button {
+                        editor.cropEditingActive.toggle()
+                    } label: {
+                        HStack(spacing: AppTheme.Spacing.xs) {
+                            sectionTitleLabel(icon: "crop.rotate", title: "Crop")
+                            Image(systemName: editing ? "chevron.down" : "chevron.right")
                                 .font(.system(size: AppTheme.FontSize.xs))
                                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                         }
+                        .contentShape(Rectangle())
                     }
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .help(editing ? "Exit crop editing" : "Edit crop")
                 }
-                .buttonStyle(.plain)
-                .disabled(multi)
-                .help(multi ? "Crop applies to one clip at a time" : (editing ? "Exit crop editing" : "Edit crop"))
 
                 Spacer()
 
                 if let clip, cropped {
-                    Button {
-                        editor.commitClipProperty(clipId: clip.id) { $0.crop = Crop() }
-                        editor.cropAspectLock = .free
-                    } label: {
-                        Image(systemName: "arrow.counterclockwise")
-                            .font(.system(size: AppTheme.FontSize.sm))
-                            .foregroundStyle(AppTheme.Text.tertiaryColor)
-                            .frame(width: 22, height: 22)
-                            .hoverHighlight()
-                    }
-                    .buttonStyle(.plain)
-                    .help("Reset crop")
+                    resetButton(
+                        onReset: {
+                            editor.commitClipProperty(clipId: clip.id) { $0.crop = Crop() }
+                            editor.cropAspectLock = .free
+                        },
+                        help: "Reset crop"
+                    )
                 }
             }
             .opacity(multi ? 0.4 : 1)
 
             if editing, let clip {
                 cropPresetRow(clip: clip)
+                    .padding(.leading, sectionContentIndent)
             }
         }
     }
