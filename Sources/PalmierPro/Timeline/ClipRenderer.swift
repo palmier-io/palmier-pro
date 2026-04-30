@@ -135,17 +135,27 @@ enum ClipRenderer {
         let frameStep = dur / CGFloat(barCount)
         let invFadeIn = fadeIn > 0 ? 1 / fadeIn : 0
         let invFadeOut = fadeOut > 0 ? 1 / fadeOut : 0
+        let visCount = visibleSamples.count
+
+        // Samples are dB-normalized over 50 dB, so volume shifts by 20·log10(v)/50 (not multiplies).
         let volF = CGFloat(clip.volume)
+        let volShift: CGFloat = volF > 0 ? 20 * log10(volF) / 50 : -1
 
         for i in 0..<barCount {
-            let sampleIdx = i * visibleSamples.count / barCount
-            let sample = visibleSamples[min(sampleIdx, visibleSamples.count - 1)]
-            // sample: 0=loud, 1=silence — invert and scale by volume
+            // Peak-detect (min, since 0=loud) over the bar's range so zero crossings don't flatten loud audio.
+            let sStart = i * visCount / barCount
+            let sEnd = max(sStart + 1, (i + 1) * visCount / barCount)
+            var loudest: Float = 1
+            for j in sStart..<min(sEnd, visCount) {
+                let s = visibleSamples[j]
+                if s < loudest { loudest = s }
+            }
             let posFrames = CGFloat(i) * frameStep
             let inMul: CGFloat = fadeIn > 0 ? min(1, posFrames * invFadeIn) : 1
             let outMul: CGFloat = fadeOut > 0 ? min(1, (dur - posFrames) * invFadeOut) : 1
             let envelope = min(inMul, outMul)
-            let amplitude = min(1.0, CGFloat(1.0 - sample) * volF * envelope)
+            let dbAmp = max(0, CGFloat(1 - loudest) + volShift)
+            let amplitude = min(1, dbAmp * envelope)
             let barHeight = max(1, amplitude * (drawHeight - 2))
             let barY = drawRect.maxY - barHeight - 1
             context.fill(CGRect(x: drawRect.minX + CGFloat(i), y: barY, width: 1, height: barHeight))
