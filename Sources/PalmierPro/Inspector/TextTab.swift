@@ -65,38 +65,39 @@ struct TextTab: View {
     }
 
     private var sizeSlider: some View {
-        InspectorSlider(
-            icon: "textformat.size",
-            label: "Size",
-            value: style.fontSize,
-            range: 12...300,
-            displayMultiplier: 1,
-            valueSuffix: " pt",
-            format: "%.0f",
-            onChanged: { newVal in
-                editor.applyTextStyle(clipId: clip.id) { $0.fontSize = newVal }
+        InspectorRow(icon: "textformat.size", label: "Size") {
+            ScrubbableNumberField(
+                value: style.fontSize,
+                range: 12...300,
+                format: "%.0f",
+                valueSuffix: " pt",
+                fieldWidth: 50,
+                onChanged: { newVal in
+                    editor.applyTextStyle(clipId: clip.id) { $0.fontSize = newVal }
+                    editor.fitTextClipToContent(clipId: clip.id)
+                }
+            ) { newVal in
+                editor.commitTextStyle(clipId: clip.id) { $0.fontSize = newVal }
                 editor.fitTextClipToContent(clipId: clip.id)
             }
-        ) { newVal in
-            editor.commitTextStyle(clipId: clip.id) { $0.fontSize = newVal }
-            editor.fitTextClipToContent(clipId: clip.id)
         }
     }
 
     private var opacitySlider: some View {
-        InspectorSlider(
-            icon: "circle.lefthalf.filled",
-            label: "Opacity",
-            value: clip.opacity,
-            range: 0...1,
-            displayMultiplier: 100,
-            valueSuffix: "%",
-            format: "%.0f",
-            onChanged: { newVal in
-                editor.applyClipProperty(clipId: clip.id) { $0.opacity = newVal }
+        InspectorRow(icon: "circle.lefthalf.filled", label: "Opacity") {
+            ScrubbableNumberField(
+                value: clip.opacity,
+                range: 0...1,
+                displayMultiplier: 100,
+                format: "%.0f",
+                valueSuffix: "%",
+                fieldWidth: 50,
+                onChanged: { newVal in
+                    editor.applyClipProperty(clipId: clip.id) { $0.opacity = newVal }
+                }
+            ) { newVal in
+                editor.commitClipProperty(clipId: clip.id) { $0.opacity = newVal }
             }
-        ) { newVal in
-            editor.commitClipProperty(clipId: clip.id) { $0.opacity = newVal }
         }
     }
 
@@ -159,10 +160,6 @@ struct TextTab: View {
             if shadow.enabled {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
                     HStack(spacing: AppTheme.Spacing.xs) {
-                        Image(systemName: "paintpalette")
-                            .font(.system(size: AppTheme.FontSize.sm))
-                            .foregroundStyle(AppTheme.Text.tertiaryColor)
-                            .frame(width: 16, alignment: .leading)
                         Text("Color")
                             .font(.system(size: AppTheme.FontSize.sm))
                             .foregroundStyle(AppTheme.Text.secondaryColor)
@@ -177,19 +174,23 @@ struct TextTab: View {
                         )
                     }
 
-                    InspectorSlider(
-                        icon: "drop",
-                        label: "Blur",
-                        value: shadow.blur,
-                        range: 0...40,
-                        displayMultiplier: 1,
-                        valueSuffix: " pt",
-                        format: "%.0f",
-                        onChanged: { newVal in
-                            editor.applyTextStyle(clipId: clip.id) { $0.shadow.blur = newVal }
+                    HStack(spacing: AppTheme.Spacing.xs) {
+                        Text("Blur")
+                            .font(.system(size: AppTheme.FontSize.sm))
+                            .foregroundStyle(AppTheme.Text.secondaryColor)
+                        Spacer()
+                        ScrubbableNumberField(
+                            value: shadow.blur,
+                            range: 0...40,
+                            format: "%.0f",
+                            valueSuffix: " pt",
+                            fieldWidth: 50,
+                            onChanged: { newVal in
+                                editor.applyTextStyle(clipId: clip.id) { $0.shadow.blur = newVal }
+                            }
+                        ) { newVal in
+                            editor.commitTextStyle(clipId: clip.id) { $0.shadow.blur = newVal }
                         }
-                    ) { newVal in
-                        editor.commitTextStyle(clipId: clip.id) { $0.shadow.blur = newVal }
                     }
                 }
                 .padding(.leading, 20)
@@ -206,24 +207,7 @@ struct TextTab: View {
 
     @ViewBuilder
     private var positionSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            InspectorRow(icon: "arrow.up.and.down.and.arrow.left.and.right", label: "Position") {
-                Button {
-                    editor.commitClipProperty(clipId: clip.id) {
-                        $0.transform.x = 0
-                        $0.transform.y = 0
-                    }
-                } label: {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: AppTheme.FontSize.sm))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        .frame(width: 22, height: 22)
-                        .hoverHighlight()
-                }
-                .buttonStyle(.plain)
-                .help("Reset position")
-            }
-
+        InspectorRow(icon: "arrow.up.and.down.and.arrow.left.and.right", label: "Position") {
             InspectorPositionFields(clips: [clip])
         }
     }

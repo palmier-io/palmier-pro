@@ -11,28 +11,53 @@ struct InspectorPositionFields: View {
         let yShared = sharedClipValue(clips) { $0.transform.topLeft.y }
 
         HStack(spacing: AppTheme.Spacing.sm) {
-            InspectorNumberField(label: "X", value: xShared.map { $0 * canvasW }) { newX in
-                commitPosition(setX: newX / canvasW, setY: nil)
-            }
-            InspectorNumberField(label: "Y", value: yShared.map { $0 * canvasH }) { newY in
-                commitPosition(setX: nil, setY: newY / canvasH)
+            ScrubbableNumberField(
+                value: xShared,
+                range: -10...10,
+                displayMultiplier: canvasW,
+                format: "%.0f",
+                fieldWidth: 44,
+                trailingLabel: "X",
+                onChanged: { newX in apply(setX: newX, setY: nil) }
+            ) { newX in commit(setX: newX, setY: nil) }
+
+            ScrubbableNumberField(
+                value: yShared,
+                range: -10...10,
+                displayMultiplier: canvasH,
+                format: "%.0f",
+                fieldWidth: 44,
+                trailingLabel: "Y",
+                onChanged: { newY in apply(setX: nil, setY: newY) }
+            ) { newY in commit(setX: nil, setY: newY) }
+        }
+    }
+
+    private func apply(setX: Double?, setY: Double?) {
+        for c in clips {
+            editor.applyClipProperty(clipId: c.id) { clip in
+                clip.transform = makeTransform(from: clip.transform, setX: setX, setY: setY)
             }
         }
     }
 
-    private func commitPosition(setX: Double?, setY: Double?) {
+    private func commit(setX: Double?, setY: Double?) {
         editor.undoManager?.beginUndoGrouping()
         for c in clips {
             editor.commitClipProperty(clipId: c.id) { clip in
-                let old = clip.transform.topLeft
-                clip.transform = Transform(
-                    topLeft: (setX ?? old.x, setY ?? old.y),
-                    width: clip.transform.width,
-                    height: clip.transform.height
-                )
+                clip.transform = makeTransform(from: clip.transform, setX: setX, setY: setY)
             }
         }
         editor.undoManager?.endUndoGrouping()
         editor.undoManager?.setActionName("Change Position")
+    }
+
+    private func makeTransform(from t: Transform, setX: Double?, setY: Double?) -> Transform {
+        let old = t.topLeft
+        return Transform(
+            topLeft: (setX ?? old.x, setY ?? old.y),
+            width: t.width,
+            height: t.height
+        )
     }
 }
