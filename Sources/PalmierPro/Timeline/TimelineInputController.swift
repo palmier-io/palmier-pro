@@ -35,6 +35,7 @@ final class TimelineInputController {
             if let hit = hitTestClip(at: point, trackIndex: ti, geometry: geometry) {
                 let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
                 if let asset = editor.mediaAssets.first(where: { $0.id == clip.mediaRef }) {
+                    editor.selectedClipIds.removeAll()
                     editor.selectedMediaAssetIds = [asset.id]
                     editor.openPreviewTab(for: asset)
                     dragState = .idle
