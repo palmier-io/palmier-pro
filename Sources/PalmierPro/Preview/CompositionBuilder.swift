@@ -171,6 +171,8 @@ enum CompositionBuilder {
                 params.setVolume(0, at: .zero)
                 return params
             }
+            // AV ramps linearly between successive volume points; sub-ms ramp at boundaries forces a hard step.
+            let stepRamp = CMTime(value: 1, timescale: 48_000)
             for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) {
                 let v = Float(clip.volume)
                 let dur = clip.durationFrames
@@ -178,15 +180,19 @@ enum CompositionBuilder {
                 let fOut = max(0, min(clip.audioFadeOutFrames, dur - fIn))
                 let startT = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
                 let endT = CMTime(value: CMTimeValue(clip.startFrame + dur), timescale: timescale)
-                if fIn > 0 {
-                    let kneeT = CMTime(value: CMTimeValue(clip.startFrame + fIn), timescale: timescale)
-                    params.setVolumeRamp(fromStartVolume: 0, toEndVolume: v, timeRange: CMTimeRange(start: startT, end: kneeT))
-                } else {
-                    params.setVolume(v, at: startT)
-                }
-                if fOut > 0 {
-                    let kneeT = CMTime(value: CMTimeValue(clip.startFrame + dur - fOut), timescale: timescale)
-                    params.setVolumeRamp(fromStartVolume: v, toEndVolume: 0, timeRange: CMTimeRange(start: kneeT, end: endT))
+
+                let entryDur: CMTime = fIn > 0
+                    ? CMTime(value: CMTimeValue(fIn), timescale: timescale)
+                    : stepRamp
+                let exitDur: CMTime = fOut > 0
+                    ? CMTime(value: CMTimeValue(fOut), timescale: timescale)
+                    : stepRamp
+                let entryEnd = min(startT + entryDur, endT)
+                let exitStart = max(entryEnd, endT - exitDur)
+
+                params.setVolumeRamp(fromStartVolume: 0, toEndVolume: v, timeRange: CMTimeRange(start: startT, end: entryEnd))
+                if exitStart < endT {
+                    params.setVolumeRamp(fromStartVolume: v, toEndVolume: 0, timeRange: CMTimeRange(start: exitStart, end: endT))
                 }
             }
             return params
