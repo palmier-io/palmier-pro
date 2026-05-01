@@ -498,17 +498,22 @@ extension EditorViewModel {
     func deleteSelectedMediaAssets() {
         let ids = selectedMediaAssetIds
         guard !ids.isEmpty else { return }
-        var clipIdsToRemove: Set<String> = []
-        for track in timeline.tracks {
-            for clip in track.clips where ids.contains(clip.mediaRef) {
-                clipIdsToRemove.insert(clip.id)
-            }
-        }
+
+        let clipIdsToRemove = Set(timeline.tracks
+            .flatMap(\.clips)
+            .filter { ids.contains($0.mediaRef) }
+            .map(\.id))
         if !clipIdsToRemove.isEmpty {
             removeClips(ids: clipIdsToRemove)
         }
+
+        let deletedSet = ids.intersection(Set(mediaAssets.map(\.id)))
+        let promotions = planStackPromotions(forDeletedIds: deletedSet)
+
         mediaAssets.removeAll { ids.contains($0.id) }
         mediaManifest.entries.removeAll { ids.contains($0.id) }
+        applyStackPromotions(promotions)
+
         for id in ids { closePreviewTab(id: id) }
         selectedMediaAssetIds.removeAll()
     }

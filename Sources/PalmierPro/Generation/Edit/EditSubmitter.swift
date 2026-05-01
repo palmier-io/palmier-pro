@@ -52,6 +52,7 @@ enum EditSubmitter {
             references: [asset],
             trimmedSourceOverride: trimmedSource,
             name: upscaleName(for: asset),
+            variantStackRootId: editor.stackRootId(for: asset),
             buildInput: { uploaded in
                 let src = uploaded.first ?? ""
                 return (model.endpoint, model.buildFalInput(src))
@@ -129,6 +130,7 @@ enum EditSubmitter {
                     references: [],
                     preUploadedURLs: preUploaded,
                     name: rerunName(for: asset),
+                    variantStackRootId: editor.stackRootId(for: asset),
                     buildInput: { _ in
                         (videoModel.resolvedEndpoint(params: params), videoModel.buildInput(params: params))
                     },
@@ -164,6 +166,7 @@ enum EditSubmitter {
                 references: [],
                 preUploadedURLs: bundled.isEmpty ? nil : bundled,
                 name: rerunName(for: asset),
+                variantStackRootId: editor.stackRootId(for: asset),
                 buildInput: { _ in
                     (videoModel.resolvedEndpoint(params: params), videoModel.buildInput(params: params))
                 },
@@ -194,6 +197,7 @@ enum EditSubmitter {
                 preUploadedURLs: preUploaded,
                 name: rerunName(for: asset),
                 numImages: count,
+                variantStackRootId: editor.stackRootId(for: asset),
                 buildInput: { uploaded in
                     let input = imageModel.buildInput(
                         prompt: gen.prompt,
@@ -238,6 +242,7 @@ enum EditSubmitter {
                 references: [],
                 preUploadedURLs: preUploaded,
                 name: rerunName(for: asset),
+                variantStackRootId: editor.stackRootId(for: asset),
                 buildInput: { _ in
                     (audioModel.baseEndpoint, audioModel.buildInput(params: params))
                 },
@@ -262,6 +267,7 @@ enum EditSubmitter {
                 references: [],
                 preUploadedURLs: preUploaded,
                 name: rerunName(for: asset),
+                variantStackRootId: editor.stackRootId(for: asset),
                 buildInput: { _ in
                     (upscaleModel.endpoint, upscaleModel.buildFalInput(source))
                 },
