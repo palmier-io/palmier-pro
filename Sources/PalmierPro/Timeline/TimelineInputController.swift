@@ -178,7 +178,9 @@ final class TimelineInputController {
             let allDraggedIds = Set(drag.all.map(\.clipId))
             let targets = SnapEngine.collectTargets(
                 tracks: editor.timeline.tracks,
-                excludeClipIds: allDraggedIds
+                playheadFrame: editor.currentFrame,
+                excludeClipIds: allDraggedIds,
+                includePlayhead: true
             )
 
             let clipDuration = editor.timeline.tracks
@@ -217,7 +219,9 @@ final class TimelineInputController {
             let candidateStart = frame
             let targets = SnapEngine.collectTargets(
                 tracks: editor.timeline.tracks,
-                excludeClipIds: [drag.clipId]
+                playheadFrame: editor.currentFrame,
+                excludeClipIds: [drag.clipId],
+                includePlayhead: true
             )
             let snappedStart: Int
             if let snap = SnapEngine.findSnap(
@@ -244,7 +248,9 @@ final class TimelineInputController {
             let candidateEnd = max(drag.originalStartFrame + 1, frame)
             let targets = SnapEngine.collectTargets(
                 tracks: editor.timeline.tracks,
-                excludeClipIds: [drag.clipId]
+                playheadFrame: editor.currentFrame,
+                excludeClipIds: [drag.clipId],
+                includePlayhead: true
             )
             let snappedEnd: Int
             if let snap = SnapEngine.findSnap(
