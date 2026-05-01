@@ -443,7 +443,9 @@ struct MediaPanelView: View {
             stackContext: stackContext(for: cell),
             onToggleExpand: cell.kind == .root && cell.variantCount > 1
                 ? { toggleStackExpansion(cell.stackRootId) } : nil,
-            onUseVariantInTimeline: retargetCallback(for: cell, layout: layout)
+            onUseVariantInTimeline: retargetCallback(for: cell, layout: layout),
+            onGroupAsStack: groupCallback(for: cell),
+            onRemoveFromStack: removeFromStackCallback(for: cell)
         )
         .draggable(dragPayload(for: cover, selectionId: cell.asset.id)) {
             dragPreview(for: cover, selectionId: cell.asset.id)
@@ -460,6 +462,32 @@ struct MediaPanelView: View {
             || (cell.kind == .root && cell.isStackExpanded && cell.variantCount > 1)
         guard promotable else { return nil }
         return { editor.retargetStack(rootId: cell.stackRootId, to: cell.asset.id) }
+    }
+
+    private func groupCallback(for cell: MediaCell) -> (() -> Void)? {
+        let ids = contextTargetIds(for: cell.asset.id)
+        guard ids.count >= 2 else { return nil }
+        let types = Set(ids.compactMap { id in
+            editor.mediaAssets.first(where: { $0.id == id })?.type
+        })
+        guard types.count == 1 else { return nil }
+        return { [editor] in editor.groupAsStack(assetIds: Set(ids), targetTileId: cell.asset.id) }
+    }
+
+    private func removeFromStackCallback(for cell: MediaCell) -> (() -> Void)? {
+        let ids = contextTargetIds(for: cell.asset.id)
+        let removable = ids.filter { id in
+            editor.mediaAssets.first(where: { $0.id == id })?.parentAssetId != nil
+        }
+        guard !removable.isEmpty else { return nil }
+        return { [editor] in editor.removeFromStack(assetIds: Set(removable)) }
+    }
+
+    private func contextTargetIds(for assetId: String) -> [String] {
+        if editor.selectedMediaAssetIds.contains(assetId) {
+            return Array(editor.selectedMediaAssetIds)
+        }
+        return [assetId]
     }
 
     private func stackContext(for cell: MediaCell) -> AssetThumbnailView.StackContext {

@@ -155,4 +155,63 @@ extension EditorViewModel {
             mediaManifest.entries[idx].parentAssetId = parent
         }
     }
+
+    // MARK: - Manual grouping
+
+    /// Group `assetIds` into the stack that `targetTileId` belongs to
+    func groupAsStack(assetIds: Set<String>, targetTileId: String) {
+        guard let target = mediaAssets.first(where: { $0.id == targetTileId }) else { return }
+        let rootId = stackRootId(for: target)
+        guard let root = mediaAssets.first(where: { $0.id == rootId }) else { return }
+
+        // Pull in children of any selected stack root so we don't orphan them.
+        var idsToReparent = assetIds
+        for id in assetIds {
+            guard let asset = mediaAssets.first(where: { $0.id == id }), asset.parentAssetId == nil else { continue }
+            for child in mediaAssets where child.parentAssetId == asset.id {
+                idsToReparent.insert(child.id)
+            }
+        }
+
+        var changes: [(assetId: String, newParent: String?)] = []
+        for id in idsToReparent {
+            guard let asset = mediaAssets.first(where: { $0.id == id }) else { continue }
+            guard asset.type == root.type else { continue }
+            if id == rootId { continue }
+            if asset.parentAssetId == rootId { continue }
+            changes.append((id, rootId))
+        }
+        guard !changes.isEmpty else { return }
+        applyParentChanges(changes, actionName: "Group as Stack")
+    }
+
+    /// Detach each asset from its stack so it becomes a top-level item.
+    func removeFromStack(assetIds: Set<String>) {
+        var changes: [(assetId: String, newParent: String?)] = []
+        for id in assetIds {
+            guard let asset = mediaAssets.first(where: { $0.id == id }) else { continue }
+            guard asset.parentAssetId != nil else { continue }
+            changes.append((id, nil))
+        }
+        guard !changes.isEmpty else { return }
+        applyParentChanges(changes, actionName: "Remove from Stack")
+    }
+
+    /// Swap-undo: applies new parents, snapshots prior parents, registers undo
+    /// that calls itself with the inverse so undo↔redo cycle correctly.
+    private func applyParentChanges(
+        _ changes: [(assetId: String, newParent: String?)],
+        actionName: String
+    ) {
+        var inverse: [(assetId: String, newParent: String?)] = []
+        for change in changes {
+            let prior = mediaAssets.first(where: { $0.id == change.assetId })?.parentAssetId
+            inverse.append((change.assetId, prior))
+            setParentAssetId(change.newParent, forAssetId: change.assetId)
+        }
+        undoManager?.registerUndo(withTarget: self) { vm in
+            vm.applyParentChanges(inverse, actionName: actionName)
+        }
+        undoManager?.setActionName(actionName)
+    }
 }

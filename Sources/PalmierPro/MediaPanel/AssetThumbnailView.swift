@@ -23,6 +23,8 @@ struct AssetThumbnailView: View {
     var stackContext: StackContext = .root(variantCount: 1, isExpanded: false)
     var onToggleExpand: (() -> Void)? = nil
     var onUseVariantInTimeline: (() -> Void)? = nil
+    var onGroupAsStack: (() -> Void)? = nil
+    var onRemoveFromStack: (() -> Void)? = nil
 
     @Environment(EditorViewModel.self) var editor
     @FocusState private var isRenaming: Bool
@@ -107,6 +109,15 @@ struct AssetThumbnailView: View {
         let ids = contextTargetIds
         if let onUseVariantInTimeline {
             Button("Use This Variant", action: onUseVariantInTimeline)
+            Divider()
+        }
+        if let onGroupAsStack {
+            Button("Group as Stack", action: onGroupAsStack)
+        }
+        if let onRemoveFromStack {
+            Button("Remove from Stack", action: onRemoveFromStack)
+        }
+        if onGroupAsStack != nil || onRemoveFromStack != nil {
             Divider()
         }
         if let onToggleExpand, hasVariants {

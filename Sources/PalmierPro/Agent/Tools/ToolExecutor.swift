@@ -855,10 +855,12 @@ final class ToolExecutor {
             }
         }
 
+        let groupRoot = args.string("groupWithMediaRef").flatMap { editor.stackRootId(forAssetId: $0) }
         let placeholderId = editor.generationService.generate(
             genInput: genInput, assetType: .video,
             placeholderDuration: Double(max(1, duration)),
             references: refs, name: args.string("name"),
+            variantStackRootId: groupRoot,
             buildInput: { uploaded in
                 let frames = Array(uploaded.prefix(frameCount))
                 let rest = Array(uploaded.dropFirst(frameCount))
@@ -917,10 +919,12 @@ final class ToolExecutor {
             prompt: prompt, model: modelId, duration: 0,
             aspectRatio: aspectRatio, resolution: resolution, quality: quality
         )
+        let groupRoot = args.string("groupWithMediaRef").flatMap { editor.stackRootId(forAssetId: $0) }
         let placeholderId = editor.generationService.generate(
             genInput: genInput, assetType: .image,
             placeholderDuration: Defaults.imageDurationSeconds,
             references: refs, name: args.string("name"),
+            variantStackRootId: groupRoot,
             buildInput: { uploaded in
                 let input = model.buildInput(
                     prompt: prompt, aspectRatio: aspectRatio,
@@ -977,10 +981,12 @@ final class ToolExecutor {
             instrumental: model.supportsInstrumental ? instrumental : nil
         )
 
+        let groupRoot = args.string("groupWithMediaRef").flatMap { editor.stackRootId(forAssetId: $0) }
         let placeholderId = editor.generationService.generate(
             genInput: genInput, assetType: .audio,
             placeholderDuration: placeholderDuration,
             name: args.string("name"),
+            variantStackRootId: groupRoot,
             buildInput: { _ in
                 (model.baseEndpoint, model.buildInput(params: params))
             },
