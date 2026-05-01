@@ -27,7 +27,8 @@ struct AssetThumbnailView: View {
     var onRemoveFromStack: (() -> Void)? = nil
 
     @Environment(EditorViewModel.self) var editor
-    @FocusState private var isRenaming: Bool
+    @State private var isRenaming = false
+    @FocusState private var isRenameFieldFocused: Bool
     @State private var renameDraft = ""
     @State private var isHovering = false
 
@@ -68,29 +69,38 @@ struct AssetThumbnailView: View {
             }
 
             // Filename
-            if isRenaming {
-                TextField("Name", text: $renameDraft, onCommit: commitRename)
-                    .font(.system(size: AppTheme.FontSize.xs))
-                    .textFieldStyle(.plain)
-                    .lineLimit(1)
-                    .focused($isRenaming)
-                    .onExitCommand { isRenaming = false }
-            } else {
-                Text(displayName)
-                    .font(.system(size: AppTheme.FontSize.xs))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .foregroundStyle(isSelected ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
-                    .onTapGesture(count: 2) { beginRename() }
+            ZStack(alignment: .leading) {
+                if isRenaming {
+                    TextField("Name", text: $renameDraft)
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .textFieldStyle(.plain)
+                        .lineLimit(1)
+                        .focused($isRenameFieldFocused)
+                        .onSubmit { commitRename() }
+                        .onChange(of: isRenameFieldFocused) { _, focused in
+                            if !focused { commitRename() }
+                        }
+                        .onExitCommand { isRenaming = false }
+                } else {
+                    Text(displayName)
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .foregroundStyle(isSelected ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
+                        .onTapGesture(count: 2) { beginRename() }
+                }
             }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                    .fill(isRenaming ? Color.white.opacity(0.08) : .clear)
+            )
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
         .onTapGesture(count: 1) {
             handleTap()
-        }
-        .onChange(of: isRenaming) { _, focused in
-            if !focused { commitRename() }
         }
         .contextMenu { contextMenuItems }
     }
@@ -123,6 +133,9 @@ struct AssetThumbnailView: View {
         if let onToggleExpand, hasVariants {
             Button(stackContext.isExpanded ? "Collapse Stack" : "Expand Stack", action: onToggleExpand)
             Divider()
+        }
+        if ids.count == 1, ids.first == asset.id {
+            Button("Rename") { beginRename() }
         }
         Button("Reveal in Finder") { revealInFinder(ids: ids) }
         Button("Copy Path") { copyPaths(ids: ids) }
@@ -335,9 +348,11 @@ struct AssetThumbnailView: View {
     private func beginRename() {
         renameDraft = asset.name
         isRenaming = true
+        isRenameFieldFocused = true
     }
 
     private func commitRename() {
+        guard isRenaming else { return }
         let trimmed = renameDraft.trimmingCharacters(in: .whitespaces)
         if !trimmed.isEmpty && trimmed != asset.name {
             editor.renameMediaAsset(id: asset.id, name: trimmed)
