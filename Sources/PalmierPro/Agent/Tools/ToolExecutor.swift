@@ -744,6 +744,7 @@ final class ToolExecutor {
             genInput: genInput, assetType: .video,
             placeholderDuration: sourceAsset.duration > 0 ? sourceAsset.duration : 5,
             references: refs, name: args.string("name"),
+            variantStackRootId: editor.stackRootId(for: sourceAsset),
             buildInput: { uploaded in
                 let params = VideoGenerationParams(
                     prompt: prompt, duration: 0, aspectRatio: "", resolution: nil,

@@ -10,13 +10,10 @@ struct MediaPanelView: View {
     @State private var assetFrames: [String: CGRect] = [:]
     @State private var marqueeSelection = MarqueeSelection()
     @State private var thumbnailSize: Double = 110
+    @State private var expandedStacks: Set<String> = []
 
     private static let minThumbnailSize: Double = 72
     private static let maxThumbnailSize: Double = 220
-
-    private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: thumbnailSize), spacing: AppTheme.Spacing.xl)]
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -114,7 +111,16 @@ struct MediaPanelView: View {
     }
 
     private var selectedMediaAssetsInOrder: [MediaAsset] {
-        editor.mediaAssets.filter { editor.selectedMediaAssetIds.contains($0.id) }
+        editor.mediaAssets
+            .filter { editor.selectedMediaAssetIds.contains($0.id) }
+            .map { asset in
+                if asset.parentAssetId == nil,
+                   editor.variantCount(ofStackRootId: asset.id) > 1,
+                   let cover = editor.coverVariant(forStackRootId: asset.id) {
+                    return cover
+                }
+                return asset
+            }
     }
 
     private var showsEmptyState: Bool {
@@ -154,71 +160,315 @@ struct MediaPanelView: View {
     }
 
     private var filteredAndSortedAssets: [MediaAsset] {
-        let filteredAssets = editor.mediaAssets.filter { asset in
-            (filterTypes.isEmpty || filterTypes.contains(asset.type)) &&
-            (!filterAI || asset.isGenerated)
+        let roots = editor.mediaAssets.filter { $0.parentAssetId == nil }
+        let filtered = roots.filter { root in
+            let typeOk = filterTypes.isEmpty || filterTypes.contains(root.type)
+            let aiOk = !filterAI
+                || root.isGenerated
+                || editor.mediaAssets.contains { $0.parentAssetId == root.id }
+            return typeOk && aiOk
         }
 
         return switch sortMode {
         case .dateAdded:
-            filteredAssets
+            filtered
         case .name:
-            filteredAssets.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            filtered.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         case .duration:
-            filteredAssets.sorted { $0.duration > $1.duration }
+            filtered.sorted { $0.duration > $1.duration }
         case .type:
-            filteredAssets.sorted { $0.type.rawValue < $1.type.rawValue }
+            filtered.sorted { $0.type.rawValue < $1.type.rawValue }
         }
+    }
+
+    private struct MediaCell: Identifiable {
+        enum Kind { case root, variant }
+        let asset: MediaAsset
+        let kind: Kind
+        let stackRootId: String
+        let variantCount: Int
+        let isStackExpanded: Bool
+        let variantIndex: Int
+        let isTimelineVariant: Bool
+
+        var id: String { asset.id }
+    }
+
+    private struct GridLayoutInfo {
+        let cols: Int
+        let tileWidth: CGFloat
+        let spacing: CGFloat
+        let rows: [Row]
+        let orderedIds: [String]
+        let buckets: [String: [MediaAsset]]
+        /// Number of variants of each stack currently referenced by the timeline.
+        let timelineCountByStack: [String: Int]
+
+        struct Row: Identifiable {
+            let id: Int
+            let roots: [MediaCell]
+            let expandedStacks: [ExpandedStack]
+        }
+
+        struct ExpandedStack: Identifiable {
+            let rootId: String
+            let root: MediaAsset
+            let cells: [MediaCell]
+            var id: String { rootId }
+        }
+    }
+
+    private func bucketByStack() -> [String: [MediaAsset]] {
+        var buckets: [String: [MediaAsset]] = [:]
+        for asset in editor.mediaAssets {
+            let rootId = asset.parentAssetId ?? asset.id
+            buckets[rootId, default: []].append(asset)
+        }
+        return buckets
+    }
+
+    private func collectTimelineRefs() -> Set<String> {
+        var refs: Set<String> = []
+        for track in editor.timeline.tracks {
+            for clip in track.clips { refs.insert(clip.mediaRef) }
+        }
+        return refs
+    }
+
+    private func rootCells(buckets: [String: [MediaAsset]], timelineRefs: Set<String>) -> [MediaCell] {
+        filteredAndSortedAssets.map { root in
+            let count = buckets[root.id]?.count ?? 1
+            let expanded = count > 1 && expandedStacks.contains(root.id)
+            return MediaCell(
+                asset: root, kind: .root, stackRootId: root.id,
+                variantCount: count, isStackExpanded: expanded,
+                variantIndex: 0, isTimelineVariant: timelineRefs.contains(root.id)
+            )
+        }
+    }
+
+    private func variantCells(forStackRootId rootId: String, buckets: [String: [MediaAsset]], timelineRefs: Set<String>) -> [MediaCell] {
+        guard let members = buckets[rootId], let root = members.first(where: { $0.id == rootId }) else {
+            return []
+        }
+        let total = members.count
+        let children = members.filter { $0.id != rootId }.sortedByGenerationDate()
+        var cells: [MediaCell] = [
+            MediaCell(
+                asset: root, kind: .variant, stackRootId: rootId,
+                variantCount: total, isStackExpanded: true,
+                variantIndex: 1, isTimelineVariant: timelineRefs.contains(rootId)
+            )
+        ]
+        for (i, child) in children.enumerated() {
+            cells.append(MediaCell(
+                asset: child, kind: .variant, stackRootId: rootId,
+                variantCount: total, isStackExpanded: true,
+                variantIndex: i + 2, isTimelineVariant: timelineRefs.contains(child.id)
+            ))
+        }
+        return cells
+    }
+
+    private func toggleStackExpansion(_ rootId: String) {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            if expandedStacks.contains(rootId) {
+                _ = expandedStacks.remove(rootId)
+            } else {
+                _ = expandedStacks.insert(rootId)
+            }
+        }
+    }
+
+    private func computeLayout(width: CGFloat) -> GridLayoutInfo {
+        let spacing = AppTheme.Spacing.xl
+        let outerPadding: CGFloat = AppTheme.Spacing.md * 2
+        let usable = max(0, width - outerPadding)
+        let minTile = thumbnailSize
+        let cols = max(1, Int(floor((usable + spacing) / (minTile + spacing))))
+        let tileWidth = max(minTile, (usable - CGFloat(cols - 1) * spacing) / CGFloat(cols))
+
+        let buckets = bucketByStack()
+        let timelineRefs = collectTimelineRefs()
+        var timelineCountByStack: [String: Int] = [:]
+        for (rootId, members) in buckets {
+            timelineCountByStack[rootId] = members.reduce(0) { $0 + (timelineRefs.contains($1.id) ? 1 : 0) }
+        }
+        let roots = rootCells(buckets: buckets, timelineRefs: timelineRefs)
+        var rows: [GridLayoutInfo.Row] = []
+        var ordered: [String] = []
+        var rowIndex = 0
+        var index = 0
+        while index < roots.count {
+            let end = min(index + cols, roots.count)
+            let rowRoots = Array(roots[index..<end])
+            ordered.append(contentsOf: rowRoots.map(\.id))
+            var expandedStacks: [GridLayoutInfo.ExpandedStack] = []
+            for rowCell in rowRoots where rowCell.isStackExpanded {
+                let rootId = rowCell.stackRootId
+                let cells = variantCells(forStackRootId: rootId, buckets: buckets, timelineRefs: timelineRefs)
+                // v1 in the strip shares its asset.id with the row tile.
+                ordered.append(contentsOf: cells.map(\.id).filter { $0 != rootId })
+                expandedStacks.append(.init(rootId: rootId, root: rowCell.asset, cells: cells))
+            }
+            rows.append(.init(id: rowIndex, roots: rowRoots, expandedStacks: expandedStacks))
+            index = end
+            rowIndex += 1
+        }
+        return GridLayoutInfo(
+            cols: cols, tileWidth: tileWidth, spacing: spacing,
+            rows: rows, orderedIds: ordered, buckets: buckets,
+            timelineCountByStack: timelineCountByStack
+        )
     }
 
     private var mediaGridView: some View {
-        ScrollViewReader { proxy in
-            ScrollView(showsIndicators: false) {
-                LazyVGrid(columns: columns, spacing: AppTheme.Spacing.xl) {
-                    ForEach(filteredAndSortedAssets) { asset in
-                        assetCell(for: asset)
-                            .id(asset.id)
+        GeometryReader { geo in
+            let layout = computeLayout(width: geo.size.width)
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: false) {
+                    LazyVStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
+                        ForEach(layout.rows) { row in
+                            rowView(row, layout: layout)
+                            ForEach(row.expandedStacks) { stack in
+                                variantTray(stack, layout: layout)
+                            }
+                        }
+                    }
+                    .padding(AppTheme.Spacing.md)
+                    .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.sm)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .coordinateSpace(name: "mediaGrid")
+                .onPreferenceChange(AssetFramePreferenceKey.self) { frames in
+                    assetFrames = frames
+                    if editor.mediaPanelColumnCount != layout.cols {
+                        editor.mediaPanelColumnCount = layout.cols
                     }
                 }
-                .padding(AppTheme.Spacing.md)
-                .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.sm)
-            }
-            .coordinateSpace(name: "mediaGrid")
-            .onPreferenceChange(AssetFramePreferenceKey.self) { frames in
-                assetFrames = frames
-                if let topY = frames.values.map(\.midY).min() {
-                    editor.mediaPanelColumnCount = frames.values.filter { abs($0.midY - topY) < 1 }.count
+                .onAppear {
+                    editor.mediaPanelOrderedIds = layout.orderedIds
                 }
-            }
-            .onAppear {
-                editor.mediaPanelOrderedIds = filteredAndSortedAssets.map(\.id)
-            }
-            .onChange(of: filteredAndSortedAssets.map(\.id)) { _, ids in
-                editor.mediaPanelOrderedIds = ids
-            }
-            .onChange(of: editor.mediaPanelScrollTarget) { _, target in
-                guard let target else { return }
-                withAnimation(.easeOut(duration: 0.15)) {
-                    proxy.scrollTo(target, anchor: .center)
+                .onChange(of: layout.orderedIds) { _, ids in
+                    editor.mediaPanelOrderedIds = ids
                 }
-                editor.mediaPanelScrollTarget = nil
+                .onChange(of: editor.mediaPanelScrollTarget) { _, target in
+                    guard let target else { return }
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        proxy.scrollTo(target, anchor: .center)
+                    }
+                    editor.mediaPanelScrollTarget = nil
+                }
+                .onTapGesture {
+                    editor.selectedMediaAssetIds.removeAll()
+                }
+                .overlay {
+                    marqueeOverlay
+                }
+                .gesture(marqueeGesture)
             }
-            .onTapGesture {
-                editor.selectedMediaAssetIds.removeAll()
-            }
-            .overlay {
-                marqueeOverlay
-            }
-            .gesture(marqueeGesture)
         }
     }
 
-    private func assetCell(for asset: MediaAsset) -> some View {
-        AssetThumbnailView(asset: asset)
-            .draggable(dragPayload(for: asset)) {
-                dragPreview(for: asset)
+    private func rowView(_ row: GridLayoutInfo.Row, layout: GridLayoutInfo) -> some View {
+        HStack(alignment: .top, spacing: layout.spacing) {
+            ForEach(row.roots) { cell in
+                assetCell(for: cell, layout: layout)
+                    .frame(width: layout.tileWidth)
+                    .id(cell.id)
             }
-            .background(assetFrameReader(for: asset))
+            if row.roots.count < layout.cols {
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func variantTray(_ stack: GridLayoutInfo.ExpandedStack, layout: GridLayoutInfo) -> some View {
+        let trayColumns = [GridItem(.adaptive(minimum: thumbnailSize), spacing: layout.spacing)]
+        return VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            HStack(spacing: AppTheme.Spacing.xs) {
+                Image(systemName: "square.stack.3d.up.fill")
+                    .font(.system(size: 9))
+                Text("\(stack.cells.count) variants of \(stack.root.name)")
+                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        _ = expandedStacks.remove(stack.rootId)
+                    }
+                } label: {
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 9, weight: .semibold))
+                        .frame(width: 22, height: 22)
+                        .hoverHighlight()
+                }
+                .buttonStyle(.plain)
+                .focusable(false)
+                .help("Collapse stack")
+            }
+            .foregroundStyle(AppTheme.Text.tertiaryColor)
+
+            LazyVGrid(columns: trayColumns, alignment: .leading, spacing: layout.spacing) {
+                ForEach(stack.cells) { cell in
+                    assetCell(for: cell, layout: layout)
+                        .id(cell.id)
+                }
+            }
+        }
+        .padding(AppTheme.Spacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+                .fill(Color(white: 1.0, opacity: 0.035))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+                .strokeBorder(AppTheme.Border.subtleColor, lineWidth: 0.5)
+        )
+        .transition(AnyTransition.opacity.combined(with: .move(edge: .top)))
+    }
+
+    private func assetCell(for cell: MediaCell, layout: GridLayoutInfo) -> some View {
+        // Collapsed stack covers redirect to the active timeline variant; everything else shows itself.
+        let cover: MediaAsset = {
+            if cell.kind == .root, !cell.isStackExpanded, cell.variantCount > 1 {
+                return editor.coverVariant(forStackRootId: cell.stackRootId) ?? cell.asset
+            }
+            return cell.asset
+        }()
+        return AssetThumbnailView(
+            asset: cell.asset,
+            coverAsset: cover,
+            stackContext: stackContext(for: cell),
+            onToggleExpand: cell.kind == .root && cell.variantCount > 1
+                ? { toggleStackExpansion(cell.stackRootId) } : nil,
+            onUseVariantInTimeline: retargetCallback(for: cell, layout: layout)
+        )
+        .draggable(dragPayload(for: cover, selectionId: cell.asset.id)) {
+            dragPreview(for: cover, selectionId: cell.asset.id)
+        }
+        .background(assetFrameReader(for: cell.asset))
+    }
+
+    /// nil when the retarget would be a no-op or doesn't apply to this cell.
+    private func retargetCallback(for cell: MediaCell, layout: GridLayoutInfo) -> (() -> Void)? {
+        let count = layout.timelineCountByStack[cell.stackRootId] ?? 0
+        guard count > 0 else { return nil }
+        if count == 1 && cell.isTimelineVariant { return nil }
+        let promotable = cell.kind == .variant
+            || (cell.kind == .root && cell.isStackExpanded && cell.variantCount > 1)
+        guard promotable else { return nil }
+        return { editor.retargetStack(rootId: cell.stackRootId, to: cell.asset.id) }
+    }
+
+    private func stackContext(for cell: MediaCell) -> AssetThumbnailView.StackContext {
+        switch cell.kind {
+        case .root:
+            return .root(variantCount: cell.variantCount, isExpanded: cell.isStackExpanded)
+        case .variant:
+            return .variant(index: cell.variantIndex, total: cell.variantCount)
+        }
     }
 
     private func assetFrameReader(for asset: MediaAsset) -> some View {
@@ -281,8 +531,8 @@ struct MediaPanelView: View {
 
     // MARK: - Multi-drag payload
 
-    private func dragPayload(for asset: MediaAsset) -> String {
-        if editor.selectedMediaAssetIds.contains(asset.id) {
+    private func dragPayload(for asset: MediaAsset, selectionId: String? = nil) -> String {
+        if editor.selectedMediaAssetIds.contains(selectionId ?? asset.id) {
             return selectedMediaAssetsInOrder.map(\.url.absoluteString).joined(separator: "\n")
         }
         return asset.url.absoluteString
@@ -291,8 +541,8 @@ struct MediaPanelView: View {
     // MARK: - Drag Preview
 
     @ViewBuilder
-    private func dragPreview(for asset: MediaAsset) -> some View {
-        let count = editor.selectedMediaAssetIds.contains(asset.id) ? editor.selectedMediaAssetIds.count : 1
+    private func dragPreview(for asset: MediaAsset, selectionId: String? = nil) -> some View {
+        let count = editor.selectedMediaAssetIds.contains(selectionId ?? asset.id) ? editor.selectedMediaAssetIds.count : 1
         ZStack(alignment: .topTrailing) {
             Group {
                 if let thumbnail = asset.thumbnail {

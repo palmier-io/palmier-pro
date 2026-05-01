@@ -51,6 +51,7 @@ final class GenerationService {
         preUploadedURLs: [String]? = nil,
         name: String? = nil,
         numImages: Int = 1,
+        variantStackRootId: String? = nil,
         buildInput: @escaping ([String]) -> (endpoint: String, input: Payload),
         snapshotRefs: (@Sendable (inout GenerationInput, [String]) -> Void)? = nil,
         preprocessRef: (@Sendable (Int, MediaAsset) async throws -> URL?)? = nil,
@@ -63,14 +64,34 @@ final class GenerationService {
     ) -> String {
         let count = max(1, min(4, numImages))
         let baseName = name ?? String(genInput.prompt.prefix(30))
-        let placeholders: [MediaAsset] = (0..<count).map { _ in
-            createPlaceholder(
+
+        // Validate if root still exists and same type
+        let stackRootId = variantStackRootId.flatMap { rootId -> String? in
+            guard let root = editor.mediaAssets.first(where: { $0.id == rootId }),
+                  root.type == assetType else { return nil }
+            return rootId
+        }
+        var placeholders: [MediaAsset] = []
+
+        // Group all N images into a stack
+        for i in 0..<count {
+            let parent: String?
+            if let stackRootId {
+                parent = stackRootId
+            } else if i > 0, let firstId = placeholders.first?.id {
+                parent = firstId
+            } else {
+                parent = nil
+            }
+            let placeholder = createPlaceholder(
                 type: assetType,
                 name: baseName,
                 duration: placeholderDuration,
                 genInput: genInput,
+                parentAssetId: parent,
                 editor: editor
             )
+            placeholders.append(placeholder)
         }
         let primaryId = placeholders[0].id
         let refURLs = references.map(\.url)
@@ -184,6 +205,7 @@ final class GenerationService {
         name: String,
         duration: Double,
         genInput: GenerationInput,
+        parentAssetId: String?,
         editor: EditorViewModel
     ) -> MediaAsset {
         let placeholder = MediaAsset(
@@ -194,6 +216,7 @@ final class GenerationService {
             generationInput: genInput
         )
         placeholder.generationStatus = .generating
+        placeholder.parentAssetId = parentAssetId
         editor.mediaAssets.append(placeholder)
         return placeholder
     }
@@ -280,6 +303,7 @@ final class GenerationService {
                                 duration: placeholder.duration,
                                 generationInput: genInput
                             )
+                            asset.parentAssetId = placeholder.parentAssetId
                             editor.mediaAssets[idx] = asset
                             editor.importMediaAsset(asset, skipAppend: true)
                             editor.appendGenerationLog(for: asset)

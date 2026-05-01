@@ -49,6 +49,7 @@ struct GenerationView: View {
     @State private var motionReferenceTargeted = false
 
     @State private var isConsumingEditSource = false
+    @State private var editVariantStackRootId: String?
 
     // Prompt @-autocomplete for reference tags (Seedance/Kling/Grok reference mode)
     @State private var refMentionQuery: String? = nil
@@ -84,6 +85,13 @@ struct GenerationView: View {
             case .image: .purple
             case .video: .blue
             case .audio: .green
+            }
+        }
+        var clipType: ClipType {
+            switch self {
+            case .image: .image
+            case .video: .video
+            case .audio: .audio
             }
         }
     }
@@ -280,6 +288,7 @@ struct GenerationView: View {
                 Button {
                     editor.pendingEditReplacementClipId = nil
                     editor.pendingEditTrimmedSource = nil
+                    editVariantStackRootId = nil
                     editor.showGenerationPanel = false
                 } label: {
                     Image(systemName: "xmark")
@@ -381,6 +390,8 @@ struct GenerationView: View {
             resetSettings()
             clearReferences()
             if newValue == .audio { resetAudioState() }
+            editVariantStackRootId = nil
+            editor.pendingEditTrimmedSource = nil
         }
         .onChange(of: selectedVideoModelIndex) { _, _ in
             guard !isConsumingEditSource else { return }
@@ -1372,31 +1383,27 @@ struct GenerationView: View {
         let trimmedName = assetName.trimmingCharacters(in: .whitespaces)
         let name: String? = trimmedName.isEmpty ? nil : trimmedName
 
-        // Set "Generating..." overlay on the target clip.
         let replacementClipId = editor.pendingEditReplacementClipId
         editor.pendingEditReplacementClipId = nil
         let editorRef = editor
-        let onComplete: (@MainActor (MediaAsset) -> Void)?
-        let onFailure: (@MainActor () -> Void)?
-        var didTrimSource = false
         if let clipId = replacementClipId {
             editor.markPendingReplacement(clipId: clipId)
-            // N-image generations call onComplete once per finalized asset; the
-            // first one swaps the clip, subsequent assets just land in the media
-            // library as siblings.
-            let firstOnly = FirstOnlyFlag()
-            onComplete = { [weak editorRef] newAsset in
-                guard firstOnly.fire() else { return }
-                editorRef?.replaceClipMediaRef(clipId: clipId, newAssetId: newAsset.id, resetTrim: didTrimSource)
-                editorRef?.clearPendingReplacement(clipId: clipId)
-            }
-            onFailure = { [weak editorRef] in
-                editorRef?.clearPendingReplacement(clipId: clipId)
-            }
-        } else {
-            onComplete = nil
-            onFailure = nil
         }
+        let makeOnComplete: (Bool) -> (@MainActor (MediaAsset) -> Void)? = { resetTrim in
+            guard let clipId = replacementClipId else { return nil }
+            let firstOnly = FirstOnlyFlag()
+            return { [weak editorRef] newAsset in
+                guard firstOnly.fire() else { return }
+                editorRef?.replaceClipMediaRef(clipId: clipId, newAssetId: newAsset.id, resetTrim: resetTrim)
+                editorRef?.clearPendingReplacement(clipId: clipId)
+            }
+        }
+        let onFailure: (@MainActor () -> Void)? = {
+            guard let clipId = replacementClipId else { return nil }
+            return { [weak editorRef] in
+                editorRef?.clearPendingReplacement(clipId: clipId)
+            }
+        }()
 
         switch selectedType {
         case .video:
@@ -1434,7 +1441,6 @@ struct GenerationView: View {
                 return trim
             }()
             editor.pendingEditTrimmedSource = nil
-            didTrimSource = (trimmedSource?.hasTrim == true)
             let placeholderDuration: Double
             if model.requiresSourceVideo {
                 if let trim = trimmedSource, trim.hasTrim {
@@ -1474,6 +1480,7 @@ struct GenerationView: View {
                 references: refs,
                 trimmedSourceOverride: trimmedSource,
                 name: name,
+                variantStackRootId: editVariantStackRootId,
                 buildInput: { uploaded in
                     let params: VideoGenerationParams
                     if model.requiresSourceVideo {
@@ -1515,7 +1522,7 @@ struct GenerationView: View {
                 responseKeyPath: FalResponsePaths.video,
                 fileExtension: "mp4",
                 projectURL: editor.projectURL, editor: editor,
-                onComplete: onComplete,
+                onComplete: makeOnComplete(trimmedSource?.hasTrim == true),
                 onFailure: onFailure
             )
         case .image:
@@ -1527,6 +1534,7 @@ struct GenerationView: View {
                 references: imageReferences,
                 name: name,
                 numImages: imageCount,
+                variantStackRootId: editVariantStackRootId,
                 buildInput: { uploaded in
                     let input = model.buildInput(
                         prompt: genInput.prompt, aspectRatio: genInput.aspectRatio,
@@ -1538,7 +1546,7 @@ struct GenerationView: View {
                 responseKeyPath: FalResponsePaths.generatedImage,
                 fileExtension: "jpg",
                 projectURL: editor.projectURL, editor: editor,
-                onComplete: onComplete,
+                onComplete: makeOnComplete(false),
                 onFailure: onFailure
             )
         case .audio:
@@ -1561,7 +1569,7 @@ struct GenerationView: View {
                 responseKeyPath: FalResponsePaths.audio,
                 fileExtension: "mp3",
                 projectURL: editor.projectURL, editor: editor,
-                onComplete: onComplete,
+                onComplete: makeOnComplete(false),
                 onFailure: onFailure
             )
         }
@@ -1569,6 +1577,7 @@ struct GenerationView: View {
         styleInstructions = ""
         prompt = ""
         assetName = ""
+        editVariantStackRootId = nil
         clearReferences()
     }
 
@@ -1608,11 +1617,13 @@ struct GenerationView: View {
             lastFrame = nil
         case .audio, .text:
             editor.pendingEditSource = nil
+            editVariantStackRootId = nil
             return
         }
         if assetName.isEmpty {
             assetName = "Edited \(source.name)"
         }
+        editVariantStackRootId = editor.stackRootId(for: source)
         editor.pendingEditSource = nil
     }
 

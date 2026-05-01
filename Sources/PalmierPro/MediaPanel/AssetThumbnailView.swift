@@ -1,25 +1,50 @@
 import SwiftUI
 
 struct AssetThumbnailView: View {
+    enum StackContext: Equatable {
+        case root(variantCount: Int, isExpanded: Bool)
+        case variant(index: Int, total: Int)
+
+        var isExpanded: Bool {
+            if case .root(_, let exp) = self { return exp }
+            return false
+        }
+
+        var variantCount: Int {
+            switch self {
+            case .root(let n, _): return n
+            case .variant(_, let total): return total
+            }
+        }
+    }
+
     let asset: MediaAsset
+    var coverAsset: MediaAsset
+    var stackContext: StackContext = .root(variantCount: 1, isExpanded: false)
+    var onToggleExpand: (() -> Void)? = nil
+    var onUseVariantInTimeline: (() -> Void)? = nil
+
     @Environment(EditorViewModel.self) var editor
     @FocusState private var isRenaming: Bool
     @State private var renameDraft = ""
     @State private var isHovering = false
 
+    private var isStackRoot: Bool {
+        if case .root = stackContext { return true } else { return false }
+    }
+    private var hasVariants: Bool {
+        stackContext.variantCount > 1
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            ZStack(alignment: .topLeading) {
-                // Fixed 16:9 container with letterboxing
-                ZStack {
-                    Rectangle().fill(Color.black)
-                    thumbnailContent
-                }
-                .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
-
-                thumbnailBadges
+            ZStack {
+                Rectangle().fill(Color.black)
+                thumbnailContent
             }
+            .aspectRatio(16.0 / 9.0, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
+            .overlay(alignment: .topLeading) { thumbnailBadges }
             .overlay(alignment: .topTrailing) { hoverActions }
             .overlay(alignment: .bottomTrailing) { durationOverlay }
             .overlay(
@@ -49,7 +74,7 @@ struct AssetThumbnailView: View {
                     .focused($isRenaming)
                     .onExitCommand { isRenaming = false }
             } else {
-                Text(asset.name)
+                Text(displayName)
                     .font(.system(size: AppTheme.FontSize.xs))
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -68,11 +93,26 @@ struct AssetThumbnailView: View {
         .contextMenu { contextMenuItems }
     }
 
+    private var displayName: String {
+        switch stackContext {
+        case .root: return asset.name
+        case .variant(let i, _): return "v\(i) · \(asset.name)"
+        }
+    }
+
     // MARK: - Context Menu
 
     @ViewBuilder
     private var contextMenuItems: some View {
         let ids = contextTargetIds
+        if let onUseVariantInTimeline {
+            Button("Use This Variant", action: onUseVariantInTimeline)
+            Divider()
+        }
+        if let onToggleExpand, hasVariants {
+            Button(stackContext.isExpanded ? "Collapse Stack" : "Expand Stack", action: onToggleExpand)
+            Divider()
+        }
         Button("Reveal in Finder") { revealInFinder(ids: ids) }
         Button("Copy Path") { copyPaths(ids: ids) }
         Divider()
@@ -115,16 +155,16 @@ struct AssetThumbnailView: View {
 
     private var thumbnailContent: some View {
         Group {
-            if asset.isGenerating {
+            if coverAsset.isGenerating {
                 GeneratingOverlay()
-            } else if case .failed(let error) = asset.generationStatus {
+            } else if case .failed(let error) = coverAsset.generationStatus {
                 failedThumbnail(error: error)
-            } else if let thumbnail = asset.thumbnail {
+            } else if let thumbnail = coverAsset.thumbnail {
                 Image(nsImage: thumbnail)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
             } else {
-                Image(systemName: asset.type.sfSymbolName)
+                Image(systemName: coverAsset.type.sfSymbolName)
                     .font(.system(size: 20))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
@@ -133,10 +173,18 @@ struct AssetThumbnailView: View {
 
     @ViewBuilder
     private var thumbnailBadges: some View {
-        if asset.isGenerated && !asset.isGenerating {
-            sourceBadge
-                .padding(4)
+        HStack(spacing: 4) {
+            if coverAsset.isGenerated && !coverAsset.isGenerating {
+                sourceBadge
+            }
+            if hasVariants, isStackRoot {
+                stackCountPill
+            }
+            if case .variant(let i, _) = stackContext {
+                variantOrdinalPill(index: i)
+            }
         }
+        .padding(4)
     }
 
     @ViewBuilder
@@ -175,8 +223,44 @@ struct AssetThumbnailView: View {
             .glassEffect(.clear, in: .capsule)
     }
 
+    private var stackCountPill: some View {
+        Button {
+            onToggleExpand?()
+        } label: {
+            HStack(spacing: 2) {
+                Image(systemName: stackContext.isExpanded ? "chevron.up" : "square.stack.3d.up.fill")
+                    .font(.system(size: 8, weight: .semibold))
+                Text("\(stackContext.variantCount)")
+                    .font(.system(size: 9, weight: .semibold))
+                    .monospacedDigit()
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                Capsule().fill(Color.black.opacity(0.55))
+            )
+            .overlay(
+                Capsule().strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
+            )
+            .hoverHighlight(cornerRadius: 999)
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .help(stackContext.isExpanded ? "Collapse stack" : "Show \(stackContext.variantCount) variants")
+    }
+
+    private func variantOrdinalPill(index: Int) -> some View {
+        Text("v\(index)")
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .glassEffect(.clear, in: .capsule)
+    }
+
     private var durationBadge: some View {
-        Text(formatDuration(asset.duration))
+        Text(formatDuration(coverAsset.duration))
             .font(.system(size: 9, weight: .medium))
             .foregroundStyle(.white)
             .monospacedDigit()
@@ -218,11 +302,21 @@ struct AssetThumbnailView: View {
     }
 
     private var showsDurationBadge: Bool {
-        (asset.type == .video || asset.type == .audio) && asset.duration > 0
+        (coverAsset.type == .video || coverAsset.type == .audio) && coverAsset.duration > 0
     }
 
     private var isOnTimeline: Bool {
-        editor.timeline.tracks.contains { track in
+        let isStackRowTile: Bool = {
+            if case .root(let n, _) = stackContext { return n > 1 }
+            return false
+        }()
+        if isStackRowTile {
+            let memberIds = Set(editor.variants(ofStackRootId: asset.id).map(\.id))
+            return editor.timeline.tracks.contains { track in
+                track.clips.contains { memberIds.contains($0.mediaRef) }
+            }
+        }
+        return editor.timeline.tracks.contains { track in
             track.clips.contains { $0.mediaRef == asset.id }
         }
     }
@@ -253,6 +347,6 @@ struct AssetThumbnailView: View {
             editor.selectedMediaAssetIds = [asset.id]
         }
 
-        editor.openPreviewTab(for: asset)
+        editor.openPreviewTab(for: coverAsset)
     }
 }
