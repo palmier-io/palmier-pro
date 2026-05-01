@@ -21,6 +21,7 @@ struct ShortcutsPane: View {
             ("] or W", "Trim End to Playhead"),
             ("Backspace", "Delete"),
             ("Shift + Backspace", "Ripple Delete"),
+            ("Cmd + D", "Duplicate"),
         ]),
         ShortcutGroup(title: "File", shortcuts: [
             ("Cmd + N", "New"),

@@ -74,6 +74,13 @@ final class EditorWindowController: NSWindowController {
             }
             return true
 
+        case 2: // D key
+            if cmd {
+                editorViewModel.duplicateSelectedClips()
+                return true
+            }
+            return false
+
         case 8: // C key
             if !cmd {
                 editorViewModel.toolMode = .razor

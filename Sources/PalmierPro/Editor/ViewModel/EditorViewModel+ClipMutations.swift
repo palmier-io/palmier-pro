@@ -495,6 +495,70 @@ extension EditorViewModel {
         removeClips(ids: selectedClipIds)
     }
 
+    /// Clone the selected clips on their original tracks, shifted right by the
+    /// selection's total span so the copies sit immediately after the originals.
+    func duplicateSelectedClips() {
+        let ids = selectedClipIds
+        guard !ids.isEmpty else { return }
+
+        var sources: [(clip: Clip, trackId: String)] = []
+        var minStart = Int.max
+        var maxEnd = Int.min
+        for id in ids {
+            guard let loc = findClip(id: id) else { continue }
+            let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            sources.append((clip, timeline.tracks[loc.trackIndex].id))
+            minStart = min(minStart, clip.startFrame)
+            maxEnd = max(maxEnd, clip.endFrame)
+        }
+        guard !sources.isEmpty else { return }
+
+        let shift = max(1, maxEnd - minStart)
+
+        var groupCounts: [String: Int] = [:]
+        for src in sources {
+            if let g = src.clip.linkGroupId { groupCounts[g, default: 0] += 1 }
+        }
+        var groupRemap: [String: String] = [:]
+
+        var newIds: [String] = []
+        let actionName = sources.count == 1 ? "Duplicate Clip" : "Duplicate Clips"
+        withTimelineSwap(actionName: actionName) {
+            for src in sources {
+                guard let ti = timeline.tracks.firstIndex(where: { $0.id == src.trackId }) else { continue }
+                let dstStart = src.clip.startFrame + shift
+                clearRegion(trackIndex: ti, start: dstStart, end: dstStart + src.clip.durationFrames, prune: false)
+            }
+
+            for src in sources {
+                guard let ti = timeline.tracks.firstIndex(where: { $0.id == src.trackId }) else { continue }
+                var clone = src.clip
+                clone.id = UUID().uuidString
+                clone.startFrame = src.clip.startFrame + shift
+                if let oldGroup = src.clip.linkGroupId, (groupCounts[oldGroup] ?? 0) > 1 {
+                    if let mapped = groupRemap[oldGroup] {
+                        clone.linkGroupId = mapped
+                    } else {
+                        let new = UUID().uuidString
+                        groupRemap[oldGroup] = new
+                        clone.linkGroupId = new
+                    }
+                } else {
+                    clone.linkGroupId = nil
+                }
+                timeline.tracks[ti].clips.append(clone)
+                newIds.append(clone.id)
+            }
+
+            for i in timeline.tracks.indices { sortClips(trackIndex: i) }
+            pruneEmptyTracks()
+        }
+
+        if !newIds.isEmpty {
+            selectedClipIds = Set(newIds)
+        }
+    }
+
     func deleteSelectedMediaAssets() {
         let ids = selectedMediaAssetIds
         guard !ids.isEmpty else { return }
