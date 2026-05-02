@@ -233,13 +233,58 @@ struct InspectorView: View {
     @ViewBuilder
     private func videoTabContent() -> some View {
         let clips = nonTextVisualClips
-        transformSection(clips: clips)
+        let single = clips.count == 1 ? clips.first : nil
+        let kfVisible = single != nil && editor.keyframesPanelVisible
 
-        if !clips.isEmpty {
-            cropSection(clip: clips.count == 1 ? clips.first : nil)
+        if let clip = single, kfVisible {
+            HStack(alignment: .top, spacing: 0) {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+                    transformSection(clips: clips)
+                    if !clips.isEmpty { cropSection(clip: single) }
+                    speedSection(clips: clips + selectedAudioClips)
+                        .padding(.trailing, KeyframesMetrics.stampButtonWidth + AppTheme.Spacing.sm)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.trailing, AppTheme.Spacing.sm)
+                Divider()
+                KeyframesPanel(clip: clip)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, AppTheme.Spacing.sm)
+            }
+        } else {
+            transformSection(clips: clips)
+            if !clips.isEmpty {
+                cropSection(clip: single)
+            }
+            speedSection(clips: clips + selectedAudioClips)
         }
 
-        speedSection(clips: clips + selectedAudioClips)
+        keyframesToggleBar(enabled: single != nil)
+    }
+
+    private func keyframesToggleBar(enabled: Bool) -> some View {
+        let on = editor.keyframesPanelVisible
+        return HStack {
+            Spacer()
+            Button {
+                editor.keyframesPanelVisible.toggle()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: on ? "diamond.fill" : "diamond")
+                        .font(.system(size: 10, weight: .medium))
+                    Text("Keyframes")
+                        .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                }
+                .foregroundStyle(on ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!enabled)
+            .opacity(enabled ? 1 : 0.4)
+            .help(enabled ? (on ? "Hide keyframe timeline" : "Show keyframe timeline") : "Select a single clip to enable")
+        }
     }
 
     @ViewBuilder
@@ -356,82 +401,131 @@ struct InspectorView: View {
 
     @ViewBuilder
     private func transformSection(clips: [Clip]) -> some View {
+        let single = clips.count == 1 ? clips.first : nil
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            collapsibleHeader(
-                icon: "arrow.up.and.down.and.arrow.left.and.right",
-                title: "Transform",
-                expanded: transformExpanded,
-                onToggle: { transformExpanded.toggle() },
-                resetHelp: transformExpanded ? "Reset transform" : nil,
-                onReset: transformExpanded ? {
-                    commitToClips(clips, actionName: "Reset Transform") { c in
-                        editor.commitClipProperty(clipId: c.id) {
-                            $0.transform = Transform()
-                            $0.opacity = 1
-                        }
-                    }
-                } : nil
-            )
-
+            transformHeader(clips: clips)
+                .frame(height: KeyframesMetrics.headerHeight, alignment: .leading)
             if transformExpanded {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-                    propertyRow(label: "Position") {
+                    animatableRow(label: "Position", clipId: single?.id, property: .position) {
                         InspectorPositionFields(clips: clips)
                     }
-                    transformScaleRow(clips: clips)
-                    transformOpacityRow(clips: clips)
+                    animatableRow(label: "Scale", clipId: single?.id, property: .scale) {
+                        scaleScrubField(clips: clips)
+                    }
+                    animatableRow(label: "Opacity", clipId: single?.id, property: .opacity) {
+                        opacityScrubField(clips: clips)
+                    }
                 }
                 .padding(.leading, sectionContentIndent)
             }
         }
     }
 
+    /// Property row with an optional keyframe stamp button after the value field.
+    @ViewBuilder
+    private func animatableRow<Fields: View>(
+        label: String,
+        clipId: String?,
+        property: AnimatableProperty,
+        @ViewBuilder fields: () -> Fields
+    ) -> some View {
+        propertyRow(label: label) {
+            HStack(spacing: AppTheme.Spacing.sm) {
+                fields()
+                if let clipId {
+                    keyframeStampButton(clipId: clipId, property: property)
+                }
+            }
+        }
+        .frame(height: KeyframesMetrics.rowHeight)
+    }
+
+    private func keyframeStampButton(clipId: String, property: AnimatableProperty) -> some View {
+        let inRange = editor.clipFor(id: clipId)?.contains(timelineFrame: editor.currentFrame) ?? false
+        let onKeyframe = editor.hasKeyframe(clipId: clipId, property: property, at: editor.currentFrame)
+        return Button {
+            if onKeyframe {
+                editor.removeKeyframe(clipId: clipId, property: property, at: editor.currentFrame)
+            } else {
+                editor.stampKeyframe(clipId: clipId, property: property, frame: editor.currentFrame)
+            }
+        } label: {
+            Image(systemName: onKeyframe ? "diamond.fill" : "diamond")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(onKeyframe ? AppTheme.Accent.timecodeColor : AppTheme.Text.tertiaryColor)
+                .frame(width: KeyframesMetrics.stampButtonWidth, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!inRange)
+        .opacity(inRange ? 1 : 0.4)
+        .help(!inRange ? "Move playhead inside the clip"
+              : onKeyframe ? "Remove keyframe at playhead"
+              : "Add keyframe at playhead")
+    }
+
     /// Indent property rows to align with the section header's title text
     private var sectionContentIndent: CGFloat { 20 }
 
-    @ViewBuilder
-    private func transformScaleRow(clips: [Clip]) -> some View {
-        propertyRow(label: "Scale") {
-            ScrubbableNumberField(
-                value: sharedClipValue(clips) { $0.transform.width },
-                range: 0.01...5.0,
-                displayMultiplier: 100,
-                format: "%.0f",
-                valueSuffix: "%",
-                fieldWidth: 50,
-                onChanged: { newVal in
-                    for c in clips {
-                        let t = scaledTransform(for: c, newScale: newVal)
-                        editor.applyClipProperty(clipId: c.id) { $0.transform = t }
+    private func transformHeader(clips: [Clip]) -> some View {
+        collapsibleHeader(
+            icon: "arrow.up.and.down.and.arrow.left.and.right",
+            title: "Transform",
+            expanded: transformExpanded,
+            onToggle: { transformExpanded.toggle() },
+            resetHelp: transformExpanded ? "Reset transform" : nil,
+            onReset: transformExpanded ? {
+                commitToClips(clips, actionName: "Reset Transform") { c in
+                    editor.commitClipProperty(clipId: c.id) {
+                        $0.transform = Transform()
+                        $0.opacity = 1
+                        $0.opacityTrack = nil
+                        $0.positionTrack = nil
+                        $0.scaleTrack = nil
                     }
                 }
-            ) { newVal in
-                commitToClips(clips, actionName: "Change Scale") { c in
-                    let t = scaledTransform(for: c, newScale: newVal)
-                    editor.commitClipProperty(clipId: c.id) { $0.transform = t }
-                }
+            } : nil
+        )
+    }
+
+    @ViewBuilder
+    private func scaleScrubField(clips: [Clip]) -> some View {
+        ScrubbableNumberField(
+            value: sharedClipValue(clips) { $0.sizeAt(frame: editor.currentFrame).width },
+            range: 0.01...5.0,
+            displayMultiplier: 100,
+            format: "%.0f",
+            valueSuffix: "%",
+            fieldWidth: 50,
+            onChanged: { newVal in
+                for c in clips { editor.applyScale(clipId: c.id, newScale: newVal) }
             }
+        ) { newVal in
+            editor.undoManager?.beginUndoGrouping()
+            for c in clips { editor.commitScale(clipId: c.id, newScale: newVal) }
+            editor.undoManager?.endUndoGrouping()
+            editor.undoManager?.setActionName("Change Scale")
         }
     }
 
     @ViewBuilder
-    private func transformOpacityRow(clips: [Clip]) -> some View {
-        propertyRow(label: "Opacity") {
-            ScrubbableNumberField(
-                value: sharedClipValue(clips) { $0.opacity },
-                range: 0...1,
-                displayMultiplier: 100,
-                format: "%.0f",
-                valueSuffix: "%",
-                fieldWidth: 50,
-                onChanged: { newVal in
-                    for c in clips { editor.applyClipProperty(clipId: c.id) { $0.opacity = newVal } }
-                }
-            ) { newVal in
-                commitToClips(clips, actionName: "Change Opacity") { c in
-                    editor.commitClipProperty(clipId: c.id) { $0.opacity = newVal }
-                }
+    private func opacityScrubField(clips: [Clip]) -> some View {
+        ScrubbableNumberField(
+            value: sharedClipValue(clips) { $0.opacityAt(frame: editor.currentFrame) },
+            range: 0...1,
+            displayMultiplier: 100,
+            format: "%.0f",
+            valueSuffix: "%",
+            fieldWidth: 50,
+            onChanged: { newVal in
+                for c in clips { editor.applyOpacity(clipId: c.id, value: newVal) }
             }
+        ) { newVal in
+            editor.undoManager?.beginUndoGrouping()
+            for c in clips { editor.commitOpacity(clipId: c.id, value: newVal) }
+            editor.undoManager?.endUndoGrouping()
+            editor.undoManager?.setActionName("Change Opacity")
         }
     }
 
@@ -495,6 +589,8 @@ struct InspectorView: View {
             Text(label)
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
+                .lineLimit(1)
+                .fixedSize()
             Spacer()
             trailing()
         }
@@ -505,7 +601,6 @@ struct InspectorView: View {
     @ViewBuilder
     private func cropSection(clip: Clip?) -> some View {
         let editing = editor.cropEditingActive && clip != nil
-        let cropped = clip.map { !$0.crop.isIdentity } ?? false
         let multi = clip == nil
 
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
@@ -531,16 +626,11 @@ struct InspectorView: View {
 
                 Spacer()
 
-                if let clip, cropped {
-                    resetButton(
-                        onReset: {
-                            editor.commitClipProperty(clipId: clip.id) { $0.crop = Crop() }
-                            editor.cropAspectLock = .free
-                        },
-                        help: "Reset crop"
-                    )
+                if let clip {
+                    keyframeStampButton(clipId: clip.id, property: .crop)
                 }
             }
+            .frame(height: KeyframesMetrics.rowHeight)
             .opacity(multi ? 0.4 : 1)
 
             if editing, let clip {
@@ -585,11 +675,10 @@ struct InspectorView: View {
             // Don't mutate crop; user keeps current shape and drags freely.
             break
         case .original:
-            editor.commitClipProperty(clipId: clip.id) { $0.crop = Crop() }
+            editor.commitCrop(clipId: clip.id, newCrop: Crop())
         default:
             guard let target = preset.pixelAspect else { return }
-            let newCrop = editor.cropFittingAspect(for: clip, targetPixelAspect: target)
-            editor.commitClipProperty(clipId: clip.id) { $0.crop = newCrop }
+            editor.commitCrop(clipId: clip.id, newCrop: editor.cropFittingAspect(for: clip, targetPixelAspect: target))
         }
     }
 
