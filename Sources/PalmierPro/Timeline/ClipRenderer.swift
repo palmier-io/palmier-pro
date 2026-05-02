@@ -93,10 +93,39 @@ enum ClipRenderer {
             drawOffsetBadge(frames: linkOffset, in: rect, context: context)
         }
 
+        drawKeyframeMarkers(clip: clip, in: rect, context: context)
+
         drawTrimHandles(in: rect, context: context)
 
         if opacity < 1.0 {
             context.restoreGState()
+        }
+    }
+
+    // MARK: - Keyframe markers
+
+    /// Yellow diamonds along the bottom edge marking keyframes
+    private static func drawKeyframeMarkers(clip: Clip, in rect: NSRect, context: CGContext) {
+        let frames = clip.allKeyframeFrames
+        guard !frames.isEmpty, clip.durationFrames > 0 else { return }
+        let pxPerFrame = (rect.width - 2 * Trim.handleWidth) / CGFloat(clip.durationFrames)
+        guard pxPerFrame > 0 else { return }
+        let baseX = rect.minX + Trim.handleWidth
+        let y = rect.maxY - 5
+        let half: CGFloat = 3
+        context.setFillColor(NSColor.systemYellow.withAlphaComponent(0.95).cgColor)
+        context.setStrokeColor(NSColor.black.withAlphaComponent(0.5).cgColor)
+        context.setLineWidth(0.5)
+        for f in frames where clip.contains(timelineFrame: f) {
+            let x = baseX + CGFloat(f - clip.startFrame) * pxPerFrame
+            let p = CGMutablePath()
+            p.move(to: CGPoint(x: x, y: y - half))
+            p.addLine(to: CGPoint(x: x + half, y: y))
+            p.addLine(to: CGPoint(x: x, y: y + half))
+            p.addLine(to: CGPoint(x: x - half, y: y))
+            p.closeSubpath()
+            context.addPath(p)
+            context.drawPath(using: .fillStroke)
         }
     }
 

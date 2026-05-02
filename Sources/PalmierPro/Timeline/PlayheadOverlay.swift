@@ -1,5 +1,30 @@
 import AppKit
 
+
+enum Playhead {
+    static let color: NSColor = .systemRed
+    static let triangleSize: CGFloat = 8
+
+    /// Append a vertical line spanning `[top, bottom]` at `x`
+    static func appendPath(
+        _ path: CGMutablePath,
+        x: CGFloat,
+        top: CGFloat,
+        bottom: CGFloat,
+        triangle: Bool
+    ) {
+        path.move(to: CGPoint(x: x, y: top))
+        path.addLine(to: CGPoint(x: x, y: bottom))
+        if triangle {
+            let half = triangleSize / 2
+            path.move(to: CGPoint(x: x, y: top))
+            path.addLine(to: CGPoint(x: x - half, y: top - triangleSize))
+            path.addLine(to: CGPoint(x: x + half, y: top - triangleSize))
+            path.closeSubpath()
+        }
+    }
+}
+
 /// Playhead CAShapeLayer driven by `withObservationTracking`
 @MainActor
 final class PlayheadOverlay {
@@ -10,9 +35,9 @@ final class PlayheadOverlay {
     init(view: TimelineView, editor: EditorViewModel) {
         self.view = view
         self.editor = editor
-        let red = NSColor.systemRed.cgColor
-        layer.fillColor = red
-        layer.strokeColor = red
+        let cg = Playhead.color.cgColor
+        layer.fillColor = cg
+        layer.strokeColor = cg
         layer.lineWidth = 1
         layer.zPosition = 100
         view.layer?.addSublayer(layer)
@@ -28,17 +53,9 @@ final class PlayheadOverlay {
         let x = Double(editor.currentFrame) * geo.pixelsPerFrame
         let top = scrollOffset.y + Double(geo.rulerHeight)
         let bottom = scrollOffset.y + Double(visibleHeight)
-        let triSize: CGFloat = 8
-        let halfTri = triSize / 2
 
         let path = CGMutablePath()
-        path.move(to: CGPoint(x: x, y: top))
-        path.addLine(to: CGPoint(x: x, y: bottom))
-        // Triangle is a separate closed subpath so fill applies to it but not the line.
-        path.move(to: CGPoint(x: x, y: top))
-        path.addLine(to: CGPoint(x: x - halfTri, y: top - triSize))
-        path.addLine(to: CGPoint(x: x + halfTri, y: top - triSize))
-        path.closeSubpath()
+        Playhead.appendPath(path, x: x, top: top, bottom: bottom, triangle: true)
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)

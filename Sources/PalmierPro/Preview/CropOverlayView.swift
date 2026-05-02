@@ -13,8 +13,9 @@ struct CropOverlayView: View {
             let videoRect = videoContentRect(in: geo.size)
 
             if let clip = selectedClip {
-                let clipRect = clipFrame(clip.transform, videoRect: videoRect)
-                let cropRect = cropFrame(clip.crop, in: clipRect)
+                let frame = editor.currentFrame
+                let clipRect = clipFrame(clip.transformAt(frame: frame), videoRect: videoRect)
+                let cropRect = cropFrame(clip.cropAt(frame: frame), in: clipRect)
 
                 Canvas { ctx, _ in
                     let dim = GraphicsContext.Shading.color(dimColor)
@@ -56,16 +57,16 @@ struct CropOverlayView: View {
     private func resizeGesture(clip: Clip, corner: Corner, clipRect: CGRect) -> some Gesture {
         DragGesture()
             .onChanged { value in
-                if dragStart == nil { dragStart = clip.crop }
+                if dragStart == nil { dragStart = clip.cropAt(frame: editor.currentFrame) }
                 guard let start = dragStart else { return }
                 let updated = resizedCrop(start, corner: corner, by: value.translation, clipRect: clipRect, clip: clip)
-                editor.applyClipProperty(clipId: clip.id) { $0.crop = updated }
+                editor.applyCrop(clipId: clip.id, newCrop: updated)
             }
             .onEnded { value in
                 guard let start = dragStart else { return }
                 let updated = resizedCrop(start, corner: corner, by: value.translation, clipRect: clipRect, clip: clip)
                 dragStart = nil
-                editor.commitClipProperty(clipId: clip.id) { $0.crop = updated }
+                editor.commitCrop(clipId: clip.id, newCrop: updated)
             }
     }
 

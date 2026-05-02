@@ -92,11 +92,18 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var textContent: String?
     var textStyle: TextStyle?
 
+    // Keyframe tracks for each animatable property. Nil when no animation exists.
+    var opacityTrack: KeyframeTrack<Double>?
+    var positionTrack: KeyframeTrack<AnimPair>?
+    var scaleTrack: KeyframeTrack<AnimPair>?
+    var cropTrack: KeyframeTrack<Crop>?
+
     private enum CodingKeys: String, CodingKey {
         case id, mediaRef, mediaType, sourceClipType, startFrame, durationFrames
         case trimStartFrame, trimEndFrame, speed, volume, audioFadeInFrames, audioFadeOutFrames
         case opacity, transform, crop
         case linkGroupId, textContent, textStyle
+        case opacityTrack, positionTrack, scaleTrack, cropTrack
     }
 
     /// Frame where this clip ends on the timeline
@@ -107,6 +114,44 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
 
     /// Total source frames the clip references, including both trims.
     var sourceDurationFrames: Int { sourceFramesConsumed + trimStartFrame + trimEndFrame }
+
+    /// Convert an absolute timeline frame to the clip-relative offset used by track storage.
+    private func keyframeOffset(forFrame frame: Int) -> Int { frame - startFrame }
+
+    func opacityAt(frame: Int) -> Double {
+        opacityTrack?.sample(at: keyframeOffset(forFrame: frame), fallback: opacity) ?? opacity
+    }
+
+    /// Sampled topLeft (normalized canvas space) at `frame`
+    func topLeftAt(frame: Int) -> (x: Double, y: Double) {
+        let tl = transform.topLeft
+        if let p = positionTrack?.sample(at: keyframeOffset(forFrame: frame), fallback: AnimPair(a: tl.x, b: tl.y)) {
+            return (p.a, p.b)
+        }
+        return tl
+    }
+
+    /// Sampled (width, height) at `frame`
+    func sizeAt(frame: Int) -> (width: Double, height: Double) {
+        let fallback = AnimPair(a: transform.width, b: transform.height)
+        let s = scaleTrack?.sample(at: keyframeOffset(forFrame: frame), fallback: fallback) ?? fallback
+        return (s.a, s.b)
+    }
+
+    /// Resolve the full Transform at `frame`
+    func transformAt(frame: Int) -> Transform {
+        let tl = topLeftAt(frame: frame)
+        let sz = sizeAt(frame: frame)
+        return Transform(topLeft: (tl.x, tl.y), width: sz.width, height: sz.height)
+    }
+
+    var hasTransformAnimation: Bool {
+        (positionTrack?.isActive ?? false) || (scaleTrack?.isActive ?? false)
+    }
+
+    func cropAt(frame: Int) -> Crop {
+        cropTrack?.sample(at: keyframeOffset(forFrame: frame), fallback: crop) ?? crop
+    }
 
     /// Source-seconds → project-timeline-frame through this clip's placement, trim, and speed.
     func timelineFrame(sourceSeconds t: Double, fps: Int) -> Int? {
@@ -164,7 +209,11 @@ extension Clip {
             crop: (try? c.decode(Crop.self, forKey: .crop)) ?? Crop(),
             linkGroupId: try? c.decode(String.self, forKey: .linkGroupId),
             textContent: try? c.decode(String.self, forKey: .textContent),
-            textStyle: try? c.decode(TextStyle.self, forKey: .textStyle)
+            textStyle: try? c.decode(TextStyle.self, forKey: .textStyle),
+            opacityTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .opacityTrack),
+            positionTrack: try? c.decode(KeyframeTrack<AnimPair>.self, forKey: .positionTrack),
+            scaleTrack: try? c.decode(KeyframeTrack<AnimPair>.self, forKey: .scaleTrack),
+            cropTrack: try? c.decode(KeyframeTrack<Crop>.self, forKey: .cropTrack)
         )
     }
 }

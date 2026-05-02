@@ -11,7 +11,7 @@ struct TransformOverlayView: View {
             let videoRect = videoContentRect(in: geo.size)
 
             if let clip = selectedClip {
-                let clipRect = clipFrame(clip.transform, videoRect: videoRect)
+                let clipRect = clipFrame(clip.transformAt(frame: editor.currentFrame), videoRect: videoRect)
 
                 Rectangle()
                     .stroke(borderColor, lineWidth: 1)
@@ -65,12 +65,12 @@ struct TransformOverlayView: View {
     private func moveGesture(clip: Clip, videoRect: CGRect) -> some Gesture {
         DragGesture()
             .onChanged { value in
-                if dragStart == nil { dragStart = clip.transform }
+                if dragStart == nil { dragStart = clip.transformAt(frame: editor.currentFrame) }
                 guard let start = dragStart else { return }
                 let (moved, snap) = movedTransform(start, by: value.translation, in: videoRect)
                 if centerGuideX != snap.x { centerGuideX = snap.x }
                 if centerGuideY != snap.y { centerGuideY = snap.y }
-                editor.applyClipProperty(clipId: clip.id) { $0.transform = moved }
+                editor.applyTransform(clipId: clip.id, newTransform: moved)
             }
             .onEnded { value in
                 guard let start = dragStart else { return }
@@ -78,7 +78,7 @@ struct TransformOverlayView: View {
                 dragStart = nil
                 if centerGuideX { centerGuideX = false }
                 if centerGuideY { centerGuideY = false }
-                editor.commitClipProperty(clipId: clip.id) { $0.transform = moved }
+                editor.commitTransform(clipId: clip.id, newTransform: moved, actionName: "Change Position")
             }
     }
 
@@ -102,7 +102,7 @@ struct TransformOverlayView: View {
         DragGesture()
             .onChanged { value in
                 if resizeStart == nil {
-                    resizeStart = clip.transform
+                    resizeStart = clip.transformAt(frame: editor.currentFrame)
                     resizeStartFontScale = clip.mediaType == .text
                         ? (clip.textStyle ?? TextStyle()).fontScale
                         : nil
@@ -115,7 +115,7 @@ struct TransformOverlayView: View {
                     editor.fitTextClipToContent(clipId: clip.id)
                 } else {
                     let resized = resizedTransform(start, corner: corner, by: value.translation, in: videoRect, mediaCanvasAspect: mediaCanvasAspect)
-                    editor.applyClipProperty(clipId: clip.id) { $0.transform = resized }
+                    editor.applyTransform(clipId: clip.id, newTransform: resized)
                 }
             }
             .onEnded { value in
@@ -130,7 +130,7 @@ struct TransformOverlayView: View {
                     editor.fitTextClipToContent(clipId: clip.id)
                 } else {
                     let resized = resizedTransform(start, corner: corner, by: value.translation, in: videoRect, mediaCanvasAspect: mediaCanvasAspect)
-                    editor.commitClipProperty(clipId: clip.id) { $0.transform = resized }
+                    editor.commitTransform(clipId: clip.id, newTransform: resized, actionName: "Change Scale")
                 }
             }
     }
