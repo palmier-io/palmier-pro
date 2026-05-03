@@ -332,7 +332,7 @@ private struct RulerView: NSViewRepresentable {
         var fps = 30
         override var isFlipped: Bool { true }
         override func draw(_ dirtyRect: NSRect) {
-            guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+            guard let ctx = NSGraphicsContext.current?.cgContext, bounds.width > 0 else { return }
             let pxPerFrame = Double(bounds.width) / Double(max(1, span))
             TimelineRuler.draw(
                 in: bounds,

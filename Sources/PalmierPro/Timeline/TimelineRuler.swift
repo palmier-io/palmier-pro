@@ -20,6 +20,9 @@ enum TimelineRuler {
         context.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - 0.5))
         context.strokePath()
 
+        // Tick math divides by pixelsPerFrame and casts to Int — NaN/±Inf would trap.
+        guard pixelsPerFrame > 0, pixelsPerFrame.isFinite else { return }
+
         // Adaptive tick interval: target ~80px between major ticks
         let framesPerMajor = tickInterval(pixelsPerFrame: pixelsPerFrame, fps: fps)
         guard framesPerMajor > 0 else { return }

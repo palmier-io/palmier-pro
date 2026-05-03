@@ -173,7 +173,9 @@ enum CompositionBuilder {
             }
             // AV ramps linearly between successive volume points; sub-ms ramp at boundaries forces a hard step.
             let stepRamp = CMTime(value: 1, timescale: 48_000)
+            var prevEndFrame = Int.min
             for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) {
+                guard clip.durationFrames > 0, clip.startFrame >= prevEndFrame else { continue }
                 let v = Float(clip.volume)
                 let dur = clip.durationFrames
                 let fIn = max(0, min(clip.audioFadeInFrames, dur))
@@ -194,6 +196,7 @@ enum CompositionBuilder {
                 if exitStart < endT {
                     params.setVolumeRamp(fromStartVolume: v, toEndVolume: 0, timeRange: CMTimeRange(start: exitStart, end: endT))
                 }
+                prevEndFrame = clip.startFrame + dur
             }
             return params
         }
