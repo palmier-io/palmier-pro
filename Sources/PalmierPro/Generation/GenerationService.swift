@@ -72,6 +72,7 @@ final class GenerationService {
             return rootId
         }
         var placeholders: [MediaAsset] = []
+        let destDir = Self.destinationDirectory(for: projectURL)
 
         // Group all N images into a stack
         for i in 0..<count {
@@ -89,6 +90,8 @@ final class GenerationService {
                 duration: placeholderDuration,
                 genInput: genInput,
                 parentAssetId: parent,
+                destDir: destDir,
+                fileExtension: fileExtension,
                 editor: editor
             )
             placeholders.append(placeholder)
@@ -151,10 +154,7 @@ final class GenerationService {
                     endpoint: endpoint,
                     input: input,
                     responseKeyPath: responseKeyPath,
-                    fileExtension: fileExtension,
-                    assetType: assetType,
                     genInput: finalGenInput,
-                    projectURL: projectURL,
                     editor: editor,
                     onComplete: onComplete,
                     onFailure: onFailure
@@ -206,10 +206,15 @@ final class GenerationService {
         duration: Double,
         genInput: GenerationInput,
         parentAssetId: String?,
+        destDir: URL,
+        fileExtension: String,
         editor: EditorViewModel
     ) -> MediaAsset {
+        let id = UUID().uuidString
+        let destURL = destDir.appendingPathComponent("gen-\(id.prefix(8)).\(fileExtension)")
         let placeholder = MediaAsset(
-            url: URL(fileURLWithPath: "/dev/null"),
+            id: id,
+            url: destURL,
             type: type,
             name: name,
             duration: duration,
@@ -221,15 +226,21 @@ final class GenerationService {
         return placeholder
     }
 
+    private static func destinationDirectory(for projectURL: URL?) -> URL {
+        if let projectURL {
+            let dir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            return dir
+        }
+        return FileManager.default.temporaryDirectory
+    }
+
     private func runGeneration(
         placeholders: [MediaAsset],
         endpoint: String,
         input: Payload,
         responseKeyPath: @escaping @Sendable (Payload) -> [String],
-        fileExtension: String,
-        assetType: ClipType,
         genInput: GenerationInput,
-        projectURL: URL?,
         editor: EditorViewModel,
         onComplete: (@MainActor (MediaAsset) -> Void)?,
         onFailure: (@MainActor () -> Void)?
@@ -271,46 +282,24 @@ final class GenerationService {
                     Log.generation.notice("fal returned \(urlStrings.count) URL(s) for \(placeholders.count) placeholder(s); marking extras as failed")
                 }
 
-                let destDir: URL
-                if let projectURL {
-                    destDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-                    try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
-                } else {
-                    destDir = FileManager.default.temporaryDirectory
-                }
-
                 var anyFinalized = false
                 for (i, placeholder) in placeholders.enumerated() {
                     guard i < urlStrings.count, let remoteURL = URL(string: urlStrings[i]) else {
                         placeholder.generationStatus = .failed("No image in response")
                         continue
                     }
-                    let placeholderId = placeholder.id
                     do {
                         Log.generation.notice("downloading \(remoteURL.host ?? "?") (\(i + 1)/\(urlStrings.count))")
                         let (tempURL, _) = try await URLSession.shared.download(from: remoteURL)
-                        let filename = "gen-\(placeholderId.prefix(8)).\(fileExtension)"
-                        let destURL = destDir.appendingPathComponent(filename)
-                        try? FileManager.default.removeItem(at: destURL)
-                        try FileManager.default.moveItem(at: tempURL, to: destURL)
+                        try? FileManager.default.removeItem(at: placeholder.url)
+                        try FileManager.default.moveItem(at: tempURL, to: placeholder.url)
 
-                        if let idx = editor.mediaAssets.firstIndex(where: { $0.id == placeholderId }) {
-                            let asset = MediaAsset(
-                                id: placeholderId,
-                                url: destURL,
-                                type: assetType,
-                                name: placeholder.name,
-                                duration: placeholder.duration,
-                                generationInput: genInput
-                            )
-                            asset.parentAssetId = placeholder.parentAssetId
-                            editor.mediaAssets[idx] = asset
-                            editor.importMediaAsset(asset, skipAppend: true)
-                            editor.appendGenerationLog(for: asset)
-                            await editor.finalizeImportedAsset(asset)
-                            onComplete?(asset)
-                            anyFinalized = true
-                        }
+                        placeholder.generationStatus = .none
+                        editor.importMediaAsset(placeholder, skipAppend: true)
+                        editor.appendGenerationLog(for: placeholder)
+                        await editor.finalizeImportedAsset(placeholder)
+                        onComplete?(placeholder)
+                        anyFinalized = true
                     } catch {
                         let message = Self.friendlyMessage(from: error)
                         Log.generation.error("download failed model=\(genInput.model) idx=\(i) error=\(message)")
