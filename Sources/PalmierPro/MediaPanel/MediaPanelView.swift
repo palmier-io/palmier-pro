@@ -13,6 +13,7 @@ struct MediaPanelView: View {
 
     // Navigation + selection state
     @State var currentFolderId: String? = nil
+    @State var folderReturnViewMode: ViewMode?
     @State var renamingFolderId: String?
     @State var pendingFolderFocusId: String?
     @State var dropTargetFolderId: String?
@@ -106,7 +107,7 @@ struct MediaPanelView: View {
     /// If the current folder, rename target, or hover target has been deleted,
     /// drop them back to safe defaults. Pops drilled-in views to root.
     private func pruneStaleFolderState() {
-        if let id = currentFolderId, editor.folder(id: id) == nil { currentFolderId = nil }
+        if let id = currentFolderId, editor.folder(id: id) == nil { navigateToFolder(nil) }
         if let id = renamingFolderId, editor.folder(id: id) == nil { renamingFolderId = nil }
         if let id = pendingFolderFocusId, editor.folder(id: id) == nil { pendingFolderFocusId = nil }
         if let id = dropTargetFolderId, editor.folder(id: id) == nil { dropTargetFolderId = nil }
@@ -124,8 +125,11 @@ struct MediaPanelView: View {
         editor.mediaPanelScrollTarget = id
     }
 
-    private func openFolder(id: String) {
+    func openFolder(id: String) {
         guard editor.folder(id: id) != nil else { return }
+        if viewMode != .folder {
+            folderReturnViewMode = viewMode
+        }
         currentFolderId = id
         viewMode = .folder
     }
@@ -162,7 +166,7 @@ struct MediaPanelView: View {
             toolbarMenuIcon(systemName: viewMode.systemImage) {
                 ForEach(ViewMode.allCases, id: \.self) { mode in
                     Button {
-                        viewMode = mode
+                        setViewMode(mode)
                     } label: {
                         Label(mode.title, systemImage: viewMode == mode ? "checkmark" : mode.systemImage)
                     }
@@ -235,7 +239,7 @@ struct MediaPanelView: View {
     private func breadcrumbChip(item: BreadcrumbItem, isLeaf: Bool) -> some View {
         let textColor = isLeaf ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor
         return Button {
-            if !isLeaf { currentFolderId = item.folderId }
+            if !isLeaf { navigateToFolder(item.folderId) }
         } label: {
             Text(item.name)
                 .font(.system(size: AppTheme.FontSize.xs, weight: isLeaf ? .semibold : .regular))
@@ -402,7 +406,20 @@ struct MediaPanelView: View {
 
     private func navigateUp() {
         guard let id = currentFolderId, let folder = editor.folder(id: id) else { return }
-        currentFolderId = folder.parentFolderId
+        navigateToFolder(folder.parentFolderId)
+    }
+
+    func setViewMode(_ mode: ViewMode) {
+        viewMode = mode
+        folderReturnViewMode = nil
+    }
+
+    func navigateToFolder(_ folderId: String?) {
+        currentFolderId = folderId
+        if folderId == nil, let returnMode = folderReturnViewMode {
+            viewMode = returnMode
+            folderReturnViewMode = nil
+        }
     }
 
     // MARK: - Marquee Selection
