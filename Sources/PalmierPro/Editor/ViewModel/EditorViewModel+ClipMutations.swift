@@ -571,12 +571,8 @@ extension EditorViewModel {
             removeClips(ids: clipIdsToRemove)
         }
 
-        let deletedSet = ids.intersection(Set(mediaAssets.map(\.id)))
-        let promotions = planStackPromotions(forDeletedIds: deletedSet)
-
         mediaAssets.removeAll { ids.contains($0.id) }
         mediaManifest.entries.removeAll { ids.contains($0.id) }
-        applyStackPromotions(promotions)
 
         for id in ids { closePreviewTab(id: id) }
         selectedMediaAssetIds.removeAll()

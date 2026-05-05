@@ -49,7 +49,7 @@ struct GenerationView: View {
     @State private var motionReferenceTargeted = false
 
     @State private var isConsumingEditSource = false
-    @State private var editVariantStackRootId: String?
+    @State private var editFolderId: String?
 
     // Prompt @-autocomplete for reference tags (Seedance/Kling/Grok reference mode)
     @State private var refMentionQuery: String? = nil
@@ -288,7 +288,7 @@ struct GenerationView: View {
                 Button {
                     editor.pendingEditReplacementClipId = nil
                     editor.pendingEditTrimmedSource = nil
-                    editVariantStackRootId = nil
+                    editFolderId = nil
                     editor.showGenerationPanel = false
                 } label: {
                     Image(systemName: "xmark")
@@ -390,7 +390,7 @@ struct GenerationView: View {
             resetSettings()
             clearReferences()
             if newValue == .audio { resetAudioState() }
-            editVariantStackRootId = nil
+            editFolderId = nil
             editor.pendingEditTrimmedSource = nil
         }
         .onChange(of: selectedVideoModelIndex) { _, _ in
@@ -1480,7 +1480,7 @@ struct GenerationView: View {
                 references: refs,
                 trimmedSourceOverride: trimmedSource,
                 name: name,
-                variantStackRootId: editVariantStackRootId,
+                folderId: editFolderId,
                 buildInput: { uploaded in
                     let params: VideoGenerationParams
                     if model.requiresSourceVideo {
@@ -1534,7 +1534,7 @@ struct GenerationView: View {
                 references: imageReferences,
                 name: name,
                 numImages: imageCount,
-                variantStackRootId: editVariantStackRootId,
+                folderId: editFolderId,
                 buildInput: { uploaded in
                     let input = model.buildInput(
                         prompt: genInput.prompt, aspectRatio: genInput.aspectRatio,
@@ -1577,7 +1577,7 @@ struct GenerationView: View {
         styleInstructions = ""
         prompt = ""
         assetName = ""
-        editVariantStackRootId = nil
+        editFolderId = nil
         clearReferences()
     }
 
@@ -1617,13 +1617,13 @@ struct GenerationView: View {
             lastFrame = nil
         case .audio, .text:
             editor.pendingEditSource = nil
-            editVariantStackRootId = nil
+            editFolderId = nil
             return
         }
         if assetName.isEmpty {
             assetName = "Edited \(source.name)"
         }
-        editVariantStackRootId = editor.stackRootId(for: source)
+        editFolderId = source.folderId
         editor.pendingEditSource = nil
     }
 

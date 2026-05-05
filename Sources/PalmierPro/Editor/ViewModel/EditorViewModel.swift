@@ -32,6 +32,7 @@ final class EditorViewModel {
     var isPlaying: Bool = false
     var selectedClipIds: Set<String> = []
     var selectedMediaAssetIds: Set<String> = []
+    var selectedFolderIds: Set<String> = []
     var zoomScale: Double = Defaults.pixelsPerFrame
     var canvasZoom: CGFloat = 1.0 {
         didSet {

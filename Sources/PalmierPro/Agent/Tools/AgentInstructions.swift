@@ -65,9 +65,11 @@ enum AgentInstructions {
         - For character / location / style consistency across multiple generations, reuse \
           references: referenceMediaRefs for images, startFrameMediaRef / endFrameMediaRef for \
           videos.
-        - For variations of the same shot, pass `groupWithMediaRef` on later generate_image / \
-          generate_video / generate_audio calls (id from the prior call's response) so they \
-          land in one stack instead of separate tiles. Don't group unrelated concepts.
+        - To organize related generations, call create_folder once (e.g. "Hero shot variations") \
+          and pass its id as `folderId` on subsequent generate_image / generate_video / \
+          generate_audio calls. Use list_folders to find an existing one before making a new one. \
+          Use move_to_folder to relocate existing assets. Don't create folders for unrelated \
+          concepts.
         - Parallelize independent image generations. Build base images (characters, locations) \
           before derived ones (same character in scene 3).
 
