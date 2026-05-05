@@ -81,8 +81,8 @@ struct FolderTileView: View {
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { onOpen() }
-        .onTapGesture(count: 1) { onTap() }
+        .onTapGesture { onTap() }
+        .simultaneousGesture(TapGesture(count: 2).onEnded { onOpen() })
         .contextMenu { contextMenuItems }
         .onAppear {
             if shouldAutoFocus {
