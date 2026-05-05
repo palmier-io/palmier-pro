@@ -1438,15 +1438,15 @@ struct GenerationView: View {
             let imageRefCount = useRefs ? refImages.count : 0
             let videoRefCount = useRefs ? refVideos.count : 0
             let audioRefCount = useRefs ? refAudios.count : 0
-            // Snapshot asset IDs alongside the URL fields so a later rerun can
-            // re-populate the same references in the panel.
             if model.requiresSourceVideo {
-                genInput.imageURLAssetIds = refs.map(\.id)
+                genInput.setVideoEditInputAssets(refs)
             } else {
-                genInput.imageURLAssetIds = frameSlots.isEmpty ? nil : frameSlots.map(\.id)
-                genInput.referenceImageAssetIds = useRefs && !refImages.isEmpty ? refImages.map(\.id) : nil
-                genInput.referenceVideoAssetIds = useRefs && !refVideos.isEmpty ? refVideos.map(\.id) : nil
-                genInput.referenceAudioAssetIds = useRefs && !refAudios.isEmpty ? refAudios.map(\.id) : nil
+                genInput.setVideoInputAssets(
+                    frames: frameSlots,
+                    images: useRefs ? refImages : [],
+                    videos: useRefs ? refVideos : [],
+                    audios: useRefs ? refAudios : []
+                )
             }
             let trimmedSource: TrimmedSource? = {
                 guard model.requiresSourceVideo,
@@ -1469,16 +1469,12 @@ struct GenerationView: View {
             let generateAudioValue = effectiveGenerateAudio
             var snapshotRefs: (@Sendable (inout GenerationInput, [String]) -> Void)? = nil
             if !model.requiresSourceVideo {
-                snapshotRefs = { input, uploaded in
-                    let frames = Array(uploaded.prefix(frameCount))
-                    let rest = Array(uploaded.dropFirst(frameCount))
-                    input.imageURLs = frames.isEmpty ? nil : frames
-                    input.referenceImageURLs = imageRefCount > 0 ? Array(rest.prefix(imageRefCount)) : nil
-                    input.referenceVideoURLs = videoRefCount > 0
-                        ? Array(rest.dropFirst(imageRefCount).prefix(videoRefCount)) : nil
-                    input.referenceAudioURLs = audioRefCount > 0
-                        ? Array(rest.dropFirst(imageRefCount + videoRefCount).prefix(audioRefCount)) : nil
-                }
+                snapshotRefs = GenerationInput.videoInputSnapshotter(
+                    frameCount: frameCount,
+                    imageRefCount: imageRefCount,
+                    videoRefCount: videoRefCount,
+                    audioRefCount: audioRefCount
+                )
             }
             // Downscale ref videos to fit Seedance's ~1112 px long-side cap before upload.
             var preprocessRef: (@Sendable (Int, MediaAsset) async throws -> URL?)? = nil
@@ -1511,22 +1507,17 @@ struct GenerationView: View {
                             generateAudio: generateAudioValue
                         )
                     } else {
-                        let frames = Array(uploaded.prefix(frameCount))
-                        let rest = Array(uploaded.dropFirst(frameCount))
-                        let images = Array(rest.prefix(imageRefCount))
-                        let videos = Array(rest.dropFirst(imageRefCount).prefix(videoRefCount))
-                        let audios = Array(rest.dropFirst(imageRefCount + videoRefCount).prefix(audioRefCount))
-                        params = VideoGenerationParams(
+                        params = GenerationInput.videoInputURLs(
+                            uploaded: uploaded,
+                            frameCount: frameCount,
+                            imageRefCount: imageRefCount,
+                            videoRefCount: videoRefCount,
+                            audioRefCount: audioRefCount
+                        ).params(
                             prompt: genInput.prompt,
                             duration: genInput.duration,
                             aspectRatio: genInput.aspectRatio,
                             resolution: genInput.resolution,
-                            sourceVideoURL: nil,
-                            startFrameURL: frames.first,
-                            endFrameURL: frames.count > 1 ? frames[1] : nil,
-                            referenceImageURLs: images,
-                            referenceVideoURLs: videos,
-                            referenceAudioURLs: audios,
                             generateAudio: generateAudioValue
                         )
                     }
@@ -1542,7 +1533,7 @@ struct GenerationView: View {
             )
         case .image:
             let model = imageModel
-            genInput.imageURLAssetIds = imageReferences.isEmpty ? nil : imageReferences.map(\.id)
+            genInput.setImageReferenceAssets(imageReferences)
             editor.generationService.generate(
                 genInput: genInput,
                 assetType: .image,
