@@ -51,6 +51,12 @@ struct GenerationInput: Codable, Sendable, Equatable {
     var referenceImageURLs: [String]?
     var referenceVideoURLs: [String]?
     var referenceAudioURLs: [String]?
+
+    /// Asset IDs for the references.
+    var imageURLAssetIds: [String]?
+    var referenceImageAssetIds: [String]?
+    var referenceVideoAssetIds: [String]?
+    var referenceAudioAssetIds: [String]?
     /// Metadata
     var estimatedCost: Double?
     var createdAt: Date?

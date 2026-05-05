@@ -192,38 +192,47 @@ extension MediaPanelView {
             .sorted { $0.1.localizedCaseInsensitiveCompare($1.1) == .orderedAscending }
         return GeometryReader { geo in
             let dims = gridDimensions(width: geo.size.width)
-            ScrollView(showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-                    if !rootAssets.isEmpty {
-                        groupedSection(
-                            title: "Library",
-                            folderId: nil,
-                            assets: rootAssets,
-                            tileWidth: dims.tileWidth,
-                            spacing: dims.spacing
-                        )
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: false) {
+                    LazyVStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+                        if !rootAssets.isEmpty {
+                            groupedSection(
+                                title: "Library",
+                                folderId: nil,
+                                assets: rootAssets,
+                                tileWidth: dims.tileWidth,
+                                spacing: dims.spacing
+                            )
+                        }
+                        ForEach(allFolders, id: \.0.id) { folder, path in
+                            let assets = sortAndFilter(bucketed[folder.id] ?? [])
+                            groupedSection(
+                                title: path,
+                                folderId: folder.id,
+                                assets: assets,
+                                tileWidth: dims.tileWidth,
+                                spacing: dims.spacing
+                            )
+                        }
                     }
-                    ForEach(allFolders, id: \.0.id) { folder, path in
-                        let assets = sortAndFilter(bucketed[folder.id] ?? [])
-                        groupedSection(
-                            title: path,
-                            folderId: folder.id,
-                            assets: assets,
-                            tileWidth: dims.tileWidth,
-                            spacing: dims.spacing
-                        )
-                    }
+                    .padding(AppTheme.Spacing.md)
+                    .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.sm)
                 }
-                .padding(AppTheme.Spacing.md)
-                .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.sm)
+                .coordinateSpace(name: "mediaGrid")
+                .onPreferenceChange(AssetFramePreferenceKey.self) { frames in
+                    assetFrames = frames
+                }
+                .onChange(of: editor.mediaPanelScrollTarget) { _, target in
+                    guard let target else { return }
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        proxy.scrollTo(target, anchor: .center)
+                    }
+                    editor.mediaPanelScrollTarget = nil
+                }
+                .onTapGesture { clearSelections() }
+                .overlay { marqueeOverlay }
+                .gesture(marqueeGesture)
             }
-            .coordinateSpace(name: "mediaGrid")
-            .onPreferenceChange(AssetFramePreferenceKey.self) { frames in
-                assetFrames = frames
-            }
-            .onTapGesture { clearSelections() }
-            .overlay { marqueeOverlay }
-            .gesture(marqueeGesture)
         }
     }
 
@@ -314,7 +323,7 @@ extension MediaPanelView {
                         ForEach(assets) { asset in
                             assetCellView(for: asset)
                                 .frame(width: tileWidth)
-                                .id("\(folderId ?? "root")-\(asset.id)")
+                                .id(asset.id)
                         }
                     }
                 }

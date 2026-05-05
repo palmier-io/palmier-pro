@@ -38,6 +38,7 @@ final class TimelineInputController {
                     editor.selectedClipIds.removeAll()
                     editor.selectedMediaAssetIds = [asset.id]
                     editor.openPreviewTab(for: asset)
+                    editor.mediaPanelRevealAssetId = asset.id
                     dragState = .idle
                     view.needsDisplay = true
                     return

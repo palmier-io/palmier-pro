@@ -91,6 +91,11 @@ struct MediaPanelView: View {
         }
         .background(KeyCommandSink(onNewFolder: createNewFolderInCurrent, onNavigateUp: navigateUp))
         .onChange(of: editor.folders.map(\.id)) { _, _ in pruneStaleFolderState() }
+        .onChange(of: editor.mediaPanelRevealAssetId) { _, target in
+            guard let target else { return }
+            revealAsset(id: target)
+            editor.mediaPanelRevealAssetId = nil
+        }
     }
 
     /// If the current folder, rename target, or hover target has been deleted,
@@ -100,6 +105,18 @@ struct MediaPanelView: View {
         if let id = renamingFolderId, editor.folder(id: id) == nil { renamingFolderId = nil }
         if let id = pendingFolderFocusId, editor.folder(id: id) == nil { pendingFolderFocusId = nil }
         if let id = dropTargetFolderId, editor.folder(id: id) == nil { dropTargetFolderId = nil }
+    }
+
+    private func revealAsset(id: String) {
+        guard let asset = editor.mediaAssets.first(where: { $0.id == id }) else { return }
+        if viewMode == .folder, currentFolderId != asset.folderId {
+            currentFolderId = asset.folderId
+        }
+        // Auto-expand the asset's grouped section so the scroll target exists.
+        if viewMode == .grouped {
+            collapsedGroupedKeys.remove(asset.folderId ?? "")
+        }
+        editor.mediaPanelScrollTarget = id
     }
 
     // MARK: - Toolbar
