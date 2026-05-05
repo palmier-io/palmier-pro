@@ -50,6 +50,8 @@ struct FolderTileView: View {
                         lineWidth: borderWidth
                     )
             )
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) { onOpen() }
 
             ZStack(alignment: .leading) {
                 if isRenaming {
@@ -82,7 +84,6 @@ struct FolderTileView: View {
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
         .onTapGesture { onTap() }
-        .simultaneousGesture(TapGesture(count: 2).onEnded { onOpen() })
         .contextMenu { contextMenuItems }
         .onAppear {
             if shouldAutoFocus {
