@@ -774,22 +774,18 @@ struct GenerationView: View {
             flashDropError("\(asset.name) is already a reference")
             return
         }
-        if refCap(for: asset.type) == 0 {
+        var selection = videoInputAssets(for: videoModel)
+        switch asset.type {
+        case .image: selection.imageRefs.append(asset)
+        case .video: selection.videoRefs.append(asset)
+        case .audio: selection.audioRefs.append(asset)
+        case .text:
             let supported = ClipType.allCases.filter { refCap(for: $0) > 0 }.map(\.rawValue)
             flashDropError("\(videoModel.displayName) only accepts \(supported.joined(separator: "/")) references")
             return
         }
-        if isRefCapReached {
-            flashDropError("Max \(videoModel.maxTotalReferences ?? refCap(for: asset.type)) references")
-            return
-        }
-        if refCount(for: asset.type) >= refCap(for: asset.type) {
-            flashDropError("Max \(refCap(for: asset.type)) \(asset.type.rawValue) references")
-            return
-        }
-        if let cap = combinedDurationCap(for: asset.type),
-           combinedDuration(for: asset.type) + asset.duration > cap {
-            flashDropError("\(asset.type.rawValue.capitalized) refs combined can't exceed \(Int(cap))s")
+        if let err = selection.validate(for: videoModel) {
+            flashDropError(err)
             return
         }
         switch asset.type {
@@ -827,22 +823,6 @@ struct GenerationView: View {
         dropErrorTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(3))
             if !Task.isCancelled { dropError = nil }
-        }
-    }
-
-    private func combinedDurationCap(for type: ClipType) -> Double? {
-        switch type {
-        case .video: videoModel.maxCombinedVideoRefSeconds
-        case .audio: videoModel.maxCombinedAudioRefSeconds
-        case .image, .text: nil
-        }
-    }
-
-    private func combinedDuration(for type: ClipType) -> Double {
-        switch type {
-        case .video: refVideos.reduce(0) { $0 + $1.duration }
-        case .audio: refAudios.reduce(0) { $0 + $1.duration }
-        case .image, .text: 0
         }
     }
 
@@ -1311,17 +1291,42 @@ struct GenerationView: View {
 
     // MARK: - Actions
 
+    private func videoInputAssets(for model: VideoModelConfig) -> VideoGenerationSubmission.InputAssets {
+        if model.requiresSourceVideo {
+            return VideoGenerationSubmission.InputAssets(
+                sourceVideo: sourceVideo,
+                imageRefs: model.supportsReferences ? Array(imageReferences.prefix(1)) : []
+            )
+        }
+
+        var frames: [MediaAsset] = []
+        if showsFrameStrip {
+            if let firstFrame { frames.append(firstFrame) }
+            if let lastFrame { frames.append(lastFrame) }
+        }
+        return VideoGenerationSubmission.InputAssets(
+            frames: frames,
+            imageRefs: showsRefSections ? refImages : [],
+            videoRefs: showsRefSections ? refVideos : [],
+            audioRefs: showsRefSections ? refAudios : []
+        )
+    }
+
     private func preflightValidation(audioDuration: Int) -> String? {
         switch selectedType {
         case .video:
+            let inputAssets = videoInputAssets(for: videoModel)
+            let modelError: String?
             if videoModel.requiresSourceVideo {
-                return videoModel.validate(duration: 0, aspectRatio: "", resolution: nil)
+                modelError = videoModel.validate(duration: 0, aspectRatio: "", resolution: nil)
+            } else {
+                modelError = videoModel.validate(
+                    duration: selectedDuration,
+                    aspectRatio: selectedAspectRatio,
+                    resolution: effectiveResolution
+                )
             }
-            return videoModel.validate(
-                duration: selectedDuration,
-                aspectRatio: selectedAspectRatio,
-                resolution: effectiveResolution
-            )
+            return modelError ?? inputAssets.validate(for: videoModel)
         case .image:
             let quality = imageModel.qualities != nil ? selectedQuality : nil
             let imageCount = imageModel.maxImages > 1
@@ -1413,41 +1418,7 @@ struct GenerationView: View {
         switch selectedType {
         case .video:
             let model = videoModel
-            let useRefs = !model.requiresSourceVideo && showsRefSections
-            let useFrames = !model.requiresSourceVideo && showsFrameStrip
-            var refs: [MediaAsset] = []
-            var frameSlots: [MediaAsset] = []
-            if model.requiresSourceVideo {
-                if let sv = sourceVideo { refs.append(sv) }
-                if model.supportsReferences, let imgRef = imageReferences.first {
-                    refs.append(imgRef)
-                }
-            } else {
-                if useFrames {
-                    if let f = firstFrame { frameSlots.append(f) }
-                    if let l = lastFrame { frameSlots.append(l) }
-                }
-                refs.append(contentsOf: frameSlots)
-                if useRefs {
-                    refs.append(contentsOf: refImages)
-                    refs.append(contentsOf: refVideos)
-                    refs.append(contentsOf: refAudios)
-                }
-            }
-            let frameCount = frameSlots.count
-            let imageRefCount = useRefs ? refImages.count : 0
-            let videoRefCount = useRefs ? refVideos.count : 0
-            let audioRefCount = useRefs ? refAudios.count : 0
-            if model.requiresSourceVideo {
-                genInput.setVideoEditInputAssets(refs)
-            } else {
-                genInput.setVideoInputAssets(
-                    frames: frameSlots,
-                    images: useRefs ? refImages : [],
-                    videos: useRefs ? refVideos : [],
-                    audios: useRefs ? refAudios : []
-                )
-            }
+            let inputAssets = videoInputAssets(for: model)
             let trimmedSource: TrimmedSource? = {
                 guard model.requiresSourceVideo,
                       let trim = editor.pendingEditTrimmedSource,
@@ -1466,116 +1437,51 @@ struct GenerationView: View {
             } else {
                 placeholderDuration = Double(selectedDuration)
             }
-            let generateAudioValue = effectiveGenerateAudio
-            var snapshotRefs: (@Sendable (inout GenerationInput, [String]) -> Void)? = nil
-            if !model.requiresSourceVideo {
-                snapshotRefs = GenerationInput.videoInputSnapshotter(
-                    frameCount: frameCount,
-                    imageRefCount: imageRefCount,
-                    videoRefCount: videoRefCount,
-                    audioRefCount: audioRefCount
-                )
-            }
-            // Downscale ref videos to fit Seedance's ~1112 px long-side cap before upload.
-            var preprocessRef: (@Sendable (Int, MediaAsset) async throws -> URL?)? = nil
-            if useRefs {
-                preprocessRef = { _, asset in
-                    guard asset.type == .video else { return nil }
-                    return try await VideoCompressor.compressIfNeeded(url: asset.url)
-                }
-            }
-            editor.generationService.generate(
+            VideoGenerationSubmission.make(
                 genInput: genInput,
-                assetType: .video,
+                model: model,
+                inputAssets: inputAssets,
                 placeholderDuration: placeholderDuration,
-                references: refs,
                 trimmedSourceOverride: trimmedSource,
                 name: name,
                 folderId: editFolderId,
-                buildInput: { uploaded in
-                    let params: VideoGenerationParams
-                    if model.requiresSourceVideo {
-                        params = VideoGenerationParams(
-                            prompt: genInput.prompt,
-                            duration: genInput.duration,
-                            aspectRatio: genInput.aspectRatio,
-                            resolution: genInput.resolution,
-                            sourceVideoURL: uploaded.first,
-                            startFrameURL: nil,
-                            endFrameURL: nil,
-                            referenceImageURLs: Array(uploaded.dropFirst()),
-                            generateAudio: generateAudioValue
-                        )
-                    } else {
-                        params = GenerationInput.videoInputURLs(
-                            uploaded: uploaded,
-                            frameCount: frameCount,
-                            imageRefCount: imageRefCount,
-                            videoRefCount: videoRefCount,
-                            audioRefCount: audioRefCount
-                        ).params(
-                            prompt: genInput.prompt,
-                            duration: genInput.duration,
-                            aspectRatio: genInput.aspectRatio,
-                            resolution: genInput.resolution,
-                            generateAudio: generateAudioValue
-                        )
-                    }
-                    return (model.resolvedEndpoint(params: params), model.buildInput(params: params))
-                },
-                snapshotRefs: snapshotRefs,
-                preprocessRef: preprocessRef,
-                responseKeyPath: FalResponsePaths.video,
-                fileExtension: "mp4",
-                projectURL: editor.projectURL, editor: editor,
+                generateAudio: effectiveGenerateAudio
+            ).submit(
+                service: editor.generationService,
+                projectURL: editor.projectURL,
+                editor: editor,
                 onComplete: makeOnComplete(trimmedSource?.hasTrim == true),
                 onFailure: onFailure
             )
         case .image:
             let model = imageModel
-            genInput.setImageReferenceAssets(imageReferences)
-            editor.generationService.generate(
+            ImageGenerationSubmission.make(
                 genInput: genInput,
-                assetType: .image,
-                placeholderDuration: Defaults.imageDurationSeconds,
+                model: model,
                 references: imageReferences,
                 name: name,
                 numImages: imageCount,
-                folderId: editFolderId,
-                buildInput: { uploaded in
-                    let input = model.buildInput(
-                        prompt: genInput.prompt, aspectRatio: genInput.aspectRatio,
-                        resolution: genInput.resolution, quality: genInput.quality,
-                        imageURLs: uploaded, numImages: imageCount
-                    )
-                    return (model.resolvedEndpoint(imageURLs: uploaded), input)
-                },
-                responseKeyPath: FalResponsePaths.generatedImage,
-                fileExtension: "jpg",
-                projectURL: editor.projectURL, editor: editor,
+                folderId: editFolderId
+            ).submit(
+                service: editor.generationService,
+                projectURL: editor.projectURL,
+                editor: editor,
                 onComplete: makeOnComplete(false),
                 onFailure: onFailure
             )
         case .audio:
             let model = audioModel
-            let placeholderDuration: Double = {
-                if model.durations != nil { return Double(audioDuration) }
-                return model.category == .music
-                    ? Defaults.audioMusicDurationSeconds
-                    : Defaults.audioTTSDurationSeconds
-            }()
             let params = audioParams(audioDuration: audioDuration)
-            editor.generationService.generate(
+            AudioGenerationSubmission.make(
                 genInput: genInput,
-                assetType: .audio,
-                placeholderDuration: placeholderDuration,
+                model: model,
+                params: params,
                 name: name,
-                buildInput: { _ in
-                    (model.baseEndpoint, model.buildInput(params: params))
-                },
-                responseKeyPath: FalResponsePaths.audio,
-                fileExtension: "mp3",
-                projectURL: editor.projectURL, editor: editor,
+                folderId: editFolderId
+            ).submit(
+                service: editor.generationService,
+                projectURL: editor.projectURL,
+                editor: editor,
                 onComplete: makeOnComplete(false),
                 onFailure: onFailure
             )
@@ -1668,11 +1574,7 @@ struct GenerationView: View {
         instrumental = stored.instrumental ?? false
         generateAudio = stored.generateAudio ?? true
 
-        firstFrame = nil
-        lastFrame = nil
-        sourceVideo = nil
-        imageReferences.removeAll()
-        resetRefPools()
+        clearReferences()
 
         let assetsById = Dictionary(editor.mediaAssets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let lookup: (String) -> MediaAsset? = { assetsById[$0] }
