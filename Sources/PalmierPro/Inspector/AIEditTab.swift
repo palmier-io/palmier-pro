@@ -223,21 +223,32 @@ struct AIEditTab: View {
         switch action {
         case .upscale: break // handled via menu
         case .edit:
+            editor.pendingRerun = nil
             editor.pendingEditSource = asset
             editor.pendingEditReplacementClipId = (shouldReplace ? clipId : nil)
             editor.pendingEditTrimmedSource = trimmedSourceIfEnabled()
             editor.showGenerationPanel = true
         case .rerun:
-            do {
-                markReplacementPendingIfNeeded()
-                _ = try EditSubmitter.rerun(
-                    asset: asset, editor: editor, service: service,
-                    onComplete: replacementCompletion(),
-                    onFailure: replacementFailure()
-                )
-            } catch {
-                unmarkReplacementPendingIfNeeded()
-                rerunError = error.localizedDescription
+            let modelId = asset.generationInput?.model ?? ""
+            let isUpscale = UpscaleModelConfig.allModels.contains(where: { $0.id == modelId })
+            if isUpscale {
+                do {
+                    markReplacementPendingIfNeeded()
+                    _ = try EditSubmitter.rerun(
+                        asset: asset, editor: editor, service: service,
+                        onComplete: replacementCompletion(),
+                        onFailure: replacementFailure()
+                    )
+                } catch {
+                    unmarkReplacementPendingIfNeeded()
+                    rerunError = error.localizedDescription
+                }
+            } else {
+                editor.pendingEditSource = nil
+                editor.pendingEditTrimmedSource = nil
+                editor.pendingRerun = asset
+                editor.pendingEditReplacementClipId = (shouldReplace ? clipId : nil)
+                editor.showGenerationPanel = true
             }
         }
     }

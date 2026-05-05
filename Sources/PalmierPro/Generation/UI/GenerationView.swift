@@ -288,6 +288,7 @@ struct GenerationView: View {
                 Button {
                     editor.pendingEditReplacementClipId = nil
                     editor.pendingEditTrimmedSource = nil
+                    editor.pendingRerun = nil
                     editFolderId = nil
                     editor.showGenerationPanel = false
                 } label: {
@@ -383,8 +384,12 @@ struct GenerationView: View {
             .allowsHitTesting(false)
         }
         .padding(AppTheme.Spacing.sm)
-        .onAppear { consumePendingEditSource() }
+        .onAppear {
+            consumePendingEditSource()
+            consumePendingRerun()
+        }
         .onChange(of: editor.pendingEditSource?.id) { _, _ in consumePendingEditSource() }
+        .onChange(of: editor.pendingRerun?.id) { _, _ in consumePendingRerun() }
         .onChange(of: selectedType) { _, newValue in
             guard !isConsumingEditSource else { return }
             resetSettings()
@@ -1433,6 +1438,16 @@ struct GenerationView: View {
             let imageRefCount = useRefs ? refImages.count : 0
             let videoRefCount = useRefs ? refVideos.count : 0
             let audioRefCount = useRefs ? refAudios.count : 0
+            // Snapshot asset IDs alongside the URL fields so a later rerun can
+            // re-populate the same references in the panel.
+            if model.requiresSourceVideo {
+                genInput.imageURLAssetIds = refs.map(\.id)
+            } else {
+                genInput.imageURLAssetIds = frameSlots.isEmpty ? nil : frameSlots.map(\.id)
+                genInput.referenceImageAssetIds = useRefs && !refImages.isEmpty ? refImages.map(\.id) : nil
+                genInput.referenceVideoAssetIds = useRefs && !refVideos.isEmpty ? refVideos.map(\.id) : nil
+                genInput.referenceAudioAssetIds = useRefs && !refAudios.isEmpty ? refAudios.map(\.id) : nil
+            }
             let trimmedSource: TrimmedSource? = {
                 guard model.requiresSourceVideo,
                       let trim = editor.pendingEditTrimmedSource,
@@ -1527,6 +1542,7 @@ struct GenerationView: View {
             )
         case .image:
             let model = imageModel
+            genInput.imageURLAssetIds = imageReferences.isEmpty ? nil : imageReferences.map(\.id)
             editor.generationService.generate(
                 genInput: genInput,
                 assetType: .image,
@@ -1589,42 +1605,119 @@ struct GenerationView: View {
         sourceVideo = nil
     }
 
-    /// Read `editor.pendingEditSource`, set up the edit flow, and clear the signal.
+    private func consumePendingRerun() {
+        guard let asset = editor.pendingRerun else { return }
+        guard let stored = asset.generationInput else {
+            editor.pendingRerun = nil
+            return
+        }
+        populatePanel(asset: asset, stored: stored, defaultName: nil)
+        editor.pendingRerun = nil
+    }
+
     private func consumePendingEditSource() {
         guard let source = editor.pendingEditSource else { return }
-        isConsumingEditSource = true
-        defer {
-            DispatchQueue.main.async { isConsumingEditSource = false }
-        }
+        let modelId: String
         switch source.type {
         case .video:
-            selectedType = .video
-            if let idx = VideoModelConfig.allModels.firstIndex(where: { $0.requiresSourceVideo }) {
-                selectedVideoModelIndex = idx
+            guard let m = VideoModelConfig.allModels.first(where: { $0.requiresSourceVideo }) else {
+                editor.pendingEditSource = nil
+                return
             }
-            sourceVideo = source
-            firstFrame = nil
-            lastFrame = nil
-            imageReferences.removeAll()
+            modelId = m.id
         case .image:
-            selectedType = .image
-            if let idx = ImageModelConfig.allModels.firstIndex(where: { $0.id == ImageModelConfig.nanoBananaPro.id }) {
-                selectedImageModelIndex = idx
-            }
-            imageReferences = [source]
-            sourceVideo = nil
-            firstFrame = nil
-            lastFrame = nil
+            modelId = ImageModelConfig.nanoBananaPro.id
         case .audio, .text:
             editor.pendingEditSource = nil
             editFolderId = nil
             return
         }
-        if assetName.isEmpty {
-            assetName = "Edited \(source.name)"
-        }
-        editFolderId = source.folderId
+        var synthetic = GenerationInput(
+            prompt: "", model: modelId, duration: 0, aspectRatio: "", resolution: nil
+        )
+        synthetic.imageURLAssetIds = [source.id]
+        populatePanel(asset: source, stored: synthetic, defaultName: "Edited \(source.name)")
         editor.pendingEditSource = nil
+    }
+
+    private func populatePanel(asset: MediaAsset, stored: GenerationInput, defaultName: String?) {
+        let modelId = stored.model
+        if let idx = VideoModelConfig.allModels.firstIndex(where: { $0.id == modelId }) {
+            isConsumingEditSource = true
+            selectedType = .video
+            selectedVideoModelIndex = idx
+        } else if let idx = ImageModelConfig.allModels.firstIndex(where: { $0.id == modelId }) {
+            isConsumingEditSource = true
+            selectedType = .image
+            selectedImageModelIndex = idx
+        } else if let idx = AudioModelConfig.allModels.firstIndex(where: { $0.id == modelId }) {
+            isConsumingEditSource = true
+            selectedType = .audio
+            selectedAudioModelIndex = idx
+        } else {
+            return
+        }
+        defer { DispatchQueue.main.async { isConsumingEditSource = false } }
+
+        prompt = stored.prompt
+        if !stored.aspectRatio.isEmpty { selectedAspectRatio = stored.aspectRatio }
+        if let r = stored.resolution { selectedResolution = r }
+        if let q = stored.quality { selectedQuality = q }
+        if stored.duration > 0 {
+            selectedDuration = stored.duration
+            selectedAudioDuration = stored.duration
+        }
+        if let n = stored.numImages { selectedNumImages = max(1, n) }
+        if let v = stored.voice, !v.isEmpty { selectedVoice = v }
+        lyrics = stored.lyrics ?? ""
+        styleInstructions = stored.styleInstructions ?? ""
+        instrumental = stored.instrumental ?? false
+        generateAudio = stored.generateAudio ?? true
+
+        firstFrame = nil
+        lastFrame = nil
+        sourceVideo = nil
+        imageReferences.removeAll()
+        resetRefPools()
+
+        let allAssets = editor.mediaAssets
+        let lookup: (String) -> MediaAsset? = { id in allAssets.first { $0.id == id } }
+        let primary = (stored.imageURLAssetIds ?? []).compactMap(lookup)
+
+        switch selectedType {
+        case .video:
+            if videoModel.requiresSourceVideo {
+                sourceVideo = primary.first
+                if videoModel.supportsReferences, primary.count > 1 {
+                    imageReferences = [primary[1]]
+                }
+            } else {
+                if videoModel.supportsFirstFrame {
+                    firstFrame = primary.first
+                    if videoModel.supportsLastFrame, primary.count > 1 {
+                        lastFrame = primary[1]
+                    }
+                }
+                refImages = (stored.referenceImageAssetIds ?? []).compactMap(lookup)
+                refVideos = (stored.referenceVideoAssetIds ?? []).compactMap(lookup)
+                refAudios = (stored.referenceAudioAssetIds ?? []).compactMap(lookup)
+                if videoModel.framesAndReferencesExclusive {
+                    framesRefsMode = (!refImages.isEmpty || !refVideos.isEmpty || !refAudios.isEmpty)
+                        ? .reference : .firstLast
+                } else {
+                    framesRefsMode = .firstLast
+                }
+            }
+        case .image:
+            imageReferences = primary
+        case .audio:
+            break
+        }
+
+        if let defaultName, assetName.isEmpty {
+            assetName = defaultName
+        }
+        editFolderId = asset.folderId
     }
 
     private func resetAudioState() {

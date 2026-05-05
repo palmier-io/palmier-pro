@@ -49,6 +49,7 @@ final class EditorViewModel {
     var pendingEditSource: MediaAsset?
     var pendingEditReplacementClipId: String?
     var pendingEditTrimmedSource: TrimmedSource?
+    var pendingRerun: MediaAsset?
     /// Clip ids currently awaiting an AI-generated replacement.
     var pendingReplacements: Set<String> = []
     var showHelp: Bool = false
@@ -109,6 +110,7 @@ final class EditorViewModel {
     var mediaPanelOrderedIds: [String] = []
     var mediaPanelColumnCount: Int = 1
     var mediaPanelScrollTarget: String?
+    var mediaPanelRevealAssetId: String?
 
     init() {
         mediaResolver = MediaResolver(
