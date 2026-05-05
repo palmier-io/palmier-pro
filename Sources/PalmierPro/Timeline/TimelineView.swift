@@ -514,9 +514,6 @@ final class TimelineView: NSView {
         }
 
         let menu = NSMenu()
-        if let swap = swapVariantMenuItem(for: clip) {
-            menu.addItem(swap)
-        }
         if clip.mediaType == .video || clip.mediaType == .audio {
             if !menu.items.isEmpty { menu.addItem(.separator()) }
             let item = NSMenuItem(
@@ -543,32 +540,6 @@ final class TimelineView: NSView {
         return menu.items.isEmpty ? nil : menu
     }
 
-    /// Builds a "Swap Variant ▸" submenu listing the clip's stack siblings.
-    private func swapVariantMenuItem(for clip: Clip) -> NSMenuItem? {
-        guard let rootId = editor.stackRootId(forAssetId: clip.mediaRef) else { return nil }
-        let members = editor.variants(ofStackRootId: rootId)
-        guard members.count > 1 else { return nil }
-        guard let root = members.first(where: { $0.id == rootId }) else { return nil }
-        let children = members.filter { $0.id != rootId }.sortedByGenerationDate()
-        let ordered = [root] + children
-
-        let submenu = NSMenu()
-        for (i, variant) in ordered.enumerated() {
-            let label = "v\(i + 1) · \(variant.name)"
-            let item = NSMenuItem(title: label, action: #selector(performSwapVariant(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = SwapPayload(clipId: clip.id, variantId: variant.id)
-            if variant.id == clip.mediaRef {
-                item.state = .on
-                item.isEnabled = false
-            }
-            submenu.addItem(item)
-        }
-        let parent = NSMenuItem(title: "Swap Variant", action: nil, keyEquivalent: "")
-        parent.submenu = submenu
-        return parent
-    }
-
     @objc private func performLink(_ sender: Any?) {
         editor.linkClips(ids: editor.selectedClipIds)
         needsDisplay = true
@@ -585,17 +556,6 @@ final class TimelineView: NSView {
         editor.saveClipAsMedia(clipId: clipId)
     }
 
-    @objc private func performSwapVariant(_ sender: Any?) {
-        guard let item = sender as? NSMenuItem,
-              let payload = item.representedObject as? SwapPayload else { return }
-        editor.replaceClipMediaRef(clipId: payload.clipId, newAssetId: payload.variantId)
-        needsDisplay = true
-    }
-
-    private struct SwapPayload {
-        let clipId: String
-        let variantId: String
-    }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()

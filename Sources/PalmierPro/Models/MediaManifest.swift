@@ -1,8 +1,20 @@
 import Foundation
 
 struct MediaManifest: Codable, Sendable, Equatable {
-    var version: Int = 1
+    var version: Int = 2
     var entries: [MediaManifestEntry] = []
+    var folders: [MediaFolder] = []
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        entries = try c.decodeIfPresent([MediaManifestEntry].self, forKey: .entries) ?? []
+        folders = try c.decodeIfPresent([MediaFolder].self, forKey: .folders) ?? []
+    }
+
+    init() {}
+
+    private enum CodingKeys: String, CodingKey { case version, entries, folders }
 }
 
 struct MediaManifestEntry: Codable, Sendable, Equatable, Identifiable {
@@ -16,7 +28,7 @@ struct MediaManifestEntry: Codable, Sendable, Equatable, Identifiable {
     var sourceHeight: Int?
     var sourceFPS: Double?
     var hasAudio: Bool?
-    var parentAssetId: String?
+    var folderId: String?
 }
 
 struct GenerationInput: Codable, Sendable, Equatable {

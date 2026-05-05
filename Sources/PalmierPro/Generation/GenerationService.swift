@@ -51,7 +51,7 @@ final class GenerationService {
         preUploadedURLs: [String]? = nil,
         name: String? = nil,
         numImages: Int = 1,
-        variantStackRootId: String? = nil,
+        folderId: String? = nil,
         buildInput: @escaping ([String]) -> (endpoint: String, input: Payload),
         snapshotRefs: (@Sendable (inout GenerationInput, [String]) -> Void)? = nil,
         preprocessRef: (@Sendable (Int, MediaAsset) async throws -> URL?)? = nil,
@@ -65,31 +65,20 @@ final class GenerationService {
         let count = max(1, min(4, numImages))
         let baseName = name ?? String(genInput.prompt.prefix(30))
 
-        // Validate if root still exists and same type
-        let stackRootId = variantStackRootId.flatMap { rootId -> String? in
-            guard let root = editor.mediaAssets.first(where: { $0.id == rootId }),
-                  root.type == assetType else { return nil }
-            return rootId
+        // Resolve folder: must exist, otherwise drop into root.
+        let resolvedFolderId = folderId.flatMap { id in
+            editor.folder(id: id) != nil ? id : nil
         }
         var placeholders: [MediaAsset] = []
         let destDir = Self.destinationDirectory(for: projectURL)
 
-        // Group all N images into a stack
-        for i in 0..<count {
-            let parent: String?
-            if let stackRootId {
-                parent = stackRootId
-            } else if i > 0, let firstId = placeholders.first?.id {
-                parent = firstId
-            } else {
-                parent = nil
-            }
+        for _ in 0..<count {
             let placeholder = createPlaceholder(
                 type: assetType,
                 name: baseName,
                 duration: placeholderDuration,
                 genInput: genInput,
-                parentAssetId: parent,
+                folderId: resolvedFolderId,
                 destDir: destDir,
                 fileExtension: fileExtension,
                 editor: editor
@@ -205,7 +194,7 @@ final class GenerationService {
         name: String,
         duration: Double,
         genInput: GenerationInput,
-        parentAssetId: String?,
+        folderId: String?,
         destDir: URL,
         fileExtension: String,
         editor: EditorViewModel
@@ -221,7 +210,7 @@ final class GenerationService {
             generationInput: genInput
         )
         placeholder.generationStatus = .generating
-        placeholder.parentAssetId = parentAssetId
+        placeholder.folderId = folderId
         editor.mediaAssets.append(placeholder)
         return placeholder
     }

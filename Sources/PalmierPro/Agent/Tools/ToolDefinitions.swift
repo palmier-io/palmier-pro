@@ -18,6 +18,9 @@ enum ToolName: String, CaseIterable, Sendable {
     case upscaleMedia = "upscale_media"
     case listModels = "list_models"
     case readMedia = "read_media"
+    case listFolders = "list_folders"
+    case createFolder = "create_folder"
+    case moveToFolder = "move_to_folder"
 }
 
 struct AgentTool: @unchecked Sendable {
@@ -228,7 +231,7 @@ enum ToolDefinitions {
                     "referenceImageMediaRefs": ["type": "array", "items": ["type": "string"], "description": "Media asset IDs of image references. Covers both reference-to-video generation (Seedance, Kling V3/O3 elements, Grok — refer as @Image1/@Element1 in prompt) and the single-image ref used by video-to-video edit models (Kling V3 Motion Control). See list_models maxReferenceImages for per-model cap."],
                     "referenceVideoMediaRefs": ["type": "array", "items": ["type": "string"], "description": "Media asset IDs of video references (Seedance only). Refer to them as @Video1, @Video2. See maxReferenceVideos and maxCombinedVideoRefSeconds."],
                     "referenceAudioMediaRefs": ["type": "array", "items": ["type": "string"], "description": "Media asset IDs of audio references (Seedance only). Refer to them as @Audio1, @Audio2. See maxReferenceAudios and maxCombinedAudioRefSeconds."],
-                    "groupWithMediaRef": ["type": "string", "description": "Optional. If set, the result joins this asset's variant stack instead of starting a new one. Use any asset id from the stack — the root is resolved automatically. Type must match (video). Useful for grouping multiple related generations of the same shot."],
+                    "folderId": ["type": "string", "description": "Optional. Folder id (from list_folders or create_folder) to place the result in. Omit for the project root."],
                 ],
                 required: ["prompt"]
             )
@@ -245,7 +248,7 @@ enum ToolDefinitions {
                     "resolution": ["type": "string", "description": "Resolution (e.g. '2K', '4K')"],
                     "quality": ["type": "string", "description": "Image quality (e.g. 'low', 'medium', 'high'). Only supported by some models — see list_models."],
                     "referenceMediaRefs": ["type": "array", "items": ["type": "string"], "description": "Media asset IDs to use as reference images"],
-                    "groupWithMediaRef": ["type": "string", "description": "Optional. If set, the result joins this asset's variant stack instead of starting a new one. Use any asset id from the stack — the root is resolved automatically. Type must match (image)."],
+                    "folderId": ["type": "string", "description": "Optional. Folder id (from list_folders or create_folder) to place the result in. Omit for the project root."],
                 ],
                 required: ["prompt"]
             )
@@ -263,7 +266,7 @@ enum ToolDefinitions {
                     "styleInstructions": ["type": "string", "description": "Gemini TTS only. Optional delivery instructions (e.g. 'warm and slow', 'British accent')."],
                     "instrumental": ["type": "boolean", "description": "Music models only. true = no vocals. Defaults to false."],
                     "duration": ["type": "integer", "description": "ElevenLabs Music only. Length in seconds (3–600). Ignored by other models."],
-                    "groupWithMediaRef": ["type": "string", "description": "Optional. If set, the result joins this asset's variant stack instead of starting a new one. Use any asset id from the stack — the root is resolved automatically. Type must match (audio)."],
+                    "folderId": ["type": "string", "description": "Optional. Folder id (from list_folders or create_folder) to place the result in. Omit for the project root."],
                 ],
                 required: ["prompt"]
             )
@@ -277,6 +280,37 @@ enum ToolDefinitions {
                     "model": ["type": "string", "description": "Upscaler model ID (e.g. 'bytedance-upscaler', 'seedvr-image-upscaler'). Defaults to the first model that supports the asset's type."],
                 ],
                 required: ["mediaRef"]
+            )
+        ),
+        AgentTool(
+            name: .listFolders,
+            description: "Lists every folder in the media panel as {id, name, parentFolderId}. Folders are nested (parentFolderId is nil for top-level). Use to find an existing folder by name before generating new media.",
+            inputSchema: objectSchema()
+        ),
+        AgentTool(
+            name: .createFolder,
+            description: "Creates a folder in the media panel and returns its id. Use to organize related generations (e.g. 'Hero shot variations'). Don't create folders for unrelated concepts.",
+            inputSchema: objectSchema(
+                properties: [
+                    "name": ["type": "string", "description": "Folder name."],
+                    "parentFolderId": ["type": "string", "description": "Optional parent folder id; omit for top level."],
+                ],
+                required: ["name"]
+            )
+        ),
+        AgentTool(
+            name: .moveToFolder,
+            description: "Moves one or more existing media assets into a folder (or to the root if folderId is omitted). Undoable.",
+            inputSchema: objectSchema(
+                properties: [
+                    "assetIds": [
+                        "type": "array",
+                        "items": ["type": "string"],
+                        "description": "Media asset ids to move.",
+                    ],
+                    "folderId": ["type": "string", "description": "Destination folder id. Omit to move to the project root."],
+                ],
+                required: ["assetIds"]
             )
         ),
         AgentTool(

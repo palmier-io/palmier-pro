@@ -16,7 +16,7 @@ final class MediaAsset: Identifiable {
     var hasAudio: Bool = false
     var generationInput: GenerationInput?
     var generationStatus: GenerationStatus = .none
-    var parentAssetId: String?
+    var folderId: String?
 
     enum GenerationStatus: Equatable {
         case none
@@ -45,7 +45,7 @@ final class MediaAsset: Identifiable {
         self.sourceHeight = entry.sourceHeight
         self.sourceFPS = entry.sourceFPS
         self.hasAudio = entry.hasAudio ?? false
-        self.parentAssetId = entry.parentAssetId
+        self.folderId = entry.folderId
     }
 
     /// Produce a serializable manifest entry from this asset.
@@ -57,7 +57,7 @@ final class MediaAsset: Identifiable {
         } else {
             source = .external(absolutePath: url.path)
         }
-        return MediaManifestEntry(id: id, name: name, type: type, source: source, duration: duration, generationInput: generationInput, sourceWidth: sourceWidth, sourceHeight: sourceHeight, sourceFPS: sourceFPS, hasAudio: hasAudio, parentAssetId: parentAssetId)
+        return MediaManifestEntry(id: id, name: name, type: type, source: source, duration: duration, generationInput: generationInput, sourceWidth: sourceWidth, sourceHeight: sourceHeight, sourceFPS: sourceFPS, hasAudio: hasAudio, folderId: folderId)
     }
 
     func loadMetadata() async {

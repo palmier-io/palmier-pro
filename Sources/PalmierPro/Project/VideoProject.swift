@@ -40,7 +40,12 @@ final class VideoProject: NSDocument {
             throw error
         }
         if let manifestData = fileWrapper.fileWrappers?[Project.manifestFilename]?.regularFileContents {
-            loadedManifest = try? JSONDecoder().decode(MediaManifest.self, from: manifestData)
+            do {
+                loadedManifest = try JSONDecoder().decode(MediaManifest.self, from: manifestData)
+            } catch {
+                Log.project.error("read manifest decode failed bytes=\(manifestData.count) error=\(error)")
+                throw CocoaError(.fileReadCorruptFile)
+            }
         }
         if let logData = fileWrapper.fileWrappers?[Project.generationLogFilename]?.regularFileContents {
             loadedGenerationLog = try? JSONDecoder().decode(GenerationLog.self, from: logData)
@@ -238,7 +243,10 @@ final class VideoProject: NSDocument {
         let fps = editorViewModel.timeline.fps
         let resolver = editorViewModel.mediaResolver
         for entry in editorViewModel.mediaManifest.entries {
-            guard let url = resolver.resolveURL(for: entry.id) else { continue }
+            guard let url = resolver.resolveURL(for: entry.id) else {
+                Log.project.error("restore: could not resolve URL for entry id=\(entry.id) name=\(entry.name)")
+                continue
+            }
             let asset = MediaAsset(entry: entry, resolvedURL: url)
             editorViewModel.mediaAssets.append(asset)
             if asset.type == .audio || asset.type == .video {

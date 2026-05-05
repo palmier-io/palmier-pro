@@ -65,8 +65,13 @@ final class EditorWindowController: NSWindowController {
             return true
 
         case 51: // Delete/Backspace
-            if !editorViewModel.selectedMediaAssetIds.isEmpty {
-                editorViewModel.deleteSelectedMediaAssets()
+            if !editorViewModel.selectedFolderIds.isEmpty || !editorViewModel.selectedMediaAssetIds.isEmpty {
+                if !editorViewModel.selectedFolderIds.isEmpty {
+                    editorViewModel.deleteFolders(ids: editorViewModel.selectedFolderIds)
+                }
+                if !editorViewModel.selectedMediaAssetIds.isEmpty {
+                    editorViewModel.deleteSelectedMediaAssets()
+                }
             } else if shift {
                 editorViewModel.rippleDeleteSelectedClips()
             } else {
