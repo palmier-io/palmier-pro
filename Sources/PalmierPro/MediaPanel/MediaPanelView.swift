@@ -53,6 +53,8 @@ struct MediaPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            toolbar
+
             ZStack(alignment: .top) {
                 VStack(spacing: 0) {
                     if showsEmptyState {
@@ -77,8 +79,6 @@ struct MediaPanelView: View {
                 .overlay {
                     if isDropTargeted { dropHighlight }
                 }
-
-                toolbar
             }
 
             if editor.showGenerationPanel {
@@ -182,10 +182,10 @@ struct MediaPanelView: View {
             }
         }
         .padding(.horizontal, AppTheme.Spacing.sm)
-        .padding(.vertical, AppTheme.Spacing.xs)
-        .background(.ultraThinMaterial, in: .capsule)
-        .padding(.horizontal, AppTheme.Spacing.sm)
-        .padding(.top, AppTheme.Spacing.xs)
+        .frame(height: Layout.panelHeaderHeight)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(AppTheme.Border.subtleColor).frame(height: 0.5)
+        }
     }
 
     // MARK: - Breadcrumb
@@ -217,7 +217,7 @@ struct MediaPanelView: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, AppTheme.Spacing.md)
-        .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.xs)
+        .padding(.top, AppTheme.Spacing.sm)
         .padding(.bottom, AppTheme.Spacing.xs)
     }
 
