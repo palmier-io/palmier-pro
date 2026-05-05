@@ -739,10 +739,11 @@ final class ToolExecutor {
             throw ToolError(err)
         }
 
-        let genInput = GenerationInput(
+        var genInput = GenerationInput(
             prompt: prompt, model: model.id, duration: Int(sourceAsset.duration.rounded()),
             aspectRatio: "", resolution: nil
         )
+        genInput.setVideoEditInputAssets(refs)
         let placeholderId = editor.generationService.generate(
             genInput: genInput, assetType: .video,
             placeholderDuration: sourceAsset.duration > 0 ? sourceAsset.duration : 5,
@@ -836,20 +837,22 @@ final class ToolExecutor {
         let videoRefCount = videoRefs.count
         let audioRefCount = audioRefs.count
 
-        let genInput = GenerationInput(
+        var genInput = GenerationInput(
             prompt: prompt, model: model.id, duration: duration,
             aspectRatio: aspectRatio, resolution: resolution
         )
-        let snapshotRefs: (@Sendable (inout GenerationInput, [String]) -> Void) = { input, uploaded in
-            let frames = Array(uploaded.prefix(frameCount))
-            let rest = Array(uploaded.dropFirst(frameCount))
-            input.imageURLs = frames.isEmpty ? nil : frames
-            input.referenceImageURLs = imageRefCount > 0 ? Array(rest.prefix(imageRefCount)) : nil
-            input.referenceVideoURLs = videoRefCount > 0
-                ? Array(rest.dropFirst(imageRefCount).prefix(videoRefCount)) : nil
-            input.referenceAudioURLs = audioRefCount > 0
-                ? Array(rest.dropFirst(imageRefCount + videoRefCount).prefix(audioRefCount)) : nil
-        }
+        genInput.setVideoInputAssets(
+            frames: frameSlots,
+            images: imageRefs,
+            videos: videoRefs,
+            audios: audioRefs
+        )
+        let snapshotRefs = GenerationInput.videoInputSnapshotter(
+            frameCount: frameCount,
+            imageRefCount: imageRefCount,
+            videoRefCount: videoRefCount,
+            audioRefCount: audioRefCount
+        )
         var preprocessRef: (@Sendable (Int, MediaAsset) async throws -> URL?)? = nil
         if videoRefCount > 0 {
             preprocessRef = { _, a in
@@ -865,17 +868,15 @@ final class ToolExecutor {
             references: refs, name: args.string("name"),
             folderId: folderId,
             buildInput: { uploaded in
-                let frames = Array(uploaded.prefix(frameCount))
-                let rest = Array(uploaded.dropFirst(frameCount))
-                let params = VideoGenerationParams(
+                let params = GenerationInput.videoInputURLs(
+                    uploaded: uploaded,
+                    frameCount: frameCount,
+                    imageRefCount: imageRefCount,
+                    videoRefCount: videoRefCount,
+                    audioRefCount: audioRefCount
+                ).params(
                     prompt: prompt, duration: duration,
                     aspectRatio: aspectRatio, resolution: resolution,
-                    sourceVideoURL: nil,
-                    startFrameURL: frames.first,
-                    endFrameURL: frames.count > 1 ? frames[1] : nil,
-                    referenceImageURLs: Array(rest.prefix(imageRefCount)),
-                    referenceVideoURLs: Array(rest.dropFirst(imageRefCount).prefix(videoRefCount)),
-                    referenceAudioURLs: Array(rest.dropFirst(imageRefCount + videoRefCount).prefix(audioRefCount)),
                     generateAudio: true
                 )
                 return (model.resolvedEndpoint(params: params), model.buildInput(params: params))
@@ -918,10 +919,11 @@ final class ToolExecutor {
             return a
         }
 
-        let genInput = GenerationInput(
+        var genInput = GenerationInput(
             prompt: prompt, model: modelId, duration: 0,
             aspectRatio: aspectRatio, resolution: resolution, quality: quality
         )
+        genInput.setImageReferenceAssets(refs)
         let folderId = try resolveFolderId(args, editor: editor)
         let placeholderId = editor.generationService.generate(
             genInput: genInput, assetType: .image,
