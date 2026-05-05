@@ -52,7 +52,10 @@ install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/Mac
 touch "$APP"
 
 if [ "$MODE" = "dev" ]; then
-  echo "==> Done: $APP (unsigned)"
+  echo "==> Ad-hoc signing dev app"
+  codesign --force --deep --sign - "$APP"
+  codesign --verify --strict --verbose=2 "$APP"
+  echo "==> Done: $APP (ad-hoc signed)"
   exit 0
 fi
 
