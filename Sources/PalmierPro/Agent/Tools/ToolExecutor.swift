@@ -716,52 +716,36 @@ final class ToolExecutor {
             throw ToolError("Model '\(model.id)' requires 'sourceVideoMediaRef' pointing to a video asset.")
         }
         let sourceAsset = try asset(sourceRef, editor: editor, label: "Source video")
-        guard sourceAsset.type == .video else {
-            throw ToolError("sourceVideoMediaRef must reference a video asset")
-        }
 
-        var refs: [MediaAsset] = [sourceAsset]
-        if model.supportsReferences {
-            let imgRefIds = args.stringArray("referenceImageMediaRefs")
-            if imgRefIds.count > model.maxReferenceImages {
-                throw ToolError("\(model.displayName) accepts at most \(model.maxReferenceImages) image reference(s)")
-            }
-            for id in imgRefIds {
-                let a = try asset(id, editor: editor, label: "Reference image")
-                guard a.type == .image else {
-                    throw ToolError("referenceImageMediaRefs entry '\(id)' must be an image asset")
-                }
-                refs.append(a)
-            }
+        var imageRefs: [MediaAsset] = []
+        for id in args.stringArray("referenceImageMediaRefs") {
+            imageRefs.append(try asset(id, editor: editor, label: "Reference image"))
         }
 
         if let err = model.validate(duration: 0, aspectRatio: "", resolution: nil) {
             throw ToolError(err)
         }
+        let inputAssets = VideoGenerationSubmission.InputAssets(sourceVideo: sourceAsset, imageRefs: imageRefs)
+        if let err = inputAssets.validate(for: model) {
+            throw ToolError(err)
+        }
 
-        var genInput = GenerationInput(
+        let genInput = GenerationInput(
             prompt: prompt, model: model.id, duration: Int(sourceAsset.duration.rounded()),
             aspectRatio: "", resolution: nil
         )
-        genInput.setVideoEditInputAssets(refs)
-        let placeholderId = editor.generationService.generate(
-            genInput: genInput, assetType: .video,
+        let placeholderId = VideoGenerationSubmission.make(
+            genInput: genInput,
+            model: model,
+            inputAssets: inputAssets,
             placeholderDuration: sourceAsset.duration > 0 ? sourceAsset.duration : 5,
-            references: refs, name: args.string("name"),
+            name: args.string("name"),
             folderId: sourceAsset.folderId,
-            buildInput: { uploaded in
-                let params = VideoGenerationParams(
-                    prompt: prompt, duration: 0, aspectRatio: "", resolution: nil,
-                    sourceVideoURL: uploaded.first,
-                    startFrameURL: nil, endFrameURL: nil,
-                    referenceImageURLs: Array(uploaded.dropFirst()),
-                    generateAudio: true
-                )
-                return (model.resolvedEndpoint(params: params), model.buildInput(params: params))
-            },
-            responseKeyPath: FalResponsePaths.video,
-            fileExtension: "mp4",
-            projectURL: editor.projectURL, editor: editor
+            generateAudio: true
+        ).submit(
+            service: editor.generationService,
+            projectURL: editor.projectURL,
+            editor: editor
         )
         return .ok("Edit started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), source: \(sourceAsset.name)")
     }
@@ -788,104 +772,47 @@ final class ToolExecutor {
             frameSlots.append(try asset(endRef, editor: editor, label: "End frame"))
         }
 
-        func typedRefs(_ argName: String, expected: ClipType) throws -> [MediaAsset] {
+        func refs(_ argName: String, label: String) throws -> [MediaAsset] {
             try args.stringArray(argName).map { id in
-                let a = try asset(id, editor: editor, label: "\(expected.rawValue) reference")
-                guard a.type == expected else {
-                    throw ToolError("\(argName) entry '\(id)' must be a \(expected.rawValue) asset")
-                }
-                return a
+                try asset(id, editor: editor, label: label)
             }
         }
-        let imageRefs = try typedRefs("referenceImageMediaRefs", expected: .image)
-        let videoRefs = try typedRefs("referenceVideoMediaRefs", expected: .video)
-        let audioRefs = try typedRefs("referenceAudioMediaRefs", expected: .audio)
-
-        if model.framesAndReferencesExclusive,
-           !frameSlots.isEmpty, !(imageRefs.isEmpty && videoRefs.isEmpty && audioRefs.isEmpty) {
-            throw ToolError("\(model.displayName) uses frames OR references, not both. Clear one side.")
-        }
-        if imageRefs.count > model.maxReferenceImages {
-            throw ToolError("\(model.displayName) accepts at most \(model.maxReferenceImages) image references")
-        }
-        if videoRefs.count > model.maxReferenceVideos {
-            throw ToolError("\(model.displayName) accepts at most \(model.maxReferenceVideos) video references")
-        }
-        if audioRefs.count > model.maxReferenceAudios {
-            throw ToolError("\(model.displayName) accepts at most \(model.maxReferenceAudios) audio references")
-        }
-        let totalRefs = imageRefs.count + videoRefs.count + audioRefs.count
-        if let totalCap = model.maxTotalReferences, totalRefs > totalCap {
-            throw ToolError("\(model.displayName) accepts at most \(totalCap) references total")
-        }
-        if let cap = model.maxCombinedVideoRefSeconds,
-           videoRefs.reduce(0, { $0 + $1.duration }) > cap {
-            throw ToolError("Combined video reference duration exceeds \(Int(cap))s")
-        }
-        if let cap = model.maxCombinedAudioRefSeconds,
-           audioRefs.reduce(0, { $0 + $1.duration }) > cap {
-            throw ToolError("Combined audio reference duration exceeds \(Int(cap))s")
+        let imageRefs = try refs("referenceImageMediaRefs", label: "Image reference")
+        let videoRefs = try refs("referenceVideoMediaRefs", label: "Video reference")
+        let audioRefs = try refs("referenceAudioMediaRefs", label: "Audio reference")
+        let inputAssets = VideoGenerationSubmission.InputAssets(
+            frames: frameSlots,
+            imageRefs: imageRefs,
+            videoRefs: videoRefs,
+            audioRefs: audioRefs
+        )
+        if let err = inputAssets.validate(for: model) {
+            throw ToolError(err)
         }
 
-        var refs: [MediaAsset] = []
-        refs.append(contentsOf: frameSlots)
-        refs.append(contentsOf: imageRefs)
-        refs.append(contentsOf: videoRefs)
-        refs.append(contentsOf: audioRefs)
-        let frameCount = frameSlots.count
         let imageRefCount = imageRefs.count
         let videoRefCount = videoRefs.count
         let audioRefCount = audioRefs.count
+        let totalRefs = inputAssets.totalRefCount
 
-        var genInput = GenerationInput(
+        let genInput = GenerationInput(
             prompt: prompt, model: model.id, duration: duration,
             aspectRatio: aspectRatio, resolution: resolution
         )
-        genInput.setVideoInputAssets(
-            frames: frameSlots,
-            images: imageRefs,
-            videos: videoRefs,
-            audios: audioRefs
-        )
-        let snapshotRefs = GenerationInput.videoInputSnapshotter(
-            frameCount: frameCount,
-            imageRefCount: imageRefCount,
-            videoRefCount: videoRefCount,
-            audioRefCount: audioRefCount
-        )
-        var preprocessRef: (@Sendable (Int, MediaAsset) async throws -> URL?)? = nil
-        if videoRefCount > 0 {
-            preprocessRef = { _, a in
-                guard a.type == .video else { return nil }
-                return try await VideoCompressor.compressIfNeeded(url: a.url)
-            }
-        }
 
         let folderId = try resolveFolderId(args, editor: editor)
-        let placeholderId = editor.generationService.generate(
-            genInput: genInput, assetType: .video,
+        let placeholderId = VideoGenerationSubmission.make(
+            genInput: genInput,
+            model: model,
+            inputAssets: inputAssets,
             placeholderDuration: Double(max(1, duration)),
-            references: refs, name: args.string("name"),
+            name: args.string("name"),
             folderId: folderId,
-            buildInput: { uploaded in
-                let params = GenerationInput.videoInputURLs(
-                    uploaded: uploaded,
-                    frameCount: frameCount,
-                    imageRefCount: imageRefCount,
-                    videoRefCount: videoRefCount,
-                    audioRefCount: audioRefCount
-                ).params(
-                    prompt: prompt, duration: duration,
-                    aspectRatio: aspectRatio, resolution: resolution,
-                    generateAudio: true
-                )
-                return (model.resolvedEndpoint(params: params), model.buildInput(params: params))
-            },
-            snapshotRefs: snapshotRefs,
-            preprocessRef: preprocessRef,
-            responseKeyPath: FalResponsePaths.video,
-            fileExtension: "mp4",
-            projectURL: editor.projectURL, editor: editor
+            generateAudio: true
+        ).submit(
+            service: editor.generationService,
+            projectURL: editor.projectURL,
+            editor: editor
         )
         let refSummary = totalRefs > 0
             ? ", refs: \(imageRefCount)img/\(videoRefCount)vid/\(audioRefCount)aud"
@@ -919,27 +846,21 @@ final class ToolExecutor {
             return a
         }
 
-        var genInput = GenerationInput(
+        let genInput = GenerationInput(
             prompt: prompt, model: modelId, duration: 0,
             aspectRatio: aspectRatio, resolution: resolution, quality: quality
         )
-        genInput.setImageReferenceAssets(refs)
         let folderId = try resolveFolderId(args, editor: editor)
-        let placeholderId = editor.generationService.generate(
-            genInput: genInput, assetType: .image,
-            placeholderDuration: Defaults.imageDurationSeconds,
-            references: refs, name: args.string("name"),
-            folderId: folderId,
-            buildInput: { uploaded in
-                let input = model.buildInput(
-                    prompt: prompt, aspectRatio: aspectRatio,
-                    resolution: resolution, quality: quality, imageURLs: uploaded
-                )
-                return (model.resolvedEndpoint(imageURLs: uploaded), input)
-            },
-            responseKeyPath: FalResponsePaths.generatedImage,
-            fileExtension: "jpg",
-            projectURL: editor.projectURL, editor: editor
+        let placeholderId = ImageGenerationSubmission.make(
+            genInput: genInput,
+            model: model,
+            references: refs,
+            name: args.string("name"),
+            folderId: folderId
+        ).submit(
+            service: editor.generationService,
+            projectURL: editor.projectURL,
+            editor: editor
         )
         return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), aspect: \(aspectRatio)")
     }
@@ -967,13 +888,6 @@ final class ToolExecutor {
             throw ToolError(err)
         }
 
-        let placeholderDuration: Double = {
-            if let secs = params.durationSeconds { return Double(secs) }
-            return model.category == .music
-                ? Defaults.audioMusicDurationSeconds
-                : Defaults.audioTTSDurationSeconds
-        }()
-
         let genInput = GenerationInput(
             prompt: trimmed,
             model: model.id,
@@ -987,17 +901,16 @@ final class ToolExecutor {
         )
 
         let folderId = try resolveFolderId(args, editor: editor)
-        let placeholderId = editor.generationService.generate(
-            genInput: genInput, assetType: .audio,
-            placeholderDuration: placeholderDuration,
+        let placeholderId = AudioGenerationSubmission.make(
+            genInput: genInput,
+            model: model,
+            params: params,
             name: args.string("name"),
-            folderId: folderId,
-            buildInput: { _ in
-                (model.baseEndpoint, model.buildInput(params: params))
-            },
-            responseKeyPath: FalResponsePaths.audio,
-            fileExtension: "mp3",
-            projectURL: editor.projectURL, editor: editor
+            folderId: folderId
+        ).submit(
+            service: editor.generationService,
+            projectURL: editor.projectURL,
+            editor: editor
         )
         return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), category: \(model.category == .music ? "music" : "tts")")
     }
