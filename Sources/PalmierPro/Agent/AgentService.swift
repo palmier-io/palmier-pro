@@ -45,6 +45,7 @@ final class AgentService {
     var mentions: [AgentMention] = []
 
     func attachMention(for asset: MediaAsset) {
+        editor?.agentPanelVisible = true
         mentions.removeAll { !draft.contains("@\($0.displayName)") }
         guard !mentions.contains(where: { $0.mediaRef == asset.id }) else { return }
         let displayName = Self.disambiguatedMentionName(for: asset, existing: mentions)
