@@ -269,8 +269,7 @@ extension MediaPanelView {
 
                 if let folderId {
                     Button {
-                        currentFolderId = folderId
-                        viewMode = .folder
+                        openFolder(id: folderId)
                     } label: {
                         HStack(spacing: AppTheme.Spacing.xs) {
                             Image(systemName: "folder.fill")
@@ -287,8 +286,7 @@ extension MediaPanelView {
                     .help("Open \(title)")
                     .contextMenu {
                         Button("Open") {
-                            currentFolderId = folderId
-                            viewMode = .folder
+                            openFolder(id: folderId)
                         }
                         Divider()
                         Button("Delete", role: .destructive) {
@@ -412,7 +410,7 @@ extension MediaPanelView {
                 set: { renamingFolderId = $0 ? folder.id : nil }
             ),
             onTap: { handleFolderTap(folder) },
-            onOpen: { currentFolderId = folder.id },
+            onOpen: { openFolder(id: folder.id) },
             onCommitRename: { newName in
                 editor.renameFolder(id: folder.id, name: newName)
                 renamingFolderId = nil
