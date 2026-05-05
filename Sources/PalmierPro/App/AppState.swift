@@ -46,6 +46,53 @@ final class AppState {
         project.showWindows()
     }
 
+    func revealGeneratedAssetFromNotification(assetId: String?, projectURL: URL?) {
+        NSApp.activate(ignoringOtherApps: true)
+        guard let project = notificationTargetProject(assetId: assetId, projectURL: projectURL) else {
+            if activeProject == nil {
+                HomeWindowController.shared.showWindow(nil)
+            }
+            return
+        }
+
+        activeProject = project
+        HomeWindowController.shared.window?.orderOut(nil)
+        project.showWindows()
+        project.windowControllers.first?.window?.makeKeyAndOrderFront(nil)
+
+        guard let assetId,
+              project.editorViewModel.mediaAssets.contains(where: { $0.id == assetId }) else {
+            return
+        }
+
+        let editor = project.editorViewModel
+        editor.mediaPanelVisible = true
+        editor.maximizedPanel = nil
+        editor.focusedPanel = .media
+        editor.selectedClipIds.removeAll()
+        editor.selectedFolderIds.removeAll()
+        editor.selectedMediaAssetIds = [assetId]
+        editor.mediaPanelRevealAssetId = assetId
+    }
+
+    private func notificationTargetProject(assetId: String?, projectURL: URL?) -> VideoProject? {
+        let openProjects = NSDocumentController.shared.documents.compactMap { $0 as? VideoProject }
+        if let projectURL {
+            return openProjects.first { Self.sameFile($0.fileURL, projectURL) }
+        }
+        if let assetId {
+            return openProjects.first { project in
+                project.editorViewModel.mediaAssets.contains { $0.id == assetId }
+            }
+        }
+        return activeProject
+    }
+
+    private static func sameFile(_ lhs: URL?, _ rhs: URL) -> Bool {
+        guard let lhs else { return false }
+        return lhs.standardizedFileURL.path == rhs.standardizedFileURL.path
+    }
+
     // MARK: - Project lifecycle
 
     func createNewProject() {

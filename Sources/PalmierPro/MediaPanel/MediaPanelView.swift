@@ -115,6 +115,9 @@ struct MediaPanelView: View {
 
     private func revealAsset(id: String) {
         guard let asset = editor.mediaAssets.first(where: { $0.id == id }) else { return }
+        if !passesFilters(asset) {
+            clearFilters()
+        }
         if viewMode == .folder, currentFolderId != asset.folderId {
             currentFolderId = asset.folderId
         }

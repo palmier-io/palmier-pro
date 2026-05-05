@@ -14,6 +14,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         HomeWindowController.shared.showWindow(nil)
 
+        AppNotifications.configure()
+
         AppState.shared.startMCPService()
     }
 

@@ -271,7 +271,7 @@ final class GenerationService {
                     Log.generation.notice("fal returned \(urlStrings.count) URL(s) for \(placeholders.count) placeholder(s); marking extras as failed")
                 }
 
-                var anyFinalized = false
+                var finalizedAssets: [MediaAsset] = []
                 for (i, placeholder) in placeholders.enumerated() {
                     guard i < urlStrings.count, let remoteURL = URL(string: urlStrings[i]) else {
                         placeholder.generationStatus = .failed("No image in response")
@@ -288,7 +288,7 @@ final class GenerationService {
                         editor.appendGenerationLog(for: placeholder)
                         await editor.finalizeImportedAsset(placeholder)
                         onComplete?(placeholder)
-                        anyFinalized = true
+                        finalizedAssets.append(placeholder)
                     } catch {
                         let message = Self.friendlyMessage(from: error)
                         Log.generation.error("download failed model=\(genInput.model) idx=\(i) error=\(message)")
@@ -296,7 +296,15 @@ final class GenerationService {
                     }
                 }
 
-                if !anyFinalized {
+                if let first = finalizedAssets.first {
+                    AppNotifications.generationComplete(
+                        assetId: first.id,
+                        projectURL: editor.projectURL,
+                        assetName: first.name,
+                        assetType: first.type,
+                        count: finalizedAssets.count
+                    )
+                } else {
                     onFailure?()
                 }
             } catch {
