@@ -71,13 +71,6 @@ enum AppTheme {
         static let text = NSColor(red: 0x96/255.0, green: 0x15/255.0, blue: 0xAD/255.0, alpha: 1) // #9615ad (same as image)
     }
 
-    // MARK: - Clip fills
-
-    enum ClipFill {
-        static let base = NSColor(red: 0.09, green: 0.09, blue: 0.11, alpha: 1)
-        static let selected = NSColor(red: 0.15, green: 0.15, blue: 0.19, alpha: 1)
-    }
-
     // MARK: - Corner radii
 
     enum Radius {

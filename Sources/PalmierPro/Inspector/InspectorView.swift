@@ -844,13 +844,6 @@ struct InspectorView: View {
         return (w, h)
     }
 
-    private func scaledTransform(for clip: Clip, newScale: Double) -> Transform {
-        let aspect = editor.mediaCanvasAspect(for: clip) ?? 1.0
-        let w = newScale
-        let h = newScale / aspect
-        return Transform(center: clip.transform.center, width: w, height: h)
-    }
-
     private func formatDuration(_ seconds: Double) -> String {
         let mins = Int(seconds) / 60
         let secs = Int(seconds) % 60

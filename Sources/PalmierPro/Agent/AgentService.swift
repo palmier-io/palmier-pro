@@ -154,16 +154,6 @@ final class AgentService {
         kickOffStream()
     }
 
-    func clearConversation() {
-        currentTask?.cancel()
-        currentTask = nil
-        messages = []
-        isStreaming = false
-        streamError = nil
-        syncMessagesIntoCurrentSession()
-        onSessionsChanged?()
-    }
-
     func cancel() {
         currentTask?.cancel()
         currentTask = nil
@@ -522,4 +512,3 @@ struct AgentMention: Identifiable, Hashable, Codable {
         self.type = type
     }
 }
-

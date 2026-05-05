@@ -1255,8 +1255,4 @@ extension Dictionary where Key == String, Value == Any {
         guard let v = int(key) else { throw ToolError("Missing required argument: \(key)") }
         return v
     }
-    func requireDouble(_ key: String) throws -> Double {
-        guard let v = double(key) else { throw ToolError("Missing required argument: \(key)") }
-        return v
-    }
 }

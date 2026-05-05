@@ -22,41 +22,8 @@ extension EditorViewModel {
         mediaAssets.filter { $0.folderId == folderId }
     }
 
-    /// Root → leaf chain; empty for nil.
     func folderPath(for folderId: String?) -> [MediaFolder] {
-        var path: [MediaFolder] = []
-        var current = folderId
-        while let id = current, let f = folder(id: id) {
-            path.insert(f, at: 0)
-            current = f.parentFolderId
-        }
-        return path
-    }
-
-    func isDescendant(folderId: String, of ancestorId: String) -> Bool {
-        var current: String? = folderId
-        while let id = current {
-            if id == ancestorId { return true }
-            current = folder(id: id)?.parentFolderId
-        }
-        return false
-    }
-
-    private func subfolderIdsRecursive(of folderId: String) -> [String] {
-        var ids: [String] = []
-        for child in subfolders(of: folderId) {
-            ids.append(child.id)
-            ids.append(contentsOf: subfolderIdsRecursive(of: child.id))
-        }
-        return ids
-    }
-
-    private func folderIdsIncludingDescendants(_ ids: Set<String>) -> Set<String> {
-        var all = ids
-        for id in ids {
-            all.formUnion(subfolderIdsRecursive(of: id))
-        }
-        return all
+        MediaFolderIndex(mediaManifest.folders).path(for: folderId)
     }
 
     private func assetIds(inFolderIds folderIds: Set<String>) -> Set<String> {
@@ -99,7 +66,7 @@ extension EditorViewModel {
 
     func deleteFolders(ids: Set<String>) {
         guard !ids.isEmpty else { return }
-        let allFolderIds = folderIdsIncludingDescendants(ids)
+        let allFolderIds = MediaFolderIndex(mediaManifest.folders).idsIncludingDescendants(ids)
         guard mediaManifest.folders.contains(where: { allFolderIds.contains($0.id) }) else { return }
 
         let before = mediaLibraryUndoSnapshot()
@@ -148,11 +115,12 @@ extension EditorViewModel {
 
     func moveFoldersToFolder(folderIds: Set<String>, parentFolderId: String?) {
         guard !folderIds.isEmpty else { return }
+        let folderIndex = MediaFolderIndex(mediaManifest.folders)
         var changes: [ParentChange] = []
         for id in folderIds {
-            guard let folder = folder(id: id) else { continue }
+            guard let folder = folderIndex.folder(id: id) else { continue }
             if folder.parentFolderId == parentFolderId { continue }
-            if let target = parentFolderId, isDescendant(folderId: target, of: id) { continue }
+            if let target = parentFolderId, folderIndex.isDescendant(folderId: target, of: id) { continue }
             if id == parentFolderId { continue }
             changes.append((id, parentFolderId))
         }
@@ -243,4 +211,63 @@ private struct MediaLibraryUndoSnapshot {
     let previewTabs: [PreviewTab]
     let activePreviewTabId: String
     let sourcePlayheadFrame: Int
+}
+
+// Cached lookup tables for folder path and descendant traversal.
+private struct MediaFolderIndex {
+    private let byId: [String: MediaFolder]
+    private let childrenByParent: [String?: [MediaFolder]]
+
+    init(_ folders: [MediaFolder]) {
+        var byId: [String: MediaFolder] = [:]
+        for folder in folders {
+            byId[folder.id] = folder
+        }
+
+        self.byId = byId
+        childrenByParent = Dictionary(grouping: folders, by: \.parentFolderId)
+    }
+
+    func folder(id: String) -> MediaFolder? {
+        byId[id]
+    }
+
+    func path(for folderId: String?) -> [MediaFolder] {
+        var path: [MediaFolder] = []
+        var current = folderId
+        var visited: Set<String> = []
+
+        while let id = current, visited.insert(id).inserted, let folder = byId[id] {
+            path.append(folder)
+            current = folder.parentFolderId
+        }
+
+        return Array(path.reversed())
+    }
+
+    func isDescendant(folderId: String, of ancestorId: String) -> Bool {
+        var current: String? = folderId
+        var visited: Set<String> = []
+
+        while let id = current, visited.insert(id).inserted {
+            if id == ancestorId { return true }
+            current = byId[id]?.parentFolderId
+        }
+
+        return false
+    }
+
+    func idsIncludingDescendants(_ ids: Set<String>) -> Set<String> {
+        var all = ids
+        for id in ids {
+            collectDescendantIds(of: id, into: &all)
+        }
+        return all
+    }
+
+    private func collectDescendantIds(of folderId: String, into ids: inout Set<String>) {
+        for child in childrenByParent[folderId] ?? [] where ids.insert(child.id).inserted {
+            collectDescendantIds(of: child.id, into: &ids)
+        }
+    }
 }

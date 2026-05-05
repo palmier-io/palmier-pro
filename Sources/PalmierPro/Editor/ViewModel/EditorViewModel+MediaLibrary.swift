@@ -207,15 +207,15 @@ extension EditorViewModel {
         let canvas = CGSize(width: timeline.width, height: timeline.height)
         let time = CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(fps))
 
-        nonisolated(unsafe) let unsafeComposition = isTimelineTab ? currentItem.videoComposition : nil
+        let videoComposition = isTimelineTab ? currentItem.videoComposition : nil
 
         Task.detached {
             let generator = AVAssetImageGenerator(asset: asset)
             generator.appliesPreferredTrackTransform = true
             generator.requestedTimeToleranceBefore = .zero
             generator.requestedTimeToleranceAfter = .zero
-            if let unsafeComposition {
-                generator.videoComposition = unsafeComposition
+            if let videoComposition {
+                generator.videoComposition = videoComposition
                 generator.maximumSize = canvas
             }
 
