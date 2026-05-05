@@ -107,10 +107,11 @@ final class EditorViewModel {
 
     // MARK: - Media panel navigation routing
 
-    var mediaPanelOrderedIds: [String] = []
+    var mediaPanelOrderedItemIds: [String] = []
     var mediaPanelColumnCount: Int = 1
     var mediaPanelScrollTarget: String?
     var mediaPanelRevealAssetId: String?
+    var mediaPanelOpenFolderId: String?
 
     init() {
         mediaResolver = MediaResolver(

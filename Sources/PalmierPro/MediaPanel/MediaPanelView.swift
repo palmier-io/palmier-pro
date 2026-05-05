@@ -96,6 +96,11 @@ struct MediaPanelView: View {
             revealAsset(id: target)
             editor.mediaPanelRevealAssetId = nil
         }
+        .onChange(of: editor.mediaPanelOpenFolderId) { _, target in
+            guard let target else { return }
+            openFolder(id: target)
+            editor.mediaPanelOpenFolderId = nil
+        }
     }
 
     /// If the current folder, rename target, or hover target has been deleted,
@@ -117,6 +122,12 @@ struct MediaPanelView: View {
             collapsedGroupedKeys.remove(asset.folderId ?? "")
         }
         editor.mediaPanelScrollTarget = id
+    }
+
+    private func openFolder(id: String) {
+        guard editor.folder(id: id) != nil else { return }
+        currentFolderId = id
+        viewMode = .folder
     }
 
     // MARK: - Toolbar

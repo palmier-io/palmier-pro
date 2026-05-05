@@ -8,23 +8,15 @@ extension MediaPanelView {
         enum Kind { case folder(MediaFolder), asset(MediaAsset) }
         let kind: Kind
 
-        /// Folder cell ids carry this prefix so marquee can split asset/folder hits.
-        static let folderFrameKeyPrefix = "folder-"
-
         var id: String {
             switch kind {
-            case .folder(let f): return Self.folderFrameKeyPrefix + f.id
+            case .folder(let f): return MediaPanelItemKey.folder(f.id)
             case .asset(let a): return a.id
             }
         }
-        var assetId: String? {
-            if case .asset(let a) = kind { return a.id }
-            return nil
-        }
 
         static func folderId(fromFrameKey key: String) -> String? {
-            guard key.hasPrefix(folderFrameKeyPrefix) else { return nil }
-            return String(key.dropFirst(folderFrameKeyPrefix.count))
+            MediaPanelItemKey.folderId(from: key)
         }
     }
 
@@ -33,7 +25,7 @@ extension MediaPanelView {
         let tileWidth: CGFloat
         let spacing: CGFloat
         let cells: [MediaCell]
-        let orderedAssetIds: [String]
+        let orderedIds: [String]
     }
 
     struct GridDimensions {
@@ -64,10 +56,10 @@ extension MediaPanelView {
         for asset in assetsInCurrentFolder {
             cells.append(MediaCell(kind: .asset(asset)))
         }
-        let orderedAssetIds = cells.compactMap(\.assetId)
+        let orderedIds = cells.map(\.id)
         return GridLayoutInfo(
             cols: dims.cols, tileWidth: dims.tileWidth, spacing: dims.spacing,
-            cells: cells, orderedAssetIds: orderedAssetIds
+            cells: cells, orderedIds: orderedIds
         )
     }
 
@@ -77,8 +69,8 @@ extension MediaPanelView {
     }
 
     func publishOrderedIds(_ ids: [String]) {
-        if editor.mediaPanelOrderedIds != ids {
-            editor.mediaPanelOrderedIds = ids
+        if editor.mediaPanelOrderedItemIds != ids {
+            editor.mediaPanelOrderedItemIds = ids
         }
     }
 }
@@ -90,7 +82,7 @@ extension MediaPanelView {
     @ViewBuilder
     fileprivate func gridScroll<Cell: Identifiable, Content: View>(
         cells: [Cell],
-        orderedAssetIds: [String],
+        orderedIds: [String],
         cols: Int,
         tileWidth: CGFloat,
         spacing: CGFloat,
@@ -116,8 +108,8 @@ extension MediaPanelView {
                 assetFrames = frames
                 if editor.mediaPanelColumnCount != cols { editor.mediaPanelColumnCount = cols }
             }
-            .onAppear { publishOrderedIds(orderedAssetIds) }
-            .onChange(of: orderedAssetIds) { _, ids in publishOrderedIds(ids) }
+            .onAppear { publishOrderedIds(orderedIds) }
+            .onChange(of: orderedIds) { _, ids in publishOrderedIds(ids) }
             .onChange(of: editor.mediaPanelScrollTarget) { _, target in
                 guard let target else { return }
                 withAnimation(.easeOut(duration: 0.15)) {
@@ -143,7 +135,7 @@ extension MediaPanelView {
                 : AppTheme.Spacing.xs
             gridScroll(
                 cells: layout.cells,
-                orderedAssetIds: layout.orderedAssetIds,
+                orderedIds: layout.orderedIds,
                 cols: layout.cols,
                 tileWidth: layout.tileWidth,
                 spacing: layout.spacing,
@@ -165,7 +157,7 @@ extension MediaPanelView {
             let dims = gridDimensions(width: geo.size.width)
             gridScroll(
                 cells: assets,
-                orderedAssetIds: orderedIds,
+                orderedIds: orderedIds,
                 cols: dims.cols,
                 tileWidth: dims.tileWidth,
                 spacing: dims.spacing,
@@ -190,6 +182,10 @@ extension MediaPanelView {
         let allFolders = editor.folders
             .map { ($0, editor.folderPath(for: $0.id).map(\.name).joined(separator: " / ")) }
             .sorted { $0.1.localizedCaseInsensitiveCompare($1.1) == .orderedAscending }
+        var orderedIds = collapsedGroupedKeys.contains("") ? [] : rootAssets.map(\.id)
+        for (folder, _) in allFolders where !collapsedGroupedKeys.contains(folder.id) {
+            orderedIds.append(contentsOf: sortAndFilter(bucketed[folder.id] ?? []).map(\.id))
+        }
         return GeometryReader { geo in
             let dims = gridDimensions(width: geo.size.width)
             ScrollViewReader { proxy in
@@ -220,7 +216,10 @@ extension MediaPanelView {
                 .coordinateSpace(name: "mediaGrid")
                 .onPreferenceChange(AssetFramePreferenceKey.self) { frames in
                     assetFrames = frames
+                    if editor.mediaPanelColumnCount != dims.cols { editor.mediaPanelColumnCount = dims.cols }
                 }
+                .onAppear { publishOrderedIds(orderedIds) }
+                .onChange(of: orderedIds) { _, ids in publishOrderedIds(ids) }
                 .onChange(of: editor.mediaPanelScrollTarget) { _, target in
                     guard let target else { return }
                     withAnimation(.easeOut(duration: 0.15)) {

@@ -1,6 +1,19 @@
 import AppKit
 import AVFoundation
 
+enum MediaPanelItemKey {
+    static let folderPrefix = "folder-"
+
+    static func folder(_ id: String) -> String {
+        folderPrefix + id
+    }
+
+    static func folderId(from key: String) -> String? {
+        guard key.hasPrefix(folderPrefix) else { return nil }
+        return String(key.dropFirst(folderPrefix.count))
+    }
+}
+
 /// Media library bookkeeping: import, rename, and manifest metadata sync for
 /// the in-memory asset catalog and the persisted `MediaManifest`.
 extension EditorViewModel {
@@ -102,11 +115,12 @@ extension EditorViewModel {
     }
 
     func moveMediaSelection(direction: MediaSelectionDirection) {
-        let ordered = mediaPanelOrderedIds
+        let ordered = mediaPanelOrderedItemIds
         guard !ordered.isEmpty else { return }
+        let selectedKeys = mediaPanelSelectedKeys()
 
         let next: String
-        if let anchor = ordered.last(where: { selectedMediaAssetIds.contains($0) }),
+        if let anchor = ordered.last(where: { selectedKeys.contains($0) }),
            let idx = ordered.firstIndex(of: anchor) {
             let raw = idx + direction.step(columnCount: max(1, mediaPanelColumnCount))
             let target = max(0, min(ordered.count - 1, raw))
@@ -116,11 +130,28 @@ extension EditorViewModel {
             next = direction.startsFromEnd ? ordered[ordered.count - 1] : ordered[0]
         }
 
-        selectedMediaAssetIds = [next]
-        mediaPanelScrollTarget = next
-        if let asset = mediaAssets.first(where: { $0.id == next }) {
-            openPreviewTab(for: asset)
+        selectMediaPanelItem(next)
+    }
+
+    private func mediaPanelSelectedKeys() -> Set<String> {
+        var keys = selectedMediaAssetIds
+        keys.formUnion(selectedFolderIds.map(MediaPanelItemKey.folder))
+        return keys
+    }
+
+    private func selectMediaPanelItem(_ key: String) {
+        if let folderId = MediaPanelItemKey.folderId(from: key) {
+            guard folder(id: folderId) != nil else { return }
+            mediaPanelScrollTarget = key
+            selectedFolderIds = [folderId]
+            selectedMediaAssetIds.removeAll()
+            return
         }
+        guard let asset = mediaAssets.first(where: { $0.id == key }) else { return }
+        mediaPanelScrollTarget = key
+        selectedMediaAssetIds = [key]
+        selectedFolderIds.removeAll()
+        openPreviewTab(for: asset)
     }
 
     func renameMediaAsset(id: String, name: String) {
