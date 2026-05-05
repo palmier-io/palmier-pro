@@ -139,7 +139,7 @@ extension MediaPanelView {
         GeometryReader { geo in
             let layout = computeLayout(width: geo.size.width)
             let topPadding: CGFloat = breadcrumbItems.isEmpty
-                ? Layout.panelHeaderHeight + AppTheme.Spacing.sm
+                ? AppTheme.Spacing.sm
                 : AppTheme.Spacing.xs
             gridScroll(
                 cells: layout.cells,
@@ -169,7 +169,7 @@ extension MediaPanelView {
                 cols: dims.cols,
                 tileWidth: dims.tileWidth,
                 spacing: dims.spacing,
-                topPadding: Layout.panelHeaderHeight + AppTheme.Spacing.sm
+                topPadding: AppTheme.Spacing.sm
             ) { asset in
                 assetCellView(for: asset)
             }
@@ -216,7 +216,6 @@ extension MediaPanelView {
                         }
                     }
                     .padding(AppTheme.Spacing.md)
-                    .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.sm)
                 }
                 .coordinateSpace(name: "mediaGrid")
                 .onPreferenceChange(AssetFramePreferenceKey.self) { frames in
