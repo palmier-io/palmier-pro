@@ -184,14 +184,21 @@ final class TimelineInputController {
                 includePlayhead: true
             )
 
-            let clipDuration = editor.timeline.tracks
-                .flatMap(\.clips)
-                .first(where: { $0.id == drag.lead.clipId })?
-                .durationFrames ?? 0
+            // Probe each selected clip's start and end (offsets relative to the
+            // lead's candidate start), so any selected edge can drive the snap.
+            let clipsById = Dictionary(uniqueKeysWithValues:
+                editor.timeline.tracks.flatMap(\.clips).map { ($0.id, $0) })
+            var probeOffsets: [Int] = []
+            for p in drag.all {
+                guard let c = clipsById[p.clipId] else { continue }
+                let baseOffset = p.originalFrame - drag.lead.originalFrame
+                probeOffsets.append(baseOffset)
+                probeOffsets.append(baseOffset + c.durationFrames)
+            }
 
             if let snap = SnapEngine.findSnap(
                 position: candidateFrame,
-                probeOffsets: [0, clipDuration],
+                probeOffsets: probeOffsets,
                 targets: targets,
                 state: &snapState,
                 baseThreshold: Snap.thresholdPixels,
@@ -203,6 +210,8 @@ final class TimelineInputController {
                 snapIndicatorX = nil
                 drag.deltaFrames = candidateFrame - drag.lead.originalFrame
             }
+            let minOrigFrame = drag.all.map(\.originalFrame).min() ?? 0
+            drag.deltaFrames = max(-minOrigFrame, drag.deltaFrames)
             let rawTarget = geometry.dropTargetAt(y: point.y)
             let row: Int? = {
                 if case .existingTrack(let t) = rawTarget { return t }
