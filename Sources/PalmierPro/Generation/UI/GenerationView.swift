@@ -48,7 +48,7 @@ struct GenerationView: View {
     @State private var sourceVideoTargeted = false
     @State private var motionReferenceTargeted = false
 
-    @State private var isConsumingEditSource = false
+    @State private var isPopulatingPanel = false
     @State private var editFolderId: String?
 
     // Prompt @-autocomplete for reference tags (Seedance/Kling/Grok reference mode)
@@ -391,7 +391,7 @@ struct GenerationView: View {
         .onChange(of: editor.pendingEditSource?.id) { _, _ in consumePendingEditSource() }
         .onChange(of: editor.pendingRerun?.id) { _, _ in consumePendingRerun() }
         .onChange(of: selectedType) { _, newValue in
-            guard !isConsumingEditSource else { return }
+            guard !isPopulatingPanel else { return }
             resetSettings()
             clearReferences()
             if newValue == .audio { resetAudioState() }
@@ -399,7 +399,7 @@ struct GenerationView: View {
             editor.pendingEditTrimmedSource = nil
         }
         .onChange(of: selectedVideoModelIndex) { _, _ in
-            guard !isConsumingEditSource else { return }
+            guard !isPopulatingPanel else { return }
             if selectedType == .video {
                 resetSettings()
                 if !videoModel.requiresSourceVideo {
@@ -410,13 +410,13 @@ struct GenerationView: View {
             }
         }
         .onChange(of: selectedImageModelIndex) { _, _ in
-            guard !isConsumingEditSource else { return }
+            guard !isPopulatingPanel else { return }
             if selectedType == .image {
                 resetSettings()
             }
         }
         .onChange(of: selectedAudioModelIndex) { _, _ in
-            guard !isConsumingEditSource else { return }
+            guard !isPopulatingPanel else { return }
             if selectedType == .audio { resetAudioState() }
         }
     }
@@ -1641,23 +1641,26 @@ struct GenerationView: View {
     }
 
     private func populatePanel(asset: MediaAsset, stored: GenerationInput, defaultName: String?) {
-        let modelId = stored.model
-        if let idx = VideoModelConfig.allModels.firstIndex(where: { $0.id == modelId }) {
-            isConsumingEditSource = true
+        switch ModelRegistry.byId[stored.model] {
+        case .video:
+            guard let idx = VideoModelConfig.allModels.firstIndex(where: { $0.id == stored.model }) else { return }
+            isPopulatingPanel = true
             selectedType = .video
             selectedVideoModelIndex = idx
-        } else if let idx = ImageModelConfig.allModels.firstIndex(where: { $0.id == modelId }) {
-            isConsumingEditSource = true
+        case .image:
+            guard let idx = ImageModelConfig.allModels.firstIndex(where: { $0.id == stored.model }) else { return }
+            isPopulatingPanel = true
             selectedType = .image
             selectedImageModelIndex = idx
-        } else if let idx = AudioModelConfig.allModels.firstIndex(where: { $0.id == modelId }) {
-            isConsumingEditSource = true
+        case .audio:
+            guard let idx = AudioModelConfig.allModels.firstIndex(where: { $0.id == stored.model }) else { return }
+            isPopulatingPanel = true
             selectedType = .audio
             selectedAudioModelIndex = idx
-        } else {
+        case .upscale, .none:
             return
         }
-        defer { DispatchQueue.main.async { isConsumingEditSource = false } }
+        defer { DispatchQueue.main.async { isPopulatingPanel = false } }
 
         prompt = stored.prompt
         if !stored.aspectRatio.isEmpty { selectedAspectRatio = stored.aspectRatio }
@@ -1680,8 +1683,8 @@ struct GenerationView: View {
         imageReferences.removeAll()
         resetRefPools()
 
-        let allAssets = editor.mediaAssets
-        let lookup: (String) -> MediaAsset? = { id in allAssets.first { $0.id == id } }
+        let assetsById = Dictionary(editor.mediaAssets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let lookup: (String) -> MediaAsset? = { assetsById[$0] }
         let primary = (stored.imageURLAssetIds ?? []).compactMap(lookup)
 
         switch selectedType {

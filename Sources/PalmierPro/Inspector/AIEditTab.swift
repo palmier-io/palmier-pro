@@ -230,8 +230,7 @@ struct AIEditTab: View {
             editor.showGenerationPanel = true
         case .rerun:
             let modelId = asset.generationInput?.model ?? ""
-            let isUpscale = UpscaleModelConfig.allModels.contains(where: { $0.id == modelId })
-            if isUpscale {
+            if UpscaleModelConfig.allIds.contains(modelId) {
                 do {
                     markReplacementPendingIfNeeded()
                     _ = try EditSubmitter.rerun(
