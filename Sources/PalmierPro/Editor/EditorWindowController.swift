@@ -116,6 +116,12 @@ final class EditorWindowController: NSWindowController {
             return false
 
         case 36: // Return / Enter
+            if editorViewModel.focusedPanel == .media,
+               editorViewModel.selectedFolderIds.count == 1,
+               let folderId = editorViewModel.selectedFolderIds.first {
+                editorViewModel.mediaPanelOpenFolderId = folderId
+                return true
+            }
             if editorViewModel.cropEditingActive {
                 editorViewModel.cropEditingActive = false
                 return true
