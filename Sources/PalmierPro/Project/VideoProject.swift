@@ -244,7 +244,7 @@ final class VideoProject: NSDocument {
         let resolver = editorViewModel.mediaResolver
         for entry in editorViewModel.mediaManifest.entries {
             guard let url = resolver.resolveURL(for: entry.id) else {
-                Log.project.error("restore: could not resolve URL for entry id=\(entry.id) name=\(entry.name)")
+                Log.project.warning("restore: could not resolve URL for entry id=\(entry.id) name=\(entry.name)")
                 continue
             }
             let asset = MediaAsset(entry: entry, resolvedURL: url)

@@ -26,7 +26,7 @@ enum MainMenuBuilder {
         updatesItem.target = Updater.shared
         menu.addItem(updatesItem)
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Settings...", action: #selector(NSApplication.sendAction(_:to:from:)), keyEquivalent: ",")
+        menu.addItem(withTitle: "Settings...", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Palmier Pro", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.submenu = menu

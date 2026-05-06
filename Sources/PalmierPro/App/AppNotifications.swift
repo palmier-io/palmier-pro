@@ -12,7 +12,7 @@ enum AppNotifications {
         center.delegate = AppNotificationDelegate.shared
         center.requestAuthorization(options: [.alert, .sound]) { granted, error in
             if let error {
-                Log.app.error("notification authorization failed error=\(error.localizedDescription)")
+                Log.app.warning("notification authorization failed error=\(error.localizedDescription)")
             } else {
                 Log.app.notice("notification authorization \(granted ? "granted" : "denied")")
             }
@@ -45,7 +45,7 @@ enum AppNotifications {
         )
         UNUserNotificationCenter.current().add(request) { error in
             if let error {
-                Log.app.error("notification delivery failed error=\(error.localizedDescription)")
+                Log.app.warning("notification delivery failed error=\(error.localizedDescription)")
             }
         }
     }
