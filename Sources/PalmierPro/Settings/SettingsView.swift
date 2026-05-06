@@ -13,6 +13,7 @@ struct SettingsView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
+                    NotificationsPane()
                     PrivacyPane()
                 }
                 .padding(.horizontal, 24)
@@ -23,6 +24,34 @@ struct SettingsView: View {
         .frame(minWidth: 540, idealWidth: 580, minHeight: 380, idealHeight: 440)
         .background(.ultraThinMaterial)
         .focusEffectDisabled()
+    }
+}
+
+struct SettingsToggleRow: View {
+    let title: String
+    let subtitle: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                Text(title)
+                    .font(.system(size: AppTheme.FontSize.md))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                Text(subtitle)
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: AppTheme.Spacing.lg)
+
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .padding(.top, 1)
+        }
     }
 }
 

@@ -3,6 +3,19 @@ import UserNotifications
 
 @MainActor
 enum AppNotifications {
+    private static let enabledKey = "io.palmier.pro.notifications.enabled"
+
+    static var isEnabled: Bool {
+        get {
+            let defaults = UserDefaults.standard
+            if defaults.object(forKey: enabledKey) == nil { return true }
+            return defaults.bool(forKey: enabledKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: enabledKey)
+        }
+    }
+
     static func configure() {
         guard canUseUserNotifications else {
             Log.app.notice("notifications disabled outside app bundle")
@@ -10,6 +23,10 @@ enum AppNotifications {
         }
         let center = UNUserNotificationCenter.current()
         center.delegate = AppNotificationDelegate.shared
+        guard isEnabled else {
+            Log.app.notice("notifications disabled in settings")
+            return
+        }
         center.requestAuthorization(options: [.alert, .sound]) { granted, error in
             if let error {
                 Log.app.warning("notification authorization failed error=\(error.localizedDescription)")
@@ -26,7 +43,7 @@ enum AppNotifications {
         assetType: ClipType,
         count: Int
     ) {
-        guard canUseUserNotifications else { return }
+        guard canUseUserNotifications, isEnabled else { return }
 
         let content = UNMutableNotificationContent()
         content.title = "Generation complete"
@@ -72,7 +89,7 @@ private final class AppNotificationDelegate: NSObject, UNUserNotificationCenterD
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        [.banner, .sound]
+        await AppNotifications.isEnabled ? [.banner, .sound] : []
     }
 
     func userNotificationCenter(
