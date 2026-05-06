@@ -39,11 +39,10 @@ struct PreviewView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: PreviewNSView, context: Context) {
-        // Sync playback state
         guard let engine = context.coordinator.engine else { return }
-        if editor.isPlaying && engine.player.timeControlStatus != .playing {
+        if editor.isPlaying && engine.player.timeControlStatus == .paused {
             engine.play()
-        } else if !editor.isPlaying && engine.player.timeControlStatus == .playing {
+        } else if !editor.isPlaying && engine.player.timeControlStatus != .paused {
             engine.pause()
         }
     }

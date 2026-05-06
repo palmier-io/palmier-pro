@@ -1,8 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// The core AppKit timeline view. Handles drawing only.
-/// All input is delegated to TimelineInputController.
+/// AppKit drawing view; input is delegated to TimelineInputController.
 final class TimelineView: NSView {
     unowned var editor: EditorViewModel
     private(set) var inputController: TimelineInputController!
@@ -35,15 +34,12 @@ final class TimelineView: NSView {
     // Cached for draw performance — avoid per-frame allocations.
     private static let trackBg = AppTheme.Background.surface.cgColor
 
-    /// Drop target during external drags (media panel), used for drawing the insertion indicator.
     var externalDropTarget: TrackDropTarget?
-    /// Cached assets and drop frame during external drags, for ghost clip preview.
     var externalDragAssets: [MediaAsset]?
     var externalDragFrame: Int = 0
 
     private var externalSnapState = SnapEngine.SnapState()
 
-    /// True when Cmd is held during an external drag — the drop will ripple-insert.
     private var externalDragIsRippleInsert: Bool = false
 
     var geometry: TimelineGeometry {
@@ -52,8 +48,7 @@ final class TimelineView: NSView {
 
     private var isUpdatingContentSize = false
 
-    // nil until the first layout; compared against `editor.zoomScale` to detect
-    // zoom changes that need the playhead-anchor adjustment.
+    // Nil until first layout; used to detect playhead-anchored zoom changes.
     private var lastAppliedZoomScale: Double?
 
     func updateContentSize() {
@@ -84,7 +79,6 @@ final class TimelineView: NSView {
         }
 
         let totalFrames = editor.timeline.totalFrames
-        // Add padding so user can scroll a bit past the last clip
         let contentWidth = editor.zoomScale * Double(totalFrames) + visibleSize.width * 0.5
         let geo = geometry
         let contentHeight: CGFloat
@@ -114,14 +108,14 @@ final class TimelineView: NSView {
         let visibleWidth = scrollView.contentView.bounds.size.width
         guard visibleWidth > 0 else { return }
 
-        let playheadPrevX = Double(editor.currentFrame) * previousZoom
+        let playheadPrevX = Double(editor.playheadState.timelineFrame) * previousZoom
         let anchorViewportX: Double
         if playheadPrevX >= origin.x, playheadPrevX <= origin.x + visibleWidth {
             anchorViewportX = playheadPrevX - origin.x
         } else {
             anchorViewportX = visibleWidth * 0.5
         }
-        let playheadNewX = Double(editor.currentFrame) * editor.zoomScale
+        let playheadNewX = Double(editor.playheadState.timelineFrame) * editor.zoomScale
         let newScrollX = max(0, playheadNewX - anchorViewportX)
         guard newScrollX != origin.x else { return }
         scrollView.contentView.setBoundsOrigin(NSPoint(x: newScrollX, y: origin.y))
@@ -157,7 +151,6 @@ final class TimelineView: NSView {
             ctx.setLineDash(phase: 0, lengths: [])
         }
 
-        // Yellow insertion line for new-track drop zones
         let activeDropTarget: TrackDropTarget? = {
             if case .moveClip(let drag) = inputController.dragState {
                 if case .newTrackAt = drag.dropTarget { return drag.dropTarget }
@@ -191,7 +184,6 @@ final class TimelineView: NSView {
             scrollOffsetX: scrollOffset.x,
             context: ctx
         )
-        // Playhead + snap indicator render via PlayheadOverlay / SnapIndicatorOverlay.
     }
 
     func updatePlayheadLayer() { playheadOverlay.update() }
@@ -199,13 +191,11 @@ final class TimelineView: NSView {
     // MARK: - Clip drawing with ghost support
 
     private func drawClips(geometry geo: TimelineGeometry, dirtyRect: NSRect, context ctx: CGContext) {
-        // Determine if we're dragging a clip (for ghost rendering)
         let moveDrag: DragState.MoveClipDrag? = {
             if case .moveClip(let drag) = inputController.dragState { return drag }
             return nil
         }()
 
-        // Determine if we're trimming (for preview rendering)
         let trimDrag: (drag: DragState.TrimDrag, isLeft: Bool)? = {
             switch inputController.dragState {
             case .trimLeft(let drag): return (drag, true)
@@ -230,7 +220,6 @@ final class TimelineView: NSView {
         } ?? 0
         let movePinnedIds = moveDrag.map(inputController.pinnedCompanionIds(for:)) ?? []
 
-        /// Linked partners that should mirror the trim preview live.
         let trimPartnerIds: Set<String> = {
             guard let (drag, _) = trimDrag, drag.propagateToLinked else { return [] }
             return Set(editor.linkedPartnerIds(of: drag.clipId))
@@ -302,7 +291,6 @@ final class TimelineView: NSView {
                     continue
                 }
 
-                // Normal clip
                 var renderClip = clip
                 if let fd = fadeDrag, fd.clipId == clip.id {
                     renderClip[keyPath: fd.edge.fadeKeyPath] = fd.resolvedFadeFrames(for: clip)
@@ -321,19 +309,15 @@ final class TimelineView: NSView {
 
     // MARK: - Pending replacement overlays
 
-    /// Reconciles hosting-view overlays with `editor.pendingReplacements`:
-    /// `pendingReplacementOverlays` is a view-layer cache; the source of truth is `editor.pendingReplacements`.
     private func syncPendingReplacementOverlays(geometry geo: TimelineGeometry) {
         let pending = editor.pendingReplacements
 
-        // Drop overlays whose clip is no longer pending or has been deleted.
         for (clipId, view) in pendingReplacementOverlays
             where !pending.contains(clipId) || editor.findClip(id: clipId) == nil {
             view.removeFromSuperview()
             pendingReplacementOverlays.removeValue(forKey: clipId)
         }
 
-        // Ensure each pending clip has an overlay positioned over its rect.
         for clipId in pending {
             guard let loc = editor.findClip(id: clipId) else { continue }
             let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
@@ -395,7 +379,6 @@ final class TimelineView: NSView {
         }
     }
 
-    /// Geometry for a ghost rect at a given drop target
     private func ghostRect(
         target: TrackDropTarget, probe: Clip, height: CGFloat,
         geo: TimelineGeometry
@@ -408,16 +391,12 @@ final class TimelineView: NSView {
             let top = geo.rulerHeight + Layout.dropZoneHeight
             let y: CGFloat
             if trackCount == 0 {
-                // No tracks yet — stack synthetic positions from the top by idx.
                 y = top + CGFloat(idx) * height
             } else if idx >= trackCount {
-                // Appending: anchor at the bottom of the last track, then step
-                // down one track-height per additional slot beyond count.
                 let last = trackCount - 1
                 let bottom = geo.trackY(at: last) + geo.trackHeight(at: last)
                 y = bottom + CGFloat(idx - trackCount) * height
             } else {
-                // Inserting in the middle — ghost sits just above the insertion line.
                 y = geo.trackY(at: idx) - height
             }
             return geo.clipRect(for: probe, atY: Double(y), height: height)
@@ -426,7 +405,6 @@ final class TimelineView: NSView {
 
     // MARK: - Ripple-insert indicator
 
-    /// Draws a vertical line across all tracks at the insertion frame
     private func drawRippleInsertIndicator(atFrame frame: Int, geometry geo: TimelineGeometry, context ctx: CGContext) {
         let x = geo.xForFrame(frame)
         let top = Double(geo.rulerHeight)
@@ -440,7 +418,6 @@ final class TimelineView: NSView {
         ctx.addLine(to: CGPoint(x: x, y: bottom))
         ctx.strokePath()
 
-        // Right-pointing arrow at the top of the line.
         let arrowW: CGFloat = 7
         let arrowH: CGFloat = 10
         ctx.move(to: CGPoint(x: x, y: top))
@@ -460,7 +437,6 @@ final class TimelineView: NSView {
             context.setFillColor(Self.trackBg)
             context.fill(NSRect(x: 0, y: y, width: bounds.width, height: h))
 
-            // White border at top of first track and bottom of every track
             if i == 0 {
                 context.setFillColor(borderColor)
                 context.fill(NSRect(x: 0, y: y, width: bounds.width, height: 1))
@@ -469,7 +445,6 @@ final class TimelineView: NSView {
             context.fill(NSRect(x: 0, y: y + h - 1, width: bounds.width, height: 1))
         }
 
-        // Thick divider between the video zone and the audio zone.
         let z = editor.zones
         if z.videoTrackCount > 0, z.audioTrackCount > 0 {
             let dividerY = geo.trackY(at: z.firstAudioIndex)
@@ -572,7 +547,6 @@ final class TimelineView: NSView {
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
         let point = convert(sender.draggingLocation, from: nil)
         let geo = geometry
-        // Parse assets from pasteboard once on enter
         if externalDragAssets == nil, let urlString = sender.draggingPasteboard.string(forType: .string) {
             externalDragAssets = editor.assetsFromDragPayload(urlString)
         }
@@ -603,7 +577,6 @@ final class TimelineView: NSView {
         needsDisplay = true
     }
 
-    /// Snap the external-drag frame to clip edges
     private func applyExternalSnap(at point: NSPoint, geo: TimelineGeometry) -> Int {
         let candidate = geo.frameAt(x: point.x)
         guard let assets = externalDragAssets, !assets.isEmpty else {

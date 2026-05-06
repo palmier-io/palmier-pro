@@ -1,4 +1,3 @@
-/// Converts a frame number to timecode string "HH:MM:SS:FF"
 func formatTimecode(frame: Int, fps: Int) -> String {
     guard fps > 0 else { return "00:00:00:00" }
     let totalSeconds = frame / fps
@@ -6,7 +5,12 @@ func formatTimecode(frame: Int, fps: Int) -> String {
     let ss = totalSeconds % 60
     let mm = (totalSeconds / 60) % 60
     let hh = totalSeconds / 3600
-    return String(format: "%02d:%02d:%02d:%02d", hh, mm, ss, ff)
+    return "\(twoDigit(hh)):\(twoDigit(mm)):\(twoDigit(ss)):\(twoDigit(ff))"
+}
+
+private func twoDigit(_ value: Int) -> String {
+    guard value >= 0 && value < 10 else { return "\(value)" }
+    return "0\(value)"
 }
 
 func frameToSeconds(frame: Int, fps: Int) -> Double {

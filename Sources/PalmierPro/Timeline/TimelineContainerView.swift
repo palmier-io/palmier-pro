@@ -6,13 +6,11 @@ struct TimelineContainerView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let container = NSView()
 
-        // Fixed header on the left
         let headerView = TimelineHeaderView(editor: editor)
         headerView.frame = NSRect(x: 0, y: 0, width: Layout.trackHeaderWidth, height: 0)
         headerView.autoresizingMask = [.height]
         container.addSubview(headerView)
 
-        // Scroll view for clips/ruler on the right
         let scrollView = NSScrollView()
         scrollView.hasHorizontalScroller = true
         scrollView.hasVerticalScroller = true
@@ -29,7 +27,6 @@ struct TimelineContainerView: NSViewRepresentable {
         scrollView.autoresizingMask = [.width, .height]
         container.addSubview(scrollView)
 
-        // Vertical border between header and timeline
         let border = NSView()
         border.wantsLayer = true
         border.layer?.backgroundColor = AppTheme.Border.primary.cgColor
@@ -41,7 +38,6 @@ struct TimelineContainerView: NSViewRepresentable {
         context.coordinator.timelineView = timelineView
         context.coordinator.scrollView = scrollView
 
-        // Redraw ruler when scroll position changes; resize content when clip view frame changes
         scrollView.contentView.postsBoundsChangedNotifications = true
         scrollView.contentView.postsFrameChangedNotifications = true
         NotificationCenter.default.addObserver(
@@ -61,19 +57,24 @@ struct TimelineContainerView: NSViewRepresentable {
     }
 
     func updateNSView(_ container: NSView, context: Context) {
-        // Reads tracked by SwiftUI
-        _ = editor.zoomScale
-        _ = editor.pendingReplacements
-        context.coordinator.timelineView?.updateContentSize()
-        context.coordinator.timelineView?.needsDisplay = true
-        context.coordinator.headerView?.needsDisplay = true
+        let renderState = RenderState(
+            revision: editor.timelineRenderRevision,
+            zoomScale: editor.zoomScale,
+            selectedClipIds: editor.selectedClipIds,
+            pendingReplacements: editor.pendingReplacements
+        )
 
-        // Auto-scroll to keep playhead visible during playback
+        if context.coordinator.needsRender(for: renderState) {
+            context.coordinator.timelineView?.updateContentSize()
+            context.coordinator.timelineView?.needsDisplay = true
+            context.coordinator.headerView?.needsDisplay = true
+        }
+
         if editor.isPlaying,
            let timelineView = context.coordinator.timelineView,
            let scrollView = context.coordinator.scrollView {
             let geo = timelineView.geometry
-            let playheadX = geo.xForFrame(editor.currentFrame)
+            let playheadX = geo.xForFrame(editor.playheadState.timelineFrame)
             let visibleRect = scrollView.contentView.bounds
             let margin: CGFloat = 60
 
@@ -89,15 +90,27 @@ struct TimelineContainerView: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
+    struct RenderState: Equatable {
+        let revision: Int
+        let zoomScale: Double
+        let selectedClipIds: Set<String>
+        let pendingReplacements: Set<String>
+    }
+
     final class Coordinator: NSObject {
         var headerView: TimelineHeaderView?
         var timelineView: TimelineView?
         var scrollView: NSScrollView?
+        private var renderState: RenderState?
+
+        func needsRender(for next: RenderState) -> Bool {
+            defer { renderState = next }
+            return renderState != next
+        }
 
         @MainActor @objc func scrollViewBoundsChanged(_ notification: Notification) {
             timelineView?.needsDisplay = true
             timelineView?.updatePlayheadLayer()
-            // Sync header vertical position with scroll view
             if let scrollY = scrollView?.contentView.bounds.origin.y {
                 headerView?.setBoundsOrigin(NSPoint(x: 0, y: scrollY))
                 headerView?.needsDisplay = true

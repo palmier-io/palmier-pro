@@ -195,8 +195,10 @@ final class TimelineHeaderView: NSView {
         let geo = TimelineGeometry(editor: editor, bounds: bounds)
         let trackTop = geo.trackY(at: drag.trackIndex)
         let newHeight = max(TrackSize.minHeight, min(TrackSize.maxHeight, point.y - trackTop))
-        editor.timeline.tracks[drag.trackIndex].displayHeight = newHeight
-        needsDisplay = true
+        if editor.timeline.tracks[drag.trackIndex].displayHeight != newHeight {
+            editor.timeline.tracks[drag.trackIndex].displayHeight = newHeight
+            needsDisplay = true
+        }
     }
 
     override func mouseUp(with event: NSEvent) {

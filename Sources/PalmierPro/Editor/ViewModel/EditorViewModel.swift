@@ -2,11 +2,20 @@ import AppKit
 
 @Observable
 @MainActor
+final class PreviewPlayheadState {
+    var timelineFrame: Int = 0
+    var sourceFrame: Int = 0
+}
+
+@Observable
+@MainActor
 final class EditorViewModel {
 
     // MARK: - Persisted state (synced with VideoProject)
 
-    var timeline = Timeline()
+    var timeline = Timeline() {
+        didSet { timelineRenderRevision &+= 1 }
+    }
     var mediaManifest = MediaManifest()
     var generationLog = GenerationLog()
 
@@ -28,7 +37,9 @@ final class EditorViewModel {
 
     // MARK: - Transient UI state
 
-    var currentFrame: Int = 0
+    var currentFrame: Int = 0 {
+        didSet { playheadState.timelineFrame = currentFrame }
+    }
     var isPlaying: Bool = false
     var selectedClipIds: Set<String> = []
     var selectedMediaAssetIds: Set<String> = []
@@ -41,11 +52,12 @@ final class EditorViewModel {
     }
     var canvasOffset: CGSize = .zero
     var timelineVisibleWidth: Double = 0
+    var timelineRenderRevision: Int = 0
     var isScrubbing: Bool = false
     var toolMode: ToolMode = .pointer
     var showExportDialog: Bool = false
     var showGenerationPanel: Bool = false
-    /// Set by AIEditTab; Consumed by GenerationView
+    /// AIEditTab input consumed by GenerationView.
     var pendingEditSource: MediaAsset?
     var pendingEditReplacementClipId: String?
     var pendingEditTrimmedSource: TrimmedSource?
@@ -58,7 +70,9 @@ final class EditorViewModel {
     var cropAspectLock: CropAspectLock = .free
     var previewTabs: [PreviewTab] = [.timeline]
     var activePreviewTabId: String = PreviewTab.timeline.id
-    var sourcePlayheadFrame: Int = 0
+    var sourcePlayheadFrame: Int = 0 {
+        didSet { playheadState.sourceFrame = sourcePlayheadFrame }
+    }
     var layoutPreset: LayoutPreset = {
         if let raw = UserDefaults.standard.string(forKey: "layoutPreset"),
            let preset = LayoutPreset(rawValue: raw) {
@@ -126,8 +140,11 @@ final class EditorViewModel {
     weak var undoManager: UndoManager?
     var isDocumentEdited: Bool = false
 
-    /// Set by PreviewView so timeline scrubbing can seek the player
+    /// Preview playback bridge.
     var videoEngine: VideoEngine?
+
+    @ObservationIgnored
+    let playheadState = PreviewPlayheadState()
 
     // MARK: - Project settings
 
@@ -138,20 +155,58 @@ final class EditorViewModel {
 
     // MARK: - Playback
 
-    func togglePlayback() { isPlaying.toggle() }
-    func play() { isPlaying = true }
-    func pause() { isPlaying = false }
+    func togglePlayback() {
+        if let videoEngine {
+            videoEngine.togglePlayback()
+        } else {
+            isPlaying.toggle()
+        }
+    }
 
-    func seekToFrame(_ frame: Int, tolerant: Bool = false) {
-        currentFrame = max(0, frame)
-        videoEngine?.seek(to: currentFrame, tolerant: tolerant)
+    func play() {
+        if let videoEngine {
+            videoEngine.play()
+        } else {
+            isPlaying = true
+        }
+    }
+
+    func pause() {
+        if let videoEngine {
+            videoEngine.pause()
+        } else {
+            isPlaying = false
+        }
+    }
+
+    func resumePlayback() {
+        if let videoEngine {
+            videoEngine.resumePlayback()
+        } else {
+            isPlaying = true
+        }
+    }
+
+    func seekToFrame(_ frame: Int, mode: PreviewSeekMode = .exact) {
+        let clamped = min(max(0, frame), max(0, timeline.totalFrames))
+        if mode == .interactiveScrub {
+            playheadState.timelineFrame = clamped
+        } else {
+            currentFrame = clamped
+        }
+        videoEngine?.seek(to: clamped, mode: mode)
     }
 
     // MARK: - Source playback (for preview tabs)
 
-    func seekSourceToFrame(_ frame: Int) {
-        sourcePlayheadFrame = max(0, frame)
-        videoEngine?.seek(to: sourcePlayheadFrame)
+    func seekSourceToFrame(_ frame: Int, mode: PreviewSeekMode = .exact) {
+        let clamped = min(max(0, frame), max(0, activePreviewDurationFrames))
+        if mode == .interactiveScrub {
+            playheadState.sourceFrame = clamped
+        } else {
+            sourcePlayheadFrame = clamped
+        }
+        videoEngine?.seek(to: clamped, mode: mode)
     }
 
     func toggleSourcePlayback() {
@@ -199,8 +254,7 @@ final class EditorViewModel {
         }
     }
 
-    /// Place one clip at exact frames, optionally pairing the audio from a video
-    /// asset onto an audio track. Returns every clip ID created (1 or 2).
+    /// Places one clip, optionally with linked audio.
     @discardableResult
     func placeClip(
         asset: MediaAsset,
@@ -234,8 +288,7 @@ final class EditorViewModel {
         return ids
     }
 
-    /// Create clips sequentially at exact frames — callers clear the range first.
-    /// Linked audio lands on `linkedAudioTrackIndex`, or `resolveOrCreateAudioTrack` when nil.
+    /// Creates clips sequentially; callers clear the target range first.
     @discardableResult
     func createClips(
         from assets: [MediaAsset],
@@ -279,8 +332,7 @@ final class EditorViewModel {
         timeline.tracks[trackIndex].clips.sort { $0.startFrame < $1.startFrame }
     }
 
-    /// Transform that letterboxes the asset into the canvas, preserving aspect ratio.
-    /// Returns the identity transform when source dimensions match the canvas or are unknown.
+    /// Letterboxes known-size assets into the canvas.
     private func fitTransform(for asset: MediaAsset) -> Transform {
         guard let sw = asset.sourceWidth, let sh = asset.sourceHeight, sw > 0, sh > 0 else {
             return Transform()
@@ -311,8 +363,7 @@ final class EditorViewModel {
         return (Double(sw) / Double(sh)) / canvasAspect
     }
 
-    /// Largest centered crop of `target` aspect (w/h, source pixels) inside the clip's source.
-    /// Returns identity crop when source dimensions are unknown or already match.
+    /// Largest centered crop of `target` aspect inside the source.
     func cropFittingAspect(for clip: Clip, targetPixelAspect target: Double) -> Crop {
         guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }),
               let sw = asset.sourceWidth, let sh = asset.sourceHeight,

@@ -11,7 +11,8 @@ struct TransformOverlayView: View {
             let videoRect = videoContentRect(in: geo.size)
 
             if let clip = selectedClip {
-                let clipRect = clipFrame(clip.transformAt(frame: editor.currentFrame), videoRect: videoRect)
+                let frame = editor.playheadState.timelineFrame
+                let clipRect = clipFrame(clip.transformAt(frame: frame), videoRect: videoRect)
 
                 Rectangle()
                     .stroke(borderColor, lineWidth: 1)
@@ -65,7 +66,7 @@ struct TransformOverlayView: View {
     private func moveGesture(clip: Clip, videoRect: CGRect) -> some Gesture {
         DragGesture()
             .onChanged { value in
-                if dragStart == nil { dragStart = clip.transformAt(frame: editor.currentFrame) }
+                if dragStart == nil { dragStart = clip.transformAt(frame: editor.playheadState.timelineFrame) }
                 guard let start = dragStart else { return }
                 let (moved, snap) = movedTransform(start, by: value.translation, in: videoRect)
                 if centerGuideX != snap.x { centerGuideX = snap.x }
@@ -102,7 +103,7 @@ struct TransformOverlayView: View {
         DragGesture()
             .onChanged { value in
                 if resizeStart == nil {
-                    resizeStart = clip.transformAt(frame: editor.currentFrame)
+                    resizeStart = clip.transformAt(frame: editor.playheadState.timelineFrame)
                     resizeStartFontScale = clip.mediaType == .text
                         ? (clip.textStyle ?? TextStyle()).fontScale
                         : nil
@@ -164,7 +165,6 @@ struct TransformOverlayView: View {
         case .bottomRight: right += dx; bottom += dy
         }
 
-        // Constrain to media aspect ratio if available
         if let aspect = mediaCanvasAspect {
             let w = right - left
             let h = bottom - top
@@ -185,7 +185,6 @@ struct TransformOverlayView: View {
             }
         }
 
-        // Snap dragged edges to canvas boundaries, then re-apply aspect ratio
         let snapH = Snap.thresholdPixels / Double(videoRect.width)
         let snapV = Snap.thresholdPixels / Double(videoRect.height)
         let movesLeft = corner == .topLeft || corner == .bottomLeft

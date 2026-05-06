@@ -1,8 +1,4 @@
 import AppKit
-
-/// Owns all mouse/cursor/drag logic for the timeline.
-/// Communicates back to TimelineView via `view.needsDisplay = true`.
-/// Uses delta-only drag model: never mutates EditorViewModel during drag.
 @MainActor
 final class TimelineInputController {
     unowned let editor: EditorViewModel
@@ -28,7 +24,6 @@ final class TimelineInputController {
         let point = view.convert(event.locationInWindow, from: nil)
         let scrollOffsetY = view.enclosingScrollView?.contentView.bounds.origin.y ?? 0
 
-        // Double-click a clip → reveal its source in the media panel + preview.
         if event.clickCount == 2,
            point.y >= scrollOffsetY + geometry.rulerHeight {
             let ti = geometry.trackAt(y: point.y)
@@ -46,19 +41,12 @@ final class TimelineInputController {
             }
         }
 
-        // Any click on the timeline switches back to the Timeline preview tab
         if editor.activePreviewTab != .timeline {
             editor.selectPreviewTab(id: PreviewTab.timeline.id)
         }
 
-        // Ruler area — scrub playhead
         if point.y >= scrollOffsetY && point.y < scrollOffsetY + geometry.rulerHeight {
-            dragState = .scrubPlayhead
-            // Pause during scrub so tolerant/coalesced seeks can't race
-            scrubWasPlaying = editor.isPlaying
-            if scrubWasPlaying { editor.pause() }
-            editor.isScrubbing = true
-            scrubToFrame(geometry.frameAt(x: point.x))
+            beginPlayheadScrub(at: geometry.frameAt(x: point.x))
             return
         }
 
@@ -101,7 +89,6 @@ final class TimelineInputController {
                 editor.selectedClipIds = linkedOn ? editor.expandToLinkGroup([clip.id]) : [clip.id]
             }
 
-            // Determine drag mode: trim left, trim right, fade, or move
             let localX = point.x - rect.minX
             if !Self.isOnTrimZone(localX: localX, clipWidth: rect.width),
                clip.mediaType == .audio,
@@ -150,14 +137,13 @@ final class TimelineInputController {
                 ))
             }
         } else {
-            // Empty space — start marquee
             if !event.modifierFlags.contains(.shift) {
                 editor.selectedClipIds.removeAll()
             }
             dragState = .marquee(DragState.MarqueeDrag(origin: point, baseSelection: editor.selectedClipIds))
         }
 
-        snapState = SnapEngine.SnapState() // Reset sticky snap for new drag
+        snapState = SnapEngine.SnapState()
         view.needsDisplay = true
     }
 
@@ -172,7 +158,7 @@ final class TimelineInputController {
             snapIndicatorX = nil
             scrubToFrame(frame)
             view.updatePlayheadLayer()
-            return // overlays self-update; skip the trailing needsDisplay = true.
+            return
 
         case .moveClip(var drag):
             let candidateFrame = frame - drag.grabOffsetFrames
@@ -184,8 +170,7 @@ final class TimelineInputController {
                 includePlayhead: true
             )
 
-            // Probe each selected clip's start and end (offsets relative to the
-            // lead's candidate start), so any selected edge can drive the snap.
+            // Let any selected edge drive snapping, not just the lead start.
             let clipsById = Dictionary(uniqueKeysWithValues:
                 editor.timeline.tracks.flatMap(\.clips).map { ($0.id, $0) })
             var probeOffsets: [Int] = []
@@ -332,7 +317,6 @@ final class TimelineInputController {
     func mouseUp(with event: NSEvent, geometry: TimelineGeometry) {
         switch dragState {
         case .moveClip(let drag):
-            // Clamp the group delta so no clip ends up at a negative frame.
             let minOrigFrame = drag.all.map(\.originalFrame).min()!
             let clampedDelta = max(-minOrigFrame, drag.deltaFrames)
             let trackDelta: Int = {
@@ -342,7 +326,6 @@ final class TimelineInputController {
                 return 0
             }()
 
-            // No-op: lead didn't move and there's no new track to create.
             if case .existingTrack = drag.dropTarget,
                trackDelta == 0, drag.deltaFrames == 0 {
                 break
@@ -356,8 +339,7 @@ final class TimelineInputController {
                     return (p.clipId, destTrack, p.originalFrame + clampedDelta)
                 })
             case .newTrackAt(let insertIndex):
-                // Insert a new track for the lead, then move. Companions that
-                // sat at or below the insertion index shift down by 1.
+                // Existing companions at or below the inserted track shift down.
                 editor.undoManager?.beginUndoGrouping()
                 let clipType = editor.timeline.tracks[drag.lead.originalTrack].type
                 let newIdx = editor.insertTrack(at: insertIndex, type: clipType, label: clipType.trackLabel)
@@ -407,12 +389,7 @@ final class TimelineInputController {
             break
 
         case .scrubPlayhead:
-            editor.seekToFrame(editor.currentFrame)
-            editor.isScrubbing = false
-            if scrubWasPlaying {
-                scrubWasPlaying = false
-                editor.play()
-            }
+            finishPlayheadScrub()
 
         case .idle:
             break
@@ -429,7 +406,6 @@ final class TimelineInputController {
         let point = view.convert(event.locationInWindow, from: nil)
         let scrollOffsetY = view.enclosingScrollView?.contentView.bounds.origin.y ?? 0
 
-        // Ruler area — show pointing hand for scrub affordance
         if point.y >= scrollOffsetY && point.y < scrollOffsetY + geometry.rulerHeight {
             NSCursor.pointingHand.set()
             razorPreviewFrame = nil
@@ -437,7 +413,6 @@ final class TimelineInputController {
             return
         }
 
-        // Razor tool: show preview line, snapping to playhead and clip edges
         if editor.toolMode == .razor && point.y >= scrollOffsetY + geometry.rulerHeight {
             let candidate = geometry.frameAt(x: point.x)
             let targets = SnapEngine.collectTargets(
@@ -510,7 +485,6 @@ final class TimelineInputController {
         let delta = event.scrollingDeltaY * Zoom.scrollSensitivity
         editor.zoomScale = max(editor.minZoomScale, min(Zoom.max, editor.zoomScale + delta))
 
-        // After zoom, scroll so the same frame stays under cursor
         if let scrollView = view.enclosingScrollView {
             let newXForFrame = frameUnderCursor * editor.zoomScale
             let scrollX = max(0, newXForFrame - cursorViewportX)
@@ -541,8 +515,26 @@ final class TimelineInputController {
 
     // MARK: - Helpers
 
+    private func beginPlayheadScrub(at frame: Int) {
+        dragState = .scrubPlayhead
+        scrubWasPlaying = editor.isPlaying
+        if scrubWasPlaying { editor.pause() }
+        editor.isScrubbing = true
+        scrubToFrame(frame)
+        view.updatePlayheadLayer()
+    }
+
+    private func finishPlayheadScrub() {
+        let shouldResume = scrubWasPlaying
+        let frame = editor.playheadState.timelineFrame
+        scrubWasPlaying = false
+        editor.isScrubbing = false
+        editor.seekToFrame(frame, mode: .exact)
+        if shouldResume { editor.resumePlayback() }
+    }
+
     private func scrubToFrame(_ frame: Int) {
-        editor.seekToFrame(frame, tolerant: true)
+        editor.seekToFrame(frame, mode: .interactiveScrub)
     }
 
     func pinnedCompanionIds(for drag: DragState.MoveClipDrag) -> Set<String> {
@@ -553,8 +545,7 @@ final class TimelineInputController {
         return Set(clips.lazy.filter { $0.id != drag.lead.clipId && $0.linkGroupId == leadLink }.map(\.id))
     }
 
-    /// Largest-magnitude delta in the direction of `proposed` that lands every
-    /// non-pinned participant on a valid, type-compatible track.
+    /// Clamps track movement to valid, type-compatible tracks.
     func clampedTrackDelta(for drag: DragState.MoveClipDrag, proposed: Int) -> Int {
         let tracks = editor.timeline.tracks
         let clipsById = Dictionary(uniqueKeysWithValues: tracks.flatMap(\.clips).map { ($0.id, $0) })

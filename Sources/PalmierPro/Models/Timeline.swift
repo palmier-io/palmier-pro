@@ -1,7 +1,6 @@
 import Foundation
 
-/// A resolved position of a clip within the timeline: which track holds it and where in
-/// that track's `clips` array it sits.
+/// Clip location inside track storage.
 struct ClipLocation: Equatable, Sendable {
     let trackIndex: Int
     let clipIndex: Int
@@ -14,9 +13,12 @@ struct Timeline: Codable, Sendable, Equatable {
     var settingsConfigured: Bool = false
     var tracks: [Track] = []
 
-    /// Total duration in frames across all tracks
     var totalFrames: Int {
-        tracks.map(\.endFrame).max() ?? 0
+        var maxFrame = 0
+        for track in tracks {
+            maxFrame = max(maxFrame, track.endFrame)
+        }
+        return maxFrame
     }
 }
 
@@ -32,9 +34,12 @@ struct Track: Codable, Sendable, Equatable, Identifiable {
     /// Display-only height, not serialized. Reset to default on project open.
     var displayHeight: CGFloat = 50
 
-    /// Frame where the last clip ends
     var endFrame: Int {
-        clips.map(\.endFrame).max() ?? 0
+        var maxFrame = 0
+        for clip in clips {
+            maxFrame = max(maxFrame, clip.endFrame)
+        }
+        return maxFrame
     }
 
     /// Returns IDs of clips forming a contiguous chain starting at `fromEnd`, excluding `excludeId`.
@@ -73,7 +78,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var id: String = UUID().uuidString
     var mediaRef: String
     var mediaType: ClipType = .video
-    // audio clip can be extracted from a video type. Used for color-coding.
+    // Original media type for derived clips; used for color-coding.
     var sourceClipType: ClipType = .video
     var startFrame: Int
     var durationFrames: Int
@@ -88,7 +93,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var crop: Crop = Crop()
     var linkGroupId: String?
 
-    // Text clips only. nil for every other clip kind.
+    // Text clips only.
     var textContent: String?
     var textStyle: TextStyle?
 
@@ -255,7 +260,6 @@ struct Transform: Codable, Sendable, Equatable {
     mutating func snapToCanvasEdges(threshold: Double) {
         let tl = topLeft
 
-        // Horizontal: snap left edge to 0, right edge to 1, or center to 0.5
         let snappedLeft = Self.snapToBoundary(tl.x, threshold: threshold)
         let snappedRight = Self.snapToBoundary(tl.x + width, threshold: threshold)
         if snappedLeft != tl.x {
@@ -266,7 +270,6 @@ struct Transform: Codable, Sendable, Equatable {
             x = 0
         }
 
-        // Vertical: snap top edge to 0, bottom edge to 1, or center to 0.5
         let tl2 = topLeft
         let snappedTop = Self.snapToBoundary(tl2.y, threshold: threshold)
         let snappedBottom = Self.snapToBoundary(tl2.y + height, threshold: threshold)
