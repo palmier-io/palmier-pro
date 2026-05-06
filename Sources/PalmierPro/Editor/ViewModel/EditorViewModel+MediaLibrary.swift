@@ -26,10 +26,11 @@ extension EditorViewModel {
         mediaManifest.entries.append(entry)
     }
 
-    /// Resolve a drag pasteboard payload (one URL per line)
+    /// Resolve a drag pasteboard payload (one `palmier-asset://<id>` per line).
     func assetsFromDragPayload(_ payload: String) -> [MediaAsset] {
-        payload.split(separator: "\n").compactMap { str in
-            mediaAssets.first { $0.url.absoluteString == str }
+        payload.split(separator: "\n").compactMap { line in
+            guard let id = MediaPanelView.assetId(fromDragString: String(line)) else { return nil }
+            return mediaAssets.first { $0.id == id }
         }
     }
 

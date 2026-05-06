@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 extension MediaPanelView {
     static let folderDragScheme = "palmier-folder://"
+    static let assetDragScheme = "palmier-asset://"
 
     static func folderDragString(forFolderId id: String) -> String {
         folderDragScheme + id
@@ -13,6 +14,14 @@ extension MediaPanelView {
     static func folderId(fromDragString line: String) -> String? {
         line.hasPrefix(folderDragScheme) ? String(line.dropFirst(folderDragScheme.count)) : nil
     }
+
+    static func assetDragString(forAssetId id: String) -> String {
+        assetDragScheme + id
+    }
+
+    static func assetId(fromDragString line: String) -> String? {
+        line.hasPrefix(assetDragScheme) ? String(line.dropFirst(assetDragScheme.count)) : nil
+    }
 }
 
 // MARK: - Drag payload + preview (asset → timeline / folder)
@@ -20,9 +29,11 @@ extension MediaPanelView {
 extension MediaPanelView {
     func dragPayload(for asset: MediaAsset) -> String {
         if editor.selectedMediaAssetIds.contains(asset.id) {
-            return selectedMediaAssetsInOrder.map(\.url.absoluteString).joined(separator: "\n")
+            return selectedMediaAssetsInOrder
+                .map { Self.assetDragString(forAssetId: $0.id) }
+                .joined(separator: "\n")
         }
-        return asset.url.absoluteString
+        return Self.assetDragString(forAssetId: asset.id)
     }
 
     @ViewBuilder
@@ -100,8 +111,9 @@ extension MediaPanelView {
         for line in text.split(separator: "\n").map(String.init) where !line.isEmpty {
             if let folderId = Self.folderId(fromDragString: line) {
                 folderIds.insert(folderId)
-            } else if let asset = editor.mediaAssets.first(where: { $0.url.absoluteString == line }) {
-                assetIds.insert(asset.id)
+            } else if let id = Self.assetId(fromDragString: line),
+                      editor.mediaAssets.contains(where: { $0.id == id }) {
+                assetIds.insert(id)
             }
         }
         if !assetIds.isEmpty {
