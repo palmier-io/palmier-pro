@@ -1,11 +1,9 @@
 import AppKit
 
-
 enum Playhead {
     static let color: NSColor = .systemRed
     static let triangleSize: CGFloat = 8
 
-    /// Append a vertical line spanning `[top, bottom]` at `x`
     static func appendPath(
         _ path: CGMutablePath,
         x: CGFloat,
@@ -50,7 +48,7 @@ final class PlayheadOverlay {
         let geo = view.geometry
         let scrollOffset = view.enclosingScrollView?.contentView.bounds.origin ?? .zero
         let visibleHeight = view.enclosingScrollView?.contentView.bounds.height ?? view.bounds.height
-        let x = Double(editor.currentFrame) * geo.pixelsPerFrame
+        let x = Double(editor.playheadState.timelineFrame) * geo.pixelsPerFrame
         let top = scrollOffset.y + Double(geo.rulerHeight)
         let bottom = scrollOffset.y + Double(visibleHeight)
 
@@ -66,11 +64,10 @@ final class PlayheadOverlay {
         CATransaction.commit()
     }
 
-    /// Single-shot — re-arms after each fire. Task hop reads the post-set value
-    /// (onChange runs during willSet).
+    /// Re-arms after each fire; the Task hop reads the post-set value.
     private func observe() {
         withObservationTracking {
-            _ = editor?.currentFrame
+            _ = editor?.playheadState.timelineFrame
             _ = editor?.zoomScale
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in

@@ -8,7 +8,6 @@ struct PreviewContainerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Tab bar reserves its own space
             GlassEffectContainer {
                 tabBar
             }
@@ -54,8 +53,16 @@ struct PreviewContainerView: View {
     // MARK: - Transport bar
 
     private var transportBar: some View {
-        HStack(spacing: AppTheme.Spacing.sm) {
-            PreviewTimecodeText(isTimeline: isTimeline)
+        let duration = durationFrames
+        let fps = editor.timeline.fps
+        let durationTimecode = formatTimecode(frame: duration, fps: fps)
+
+        return HStack(spacing: AppTheme.Spacing.sm) {
+            PreviewTimecodeText(
+                isTimeline: isTimeline,
+                fps: fps,
+                durationTimecode: durationTimecode
+            )
 
             Spacer()
 
@@ -70,7 +77,7 @@ struct PreviewContainerView: View {
                     }
                 }
                 transportButton("forward.frame.fill") { seekTo(playheadFrame + 1) }
-                transportButton("forward.end.fill") { seekTo(durationFrames) }
+                transportButton("forward.end.fill") { seekTo(duration) }
             }
             .padding(.horizontal, AppTheme.Spacing.md)
             .padding(.vertical, AppTheme.Spacing.xs)
@@ -345,7 +352,9 @@ struct PreviewContainerView: View {
     @State private var scrubWasPlaying = false
 
     private var scrubBar: some View {
-        GeometryReader { geo in
+        let duration = durationFrames
+
+        return GeometryReader { geo in
             let active = isScrubbing || isScrubHovered
             let thumbSize: CGFloat = active ? 10 : 6
             let barHeight: CGFloat = active ? 4 : 3
@@ -355,6 +364,7 @@ struct PreviewContainerView: View {
                     .frame(height: barHeight)
                 PreviewScrubProgress(
                     isTimeline: isTimeline,
+                    durationFrames: duration,
                     geometry: .init(
                         size: geo.size,
                         barHeight: barHeight,
@@ -375,21 +385,24 @@ struct PreviewContainerView: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        if !isScrubbing {
-                            scrubWasPlaying = editor.isPlaying
-                            if scrubWasPlaying { editor.pause() }
-                        }
-                        isScrubbing = true
-                        let fraction = max(0, min(1, value.location.x / geo.size.width))
-                        let frame = Int(fraction * CGFloat(durationFrames))
-                        seekTo(frame)
+                        beginScrubIfNeeded()
+                        seekTo(
+                            scrubFrame(
+                                locationX: value.location.x,
+                                width: geo.size.width,
+                                durationFrames: duration
+                            ),
+                            mode: .interactiveScrub
+                        )
                     }
-                    .onEnded { _ in
-                        isScrubbing = false
-                        if scrubWasPlaying {
-                            scrubWasPlaying = false
-                            editor.play()
-                        }
+                    .onEnded { value in
+                        finishScrub(
+                            at: scrubFrame(
+                                locationX: value.location.x,
+                                width: geo.size.width,
+                                durationFrames: duration
+                            )
+                        )
                     }
             )
         }
@@ -401,24 +414,50 @@ struct PreviewContainerView: View {
                 NSCursor.pop()
                 isScrubHovered = false
             }
+            if isScrubbing {
+                finishScrub(at: playheadFrame)
+            }
         }
     }
 
     // MARK: - Transport helpers
 
     private var playheadFrame: Int {
-        isTimeline ? editor.currentFrame : editor.sourcePlayheadFrame
+        isTimeline ? editor.playheadState.timelineFrame : editor.playheadState.sourceFrame
     }
 
     private var durationFrames: Int {
         editor.activePreviewDurationFrames
     }
 
-    private func seekTo(_ frame: Int) {
+    private func beginScrubIfNeeded() {
+        guard !isScrubbing else { return }
+        scrubWasPlaying = editor.isPlaying
+        if scrubWasPlaying { editor.pause() }
+        editor.isScrubbing = true
+        isScrubbing = true
+    }
+
+    private func finishScrub(at frame: Int) {
+        let shouldResume = scrubWasPlaying
+        scrubWasPlaying = false
+        isScrubbing = false
+        editor.isScrubbing = false
+        seekTo(frame, mode: .exact)
+        if shouldResume { editor.resumePlayback() }
+    }
+
+    private func scrubFrame(locationX: CGFloat, width: CGFloat, durationFrames: Int) -> Int {
+        guard width > 0 else { return 0 }
+        let fraction = max(0, min(1, locationX / width))
+        return Int(fraction * CGFloat(max(0, durationFrames)))
+    }
+
+    private func seekTo(_ frame: Int, mode: PreviewSeekMode = .exact) {
         if isTimeline {
-            editor.seekToFrame(frame)
+            editor.seekToFrame(frame, mode: mode)
         } else {
-            editor.seekSourceToFrame(frame)
+            editor.seekSourceToFrame(frame, mode: mode)
         }
     }
 
@@ -537,22 +576,21 @@ private enum ZoomPreset: CaseIterable {
 }
 
 // MARK: - Hot-path subviews
-// Isolated so scrubbing's currentFrame churn invalidates only these, not the whole pane.
 
 private struct PreviewTimecodeText: View {
     @Environment(EditorViewModel.self) var editor
     let isTimeline: Bool
+    let fps: Int
+    let durationTimecode: String
 
     var body: some View {
-        let frame = isTimeline ? editor.currentFrame : editor.sourcePlayheadFrame
-        let duration = editor.activePreviewDurationFrames
-        let fps = editor.timeline.fps
+        let frame = isTimeline ? editor.playheadState.timelineFrame : editor.playheadState.sourceFrame
         HStack(spacing: 0) {
             Text(formatTimecode(frame: frame, fps: fps))
                 .foregroundStyle(AppTheme.Accent.timecodeColor)
             Text(" / ")
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-            Text(formatTimecode(frame: duration, fps: fps))
+            Text(durationTimecode)
                 .foregroundStyle(AppTheme.Text.secondaryColor)
         }
         .monospacedDigit()
@@ -569,11 +607,12 @@ private struct PreviewScrubProgress: View {
 
     @Environment(EditorViewModel.self) var editor
     let isTimeline: Bool
+    let durationFrames: Int
     let geometry: Geometry
 
     var body: some View {
-        let frame = isTimeline ? editor.currentFrame : editor.sourcePlayheadFrame
-        let duration = editor.activePreviewDurationFrames
+        let frame = isTimeline ? editor.playheadState.timelineFrame : editor.playheadState.sourceFrame
+        let duration = durationFrames
         let progress = duration > 0 ? CGFloat(frame) / CGFloat(duration) : 0
         let g = geometry
         ZStack(alignment: .leading) {

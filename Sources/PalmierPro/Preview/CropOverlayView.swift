@@ -13,7 +13,7 @@ struct CropOverlayView: View {
             let videoRect = videoContentRect(in: geo.size)
 
             if let clip = selectedClip {
-                let frame = editor.currentFrame
+                let frame = editor.playheadState.timelineFrame
                 let clipRect = clipFrame(clip.transformAt(frame: frame), videoRect: videoRect)
                 let cropRect = cropFrame(clip.cropAt(frame: frame), in: clipRect)
 
@@ -57,7 +57,7 @@ struct CropOverlayView: View {
     private func resizeGesture(clip: Clip, corner: Corner, clipRect: CGRect) -> some Gesture {
         DragGesture()
             .onChanged { value in
-                if dragStart == nil { dragStart = clip.cropAt(frame: editor.currentFrame) }
+                if dragStart == nil { dragStart = clip.cropAt(frame: editor.playheadState.timelineFrame) }
                 guard let start = dragStart else { return }
                 let updated = resizedCrop(start, corner: corner, by: value.translation, clipRect: clipRect, clip: clip)
                 editor.applyCrop(clipId: clip.id, newCrop: updated)
@@ -93,7 +93,6 @@ struct CropOverlayView: View {
         return Crop(left: L, top: T, right: R, bottom: B)
     }
 
-    /// Aspect-locked corner drag.
     private func resizedCropLocked(_ start: Crop, corner: Corner, translation: CGSize, clipRect: CGRect, aspectN: Double, minVis: Double) -> Crop {
         let dx = Double(translation.width / clipRect.width)
         let dy = Double(translation.height / clipRect.height)
@@ -101,8 +100,7 @@ struct CropOverlayView: View {
         let startVisW = 1 - L - R
         let startVisH = 1 - T - B
 
-        // widthDelta/heightDelta are signed changes to the visible region's size; the
-        // sign per corner follows from which edge the handle moves.
+        // Sign follows the handle's moving edges.
         let widthDelta: Double
         let heightDelta: Double
         switch corner {
@@ -117,8 +115,7 @@ struct CropOverlayView: View {
         let sFromH = aspectN * (startVisH + heightDelta)
         var s = abs(widthDelta) > abs(heightDelta * aspectN) ? sFromW : sFromH
 
-        // Bounds for s (visible width) such that the visible rect still fits in the
-        // source AND visH = s/aspectN also fits.
+        // Visible width must fit both source axes after applying aspect.
         let sMaxFromX = (corner == .topRight || corner == .bottomRight) ? (1 - L) : (1 - R)
         let sMaxFromY = (corner == .bottomLeft || corner == .bottomRight) ? aspectN * (1 - T) : aspectN * (1 - B)
         let sMax = min(sMaxFromX, sMaxFromY)
