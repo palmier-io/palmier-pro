@@ -400,28 +400,30 @@ extension MediaPanelView {
             get: { dropTargetFolderId == folder.id },
             set: { dropTargetFolderId = $0 ? folder.id : nil }
         )
-        return FolderTileView(
-            folder: folder,
-            isSelected: editor.selectedFolderIds.contains(folder.id),
-            isDropHover: dropTargetFolderId == folder.id,
-            childCount: editor.subfolders(of: folder.id).count + editor.assetsIn(folderId: folder.id).count,
-            isRenaming: Binding(
-                get: { renamingFolderId == folder.id },
-                set: { renamingFolderId = $0 ? folder.id : nil }
-            ),
-            onTap: { handleFolderTap(folder) },
-            onOpen: { openFolder(id: folder.id) },
-            onCommitRename: { newName in
-                editor.renameFolder(id: folder.id, name: newName)
-                renamingFolderId = nil
-            },
-            onCancelRename: { renamingFolderId = nil },
-            onDelete: { editor.deleteFolders(ids: [folder.id]) },
-            shouldAutoFocus: pendingFolderFocusId == folder.id,
-            onAutoFocusConsumed: { pendingFolderFocusId = nil }
-        )
-        .draggable(MediaPanelView.folderDragString(forFolderId: folder.id)) {
-            FolderDragPreview(name: folder.name)
+        return ZStack {
+            FolderTileView(
+                folder: folder,
+                isSelected: editor.selectedFolderIds.contains(folder.id),
+                isDropHover: dropTargetFolderId == folder.id,
+                childCount: editor.subfolders(of: folder.id).count + editor.assetsIn(folderId: folder.id).count,
+                isRenaming: Binding(
+                    get: { renamingFolderId == folder.id },
+                    set: { renamingFolderId = $0 ? folder.id : nil }
+                ),
+                onTap: { handleFolderTap(folder) },
+                onOpen: { openFolder(id: folder.id) },
+                onCommitRename: { newName in
+                    editor.renameFolder(id: folder.id, name: newName)
+                    renamingFolderId = nil
+                },
+                onCancelRename: { renamingFolderId = nil },
+                onDelete: { editor.deleteFolders(ids: [folder.id]) },
+                shouldAutoFocus: pendingFolderFocusId == folder.id,
+                onAutoFocusConsumed: { pendingFolderFocusId = nil }
+            )
+            .draggable(MediaPanelView.folderDragString(forFolderId: folder.id)) {
+                FolderDragPreview(name: folder.name)
+            }
         }
         .onDrop(of: [.fileURL, .text], isTargeted: dropHover) { providers in
             handleProviderDrop(providers, into: folder.id)
