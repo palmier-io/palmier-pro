@@ -69,19 +69,10 @@ extension MediaPanelView {
 // MARK: - Drop handlers (folder tile, breadcrumb, panel-level Finder drop)
 
 extension MediaPanelView {
-    /// Resolves three cases: folder drag, in-panel asset drag, Finder file drop.
     func handleProviderDrop(_ providers: [NSItemProvider], into destFolderId: String?) {
         for provider in providers {
-            // Text covers folder sentinel + asset URLs from .draggable(String).
-            if provider.canLoadObject(ofClass: NSString.self) {
-                _ = provider.loadObject(ofClass: NSString.self) { obj, _ in
-                    guard let text = obj as? String else { return }
-                    Task { @MainActor in resolveTextDrop(text, into: destFolderId) }
-                }
-                continue
-            }
-            // Fall back to file URL (Finder drops).
-            if provider.canLoadObject(ofClass: URL.self) {
+            // Finder drops: file URL.
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
                     guard let url else { return }
                     Task { @MainActor in
@@ -89,6 +80,14 @@ extension MediaPanelView {
                             editor.moveAssetsToFolder(assetIds: [asset.id], folderId: destFolderId)
                         }
                     }
+                }
+                continue
+            }
+            // In-panel drags: folder sentinel + asset URLs from .draggable(String).
+            if provider.canLoadObject(ofClass: NSString.self) {
+                _ = provider.loadObject(ofClass: NSString.self) { obj, _ in
+                    guard let text = obj as? String else { return }
+                    Task { @MainActor in resolveTextDrop(text, into: destFolderId) }
                 }
             }
         }
