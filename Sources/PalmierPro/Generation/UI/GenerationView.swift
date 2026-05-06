@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct GenerationView: View {
+    let containerHeight: Double
+
     @Environment(EditorViewModel.self) var editor
     @State private var prompt = ""
     @State private var assetName = ""
@@ -57,6 +59,21 @@ struct GenerationView: View {
 
     @State private var dropError: String? = nil
     @State private var dropErrorTask: Task<Void, Never>? = nil
+
+    @AppStorage("generationPanelHeight") private var panelHeight: Double = 320
+    @State private var liveHeight: Double?
+    @State private var dragStartHeight: Double?
+
+    private static let minPanelHeight: Double = 300
+
+    private var maxPanelHeight: Double { containerHeight * 0.85 }
+
+    private func clampHeight(_ value: Double) -> Double {
+        let upper = maxPanelHeight
+        return min(max(value, min(Self.minPanelHeight, upper)), upper)
+    }
+
+    private var clampedPanelHeight: Double { clampHeight(liveHeight ?? panelHeight) }
 
     enum FramesRefsMode: String, CaseIterable {
         case firstLast = "First/Last"
@@ -280,6 +297,7 @@ struct GenerationView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            resizeHandle
             // Type tabs (left) · API key + close (right)
             HStack(spacing: AppTheme.Spacing.sm) {
                 typeTabs
@@ -372,7 +390,8 @@ struct GenerationView: View {
             .padding(.horizontal, AppTheme.Spacing.sm)
             .padding(.bottom, AppTheme.Spacing.sm)
         }
-        .padding(.top, AppTheme.Spacing.sm)
+        .padding(.top, 2)
+        .frame(height: clampedPanelHeight, alignment: .top)
         .background {
             ZStack {
                 RoundedRectangle(cornerRadius: AppTheme.Radius.lg)
@@ -383,6 +402,7 @@ struct GenerationView: View {
             }
             .allowsHitTesting(false)
         }
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.lg))
         .padding(AppTheme.Spacing.sm)
         .onAppear {
             consumePendingEditSource()
@@ -419,6 +439,33 @@ struct GenerationView: View {
             guard !isPopulatingPanel else { return }
             if selectedType == .audio { resetAudioState() }
         }
+    }
+
+    // MARK: - Resize handle
+
+    private var resizeHandle: some View {
+        Capsule()
+            .fill(Color.white.opacity(0.18))
+            .frame(width: 32, height: 3)
+            .frame(maxWidth: .infinity, minHeight: 10)
+            .contentShape(Rectangle())
+            .pointerStyle(.rowResize)
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                    .onChanged { value in
+                        let start = dragStartHeight ?? clampedPanelHeight
+                        dragStartHeight = start
+                        let raw = start - value.translation.height
+                        let clamped = clampHeight(raw)
+                        liveHeight = clamped
+                        if clamped != raw { dragStartHeight = clamped + value.translation.height }
+                    }
+                    .onEnded { _ in
+                        if let live = liveHeight { panelHeight = live }
+                        liveHeight = nil
+                        dragStartHeight = nil
+                    }
+            )
     }
 
     // MARK: - Name field
@@ -470,7 +517,7 @@ struct GenerationView: View {
                     .allowsHitTesting(false)
             }
         }
-        .frame(minHeight: 70, maxHeight: 120)
+        .frame(minHeight: 70, maxHeight: .infinity)
     }
 
     private var refMentionPopover: some View {

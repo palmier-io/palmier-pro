@@ -27,6 +27,8 @@ struct MediaPanelView: View {
     @State var assetFrames: [String: CGRect] = [:]
     @State var marqueeSelection = MarqueeSelection()
 
+    @State private var mediaPanelHeight: CGFloat = 600
+
     enum ViewMode: String, CaseIterable {
         case folder, flat, grouped
 
@@ -83,9 +85,14 @@ struct MediaPanelView: View {
             }
 
             if editor.showGenerationPanel {
-                GenerationView()
+                GenerationView(containerHeight: mediaPanelHeight)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { newValue in
+            mediaPanelHeight = newValue
         }
         .overlay(alignment: .trailing) {
             Rectangle().fill(AppTheme.Border.subtleColor).frame(width: 0.5)
