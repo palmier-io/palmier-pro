@@ -2,8 +2,6 @@ import AVFoundation
 import AppKit
 import CoreVideo
 
-/// Generates a still-frame video from a static image for use in AVComposition pipelines.
-/// Cached by (mediaRef, width, height) so repeated calls are free.
 enum ImageVideoGenerator {
 
     private static let cacheDirectory: URL = {
@@ -13,13 +11,12 @@ enum ImageVideoGenerator {
         return url
     }()
 
-    /// Generated a long enough video so it can be freely resized (2 frames at 1fps for 30 minutes — tiny file).
+    // Generates a long enough (30min) video so it can be freely resized
     private static let generatedDuration: Double = 1800
 
-    /// Capping frame dimensions for H.264.
+    // H.264 encoder paths are less reliable above 4096 px
     private static let maxEncoderDimension: CGFloat = 4096
 
-    /// Returns a cached or newly-generated still-frame .mov for the given image.
     static func stillVideo(
         for imageURL: URL,
         mediaRef: String,
@@ -34,20 +31,35 @@ enum ImageVideoGenerator {
             return outputURL
         }
 
-        guard let nsImage = NSImage(contentsOf: imageURL) else {
-            throw ImageVideoError.imageLoadFailed
-        }
+        do {
+            guard let nsImage = NSImage(contentsOf: imageURL) else {
+                throw ImageVideoError.imageLoadFailed
+            }
 
-        let pixelBuffer = try createPixelBuffer(from: nsImage, size: size)
-        try await writeStillVideo(pixelBuffer: pixelBuffer, to: outputURL, size: size, duration: duration)
-        return outputURL
+            let pixelBuffer = try createPixelBuffer(from: nsImage, size: size)
+            try await writeStillVideo(pixelBuffer: pixelBuffer, to: outputURL, size: size, duration: duration)
+            return outputURL
+        } catch {
+            Log.preview.error("stillVideo failed file=\(imageURL.lastPathComponent) size=\(Int(size.width))x\(Int(size.height)): \(error.localizedDescription)")
+            throw error
+        }
     }
 
     private static func clampedForEncoder(_ size: CGSize) -> CGSize {
-        let longest = max(size.width, size.height)
-        guard longest > maxEncoderDimension else { return size }
-        let scale = maxEncoderDimension / longest
-        return CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
+        let sourceWidth = max(1, size.width)
+        let sourceHeight = max(1, size.height)
+        let longest = max(sourceWidth, sourceHeight)
+        let scale = longest > maxEncoderDimension ? maxEncoderDimension / longest : 1
+        return CGSize(
+            width: encoderDimension(sourceWidth * scale),
+            height: encoderDimension(sourceHeight * scale)
+        )
+    }
+
+    private static func encoderDimension(_ value: CGFloat) -> CGFloat {
+        // Some H.264 encoder paths reject odd frame sizes.
+        let pixels = Int(value.rounded(.down))
+        return CGFloat(max(2, pixels - pixels % 2))
     }
 
     static func imageNativeSize(url: URL) -> CGSize? {
@@ -90,7 +102,6 @@ enum ImageVideoGenerator {
             throw ImageVideoError.pixelBufferCreationFailed
         }
 
-        // Fill black background, then draw image to fill the buffer at native size
         context.setFillColor(.black)
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
 
@@ -132,7 +143,7 @@ enum ImageVideoGenerator {
         }
         writer.startSession(atSourceTime: .zero)
 
-        // Write two frames (start + end) — sufficient for AVComposition to represent the full duration
+        // Two frames span the full still-video duration without a long file.
         let times: [CMTime] = [
             .zero,
             CMTime(value: CMTimeValue(ceil(duration)) - 1, timescale: 1),
@@ -141,7 +152,9 @@ enum ImageVideoGenerator {
             while !adaptor.assetWriterInput.isReadyForMoreMediaData {
                 try await Task.sleep(for: .milliseconds(10))
             }
-            adaptor.append(pixelBuffer, withPresentationTime: time)
+            guard adaptor.append(pixelBuffer, withPresentationTime: time) else {
+                throw writer.error ?? ImageVideoError.appendFailed(seconds: time.seconds)
+            }
         }
 
         input.markAsFinished()
@@ -155,9 +168,23 @@ enum ImageVideoGenerator {
         try FileManager.default.moveItem(at: tempURL, to: outputURL)
     }
 
-    enum ImageVideoError: Error {
+    enum ImageVideoError: LocalizedError {
         case imageLoadFailed
         case pixelBufferCreationFailed
+        case appendFailed(seconds: Double)
         case writeFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .imageLoadFailed:
+                "could not load image"
+            case .pixelBufferCreationFailed:
+                "could not create pixel buffer"
+            case .appendFailed(let seconds):
+                "could not append still frame at \(String(format: "%.3f", seconds))s"
+            case .writeFailed:
+                "could not write still video"
+            }
+        }
     }
 }
