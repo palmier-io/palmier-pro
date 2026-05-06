@@ -1,6 +1,7 @@
 import AppKit
 
 Log.bootstrap()
+Telemetry.start()
 BundledFonts.register()
 
 // Shorten the default tooltip delay from 2s to 0.01s.

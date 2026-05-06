@@ -38,9 +38,21 @@ struct CategoryLog {
     func debug(_ m: String)   { logger.debug("\(m, privacy: .public)") }
     func info(_ m: String)    { logger.info("\(m, privacy: .public)") }
     func notice(_ m: String)  { mirror("NOTICE", m); logger.notice("\(m, privacy: .public)") }
-    func warning(_ m: String) { mirror("WARN",   m); logger.warning("\(m, privacy: .public)") }
-    func error(_ m: String)   { mirror("ERROR",  m); logger.error("\(m, privacy: .public)") }
-    func fault(_ m: String)   { mirror("FAULT",  m); logger.fault("\(m, privacy: .public)") }
+    func warning(_ m: String) {
+        mirror("WARN", m)
+        logger.warning("\(m, privacy: .public)")
+        Telemetry.logWarning(m, category: category)
+    }
+    func error(_ m: String) {
+        mirror("ERROR", m)
+        logger.error("\(m, privacy: .public)")
+        Telemetry.logError(m, category: category)
+    }
+    func fault(_ m: String) {
+        mirror("FAULT", m)
+        logger.fault("\(m, privacy: .public)")
+        Telemetry.logFault(m, category: category)
+    }
 
     private func mirror(_ level: String, _ msg: String) {
         FileHandle.standardError.write(Data("[\(category)] \(level): \(msg)\n".utf8))

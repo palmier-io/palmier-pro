@@ -29,4 +29,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         return true
     }
+
+    @MainActor
+    @objc func showSettings(_ sender: Any?) {
+        SettingsWindowController.shared.show()
+    }
 }
