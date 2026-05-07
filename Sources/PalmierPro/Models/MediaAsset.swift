@@ -17,15 +17,22 @@ final class MediaAsset: Identifiable {
     var generationInput: GenerationInput?
     var generationStatus: GenerationStatus = .none
     var folderId: String?
+    var pendingDownloadURL: URL?
 
     enum GenerationStatus: Equatable {
         case none
         case generating
+        case downloading
         case failed(String)
     }
 
     var isGenerated: Bool { generationInput != nil }
-    var isGenerating: Bool { generationStatus == .generating }
+    var isGenerating: Bool {
+        generationStatus == .generating || generationStatus == .downloading
+    }
+    var generatingLabel: String {
+        generationStatus == .downloading ? "Downloading..." : "Generating..."
+    }
 
     init(id: String = UUID().uuidString, url: URL, type: ClipType, name: String, duration: Double = 0, thumbnail: NSImage? = nil, generationInput: GenerationInput? = nil) {
         self.id = id

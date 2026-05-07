@@ -25,6 +25,9 @@ struct PreviewContainerView: View {
                     if isImage {
                         imagePreview
                     }
+                    if let error = activeFailedError {
+                        failedPreview(error: error)
+                    }
                     if editor.cropEditingActive {
                         CropOverlayView()
                     } else {
@@ -301,6 +304,57 @@ struct PreviewContainerView: View {
     private var activeMediaAsset: MediaAsset? {
         guard case .mediaAsset(let id, _, _) = editor.activePreviewTab else { return nil }
         return editor.mediaAssets.first { $0.id == id }
+    }
+
+    private var activeFailedError: String? {
+        guard let asset = activeMediaAsset,
+              case .failed(let error) = asset.generationStatus else { return nil }
+        return error
+    }
+
+    private func failedPreview(error: String) -> some View {
+        ZStack {
+            Color.black.opacity(0.65)
+            VStack(spacing: AppTheme.Spacing.md) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 44))
+                    .foregroundStyle(.red.opacity(0.85))
+                Text("Generation Failed")
+                    .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                ScrollView {
+                    Text(error)
+                        .font(.system(size: AppTheme.FontSize.md))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                        .multilineTextAlignment(.center)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, AppTheme.Spacing.lg)
+                }
+                .frame(maxWidth: 520, maxHeight: 240)
+                .fixedSize(horizontal: false, vertical: true)
+                if let asset = activeMediaAsset, asset.pendingDownloadURL != nil {
+                    Button {
+                        editor.generationService.retryDownload(asset: asset, editor: editor)
+                    } label: {
+                        HStack(spacing: AppTheme.Spacing.xs) {
+                            Image(systemName: "arrow.clockwise")
+                            Text("Retry Download")
+                        }
+                        .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                        .foregroundStyle(AppTheme.Text.primaryColor)
+                        .padding(.horizontal, AppTheme.Spacing.md)
+                        .padding(.vertical, AppTheme.Spacing.sm)
+                    }
+                    .buttonStyle(.plain)
+                    .background(.white.opacity(0.12), in: .capsule)
+                    .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 0.5))
+                }
+            }
+            .padding(AppTheme.Spacing.xl)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Tab bar

@@ -125,7 +125,7 @@ struct AssetThumbnailView: View {
     private var thumbnailContent: some View {
         Group {
             if asset.isGenerating {
-                GeneratingOverlay()
+                GeneratingOverlay(label: asset.generatingLabel)
             } else if case .failed(let error) = asset.generationStatus {
                 failedThumbnail(error: error)
             } else if let thumbnail = asset.thumbnail {

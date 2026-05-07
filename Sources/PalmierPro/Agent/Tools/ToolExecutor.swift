@@ -1090,6 +1090,7 @@ final class ToolExecutor {
         switch status {
         case .none: "none"
         case .generating: "generating"
+        case .downloading: "downloading"
         case .failed(let message): "failed: \(message)"
         }
     }

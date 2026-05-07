@@ -277,22 +277,10 @@ final class GenerationService {
                         placeholder.generationStatus = .failed("No image in response")
                         continue
                     }
-                    do {
-                        Log.generation.notice("downloading \(remoteURL.host ?? "?") (\(i + 1)/\(urlStrings.count))")
-                        let (tempURL, _) = try await URLSession.shared.download(from: remoteURL)
-                        try? FileManager.default.removeItem(at: placeholder.url)
-                        try FileManager.default.moveItem(at: tempURL, to: placeholder.url)
-
-                        placeholder.generationStatus = .none
-                        editor.importMediaAsset(placeholder, skipAppend: true)
-                        editor.appendGenerationLog(for: placeholder)
-                        await editor.finalizeImportedAsset(placeholder)
+                    Log.generation.notice("downloading \(remoteURL.host ?? "?") (\(i + 1)/\(urlStrings.count))")
+                    if await downloadAndFinalize(asset: placeholder, remoteURL: remoteURL, editor: editor) {
                         onComplete?(placeholder)
                         finalizedAssets.append(placeholder)
-                    } catch {
-                        let message = Self.friendlyMessage(from: error)
-                        Log.generation.error("download failed model=\(genInput.model) idx=\(i) error=\(message)")
-                        placeholder.generationStatus = .failed(message)
                     }
                 }
 
@@ -315,6 +303,36 @@ final class GenerationService {
                 }
                 onFailure?()
             }
+        }
+    }
+
+    @discardableResult
+    private func downloadAndFinalize(asset: MediaAsset, remoteURL: URL, editor: EditorViewModel) async -> Bool {
+        asset.generationStatus = .downloading
+        do {
+            let (tempURL, _) = try await URLSession.shared.download(from: remoteURL)
+            try? FileManager.default.removeItem(at: asset.url)
+            try FileManager.default.moveItem(at: tempURL, to: asset.url)
+
+            asset.pendingDownloadURL = nil
+            asset.generationStatus = .none
+            editor.importMediaAsset(asset, skipAppend: true)
+            editor.appendGenerationLog(for: asset)
+            await editor.finalizeImportedAsset(asset)
+            return true
+        } catch {
+            let message = Self.friendlyMessage(from: error)
+            Log.generation.error("download failed url=\(remoteURL.absoluteString) error=\(message)")
+            asset.pendingDownloadURL = remoteURL
+            asset.generationStatus = .failed(message)
+            return false
+        }
+    }
+
+    func retryDownload(asset: MediaAsset, editor: EditorViewModel) {
+        guard let remoteURL = asset.pendingDownloadURL else { return }
+        Task { @MainActor in
+            await downloadAndFinalize(asset: asset, remoteURL: remoteURL, editor: editor)
         }
     }
 
