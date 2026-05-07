@@ -64,6 +64,8 @@ struct GenerationView: View {
     @State private var liveHeight: Double?
     @State private var dragStartHeight: Double?
 
+    @State private var panelWidth: CGFloat = 0
+
     private static let minPanelHeight: Double = 300
 
     private var maxPanelHeight: Double { containerHeight * 0.85 }
@@ -295,6 +297,15 @@ struct GenerationView: View {
 
     // MARK: - Body
 
+    private var refGridColumns: [GridItem] {
+        let minCell: CGFloat = 80
+        let spacing = AppTheme.Spacing.xs
+        let inset: CGFloat = AppTheme.Spacing.sm * 2 + AppTheme.Spacing.md * 2
+        let usable = max(minCell, panelWidth - inset)
+        let count = max(1, Int((usable + spacing) / (minCell + spacing)))
+        return Array(repeating: GridItem(.flexible(minimum: minCell), spacing: spacing), count: count)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             resizeHandle
@@ -404,6 +415,7 @@ struct GenerationView: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.lg))
         .padding(AppTheme.Spacing.sm)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { panelWidth = $0 }
         .onAppear {
             consumePendingEditSource()
             consumePendingRerun()
@@ -766,12 +778,14 @@ struct GenerationView: View {
             }
 
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 80), spacing: AppTheme.Spacing.xs)],
+                columns: refGridColumns,
                 alignment: .leading,
                 spacing: AppTheme.Spacing.xs
             ) {
-                ForEach(ClipType.allCases, id: \.self) { type in
-                    refCards(for: type)
+                ForEach(allRefCardItems, id: \.asset.id) { item in
+                    refCard(asset: item.asset, tag: item.tag) {
+                        removeRef(item.type, byId: item.asset.id)
+                    }
                 }
                 if !isRefCapReached {
                     dropZone(
@@ -782,6 +796,22 @@ struct GenerationView: View {
                         addRefAsset(asset)
                     }
                 }
+            }
+        }
+    }
+
+    private var allRefCardItems: [(asset: MediaAsset, tag: String, type: ClipType)] {
+        ClipType.allCases.flatMap { type -> [(asset: MediaAsset, tag: String, type: ClipType)] in
+            let assets: [MediaAsset]
+            switch type {
+            case .image: assets = refImages
+            case .video: assets = refVideos
+            case .audio: assets = refAudios
+            case .text: assets = []
+            }
+            let noun = tagNoun(for: type)
+            return assets.enumerated().map {
+                (asset: $1, tag: "@\(noun)\($0 + 1)", type: type)
             }
         }
     }
@@ -873,30 +903,12 @@ struct GenerationView: View {
         }
     }
 
-    private func removeRef(_ type: ClipType, at index: Int) {
+    private func removeRef(_ type: ClipType, byId id: MediaAsset.ID) {
         switch type {
-        case .image: refImages.remove(at: index)
-        case .video: refVideos.remove(at: index)
-        case .audio: refAudios.remove(at: index)
+        case .image: refImages.removeAll { $0.id == id }
+        case .video: refVideos.removeAll { $0.id == id }
+        case .audio: refAudios.removeAll { $0.id == id }
         case .text: break
-        }
-    }
-
-    @ViewBuilder
-    private func refCards(for type: ClipType) -> some View {
-        let assets: [MediaAsset] = {
-            switch type {
-            case .image: refImages
-            case .video: refVideos
-            case .audio: refAudios
-            case .text: []
-            }
-        }()
-        let noun = tagNoun(for: type)
-        ForEach(Array(assets.enumerated()), id: \.element.id) { index, asset in
-            refCard(asset: asset, tag: "@\(noun)\(index + 1)") {
-                removeRef(type, at: index)
-            }
         }
     }
 
@@ -996,12 +1008,14 @@ struct GenerationView: View {
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
 
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 80), spacing: AppTheme.Spacing.xs)],
+                columns: refGridColumns,
                 alignment: .leading,
                 spacing: AppTheme.Spacing.xs
             ) {
-                ForEach(Array(imageReferences.enumerated()), id: \.element.id) { index, asset in
-                    refCard(asset: asset) { imageReferences.remove(at: index) }
+                ForEach(imageReferences) { asset in
+                    refCard(asset: asset) {
+                        imageReferences.removeAll { $0.id == asset.id }
+                    }
                 }
                 validatedDropZone(
                     isTargeted: $imageRefTargeted,
