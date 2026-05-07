@@ -460,7 +460,7 @@ final class ToolExecutor {
                 if let v = u.startFrame { clip.startFrame = v; changed.append("startFrame") }
                 if let v = u.durationFrames {
                     clip.durationFrames = v
-                    clip.clampFadesToDuration()
+                    clip.clampVolumeKfsToDuration()
                     changed.append("durationFrames")
                 }
                 if let v = u.trimStartFrame { clip.trimStartFrame = v; changed.append("trimStartFrame") }

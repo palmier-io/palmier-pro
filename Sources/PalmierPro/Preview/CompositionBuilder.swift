@@ -171,32 +171,11 @@ enum CompositionBuilder {
                 params.setVolume(0, at: .zero)
                 return params
             }
-            // AV ramps linearly between successive volume points; sub-ms ramp at boundaries forces a hard step.
-            let stepRamp = CMTime(value: 1, timescale: 48_000)
             var prevEndFrame = Int.min
             for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) {
                 guard clip.durationFrames > 0, clip.startFrame >= prevEndFrame else { continue }
-                let v = Float(clip.volume)
-                let dur = clip.durationFrames
-                let fIn = max(0, min(clip.audioFadeInFrames, dur))
-                let fOut = max(0, min(clip.audioFadeOutFrames, dur - fIn))
-                let startT = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
-                let endT = CMTime(value: CMTimeValue(clip.startFrame + dur), timescale: timescale)
-
-                let entryDur: CMTime = fIn > 0
-                    ? CMTime(value: CMTimeValue(fIn), timescale: timescale)
-                    : stepRamp
-                let exitDur: CMTime = fOut > 0
-                    ? CMTime(value: CMTimeValue(fOut), timescale: timescale)
-                    : stepRamp
-                let entryEnd = min(startT + entryDur, endT)
-                let exitStart = max(entryEnd, endT - exitDur)
-
-                params.setVolumeRamp(fromStartVolume: 0, toEndVolume: v, timeRange: CMTimeRange(start: startT, end: entryEnd))
-                if exitStart < endT {
-                    params.setVolumeRamp(fromStartVolume: v, toEndVolume: 0, timeRange: CMTimeRange(start: exitStart, end: endT))
-                }
-                prevEndFrame = clip.startFrame + dur
+                emitVolumeKeyframes(params: params, clip: clip, timescale: timescale)
+                prevEndFrame = clip.startFrame + clip.durationFrames
             }
             return params
         }
@@ -242,6 +221,66 @@ enum CompositionBuilder {
 
     /// Smooth-curve subdivision count for non-linear keyframe segments.
     private static let smoothSegments = 8
+
+    /// `clip.volume` multiplies every endpoint so the inspector slider remains a global trim.
+    private static func emitVolumeKeyframes(
+        params: AVMutableAudioMixInputParameters,
+        clip: Clip,
+        timescale: CMTimeScale
+    ) {
+        guard let track = clip.volumeTrack, !track.keyframes.isEmpty else { return }
+        let dur = clip.durationFrames
+        let startT = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
+        let endT = CMTime(value: CMTimeValue(clip.startFrame + dur), timescale: timescale)
+        let baseVolume = Float(clip.volume)
+        let toLinear: (Double) -> Float = { Float(VolumeScale.linearFromDb($0)) * baseVolume }
+
+        let kfs = track.keyframes.filter { $0.frame >= 0 && $0.frame <= dur }
+        guard !kfs.isEmpty else { return }
+
+        let cmTime: (Int) -> CMTime = { offset in
+            CMTime(value: CMTimeValue(clip.startFrame + offset), timescale: timescale)
+        }
+
+        // Match `KeyframeTrack.sample`'s pre-first clamping.
+        let firstT = cmTime(kfs[0].frame)
+        if firstT > startT {
+            let v = toLinear(kfs[0].value)
+            params.setVolumeRamp(fromStartVolume: v, toEndVolume: v, timeRange: CMTimeRange(start: startT, end: firstT))
+        }
+
+        for i in 0..<(kfs.count - 1) {
+            let a = kfs[i], b = kfs[i + 1]
+            let aT = cmTime(a.frame), bT = cmTime(b.frame)
+            guard bT > aT else { continue }
+            let vA = toLinear(a.value), vB = toLinear(b.value)
+            switch a.interpolationOut {
+            case .linear:
+                params.setVolumeRamp(fromStartVolume: vA, toEndVolume: vB, timeRange: CMTimeRange(start: aT, end: bT))
+            case .hold:
+                params.setVolumeRamp(fromStartVolume: vA, toEndVolume: vA, timeRange: CMTimeRange(start: aT, end: bT))
+            case .smooth:
+                let span = bT - aT
+                var prevT = aT, prevV = vA
+                for s in 1...smoothSegments {
+                    let t = Double(s) / Double(smoothSegments)
+                    let nextT = aT + CMTime(seconds: span.seconds * t, preferredTimescale: span.timescale)
+                    let nextV = vA + (vB - vA) * Float(smoothstep(t))
+                    if nextT > prevT {
+                        params.setVolumeRamp(fromStartVolume: prevV, toEndVolume: nextV, timeRange: CMTimeRange(start: prevT, end: nextT))
+                    }
+                    prevT = nextT
+                    prevV = nextV
+                }
+            }
+        }
+
+        let lastT = cmTime(kfs.last!.frame)
+        if lastT < endT {
+            let v = toLinear(kfs.last!.value)
+            params.setVolumeRamp(fromStartVolume: v, toEndVolume: v, timeRange: CMTimeRange(start: lastT, end: endT))
+        }
+    }
 
     /// Emit the transform instructions from a clip's keyframes
     private static func emitTransform(

@@ -160,7 +160,7 @@ enum XMLExporter {
         private func buildTrack(_ track: Track, sortedClips: [Clip], isAudio: Bool) -> String {
             let enabled = isAudio ? !track.muted : !track.hidden
             let body = sortedClips.map { clip -> String in
-                let mediaFilter = isAudio ? buildVolumeFilter(clip.volume) : buildVideoFilters(clip)
+                let mediaFilter = isAudio ? buildVolumeFilter(for: clip) : buildVideoFilters(clip)
                 let inner = buildFileElement(for: clip.mediaRef, isAudio: isAudio)
                     + buildTimeRemapFilter(speed: clip.speed, isAudio: isAudio)
                     + mediaFilter
@@ -352,11 +352,13 @@ enum XMLExporter {
             """
         }
 
-        private func buildVolumeFilter(_ volume: Double) -> String {
-            guard volume != 1.0 else { return "" }
+        private func buildVolumeFilter(for clip: Clip) -> String {
+            // FCP7 Audio Levels takes one static value, so sample at clip midpoint.
+            let effective = clip.volumeAt(frame: clip.startFrame + clip.durationFrames / 2)
+            guard effective != 1.0 else { return "" }
             // FCP7 Audio Levels `level` is linear (1 = 0 dB, ~3.98 = +12 dB); out-of-range
             // values silence the clip in Premiere.
-            let level = max(0, min(volume, 3.98))
+            let level = max(0, min(effective, 3.98))
             return """
 
                         <filter>

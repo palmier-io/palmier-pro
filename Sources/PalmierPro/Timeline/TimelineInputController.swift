@@ -90,15 +90,30 @@ final class TimelineInputController {
             }
 
             let localX = point.x - rect.minX
-            if !Self.isOnTrimZone(localX: localX, clipWidth: rect.width),
-               clip.mediaType == .audio,
-               let fadeEdge = audioFadeHandleHit(at: point, clip: clip, clipRect: rect) {
-                dragState = .audioFade(DragState.AudioFadeDrag(
+            let isCommand = event.modifierFlags.contains(.command)
+
+            if clip.mediaType == .audio,
+               let kfFrame = audioVolumeKfHit(at: point, clip: clip, clipRect: rect) {
+                let kfOffset = kfFrame - clip.startFrame
+                let dB = clip.volumeTrack?.keyframes.first(where: { $0.frame == kfOffset })?.value ?? 0
+                let handles = clip.volumeFadeHandleOffsets
+                let cornerOffset: Int? =
+                    kfOffset == handles.left ? 0
+                    : kfOffset == handles.right ? clip.durationFrames
+                    : nil
+                dragState = .audioVolumeKf(DragState.AudioVolumeKfDrag(
                     clipId: clip.id,
                     trackIndex: hit.trackIndex,
-                    edge: fadeEdge,
-                    originalFadeFrames: clip[keyPath: fadeEdge.fadeKeyPath]
+                    originalFrame: kfFrame,
+                    originalDb: dB,
+                    grabFrame: geometry.frameAt(x: point.x),
+                    fadeHandleCorner: cornerOffset,
+                    currentFrame: kfFrame,
+                    currentDb: dB
                 ))
+            } else if isCommand, clip.mediaType == .audio,
+                      addVolumeKeyframeOnClick(at: point, clip: clip, clipRect: rect) {
+                dragState = .idle
             } else if localX <= Trim.handleWidth {
                 dragState = .trimLeft(DragState.TrimDrag(
                     clipId: clip.id,
@@ -272,17 +287,8 @@ final class TimelineInputController {
             }
             dragState = .trimRight(drag)
 
-        case .audioFade(var drag):
-            guard editor.timeline.tracks.indices.contains(drag.trackIndex),
-                  let clip = editor.timeline.tracks[drag.trackIndex].clips.first(where: { $0.id == drag.clipId }) else {
-                break
-            }
-            let handleOriginFrame = drag.edge == .left
-                ? clip.startFrame + drag.originalFadeFrames
-                : clip.endFrame - drag.originalFadeFrames
-            let raw = frame - handleOriginFrame
-            drag.deltaFrames = drag.edge == .left ? raw : -raw
-            dragState = .audioFade(drag)
+        case .audioVolumeKf(let drag):
+            dragState = .audioVolumeKf(applyVolumeKfDrag(drag, cursorFrame: frame, cursorY: point.y, geometry: geometry))
 
         case .marquee(var marq):
             marq.current = NSRect(
@@ -375,14 +381,11 @@ final class TimelineInputController {
                 )
             }
 
-        case .audioFade(let drag):
-            if drag.deltaFrames != 0,
-               let loc = editor.findClip(id: drag.clipId) {
-                let liveClip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-                let resolved = drag.resolvedFadeFrames(for: liveClip)
-                editor.mutateClips(ids: [drag.clipId], actionName: drag.edge == .left ? "Fade In" : "Fade Out") {
-                    $0[keyPath: drag.edge.fadeKeyPath] = resolved
-                }
+        case .audioVolumeKf(let drag):
+            if drag.currentFrame != drag.originalFrame || drag.currentDb != drag.originalDb {
+                editor.commitMoveVolumeKeyframe(clipId: drag.clipId)
+            } else {
+                editor.revertClipProperty(clipId: drag.clipId)
             }
 
         case .marquee:
@@ -449,7 +452,7 @@ final class TimelineInputController {
                 return
             }
             if clip.mediaType == .audio,
-               audioFadeHandleHit(at: point, clip: clip, clipRect: rect) != nil {
+               audioVolumeKfHit(at: point, clip: clip, clipRect: rect) != nil {
                 NSCursor.openHand.set()
                 return
             }
@@ -461,11 +464,92 @@ final class TimelineInputController {
         localX <= Trim.handleWidth || localX >= clipWidth - Trim.handleWidth
     }
 
-    private func audioFadeHandleHit(at point: NSPoint, clip: Clip, clipRect: NSRect) -> FadeEdge? {
+    func audioVolumeKfHit(at point: NSPoint, clip: Clip, clipRect: NSRect) -> Int? {
+        guard let track = clip.volumeTrack, track.isActive else { return nil }
         let geo = view.geometry
-        return FadeEdge.allCases.first { edge in
-            geo.audioFadeHandleRect(in: clipRect, fadeFrames: clip[keyPath: edge.fadeKeyPath], edge: edge).contains(point)
+        for kf in track.keyframes {
+            if geo.audioVolumeKfRect(clip: clip, kfOffset: kf.frame, kfDb: kf.value, in: clipRect).contains(point) {
+                return clip.startFrame + kf.frame
+            }
         }
+        return nil
+    }
+
+    /// Per-tick handler for `.audioVolumeKf` drags. Clamps within neighbor bounds, applies
+    /// the move, and idempotently maintains the silent corner kf for fade-handle drags.
+    private func applyVolumeKfDrag(
+        _ drag: DragState.AudioVolumeKfDrag,
+        cursorFrame: Int,
+        cursorY: CGFloat,
+        geometry: TimelineGeometry
+    ) -> DragState.AudioVolumeKfDrag {
+        var drag = drag
+        guard editor.timeline.tracks.indices.contains(drag.trackIndex),
+              let clip = editor.timeline.tracks[drag.trackIndex].clips.first(where: { $0.id == drag.clipId }) else {
+            return drag
+        }
+        let clipRect = geometry.clipRect(for: clip, trackIndex: drag.trackIndex)
+        let body = ClipRenderer.audioBodyRect(in: clipRect)
+
+        // Fade handle skips only its own corner so drag-to-corner can merge with the
+        // silent kf and remove the fade; other kfs are hard bounds.
+        let curOffset = drag.currentFrame - clip.startFrame
+        var leftBound = 0
+        var rightBound = clip.durationFrames
+        for kf in clip.volumeTrack?.keyframes ?? []
+            where kf.frame != curOffset && kf.frame != drag.fadeHandleCorner {
+            if kf.frame < curOffset {
+                leftBound = max(leftBound, kf.frame + 1)
+            } else {
+                rightBound = min(rightBound, kf.frame - 1)
+            }
+        }
+        let proposed = drag.originalFrame + (cursorFrame - drag.grabFrame)
+        let newFrame = max(clip.startFrame + leftBound, min(clip.startFrame + rightBound, proposed))
+
+        // Squares are X-only; diamonds drag in 2D.
+        let newDb: Double = drag.isFadeHandle
+            ? drag.originalDb
+            : max(VolumeScale.floorDb, min(VolumeScale.ceilingDb, ClipRenderer.db(forY: cursorY, in: body)))
+
+        guard newFrame != drag.currentFrame || newDb != drag.currentDb else { return drag }
+
+        editor.applyMoveVolumeKeyframe(
+            clipId: drag.clipId, fromFrame: drag.currentFrame, toFrame: newFrame, newDb: newDb
+        )
+        drag.currentFrame = newFrame
+        drag.currentDb = newDb
+
+        // Idempotent: drag-back-to-corner removes the fade because the move's upsert
+        // overwrites this silent kf with the dragged unity value.
+        if let corner = drag.fadeHandleCorner {
+            let newOffset = newFrame - clip.startFrame
+            let pastCorner = corner == 0 ? newOffset > 0 : newOffset < corner
+            if pastCorner {
+                editor.applyClipProperty(clipId: drag.clipId) { c in
+                    c.upsertKeyframe(in: \.volumeTrack, frame: c.startFrame + corner, value: VolumeScale.floorDb)
+                }
+            }
+        }
+        return drag
+    }
+
+    /// Returns true if a kf was added.
+    private func addVolumeKeyframeOnClick(at point: NSPoint, clip: Clip, clipRect: NSRect) -> Bool {
+        guard clip.durationFrames > 0 else { return false }
+        let body = ClipRenderer.audioBodyRect(in: clipRect)
+        guard body.contains(point) else { return false }
+        let pxPerFrame = clipRect.width / CGFloat(clip.durationFrames)
+        let xInClip = point.x - clipRect.minX
+        let offset = max(0, min(clip.durationFrames, Int((xInClip / pxPerFrame).rounded())))
+        let absFrame = clip.startFrame + offset
+        let dB = max(VolumeScale.floorDb, min(VolumeScale.ceilingDb, ClipRenderer.db(forY: point.y, in: body)))
+        editor.commitClipProperty(clipId: clip.id) { c in
+            c.upsertKeyframe(in: \.volumeTrack, frame: absFrame, value: dB)
+        }
+        editor.undoManager?.setActionName("Add Keyframe")
+        view.needsDisplay = true
+        return true
     }
 
     // MARK: - Scroll wheel (Option+scroll = zoom)

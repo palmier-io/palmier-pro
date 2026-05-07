@@ -253,12 +253,19 @@ struct KeyframesPanel: View {
     @Environment(EditorViewModel.self) private var editor
     @State private var snapX: CGFloat?
 
-    private static let rows: [(AnimatableProperty, String)] = [
+    private static let videoRows: [(AnimatableProperty, String)] = [
         (.position, "Position"),
         (.scale,    "Scale"),
         (.opacity,  "Opacity"),
         (.crop,     "Crop"),
     ]
+    private static let audioRows: [(AnimatableProperty, String)] = [
+        (.volume, "Volume"),
+    ]
+
+    private var rows: [(AnimatableProperty, String)] {
+        clip.mediaType == .audio ? Self.audioRows : Self.videoRows
+    }
 
     private var tint: Color { Color(nsColor: clip.sourceClipType.themeColor) }
     private var span: Int { max(1, clip.endFrame - clip.startFrame) }
@@ -267,7 +274,7 @@ struct KeyframesPanel: View {
         ZStack(alignment: .topLeading) {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
                 ClipRulerBlock(clip: clip, tint: tint, onSeek: { editor.seekToFrame($0) })
-                ForEach(Self.rows, id: \.0) { row in
+                ForEach(rows, id: \.0) { row in
                     KeyframesLaneRow(
                         clip: clip,
                         property: row.0,

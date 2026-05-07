@@ -130,19 +130,25 @@ struct TimelineGeometry {
         headerWidth + Double(frame) * pixelsPerFrame
     }
 
-    /// Centerline X of an audio fade handle
-    static func audioFadeHandleX(in clipRect: NSRect, fadeFrames: Int, edge: FadeEdge, pxPerFrame: CGFloat) -> CGFloat {
-        let fadePx = CGFloat(fadeFrames) * pxPerFrame
-        let inset = ClipRenderer.fadeHandleEdgeInset
-        let knee = max(inset, min(max(inset, clipRect.width - inset), fadePx))
-        return edge == .left ? clipRect.minX + knee : clipRect.maxX - knee
+    /// Matches the rendered position; fade-handle kfs are inset from the corner.
+    func audioVolumeKfPoint(clip: Clip, kfOffset: Int, kfDb: Double, in clipRect: NSRect) -> CGPoint {
+        let body = ClipRenderer.audioBodyRect(in: clipRect)
+        let pxPerFrame = clip.durationFrames > 0 ? clipRect.width / CGFloat(clip.durationFrames) : 0
+        let handles = clip.volumeFadeHandleOffsets
+        let x: CGFloat
+        if kfOffset == handles.left {
+            x = ClipRenderer.fadeHandleRenderX(in: clipRect, kfOffset: kfOffset, isLeft: true, pxPerFrame: pxPerFrame)
+        } else if kfOffset == handles.right {
+            x = ClipRenderer.fadeHandleRenderX(in: clipRect, kfOffset: kfOffset, isLeft: false, pxPerFrame: pxPerFrame)
+        } else {
+            x = clipRect.minX + CGFloat(kfOffset) * pxPerFrame
+        }
+        return CGPoint(x: x, y: ClipRenderer.y(forDb: kfDb, in: body))
     }
 
-    /// Hit rect for an audio fade handle
-    func audioFadeHandleRect(in clipRect: NSRect, fadeFrames: Int, edge: FadeEdge) -> NSRect {
-        let cx = Self.audioFadeHandleX(in: clipRect, fadeFrames: fadeFrames, edge: edge, pxPerFrame: pixelsPerFrame)
-        let cy = clipRect.minY + ClipRenderer.labelBarHeight
-        let half = ClipRenderer.fadeHandleHitSize / 2
-        return NSRect(x: cx - half, y: cy - half, width: half * 2, height: half * 2)
+    func audioVolumeKfRect(clip: Clip, kfOffset: Int, kfDb: Double, in clipRect: NSRect) -> NSRect {
+        let p = audioVolumeKfPoint(clip: clip, kfOffset: kfOffset, kfDb: kfDb, in: clipRect)
+        let half = ClipRenderer.volumeKeyframeHitSize / 2
+        return NSRect(x: p.x - half, y: p.y - half, width: half * 2, height: half * 2)
     }
 }

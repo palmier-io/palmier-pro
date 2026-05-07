@@ -204,11 +204,6 @@ final class TimelineView: NSView {
             }
         }()
 
-        let fadeDrag: DragState.AudioFadeDrag? = {
-            if case .audioFade(let drag) = inputController.dragState { return drag }
-            return nil
-        }()
-
         let allDraggedIds: Set<String> = {
             guard let drag = moveDrag else { return [] }
             return Set(drag.all.map(\.clipId))
@@ -291,13 +286,9 @@ final class TimelineView: NSView {
                     continue
                 }
 
-                var renderClip = clip
-                if let fd = fadeDrag, fd.clipId == clip.id {
-                    renderClip[keyPath: fd.edge.fadeKeyPath] = fd.resolvedFadeFrames(for: clip)
-                }
-                let rect = geo.clipRect(for: renderClip, trackIndex: ti)
+                let rect = geo.clipRect(for: clip, trackIndex: ti)
                 guard rect.intersects(dirtyRect) else { continue }
-                ClipRenderer.draw(renderClip, type: renderClip.mediaType, in: rect,
+                ClipRenderer.draw(clip, type: clip.mediaType, in: rect,
                                   isSelected: isSelected, context: ctx,
                                   cache: editor.mediaVisualCache,
                                   displayName: editor.clipDisplayLabel(for: clip),
@@ -482,6 +473,30 @@ final class TimelineView: NSView {
             return nil
         }
         let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
+        let clipRect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
+
+        // kf menu before clip menu.
+        if clip.mediaType == .audio,
+           let kfFrame = inputController.audioVolumeKfHit(at: point, clip: clip, clipRect: clipRect) {
+            let menu = NSMenu()
+            let current = editor.interpolation(clipId: clip.id, property: .volume, atFrame: kfFrame) ?? .smooth
+            let mk: (String, Interpolation) -> NSMenuItem = { title, interp in
+                let item = NSMenuItem(title: title, action: #selector(self.performSetVolumeKfInterpolation(_:)), keyEquivalent: "")
+                item.target = self
+                item.state = current == interp ? .on : .off
+                item.representedObject = ["clipId": clip.id, "frame": kfFrame, "interp": interp.rawValue] as [String: Any]
+                return item
+            }
+            menu.addItem(mk("Linear", .linear))
+            menu.addItem(mk("Smooth", .smooth))
+            menu.addItem(mk("Hold", .hold))
+            menu.addItem(.separator())
+            let del = NSMenuItem(title: "Delete Keyframe", action: #selector(performDeleteVolumeKf(_:)), keyEquivalent: "")
+            del.target = self
+            del.representedObject = ["clipId": clip.id, "frame": kfFrame] as [String: Any]
+            menu.addItem(del)
+            return menu
+        }
 
         if !editor.selectedClipIds.contains(clip.id) {
             editor.selectedClipIds = editor.expandToLinkGroup([clip.id])
@@ -529,6 +544,26 @@ final class TimelineView: NSView {
         guard let item = sender as? NSMenuItem,
               let clipId = item.representedObject as? String else { return }
         editor.saveClipAsMedia(clipId: clipId)
+    }
+
+    @objc private func performSetVolumeKfInterpolation(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let info = item.representedObject as? [String: Any],
+              let clipId = info["clipId"] as? String,
+              let frame = info["frame"] as? Int,
+              let raw = info["interp"] as? String,
+              let interp = Interpolation(rawValue: raw) else { return }
+        editor.setInterpolation(clipId: clipId, property: .volume, frame: frame, interpolation: interp)
+        needsDisplay = true
+    }
+
+    @objc private func performDeleteVolumeKf(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let info = item.representedObject as? [String: Any],
+              let clipId = info["clipId"] as? String,
+              let frame = info["frame"] as? Int else { return }
+        editor.removeKeyframe(clipId: clipId, property: .volume, at: frame)
+        needsDisplay = true
     }
 
 

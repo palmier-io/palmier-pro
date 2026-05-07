@@ -34,6 +34,9 @@ extension EditorViewModel {
                 clip.upsertKeyframe(in: \.scaleTrack, frame: f, value: AnimPair(a: sz.width, b: sz.height))
             case .crop:
                 clip.upsertKeyframe(in: \.cropTrack, frame: f, value: clip.cropAt(frame: f))
+            case .volume:
+                let currentDb = clip.volumeTrack?.sample(at: f - clip.startFrame, fallback: 0) ?? 0
+                clip.upsertKeyframe(in: \.volumeTrack, frame: f, value: currentDb)
             }
         }
         undoManager?.setActionName("Add Keyframe")
@@ -166,5 +169,26 @@ extension EditorViewModel {
         } else {
             clip.crop = newCrop
         }
+    }
+
+    // MARK: - Volume keyframe 2D drag (rubber band)
+
+    /// Pair with `commitMoveVolumeKeyframe` on release for a single undo entry.
+    func applyMoveVolumeKeyframe(clipId: String, fromFrame: Int, toFrame: Int, newDb: Double) {
+        applyClipProperty(clipId: clipId) { clip in
+            let fromOffset = fromFrame - clip.startFrame
+            let toOffset = toFrame - clip.startFrame
+            guard var track = clip.volumeTrack,
+                  let idx = track.keyframes.firstIndex(where: { $0.frame == fromOffset }) else { return }
+            let interp = track.keyframes[idx].interpolationOut
+            track.keyframes.remove(at: idx)
+            track.upsert(Keyframe(frame: toOffset, value: newDb, interpolationOut: interp))
+            clip.volumeTrack = track
+        }
+    }
+
+    func commitMoveVolumeKeyframe(clipId: String) {
+        commitClipProperty(clipId: clipId) { _ in /* applied during drag */ }
+        undoManager?.setActionName("Move Keyframe")
     }
 }

@@ -86,8 +86,6 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var trimEndFrame: Int = 0
     var speed: Double = 1.0
     var volume: Double = 1.0
-    var audioFadeInFrames: Int = 0
-    var audioFadeOutFrames: Int = 0
     var opacity: Double = 1.0
     var transform: Transform = Transform()
     var crop: Crop = Crop()
@@ -102,13 +100,14 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var positionTrack: KeyframeTrack<AnimPair>?
     var scaleTrack: KeyframeTrack<AnimPair>?
     var cropTrack: KeyframeTrack<Crop>?
+    var volumeTrack: KeyframeTrack<Double>?
 
     private enum CodingKeys: String, CodingKey {
         case id, mediaRef, mediaType, sourceClipType, startFrame, durationFrames
-        case trimStartFrame, trimEndFrame, speed, volume, audioFadeInFrames, audioFadeOutFrames
+        case trimStartFrame, trimEndFrame, speed, volume
         case opacity, transform, crop
         case linkGroupId, textContent, textStyle
-        case opacityTrack, positionTrack, scaleTrack, cropTrack
+        case opacityTrack, positionTrack, scaleTrack, cropTrack, volumeTrack
     }
 
     /// Frame where this clip ends on the timeline
@@ -158,6 +157,23 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         cropTrack?.sample(at: keyframeOffset(forFrame: frame), fallback: crop) ?? crop
     }
 
+    /// Effective linear volume at `frame`: kf sample multiplied by `clip.volume`.
+    func volumeAt(frame: Int) -> Double {
+        guard let track = volumeTrack, track.isActive else { return volume }
+        let dB = track.sample(at: keyframeOffset(forFrame: frame), fallback: 0)
+        return VolumeScale.linearFromDb(dB) * volume
+    }
+
+    /// Leftmost/rightmost non-silent kf offsets — these render as fade-handle squares.
+    var volumeFadeHandleOffsets: (left: Int?, right: Int?) {
+        guard let track = volumeTrack else { return (nil, nil) }
+        let threshold = VolumeScale.floorDb + 0.5
+        let left = track.keyframes.first(where: { $0.value > threshold })?.frame
+        let right = track.keyframes.last(where: { $0.value > threshold })?.frame
+        if let l = left, let r = right, l == r { return (l, nil) }
+        return (left, right)
+    }
+
     /// Source-seconds → project-timeline-frame through this clip's placement, trim, and speed.
     func timelineFrame(sourceSeconds t: Double, fps: Int) -> Int? {
         let sourceFrame = t * Double(fps)
@@ -169,29 +185,39 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     }
 }
 
-enum FadeEdge: CaseIterable {
-    case left, right
-
-    var fadeKeyPath: WritableKeyPath<Clip, Int> {
-        switch self {
-        case .left: \Clip.audioFadeInFrames
-        case .right: \Clip.audioFadeOutFrames
-        }
-    }
-}
-
 extension Clip {
-    /// Clamp a proposed fade frame count to fit alongside the opposite edge's existing fade.
-    func clampedFade(_ frames: Int, edge: FadeEdge) -> Int {
-        let other = self[keyPath: edge == .left ? \Clip.audioFadeOutFrames : \Clip.audioFadeInFrames]
-        let cap = max(0, durationFrames - other)
-        return max(0, min(cap, frames))
+    /// Drops kfs past `durationFrames`. Call after any mutation that shrinks the clip.
+    mutating func clampVolumeKfsToDuration() {
+        guard var track = volumeTrack else { return }
+        track.keyframes.removeAll { $0.frame < 0 || $0.frame > durationFrames }
+        volumeTrack = track.keyframes.isEmpty ? nil : track
     }
 
-    /// Clamp both fades to fit within current `durationFrames`. Call after any mutation that shrinks duration.
-    mutating func clampFadesToDuration() {
-        audioFadeInFrames = max(0, min(audioFadeInFrames, durationFrames))
-        audioFadeOutFrames = max(0, min(audioFadeOutFrames, durationFrames - audioFadeInFrames))
+    mutating func seedVolumeKeyframes() {
+        guard mediaType == .audio, durationFrames > 0 else { return }
+        if let track = volumeTrack, !track.keyframes.isEmpty { return }
+        var track = KeyframeTrack<Double>()
+        track.upsert(Keyframe(frame: 0, value: 0))
+        track.upsert(Keyframe(frame: durationFrames, value: 0))
+        volumeTrack = track
+    }
+
+    mutating func setDuration(_ newDuration: Int) {
+        let prevDuration = durationFrames
+        let oldEdgeKf = volumeTrack?.keyframes.first(where: { $0.frame == prevDuration })
+        durationFrames = newDuration
+        clampVolumeKfsToDuration()
+
+        guard mediaType == .audio, newDuration > 0, prevDuration != newDuration else { return }
+
+        if let edgeKf = oldEdgeKf {
+            volumeTrack?.remove(at: prevDuration)
+            upsertKeyframe(in: \.volumeTrack, frame: startFrame + newDuration, value: edgeKf.value)
+        }
+        // Restore default unity edge if the trim swallowed the right fade handle.
+        if volumeFadeHandleOffsets.right == nil {
+            upsertKeyframe(in: \.volumeTrack, frame: startFrame + newDuration, value: 0)
+        }
     }
 
     init(from decoder: Decoder) throws {
@@ -207,8 +233,6 @@ extension Clip {
             trimEndFrame: (try? c.decode(Int.self, forKey: .trimEndFrame)) ?? 0,
             speed: (try? c.decode(Double.self, forKey: .speed)) ?? 1.0,
             volume: (try? c.decode(Double.self, forKey: .volume)) ?? 1.0,
-            audioFadeInFrames: (try? c.decode(Int.self, forKey: .audioFadeInFrames)) ?? 0,
-            audioFadeOutFrames: (try? c.decode(Int.self, forKey: .audioFadeOutFrames)) ?? 0,
             opacity: (try? c.decode(Double.self, forKey: .opacity)) ?? 1.0,
             transform: (try? c.decode(Transform.self, forKey: .transform)) ?? Transform(),
             crop: (try? c.decode(Crop.self, forKey: .crop)) ?? Crop(),
@@ -218,8 +242,10 @@ extension Clip {
             opacityTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .opacityTrack),
             positionTrack: try? c.decode(KeyframeTrack<AnimPair>.self, forKey: .positionTrack),
             scaleTrack: try? c.decode(KeyframeTrack<AnimPair>.self, forKey: .scaleTrack),
-            cropTrack: try? c.decode(KeyframeTrack<Crop>.self, forKey: .cropTrack)
+            cropTrack: try? c.decode(KeyframeTrack<Crop>.self, forKey: .cropTrack),
+            volumeTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .volumeTrack)
         )
+        seedVolumeKeyframes()
     }
 }
 

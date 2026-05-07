@@ -1,27 +1,31 @@
 import AppKit
 
-/// Value type representing the current drag-in-progress state.
-/// Stored on TimelineInputController, never on EditorViewModel.
-/// Uses delta-only model: no model mutation during drag.
 enum DragState {
     case idle
     case scrubPlayhead
     case moveClip(MoveClipDrag)
     case trimLeft(TrimDrag)
     case trimRight(TrimDrag)
-    case audioFade(AudioFadeDrag)
+    case audioVolumeKf(AudioVolumeKfDrag)
     case marquee(MarqueeDrag)
 
-    struct AudioFadeDrag {
+    struct AudioVolumeKfDrag {
         let clipId: String
         let trackIndex: Int
-        let edge: FadeEdge
-        let originalFadeFrames: Int
-        var deltaFrames: Int = 0
+        /// kf's absolute frame at drag-start; used by mouseUp to detect no-op drags.
+        let originalFrame: Int
+        /// kf's dB at drag-start; mouseUp comparison companion to `originalFrame`.
+        let originalDb: Double
+        /// Cursor frame at drag-start; preserves the pointer's offset to the kf as it moves.
+        let grabFrame: Int
+        /// Clip-relative corner offset (0 / durationFrames). `nil` for diamonds, which drag in 2D.
+        let fadeHandleCorner: Int?
+        /// kf's current absolute frame; tells the next tick where to find the kf to move.
+        var currentFrame: Int
+        /// kf's current dB; tells the next tick the kf's current value.
+        var currentDb: Double
 
-        func resolvedFadeFrames(for clip: Clip) -> Int {
-            clip.clampedFade(originalFadeFrames + deltaFrames, edge: edge)
-        }
+        var isFadeHandle: Bool { fadeHandleCorner != nil }
     }
 
     struct MoveClipDrag {

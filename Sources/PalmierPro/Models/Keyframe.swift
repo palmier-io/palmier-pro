@@ -36,6 +36,8 @@ struct KeyframeTrack<Value: Codable & Sendable & Equatable>: Codable, Sendable, 
     }
 }
 
+@inlinable func smoothstep(_ t: Double) -> Double { t * t * (3 - 2 * t) }
+
 protocol KeyframeInterpolatable {
     static func keyframeInterpolate(_ a: Self, _ b: Self, t: Double) -> Self
 }
@@ -72,7 +74,7 @@ extension Crop: KeyframeInterpolatable {
 
 /// Identifies which clip property an inspector lane / stamp button drives.
 enum AnimatableProperty: String, CaseIterable, Sendable {
-    case opacity, position, scale, crop
+    case opacity, position, scale, crop, volume
 
     var displayName: String {
         switch self {
@@ -80,6 +82,7 @@ enum AnimatableProperty: String, CaseIterable, Sendable {
         case .position: "Position"
         case .scale:    "Scale"
         case .crop:     "Crop"
+        case .volume:   "Volume"
         }
     }
 }
@@ -103,6 +106,7 @@ extension Clip {
         case .position: offsets = positionTrack?.keyframes.map(\.frame) ?? []
         case .scale:    offsets = scaleTrack?.keyframes.map(\.frame) ?? []
         case .crop:     offsets = cropTrack?.keyframes.map(\.frame) ?? []
+        case .volume:   offsets = volumeTrack?.keyframes.map(\.frame) ?? []
         }
         return offsets.map(toAbs)
     }
@@ -114,6 +118,7 @@ extension Clip {
         case .position: return positionTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
         case .scale:    return scaleTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
         case .crop:     return cropTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
+        case .volume:   return volumeTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
         }
     }
 
@@ -125,6 +130,7 @@ extension Clip {
         for kf in positionTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
         for kf in scaleTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
         for kf in cropTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
+        for kf in volumeTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
         return s.sorted()
     }
 
@@ -154,6 +160,14 @@ extension Clip {
         case .crop:
             cropTrack?.remove(at: o)
             if cropTrack?.keyframes.isEmpty == true { cropTrack = nil }
+        case .volume:
+            volumeTrack?.remove(at: o)
+            let floor = VolumeScale.floorDb + 0.5
+            let hasNonSilentKf = volumeTrack?.keyframes.contains { $0.value > floor } ?? false
+            if !hasNonSilentKf {
+                volumeTrack = nil
+                seedVolumeKeyframes()
+            }
         }
     }
 
@@ -163,6 +177,9 @@ extension Clip {
         case .position: positionTrack = nil
         case .scale:    scaleTrack = nil
         case .crop:     cropTrack = nil
+        case .volume:
+            volumeTrack = nil
+            seedVolumeKeyframes()
         }
     }
 
@@ -185,6 +202,10 @@ extension Clip {
             if let i = cropTrack?.keyframes.firstIndex(where: { $0.frame == o }) {
                 cropTrack?.keyframes[i].interpolationOut = interpolation
             }
+        case .volume:
+            if let i = volumeTrack?.keyframes.firstIndex(where: { $0.frame == o }) {
+                volumeTrack?.keyframes[i].interpolationOut = interpolation
+            }
         }
     }
 
@@ -195,6 +216,7 @@ extension Clip {
         case .position: positionTrack?.move(from: fromO, to: toO)
         case .scale:    scaleTrack?.move(from: fromO, to: toO)
         case .crop:     cropTrack?.move(from: fromO, to: toO)
+        case .volume:   volumeTrack?.move(from: fromO, to: toO)
         }
     }
 }
@@ -215,7 +237,7 @@ extension KeyframeTrack where Value: KeyframeInterpolatable {
         switch a.interpolationOut {
         case .hold:   return a.value
         case .linear: return Value.keyframeInterpolate(a.value, b.value, t: raw)
-        case .smooth: return Value.keyframeInterpolate(a.value, b.value, t: raw * raw * (3 - 2 * raw))
+        case .smooth: return Value.keyframeInterpolate(a.value, b.value, t: smoothstep(raw))
         }
     }
 }

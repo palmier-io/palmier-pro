@@ -290,21 +290,45 @@ struct InspectorView: View {
     @ViewBuilder
     private func audioTabContent() -> some View {
         let audios = selectedAudioClips
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            InspectorRow(icon: "speaker.wave.2.fill", label: "Audio")
-            volumeRow(audios: audios)
-            fadeRow(audios: audios, edge: .left)
-            fadeRow(audios: audios, edge: .right)
+        let single = audios.count == 1 ? audios.first : nil
+        let kfVisible = single != nil && editor.keyframesPanelVisible
+
+        if let clip = single, kfVisible {
+            HStack(alignment: .top, spacing: 0) {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+                    // Match the kf panel's ruler+strip header height so Volume aligns with its lane.
+                    InspectorRow(icon: "speaker.wave.2.fill", label: "Audio")
+                        .frame(height: KeyframesMetrics.headerHeight)
+                    volumeRow(audios: audios)
+                    if nonTextVisualClips.isEmpty {
+                        speedSection(clips: audios)
+                            .padding(.trailing, KeyframesMetrics.stampButtonWidth + AppTheme.Spacing.sm)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.trailing, AppTheme.Spacing.sm)
+                Divider()
+                KeyframesPanel(clip: clip)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, AppTheme.Spacing.sm)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+                InspectorRow(icon: "speaker.wave.2.fill", label: "Audio")
+                volumeRow(audios: audios)
+            }
+            if nonTextVisualClips.isEmpty {
+                speedSection(clips: audios)
+            }
         }
 
-        if nonTextVisualClips.isEmpty {
-            speedSection(clips: audios)
-        }
+        keyframesToggleBar(enabled: single != nil)
     }
 
     @ViewBuilder
     private func volumeRow(audios: [Clip]) -> some View {
-        propertyRow(label: "Volume") {
+        let single = audios.count == 1 ? audios.first : nil
+        animatableRow(label: "Volume", clipId: single?.id, property: .volume) {
             ScrubbableNumberField(
                 value: sharedClipValue(audios) { VolumeScale.dbFromLinear($0.volume) },
                 range: VolumeScale.floorDb...VolumeScale.ceilingDb,
@@ -326,39 +350,6 @@ struct InspectorView: View {
         }
     }
 
-    @ViewBuilder
-    private func fadeRow(audios: [Clip], edge: FadeEdge) -> some View {
-        let fps = editor.timeline.fps
-        let minDuration = audios.map(\.durationFrames).min() ?? 0
-        if minDuration > 0 {
-            let value = sharedClipValue(audios) { frameToSeconds(frame: $0[keyPath: edge.fadeKeyPath], fps: fps) }
-            propertyRow(label: edge.inspectorLabel) {
-                ScrubbableNumberField(
-                    value: value,
-                    range: 0...frameToSeconds(frame: minDuration, fps: fps),
-                    format: "%.2f",
-                    valueSuffix: " s",
-                    dragSensitivity: 0.02,
-                    fieldWidth: 52,
-                    onChanged: { sec in
-                        let frames = secondsToFrame(seconds: sec, fps: fps)
-                        for c in audios {
-                            editor.applyClipProperty(clipId: c.id) {
-                                $0[keyPath: edge.fadeKeyPath] = $0.clampedFade(frames, edge: edge)
-                            }
-                        }
-                    }
-                ) { sec in
-                    let frames = secondsToFrame(seconds: sec, fps: fps)
-                    commitToClips(audios, actionName: edge.inspectorLabel) { c in
-                        editor.commitClipProperty(clipId: c.id) {
-                            $0[keyPath: edge.fadeKeyPath] = $0.clampedFade(frames, edge: edge)
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     @ViewBuilder
     private func speedSection(clips: [Clip]) -> some View {
@@ -860,11 +851,6 @@ func sharedClipValue<T: Equatable>(_ clips: [Clip], _ extract: (Clip) -> T) -> T
     let v = extract(first)
     for c in clips.dropFirst() where extract(c) != v { return nil }
     return v
-}
-
-private extension FadeEdge {
-    var inspectorIcon: String { self == .left ? "arrow.up.right" : "arrow.down.right" }
-    var inspectorLabel: String { self == .left ? "Fade In" : "Fade Out" }
 }
 
 // MARK: - Volume Scale

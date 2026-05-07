@@ -4,9 +4,44 @@ enum ClipRenderer {
 
     static let labelBarHeight: CGFloat = 16
 
-    static let fadeHandleSize: CGFloat = 7        // visual square edge length
-    static let fadeHandleHitSize: CGFloat = 18    // hit zone edge length
-    static let fadeHandleEdgeInset: CGFloat = 9   // min offset from clip edge so handle never overlaps trim
+    static let volumeKeyframeSize: CGFloat = 7
+    static let volumeKeyframeHitSize: CGFloat = 14
+    static let volumeFadeHandleEdgeInset: CGFloat = 6
+    static let volumeRubberBandTopDb: Double = 6
+    static let volumeRubberBandBottomDb: Double = -60
+
+    static func audioBodyRect(in clipRect: NSRect) -> NSRect {
+        NSRect(
+            x: clipRect.minX,
+            y: clipRect.minY + labelBarHeight,
+            width: clipRect.width,
+            height: max(0, clipRect.height - labelBarHeight - 1)
+        )
+    }
+
+    /// Y axis is flipped: high dB → smaller Y.
+    static func y(forDb db: Double, in audioBodyRect: NSRect) -> CGFloat {
+        let top = volumeRubberBandTopDb
+        let bottom = volumeRubberBandBottomDb
+        let clamped = min(top, max(bottom, db))
+        let frac = (top - clamped) / (top - bottom)
+        return audioBodyRect.minY + CGFloat(frac) * audioBodyRect.height
+    }
+
+    static func db(forY y: CGFloat, in audioBodyRect: NSRect) -> Double {
+        guard audioBodyRect.height > 0 else { return 0 }
+        let frac = max(0, min(1, Double((y - audioBodyRect.minY) / audioBodyRect.height)))
+        return volumeRubberBandTopDb - frac * (volumeRubberBandTopDb - volumeRubberBandBottomDb)
+    }
+
+    static func fadeHandleRenderX(in clipRect: NSRect, kfOffset: Int, isLeft: Bool, pxPerFrame: CGFloat) -> CGFloat {
+        let actual = clipRect.minX + CGFloat(kfOffset) * pxPerFrame
+        if isLeft {
+            return max(clipRect.minX + volumeFadeHandleEdgeInset, actual)
+        } else {
+            return min(clipRect.maxX - volumeFadeHandleEdgeInset, actual)
+        }
+    }
 
     static func draw(
         _ clip: Clip,
@@ -64,7 +99,7 @@ enum ClipRenderer {
         }
 
         if type == .audio {
-            drawFadeHandles(clip: clip, in: rect, isSelected: isSelected, context: context)
+            drawVolumeRubberBand(clip: clip, in: rect, isSelected: isSelected, context: context)
         }
 
         // Color-coded left edge strip (uses the same source-type as the fill).
@@ -104,9 +139,15 @@ enum ClipRenderer {
 
     // MARK: - Keyframe markers
 
-    /// Yellow diamonds along the bottom edge marking keyframes
+    /// Volume kfs render on the rubber band, not here.
     private static func drawKeyframeMarkers(clip: Clip, in rect: NSRect, context: CGContext) {
-        let frames = clip.allKeyframeFrames
+        var frameSet = Set<Int>()
+        let absStart = clip.startFrame
+        for kf in clip.opacityTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
+        for kf in clip.positionTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
+        for kf in clip.scaleTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
+        for kf in clip.cropTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
+        let frames = frameSet.sorted()
         guard !frames.isEmpty, clip.durationFrames > 0 else { return }
         let pxPerFrame = (rect.width - 2 * Trim.handleWidth) / CGFloat(clip.durationFrames)
         guard pxPerFrame > 0 else { return }
@@ -158,17 +199,9 @@ enum ClipRenderer {
         let color = (type.themeColor.blended(withFraction: 0.3, of: .white) ?? type.themeColor).withAlphaComponent(0.85).cgColor
         context.setFillColor(color)
 
-        let fadeIn = CGFloat(clip.audioFadeInFrames)
-        let fadeOut = CGFloat(clip.audioFadeOutFrames)
         let dur = CGFloat(max(1, clip.durationFrames))
         let frameStep = dur / CGFloat(barCount)
-        let invFadeIn = fadeIn > 0 ? 1 / fadeIn : 0
-        let invFadeOut = fadeOut > 0 ? 1 / fadeOut : 0
         let visCount = visibleSamples.count
-
-        // Samples are dB-normalized over 50 dB, so volume shifts by 20·log10(v)/50 (not multiplies).
-        let volF = CGFloat(clip.volume)
-        let volShift: CGFloat = volF > 0 ? 20 * log10(volF) / 50 : -1
 
         for i in 0..<barCount {
             // Peak-detect (min, since 0=loud) over the bar's range so zero crossings don't flatten loud audio.
@@ -180,44 +213,99 @@ enum ClipRenderer {
                 if s < loudest { loudest = s }
             }
             let posFrames = CGFloat(i) * frameStep
-            let inMul: CGFloat = fadeIn > 0 ? min(1, posFrames * invFadeIn) : 1
-            let outMul: CGFloat = fadeOut > 0 ? min(1, (dur - posFrames) * invFadeOut) : 1
-            let envelope = min(inMul, outMul)
-            let dbAmp = max(0, CGFloat(1 - loudest) + volShift)
-            let amplitude = min(1, dbAmp * envelope)
+            let level = clip.volumeAt(frame: clip.startFrame + Int(posFrames))
+            // Samples are dB-normalized over 50 dB, so volume shifts the dB axis (not multiplies).
+            let dbShift = CGFloat(VolumeScale.dbFromLinear(level)) / 50
+            let dbAmp = max(0, CGFloat(1 - loudest) + dbShift)
+            let amplitude = min(1, dbAmp)
             let barHeight = max(1, amplitude * (drawHeight - 2))
             let barY = drawRect.maxY - barHeight - 1
             context.fill(CGRect(x: drawRect.minX + CGFloat(i), y: barY, width: 1, height: barHeight))
         }
     }
 
-    // MARK: - Fade handles
+    // MARK: - Volume rubber band
 
-    private static func drawFadeHandles(clip: Clip, in rect: NSRect, isSelected: Bool, context: CGContext) {
+    private static func drawVolumeRubberBand(clip: Clip, in rect: NSRect, isSelected: Bool, context: CGContext) {
+        guard let track = clip.volumeTrack, !track.keyframes.isEmpty else { return }
         let pxPerFrame = clip.durationFrames > 0 ? rect.width / CGFloat(clip.durationFrames) : 0
-        let alpha: CGFloat = isSelected ? 0.95 : (clip.audioFadeInFrames > 0 || clip.audioFadeOutFrames > 0 ? 0.75 : 0.0)
-        guard alpha > 0 else { return }
+        guard pxPerFrame > 0 else { return }
 
-        let envTop = rect.minY + labelBarHeight
-        let envBottom = rect.maxY - 1
-        let color = NSColor.white.withAlphaComponent(alpha).cgColor
-        let half = fadeHandleSize / 2
+        let body = audioBodyRect(in: rect)
+        let alpha: CGFloat = isSelected ? 0.95 : 0.75
+        let lineColor = NSColor.white.withAlphaComponent(alpha).cgColor
 
-        for edge in FadeEdge.allCases {
-            let frames = clip[keyPath: edge.fadeKeyPath]
-            let cx = TimelineGeometry.audioFadeHandleX(in: rect, fadeFrames: frames, edge: edge, pxPerFrame: pxPerFrame)
+        let kfs = track.keyframes.filter { $0.frame >= 0 && $0.frame <= clip.durationFrames }
+        guard !kfs.isEmpty else { return }
 
-            if frames > 0 {
-                let cornerX = edge == .left ? rect.minX : rect.maxX
-                context.setStrokeColor(color)
-                context.setLineWidth(1)
-                context.move(to: CGPoint(x: cornerX, y: envBottom))
-                context.addLine(to: CGPoint(x: cx, y: envTop))
-                context.strokePath()
+        let handles = clip.volumeFadeHandleOffsets
+        let renderX: (Int) -> CGFloat = { offset in
+            if offset == handles.left {
+                return fadeHandleRenderX(in: rect, kfOffset: offset, isLeft: true, pxPerFrame: pxPerFrame)
             }
+            if offset == handles.right {
+                return fadeHandleRenderX(in: rect, kfOffset: offset, isLeft: false, pxPerFrame: pxPerFrame)
+            }
+            return rect.minX + CGFloat(offset) * pxPerFrame
+        }
 
-            context.setFillColor(color)
-            context.fill(CGRect(x: cx - half, y: envTop - half, width: fadeHandleSize, height: fadeHandleSize))
+        context.setStrokeColor(lineColor)
+        context.setLineWidth(1.5)
+        context.beginPath()
+        let firstY = y(forDb: kfs[0].value, in: body)
+        context.move(to: CGPoint(x: rect.minX, y: firstY))
+        context.addLine(to: CGPoint(x: renderX(kfs[0].frame), y: firstY))
+
+        for i in 0..<(kfs.count - 1) {
+            let a = kfs[i], b = kfs[i + 1]
+            let aX = renderX(a.frame), bX = renderX(b.frame)
+            let aY = y(forDb: a.value, in: body), bY = y(forDb: b.value, in: body)
+            switch a.interpolationOut {
+            case .linear:
+                context.addLine(to: CGPoint(x: bX, y: bY))
+            case .hold:
+                context.addLine(to: CGPoint(x: bX, y: aY))
+                context.addLine(to: CGPoint(x: bX, y: bY))
+            case .smooth:
+                let steps = 12
+                for s in 1...steps {
+                    let t = Double(s) / Double(steps)
+                    let x = aX + (bX - aX) * CGFloat(t)
+                    let dB = a.value + (b.value - a.value) * smoothstep(t)
+                    context.addLine(to: CGPoint(x: x, y: y(forDb: dB, in: body)))
+                }
+            }
+        }
+        let lastY = y(forDb: kfs.last!.value, in: body)
+        context.addLine(to: CGPoint(x: rect.maxX, y: lastY))
+        context.strokePath()
+
+        guard isSelected else { return }
+
+        let half = volumeKeyframeSize / 2
+        let floorThreshold = volumeRubberBandBottomDb + 0.5
+        context.setFillColor(lineColor)
+        context.setStrokeColor(NSColor.black.withAlphaComponent(0.5).cgColor)
+        context.setLineWidth(0.5)
+        for kf in kfs {
+            let cx = renderX(kf.frame)
+            let cy = y(forDb: kf.value, in: body)
+            let isFadeHandle = kf.frame == handles.left || kf.frame == handles.right
+            let isSilentCorner = (kf.frame == 0 || kf.frame == clip.durationFrames) && kf.value <= floorThreshold
+            if isFadeHandle {
+                let r = CGRect(x: cx - half, y: cy - half, width: volumeKeyframeSize, height: volumeKeyframeSize)
+                context.fill(r)
+                context.stroke(r)
+            } else if !isSilentCorner {
+                let p = CGMutablePath()
+                p.move(to: CGPoint(x: cx, y: cy - half))
+                p.addLine(to: CGPoint(x: cx + half, y: cy))
+                p.addLine(to: CGPoint(x: cx, y: cy + half))
+                p.addLine(to: CGPoint(x: cx - half, y: cy))
+                p.closeSubpath()
+                context.addPath(p)
+                context.drawPath(using: .fillStroke)
+            }
         }
     }
 

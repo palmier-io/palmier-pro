@@ -128,16 +128,30 @@ extension EditorViewModel {
         var left = clip
         left.durationFrames = splitOffset
         left.trimEndFrame = clip.trimEndFrame + rightSource
-        left.audioFadeOutFrames = 0
-        left.audioFadeInFrames = left.clampedFade(left.audioFadeInFrames, edge: .left)
 
         var right = clip
         right.id = UUID().uuidString
         right.startFrame = atFrame
         right.durationFrames = clip.durationFrames - splitOffset
         right.trimStartFrame = clip.trimStartFrame + leftSource
-        right.audioFadeInFrames = 0
-        right.audioFadeOutFrames = right.clampedFade(right.audioFadeOutFrames, edge: .right)
+
+        // Boundary kfs at the cut keep the volume curve continuous across the split.
+        if let track = clip.volumeTrack, track.isActive {
+            let boundaryDb = track.sample(at: splitOffset, fallback: 0)
+            var leftKfs = track.keyframes.filter { $0.frame <= splitOffset }
+            if leftKfs.last?.frame != splitOffset {
+                leftKfs.append(Keyframe(frame: splitOffset, value: boundaryDb))
+            }
+            left.volumeTrack = leftKfs.isEmpty ? nil : KeyframeTrack(keyframes: leftKfs)
+
+            var rightKfs = track.keyframes
+                .filter { $0.frame >= splitOffset }
+                .map { Keyframe(frame: $0.frame - splitOffset, value: $0.value, interpolationOut: $0.interpolationOut) }
+            if rightKfs.first?.frame != 0 {
+                rightKfs.insert(Keyframe(frame: 0, value: boundaryDb), at: 0)
+            }
+            right.volumeTrack = rightKfs.isEmpty ? nil : KeyframeTrack(keyframes: rightKfs)
+        }
 
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = left
         timeline.tracks[loc.trackIndex].clips.append(right)
@@ -228,7 +242,7 @@ extension EditorViewModel {
 
         timeline.tracks[ti].clips[loc.clipIndex].speed = newSpeed
         timeline.tracks[ti].clips[loc.clipIndex].durationFrames = newDuration
-        timeline.tracks[ti].clips[loc.clipIndex].clampFadesToDuration()
+        timeline.tracks[ti].clips[loc.clipIndex].clampVolumeKfsToDuration()
 
         let rippleDelta = (clip.startFrame + newDuration) - oldEnd
         if rippleDelta != 0 {
@@ -601,8 +615,7 @@ extension EditorViewModel {
                     let newTrimEnd = clip.trimEndFrame + sourceDelta
                     mutateClips(ids: [clipId], actionName: "Trim Clip") {
                         $0.trimEndFrame = newTrimEnd
-                        $0.durationFrames = newDuration
-                        $0.clampFadesToDuration()
+                        $0.setDuration(newDuration)
                     }
                 }
 
@@ -610,8 +623,7 @@ extension EditorViewModel {
                 mutateClips(ids: [clipId], actionName: "Trim Clip") {
                     $0.startFrame = newStartFrame
                     $0.trimStartFrame = newTrimStart
-                    $0.durationFrames = newDuration
-                    $0.clampFadesToDuration()
+                    $0.setDuration(newDuration)
                 }
 
             case .split(let clipId, _, _, _, _, _):
