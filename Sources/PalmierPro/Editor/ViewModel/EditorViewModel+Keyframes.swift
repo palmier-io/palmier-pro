@@ -89,6 +89,24 @@ extension EditorViewModel {
         }
     }
 
+    func applyVolume(clipId: String, valueDb: Double) {
+        applyClipProperty(clipId: clipId) { self.writeVolume(into: &$0, valueDb: valueDb) }
+    }
+
+    func commitVolume(clipId: String, valueDb: Double) {
+        commitClipProperty(clipId: clipId) { self.writeVolume(into: &$0, valueDb: valueDb) }
+        undoManager?.setActionName("Change Volume")
+    }
+
+    private func writeVolume(into clip: inout Clip, valueDb: Double) {
+        if clip.volumeTrack?.isActive == true {
+            guard clip.contains(timelineFrame: currentFrame) else { return }
+            clip.upsertKeyframe(in: \.volumeTrack, frame: currentFrame, value: valueDb)
+        } else {
+            clip.volume = VolumeScale.linearFromDb(valueDb)
+        }
+    }
+
     func applyPosition(clipId: String, setX: Double?, setY: Double?) {
         applyClipProperty(clipId: clipId) { self.writePosition(into: &$0, setX: setX, setY: setY) }
     }
