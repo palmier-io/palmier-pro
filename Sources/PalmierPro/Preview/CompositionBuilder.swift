@@ -264,7 +264,7 @@ enum CompositionBuilder {
                 var prevT = aT, prevV = vA
                 for s in 1...smoothSegments {
                     let t = Double(s) / Double(smoothSegments)
-                    let nextT = aT + CMTime(seconds: span.seconds * t, preferredTimescale: span.timescale)
+                    let nextT = aT + CMTime(seconds: span.seconds * t, preferredTimescale: span.timescale * Int32(smoothSegments))
                     let nextV = vA + (vB - vA) * Float(smoothstep(t))
                     if nextT > prevT {
                         params.setVolumeRamp(fromStartVolume: prevV, toEndVolume: nextV, timeRange: CMTimeRange(start: prevT, end: nextT))
@@ -340,7 +340,7 @@ enum CompositionBuilder {
             var prevTransform = clip.transformAt(frame: clip.startFrame + aOff)
             for s in 1...smoothSegments {
                 let t = Double(s) / Double(smoothSegments)
-                let nextT = aT + CMTime(seconds: span.seconds * t, preferredTimescale: span.timescale)
+                let nextT = aT + CMTime(seconds: span.seconds * t, preferredTimescale: span.timescale * Int32(smoothSegments))
                 let offsetAtT = aOff + Int((Double(bOff - aOff) * t).rounded())
                 let nextTransform = clip.transformAt(frame: clip.startFrame + offsetAtT)
                 if nextT > prevT {
@@ -464,7 +464,7 @@ enum CompositionBuilder {
                 for s in 1...smoothSegments {
                     let t = Double(s) / Double(smoothSegments)
                     let nextValue = V.keyframeInterpolate(a.value, b.value, t: smoothstep(t))
-                    let nextT = aT + CMTime(seconds: span.seconds * t, preferredTimescale: span.timescale)
+                    let nextT = aT + CMTime(seconds: span.seconds * t, preferredTimescale: span.timescale * Int32(smoothSegments))
                     if nextT > prevT {
                         ops.append(.ramp(prevValue, nextValue, CMTimeRange(start: prevT, end: nextT)))
                     }

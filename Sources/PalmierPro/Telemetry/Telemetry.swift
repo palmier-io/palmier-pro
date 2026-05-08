@@ -18,6 +18,8 @@ enum Telemetry {
 
     static let enabledForCurrentLaunch: Bool = isEnabled
 
+    nonisolated(unsafe) private static var didStart = false
+
     static func start() {
         guard enabledForCurrentLaunch else { return }
         guard !dsn.isEmpty else { return }
@@ -40,24 +42,25 @@ enum Telemetry {
                 options.releaseName = "palmier-pro@\(version)+\(build)"
             }
         }
+        didStart = true
     }
 
     static func breadcrumb(_ message: String, category: String = "app", level: SentryLevel = .info) {
-        guard enabledForCurrentLaunch else { return }
+        guard didStart else { return }
         let crumb = Breadcrumb(level: level, category: category)
         crumb.message = message
         SentrySDK.addBreadcrumb(crumb)
     }
 
     static func captureMessage(_ message: String, level: SentryLevel = .warning) {
-        guard enabledForCurrentLaunch else { return }
+        guard didStart else { return }
         SentrySDK.capture(message: message) { scope in
             scope.setLevel(level)
         }
     }
 
     static func captureError(_ error: Error) {
-        guard enabledForCurrentLaunch else { return }
+        guard didStart else { return }
         SentrySDK.capture(error: error)
     }
 
@@ -74,7 +77,7 @@ enum Telemetry {
     }
 
     private static func captureLogMessage(_ message: String, level: SentryLevel, category: String) {
-        guard enabledForCurrentLaunch else { return }
+        guard didStart else { return }
         SentrySDK.capture(message: message) { scope in
             scope.setLevel(level)
             scope.setTag(value: category, key: "log_category")
@@ -82,7 +85,7 @@ enum Telemetry {
     }
 
     static func trace<T>(name: String, operation: String = "task", _ work: () throws -> T) rethrows -> T {
-        guard enabledForCurrentLaunch else { return try work() }
+        guard didStart else { return try work() }
         let txn = SentrySDK.startTransaction(name: name, operation: operation)
         do {
             let result = try work()
@@ -95,7 +98,7 @@ enum Telemetry {
     }
 
     static func trace<T>(name: String, operation: String = "task", _ work: () async throws -> T) async rethrows -> T {
-        guard enabledForCurrentLaunch else { return try await work() }
+        guard didStart else { return try await work() }
         let txn = SentrySDK.startTransaction(name: name, operation: operation)
         do {
             let result = try await work()
