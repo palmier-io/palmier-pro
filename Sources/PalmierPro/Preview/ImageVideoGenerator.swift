@@ -24,7 +24,9 @@ enum ImageVideoGenerator {
     ) async throws -> URL {
         let duration = generatedDuration
         let size = clampedForEncoder(size)
-        let filename = "\(mediaRef)_\(Int(size.width))x\(Int(size.height)).mov"
+        let hasAlpha = imageHasAlpha(url: imageURL)
+        let suffix = hasAlpha ? "_a" : "_o"
+        let filename = "\(mediaRef)_\(Int(size.width))x\(Int(size.height))\(suffix).mov"
         let outputURL = cacheDirectory.appendingPathComponent(filename)
 
         if FileManager.default.fileExists(atPath: outputURL.path) {
@@ -36,13 +38,24 @@ enum ImageVideoGenerator {
                 throw ImageVideoError.imageLoadFailed
             }
 
-            let pixelBuffer = try createPixelBuffer(from: nsImage, size: size)
-            try await writeStillVideo(pixelBuffer: pixelBuffer, to: outputURL, size: size, duration: duration)
+            let pixelBuffer = try createPixelBuffer(from: nsImage, size: size, hasAlpha: hasAlpha)
+            try await writeStillVideo(
+                pixelBuffer: pixelBuffer, to: outputURL,
+                size: size, duration: duration, hasAlpha: hasAlpha
+            )
             return outputURL
         } catch {
             Log.preview.error("stillVideo failed file=\(imageURL.lastPathComponent) size=\(Int(size.width))x\(Int(size.height)): \(error.localizedDescription)")
             throw error
         }
+    }
+
+    private static func imageHasAlpha(url: URL) -> Bool {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else {
+            return false
+        }
+        return (props[kCGImagePropertyHasAlpha] as? Bool) ?? false
     }
 
     private static func clampedForEncoder(_ size: CGSize) -> CGSize {
@@ -73,7 +86,7 @@ enum ImageVideoGenerator {
 
     // MARK: - Private
 
-    private static func createPixelBuffer(from image: NSImage, size: CGSize) throws -> CVPixelBuffer {
+    private static func createPixelBuffer(from image: NSImage, size: CGSize, hasAlpha: Bool) throws -> CVPixelBuffer {
         let width = Int(size.width)
         let height = Int(size.height)
 
@@ -82,7 +95,7 @@ enum ImageVideoGenerator {
             kCVPixelBufferCGImageCompatibilityKey as String: true,
             kCVPixelBufferCGBitmapContextCompatibilityKey as String: true,
         ]
-        let status = CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_32ARGB, attrs as CFDictionary, &pixelBuffer)
+        let status = CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_32BGRA, attrs as CFDictionary, &pixelBuffer)
         guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
             throw ImageVideoError.pixelBufferCreationFailed
         }
@@ -97,20 +110,23 @@ enum ImageVideoGenerator {
             bitsPerComponent: 8,
             bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
             space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
+            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
         ) else {
             throw ImageVideoError.pixelBufferCreationFailed
         }
 
-        context.setFillColor(.black)
-        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let fullRect = CGRect(x: 0, y: 0, width: width, height: height)
+        if hasAlpha {
+            context.clear(fullRect)
+        } else {
+            context.setFillColor(.black)
+            context.fill(fullRect)
+        }
 
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             throw ImageVideoError.imageLoadFailed
         }
-
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-
+        context.draw(cgImage, in: fullRect)
         return buffer
     }
 
@@ -118,29 +134,24 @@ enum ImageVideoGenerator {
         pixelBuffer: CVPixelBuffer,
         to outputURL: URL,
         size: CGSize,
-        duration: Double
+        duration: Double,
+        hasAlpha: Bool
     ) async throws {
-
-        let tempURL = outputURL.deletingLastPathComponent()
-            .appendingPathComponent(".writing-" + outputURL.lastPathComponent)
-        try? FileManager.default.removeItem(at: tempURL)
+        let fm = FileManager.default
+        let parentDir = outputURL.deletingLastPathComponent()
+        try? fm.createDirectory(at: parentDir, withIntermediateDirectories: true)
+        let tempURL = parentDir.appendingPathComponent(".writing-\(UUID().uuidString).mov")
+        defer { try? fm.removeItem(at: tempURL) }
 
         let writer = try AVAssetWriter(outputURL: tempURL, fileType: .mov)
-        let videoSettings: [String: Any] = [
-            AVVideoCodecKey: AVVideoCodecType.h264,
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: hasAlpha ? AVVideoCodecType.proRes4444 : AVVideoCodecType.h264,
             AVVideoWidthKey: Int(size.width),
             AVVideoHeightKey: Int(size.height),
-        ]
-        let input = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
-            assetWriterInput: input,
-            sourcePixelBufferAttributes: nil
-        )
-
+        ])
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: nil)
         writer.add(input)
-        guard writer.startWriting() else {
-            throw writer.error ?? ImageVideoError.writeFailed
-        }
+        guard writer.startWriting() else { throw writer.error ?? ImageVideoError.writeFailed }
         writer.startSession(atSourceTime: .zero)
 
         // Two frames span the full still-video duration without a long file.
@@ -159,13 +170,15 @@ enum ImageVideoGenerator {
 
         input.markAsFinished()
         await writer.finishWriting()
+        guard writer.status == .completed else { throw writer.error ?? ImageVideoError.writeFailed }
 
-        guard writer.status == .completed else {
-            throw writer.error ?? ImageVideoError.writeFailed
+        try? fm.createDirectory(at: parentDir, withIntermediateDirectories: true)
+        guard !fm.fileExists(atPath: outputURL.path) else { return }
+        do {
+            try fm.moveItem(at: tempURL, to: outputURL)
+        } catch {
+            guard fm.fileExists(atPath: outputURL.path) else { throw error }
         }
-
-        try? FileManager.default.removeItem(at: outputURL)
-        try FileManager.default.moveItem(at: tempURL, to: outputURL)
     }
 
     enum ImageVideoError: LocalizedError {
