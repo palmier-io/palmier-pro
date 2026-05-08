@@ -48,6 +48,10 @@ struct TitleBarTrailingView: View {
 
     var body: some View {
         HStack(spacing: AppTheme.Spacing.sm) {
+            Spacer(minLength: 0)
+
+            UpdateBadgeView()
+
             ProjectActivityButton()
 
             Button(action: { editor.showHelp = true }) {

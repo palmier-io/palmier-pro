@@ -1,27 +1,44 @@
 import AppKit
 import Sparkle
 
-@MainActor
-final class Updater {
+@MainActor @Observable
+final class Updater: NSObject {
     static let shared = Updater()
 
-    private let controller: SPUStandardUpdaterController?
+    private(set) var updateAvailable = false
+    private(set) var updateVersion: String?
 
-    private init() {
+    private var controller: SPUStandardUpdaterController?
+
+    private override init() {
+        super.init()
         guard Bundle.main.bundleURL.pathExtension == "app",
               Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil
-        else {
-            controller = nil
-            return
-        }
+        else { return }
         controller = SPUStandardUpdaterController(
             startingUpdater: true,
-            updaterDelegate: nil,
+            updaterDelegate: self,
             userDriverDelegate: nil
         )
     }
 
     @objc func checkForUpdates(_ sender: Any?) {
         controller?.checkForUpdates(sender)
+    }
+
+    func dismissUpdate() {
+        updateAvailable = false
+    }
+}
+
+extension Updater: SPUUpdaterDelegate {
+    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        updateAvailable = true
+        updateVersion = item.displayVersionString
+    }
+
+    func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
+        updateAvailable = false
+        updateVersion = nil
     }
 }

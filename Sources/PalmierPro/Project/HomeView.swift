@@ -16,16 +16,12 @@ struct HomeView: View {
     }
 
     private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Palmier Pro")
-                    .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
-                    .foregroundStyle(AppTheme.Text.primaryColor)
+        HStack(spacing: AppTheme.Spacing.md) {
+            Text("Palmier Pro")
+                .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
+                .foregroundStyle(AppTheme.Text.primaryColor)
 
-                Text("Video Editor")
-                    .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-            }
+            UpdateBadgeView()
 
             Spacer()
 
