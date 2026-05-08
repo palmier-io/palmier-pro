@@ -4,7 +4,7 @@ import CoreVideo
 
 enum ImageVideoGenerator {
 
-    private static let cacheDirectory: URL = {
+    static let cacheDirectory: URL = {
         let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("PalmierPro/ImageVideos", isDirectory: true)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -73,6 +73,24 @@ enum ImageVideoGenerator {
         // Some H.264 encoder paths reject odd frame sizes.
         let pixels = Int(value.rounded(.down))
         return CGFloat(max(2, pixels - pixels % 2))
+    }
+
+    static func cacheSize() -> Int64 {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(
+            at: cacheDirectory, includingPropertiesForKeys: [.fileSizeKey]
+        ) else { return 0 }
+        return entries.reduce(0) { sum, url in
+            sum + Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
+    }
+
+    static func clearCache() throws {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: cacheDirectory.path) else { return }
+        for entry in try fm.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: nil) {
+            try? fm.removeItem(at: entry)
+        }
     }
 
     static func imageNativeSize(url: URL) -> CGSize? {

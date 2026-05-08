@@ -15,6 +15,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
                     NotificationsPane()
                     PrivacyPane()
+                    StoragePane()
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
