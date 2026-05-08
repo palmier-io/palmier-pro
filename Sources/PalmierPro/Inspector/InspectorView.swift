@@ -330,7 +330,13 @@ struct InspectorView: View {
         let single = audios.count == 1 ? audios.first : nil
         animatableRow(label: "Volume", clipId: single?.id, property: .volume) {
             ScrubbableNumberField(
-                value: sharedClipValue(audios) { VolumeScale.dbFromLinear($0.volume) },
+                value: sharedClipValue(audios) { clip in
+                    if let track = clip.volumeTrack, track.isActive,
+                       clip.contains(timelineFrame: editor.currentFrame) {
+                        return track.sample(at: editor.currentFrame - clip.startFrame, fallback: 0)
+                    }
+                    return VolumeScale.dbFromLinear(clip.volume)
+                },
                 range: VolumeScale.floorDb...VolumeScale.ceilingDb,
                 format: "%.1f",
                 valueSuffix: " dB",
@@ -338,13 +344,11 @@ struct InspectorView: View {
                 fieldWidth: 56,
                 displayTextOverride: { db in db <= VolumeScale.floorDb ? "-∞ dB" : nil },
                 onChanged: { db in
-                    let lin = VolumeScale.linearFromDb(db)
-                    for c in audios { editor.applyClipProperty(clipId: c.id) { $0.volume = lin } }
+                    for c in audios { editor.applyVolume(clipId: c.id, valueDb: db) }
                 }
             ) { db in
-                let lin = VolumeScale.linearFromDb(db)
                 commitToClips(audios, actionName: "Change Volume") { c in
-                    editor.commitClipProperty(clipId: c.id) { $0.volume = lin }
+                    editor.commitVolume(clipId: c.id, valueDb: db)
                 }
             }
         }
