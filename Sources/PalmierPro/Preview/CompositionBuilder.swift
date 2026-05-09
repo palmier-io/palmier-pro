@@ -215,6 +215,9 @@ enum CompositionBuilder {
         vcConfig.renderSize = renderSize
         vcConfig.frameDuration = CMTime(value: 1, timescale: timescale)
         vcConfig.instructions = [instruction]
+        vcConfig.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
+        vcConfig.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
+        vcConfig.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
 
         return (audioMix, AVVideoComposition(configuration: vcConfig))
     }
