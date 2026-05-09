@@ -48,6 +48,14 @@ struct AIEditTab: View {
                     title: "Rerun",
                     description: "Regenerate with the same parameters"
                 )
+                if asset.type == .image {
+                    actionCard(
+                        action: .createVideo,
+                        icon: "video.badge.plus",
+                        title: "Create Video",
+                        description: "Use this image to start a video generation"
+                    )
+                }
             }
             .padding(AppTheme.Spacing.md)
         }
@@ -194,6 +202,15 @@ struct AIEditTab: View {
                     .fixedSize()
                     .controlSize(.small)
                     .disabled(!isEnabled)
+                } else if action == .createVideo {
+                    Menu(title) {
+                        Button("Set as first frame") { sendToVideo(asReference: false) }
+                        Button("Set as reference") { sendToVideo(asReference: true) }
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .controlSize(.small)
+                    .disabled(!isEnabled)
                 } else {
                     Button(title) {
                         present(action)
@@ -219,9 +236,15 @@ struct AIEditTab: View {
         .help(disabledReason ?? "")
     }
 
+    private func sendToVideo(asReference: Bool) {
+        editor.pendingVideoFirstFrame = asReference ? nil : asset
+        editor.pendingVideoReference = asReference ? asset : nil
+        editor.showGenerationPanel = true
+    }
+
     private func present(_ action: EditAction) {
         switch action {
-        case .upscale: break // handled via menu
+        case .upscale, .createVideo: break // handled via menu
         case .edit:
             editor.pendingRerun = nil
             editor.pendingEditSource = asset

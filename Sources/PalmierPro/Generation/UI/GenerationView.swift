@@ -419,9 +419,13 @@ struct GenerationView: View {
         .onAppear {
             consumePendingEditSource()
             consumePendingRerun()
+            consumePendingVideoFirstFrame()
+            consumePendingVideoReference()
         }
         .onChange(of: editor.pendingEditSource?.id) { _, _ in consumePendingEditSource() }
         .onChange(of: editor.pendingRerun?.id) { _, _ in consumePendingRerun() }
+        .onChange(of: editor.pendingVideoFirstFrame?.id) { _, _ in consumePendingVideoFirstFrame() }
+        .onChange(of: editor.pendingVideoReference?.id) { _, _ in consumePendingVideoReference() }
         .onChange(of: selectedType) { _, newValue in
             guard !isPopulatingPanel else { return }
             resetSettings()
@@ -1596,6 +1600,30 @@ struct GenerationView: View {
         synthetic.imageURLAssetIds = [source.id]
         populatePanel(asset: source, stored: synthetic, defaultName: "Edited \(source.name)")
         editor.pendingEditSource = nil
+    }
+
+    private func consumePendingVideoFirstFrame() { consumePendingVideoSeed(asReference: false) }
+    private func consumePendingVideoReference() { consumePendingVideoSeed(asReference: true) }
+
+    private func consumePendingVideoSeed(asReference: Bool) {
+        let asset = asReference ? editor.pendingVideoReference : editor.pendingVideoFirstFrame
+        guard let asset, asset.type == .image else {
+            if asReference { editor.pendingVideoReference = nil } else { editor.pendingVideoFirstFrame = nil }
+            return
+        }
+        let model = VideoModelConfig.allModels.first {
+            !$0.requiresSourceVideo && (asReference ? $0.supportsReferences : $0.supportsFirstFrame)
+        } ?? VideoModelConfig.allModels[0]
+        var synthetic = GenerationInput(
+            prompt: "", model: model.id, duration: 0, aspectRatio: "", resolution: nil
+        )
+        if asReference {
+            synthetic.referenceImageAssetIds = [asset.id]
+        } else {
+            synthetic.imageURLAssetIds = [asset.id]
+        }
+        populatePanel(asset: asset, stored: synthetic, defaultName: "Video from \(asset.name)")
+        if asReference { editor.pendingVideoReference = nil } else { editor.pendingVideoFirstFrame = nil }
     }
 
     private func populatePanel(asset: MediaAsset, stored: GenerationInput, defaultName: String?) {

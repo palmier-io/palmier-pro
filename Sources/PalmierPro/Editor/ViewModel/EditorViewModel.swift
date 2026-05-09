@@ -62,6 +62,8 @@ final class EditorViewModel {
     var pendingEditReplacementClipId: String?
     var pendingEditTrimmedSource: TrimmedSource?
     var pendingRerun: MediaAsset?
+    var pendingVideoFirstFrame: MediaAsset?
+    var pendingVideoReference: MediaAsset?
     /// Clip ids currently awaiting an AI-generated replacement.
     var pendingReplacements: Set<String> = []
     var showHelp: Bool = false

@@ -4,6 +4,7 @@ enum EditAction {
     case upscale
     case edit
     case rerun
+    case createVideo
 
     static let editMaxDurationSeconds: Double = 10.0
 
@@ -46,6 +47,15 @@ enum EditAction {
                 return .disabled(reason: "Edit doesn't support audio")
             case .text:
                 return .disabled(reason: "Edit doesn't support text")
+            }
+            if asset.isGenerating {
+                return .disabled(reason: "Generation in progress")
+            }
+            return .available
+
+        case .createVideo:
+            guard asset.type == .image else {
+                return .disabled(reason: "Create Video only works on images")
             }
             if asset.isGenerating {
                 return .disabled(reason: "Generation in progress")
