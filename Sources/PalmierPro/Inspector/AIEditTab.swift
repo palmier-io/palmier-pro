@@ -358,9 +358,13 @@ struct AIEditTab: View {
             if let r = gen.resolution {
                 rerunRow("rectangle.split.3x3", label: "Resolution", value: r)
             }
-            let refCount = gen.imageURLs?.count ?? 0
-            if refCount > 0 {
-                rerunRow("photo.on.rectangle", label: "References", value: "\(refCount)")
+            if GenerationReferencesStrip.hasResolvableReferences(gen, in: editor.mediaAssets) {
+                GenerationReferencesStrip(generationInput: gen)
+            } else {
+                let refCount = gen.imageURLs?.count ?? 0
+                if refCount > 0 {
+                    rerunRow("photo.on.rectangle", label: "References", value: "\(refCount)")
+                }
             }
             if !gen.prompt.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
