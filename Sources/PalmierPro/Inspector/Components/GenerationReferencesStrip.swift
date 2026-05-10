@@ -9,32 +9,33 @@ struct GenerationReferencesStrip: View {
         if !slots.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: AppTheme.Spacing.sm) {
-                    ForEach(Array(slots.enumerated()), id: \.offset) { _, slot in
-                        thumbnail(label: slot.0, asset: slot.1)
+                    ForEach(slots.indices, id: \.self) { i in
+                        thumbnail(label: slots[i].0, asset: slots[i].1)
                     }
                 }
             }
         }
     }
 
-    /// Returns true if any reference asset can be resolved against `assets`.
     static func hasResolvableReferences(_ gen: GenerationInput, in assets: [MediaAsset]) -> Bool {
         !slots(for: gen, in: assets).isEmpty
     }
 
-    private static func slots(for gen: GenerationInput, in assets: [MediaAsset]) -> [(String, MediaAsset)] {
-        let lookup: (String) -> MediaAsset? = { id in assets.first(where: { $0.id == id }) }
-        let primaryLabels = primaryLabels(for: gen)
-        let groups: [([String]?, (Int, Int) -> String)] = [
-            (gen.imageURLAssetIds,       { i, _ in primaryLabels[safe: i] ?? "Reference" }),
-            (gen.referenceImageAssetIds, numbered("Image Ref")),
-            (gen.referenceVideoAssetIds, numbered("Video Ref")),
-            (gen.referenceAudioAssetIds, numbered("Audio Ref")),
+    static func slots(for gen: GenerationInput, in assets: [MediaAsset]) -> [(String, MediaAsset)] {
+        let byId = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
+        let primary = primaryLabels(for: gen)
+        let groups: [(ids: [String]?, base: String, primary: [String])] = [
+            (gen.imageURLAssetIds,       "Reference", primary),
+            (gen.referenceImageAssetIds, "Image Ref", []),
+            (gen.referenceVideoAssetIds, "Video Ref", []),
+            (gen.referenceAudioAssetIds, "Audio Ref", []),
         ]
-        return groups.flatMap { ids, label in
+        return groups.flatMap { ids, base, primary -> [(String, MediaAsset)] in
             let ids = ids ?? []
             return ids.enumerated().compactMap { i, id in
-                lookup(id).map { (label(i, ids.count), $0) }
+                guard let asset = byId[id] else { return nil }
+                if i < primary.count { return (primary[i], asset) }
+                return (ids.count > 1 ? "\(base) \(i + 1)" : base, asset)
             }
         }
     }
@@ -44,10 +45,6 @@ struct GenerationReferencesStrip: View {
         if m.requiresSourceVideo { return m.supportsReferences ? ["Source", "Reference"] : ["Source"] }
         if m.supportsFirstFrame  { return m.supportsLastFrame  ? ["First Frame", "Last Frame"] : ["First Frame"] }
         return []
-    }
-
-    private static func numbered(_ base: String) -> (Int, Int) -> String {
-        { i, total in total > 1 ? "\(base) \(i + 1)" : base }
     }
 
     private func thumbnail(label: String, asset: MediaAsset) -> some View {
@@ -79,11 +76,5 @@ struct GenerationReferencesStrip: View {
             editor.openPreviewTab(for: asset)
             editor.mediaPanelRevealAssetId = asset.id
         }
-    }
-}
-
-private extension Array {
-    subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
     }
 }
