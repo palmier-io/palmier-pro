@@ -18,9 +18,9 @@ final class FirstOnlyFlag {
 final class GenerationService {
     static let subscribeTimeoutSeconds: Int = 1800
 
-    private static let credentialsFilename = "fal-credentials"
+    private static let credentialsAccount = "FAL_API_KEY"
 
-    private(set) var apiKey: String = FileCredentialStore.load(filename: credentialsFilename) ?? ""
+    private(set) var apiKey: String = KeychainCredentialStore.load(account: credentialsAccount) ?? ""
 
     var hasApiKey: Bool { !apiKey.isEmpty }
 
@@ -30,12 +30,12 @@ final class GenerationService {
     }
 
     func setApiKey(_ key: String) {
-        FileCredentialStore.save(key, filename: Self.credentialsFilename)
+        KeychainCredentialStore.save(key, account: Self.credentialsAccount)
         apiKey = key
     }
 
     func removeApiKey() {
-        FileCredentialStore.delete(filename: Self.credentialsFilename)
+        KeychainCredentialStore.delete(account: Self.credentialsAccount)
         apiKey = ""
     }
 
