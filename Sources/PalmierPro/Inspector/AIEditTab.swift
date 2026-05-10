@@ -237,20 +237,20 @@ struct AIEditTab: View {
     }
 
     private func sendToVideo(asReference: Bool) {
-        editor.pendingVideoFirstFrame = asReference ? nil : asset
-        editor.pendingVideoReference = asReference ? asset : nil
-        editor.showGenerationPanel = true
+        guard let model = VideoModelConfig.allModels.first(where: {
+            !$0.requiresSourceVideo && (asReference ? $0.supportsReferences : $0.supportsFirstFrame)
+        }) else { return }
+        var stored = GenerationInput(prompt: "", model: model.id, duration: 0, aspectRatio: "", resolution: nil)
+        if asReference { stored.referenceImageAssetIds = [asset.id] } else { stored.imageURLAssetIds = [asset.id] }
+        seedPanel(stored: stored, defaultName: "Video from \(asset.name)", trimmed: nil)
     }
 
     private func present(_ action: EditAction) {
         switch action {
         case .upscale, .createVideo: break // handled via menu
         case .edit:
-            editor.pendingRerun = nil
-            editor.pendingEditSource = asset
-            editor.pendingEditReplacementClipId = (shouldReplace ? clipId : nil)
-            editor.pendingEditTrimmedSource = trimmedSourceIfEnabled()
-            editor.showGenerationPanel = true
+            guard let stored = editStoredInput() else { return }
+            seedPanel(stored: stored, defaultName: "Edited \(asset.name)", trimmed: trimmedSourceIfEnabled())
         case .rerun:
             let modelId = asset.generationInput?.model ?? ""
             if UpscaleModelConfig.allIds.contains(modelId) {
@@ -265,14 +265,33 @@ struct AIEditTab: View {
                     unmarkReplacementPendingIfNeeded()
                     rerunError = error.localizedDescription
                 }
-            } else {
-                editor.pendingEditSource = nil
-                editor.pendingEditTrimmedSource = nil
-                editor.pendingRerun = asset
-                editor.pendingEditReplacementClipId = (shouldReplace ? clipId : nil)
-                editor.showGenerationPanel = true
+            } else if let stored = asset.generationInput {
+                seedPanel(stored: stored, defaultName: nil, trimmed: nil)
             }
         }
+    }
+
+    private func editStoredInput() -> GenerationInput? {
+        let modelId: String
+        switch asset.type {
+        case .video:
+            guard let m = VideoModelConfig.allModels.first(where: { $0.requiresSourceVideo }) else { return nil }
+            modelId = m.id
+        case .image:
+            modelId = ImageModelConfig.nanoBananaPro.id
+        case .audio, .text:
+            return nil
+        }
+        var stored = GenerationInput(prompt: "", model: modelId, duration: 0, aspectRatio: "", resolution: nil)
+        stored.imageURLAssetIds = [asset.id]
+        return stored
+    }
+
+    private func seedPanel(stored: GenerationInput, defaultName: String?, trimmed: TrimmedSource?) {
+        editor.pendingEditReplacementClipId = (shouldReplace ? clipId : nil)
+        editor.pendingEditTrimmedSource = trimmed
+        editor.pendingPanelSeed = PendingPanelSeed(asset: asset, stored: stored, defaultName: defaultName)
+        editor.showGenerationPanel = true
     }
 
     private func upscaleLabel(for model: UpscaleModelConfig) -> String {
