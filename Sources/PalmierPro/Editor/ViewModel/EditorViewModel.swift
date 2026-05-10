@@ -7,6 +7,12 @@ final class PreviewPlayheadState {
     var sourceFrame: Int = 0
 }
 
+struct PendingPanelSeed {
+    let asset: MediaAsset
+    let stored: GenerationInput
+    let defaultName: String?
+}
+
 @Observable
 @MainActor
 final class EditorViewModel {
@@ -58,10 +64,9 @@ final class EditorViewModel {
     var showExportDialog: Bool = false
     var showGenerationPanel: Bool = false
     /// AIEditTab input consumed by GenerationView.
-    var pendingEditSource: MediaAsset?
+    var pendingPanelSeed: PendingPanelSeed?
     var pendingEditReplacementClipId: String?
     var pendingEditTrimmedSource: TrimmedSource?
-    var pendingRerun: MediaAsset?
     /// Clip ids currently awaiting an AI-generated replacement.
     var pendingReplacements: Set<String> = []
     var showHelp: Bool = false

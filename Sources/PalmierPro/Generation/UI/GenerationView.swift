@@ -317,7 +317,7 @@ struct GenerationView: View {
                 Button {
                     editor.pendingEditReplacementClipId = nil
                     editor.pendingEditTrimmedSource = nil
-                    editor.pendingRerun = nil
+                    editor.pendingPanelSeed = nil
                     editFolderId = nil
                     editor.showGenerationPanel = false
                 } label: {
@@ -416,12 +416,8 @@ struct GenerationView: View {
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.lg))
         .padding(AppTheme.Spacing.sm)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { panelWidth = $0 }
-        .onAppear {
-            consumePendingEditSource()
-            consumePendingRerun()
-        }
-        .onChange(of: editor.pendingEditSource?.id) { _, _ in consumePendingEditSource() }
-        .onChange(of: editor.pendingRerun?.id) { _, _ in consumePendingRerun() }
+        .onAppear { consumePendingPanelSeed() }
+        .onChange(of: editor.pendingPanelSeed?.asset.id) { _, _ in consumePendingPanelSeed() }
         .onChange(of: selectedType) { _, newValue in
             guard !isPopulatingPanel else { return }
             resetSettings()
@@ -1563,39 +1559,10 @@ struct GenerationView: View {
         sourceVideo = nil
     }
 
-    private func consumePendingRerun() {
-        guard let asset = editor.pendingRerun else { return }
-        guard let stored = asset.generationInput else {
-            editor.pendingRerun = nil
-            return
-        }
-        populatePanel(asset: asset, stored: stored, defaultName: nil)
-        editor.pendingRerun = nil
-    }
-
-    private func consumePendingEditSource() {
-        guard let source = editor.pendingEditSource else { return }
-        let modelId: String
-        switch source.type {
-        case .video:
-            guard let m = VideoModelConfig.allModels.first(where: { $0.requiresSourceVideo }) else {
-                editor.pendingEditSource = nil
-                return
-            }
-            modelId = m.id
-        case .image:
-            modelId = ImageModelConfig.nanoBananaPro.id
-        case .audio, .text:
-            editor.pendingEditSource = nil
-            editFolderId = nil
-            return
-        }
-        var synthetic = GenerationInput(
-            prompt: "", model: modelId, duration: 0, aspectRatio: "", resolution: nil
-        )
-        synthetic.imageURLAssetIds = [source.id]
-        populatePanel(asset: source, stored: synthetic, defaultName: "Edited \(source.name)")
-        editor.pendingEditSource = nil
+    private func consumePendingPanelSeed() {
+        guard let seed = editor.pendingPanelSeed else { return }
+        populatePanel(asset: seed.asset, stored: seed.stored, defaultName: seed.defaultName)
+        editor.pendingPanelSeed = nil
     }
 
     private func populatePanel(asset: MediaAsset, stored: GenerationInput, defaultName: String?) {

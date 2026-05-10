@@ -746,6 +746,8 @@ struct InspectorView: View {
                                 metadataRow("clock", label: "Duration", value: "\(gen.duration)s")
                             }
 
+                            GenerationReferencesStrip(generationInput: gen)
+
                             if !gen.prompt.isEmpty {
                                 VStack(alignment: .leading, spacing: 2) {
                                     HStack(spacing: AppTheme.Spacing.xs) {
