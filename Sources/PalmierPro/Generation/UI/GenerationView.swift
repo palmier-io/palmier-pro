@@ -70,9 +70,26 @@ struct GenerationView: View {
 
     private var maxPanelHeight: Double { containerHeight * 0.85 }
 
+    private var requiredHeight: Double {
+        var h: Double = 245
+        if selectedType == .video && videoModel.requiresSourceVideo {
+            h += 90
+        } else if selectedType == .video {
+            if videoModel.framesAndReferencesExclusive { h += 30 }
+            if showsFrameStrip { h += 88 }
+            if showsRefSections { h += 84 }
+        } else if selectedType == .image && imageModel.supportsImageReference {
+            h += 84
+        }
+        if selectedType == .audio && audioModel.supportsLyrics { h += 60 }
+        if selectedType == .audio && audioModel.supportsStyleInstructions { h += 36 }
+        return h
+    }
+
     private func clampHeight(_ value: Double) -> Double {
         let upper = maxPanelHeight
-        return min(max(value, min(Self.minPanelHeight, upper)), upper)
+        let lower = min(max(Self.minPanelHeight, requiredHeight), upper)
+        return min(max(value, lower), upper)
     }
 
     private var clampedPanelHeight: Double { clampHeight(liveHeight ?? panelHeight) }
@@ -1642,6 +1659,8 @@ struct GenerationView: View {
             assetName = defaultName
         }
         editFolderId = asset.folderId
+
+        resetSettings()
     }
 
     private func resetAudioState() {
