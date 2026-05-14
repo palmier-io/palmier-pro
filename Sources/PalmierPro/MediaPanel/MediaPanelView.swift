@@ -80,7 +80,7 @@ struct MediaPanelView: View {
                     return true
                 }
                 .overlay {
-                    if isDropTargeted { dropHighlight }
+                    if isDropTargeted { dropHighlight.allowsHitTesting(false) }
                 }
             }
 
