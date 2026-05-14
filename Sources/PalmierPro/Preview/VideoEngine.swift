@@ -196,10 +196,9 @@ final class VideoEngine {
         }
 
         textController.textRoot.isHidden = false
-        let canvas = CGSize(width: editor.timeline.width, height: editor.timeline.height)
         let videoRect = previewView.playerLayer.videoRect
         let resolvedRect = videoRect.isEmpty ? previewView.bounds : videoRect
-        textController.sync(timeline: editor.timeline, canvasSize: canvas, videoRect: resolvedRect)
+        textController.sync(timeline: editor.timeline, videoRect: resolvedRect)
         textController.tick(editor.currentFrame)
     }
 

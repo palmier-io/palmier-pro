@@ -16,7 +16,7 @@ final class TextLayerController {
 
     private var clips: [Clip] = []
 
-    func sync(timeline: Timeline, canvasSize: CGSize, videoRect: CGRect) {
+    func sync(timeline: Timeline, videoRect: CGRect) {
         textRoot.frame = videoRect
         let visible = TextLayerController.visibleTextClips(in: timeline)
 
@@ -39,7 +39,7 @@ final class TextLayerController {
         let updated = textRoot.sublayers ?? []
         for (clip, sublayer) in zip(visible, updated) {
             guard let layer = sublayer as? CATextLayer else { continue }
-            TextLayerController.applyStyle(to: layer, clip: clip, containerSize: videoRect.size, canvasSize: canvasSize)
+            TextLayerController.applyStyle(to: layer, clip: clip, containerSize: videoRect.size)
         }
 
         CATransaction.commit()
@@ -68,7 +68,6 @@ final class TextLayerController {
         fps: Int,
         renderSize: CGSize
     ) -> (parent: CALayer, videoLayer: CALayer) {
-        let logicalCanvas = CGSize(width: timeline.width, height: timeline.height)
         let parent = CALayer()
         parent.frame = CGRect(origin: .zero, size: renderSize)
         parent.isGeometryFlipped = true
@@ -83,7 +82,7 @@ final class TextLayerController {
         let totalSeconds = max(0.001, Double(max(1, timeline.totalFrames)) / fpsD)
         for clip in visibleTextClips(in: timeline) {
             let layer = makeTextLayer()
-            applyStyle(to: layer, clip: clip, containerSize: renderSize, canvasSize: logicalCanvas)
+            applyStyle(to: layer, clip: clip, containerSize: renderSize)
             applyOpacityAnimation(to: layer, clip: clip, fps: fps, totalSeconds: totalSeconds)
             parent.addSublayer(layer)
         }
@@ -100,7 +99,7 @@ final class TextLayerController {
         host.isGeometryFlipped = true
         for clip in visibleTextClips(in: timeline) {
             let layer = makeTextLayer()
-            applyStyle(to: layer, clip: clip, containerSize: canvasSize, canvasSize: canvasSize)
+            applyStyle(to: layer, clip: clip, containerSize: canvasSize)
             let visible = frame >= clip.startFrame && frame < clip.endFrame
             layer.opacity = visible ? Float(clip.opacity) : 0
             host.addSublayer(layer)
@@ -138,12 +137,12 @@ final class TextLayerController {
         return layer
     }
 
-    private static func applyStyle(to layer: CATextLayer, clip: Clip, containerSize: CGSize, canvasSize: CGSize) {
+    private static let referenceCanvasHeight: CGFloat = 1080
+
+    private static func applyStyle(to layer: CATextLayer, clip: Clip, containerSize: CGSize) {
         let style = clip.textStyle ?? TextStyle()
         let content = clip.textContent ?? ""
-        let scaleX = containerSize.width / max(1, canvasSize.width)
-        let scaleY = containerSize.height / max(1, canvasSize.height)
-        let minScale = min(scaleX, scaleY)
+        let scale = containerSize.height / referenceCanvasHeight
 
         let tl = clip.transform.topLeft
         layer.frame = CGRect(
@@ -153,7 +152,7 @@ final class TextLayerController {
             height: clip.transform.height * containerSize.height
         )
 
-        let fontSize = CGFloat(style.fontSize * style.fontScale) * minScale
+        let fontSize = CGFloat(style.fontSize * style.fontScale) * scale
         layer.string = NSAttributedString(
             string: content,
             attributes: style.attributes(size: fontSize)
@@ -164,10 +163,10 @@ final class TextLayerController {
             layer.shadowColor = style.shadow.color.nsColor.cgColor
             layer.shadowOpacity = 1
             layer.shadowOffset = CGSize(
-                width: style.shadow.offsetX * minScale,
-                height: style.shadow.offsetY * minScale
+                width: style.shadow.offsetX * scale,
+                height: style.shadow.offsetY * scale
             )
-            layer.shadowRadius = max(0, CGFloat(style.shadow.blur) * minScale)
+            layer.shadowRadius = max(0, CGFloat(style.shadow.blur) * scale)
         } else {
             layer.shadowOpacity = 0
             layer.shadowRadius = 0
