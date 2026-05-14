@@ -27,15 +27,9 @@ final class VideoEngine {
     private var interactiveThrottleTask: Task<Void, Never>?
     private var lastInteractiveDispatchTime: TimeInterval = 0
 
-    private var statusObservation: NSKeyValueObservation?
-    private var fallbackTimer: Timer?
-
     init(editor: EditorViewModel) {
         self.editor = editor
         setupTimeObserver()
-        statusObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
-            Task { @MainActor in self?.syncFallbackTimer() }
-        }
     }
 
     func teardown() {
@@ -44,10 +38,6 @@ final class VideoEngine {
         invalidateSeekState()
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         timeObserver = nil
-        statusObservation?.invalidate()
-        statusObservation = nil
-        fallbackTimer?.invalidate()
-        fallbackTimer = nil
     }
 
     // MARK: - Playback
@@ -64,7 +54,6 @@ final class VideoEngine {
     func pause() {
         editor?.isPlaying = false
         player.pause()
-        syncFallbackTimer()
     }
 
     func resumePlayback() {
@@ -149,7 +138,8 @@ final class VideoEngine {
                 result = try await CompositionBuilder.build(
                     timeline: editor.timeline,
                     resolveURL: { resolver.resolveURL(for: $0) },
-                    resolveSourceSize: { assetSizes[$0] }
+                    resolveSourceSize: { assetSizes[$0] },
+                    renderSize: CGSize(width: editor.timeline.width, height: editor.timeline.height)
                 )
             } catch {
                 if !Task.isCancelled {
@@ -189,7 +179,8 @@ final class VideoEngine {
             timeline: editor.timeline,
             trackMappings: trackMappings,
             clipNaturalSizes: clipNaturalSizes,
-            compositionDuration: compositionDuration
+            compositionDuration: compositionDuration,
+            renderSize: CGSize(width: editor.timeline.width, height: editor.timeline.height)
         )
         currentItem.audioMix = audioMix
         currentItem.videoComposition = videoComposition
@@ -297,35 +288,4 @@ final class VideoEngine {
     }
 
     private static let interactiveSeekInterval: TimeInterval = 1.0 / 30.0
-
-    // AVPlayer pauses when it runs out of actual media samples
-    // so need to manually advance currentFrame for text-only tails.
-    private func syncFallbackTimer() {
-        guard let editor,
-              editor.isPlaying,
-              editor.activePreviewTab == .timeline,
-              player.timeControlStatus == .paused,
-              editor.currentFrame < editor.timeline.totalFrames
-        else {
-            fallbackTimer?.invalidate()
-            fallbackTimer = nil
-            return
-        }
-        guard fallbackTimer == nil else { return }
-        let interval = 1.0 / Double(max(1, editor.timeline.fps))
-        fallbackTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, let editor = self.editor, editor.isPlaying else { return }
-                let next = editor.currentFrame + 1
-                if next >= editor.timeline.totalFrames {
-                    editor.currentFrame = editor.timeline.totalFrames
-                    self.textController.tick(editor.currentFrame)
-                    self.pause()
-                } else {
-                    editor.currentFrame = next
-                    self.textController.tick(next)
-                }
-            }
-        }
-    }
 }

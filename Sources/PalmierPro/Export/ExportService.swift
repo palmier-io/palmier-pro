@@ -28,12 +28,32 @@ enum ExportResolution: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    /// Approximate bitrate in bytes per second for file size estimation
-    var estimatedBytesPerSecond: Int {
+    var shortSidePixels: Int {
         switch self {
-        case .r720p: 625_000       // ~5 Mbps
-        case .r1080p: 1_250_000    // ~10 Mbps
-        case .r4k: 6_250_000       // ~50 Mbps
+        case .r720p: 720
+        case .r1080p: 1080
+        case .r4k: 2160
+        }
+    }
+
+    func renderSize(for canvas: CGSize) -> CGSize {
+        let canvasShort = min(canvas.width, canvas.height)
+        guard canvasShort > 0 else { return canvas }
+        let scale = Double(shortSidePixels) / Double(canvasShort)
+        let w = (Int((canvas.width * scale).rounded()) / 2) * 2
+        let h = (Int((canvas.height * scale).rounded()) / 2) * 2
+        return CGSize(width: max(2, w), height: max(2, h))
+    }
+}
+
+enum ExportError: LocalizedError {
+    case unsupportedPreset
+    case invalidFormat
+
+    var errorDescription: String? {
+        switch self {
+        case .unsupportedPreset: "Export preset not supported on this system"
+        case .invalidFormat: "Invalid export format"
         }
     }
 }
@@ -63,47 +83,15 @@ final class ExportService {
         error = nil
 
         do {
-            let result = try await CompositionBuilder.build(
-                timeline: timeline,
-                resolveURL: { resolver.resolveURL(for: $0) }
+            let session = try await makeExportSession(
+                timeline: timeline, resolver: resolver,
+                format: format, resolution: resolution
             )
+            guard let fileType = format.utType else { throw ExportError.invalidFormat }
 
             // AVAssetExportSession fails if the file already exists
             try? FileManager.default.removeItem(at: outputURL)
 
-            let presetName = exportPresetName(format: format, resolution: resolution)
-            guard let session = AVAssetExportSession(asset: result.composition, presetName: presetName) else {
-                error = "Export preset not supported on this system"
-                isExporting = false
-                return
-            }
-
-            guard let fileType = format.utType else {
-                error = "Invalid export format"
-                isExporting = false
-                return
-            }
-
-            session.audioMix = result.audioMix
-
-            // Bake text clips into the export via AVVideoCompositionCoreAnimationTool.
-            // Preview uses AVSynchronizedLayer for the same layer tree; these
-            // paths cannot share a composition because AVPlayer rejects any
-            // videoComposition with an animationTool set.
-            let canvas = CGSize(width: timeline.width, height: timeline.height)
-            let (parent, videoLayer) = TextLayerController.buildForExport(
-                timeline: timeline,
-                fps: timeline.fps,
-                canvasSize: canvas
-            )
-            let mutableVC = result.videoComposition.mutableCopy() as! AVMutableVideoComposition
-            mutableVC.animationTool = AVVideoCompositionCoreAnimationTool(
-                postProcessingAsVideoLayer: videoLayer,
-                in: parent
-            )
-            session.videoComposition = mutableVC
-
-            // Poll progress periodically
             nonisolated(unsafe) let unsafeSession = session
             let progressTask = Task { @MainActor in
                 while !Task.isCancelled {
@@ -131,10 +119,46 @@ final class ExportService {
             progressTask.cancel()
         } catch {
             self.error = error.localizedDescription
-            Log.export.error("composition build failed: \(error.localizedDescription)")
+            Log.export.error("export setup failed: \(error.localizedDescription)")
         }
 
         isExporting = false
+    }
+
+    private func makeExportSession(
+        timeline: Timeline,
+        resolver: MediaResolver,
+        format: ExportFormat,
+        resolution: ExportResolution
+    ) async throws -> AVAssetExportSession {
+        let timelineCanvas = CGSize(width: timeline.width, height: timeline.height)
+        let renderSize = resolution.renderSize(for: timelineCanvas)
+
+        let result = try await CompositionBuilder.build(
+            timeline: timeline,
+            resolveURL: { resolver.resolveURL(for: $0) },
+            renderSize: renderSize
+        )
+
+        let presetName = exportPresetName(format: format, resolution: resolution)
+        guard let session = AVAssetExportSession(asset: result.composition, presetName: presetName) else {
+            throw ExportError.unsupportedPreset
+        }
+        session.audioMix = result.audioMix
+
+        // Bake text clips into the export via AVVideoCompositionCoreAnimationTool
+        let (parent, videoLayer) = TextLayerController.buildForExport(
+            timeline: timeline,
+            fps: timeline.fps,
+            renderSize: renderSize
+        )
+        let mutableVC = result.videoComposition.mutableCopy() as! AVMutableVideoComposition
+        mutableVC.animationTool = AVVideoCompositionCoreAnimationTool(
+            postProcessingAsVideoLayer: videoLayer,
+            in: parent
+        )
+        session.videoComposition = mutableVC
+        return session
     }
 
     // MARK: - Export preset mapping

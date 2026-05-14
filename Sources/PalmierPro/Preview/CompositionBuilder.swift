@@ -1,8 +1,12 @@
 import AVFoundation
 
 struct TrackMapping: @unchecked Sendable {
+    enum Kind {
+        case timeline(trackIndex: Int)
+        case blackTail(range: CMTimeRange)
+    }
     let compositionTrack: AVMutableCompositionTrack
-    let timelineTrackIndex: Int
+    let kind: Kind
     let naturalSize: CGSize   // zero for audio-only mappings
     let endTime: CMTime       // .zero for audio-only mappings
     let isVideo: Bool
@@ -27,7 +31,8 @@ enum CompositionBuilder {
     static func build(
         timeline: Timeline,
         resolveURL: @Sendable (String) -> URL?,
-        resolveSourceSize: @Sendable (String) -> CGSize? = { _ in nil }
+        resolveSourceSize: @Sendable (String) -> CGSize? = { _ in nil },
+        renderSize: CGSize
     ) async throws -> CompositionResult {
         Log.preview.info("build fps=\(timeline.fps) size=\(timeline.width)x\(timeline.height) tracks=\(timeline.tracks.count)")
         guard timeline.fps > 0, timeline.width > 0, timeline.height > 0 else {
@@ -36,7 +41,6 @@ enum CompositionBuilder {
         }
         let composition = AVMutableComposition()
         let timescale = CMTimeScale(timeline.fps)
-        let renderSize = CGSize(width: timeline.width, height: timeline.height)
         var trackMappings: [TrackMapping] = []
         var clipNaturalSizes: [String: CGSize] = [:]
 
@@ -52,7 +56,7 @@ enum CompositionBuilder {
             guard let compTrack = composition.addMutableTrack(withMediaType: mediaType, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
 
             if isAudio {
-                trackMappings.append(TrackMapping(compositionTrack: compTrack, timelineTrackIndex: trackIdx, naturalSize: .zero, endTime: .zero, isVideo: false))
+                trackMappings.append(TrackMapping(compositionTrack: compTrack, kind: .timeline(trackIndex: trackIdx), naturalSize: .zero, endTime: .zero, isVideo: false))
             }
 
             var cursor = CMTime.zero
@@ -123,24 +127,32 @@ enum CompositionBuilder {
 
             if !isAudio {
                 let naturalSize = (try? await compTrack.load(.naturalSize)).flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil } ?? renderSize
-                trackMappings.append(TrackMapping(compositionTrack: compTrack, timelineTrackIndex: trackIdx, naturalSize: naturalSize, endTime: cursor, isVideo: true))
+                trackMappings.append(TrackMapping(compositionTrack: compTrack, kind: .timeline(trackIndex: trackIdx), naturalSize: naturalSize, endTime: cursor, isVideo: true))
             }
         }
 
         guard !Task.isCancelled else { throw CancellationError() }
 
-        // Extend the composition so playback advances through text-only tails.
+        // Pad video coverage to the full timeline so text-only tails actually render
         let desiredDuration = CMTime(value: CMTimeValue(timeline.totalFrames), timescale: timescale)
-        if !composition.tracks.isEmpty, desiredDuration > composition.duration {
-            let gap = CMTimeRange(start: composition.duration, duration: desiredDuration - composition.duration)
-            composition.insertEmptyTimeRange(gap)
+        let lastVideoEnd = trackMappings.filter(\.isVideo).map(\.endTime).max() ?? .zero
+        if desiredDuration > lastVideoEnd {
+            let tailRange = CMTimeRange(start: lastVideoEnd, duration: desiredDuration - lastVideoEnd)
+            if let mapping = try await insertBlackTail(
+                composition: composition,
+                size: renderSize,
+                range: tailRange
+            ) {
+                trackMappings.append(mapping)
+            }
         }
 
         let (audioMix, videoComposition) = buildVisuals(
             timeline: timeline,
             trackMappings: trackMappings,
             clipNaturalSizes: clipNaturalSizes,
-            compositionDuration: composition.duration
+            compositionDuration: composition.duration,
+            renderSize: renderSize
         )
 
         return CompositionResult(
@@ -152,20 +164,49 @@ enum CompositionBuilder {
         )
     }
 
+    private static func insertBlackTail(
+        composition: AVMutableComposition,
+        size: CGSize,
+        range: CMTimeRange
+    ) async throws -> TrackMapping? {
+        let blackURL = try await ImageVideoGenerator.blackVideo(size: size)
+        let asset = AVURLAsset(url: blackURL)
+        guard let sourceTrack = try await asset.loadTracks(withMediaType: .video).first else {
+            return nil
+        }
+        guard let compTrack = composition.addMutableTrack(
+            withMediaType: .video,
+            preferredTrackID: kCMPersistentTrackID_Invalid
+        ) else { return nil }
+        try compTrack.insertTimeRange(
+            CMTimeRange(start: .zero, duration: range.duration),
+            of: sourceTrack,
+            at: range.start
+        )
+        return TrackMapping(
+            compositionTrack: compTrack,
+            kind: .blackTail(range: range),
+            naturalSize: size,
+            endTime: range.end,
+            isVideo: true
+        )
+    }
+
     /// Rebuild only visual properties (transforms, opacity, volume)
     static func buildVisuals(
         timeline: Timeline,
         trackMappings: [TrackMapping],
         clipNaturalSizes: [String: CGSize] = [:],
-        compositionDuration: CMTime
+        compositionDuration: CMTime,
+        renderSize: CGSize
     ) -> (audioMix: AVMutableAudioMix, videoComposition: AVVideoComposition) {
         let timescale = CMTimeScale(timeline.fps)
-        let renderSize = CGSize(width: timeline.width, height: timeline.height)
 
         let audioMix = AVMutableAudioMix()
         audioMix.inputParameters = trackMappings.filter { !$0.isVideo }.compactMap { mapping in
-            guard timeline.tracks.indices.contains(mapping.timelineTrackIndex) else { return nil }
-            let track = timeline.tracks[mapping.timelineTrackIndex]
+            guard case .timeline(let trackIndex) = mapping.kind,
+                  timeline.tracks.indices.contains(trackIndex) else { return nil }
+            let track = timeline.tracks[trackIndex]
             let params = AVMutableAudioMixInputParameters(track: mapping.compositionTrack)
             if track.muted {
                 params.setVolume(0, at: .zero)
@@ -182,28 +223,38 @@ enum CompositionBuilder {
 
         let layerInstructions: [AVVideoCompositionLayerInstruction] = trackMappings.filter { $0.isVideo }.map { mapping in
             var liConfig = AVVideoCompositionLayerInstruction.Configuration(trackID: mapping.compositionTrack.trackID)
-            let track = timeline.tracks.indices.contains(mapping.timelineTrackIndex)
-                ? timeline.tracks[mapping.timelineTrackIndex] : nil
-
             liConfig.setOpacity(0, at: .zero)
-            if let track, !track.hidden {
-                for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) {
-                    let start = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
-                    let end = CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale)
-                    let natSize = clipNaturalSizes[clip.id] ?? mapping.naturalSize
 
-                    emitOpacity(config: &liConfig, clip: clip, start: start, end: end, timescale: timescale)
-                    liConfig.setOpacity(0, at: end)
-                    emitTransform(config: &liConfig, clip: clip, start: start, end: end,
-                                  natSize: natSize, renderSize: renderSize, timescale: timescale)
-                    emitCrop(config: &liConfig, clip: clip, start: start, end: end,
-                             natSize: natSize, timescale: timescale)
+            switch mapping.kind {
+            case .blackTail(let range):
+                liConfig.setOpacity(1, at: range.start)
+                if range.end < compositionDuration {
+                    liConfig.setOpacity(0, at: range.end)
                 }
+                return AVVideoCompositionLayerInstruction(configuration: liConfig)
+            case .timeline(let trackIndex):
+                let track = timeline.tracks.indices.contains(trackIndex)
+                    ? timeline.tracks[trackIndex] : nil
+                if let track, !track.hidden {
+                    for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame })
+                        where clip.mediaType != .text {
+                        let start = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
+                        let end = CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale)
+                        let natSize = clipNaturalSizes[clip.id] ?? mapping.naturalSize
+
+                        emitOpacity(config: &liConfig, clip: clip, start: start, end: end, timescale: timescale)
+                        liConfig.setOpacity(0, at: end)
+                        emitTransform(config: &liConfig, clip: clip, start: start, end: end,
+                                      natSize: natSize, renderSize: renderSize, timescale: timescale)
+                        emitCrop(config: &liConfig, clip: clip, start: start, end: end,
+                                 natSize: natSize, timescale: timescale)
+                    }
+                }
+                if mapping.endTime < compositionDuration {
+                    liConfig.setOpacity(0, at: mapping.endTime)
+                }
+                return AVVideoCompositionLayerInstruction(configuration: liConfig)
             }
-            if mapping.endTime < compositionDuration {
-                liConfig.setOpacity(0, at: mapping.endTime)
-            }
-            return AVVideoCompositionLayerInstruction(configuration: liConfig)
         }
 
         var instrConfig = AVVideoCompositionInstruction.Configuration()

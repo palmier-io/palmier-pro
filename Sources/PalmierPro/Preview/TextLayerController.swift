@@ -66,10 +66,11 @@ final class TextLayerController {
     static func buildForExport(
         timeline: Timeline,
         fps: Int,
-        canvasSize: CGSize
+        renderSize: CGSize
     ) -> (parent: CALayer, videoLayer: CALayer) {
+        let logicalCanvas = CGSize(width: timeline.width, height: timeline.height)
         let parent = CALayer()
-        parent.frame = CGRect(origin: .zero, size: canvasSize)
+        parent.frame = CGRect(origin: .zero, size: renderSize)
         parent.isGeometryFlipped = true
         parent.backgroundColor = NSColor.clear.cgColor
         parent.beginTime = AVCoreAnimationBeginTimeAtZero
@@ -82,7 +83,7 @@ final class TextLayerController {
         let totalSeconds = max(0.001, Double(max(1, timeline.totalFrames)) / fpsD)
         for clip in visibleTextClips(in: timeline) {
             let layer = makeTextLayer()
-            applyStyle(to: layer, clip: clip, containerSize: canvasSize, canvasSize: canvasSize)
+            applyStyle(to: layer, clip: clip, containerSize: renderSize, canvasSize: logicalCanvas)
             applyOpacityAnimation(to: layer, clip: clip, fps: fps, totalSeconds: totalSeconds)
             parent.addSublayer(layer)
         }

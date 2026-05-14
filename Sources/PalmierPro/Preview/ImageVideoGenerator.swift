@@ -93,6 +93,22 @@ enum ImageVideoGenerator {
         }
     }
 
+    static func blackVideo(size: CGSize) async throws -> URL {
+        let duration = generatedDuration
+        let size = clampedForEncoder(size)
+        let filename = "_black_\(Int(size.width))x\(Int(size.height)).mov"
+        let outputURL = cacheDirectory.appendingPathComponent(filename)
+        if FileManager.default.fileExists(atPath: outputURL.path) {
+            return outputURL
+        }
+        let pixelBuffer = try createPixelBuffer(from: nil, size: size, hasAlpha: false)
+        try await writeStillVideo(
+            pixelBuffer: pixelBuffer, to: outputURL,
+            size: size, duration: duration, hasAlpha: false
+        )
+        return outputURL
+    }
+
     static func imageNativeSize(url: URL) -> CGSize? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
@@ -104,7 +120,7 @@ enum ImageVideoGenerator {
 
     // MARK: - Private
 
-    private static func createPixelBuffer(from image: NSImage, size: CGSize, hasAlpha: Bool) throws -> CVPixelBuffer {
+    private static func createPixelBuffer(from image: NSImage?, size: CGSize, hasAlpha: Bool) throws -> CVPixelBuffer {
         let width = Int(size.width)
         let height = Int(size.height)
 
@@ -143,10 +159,12 @@ enum ImageVideoGenerator {
             context.fill(fullRect)
         }
 
-        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-            throw ImageVideoError.imageLoadFailed
+        if let image {
+            guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+                throw ImageVideoError.imageLoadFailed
+            }
+            context.draw(cgImage, in: fullRect)
         }
-        context.draw(cgImage, in: fullRect)
         return buffer
     }
 

@@ -172,8 +172,11 @@ struct ExportView: View {
                         Image(systemName: "doc")
                         Text("~\(estimatedFileSize)")
                     }
+                    let out = resolution.renderSize(for: CGSize(width: editor.timeline.width, height: editor.timeline.height))
+                    Text("\(Int(out.width))×\(Int(out.height))")
+                } else {
+                    Text("\(editor.timeline.width)×\(editor.timeline.height)")
                 }
-                Text("\(editor.timeline.width)×\(editor.timeline.height)")
             }
             .font(.system(size: AppTheme.FontSize.xs))
             .foregroundStyle(AppTheme.Text.mutedColor)
@@ -206,13 +209,19 @@ struct ExportView: View {
     }
 
     private var estimatedFileSize: String {
-        let seconds = frameToSeconds(frame: editor.timeline.totalFrames, fps: editor.timeline.fps)
-        let bytes = Double(resolution.estimatedBytesPerSecond) * seconds
-        if bytes >= 1_000_000_000 {
-            return String(format: "%.1f GB", bytes / 1_000_000_000)
-        } else {
-            return String(format: "%.0f MB", bytes / 1_000_000)
+        let seconds = Double(editor.timeline.totalFrames) / Double(max(1, editor.timeline.fps))
+        let bytesPerSec: Double = switch (codec, resolution) {
+        case (.h264, .r720p):    0.85e6
+        case (.h264, .r1080p):   1.3e6
+        case (.h264, .r4k):      2.8e6
+        case (.h265, .r720p):    0.45e6
+        case (.h265, .r1080p):   0.65e6
+        case (.h265, .r4k):      2.2e6
+        case (.prores, .r720p):  8.0e6
+        case (.prores, .r1080p): 18.5e6
+        case (.prores, .r4k):    65.0e6
         }
+        return ByteCountFormatter.string(fromByteCount: Int64(bytesPerSec * seconds), countStyle: .file)
     }
 
     private var exportFormat: ExportFormat {
