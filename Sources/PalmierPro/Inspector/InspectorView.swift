@@ -331,9 +331,11 @@ struct InspectorView: View {
         animatableRow(label: "Volume", clipId: single?.id, property: .volume) {
             ScrubbableNumberField(
                 value: sharedClipValue(audios) { clip in
-                    if let track = clip.volumeTrack, track.isActive,
-                       clip.contains(timelineFrame: editor.currentFrame) {
-                        return track.sample(at: editor.currentFrame - clip.startFrame, fallback: 0)
+                    let offset = editor.currentFrame - clip.startFrame
+                    if clip.hasUserVolumeKeyframes,
+                       clip.contains(timelineFrame: editor.currentFrame),
+                       let kf = clip.volumeTrack?.keyframes.first(where: { $0.frame == offset }) {
+                        return kf.value
                     }
                     return VolumeScale.dbFromLinear(clip.volume)
                 },

@@ -99,8 +99,10 @@ extension EditorViewModel {
     }
 
     private func writeVolume(into clip: inout Clip, valueDb: Double) {
-        if clip.volumeTrack?.isActive == true {
-            guard clip.contains(timelineFrame: currentFrame) else { return }
+        let offset = currentFrame - clip.startFrame
+        if clip.hasUserVolumeKeyframes,
+           clip.contains(timelineFrame: currentFrame),
+           clip.volumeTrack?.keyframes.contains(where: { $0.frame == offset }) == true {
             clip.upsertKeyframe(in: \.volumeTrack, frame: currentFrame, value: valueDb)
         } else {
             clip.volume = VolumeScale.linearFromDb(valueDb)

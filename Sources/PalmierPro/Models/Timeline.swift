@@ -164,6 +164,18 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         return VolumeScale.linearFromDb(dB) * volume
     }
 
+    /// True when the user has added/edited volume keyframes beyond the default 0 dB edge seeds.
+    var hasUserVolumeKeyframes: Bool {
+        guard let track = volumeTrack, !track.keyframes.isEmpty else { return false }
+        let kfs = track.keyframes
+        if kfs.count == 2,
+           kfs[0].frame == 0, kfs[0].value == 0,
+           kfs[1].frame == durationFrames, kfs[1].value == 0 {
+            return false
+        }
+        return true
+    }
+
     /// Leftmost/rightmost non-silent kf offsets — these render as fade-handle squares.
     var volumeFadeHandleOffsets: (left: Int?, right: Int?) {
         guard let track = volumeTrack else { return (nil, nil) }
