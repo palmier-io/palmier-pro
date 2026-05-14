@@ -1,10 +1,10 @@
 import Foundation
 
 enum AnthropicKeychain {
-    private static let account = "ANTHROPIC_API_KEY"
-    static func save(_ key: String) { KeychainCredentialStore.save(key, account: account) }
-    static func load() -> String? { KeychainCredentialStore.load(account: account) }
-    static func delete() { KeychainCredentialStore.delete(account: account) }
+    private static let filename = "anthropic-credentials"
+    static func save(_ key: String) { FileCredentialStore.save(key, filename: filename) }
+    static func load() -> String? { FileCredentialStore.load(filename: filename) }
+    static func delete() { FileCredentialStore.delete(filename: filename) }
 }
 
 enum AnthropicModel: String, CaseIterable, Sendable {
