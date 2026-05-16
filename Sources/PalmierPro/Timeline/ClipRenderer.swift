@@ -188,8 +188,8 @@ enum ClipRenderer {
         guard totalSource > 0 else { return }
         let startFrac = Double(clip.trimStartFrame) / Double(totalSource)
         let endFrac = Double(clip.trimStartFrame + clip.sourceFramesConsumed) / Double(totalSource)
-        let sampleStart = Int(startFrac * Double(samples.count))
-        let sampleEnd = min(samples.count, Int(endFrac * Double(samples.count)))
+        let sampleStart = max(0, min(samples.count, Int(startFrac * Double(samples.count))))
+        let sampleEnd = max(sampleStart, min(samples.count, Int(endFrac * Double(samples.count))))
         guard sampleEnd > sampleStart else { return }
 
         let visibleSamples = Array(samples[sampleStart..<sampleEnd])
