@@ -305,5 +305,17 @@
                 type="application/octet-stream"
                 sparkle:edSignature="aTXR4RZ+85+B3V3NEye0KJIbt7FyT18TiJS62J/4TAXlaw5D2CV9eftaXrInU2bs8MZlq9zpUpDYJ0qi+YsoBQ=="/>
         </item>
+        <item>
+            <title>Version 0.1.29</title>
+            <pubDate>Sun, 17 May 2026 12:43:07 -0700</pubDate>
+            <sparkle:version>28</sparkle:version>
+            <sparkle:shortVersionString>0.1.29</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/palmier-io/palmier-pro/releases/download/v0.1.29/PalmierPro.dmg"
+                length="12853527"
+                type="application/octet-stream"
+                sparkle:edSignature="Iiyr6MY2HXHxS6uOu4uK7R0YHybIOM1dS97dwJoM4HWwUPbqJBghWiv1pLlifwO3nGM8ALJlBerVVqKfxJ17BQ=="/>
+        </item>
     </channel>
 </rss>
