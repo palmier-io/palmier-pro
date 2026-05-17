@@ -45,6 +45,7 @@ struct TextContentField: NSViewRepresentable {
         guard textView.window?.firstResponder !== textView else { return }
         if textView.string != text {
             textView.string = text
+            textView.undoManager?.removeAllActions(withTarget: textView)
         }
     }
 
