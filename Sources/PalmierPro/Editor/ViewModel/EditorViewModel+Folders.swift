@@ -86,7 +86,7 @@ extension EditorViewModel {
         mediaManifest.folders.removeAll { allFolderIds.contains($0.id) }
         selectedFolderIds.subtract(allFolderIds)
         selectedMediaAssetIds.subtract(assetIdsToDelete)
-        for id in assetIdsToDelete { closePreviewTab(id: id) }
+        for id in assetIdsToDelete { closePreviewTab(id: PreviewTab.mediaAssetTabId(for: id)) }
 
         undoManager?.registerUndo(withTarget: self) { vm in
             vm.restoreMediaLibraryUndoSnapshot(before, actionName: "Delete Folder")
@@ -167,7 +167,7 @@ extension EditorViewModel {
         undoManager?.setActionName(actionName)
     }
 
-    private func mediaLibraryUndoSnapshot() -> MediaLibraryUndoSnapshot {
+    func mediaLibraryUndoSnapshot() -> MediaLibraryUndoSnapshot {
         MediaLibraryUndoSnapshot(
             timeline: timeline,
             mediaManifest: mediaManifest,
@@ -181,7 +181,7 @@ extension EditorViewModel {
         )
     }
 
-    private func restoreMediaLibraryUndoSnapshot(_ snapshot: MediaLibraryUndoSnapshot, actionName: String) {
+    func restoreMediaLibraryUndoSnapshot(_ snapshot: MediaLibraryUndoSnapshot, actionName: String) {
         let redo = mediaLibraryUndoSnapshot()
         timeline = snapshot.timeline
         mediaManifest = snapshot.mediaManifest
@@ -201,7 +201,7 @@ extension EditorViewModel {
     }
 }
 
-private struct MediaLibraryUndoSnapshot {
+struct MediaLibraryUndoSnapshot {
     let timeline: Timeline
     let mediaManifest: MediaManifest
     let mediaAssets: [MediaAsset]

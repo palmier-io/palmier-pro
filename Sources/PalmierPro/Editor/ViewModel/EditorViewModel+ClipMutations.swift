@@ -576,20 +576,35 @@ extension EditorViewModel {
     func deleteSelectedMediaAssets() {
         let ids = selectedMediaAssetIds
         guard !ids.isEmpty else { return }
+        guard mediaAssets.contains(where: { ids.contains($0.id) }) else { return }
 
+        let before = mediaLibraryUndoSnapshot()
         let clipIdsToRemove = Set(timeline.tracks
             .flatMap(\.clips)
             .filter { ids.contains($0.mediaRef) }
             .map(\.id))
         if !clipIdsToRemove.isEmpty {
-            removeClips(ids: clipIdsToRemove)
+            selectedClipIds.subtract(clipIdsToRemove)
+            for i in timeline.tracks.indices {
+                timeline.tracks[i].clips.removeAll { clipIdsToRemove.contains($0.id) }
+            }
+            pruneEmptyTracks()
         }
 
         mediaAssets.removeAll { ids.contains($0.id) }
         mediaManifest.entries.removeAll { ids.contains($0.id) }
 
-        for id in ids { closePreviewTab(id: id) }
+        for id in ids { closePreviewTab(id: PreviewTab.mediaAssetTabId(for: id)) }
         selectedMediaAssetIds.removeAll()
+
+        undoManager?.registerUndo(withTarget: self) { vm in
+            vm.restoreMediaLibraryUndoSnapshot(before, actionName: "Delete Media")
+            vm.selectedMediaAssetIds.removeAll()
+        }
+        undoManager?.setActionName("Delete Media")
+        if !clipIdsToRemove.isEmpty {
+            notifyTimelineChanged()
+        }
     }
 
     // MARK: - Overwrite region

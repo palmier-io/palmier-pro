@@ -8,8 +8,12 @@ enum PreviewTab: Identifiable, Equatable {
     var id: String {
         switch self {
         case .timeline: "__timeline__"
-        case .mediaAsset(let id, _, _): "media_\(id)"
+        case .mediaAsset(let id, _, _): Self.mediaAssetTabId(for: id)
         }
+    }
+
+    static func mediaAssetTabId(for assetId: String) -> String {
+        "media_\(assetId)"
     }
 
     var displayName: String {
