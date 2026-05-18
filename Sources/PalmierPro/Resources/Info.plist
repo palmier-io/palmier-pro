@@ -27,14 +27,25 @@
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>io.palmier.pro</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>io.palmier.pro</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>palmier</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleName</key>
 	<string>Palmier Pro</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.29</string>
+	<string>0.1.28</string>
 	<key>CFBundleVersion</key>
-	<string>28</string>
+	<string>27</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>NSHighResolutionCapable</key>

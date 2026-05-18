@@ -19,10 +19,17 @@ done
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-if [ -f "$ROOT/.env" ]; then
+ENV_FILE=".env"
+if [ "$MODE" = "sign" ] || [ "$MODE" = "dist" ]; then
+  if [ -f "$ROOT/.env.prod" ]; then
+    ENV_FILE=".env.prod"
+  fi
+fi
+if [ -f "$ROOT/$ENV_FILE" ]; then
+  echo "==> Loading $ENV_FILE"
   set -a
   # shellcheck disable=SC1091
-  . "$ROOT/.env"
+  . "$ROOT/$ENV_FILE"
   set +a
 fi
 
@@ -52,6 +59,20 @@ if [ -n "$SENTRY_DSN" ]; then
 else
   echo "==> SENTRY_DSN not set — telemetry will be a no-op in this build"
 fi
+
+inject_plist() {
+  local key="$1" value="$2"
+  if [ -z "$value" ]; then
+    echo "!! $key not set in $ENV_FILE — app will fatalError on launch" >&2
+    return
+  fi
+  /usr/libexec/PlistBuddy -c "Delete :$key" "$APP/Contents/Info.plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Add :$key string $value" "$APP/Contents/Info.plist"
+}
+
+echo "==> Injecting backend config into Info.plist"
+inject_plist PalmierClerkPublishableKey "${CLERK_PUBLISHABLE_KEY:-}"
+inject_plist PalmierConvexDeploymentURL "${CONVEX_DEPLOYMENT_URL:-}"
 cp "$RESOURCES/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp -R "$SPARKLE_FW" "$APP/Contents/Frameworks/Sparkle.framework"
 
