@@ -91,7 +91,18 @@ final class EditorViewModel {
 
     var mediaAssets: [MediaAsset] = []
     let mediaVisualCache = MediaVisualCache()
-    var projectURL: URL?
+    var projectURL: URL? {
+        didSet {
+            guard projectURL != oldValue else { return }
+            projectId = projectURL.flatMap { url in
+                let resolved = url.standardizedFileURL
+                return ProjectRegistry.shared.entries
+                    .first(where: { $0.url.standardizedFileURL == resolved })?
+                    .id.uuidString
+            }
+        }
+    }
+    private(set) var projectId: String?
     // Placeholder replaced in init() — @Observable doesn't support lazy var
     private(set) var mediaResolver: MediaResolver = MediaResolver(
         manifest: { MediaManifest() }, projectURL: { nil }

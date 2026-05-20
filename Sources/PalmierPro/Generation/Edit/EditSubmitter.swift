@@ -1,5 +1,4 @@
 import Foundation
-import FalClient
 
 /// Builds and dispatches AI-tab submissions (Upscale, Rerun) pipeline.
 @MainActor
@@ -12,28 +11,25 @@ enum EditSubmitter {
         asset: MediaAsset,
         model: UpscaleModelConfig,
         editor: EditorViewModel,
-        service: GenerationService,
         trimmedSource: TrimmedSource? = nil,
         onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
         onFailure: (@MainActor () -> Void)? = nil
     ) -> String? {
-        guard service.hasApiKey else { return nil }
+        guard AccountService.shared.isPaid else { return nil }
 
-        let duration = max(1, Int(asset.duration.rounded()))
         let effectiveDuration: Int = {
             if let trim = trimmedSource, trim.hasTrim {
                 return max(1, Int(trim.durationSeconds.rounded()))
             }
-            return duration
+            return max(1, Int(asset.duration.rounded()))
         }()
-        var genInput = GenerationInput(
+        let genInput = GenerationInput(
             prompt: "",
             model: model.id,
-            duration: duration,
+            duration: effectiveDuration,
             aspectRatio: "",
             resolution: nil
         )
-        genInput.estimatedCost = CostEstimator.upscaleCost(model: model, durationSeconds: effectiveDuration)
 
         let isImage = asset.type == .image
         let placeholderDuration: Double
@@ -42,10 +38,10 @@ enum EditSubmitter {
         } else if let trim = trimmedSource, trim.hasTrim {
             placeholderDuration = trim.durationSeconds
         } else {
-            placeholderDuration = asset.duration > 0 ? asset.duration : Double(duration)
+            placeholderDuration = asset.duration > 0 ? asset.duration : Double(effectiveDuration)
         }
 
-        return service.generate(
+        return editor.generationService.generate(
             genInput: genInput,
             assetType: asset.type,
             placeholderDuration: placeholderDuration,
@@ -53,11 +49,12 @@ enum EditSubmitter {
             trimmedSourceOverride: trimmedSource,
             name: upscaleName(for: asset),
             folderId: asset.folderId,
-            buildInput: { uploaded in
-                let src = uploaded.first ?? ""
-                return (model.endpoint, model.buildFalInput(src))
+            buildParams: { uploaded in
+                .upscale(UpscaleGenerationParams(
+                    sourceURL: uploaded.first ?? "",
+                    durationSeconds: isImage ? 1 : effectiveDuration
+                ))
             },
-            responseKeyPath: isImage ? FalResponsePaths.upscaledImage : FalResponsePaths.video,
             fileExtension: isImage ? "jpg" : "mp4",
             projectURL: editor.projectURL,
             editor: editor,
@@ -73,6 +70,7 @@ enum EditSubmitter {
         case unknownModel(String)
         case missingSource
         case invalid(String)
+        case unauthorized
 
         var errorDescription: String? {
             switch self {
@@ -80,6 +78,7 @@ enum EditSubmitter {
             case .unknownModel(let id): "Model no longer available: \(id)"
             case .missingSource: "Cannot rerun: source not recorded"
             case .invalid(let msg): msg
+            case .unauthorized: "Subscribe to Palmier to rerun generations"
             }
         }
     }
@@ -88,17 +87,14 @@ enum EditSubmitter {
     static func rerun(
         asset: MediaAsset,
         editor: EditorViewModel,
-        service: GenerationService,
         onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
         onFailure: (@MainActor () -> Void)? = nil
     ) throws -> String {
-        guard service.hasApiKey else {
-            throw RerunError.unknownModel("no api key")
+        guard AccountService.shared.isPaid else {
+            throw RerunError.unauthorized
         }
         guard let stored = asset.generationInput else { throw RerunError.notGenerated }
         var gen = stored
-        // A rerun is a brand-new generation event: recompute cost
-        gen.estimatedCost = CostEstimator.cost(for: gen)
         gen.createdAt = nil
         let modelId = gen.model
         let preUploaded = gen.imageURLs
@@ -123,7 +119,7 @@ enum EditSubmitter {
                     referenceImageURLs: imageRefs,
                     generateAudio: gen.generateAudio ?? true
                 )
-                return service.generate(
+                return editor.generationService.generate(
                     genInput: gen,
                     assetType: .video,
                     placeholderDuration: asset.duration > 0 ? asset.duration : Double(max(1, gen.duration)),
@@ -131,10 +127,7 @@ enum EditSubmitter {
                     preUploadedURLs: preUploaded,
                     name: rerunName(for: asset),
                     folderId: asset.folderId,
-                    buildInput: { _ in
-                        (videoModel.resolvedEndpoint(params: params), videoModel.buildInput(params: params))
-                    },
-                    responseKeyPath: FalResponsePaths.video,
+                    buildParams: { _ in .video(params) },
                     fileExtension: "mp4",
                     projectURL: editor.projectURL,
                     editor: editor,
@@ -159,7 +152,7 @@ enum EditSubmitter {
                 + (gen.referenceImageURLs ?? [])
                 + (gen.referenceVideoURLs ?? [])
                 + (gen.referenceAudioURLs ?? [])
-            return service.generate(
+            return editor.generationService.generate(
                 genInput: gen,
                 assetType: .video,
                 placeholderDuration: Double(max(1, gen.duration)),
@@ -167,11 +160,8 @@ enum EditSubmitter {
                 preUploadedURLs: bundled.isEmpty ? nil : bundled,
                 name: rerunName(for: asset),
                 folderId: asset.folderId,
-                buildInput: { _ in
-                    (videoModel.resolvedEndpoint(params: params), videoModel.buildInput(params: params))
-                },
+                buildParams: { _ in .video(params) },
                 snapshotRefs: { _, _ in },
-                responseKeyPath: FalResponsePaths.video,
                 fileExtension: "mp4",
                 projectURL: editor.projectURL,
                 editor: editor,
@@ -189,7 +179,7 @@ enum EditSubmitter {
             ) {
                 throw RerunError.invalid(err)
             }
-            return service.generate(
+            return editor.generationService.generate(
                 genInput: gen,
                 assetType: .image,
                 placeholderDuration: Defaults.imageDurationSeconds,
@@ -198,18 +188,16 @@ enum EditSubmitter {
                 name: rerunName(for: asset),
                 numImages: count,
                 folderId: asset.folderId,
-                buildInput: { uploaded in
-                    let input = imageModel.buildInput(
+                buildParams: { uploaded in
+                    .image(ImageGenerationParams(
                         prompt: gen.prompt,
                         aspectRatio: gen.aspectRatio,
                         resolution: gen.resolution,
                         quality: gen.quality,
                         imageURLs: uploaded,
                         numImages: count
-                    )
-                    return (imageModel.resolvedEndpoint(imageURLs: uploaded), input)
+                    ))
                 },
-                responseKeyPath: FalResponsePaths.generatedImage,
                 fileExtension: "jpg",
                 projectURL: editor.projectURL,
                 editor: editor,
@@ -235,7 +223,7 @@ enum EditSubmitter {
             if let err = audioModel.validate(params: params) {
                 throw RerunError.invalid(err)
             }
-            return service.generate(
+            return editor.generationService.generate(
                 genInput: gen,
                 assetType: .audio,
                 placeholderDuration: placeholderDuration,
@@ -243,10 +231,7 @@ enum EditSubmitter {
                 preUploadedURLs: preUploaded,
                 name: rerunName(for: asset),
                 folderId: asset.folderId,
-                buildInput: { _ in
-                    (audioModel.baseEndpoint, audioModel.buildInput(params: params))
-                },
-                responseKeyPath: FalResponsePaths.audio,
+                buildParams: { _ in .audio(params) },
                 fileExtension: "mp3",
                 projectURL: editor.projectURL,
                 editor: editor,
@@ -255,10 +240,10 @@ enum EditSubmitter {
             )
         }
 
-        if let upscaleModel = UpscaleModelConfig.allModels.first(where: { $0.id == modelId }) {
+        if UpscaleModelConfig.allModels.contains(where: { $0.id == modelId }) {
             guard let source = preUploaded?.first else { throw RerunError.missingSource }
             let isImage = asset.type == .image
-            return service.generate(
+            return editor.generationService.generate(
                 genInput: gen,
                 assetType: asset.type,
                 placeholderDuration: isImage
@@ -268,10 +253,12 @@ enum EditSubmitter {
                 preUploadedURLs: preUploaded,
                 name: rerunName(for: asset),
                 folderId: asset.folderId,
-                buildInput: { _ in
-                    (upscaleModel.endpoint, upscaleModel.buildFalInput(source))
+                buildParams: { _ in
+                    .upscale(UpscaleGenerationParams(
+                        sourceURL: source,
+                        durationSeconds: isImage ? 1 : gen.duration
+                    ))
                 },
-                responseKeyPath: isImage ? FalResponsePaths.upscaledImage : FalResponsePaths.video,
                 fileExtension: isImage ? "jpg" : "mp4",
                 projectURL: editor.projectURL,
                 editor: editor,

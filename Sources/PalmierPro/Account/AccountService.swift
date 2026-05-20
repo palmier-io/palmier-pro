@@ -63,7 +63,7 @@ final class AccountService {
     var tier: AccountTier { account?.user.tier ?? .none }
     var isPaid: Bool { tier.isPaid }
 
-    @ObservationIgnored private var convex: ConvexClientWithAuth<String>?
+    @ObservationIgnored private(set) var convex: ConvexClientWithAuth<String>?
     @ObservationIgnored private var accountSubscription: AnyCancellable?
     @ObservationIgnored private var authEventTask: Task<Void, Never>?
     @ObservationIgnored private var didConfigure = false

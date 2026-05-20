@@ -25,12 +25,11 @@ enum AgentInstructions {
           the next edit. Re-read only if a tool call failed in a way that suggests your \
           mental model of the timeline is stale.
         - Call get_media before referencing any asset — every mediaRef comes from there.
-        - get_timeline returns hasFalApiKey. If false, every AI generation tool \
-          (generate_video, generate_image, generate_audio, upscale_media) and audio \
-          transcription (via read_media on audio, or on a video with audio) will fail. \
-          Tell the user to configure their FAL key in the app's generation panel before \
-          proposing any of those, and stick to pure timeline editing for the session \
-          otherwise.
+        - get_timeline returns canGenerate. If false, every AI generation tool \
+          (generate_video, generate_image, generate_audio, upscale_media) will fail. \
+          Tell the user to sign in to Palmier and subscribe before proposing any of \
+          those, and stick to pure timeline editing for the session otherwise. (Audio \
+          transcription via read_media runs on-device and does not require this.)
         - Call list_models before generate_video, generate_image, or generate_audio so the model \
           you pick actually supports your duration, aspect ratio, first/last-frame, reference, or \
           voice/lyrics needs.

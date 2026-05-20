@@ -5,7 +5,6 @@ struct AIEditTab: View {
     /// Clip id from the timeline.
     let clipId: String?
     @Environment(EditorViewModel.self) private var editor
-    @State private var service = GenerationService()
     @State private var rerunError: String?
     @State private var replaceClipSource: Bool = false
     @State private var useTrimmedClip: Bool = true
@@ -18,10 +17,6 @@ struct AIEditTab: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-                if !service.hasApiKey {
-                    apiKeyBanner
-                }
-
                 if clipId != nil {
                     replaceToggle
                 }
@@ -67,6 +62,7 @@ struct AIEditTab: View {
         } message: {
             Text(rerunError ?? "")
         }
+        .aiAccessGate()
     }
 
     // MARK: - Replace toggle
@@ -136,26 +132,6 @@ struct AIEditTab: View {
         trimmedSourceIfEnabled()?.durationSeconds
     }
 
-    // MARK: - API key banner
-
-    private var apiKeyBanner: some View {
-        HStack(spacing: AppTheme.Spacing.sm) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(.orange)
-            Text("Set a fal.ai API key in the Generation panel to enable AI actions.")
-                .font(.system(size: AppTheme.FontSize.xs))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(AppTheme.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .fill(Color.orange.opacity(0.08))
-        )
-    }
-
     // MARK: - Action card
 
     @ViewBuilder
@@ -169,8 +145,9 @@ struct AIEditTab: View {
             for: asset,
             effectiveDurationOverride: effectiveDurationForAvailability
         )
-        let isEnabled = availability.isAvailable && service.hasApiKey
-        let disabledReason = service.hasApiKey ? availability.reason : "API key required"
+        let canCall = AccountService.shared.isPaid
+        let isEnabled = availability.isAvailable && canCall
+        let disabledReason = canCall ? availability.reason : "Subscribe to Palmier to use AI"
 
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
@@ -257,7 +234,7 @@ struct AIEditTab: View {
                 do {
                     markReplacementPendingIfNeeded()
                     _ = try EditSubmitter.rerun(
-                        asset: asset, editor: editor, service: service,
+                        asset: asset, editor: editor,
                         onComplete: replacementCompletion(),
                         onFailure: replacementFailure()
                     )
@@ -278,7 +255,8 @@ struct AIEditTab: View {
             guard let m = VideoModelConfig.allModels.first(where: { $0.requiresSourceVideo }) else { return nil }
             modelId = m.id
         case .image:
-            modelId = ImageModelConfig.nanoBananaPro.id
+            guard let m = ImageModelConfig.nanoBananaPro else { return nil }
+            modelId = m.id
         case .audio, .text:
             return nil
         }
@@ -304,7 +282,7 @@ struct AIEditTab: View {
         markReplacementPendingIfNeeded()
         let trim = trimmedSourceIfEnabled()
         _ = EditSubmitter.submitUpscale(
-            asset: asset, model: model, editor: editor, service: service,
+            asset: asset, model: model, editor: editor,
             trimmedSource: trim,
             onComplete: replacementCompletion(resetTrim: trim != nil),
             onFailure: replacementFailure()
@@ -345,9 +323,9 @@ struct AIEditTab: View {
     private func rerunParameters(_ gen: GenerationInput) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             rerunRow("cpu", label: "Model", value: ModelRegistry.displayName(for: gen.model))
-            let rerunCost = gen.estimatedCost ?? CostEstimator.cost(for: gen)
+            let rerunCost = CostEstimator.cost(for: gen)
             if rerunCost != nil {
-                rerunRow("dollarsign.circle", label: "Cost", value: CostEstimator.format(rerunCost))
+                rerunRow("creditcard", label: "Cost", value: CostEstimator.format(rerunCost))
             }
             if gen.duration > 0 {
                 rerunRow("clock", label: "Duration", value: "\(gen.duration)s")

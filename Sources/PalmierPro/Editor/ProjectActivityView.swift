@@ -4,8 +4,8 @@ import SwiftUI
 struct ProjectActivityView: View {
     let entries: [GenerationLogEntry]
 
-    private var total: Double {
-        entries.reduce(0) { $0 + ($1.cost ?? 0) }
+    private var total: Int {
+        entries.reduce(0) { $0 + ($1.costCredits ?? 0) }
     }
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {
@@ -56,7 +56,7 @@ struct ProjectActivityView: View {
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .frame(width: 14)
-            Text(CostEstimator.format(entry.cost))
+            Text(CostEstimator.format(entry.costCredits))
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .monospacedDigit()
                 .foregroundStyle(AppTheme.Text.secondaryColor)

@@ -93,19 +93,18 @@ final class MCPService {
         }
 
         await server.withMethodHandler(ReadResource.self) { params in
-            Self.readResource(uri: params.uri)
+            await Self.readResource(uri: params.uri)
         }
     }
 
-    nonisolated private static func readResource(uri: String) -> ReadResource.Result {
+    @MainActor
+    private static func readResource(uri: String) -> ReadResource.Result {
         switch uri {
         case "palmier://models/video":
-            let list = VideoModelConfig.allModels.map { ToolExecutor.videoModelInfo($0) }
-            let json = ToolExecutor.jsonString(list) ?? "[]"
+            let json = ToolExecutor.jsonString(VideoModelConfig.allModels.map { ToolExecutor.videoModelInfo($0) }) ?? "[]"
             return .init(contents: [.text(json, uri: uri, mimeType: "application/json")])
         case "palmier://models/image":
-            let list = ImageModelConfig.allModels.map { ToolExecutor.imageModelInfo($0) }
-            let json = ToolExecutor.jsonString(list) ?? "[]"
+            let json = ToolExecutor.jsonString(ImageModelConfig.allModels.map { ToolExecutor.imageModelInfo($0) }) ?? "[]"
             return .init(contents: [.text(json, uri: uri, mimeType: "application/json")])
         default:
             return .init(contents: [.text("Unknown resource: \(uri)", uri: uri)])

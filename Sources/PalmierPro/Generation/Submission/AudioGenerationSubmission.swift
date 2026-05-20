@@ -1,5 +1,4 @@
 import Foundation
-import FalClient
 
 struct AudioGenerationSubmission {
     let genInput: GenerationInput
@@ -24,10 +23,7 @@ struct AudioGenerationSubmission {
             placeholderDuration: placeholderDuration,
             name: name,
             folderId: folderId,
-            buildInput: { _ in
-                (model.baseEndpoint, model.buildInput(params: params))
-            },
-            responseKeyPath: FalResponsePaths.audio,
+            buildParams: { [params] _ in .audio(params) },
             fileExtension: "mp3",
             projectURL: projectURL,
             editor: editor,

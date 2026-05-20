@@ -10,8 +10,31 @@ struct GenerationLog: Codable, Sendable, Equatable {
 struct GenerationLogEntry: Codable, Sendable, Equatable, Identifiable {
     var id: String = UUID().uuidString
     let model: String
-    let cost: Double?
+    let costCredits: Int?
     let createdAt: Date?
+
+    init(id: String = UUID().uuidString, model: String, costCredits: Int?, createdAt: Date?) {
+        self.id = id; self.model = model; self.costCredits = costCredits; self.createdAt = createdAt
+    }
+
+    private enum LegacyKeys: String, CodingKey { case cost }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        self.model = try c.decode(String.self, forKey: .model)
+        self.createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt)
+        if let credits = try c.decodeIfPresent(Int.self, forKey: .costCredits) {
+            self.costCredits = credits
+        } else {
+            let legacy = try decoder.container(keyedBy: LegacyKeys.self)
+            if let dollars = try legacy.decodeIfPresent(Double.self, forKey: .cost) {
+                self.costCredits = Int((dollars * 100).rounded(.up))
+            } else {
+                self.costCredits = nil
+            }
+        }
+    }
 }
 
 @MainActor
@@ -44,15 +67,15 @@ extension EditorViewModel {
         }
     }
 
-    var totalGenerationCost: Double {
-        generationLog.entries.reduce(0.0) { $0 + ($1.cost ?? 0) }
+    var totalGenerationCost: Int {
+        generationLog.entries.reduce(0) { $0 + ($1.costCredits ?? 0) }
     }
 
     func appendGenerationLog(for asset: MediaAsset) {
         guard let gen = asset.generationInput else { return }
         generationLog.entries.append(GenerationLogEntry(
             model: gen.model,
-            cost: gen.estimatedCost ?? CostEstimator.cost(for: gen),
+            costCredits: CostEstimator.cost(for: gen),
             createdAt: gen.createdAt
         ))
     }
@@ -64,7 +87,7 @@ extension EditorViewModel {
             guard let gen = asset.generationInput else { return nil }
             return GenerationLogEntry(
                 model: gen.model,
-                cost: gen.estimatedCost ?? CostEstimator.cost(for: gen),
+                costCredits: CostEstimator.cost(for: gen),
                 createdAt: gen.createdAt
             )
         }

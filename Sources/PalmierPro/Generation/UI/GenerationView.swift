@@ -141,7 +141,7 @@ struct GenerationView: View {
     private var isPromptEmpty: Bool { trimmedPrompt.isEmpty }
 
     private var canSubmit: Bool {
-        guard editor.generationService.hasApiKey else { return false }
+        guard AccountService.shared.isPaid else { return false }
         if selectedType == .video && videoModel.requiresSourceVideo {
             guard sourceVideo != nil else { return false }
             if videoModel.supportsReferences && imageReferences.isEmpty { return false }
@@ -260,8 +260,8 @@ struct GenerationView: View {
         }
     }
 
-    /// Live USD estimate for the current form state
-    private var estimatedCost: Double? {
+    /// Live credit estimate for the current form state.
+    private var estimatedCost: Int? {
         switch selectedType {
         case .video:
             let seconds = videoModel.requiresSourceVideo
@@ -323,14 +323,53 @@ struct GenerationView: View {
         return Array(repeating: GridItem(.flexible(minimum: minCell), spacing: spacing), count: count)
     }
 
+    private var catalogReady: Bool {
+        !VideoModelConfig.allModels.isEmpty
+            && !ImageModelConfig.allModels.isEmpty
+            && !AudioModelConfig.allModels.isEmpty
+    }
+
     var body: some View {
+        Group {
+            if catalogReady {
+                bodyContent
+            } else {
+                catalogLoadingView
+            }
+        }
+        .aiAccessGate()
+    }
+
+    private var catalogLoadingView: some View {
+        let safeHeight = min(max(Self.minPanelHeight, liveHeight ?? panelHeight), maxPanelHeight)
+        return VStack(spacing: AppTheme.Spacing.md) {
+            ProgressView()
+            Text("Loading models…")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(height: safeHeight)
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: AppTheme.Radius.lg).fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: AppTheme.Radius.lg)
+                    .fill(.clear)
+                    .glassEffect(.regular, in: .rect(cornerRadius: AppTheme.Radius.lg))
+            }
+            .allowsHitTesting(false)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.lg))
+        .padding(AppTheme.Spacing.sm)
+    }
+
+    private var bodyContent: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             resizeHandle
-            // Type tabs (left) · API key + close (right)
+            // Type tabs (left) · close (right)
             HStack(spacing: AppTheme.Spacing.sm) {
                 typeTabs
                 Spacer()
-                apiKeyButton
                 Button {
                     editor.pendingEditReplacementClipId = nil
                     editor.pendingEditTrimmedSource = nil
@@ -1350,19 +1389,6 @@ struct GenerationView: View {
         }
     }
 
-    // MARK: - API key
-
-    private var apiKeyButton: some View {
-        ApiKeyField(
-            label: "fal",
-            placeholder: "Paste fal.ai API key",
-            hasKey: editor.generationService.hasApiKey,
-            maskedKey: editor.generationService.maskedApiKey,
-            onSave: { editor.generationService.setApiKey($0) },
-            onDelete: { editor.generationService.removeApiKey() }
-        )
-    }
-
     // MARK: - Actions
 
     private func videoInputAssets(for model: VideoModelConfig) -> VideoGenerationSubmission.InputAssets {
@@ -1462,7 +1488,6 @@ struct GenerationView: View {
         if imageCount > 1 {
             genInput.numImages = imageCount
         }
-        genInput.estimatedCost = estimatedCost
 
         let trimmedName = assetName.trimmingCharacters(in: .whitespaces)
         let name: String? = trimmedName.isEmpty ? nil : trimmedName

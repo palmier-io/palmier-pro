@@ -29,6 +29,8 @@ struct MediaManifestEntry: Codable, Sendable, Equatable, Identifiable {
     var sourceFPS: Double?
     var hasAudio: Bool?
     var folderId: String?
+    var cachedRemoteURL: String?
+    var cachedRemoteURLExpiresAt: Date?
 }
 
 struct GenerationInput: Codable, Sendable, Equatable {
@@ -57,8 +59,6 @@ struct GenerationInput: Codable, Sendable, Equatable {
     var referenceImageAssetIds: [String]?
     var referenceVideoAssetIds: [String]?
     var referenceAudioAssetIds: [String]?
-    /// Metadata
-    var estimatedCost: Double?
     var createdAt: Date?
 }
 

@@ -1,5 +1,4 @@
 import Foundation
-import FalClient
 
 struct ImageGenerationSubmission {
     let genInput: GenerationInput
@@ -7,7 +6,7 @@ struct ImageGenerationSubmission {
     let name: String?
     let numImages: Int
     let folderId: String?
-    let buildInput: ([String]) -> (endpoint: String, input: Payload)
+    let buildParams: ([String]) -> BackendGenerationParams
 
     @MainActor
     @discardableResult
@@ -26,8 +25,7 @@ struct ImageGenerationSubmission {
             name: name,
             numImages: numImages,
             folderId: folderId,
-            buildInput: buildInput,
-            responseKeyPath: FalResponsePaths.generatedImage,
+            buildParams: buildParams,
             fileExtension: "jpg",
             projectURL: projectURL,
             editor: editor,
@@ -53,16 +51,15 @@ struct ImageGenerationSubmission {
             name: name,
             numImages: numImages,
             folderId: folderId,
-            buildInput: { uploaded in
-                let input = model.buildInput(
+            buildParams: { uploaded in
+                .image(ImageGenerationParams(
                     prompt: genInput.prompt,
                     aspectRatio: genInput.aspectRatio,
                     resolution: genInput.resolution,
                     quality: genInput.quality,
                     imageURLs: uploaded,
                     numImages: numImages
-                )
-                return (model.resolvedEndpoint(imageURLs: uploaded), input)
+                ))
             }
         )
     }

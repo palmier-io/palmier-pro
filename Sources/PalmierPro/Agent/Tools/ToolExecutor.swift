@@ -62,7 +62,7 @@ final class ToolExecutor {
             with: JSONEncoder().encode(editor.timeline)
         ) as? [String: Any] else { throw ToolError("Failed to encode timeline") }
         dict["currentFrame"] = editor.currentFrame
-        dict["hasFalApiKey"] = editor.generationService.hasApiKey
+        dict["canGenerate"] = AccountService.shared.isPaid
         guard let json = Self.jsonString(dict) else { throw ToolError("Failed to encode timeline") }
         return .ok(json)
     }
@@ -219,9 +219,6 @@ final class ToolExecutor {
         return out
     }
 
-    /// Round a Double to 2 decimal places and return as NSDecimalNumber so
-    /// JSONSerialization emits clean decimal text ("0.3") instead of the
-    /// closest-binary-float printout ("0.29999999999999999").
     private static func round2(_ x: Double) -> NSNumber {
         NSDecimalNumber(string: String(format: "%.2f", x))
     }
@@ -678,12 +675,14 @@ final class ToolExecutor {
 
     private func generate(_ editor: EditorViewModel, _ args: [String: Any], type: ClipType) throws -> ToolResult {
         let prompt = try args.requireString("prompt")
-        guard editor.generationService.hasApiKey else {
-            throw ToolError("No FAL API key configured. Set one in the app's generation panel first.")
+        guard AccountService.shared.isPaid else {
+            throw ToolError("Generation requires an active Palmier subscription. Tell the user to sign in and subscribe.")
         }
         switch type {
         case .video:
-            let modelId = args.string("model") ?? VideoModelConfig.allModels[0].id
+            guard let modelId = args.string("model") ?? VideoModelConfig.allModels.first?.id else {
+                throw ToolError("Model catalog not loaded yet. Try again in a moment.")
+            }
             guard let model = VideoModelConfig.allModels.first(where: { $0.id == modelId }) else {
                 throw ToolError("Unknown model '\(modelId)'. Available: \(VideoModelConfig.allModels.map(\.id).joined(separator: ", "))")
             }
@@ -815,7 +814,9 @@ final class ToolExecutor {
         _ editor: EditorViewModel, _ args: [String: Any], prompt: String
     ) throws -> ToolResult {
         guard !prompt.isEmpty else { throw ToolError("Empty prompt") }
-        let modelId = args.string("model") ?? ImageModelConfig.allModels[0].id
+        guard let modelId = args.string("model") ?? ImageModelConfig.allModels.first?.id else {
+            throw ToolError("Model catalog not loaded yet. Try again in a moment.")
+        }
         guard let model = ImageModelConfig.allModels.first(where: { $0.id == modelId }) else {
             throw ToolError("Unknown model '\(modelId)'. Available: \(ImageModelConfig.allModels.map(\.id).joined(separator: ", "))")
         }
@@ -859,7 +860,9 @@ final class ToolExecutor {
     private func generateAudio(
         _ editor: EditorViewModel, _ args: [String: Any], prompt: String
     ) throws -> ToolResult {
-        let modelId = args.string("model") ?? AudioModelConfig.allModels[0].id
+        guard let modelId = args.string("model") ?? AudioModelConfig.allModels.first?.id else {
+            throw ToolError("Model catalog not loaded yet. Try again in a moment.")
+        }
         guard let model = AudioModelConfig.allModels.first(where: { $0.id == modelId }) else {
             throw ToolError("Unknown model '\(modelId)'. Available: \(AudioModelConfig.allModels.map(\.id).joined(separator: ", "))")
         }
@@ -912,8 +915,8 @@ final class ToolExecutor {
         guard asset.type == .video || asset.type == .image else {
             throw ToolError("Upscale supports video and image assets only (got \(asset.type.rawValue))")
         }
-        guard editor.generationService.hasApiKey else {
-            throw ToolError("No FAL API key configured. Set one in the app's generation panel first.")
+        guard AccountService.shared.isPaid else {
+            throw ToolError("Upscale requires an active Palmier subscription. Tell the user to sign in and subscribe.")
         }
 
         let available = UpscaleModelConfig.models(for: asset.type)
@@ -932,7 +935,7 @@ final class ToolExecutor {
         }
 
         guard let placeholderId = EditSubmitter.submitUpscale(
-            asset: asset, model: model, editor: editor, service: editor.generationService
+            asset: asset, model: model, editor: editor
         ) else {
             throw ToolError("Failed to start upscale")
         }

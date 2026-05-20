@@ -33,7 +33,7 @@ enum ToolDefinitions {
     static let all: [AgentTool] = [
         AgentTool(
             name: .getTimeline,
-            description: "Always call at the start of a session. Returns project settings (fps, resolution), track list with types and order, all clips with their frames and properties, and hasFalApiKey (if false, generation/transcription/upscale tools will fail — warn the user to configure the key in the app's generation panel before attempting them). The clipId/trackId values here are what every other tool accepts.",
+            description: "Always call at the start of a session. Returns project settings (fps, resolution), track list with types and order, all clips with their frames and properties, and canGenerate (if false, generation/upscale tools will fail — tell the user to sign in to Palmier and subscribe before attempting them). The clipId/trackId values here are what every other tool accepts.",
             inputSchema: objectSchema()
         ),
         AgentTool(

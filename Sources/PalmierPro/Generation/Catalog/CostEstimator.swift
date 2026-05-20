@@ -1,78 +1,69 @@
 import Foundation
 
-/// USD cost estimator for fal generations
 enum CostEstimator {
-
-    // MARK: - Video
 
     static func videoCost(
         model: VideoModelConfig,
         durationSeconds: Int,
         resolution: String?,
         generateAudio: Bool
-    ) -> Double? {
-        guard !model.pricePerSecond.isEmpty, durationSeconds > 0 else { return nil }
-        guard var rate = resolvedRate(model.pricePerSecond, key: resolution) else { return nil }
+    ) -> Int? {
+        guard !model.creditsPerSecond.isEmpty, durationSeconds > 0 else { return nil }
+        guard var rate = resolvedRate(model.creditsPerSecond, key: resolution) else { return nil }
         if !generateAudio, let discount = model.audioDiscount(for: resolution) {
             rate *= discount
         }
-        return rate * Double(durationSeconds)
+        return ceilCredits(rate * Double(durationSeconds))
     }
-
-    // MARK: - Image
 
     static func imageCost(
         model: ImageModelConfig,
         resolution: String?,
         quality: String?,
         numImages: Int = 1
-    ) -> Double? {
-        guard !model.pricePerImage.isEmpty else { return nil }
+    ) -> Int? {
+        guard !model.creditsPerImage.isEmpty else { return nil }
         let count = Double(max(1, numImages))
         // 2D matrix lookup first (e.g. GPT Image 2 varies on both axes).
-        if let r = resolution, let q = quality, let price = model.pricePerImage["\(r)|\(q)"] {
-            return price * count
+        if let r = resolution, let q = quality, let price = model.creditsPerImage["\(r)|\(q)"] {
+            return ceilCredits(price * count)
         }
         // Quality-only lookup when the model varies on quality but not resolution.
-        if model.qualities != nil, let q = quality, let price = model.pricePerImage[q] {
-            return price * count
+        if model.qualities != nil, let q = quality, let price = model.creditsPerImage[q] {
+            return ceilCredits(price * count)
         }
-        guard let rate = resolvedRate(model.pricePerImage, key: resolution) else { return nil }
-        return rate * count
+        guard let rate = resolvedRate(model.creditsPerImage, key: resolution) else { return nil }
+        return ceilCredits(rate * count)
     }
-
-    // MARK: - Audio
 
     static func audioCost(
         model: AudioModelConfig,
         prompt: String,
         durationSeconds: Int?
-    ) -> Double? {
+    ) -> Int? {
         switch model.pricing {
         case .perThousandChars(let rate):
             let chars = prompt.count
             guard chars > 0 else { return nil }
-            return rate * (Double(chars) / 1000.0)
+            return ceilCredits(rate * (Double(chars) / 1000.0))
         case .perSecond(let rate):
             guard let secs = durationSeconds, secs > 0 else { return nil }
-            return rate * Double(secs)
+            return ceilCredits(rate * Double(secs))
         case .flat(let price):
-            return price
+            return ceilCredits(price)
         case .unknown:
             return nil
         }
     }
 
-    // MARK: - Upscale
-
-    static func upscaleCost(model: UpscaleModelConfig, durationSeconds: Int) -> Double? {
+    static func upscaleCost(model: UpscaleModelConfig, durationSeconds: Int) -> Int? {
         let d = max(1, durationSeconds)
-        return model.pricePerSecond * Double(d)
+        return ceilCredits(model.creditsPerSecond * Double(d))
     }
 
-    /// Recompute cost from a stored `GenerationInput`. Used on rerun
+    /// Recompute cost from a stored `GenerationInput`. Used on rerun.
     @MainActor
-    static func cost(for genInput: GenerationInput) -> Double? {
+    static func cost(for genInput: GenerationInput) -> Int? {
         switch ModelRegistry.byId[genInput.model] {
         case .video(let m):
             return videoCost(
@@ -98,19 +89,20 @@ enum CostEstimator {
         }
     }
 
-    // MARK: - Formatting
-
-    static func format(_ cost: Double?) -> String {
-        guard let cost else { return "—" }
-        if cost <= 0 { return "$0.00" }
-        if cost < 0.01 { return "<$0.01" }
-        return String(format: "$%.2f", cost)
+    static func format(_ credits: Int?) -> String {
+        guard let credits else { return "—" }
+        if credits <= 0 { return "0 credits" }
+        if credits == 1 { return "1 credit" }
+        return "\(credits) credits"
     }
-
-    // MARK: - Private
 
     private static func resolvedRate(_ dict: [String: Double], key: String?) -> Double? {
         if let key, let v = dict[key] { return v }
         return dict[""]
+    }
+
+    private static func ceilCredits(_ credits: Double) -> Int {
+        guard credits > 0 else { return 0 }
+        return Int(credits.rounded(.up))
     }
 }

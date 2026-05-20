@@ -1,5 +1,4 @@
 import Foundation
-import FalClient
 
 /// Shared video generation submission assembly for UI and agent entry points.
 struct VideoGenerationSubmission {
@@ -9,7 +8,7 @@ struct VideoGenerationSubmission {
     let trimmedSourceOverride: TrimmedSource?
     let name: String?
     let folderId: String?
-    let buildInput: ([String]) -> (endpoint: String, input: Payload)
+    let buildParams: ([String]) -> BackendGenerationParams
     let snapshotRefs: (@Sendable (inout GenerationInput, [String]) -> Void)?
     let preprocessRef: (@Sendable (Int, MediaAsset) async throws -> URL?)?
 
@@ -30,10 +29,9 @@ struct VideoGenerationSubmission {
             trimmedSourceOverride: trimmedSourceOverride,
             name: name,
             folderId: folderId,
-            buildInput: buildInput,
+            buildParams: buildParams,
             snapshotRefs: snapshotRefs,
             preprocessRef: preprocessRef,
-            responseKeyPath: FalResponsePaths.video,
             fileExtension: "mp4",
             projectURL: projectURL,
             editor: editor,
@@ -65,8 +63,8 @@ struct VideoGenerationSubmission {
                 trimmedSourceOverride: trimmedSourceOverride,
                 name: name,
                 folderId: folderId,
-                buildInput: { uploaded in
-                    let params = VideoGenerationParams(
+                buildParams: { uploaded in
+                    .video(VideoGenerationParams(
                         prompt: genInput.prompt,
                         duration: 0,
                         aspectRatio: genInput.aspectRatio,
@@ -76,8 +74,7 @@ struct VideoGenerationSubmission {
                         endFrameURL: nil,
                         referenceImageURLs: Array(uploaded.dropFirst()),
                         generateAudio: generateAudio
-                    )
-                    return (model.resolvedEndpoint(params: params), model.buildInput(params: params))
+                    ))
                 },
                 snapshotRefs: nil,
                 preprocessRef: nil
@@ -117,7 +114,7 @@ struct VideoGenerationSubmission {
             trimmedSourceOverride: trimmedSourceOverride,
             name: name,
             folderId: folderId,
-            buildInput: { uploaded in
+            buildParams: { uploaded in
                 let params = videoInputURLs(
                     uploaded: uploaded,
                     frameCount: frameCount,
@@ -131,7 +128,7 @@ struct VideoGenerationSubmission {
                     resolution: genInput.resolution,
                     generateAudio: generateAudio
                 )
-                return (model.resolvedEndpoint(params: params), model.buildInput(params: params))
+                return .video(params)
             },
             snapshotRefs: snapshotRefs,
             preprocessRef: preprocessRef
