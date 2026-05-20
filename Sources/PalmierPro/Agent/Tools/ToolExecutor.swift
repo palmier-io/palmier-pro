@@ -111,7 +111,7 @@ final class ToolExecutor {
             "trimStartFrame": clip.trimStartFrame,
             "speed": clip.speed,
             "fps": fps,
-            "note": "Per-word timelineStartFrame/timelineEndFrame are in project frames. Feed first word's timelineStartFrame as add_texts startFrame, (last word's timelineEnd - first word's timelineStart) as durationFrames.",
+            "note": "To convert a word's source-seconds t to a project frame: frame = round(clipStartFrame + (t*fps - trimStartFrame) / speed). Clamp to [clipStartFrame, clipEndFrame). Drop words that fall outside that range. For add_texts of a phrase: startFrame = frame(first word's start); durationFrames = frame(last word's end) - startFrame.",
         ]
     }
 
@@ -172,10 +172,10 @@ final class ToolExecutor {
 
         if asset.hasAudio {
             do {
-                let transcript = try await editor.generationService.transcribeVideoAudio(videoURL: asset.url)
+                let transcript = try await Transcription.transcribeVideoAudio(videoURL: asset.url)
                 meta["transcription"] = Self.transcriptionMeta(from: transcript, mapping: mapping)
             } catch {
-                Log.generation.error("video transcription failed: \(error.localizedDescription)")
+                Log.transcription.error("video transcription failed: \(error.localizedDescription)")
                 meta["transcriptionError"] = error.localizedDescription
             }
         }
@@ -191,12 +191,9 @@ final class ToolExecutor {
     }
 
     private func readAudio(editor: EditorViewModel, asset: MediaAsset, mapping: (clip: Clip, fps: Int)? = nil) async throws -> ToolResult {
-        guard editor.generationService.hasApiKey else {
-            throw ToolError("No FAL API key configured — required for audio transcription. Set one in the app's generation panel.")
-        }
-        let transcript: GenerationService.TranscriptionResult
+        let transcript: TranscriptionResult
         do {
-            transcript = try await editor.generationService.transcribe(fileURL: asset.url)
+            transcript = try await Transcription.transcribe(fileURL: asset.url)
         } catch {
             throw ToolError("Transcription failed: \(error.localizedDescription)")
         }
@@ -209,30 +206,24 @@ final class ToolExecutor {
     }
 
     private static func transcriptionMeta(
-        from transcript: GenerationService.TranscriptionResult,
-        mapping: (clip: Clip, fps: Int)? = nil
+        from transcript: TranscriptionResult,
+        mapping _: (clip: Clip, fps: Int)? = nil
     ) -> [String: Any] {
         var out: [String: Any] = [
             "text": transcript.text,
-            "words": transcript.words.map { w -> [String: Any] in
-                var entry: [String: Any] = ["text": w.text, "type": w.type]
-                if let s = w.start { entry["start"] = s }
-                if let e = w.end { entry["end"] = e }
-                if let sid = w.speakerId { entry["speakerId"] = sid }
-                if let mapping {
-                    if let s = w.start, let tf = mapping.clip.timelineFrame(sourceSeconds: s, fps: mapping.fps) {
-                        entry["timelineStartFrame"] = tf
-                    }
-                    if let e = w.end, let tf = mapping.clip.timelineFrame(sourceSeconds: e, fps: mapping.fps) {
-                        entry["timelineEndFrame"] = tf
-                    }
-                }
-                return entry
+            "words": transcript.words.map { w -> [Any] in
+                [w.text, w.start.map(Self.round2) ?? NSNull(), w.end.map(Self.round2) ?? NSNull()]
             },
         ]
         if let lang = transcript.language { out["language"] = lang }
-        if let p = transcript.languageProbability { out["languageProbability"] = p }
         return out
+    }
+
+    /// Round a Double to 2 decimal places and return as NSDecimalNumber so
+    /// JSONSerialization emits clean decimal text ("0.3") instead of the
+    /// closest-binary-float printout ("0.29999999999999999").
+    private static func round2(_ x: Double) -> NSNumber {
+        NSDecimalNumber(string: String(format: "%.2f", x))
     }
 
     private static func baseMeta(for asset: MediaAsset) -> [String: Any] {
