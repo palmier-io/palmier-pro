@@ -6,14 +6,13 @@ struct PreviewContainerView: View {
     private var isTimeline: Bool { editor.activePreviewTab == .timeline }
     private var isImage: Bool { editor.activePreviewTab.clipType == .image }
 
+    @State private var hoveredTabId: String?
+
     var body: some View {
         VStack(spacing: 0) {
-            GlassEffectContainer {
-                tabBar
-            }
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .padding(.top, AppTheme.Spacing.xs)
-            .padding(.bottom, AppTheme.Spacing.xs)
+            tabBar
+                .padding(.horizontal, AppTheme.Spacing.sm)
+                .padding(.top, AppTheme.Spacing.xs)
 
             GeometryReader { geo in
                 let aspect = CGFloat(editor.timeline.width) / CGFloat(editor.timeline.height)
@@ -360,28 +359,104 @@ struct PreviewContainerView: View {
     // MARK: - Tab bar
 
     private var tabBar: some View {
-        HStack(spacing: 0) {
-            if let activeTab = editor.previewTabs.first(where: { $0.id == editor.activePreviewTabId }) {
-                activeTabLabel(for: activeTab)
+        HStack(spacing: AppTheme.Spacing.xs) {
+            HStack(spacing: 0) {
+                navButton("chevron.left", enabled: editor.canGoBackPreviewTab, help: "Back") {
+                    editor.goBackPreviewTab()
+                }
+                navButton("chevron.right", enabled: editor.canGoForwardPreviewTab, help: "Forward") {
+                    editor.goForwardPreviewTab()
+                }
             }
-            Spacer()
+
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: AppTheme.Spacing.md) {
+                        ForEach(editor.previewTabs) { tab in
+                            tabItem(for: tab).id(tab.id)
+                        }
+                    }
+                    .padding(.horizontal, AppTheme.Spacing.sm)
+                }
+                .mouseWheelScrollsHorizontally()
+                .onChange(of: editor.activePreviewTabId) { _, newId in
+                    withAnimation(.easeOut(duration: AppTheme.Anim.transition)) {
+                        proxy.scrollTo(newId, anchor: .center)
+                    }
+                }
+            }
+
+            overflowMenu
         }
     }
 
-    private func activeTabLabel(for tab: PreviewTab) -> some View {
-        HStack(spacing: 4) {
+    private func tabItem(for tab: PreviewTab) -> some View {
+        let isActive = tab.id == editor.activePreviewTabId
+        let isHovered = hoveredTabId == tab.id
+        return HStack(spacing: 4) {
             Text(tab.displayName)
-                .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
+                .font(.system(size: AppTheme.FontSize.xs, weight: isActive ? .semibold : .medium))
+                .foregroundStyle(isActive || isHovered ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
                 .lineLimit(1)
 
             if tab.isCloseable {
                 closeButton(tabId: tab.id)
             }
         }
-        .padding(.horizontal, AppTheme.Spacing.md)
-        .padding(.vertical, AppTheme.Spacing.xs)
-        .foregroundStyle(AppTheme.Text.primaryColor)
-        .glassEffect(.regular.tint(tab.tintColor), in: .capsule)
+        .padding(.horizontal, AppTheme.Spacing.xs)
+        .padding(.bottom, 4)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(isActive ? tab.underlineColor : Color.clear)
+                .frame(height: 1.5)
+        }
+        .fixedSize()
+        .contentShape(Rectangle())
+        .onTapGesture {
+            editor.selectPreviewTab(id: tab.id)
+        }
+        .onHover { hovering in
+            if hovering {
+                hoveredTabId = tab.id
+            } else if hoveredTabId == tab.id {
+                hoveredTabId = nil
+            }
+        }
+        .animation(.easeOut(duration: AppTheme.Anim.hover), value: isActive)
+    }
+
+    private func navButton(_ systemName: String, enabled: Bool, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                .foregroundStyle(enabled ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
+                .frame(width: 18, height: 22)
+                .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .help(help)
+    }
+
+    private var overflowMenu: some View {
+        Menu {
+            Button("Close All Tabs") {
+                withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
+                    editor.closeAllPreviewTabs()
+                }
+            }
+            .disabled(editor.previewTabs.count <= 1)
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .frame(width: 22, height: 22)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+        .help("More")
     }
 
     private func closeButton(tabId: String) -> some View {
@@ -393,8 +468,8 @@ struct PreviewContainerView: View {
             Image(systemName: "xmark")
                 .font(.system(size: 8, weight: .bold))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: 18, height: 18)
-                .hoverHighlight(cornerRadius: 9)
+                .frame(width: 14, height: 14)
+                .hoverHighlight(cornerRadius: 7)
         }
         .buttonStyle(.plain)
     }

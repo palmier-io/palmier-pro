@@ -38,4 +38,11 @@ enum PreviewTab: Identifiable, Equatable {
         case .mediaAsset(_, _, let type): Color(type.themeColor).opacity(0.25)
         }
     }
+
+    var underlineColor: Color {
+        switch self {
+        case .timeline: Color.accentColor
+        case .mediaAsset(_, _, let type): Color(type.themeColor)
+        }
+    }
 }

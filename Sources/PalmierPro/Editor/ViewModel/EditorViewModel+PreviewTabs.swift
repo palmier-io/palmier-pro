@@ -36,14 +36,21 @@ extension EditorViewModel {
         activePreviewTabId = tab.id
         sourcePlayheadFrame = 0
         videoEngine?.activateTab(tab)
+        pushPreviewHistory(tab.id)
     }
 
     func closePreviewTab(id: String) {
         guard id != PreviewTab.timeline.id else { return }
         previewTabs.removeAll { $0.id == id }
+        previewTabHistory.removeAll { $0 == id }
+        if previewTabHistory.isEmpty {
+            previewTabHistory = [PreviewTab.timeline.id]
+        }
+        previewTabHistoryIndex = min(previewTabHistoryIndex, previewTabHistory.count - 1)
         if activePreviewTabId == id {
-            activePreviewTabId = PreviewTab.timeline.id
-            videoEngine?.activateTab(.timeline)
+            let fallbackId = previewTabHistory[previewTabHistoryIndex]
+            activePreviewTabId = fallbackId
+            videoEngine?.activateTab(activePreviewTab)
         }
     }
 
@@ -52,5 +59,42 @@ extension EditorViewModel {
               activePreviewTabId != id else { return }
         activePreviewTabId = id
         videoEngine?.activateTab(activePreviewTab)
+        pushPreviewHistory(id)
+    }
+
+    // MARK: - Tab history (back/forward navigation)
+
+    var canGoBackPreviewTab: Bool { previewTabHistoryIndex > 0 }
+    var canGoForwardPreviewTab: Bool { previewTabHistoryIndex < previewTabHistory.count - 1 }
+
+    func goBackPreviewTab() { stepPreviewHistory(-1) }
+    func goForwardPreviewTab() { stepPreviewHistory(1) }
+
+    func closeAllPreviewTabs() {
+        previewTabs = [.timeline]
+        activePreviewTabId = PreviewTab.timeline.id
+        previewTabHistory = [PreviewTab.timeline.id]
+        previewTabHistoryIndex = 0
+        videoEngine?.activateTab(.timeline)
+    }
+
+    private func stepPreviewHistory(_ delta: Int) {
+        let next = previewTabHistoryIndex + delta
+        guard previewTabHistory.indices.contains(next) else { return }
+        previewTabHistoryIndex = next
+        let id = previewTabHistory[next]
+        guard activePreviewTabId != id else { return }
+        activePreviewTabId = id
+        videoEngine?.activateTab(activePreviewTab)
+    }
+
+    private func pushPreviewHistory(_ id: String) {
+        let tail = previewTabHistoryIndex + 1
+        if tail < previewTabHistory.count {
+            previewTabHistory.removeSubrange(tail...)
+        }
+        guard previewTabHistory.last != id else { return }
+        previewTabHistory.append(id)
+        previewTabHistoryIndex = previewTabHistory.count - 1
     }
 }

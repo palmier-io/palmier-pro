@@ -75,6 +75,8 @@ final class EditorViewModel {
     var cropAspectLock: CropAspectLock = .free
     var previewTabs: [PreviewTab] = [.timeline]
     var activePreviewTabId: String = PreviewTab.timeline.id
+    var previewTabHistory: [String] = [PreviewTab.timeline.id]
+    var previewTabHistoryIndex: Int = 0
     var sourcePlayheadFrame: Int = 0 {
         didSet { playheadState.sourceFrame = sourcePlayheadFrame }
     }
