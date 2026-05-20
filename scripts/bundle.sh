@@ -2,8 +2,9 @@
 set -euo pipefail
 
 # Usage:
-#   scripts/bundle.sh [release|debug]           # dev build (no signing)
-#   scripts/bundle.sh release --sign            # build + codesign
+#   scripts/bundle.sh [release|debug]           # ad-hoc signed dev build
+#   scripts/bundle.sh debug --fast              # fastest: skip dSYM + deep sign, just env+build
+#   scripts/bundle.sh release --sign            # build + Developer ID codesign
 #   scripts/bundle.sh release --dist            # build + sign + notarize + staple + DMG
 
 CONFIG="release"
@@ -11,6 +12,7 @@ MODE="dev"
 for arg in "$@"; do
   case "$arg" in
     release|debug) CONFIG="$arg" ;;
+    --fast)        MODE="fast" ;;
     --sign)        MODE="sign" ;;
     --dist)        MODE="dist" ;;
     *) echo "unknown arg: $arg" >&2; exit 1 ;;
@@ -20,10 +22,8 @@ done
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 ENV_FILE=".env"
-if [ "$MODE" = "sign" ] || [ "$MODE" = "dist" ]; then
-  if [ -f "$ROOT/.env.prod" ]; then
-    ENV_FILE=".env.prod"
-  fi
+if [ "$CONFIG" = "release" ] && [ -f "$ROOT/.env.prod" ]; then
+  ENV_FILE=".env.prod"
 fi
 if [ -f "$ROOT/$ENV_FILE" ]; then
   echo "==> Loading $ENV_FILE"
@@ -87,6 +87,13 @@ fi
 
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/PalmierPro"
 touch "$APP"
+
+if [ "$MODE" = "fast" ]; then
+  echo "==> Codesigning main app with $SIGNING_IDENTITY (no timestamp, no helpers)"
+  codesign --force --sign "$SIGNING_IDENTITY" "$APP"
+  echo "==> Done: $APP (fast mode — stable identity, no dSYM, no nested re-sign)"
+  exit 0
+fi
 
 DSYM="$ROOT/.build/PalmierPro.dSYM"
 echo "==> Generating dSYM"
