@@ -28,11 +28,13 @@ struct AccountUser: Decodable, Sendable {
     let currentPeriodStart: Double?
     let currentPeriodEnd: Double?
     let cancelAtPeriodEnd: Bool?
+    let spentCreditsThisPeriod: Int?
 }
 
 struct AccountPlan: Decodable, Sendable {
     let tier: AccountTier
     let monthlyPriceUsd: Int
+    let monthlyBudgetCredits: Int?
 }
 
 struct AccountResponse: Decodable, Sendable {
@@ -62,6 +64,13 @@ final class AccountService {
     var isSignedIn: Bool { !isMisconfigured && Clerk.shared.user != nil }
     var tier: AccountTier { account?.user.tier ?? .none }
     var isPaid: Bool { tier.isPaid }
+
+    var spentCredits: Int { account?.user.spentCreditsThisPeriod ?? 0 }
+    var budgetCredits: Int? { account?.plan?.monthlyBudgetCredits }
+    var remainingCredits: Int? {
+        guard let budget = budgetCredits else { return nil }
+        return max(0, budget - spentCredits)
+    }
 
     @ObservationIgnored private(set) var convex: ConvexClientWithAuth<String>?
     @ObservationIgnored private var accountSubscription: AnyCancellable?

@@ -62,6 +62,9 @@ struct AccountPane: View {
 
     @ViewBuilder
     private var paidActions: some View {
+        CreditSummaryView(style: .full)
+            .padding(.bottom, AppTheme.Spacing.xs)
+
         if let periodMessage {
             Text(periodMessage)
                 .font(.system(size: AppTheme.FontSize.sm))

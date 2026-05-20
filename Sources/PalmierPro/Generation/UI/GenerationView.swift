@@ -366,10 +366,11 @@ struct GenerationView: View {
     private var bodyContent: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             resizeHandle
-            // Type tabs (left) · close (right)
+            // Type tabs (left) · credits · close (right)
             HStack(spacing: AppTheme.Spacing.sm) {
                 typeTabs
                 Spacer()
+                CreditSummaryView(style: .compact)
                 Button {
                     editor.pendingEditReplacementClipId = nil
                     editor.pendingEditTrimmedSource = nil
