@@ -8,6 +8,7 @@ struct MediaPanelView: View {
     @State var sortMode: SortMode = .dateAdded
     @State var filterTypes: Set<ClipType> = []
     @State var filterAI = false
+    @State var searchQuery: String = ""
     @State var thumbnailSize: Double = 110
     @State var viewMode: ViewMode = .folder
 
@@ -124,6 +125,7 @@ struct MediaPanelView: View {
         guard let asset = editor.mediaAssets.first(where: { $0.id == id }) else { return }
         if !passesFilters(asset) {
             clearFilters()
+            searchQuery = ""
         }
         if viewMode == .folder, currentFolderId != asset.folderId {
             currentFolderId = asset.folderId
@@ -161,7 +163,9 @@ struct MediaPanelView: View {
                 }
             }
 
-            Spacer()
+            searchField
+
+            Spacer(minLength: 0)
 
             // Drop count + slider when the panel is too narrow.
             ViewThatFits(in: .horizontal) {
@@ -313,13 +317,18 @@ struct MediaPanelView: View {
     }
 
     var subfoldersInCurrentFolder: [MediaFolder] {
-        editor.subfolders(of: currentFolderId)
+        let folders = editor.subfolders(of: currentFolderId)
+        let q = searchQuery.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return folders }
+        return folders.filter { $0.name.localizedCaseInsensitiveContains(q) }
     }
 
     private func passesFilters(_ asset: MediaAsset) -> Bool {
         let typeOk = filterTypes.isEmpty || filterTypes.contains(asset.type)
         let aiOk = !filterAI || asset.isGenerated
-        return typeOk && aiOk
+        let q = searchQuery.trimmingCharacters(in: .whitespaces)
+        let nameOk = q.isEmpty || asset.name.localizedCaseInsensitiveContains(q)
+        return typeOk && aiOk && nameOk
     }
 
     func sortAndFilter(_ assets: [MediaAsset]) -> [MediaAsset] {
@@ -345,6 +354,35 @@ struct MediaPanelView: View {
             .monospacedDigit()
             .lineLimit(1)
             .fixedSize()
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 10))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            TextField("Search", text: $searchQuery)
+                .textFieldStyle(.plain)
+                .font(.system(size: AppTheme.FontSize.xs))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+            if !searchQuery.isEmpty {
+                Button { searchQuery = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(AppTheme.Text.mutedColor)
+                }
+                .buttonStyle(.plain)
+                .focusable(false)
+                .help("Clear search")
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                .fill(AppTheme.Border.subtleColor)
+        )
+        .frame(maxWidth: 180)
     }
 
     private var thumbnailSlider: some View {
