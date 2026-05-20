@@ -83,6 +83,16 @@ echo "    (edit on GitHub later if you want to polish)"
 echo "==> Bumping version"
 CURRENT_BUILD="$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST")"
 NEW_BUILD=$((CURRENT_BUILD + 1))
+
+MAX_PUBLISHED="$(grep -oE '<sparkle:version>[0-9]+</sparkle:version>' "$APPCAST" \
+  | grep -oE '[0-9]+' | sort -n | tail -1)"
+if [ -n "$MAX_PUBLISHED" ] && [ "$NEW_BUILD" -le "$MAX_PUBLISHED" ]; then
+  echo "error: NEW_BUILD=$NEW_BUILD is not greater than max published sparkle:version=$MAX_PUBLISHED" >&2
+  echo "       Info.plist CFBundleVersion ($CURRENT_BUILD) was likely rolled back by an unrelated commit." >&2
+  echo "       Set CFBundleVersion to $MAX_PUBLISHED in $PLIST and retry." >&2
+  exit 1
+fi
+
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEW_BUILD" "$PLIST"
 echo "    $VERSION (build $NEW_BUILD)"
