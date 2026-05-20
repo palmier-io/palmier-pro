@@ -59,6 +59,7 @@ extension EditorViewModel {
               activePreviewTabId != id else { return }
         activePreviewTabId = id
         videoEngine?.activateTab(activePreviewTab)
+        syncSelectionToActiveTab()
         pushPreviewHistory(id)
     }
 
@@ -86,6 +87,18 @@ extension EditorViewModel {
         guard activePreviewTabId != id else { return }
         activePreviewTabId = id
         videoEngine?.activateTab(activePreviewTab)
+        syncSelectionToActiveTab()
+    }
+
+    private func syncSelectionToActiveTab() {
+        switch activePreviewTab {
+        case .timeline:
+            selectedMediaAssetIds.removeAll()
+        case .mediaAsset(let id, _, _):
+            selectedClipIds.removeAll()
+            selectedFolderIds.removeAll()
+            selectedMediaAssetIds = [id]
+        }
     }
 
     private func pushPreviewHistory(_ id: String) {

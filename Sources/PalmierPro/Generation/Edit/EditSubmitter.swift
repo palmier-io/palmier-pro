@@ -41,6 +41,7 @@ enum EditSubmitter {
             placeholderDuration = asset.duration > 0 ? asset.duration : Double(effectiveDuration)
         }
 
+        let sourceAssetId = asset.id
         return editor.generationService.generate(
             genInput: genInput,
             assetType: asset.type,
@@ -54,6 +55,10 @@ enum EditSubmitter {
                     sourceURL: uploaded.first ?? "",
                     durationSeconds: isImage ? 1 : effectiveDuration
                 ))
+            },
+            snapshotRefs: { input, uploaded in
+                input.imageURLs = uploaded.isEmpty ? nil : uploaded
+                input.imageURLAssetIds = [sourceAssetId]
             },
             fileExtension: isImage ? "jpg" : "mp4",
             projectURL: editor.projectURL,

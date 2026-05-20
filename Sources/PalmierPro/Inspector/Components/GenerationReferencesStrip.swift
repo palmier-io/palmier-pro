@@ -41,10 +41,16 @@ struct GenerationReferencesStrip: View {
     }
 
     private static func primaryLabels(for gen: GenerationInput) -> [String] {
-        guard case .video(let m) = ModelRegistry.byId[gen.model] else { return [] }
-        if m.requiresSourceVideo { return m.supportsReferences ? ["Source", "Reference"] : ["Source"] }
-        if m.supportsFirstFrame  { return m.supportsLastFrame  ? ["First Frame", "Last Frame"] : ["First Frame"] }
-        return []
+        switch ModelRegistry.byId[gen.model] {
+        case .video(let m):
+            if m.requiresSourceVideo { return m.supportsReferences ? ["Source", "Reference"] : ["Source"] }
+            if m.supportsFirstFrame  { return m.supportsLastFrame  ? ["First Frame", "Last Frame"] : ["First Frame"] }
+            return []
+        case .upscale:
+            return ["Source"]
+        default:
+            return []
+        }
     }
 
     private func thumbnail(label: String, asset: MediaAsset) -> some View {
