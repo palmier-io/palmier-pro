@@ -13,7 +13,7 @@ struct CropOverlayView: View {
             let videoRect = videoContentRect(in: geo.size)
 
             if let clip = selectedClip {
-                let frame = editor.playheadState.timelineFrame
+                let frame = editor.activeFrame
                 let clipRect = clipFrame(clip.transformAt(frame: frame), videoRect: videoRect)
                 let cropRect = cropFrame(clip.cropAt(frame: frame), in: clipRect)
 
@@ -57,7 +57,7 @@ struct CropOverlayView: View {
     private func resizeGesture(clip: Clip, corner: Corner, clipRect: CGRect) -> some Gesture {
         DragGesture()
             .onChanged { value in
-                if dragStart == nil { dragStart = clip.cropAt(frame: editor.playheadState.timelineFrame) }
+                if dragStart == nil { dragStart = clip.cropAt(frame: editor.activeFrame) }
                 guard let start = dragStart else { return }
                 let updated = resizedCrop(start, corner: corner, by: value.translation, clipRect: clipRect, clip: clip)
                 editor.applyCrop(clipId: clip.id, newCrop: updated)

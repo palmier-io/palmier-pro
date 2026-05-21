@@ -300,6 +300,10 @@ struct InspectorView: View {
                     InspectorRow(icon: "speaker.wave.2.fill", label: "Audio")
                         .frame(height: KeyframesMetrics.headerHeight)
                     volumeRow(audios: audios)
+                    fadeRow(label: "Fade In", audios: audios, edge: .left)
+                        .padding(.trailing, KeyframesMetrics.stampButtonWidth + AppTheme.Spacing.sm)
+                    fadeRow(label: "Fade Out", audios: audios, edge: .right)
+                        .padding(.trailing, KeyframesMetrics.stampButtonWidth + AppTheme.Spacing.sm)
                     if nonTextVisualClips.isEmpty {
                         speedSection(clips: audios)
                             .padding(.trailing, KeyframesMetrics.stampButtonWidth + AppTheme.Spacing.sm)
@@ -316,6 +320,8 @@ struct InspectorView: View {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
                 InspectorRow(icon: "speaker.wave.2.fill", label: "Audio")
                 volumeRow(audios: audios)
+                fadeRow(label: "Fade In", audios: audios, edge: .left)
+                fadeRow(label: "Fade Out", audios: audios, edge: .right)
             }
             if nonTextVisualClips.isEmpty {
                 speedSection(clips: audios)
@@ -331,13 +337,7 @@ struct InspectorView: View {
         animatableRow(label: "Volume", clipId: single?.id, property: .volume) {
             ScrubbableNumberField(
                 value: sharedClipValue(audios) { clip in
-                    let offset = editor.currentFrame - clip.startFrame
-                    if clip.hasUserVolumeKeyframes,
-                       clip.contains(timelineFrame: editor.currentFrame),
-                       let kf = clip.volumeTrack?.keyframes.first(where: { $0.frame == offset }) {
-                        return kf.value
-                    }
-                    return VolumeScale.dbFromLinear(clip.volume)
+                    clip.liveVolumeKfDb(at: editor.activeFrame) ?? VolumeScale.dbFromLinear(clip.volume)
                 },
                 range: VolumeScale.floorDb...VolumeScale.ceilingDb,
                 format: "%.1f",
@@ -354,6 +354,35 @@ struct InspectorView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func fadeRow(label: String, audios: [Clip], edge: FadeEdge) -> some View {
+        let fps = Double(max(1, editor.timeline.fps))
+        let single = audios.count == 1 ? audios.first : nil
+        let maxSeconds = single.map { Double($0.durationFrames) / fps } ?? 60.0
+        propertyRow(label: label) {
+            ScrubbableNumberField(
+                value: sharedClipValue(audios) { clip in
+                    Double(edge == .left ? clip.audioFadeInFrames : clip.audioFadeOutFrames) / fps
+                },
+                range: 0...maxSeconds,
+                format: "%.2f",
+                valueSuffix: " s",
+                dragSensitivity: 0.02,
+                fieldWidth: 56,
+                onChanged: { seconds in
+                    let frames = Int((seconds * fps).rounded())
+                    for c in audios { editor.applyFade(clipId: c.id, edge: edge, frames: frames) }
+                }
+            ) { seconds in
+                let frames = Int((seconds * fps).rounded())
+                commitToClips(audios, actionName: edge == .left ? "Change Fade In" : "Change Fade Out") { c in
+                    editor.commitFade(clipId: c.id, edge: edge, frames: frames)
+                }
+            }
+        }
+        .frame(height: KeyframesMetrics.rowHeight)
     }
 
 
@@ -439,13 +468,14 @@ struct InspectorView: View {
     }
 
     private func keyframeStampButton(clipId: String, property: AnimatableProperty) -> some View {
-        let inRange = editor.clipFor(id: clipId)?.contains(timelineFrame: editor.currentFrame) ?? false
-        let onKeyframe = editor.hasKeyframe(clipId: clipId, property: property, at: editor.currentFrame)
+        let frame = editor.activeFrame
+        let inRange = editor.clipFor(id: clipId)?.contains(timelineFrame: frame) ?? false
+        let onKeyframe = editor.hasKeyframe(clipId: clipId, property: property, at: frame)
         return Button {
             if onKeyframe {
-                editor.removeKeyframe(clipId: clipId, property: property, at: editor.currentFrame)
+                editor.removeKeyframe(clipId: clipId, property: property, at: frame)
             } else {
-                editor.stampKeyframe(clipId: clipId, property: property, frame: editor.currentFrame)
+                editor.stampKeyframe(clipId: clipId, property: property, frame: frame)
             }
         } label: {
             Image(systemName: onKeyframe ? "diamond.fill" : "diamond")
@@ -489,7 +519,7 @@ struct InspectorView: View {
     @ViewBuilder
     private func scaleScrubField(clips: [Clip]) -> some View {
         ScrubbableNumberField(
-            value: sharedClipValue(clips) { $0.sizeAt(frame: editor.currentFrame).width },
+            value: sharedClipValue(clips) { $0.sizeAt(frame: editor.activeFrame).width },
             range: 0.01...5.0,
             displayMultiplier: 100,
             format: "%.0f",
@@ -509,7 +539,7 @@ struct InspectorView: View {
     @ViewBuilder
     private func opacityScrubField(clips: [Clip]) -> some View {
         ScrubbableNumberField(
-            value: sharedClipValue(clips) { $0.opacityAt(frame: editor.currentFrame) },
+            value: sharedClipValue(clips) { $0.opacityAt(frame: editor.activeFrame) },
             range: 0...1,
             displayMultiplier: 100,
             format: "%.0f",

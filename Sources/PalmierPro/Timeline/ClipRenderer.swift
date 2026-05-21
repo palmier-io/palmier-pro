@@ -9,6 +9,10 @@ enum ClipRenderer {
     static let volumeFadeHandleEdgeInset: CGFloat = 6
     static let volumeRubberBandTopDb: Double = 6
     static let volumeRubberBandBottomDb: Double = -60
+    static let fadeKneeTopInset: CGFloat = 4
+    static func fadeKneeY(in audioBodyRect: NSRect) -> CGFloat {
+        audioBodyRect.minY + fadeKneeTopInset
+    }
 
     static func audioBodyRect(in clipRect: NSRect) -> NSRect {
         NSRect(
@@ -227,85 +231,167 @@ enum ClipRenderer {
     // MARK: - Volume rubber band
 
     private static func drawVolumeRubberBand(clip: Clip, in rect: NSRect, isSelected: Bool, context: CGContext) {
-        guard let track = clip.volumeTrack, !track.keyframes.isEmpty else { return }
-        let pxPerFrame = clip.durationFrames > 0 ? rect.width / CGFloat(clip.durationFrames) : 0
+        guard clip.durationFrames > 0 else { return }
+        let pxPerFrame = rect.width / CGFloat(clip.durationFrames)
         guard pxPerFrame > 0 else { return }
 
         let body = audioBodyRect(in: rect)
         let alpha: CGFloat = isSelected ? 0.95 : 0.75
         let lineColor = NSColor.white.withAlphaComponent(alpha).cgColor
+        let fadeColor = NSColor.white.withAlphaComponent(alpha * 0.7).cgColor
 
-        let kfs = track.keyframes.filter { $0.frame >= 0 && $0.frame <= clip.durationFrames }
-        guard !kfs.isEmpty else { return }
-
-        let handles = clip.volumeFadeHandleOffsets
-        let renderX: (Int) -> CGFloat = { offset in
-            if offset == handles.left {
-                return fadeHandleRenderX(in: rect, kfOffset: offset, isLeft: true, pxPerFrame: pxPerFrame)
-            }
-            if offset == handles.right {
-                return fadeHandleRenderX(in: rect, kfOffset: offset, isLeft: false, pxPerFrame: pxPerFrame)
-            }
-            return rect.minX + CGFloat(offset) * pxPerFrame
-        }
-
+        // 1) Volume line — through kfs, or flat at static volume when no kfs.
         context.setStrokeColor(lineColor)
         context.setLineWidth(1.5)
         context.beginPath()
-        let firstY = y(forDb: kfs[0].value, in: body)
-        context.move(to: CGPoint(x: rect.minX, y: firstY))
-        context.addLine(to: CGPoint(x: renderX(kfs[0].frame), y: firstY))
-
-        for i in 0..<(kfs.count - 1) {
-            let a = kfs[i], b = kfs[i + 1]
-            let aX = renderX(a.frame), bX = renderX(b.frame)
-            let aY = y(forDb: a.value, in: body), bY = y(forDb: b.value, in: body)
-            switch a.interpolationOut {
-            case .linear:
-                context.addLine(to: CGPoint(x: bX, y: bY))
-            case .hold:
-                context.addLine(to: CGPoint(x: bX, y: aY))
-                context.addLine(to: CGPoint(x: bX, y: bY))
-            case .smooth:
-                let steps = 12
-                for s in 1...steps {
-                    let t = Double(s) / Double(steps)
-                    let x = aX + (bX - aX) * CGFloat(t)
-                    let dB = a.value + (b.value - a.value) * smoothstep(t)
-                    context.addLine(to: CGPoint(x: x, y: y(forDb: dB, in: body)))
+        if let track = clip.volumeTrack, track.isActive {
+            let kfs = track.keyframes.filter { $0.frame >= 0 && $0.frame <= clip.durationFrames }
+            if let first = kfs.first {
+                let firstX = rect.minX + CGFloat(first.frame) * pxPerFrame
+                let firstY = y(forDb: first.value, in: body)
+                context.move(to: CGPoint(x: rect.minX, y: firstY))
+                context.addLine(to: CGPoint(x: firstX, y: firstY))
+                for i in 0..<(kfs.count - 1) {
+                    let a = kfs[i], b = kfs[i + 1]
+                    let aX = rect.minX + CGFloat(a.frame) * pxPerFrame
+                    let bX = rect.minX + CGFloat(b.frame) * pxPerFrame
+                    let aY = y(forDb: a.value, in: body)
+                    let bY = y(forDb: b.value, in: body)
+                    switch a.interpolationOut {
+                    case .linear:
+                        context.addLine(to: CGPoint(x: bX, y: bY))
+                    case .hold:
+                        context.addLine(to: CGPoint(x: bX, y: aY))
+                        context.addLine(to: CGPoint(x: bX, y: bY))
+                    case .smooth:
+                        let steps = 12
+                        for s in 1...steps {
+                            let t = Double(s) / Double(steps)
+                            let x = aX + (bX - aX) * CGFloat(t)
+                            let dB = a.value + (b.value - a.value) * smoothstep(t)
+                            context.addLine(to: CGPoint(x: x, y: y(forDb: dB, in: body)))
+                        }
+                    }
                 }
+                let lastY = y(forDb: kfs.last!.value, in: body)
+                context.addLine(to: CGPoint(x: rect.maxX, y: lastY))
             }
+        } else {
+            let volDb = VolumeScale.dbFromLinear(clip.volume)
+            let volY = y(forDb: volDb, in: body)
+            context.move(to: CGPoint(x: rect.minX, y: volY))
+            context.addLine(to: CGPoint(x: rect.maxX, y: volY))
         }
-        let lastY = y(forDb: kfs.last!.value, in: body)
-        context.addLine(to: CGPoint(x: rect.maxX, y: lastY))
         context.strokePath()
+
+        // Fade endpoints. Knees sit in a fixed "fade lane" near the top of the body
+        let leftOffset = min(clip.audioFadeInFrames, clip.durationFrames)
+        let rightOffset = max(0, clip.durationFrames - clip.audioFadeOutFrames)
+        let leftKneeX = fadeHandleRenderX(in: rect, kfOffset: leftOffset, isLeft: true, pxPerFrame: pxPerFrame)
+        let rightKneeX = fadeHandleRenderX(in: rect, kfOffset: rightOffset, isLeft: false, pxPerFrame: pxPerFrame)
+        let kneeY = fadeKneeY(in: body)
+        let silenceY = body.maxY
+
+        // 2) Fade-in: darken the wedge above the curve, stroke the fade curve.
+        if clip.audioFadeInFrames > 0 {
+            drawFadeWedge(
+                silentCorner: CGPoint(x: rect.minX, y: silenceY),
+                knee: CGPoint(x: leftKneeX, y: kneeY),
+                interpolation: clip.audioFadeInInterpolation,
+                color: fadeColor,
+                context: context
+            )
+        }
+
+        // 3) Fade-out: symmetric on the right edge.
+        if clip.audioFadeOutFrames > 0 {
+            drawFadeWedge(
+                silentCorner: CGPoint(x: rect.maxX, y: silenceY),
+                knee: CGPoint(x: rightKneeX, y: kneeY),
+                interpolation: clip.audioFadeOutInterpolation,
+                color: fadeColor,
+                context: context
+            )
+        }
 
         guard isSelected else { return }
 
-        let half = volumeKeyframeSize / 2
-        let floorThreshold = volumeRubberBandBottomDb + 0.5
         context.setFillColor(lineColor)
         context.setStrokeColor(NSColor.black.withAlphaComponent(0.5).cgColor)
         context.setLineWidth(0.5)
-        for kf in kfs {
-            let cx = renderX(kf.frame)
+        let half = volumeKeyframeSize / 2
+
+        // 4) Keyframe diamonds — independent of the fade knees.
+        for kf in clip.volumeTrack?.keyframes ?? []
+            where kf.frame >= 0 && kf.frame <= clip.durationFrames {
+            let cx = rect.minX + CGFloat(kf.frame) * pxPerFrame
             let cy = y(forDb: kf.value, in: body)
-            let isFadeHandle = kf.frame == handles.left || kf.frame == handles.right
-            let isSilentCorner = (kf.frame == 0 || kf.frame == clip.durationFrames) && kf.value <= floorThreshold
-            if isFadeHandle {
-                let r = CGRect(x: cx - half, y: cy - half, width: volumeKeyframeSize, height: volumeKeyframeSize)
-                context.fill(r)
-                context.stroke(r)
-            } else if !isSilentCorner {
-                let p = CGMutablePath()
-                p.move(to: CGPoint(x: cx, y: cy - half))
-                p.addLine(to: CGPoint(x: cx + half, y: cy))
-                p.addLine(to: CGPoint(x: cx, y: cy + half))
-                p.addLine(to: CGPoint(x: cx - half, y: cy))
-                p.closeSubpath()
-                context.addPath(p)
-                context.drawPath(using: .fillStroke)
+            let p = CGMutablePath()
+            p.move(to: CGPoint(x: cx, y: cy - half))
+            p.addLine(to: CGPoint(x: cx + half, y: cy))
+            p.addLine(to: CGPoint(x: cx, y: cy + half))
+            p.addLine(to: CGPoint(x: cx - half, y: cy))
+            p.closeSubpath()
+            context.addPath(p)
+            context.drawPath(using: .fillStroke)
+        }
+
+        // 5) Knees — sit in the fade lane near the top of the body.
+        let leftKneeRect = CGRect(x: leftKneeX - half, y: kneeY - half, width: volumeKeyframeSize, height: volumeKeyframeSize)
+        let rightKneeRect = CGRect(x: rightKneeX - half, y: kneeY - half, width: volumeKeyframeSize, height: volumeKeyframeSize)
+        context.fill(leftKneeRect)
+        context.stroke(leftKneeRect)
+        context.fill(rightKneeRect)
+        context.stroke(rightKneeRect)
+    }
+
+    private static func drawFadeWedge(
+        silentCorner: CGPoint,
+        knee: CGPoint,
+        interpolation: Interpolation,
+        color: CGColor,
+        context: CGContext
+    ) {
+        let curve = fadeCurvePoints(from: silentCorner, to: knee, interpolation: interpolation)
+
+        // Fill the wedge above the curve: silentCorner → up to kneeY → across to knee → curve back.
+        let fill = CGMutablePath()
+        fill.move(to: silentCorner)
+        fill.addLine(to: CGPoint(x: silentCorner.x, y: knee.y))
+        fill.addLine(to: knee)
+        for p in curve.reversed().dropFirst() { fill.addLine(to: p) }
+        fill.closeSubpath()
+        context.saveGState()
+        context.addPath(fill)
+        context.setFillColor(NSColor.black.withAlphaComponent(0.35).cgColor)
+        context.fillPath()
+        context.restoreGState()
+
+        // Stroke the curve.
+        context.setStrokeColor(color)
+        context.setLineWidth(1.5)
+        context.beginPath()
+        context.move(to: silentCorner)
+        for p in curve { context.addLine(to: p) }
+        context.strokePath()
+    }
+
+    /// Sample points along a fade ramp from `start` to `end` according to interpolation.
+    private static func fadeCurvePoints(from start: CGPoint, to end: CGPoint, interpolation: Interpolation) -> [CGPoint] {
+        switch interpolation {
+        case .linear, .hold:
+            return [end]
+        case .smooth:
+            let steps = 12
+            var out: [CGPoint] = []
+            out.reserveCapacity(steps)
+            for s in 1...steps {
+                let t = Double(s) / Double(steps)
+                let x = start.x + (end.x - start.x) * CGFloat(t)
+                let y = start.y + (end.y - start.y) * CGFloat(smoothstep(t))
+                out.append(CGPoint(x: x, y: y))
             }
+            return out
         }
     }
 

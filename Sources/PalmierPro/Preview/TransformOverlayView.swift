@@ -11,7 +11,7 @@ struct TransformOverlayView: View {
             let videoRect = videoContentRect(in: geo.size)
 
             if let clip = selectedClip {
-                let frame = editor.playheadState.timelineFrame
+                let frame = editor.activeFrame
                 let clipRect = clipFrame(clip.transformAt(frame: frame), videoRect: videoRect)
 
                 Rectangle()
@@ -66,7 +66,7 @@ struct TransformOverlayView: View {
     private func moveGesture(clip: Clip, videoRect: CGRect) -> some Gesture {
         DragGesture()
             .onChanged { value in
-                if dragStart == nil { dragStart = clip.transformAt(frame: editor.playheadState.timelineFrame) }
+                if dragStart == nil { dragStart = clip.transformAt(frame: editor.activeFrame) }
                 guard let start = dragStart else { return }
                 let (moved, snap) = movedTransform(start, by: value.translation, in: videoRect)
                 if centerGuideX != snap.x { centerGuideX = snap.x }
@@ -103,7 +103,7 @@ struct TransformOverlayView: View {
         DragGesture()
             .onChanged { value in
                 if resizeStart == nil {
-                    resizeStart = clip.transformAt(frame: editor.playheadState.timelineFrame)
+                    resizeStart = clip.transformAt(frame: editor.activeFrame)
                     resizeStartFontScale = clip.mediaType == .text
                         ? (clip.textStyle ?? TextStyle()).fontScale
                         : nil

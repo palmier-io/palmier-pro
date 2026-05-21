@@ -82,8 +82,9 @@ extension EditorViewModel {
     }
 
     private func writeOpacity(into clip: inout Clip, value: Double) {
+        let frame = activeFrame
         if clip.opacityTrack?.isActive == true {
-            clip.upsertKeyframe(in: \.opacityTrack, frame: currentFrame, value: value)
+            clip.upsertKeyframe(in: \.opacityTrack, frame: frame, value: value)
         } else {
             clip.opacity = value
         }
@@ -99,14 +100,27 @@ extension EditorViewModel {
     }
 
     private func writeVolume(into clip: inout Clip, valueDb: Double) {
-        let offset = currentFrame - clip.startFrame
-        if clip.hasUserVolumeKeyframes,
-           clip.contains(timelineFrame: currentFrame),
-           clip.volumeTrack?.keyframes.contains(where: { $0.frame == offset }) == true {
-            clip.upsertKeyframe(in: \.volumeTrack, frame: currentFrame, value: valueDb)
+        if clip.liveVolumeKfDb(at: activeFrame) != nil {
+            clip.upsertKeyframe(in: \.volumeTrack, frame: activeFrame, value: valueDb)
         } else {
             clip.volume = VolumeScale.linearFromDb(valueDb)
         }
+    }
+
+    // MARK: - Audio fades
+
+    func applyFade(clipId: String, edge: FadeEdge, frames: Int) {
+        applyClipProperty(clipId: clipId) { $0.setFade(edge, frames: frames) }
+    }
+
+    func commitFade(clipId: String, edge: FadeEdge, frames: Int) {
+        commitClipProperty(clipId: clipId) { $0.setFade(edge, frames: frames) }
+        undoManager?.setActionName(edge == .left ? "Change Fade In" : "Change Fade Out")
+    }
+
+    func setFadeInterpolation(clipId: String, edge: FadeEdge, interpolation: Interpolation) {
+        commitClipProperty(clipId: clipId) { $0.setFadeInterpolation(edge, interpolation) }
+        undoManager?.setActionName("Change Fade Interpolation")
     }
 
     func applyPosition(clipId: String, setX: Double?, setY: Double?) {
@@ -119,11 +133,12 @@ extension EditorViewModel {
     }
 
     private func writePosition(into clip: inout Clip, setX: Double?, setY: Double?) {
-        let tl = clip.topLeftAt(frame: currentFrame)
+        let frame = activeFrame
+        let tl = clip.topLeftAt(frame: frame)
         let newX = setX ?? tl.x
         let newY = setY ?? tl.y
         if clip.positionTrack?.isActive == true {
-            clip.upsertKeyframe(in: \.positionTrack, frame: currentFrame, value: AnimPair(a: newX, b: newY))
+            clip.upsertKeyframe(in: \.positionTrack, frame: frame, value: AnimPair(a: newX, b: newY))
         } else {
             clip.transform = Transform(topLeft: (newX, newY), width: clip.transform.width, height: clip.transform.height)
         }
@@ -143,7 +158,7 @@ extension EditorViewModel {
         let w = newScale
         let h = newScale / aspect
         if clip.scaleTrack?.isActive == true {
-            clip.upsertKeyframe(in: \.scaleTrack, frame: currentFrame, value: AnimPair(a: w, b: h))
+            clip.upsertKeyframe(in: \.scaleTrack, frame: activeFrame, value: AnimPair(a: w, b: h))
         } else {
             clip.transform = Transform(center: clip.transform.center, width: w, height: h)
         }
@@ -161,13 +176,14 @@ extension EditorViewModel {
     private func writeTransform(into clip: inout Clip, newTransform: Transform) {
         let posActive = clip.positionTrack?.isActive == true
         let scaleActive = clip.scaleTrack?.isActive == true
+        let frame = activeFrame
 
         if posActive {
             let tl = newTransform.topLeft
-            clip.upsertKeyframe(in: \.positionTrack, frame: currentFrame, value: AnimPair(a: tl.x, b: tl.y))
+            clip.upsertKeyframe(in: \.positionTrack, frame: frame, value: AnimPair(a: tl.x, b: tl.y))
         }
         if scaleActive {
-            clip.upsertKeyframe(in: \.scaleTrack, frame: currentFrame, value: AnimPair(a: newTransform.width, b: newTransform.height))
+            clip.upsertKeyframe(in: \.scaleTrack, frame: frame, value: AnimPair(a: newTransform.width, b: newTransform.height))
         }
         if !posActive && !scaleActive {
             clip.transform = newTransform
@@ -185,7 +201,7 @@ extension EditorViewModel {
 
     private func writeCrop(into clip: inout Clip, newCrop: Crop) {
         if clip.cropTrack?.isActive == true {
-            clip.upsertKeyframe(in: \.cropTrack, frame: currentFrame, value: newCrop)
+            clip.upsertKeyframe(in: \.cropTrack, frame: activeFrame, value: newCrop)
         } else {
             clip.crop = newCrop
         }

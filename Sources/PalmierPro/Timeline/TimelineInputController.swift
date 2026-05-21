@@ -93,21 +93,26 @@ final class TimelineInputController {
             let isCommand = event.modifierFlags.contains(.command)
 
             if clip.mediaType == .audio,
+               let edge = audioFadeKneeHit(at: point, clip: clip, clipRect: rect) {
+                let originalFrames = edge == .left ? clip.audioFadeInFrames : clip.audioFadeOutFrames
+                dragState = .audioFadeKnee(DragState.AudioFadeKneeDrag(
+                    clipId: clip.id,
+                    trackIndex: hit.trackIndex,
+                    edge: edge,
+                    originalFrames: originalFrames,
+                    grabFrame: geometry.frameAt(x: point.x),
+                    currentFrames: originalFrames
+                ))
+            } else if clip.mediaType == .audio,
                let kfFrame = audioVolumeKfHit(at: point, clip: clip, clipRect: rect) {
                 let kfOffset = kfFrame - clip.startFrame
                 let dB = clip.volumeTrack?.keyframes.first(where: { $0.frame == kfOffset })?.value ?? 0
-                let handles = clip.volumeFadeHandleOffsets
-                let cornerOffset: Int? =
-                    kfOffset == handles.left ? 0
-                    : kfOffset == handles.right ? clip.durationFrames
-                    : nil
                 dragState = .audioVolumeKf(DragState.AudioVolumeKfDrag(
                     clipId: clip.id,
                     trackIndex: hit.trackIndex,
                     originalFrame: kfFrame,
                     originalDb: dB,
                     grabFrame: geometry.frameAt(x: point.x),
-                    fadeHandleCorner: cornerOffset,
                     currentFrame: kfFrame,
                     currentDb: dB
                 ))
@@ -290,6 +295,9 @@ final class TimelineInputController {
         case .audioVolumeKf(let drag):
             dragState = .audioVolumeKf(applyVolumeKfDrag(drag, cursorFrame: frame, cursorY: point.y, geometry: geometry))
 
+        case .audioFadeKnee(let drag):
+            dragState = .audioFadeKnee(applyFadeKneeDrag(drag, cursorFrame: frame))
+
         case .marquee(var marq):
             marq.current = NSRect(
                 x: min(marq.origin.x, point.x),
@@ -388,6 +396,13 @@ final class TimelineInputController {
                 editor.revertClipProperty(clipId: drag.clipId)
             }
 
+        case .audioFadeKnee(let drag):
+            if drag.currentFrames != drag.originalFrames {
+                editor.commitFade(clipId: drag.clipId, edge: drag.edge, frames: drag.currentFrames)
+            } else {
+                editor.revertClipProperty(clipId: drag.clipId)
+            }
+
         case .marquee:
             break
 
@@ -452,6 +467,11 @@ final class TimelineInputController {
                 return
             }
             if clip.mediaType == .audio,
+               audioFadeKneeHit(at: point, clip: clip, clipRect: rect) != nil {
+                NSCursor.resizeLeftRight.set()
+                return
+            }
+            if clip.mediaType == .audio,
                audioVolumeKfHit(at: point, clip: clip, clipRect: rect) != nil {
                 NSCursor.openHand.set()
                 return
@@ -475,8 +495,14 @@ final class TimelineInputController {
         return nil
     }
 
-    /// Per-tick handler for `.audioVolumeKf` drags. Clamps within neighbor bounds, applies
-    /// the move, and idempotently maintains the silent corner kf for fade-handle drags.
+    func audioFadeKneeHit(at point: NSPoint, clip: Clip, clipRect: NSRect) -> FadeEdge? {
+        let geo = view.geometry
+        if geo.audioFadeKneeRect(clip: clip, edge: .left, in: clipRect).contains(point) { return .left }
+        if geo.audioFadeKneeRect(clip: clip, edge: .right, in: clipRect).contains(point) { return .right }
+        return nil
+    }
+
+    /// Per-tick handler for `.audioVolumeKf` drags. Clamps within neighbor kf bounds.
     private func applyVolumeKfDrag(
         _ drag: DragState.AudioVolumeKfDrag,
         cursorFrame: Int,
@@ -491,13 +517,10 @@ final class TimelineInputController {
         let clipRect = geometry.clipRect(for: clip, trackIndex: drag.trackIndex)
         let body = ClipRenderer.audioBodyRect(in: clipRect)
 
-        // Fade handle skips only its own corner so drag-to-corner can merge with the
-        // silent kf and remove the fade; other kfs are hard bounds.
         let curOffset = drag.currentFrame - clip.startFrame
         var leftBound = 0
         var rightBound = clip.durationFrames
-        for kf in clip.volumeTrack?.keyframes ?? []
-            where kf.frame != curOffset && kf.frame != drag.fadeHandleCorner {
+        for kf in clip.volumeTrack?.keyframes ?? [] where kf.frame != curOffset {
             if kf.frame < curOffset {
                 leftBound = max(leftBound, kf.frame + 1)
             } else {
@@ -506,11 +529,7 @@ final class TimelineInputController {
         }
         let proposed = drag.originalFrame + (cursorFrame - drag.grabFrame)
         let newFrame = max(clip.startFrame + leftBound, min(clip.startFrame + rightBound, proposed))
-
-        // Squares are X-only; diamonds drag in 2D.
-        let newDb: Double = drag.isFadeHandle
-            ? drag.originalDb
-            : max(VolumeScale.floorDb, min(VolumeScale.ceilingDb, ClipRenderer.db(forY: cursorY, in: body)))
+        let newDb = max(VolumeScale.floorDb, min(VolumeScale.ceilingDb, ClipRenderer.db(forY: cursorY, in: body)))
 
         guard newFrame != drag.currentFrame || newDb != drag.currentDb else { return drag }
 
@@ -519,18 +538,30 @@ final class TimelineInputController {
         )
         drag.currentFrame = newFrame
         drag.currentDb = newDb
+        return drag
+    }
 
-        // Idempotent: drag-back-to-corner removes the fade because the move's upsert
-        // overwrites this silent kf with the dragged unity value.
-        if let corner = drag.fadeHandleCorner {
-            let newOffset = newFrame - clip.startFrame
-            let pastCorner = corner == 0 ? newOffset > 0 : newOffset < corner
-            if pastCorner {
-                editor.applyClipProperty(clipId: drag.clipId) { c in
-                    c.upsertKeyframe(in: \.volumeTrack, frame: c.startFrame + corner, value: VolumeScale.floorDb)
-                }
-            }
+    /// Per-tick handler for `.audioFadeKnee` drags. Computes the fade length from the cursor.
+    private func applyFadeKneeDrag(
+        _ drag: DragState.AudioFadeKneeDrag,
+        cursorFrame: Int
+    ) -> DragState.AudioFadeKneeDrag {
+        var drag = drag
+        guard editor.timeline.tracks.indices.contains(drag.trackIndex),
+              let clip = editor.timeline.tracks[drag.trackIndex].clips.first(where: { $0.id == drag.clipId }) else {
+            return drag
         }
+        let delta = cursorFrame - drag.grabFrame
+        let proposed = drag.edge == .left
+            ? drag.originalFrames + delta
+            : drag.originalFrames - delta
+        let counterFade = drag.edge == .left ? clip.audioFadeOutFrames : clip.audioFadeInFrames
+        let cap = max(0, clip.durationFrames - counterFade)
+        let clamped = max(0, min(cap, proposed))
+
+        guard clamped != drag.currentFrames else { return drag }
+        editor.applyFade(clipId: drag.clipId, edge: drag.edge, frames: clamped)
+        drag.currentFrames = clamped
         return drag
     }
 
@@ -610,7 +641,7 @@ final class TimelineInputController {
 
     private func finishPlayheadScrub() {
         let shouldResume = scrubWasPlaying
-        let frame = editor.playheadState.timelineFrame
+        let frame = editor.activeFrame
         scrubWasPlaying = false
         editor.isScrubbing = false
         editor.seekToFrame(frame, mode: .exact)

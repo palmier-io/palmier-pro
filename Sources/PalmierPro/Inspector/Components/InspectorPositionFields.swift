@@ -7,7 +7,7 @@ struct InspectorPositionFields: View {
     var body: some View {
         let canvasW = Double(editor.timeline.width)
         let canvasH = Double(editor.timeline.height)
-        let frame = editor.currentFrame
+        let frame = editor.activeFrame
         let xShared = sharedClipValue(clips) { $0.topLeftAt(frame: frame).x }
         let yShared = sharedClipValue(clips) { $0.topLeftAt(frame: frame).y }
 

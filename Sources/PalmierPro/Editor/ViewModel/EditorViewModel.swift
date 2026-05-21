@@ -46,6 +46,7 @@ final class EditorViewModel {
     var currentFrame: Int = 0 {
         didSet { playheadState.timelineFrame = currentFrame }
     }
+    var activeFrame: Int { playheadState.timelineFrame }
     var isPlaying: Bool = false
     var selectedClipIds: Set<String> = []
     var selectedMediaAssetIds: Set<String> = []
@@ -289,7 +290,6 @@ final class EditorViewModel {
 
         var clip = Clip(mediaRef: asset.id, mediaType: asset.type, sourceClipType: asset.type, startFrame: startFrame, durationFrames: durationFrames, transform: fitTransform(for: asset))
         clip.linkGroupId = linkGroupId
-        clip.seedVolumeKeyframes()
         timeline.tracks[trackIndex].clips.append(clip)
         sortClips(trackIndex: trackIndex)
         var ids = [clip.id]
@@ -300,7 +300,6 @@ final class EditorViewModel {
             guard timeline.tracks.indices.contains(audioTrackIdx) else { return ids }
             var audioClip = Clip(mediaRef: asset.id, mediaType: .audio, sourceClipType: asset.type, startFrame: startFrame, durationFrames: durationFrames)
             audioClip.linkGroupId = gid
-            audioClip.seedVolumeKeyframes()
             timeline.tracks[audioTrackIdx].clips.append(audioClip)
             sortClips(trackIndex: audioTrackIdx)
             ids.append(audioClip.id)

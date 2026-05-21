@@ -195,8 +195,9 @@ struct KeyframesLaneRow: View {
     /// Snap targets pulled from the same clip: in-range playhead, clip edges, and kfs of other properties.
     private func snapTargets() -> [SnapEngine.SnapTarget] {
         var targets: [SnapEngine.SnapTarget] = []
-        if clip.contains(timelineFrame: editor.currentFrame) {
-            targets.append(.init(frame: editor.currentFrame, kind: .playhead))
+        let playheadFrame = editor.activeFrame
+        if clip.contains(timelineFrame: playheadFrame) {
+            targets.append(.init(frame: playheadFrame, kind: .playhead))
         }
         targets.append(.init(frame: clip.startFrame, kind: .clipEdge))
         targets.append(.init(frame: clip.endFrame, kind: .clipEdge))
@@ -307,8 +308,9 @@ struct KeyframesPanel: View {
     /// Single red playhead overlay spanning the panel's full width
     private var playheadOverlay: some View {
         GeometryReader { proxy in
-            if clip.contains(timelineFrame: editor.currentFrame) {
-                let x = KeyframesMetrics.xForFrame(editor.currentFrame, clipStart: clip.startFrame, span: span, width: proxy.size.width)
+            let frame = editor.activeFrame
+            if clip.contains(timelineFrame: frame) {
+                let x = KeyframesMetrics.xForFrame(frame, clipStart: clip.startFrame, span: span, width: proxy.size.width)
                 Canvas { ctx, size in
                     let path = CGMutablePath()
                     Playhead.appendPath(path, x: x, top: Playhead.triangleSize, bottom: size.height, triangle: true)

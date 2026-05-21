@@ -74,7 +74,7 @@ struct TimelineContainerView: NSViewRepresentable {
            let timelineView = context.coordinator.timelineView,
            let scrollView = context.coordinator.scrollView {
             let geo = timelineView.geometry
-            let playheadX = geo.xForFrame(editor.playheadState.timelineFrame)
+            let playheadX = geo.xForFrame(editor.activeFrame)
             let visibleRect = scrollView.contentView.bounds
             let margin: CGFloat = 60
 

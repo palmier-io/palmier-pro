@@ -162,12 +162,7 @@ extension Clip {
             if cropTrack?.keyframes.isEmpty == true { cropTrack = nil }
         case .volume:
             volumeTrack?.remove(at: o)
-            let floor = VolumeScale.floorDb + 0.5
-            let hasNonSilentKf = volumeTrack?.keyframes.contains { $0.value > floor } ?? false
-            if !hasNonSilentKf {
-                volumeTrack = nil
-                seedVolumeKeyframes()
-            }
+            if volumeTrack?.keyframes.isEmpty == true { volumeTrack = nil }
         }
     }
 
@@ -177,9 +172,7 @@ extension Clip {
         case .position: positionTrack = nil
         case .scale:    scaleTrack = nil
         case .crop:     cropTrack = nil
-        case .volume:
-            volumeTrack = nil
-            seedVolumeKeyframes()
+        case .volume:   volumeTrack = nil
         }
     }
 

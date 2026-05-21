@@ -130,19 +130,11 @@ struct TimelineGeometry {
         headerWidth + Double(frame) * pixelsPerFrame
     }
 
-    /// Matches the rendered position; fade-handle kfs are inset from the corner.
+    /// Interior keyframe hit point: just pxPerFrame placement, no edge insetting.
     func audioVolumeKfPoint(clip: Clip, kfOffset: Int, kfDb: Double, in clipRect: NSRect) -> CGPoint {
         let body = ClipRenderer.audioBodyRect(in: clipRect)
         let pxPerFrame = clip.durationFrames > 0 ? clipRect.width / CGFloat(clip.durationFrames) : 0
-        let handles = clip.volumeFadeHandleOffsets
-        let x: CGFloat
-        if kfOffset == handles.left {
-            x = ClipRenderer.fadeHandleRenderX(in: clipRect, kfOffset: kfOffset, isLeft: true, pxPerFrame: pxPerFrame)
-        } else if kfOffset == handles.right {
-            x = ClipRenderer.fadeHandleRenderX(in: clipRect, kfOffset: kfOffset, isLeft: false, pxPerFrame: pxPerFrame)
-        } else {
-            x = clipRect.minX + CGFloat(kfOffset) * pxPerFrame
-        }
+        let x = clipRect.minX + CGFloat(kfOffset) * pxPerFrame
         return CGPoint(x: x, y: ClipRenderer.y(forDb: kfDb, in: body))
     }
 
@@ -150,5 +142,18 @@ struct TimelineGeometry {
         let p = audioVolumeKfPoint(clip: clip, kfOffset: kfOffset, kfDb: kfDb, in: clipRect)
         let half = ClipRenderer.volumeKeyframeHitSize / 2
         return NSRect(x: p.x - half, y: p.y - half, width: half * 2, height: half * 2)
+    }
+
+    /// Hit rect for a fade knee — sits in the fixed fade lane near the top of the body.
+    func audioFadeKneeRect(clip: Clip, edge: FadeEdge, in clipRect: NSRect) -> NSRect {
+        let body = ClipRenderer.audioBodyRect(in: clipRect)
+        let pxPerFrame = clip.durationFrames > 0 ? clipRect.width / CGFloat(clip.durationFrames) : 0
+        let kfOffset = edge == .left
+            ? min(clip.audioFadeInFrames, clip.durationFrames)
+            : max(0, clip.durationFrames - clip.audioFadeOutFrames)
+        let x = ClipRenderer.fadeHandleRenderX(in: clipRect, kfOffset: kfOffset, isLeft: edge == .left, pxPerFrame: pxPerFrame)
+        let y = ClipRenderer.fadeKneeY(in: body)
+        let half = ClipRenderer.volumeKeyframeHitSize / 2
+        return NSRect(x: x - half, y: y - half, width: half * 2, height: half * 2)
     }
 }

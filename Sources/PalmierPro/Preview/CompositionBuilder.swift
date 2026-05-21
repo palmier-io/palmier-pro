@@ -215,7 +215,7 @@ enum CompositionBuilder {
             var prevEndFrame = Int.min
             for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) {
                 guard clip.durationFrames > 0, clip.startFrame >= prevEndFrame else { continue }
-                emitVolumeKeyframes(params: params, clip: clip, timescale: timescale)
+                emitVolumeEnvelope(params: params, clip: clip, timescale: timescale)
                 prevEndFrame = clip.startFrame + clip.durationFrames
             }
             return params
@@ -276,63 +276,80 @@ enum CompositionBuilder {
     /// Smooth-curve subdivision count for non-linear keyframe segments.
     private static let smoothSegments = 8
 
-    /// `clip.volume` multiplies every endpoint so the inspector slider remains a global trim.
-    private static func emitVolumeKeyframes(
+    /// Interior subdivision offsets for a smooth ramp between two frames (excluding endpoints).
+    private static func smoothSubdivisions(from a: Int, to b: Int) -> [Int] {
+        guard b > a else { return [] }
+        let span = Double(b - a)
+        return (1..<smoothSegments).map { a + Int((span * Double($0) / Double(smoothSegments)).rounded()) }
+    }
+
+    /// Walks the composite gain (`volumeAt` already folds in static volume × kf × fade) and
+    /// emits a sequence of non-overlapping linear ramps between every breakpoint.
+    /// Keyframes, fade endpoints, hold steps, and smooth subdivisions all become breakpoints.
+    private static func emitVolumeEnvelope(
         params: AVMutableAudioMixInputParameters,
         clip: Clip,
         timescale: CMTimeScale
     ) {
-        guard let track = clip.volumeTrack, !track.keyframes.isEmpty else { return }
         let dur = clip.durationFrames
-        let startT = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
-        let endT = CMTime(value: CMTimeValue(clip.startFrame + dur), timescale: timescale)
+        guard dur > 0 else { return }
         let baseVolume = Float(clip.volume)
-        let toLinear: (Double) -> Float = { Float(VolumeScale.linearFromDb($0)) * baseVolume }
+        let kfs = (clip.volumeTrack?.keyframes ?? []).filter { $0.frame >= 0 && $0.frame <= dur }
+        let hasKfs = !kfs.isEmpty
+        let hasFadeIn = clip.audioFadeInFrames > 0
+        let hasFadeOut = clip.audioFadeOutFrames > 0
 
-        let kfs = track.keyframes.filter { $0.frame >= 0 && $0.frame <= dur }
-        guard !kfs.isEmpty else { return }
+        if !hasKfs && !hasFadeIn && !hasFadeOut && baseVolume == 1.0 { return }
+
+        // 1) Collect breakpoint offsets.
+        var offsetSet: Set<Int> = [0, dur]
+        for kf in kfs { offsetSet.insert(kf.frame) }
+
+        // Smooth kf segments subdivide; hold segments get a frame-before-step breakpoint.
+        for i in 0..<max(0, kfs.count - 1) {
+            let a = kfs[i], b = kfs[i + 1]
+            switch a.interpolationOut {
+            case .smooth: offsetSet.formUnion(smoothSubdivisions(from: a.frame, to: b.frame))
+            case .hold:   if b.frame - a.frame > 1 { offsetSet.insert(b.frame - 1) }
+            case .linear: break
+            }
+        }
+
+        if hasFadeIn {
+            let endOffset = min(dur, clip.audioFadeInFrames)
+            offsetSet.insert(endOffset)
+            if clip.audioFadeInInterpolation == .smooth {
+                offsetSet.formUnion(smoothSubdivisions(from: 0, to: endOffset))
+            }
+        }
+        if hasFadeOut {
+            let startOffset = max(0, dur - clip.audioFadeOutFrames)
+            offsetSet.insert(startOffset)
+            if clip.audioFadeOutInterpolation == .smooth {
+                offsetSet.formUnion(smoothSubdivisions(from: startOffset, to: dur))
+            }
+        }
+
+        let offsets = offsetSet.sorted()
 
         let cmTime: (Int) -> CMTime = { offset in
             CMTime(value: CMTimeValue(clip.startFrame + offset), timescale: timescale)
         }
-
-        // Match `KeyframeTrack.sample`'s pre-first clamping.
-        let firstT = cmTime(kfs[0].frame)
-        if firstT > startT {
-            let v = toLinear(kfs[0].value)
-            params.setVolumeRamp(fromStartVolume: v, toEndVolume: v, timeRange: CMTimeRange(start: startT, end: firstT))
+        let gainAt: (Int) -> Float = { offset in
+            Float(clip.volumeAt(frame: clip.startFrame + offset))
         }
 
-        for i in 0..<(kfs.count - 1) {
-            let a = kfs[i], b = kfs[i + 1]
-            let aT = cmTime(a.frame), bT = cmTime(b.frame)
+        // 2) Emit a linear ramp between each pair of consecutive offsets.
+        for i in 0..<(offsets.count - 1) {
+            let aOff = offsets[i], bOff = offsets[i + 1]
+            guard bOff > aOff else { continue }
+            let aT = cmTime(aOff), bT = cmTime(bOff)
             guard bT > aT else { continue }
-            let vA = toLinear(a.value), vB = toLinear(b.value)
-            switch a.interpolationOut {
-            case .linear:
-                params.setVolumeRamp(fromStartVolume: vA, toEndVolume: vB, timeRange: CMTimeRange(start: aT, end: bT))
-            case .hold:
-                params.setVolumeRamp(fromStartVolume: vA, toEndVolume: vA, timeRange: CMTimeRange(start: aT, end: bT))
-            case .smooth:
-                let span = bT - aT
-                var prevT = aT, prevV = vA
-                for s in 1...smoothSegments {
-                    let t = Double(s) / Double(smoothSegments)
-                    let nextT = aT + CMTime(seconds: span.seconds * t, preferredTimescale: span.timescale * Int32(smoothSegments))
-                    let nextV = vA + (vB - vA) * Float(smoothstep(t))
-                    if nextT > prevT {
-                        params.setVolumeRamp(fromStartVolume: prevV, toEndVolume: nextV, timeRange: CMTimeRange(start: prevT, end: nextT))
-                    }
-                    prevT = nextT
-                    prevV = nextV
-                }
-            }
-        }
-
-        let lastT = cmTime(kfs.last!.frame)
-        if lastT < endT {
-            let v = toLinear(kfs.last!.value)
-            params.setVolumeRamp(fromStartVolume: v, toEndVolume: v, timeRange: CMTimeRange(start: lastT, end: endT))
+            params.setVolumeRamp(
+                fromStartVolume: gainAt(aOff),
+                toEndVolume: gainAt(bOff),
+                timeRange: CMTimeRange(start: aT, end: bT)
+            )
         }
     }
 
@@ -534,6 +551,4 @@ enum CompositionBuilder {
         }
         return ops
     }
-
-    private static func smoothstep(_ t: Double) -> Double { t * t * (3 - 2 * t) }
 }

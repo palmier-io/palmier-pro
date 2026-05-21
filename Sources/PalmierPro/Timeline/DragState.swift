@@ -7,6 +7,7 @@ enum DragState {
     case trimLeft(TrimDrag)
     case trimRight(TrimDrag)
     case audioVolumeKf(AudioVolumeKfDrag)
+    case audioFadeKnee(AudioFadeKneeDrag)
     case marquee(MarqueeDrag)
 
     struct AudioVolumeKfDrag {
@@ -18,14 +19,19 @@ enum DragState {
         let originalDb: Double
         /// Cursor frame at drag-start; preserves the pointer's offset to the kf as it moves.
         let grabFrame: Int
-        /// Clip-relative corner offset (0 / durationFrames). `nil` for diamonds, which drag in 2D.
-        let fadeHandleCorner: Int?
         /// kf's current absolute frame; tells the next tick where to find the kf to move.
         var currentFrame: Int
         /// kf's current dB; tells the next tick the kf's current value.
         var currentDb: Double
+    }
 
-        var isFadeHandle: Bool { fadeHandleCorner != nil }
+    struct AudioFadeKneeDrag {
+        let clipId: String
+        let trackIndex: Int
+        let edge: FadeEdge
+        let originalFrames: Int
+        let grabFrame: Int
+        var currentFrames: Int
     }
 
     struct MoveClipDrag {

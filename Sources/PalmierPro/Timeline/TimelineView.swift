@@ -108,14 +108,14 @@ final class TimelineView: NSView {
         let visibleWidth = scrollView.contentView.bounds.size.width
         guard visibleWidth > 0 else { return }
 
-        let playheadPrevX = Double(editor.playheadState.timelineFrame) * previousZoom
+        let playheadPrevX = Double(editor.activeFrame) * previousZoom
         let anchorViewportX: Double
         if playheadPrevX >= origin.x, playheadPrevX <= origin.x + visibleWidth {
             anchorViewportX = playheadPrevX - origin.x
         } else {
             anchorViewportX = visibleWidth * 0.5
         }
-        let playheadNewX = Double(editor.playheadState.timelineFrame) * editor.zoomScale
+        let playheadNewX = Double(editor.activeFrame) * editor.zoomScale
         let newScrollX = max(0, playheadNewX - anchorViewportX)
         guard newScrollX != origin.x else { return }
         scrollView.contentView.setBoundsOrigin(NSPoint(x: newScrollX, y: origin.y))
@@ -475,6 +475,23 @@ final class TimelineView: NSView {
         let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
         let clipRect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
 
+        // Fade knee menu — must come before kf hit-test, mirroring mouseDown priority.
+        if clip.mediaType == .audio,
+           let edge = inputController.audioFadeKneeHit(at: point, clip: clip, clipRect: clipRect) {
+            let menu = NSMenu()
+            let current = edge == .left ? clip.audioFadeInInterpolation : clip.audioFadeOutInterpolation
+            let mk: (String, Interpolation) -> NSMenuItem = { title, interp in
+                let item = NSMenuItem(title: title, action: #selector(self.performSetFadeInterpolation(_:)), keyEquivalent: "")
+                item.target = self
+                item.state = current == interp ? .on : .off
+                item.representedObject = ["clipId": clip.id, "edgeIsLeft": edge == .left, "interp": interp.rawValue] as [String: Any]
+                return item
+            }
+            menu.addItem(mk("Linear", .linear))
+            menu.addItem(mk("Smooth", .smooth))
+            return menu
+        }
+
         // kf menu before clip menu.
         if clip.mediaType == .audio,
            let kfFrame = inputController.audioVolumeKfHit(at: point, clip: clip, clipRect: clipRect) {
@@ -554,6 +571,17 @@ final class TimelineView: NSView {
               let raw = info["interp"] as? String,
               let interp = Interpolation(rawValue: raw) else { return }
         editor.setInterpolation(clipId: clipId, property: .volume, frame: frame, interpolation: interp)
+        needsDisplay = true
+    }
+
+    @objc private func performSetFadeInterpolation(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let info = item.representedObject as? [String: Any],
+              let clipId = info["clipId"] as? String,
+              let edgeIsLeft = info["edgeIsLeft"] as? Bool,
+              let raw = info["interp"] as? String,
+              let interp = Interpolation(rawValue: raw) else { return }
+        editor.setFadeInterpolation(clipId: clipId, edge: edgeIsLeft ? .left : .right, interpolation: interp)
         needsDisplay = true
     }
 

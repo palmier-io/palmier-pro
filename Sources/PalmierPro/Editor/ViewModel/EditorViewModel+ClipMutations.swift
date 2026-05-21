@@ -128,12 +128,16 @@ extension EditorViewModel {
         var left = clip
         left.durationFrames = splitOffset
         left.trimEndFrame = clip.trimEndFrame + rightSource
+        left.audioFadeOutFrames = 0
+        left.clampFadesToDuration()
 
         var right = clip
         right.id = UUID().uuidString
         right.startFrame = atFrame
         right.durationFrames = clip.durationFrames - splitOffset
         right.trimStartFrame = clip.trimStartFrame + leftSource
+        right.audioFadeInFrames = 0
+        right.clampFadesToDuration()
 
         // Boundary kfs at the cut keep the volume curve continuous across the split.
         if let track = clip.volumeTrack, track.isActive {
@@ -243,6 +247,7 @@ extension EditorViewModel {
         timeline.tracks[ti].clips[loc.clipIndex].speed = newSpeed
         timeline.tracks[ti].clips[loc.clipIndex].durationFrames = newDuration
         timeline.tracks[ti].clips[loc.clipIndex].clampVolumeKfsToDuration()
+        timeline.tracks[ti].clips[loc.clipIndex].clampFadesToDuration()
 
         let rippleDelta = (clip.startFrame + newDuration) - oldEnd
         if rippleDelta != 0 {
