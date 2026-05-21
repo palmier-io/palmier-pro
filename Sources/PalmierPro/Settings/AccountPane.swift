@@ -166,11 +166,11 @@ struct AccountPane: View {
         .padding(AppTheme.Spacing.md)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                .fill(Color.white.opacity(0.03))
+                .fill(Color.white.opacity(AppTheme.Opacity.subtle))
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                .stroke(AppTheme.Border.subtleColor, lineWidth: 1)
+                .stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
         )
     }
 

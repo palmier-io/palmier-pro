@@ -8,18 +8,18 @@ struct SidebarRowButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: AppTheme.Spacing.smMd) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 12))
-                    .frame(width: 16)
+                    .font(.system(size: AppTheme.FontSize.smMd))
+                    .frame(width: AppTheme.Spacing.lgXl)
                 Text(label)
                     .font(.system(size: AppTheme.FontSize.md))
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
+            .padding(.horizontal, AppTheme.Spacing.smMd)
+            .padding(.vertical, AppTheme.Spacing.sm)
             .foregroundStyle(AppTheme.Text.primaryColor)
-            .hoverHighlight(cornerRadius: 5, isActive: isSelected)
+            .hoverHighlight(cornerRadius: AppTheme.Radius.sm, isActive: isSelected)
         }
         .buttonStyle(.plain)
     }

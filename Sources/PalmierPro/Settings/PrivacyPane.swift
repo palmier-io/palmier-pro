@@ -21,7 +21,7 @@ struct PrivacyPane: View {
             if didChange {
                 HStack(spacing: AppTheme.Spacing.xs) {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     Text("Restart Palmier Pro to apply this change.")
                 }
                 .font(.system(size: AppTheme.FontSize.sm))

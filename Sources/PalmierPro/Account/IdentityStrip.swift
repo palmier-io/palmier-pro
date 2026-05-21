@@ -6,9 +6,9 @@ struct IdentityStrip: View {
     var body: some View {
         let labels = labels(for: account.account?.user)
 
-        HStack(spacing: 10) {
+        HStack(spacing: AppTheme.Spacing.md) {
             avatar(initial: labels.initial)
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
                 Text(labels.primary)
                     .font(.system(size: AppTheme.FontSize.md, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.primaryColor)
@@ -24,16 +24,16 @@ struct IdentityStrip: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 14)
+        .padding(.horizontal, AppTheme.Spacing.lg)
+        .padding(.vertical, AppTheme.Spacing.lg)
     }
 
     private func avatar(initial: String) -> some View {
         ZStack {
             Circle()
-                .fill(account.isSignedIn ? Color.accentColor.opacity(0.30) : Color.white.opacity(0.10))
+                .fill(account.isSignedIn ? Color.accentColor.opacity(AppTheme.Opacity.medium) : Color.white.opacity(AppTheme.Opacity.soft))
             Text(initial)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: AppTheme.FontSize.mdLg, weight: .semibold))
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
             if let urlString = account.account?.user.image,
@@ -46,7 +46,7 @@ struct IdentityStrip: View {
                 .id(urlString)
             }
         }
-        .frame(width: 30, height: 30)
+        .frame(width: AppTheme.IconSize.xl, height: AppTheme.IconSize.xl)
         .clipShape(Circle())
     }
 

@@ -4,18 +4,18 @@ struct TitleBarLeadingView: View {
     @Environment(EditorViewModel.self) var editor
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: AppTheme.Spacing.smMd) {
             Circle()
                 .fill(editor.isDocumentEdited ? AppTheme.Text.mutedColor : .clear)
-                .frame(width: 6, height: 6)
+                .frame(width: AppTheme.Spacing.sm, height: AppTheme.Spacing.sm)
                 .help(editor.isDocumentEdited ? "Unsaved changes" : "")
 
             Button(action: { editor.agentPanelVisible.toggle() }) {
                 Image(systemName: "apple.intelligence")
-                    .font(.system(size: 13))
+                    .font(.system(size: AppTheme.FontSize.md))
                     .foregroundStyle(AppTheme.aiGradient)
-                    .opacity(editor.agentPanelVisible ? 1 : 0.55)
-                    .frame(width: 26, height: 26)
+                    .opacity(editor.agentPanelVisible ? 1 : AppTheme.Opacity.strong)
+                    .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)
             }
             .buttonStyle(.plain)
             .help("Toggle Agent Panel")
@@ -23,9 +23,9 @@ struct TitleBarLeadingView: View {
             // Home button
             Button(action: { AppState.shared.showHome() }) {
                 Image(systemName: "house")
-                    .font(.system(size: 11))
+                    .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
-                    .frame(width: 26, height: 26)
+                    .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)
                     .hoverHighlight()
             }
             .buttonStyle(.plain)
@@ -39,7 +39,7 @@ struct TitleBarLeadingView: View {
                 width: 160
             )
         }
-        .padding(.leading, 6)
+        .padding(.leading, AppTheme.Spacing.sm)
     }
 }
 
@@ -56,9 +56,9 @@ struct TitleBarTrailingView: View {
 
             Button(action: { editor.showHelp = true }) {
                 Image(systemName: "questionmark.circle")
-                    .font(.system(size: 11))
+                    .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
-                    .frame(width: 26, height: 26)
+                    .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)
                     .hoverHighlight()
             }
             .buttonStyle(.plain)
@@ -68,9 +68,9 @@ struct TitleBarTrailingView: View {
 
             Button(action: { editor.showExportDialog = true }) {
                 Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 11))
+                    .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
-                    .frame(width: 26, height: 26)
+                    .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)
                     .hoverHighlight()
                     .help("Export (⌘E)")
             }
@@ -111,18 +111,18 @@ struct ProjectNameField: View {
         }
         .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
         .foregroundStyle(isEditing ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.vertical, AppTheme.Spacing.xs)
         .frame(width: width, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .fill(showError ? Color.red.opacity(0.15) : isEditing ? Color.white.opacity(0.08) : .clear)
+                .fill(showError ? Color.red.opacity(AppTheme.Opacity.muted) : isEditing ? Color.white.opacity(AppTheme.Opacity.faint) : .clear)
         )
         .overlay(alignment: .trailing) {
             if showError {
                 Text("Already exists")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.red.opacity(0.8))
+                    .font(.system(size: AppTheme.FontSize.xxs))
+                    .foregroundStyle(.red.opacity(AppTheme.Opacity.prominent))
                     .padding(.trailing, 6)
                     .transition(.opacity)
             }
@@ -173,9 +173,9 @@ struct LayoutPresetMenu: View {
             }
         } label: {
             Image(systemName: editor.layoutPreset.icon)
-                .font(.system(size: 11))
+                .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
-                .frame(width: 26, height: 26)
+                .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)

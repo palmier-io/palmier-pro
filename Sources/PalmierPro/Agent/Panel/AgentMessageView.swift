@@ -24,11 +24,11 @@ struct AgentMessageView: View {
                     .font(.body)
                     .foregroundStyle(AppTheme.Text.primaryColor)
                     .lineSpacing(3)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
+                    .padding(.horizontal, AppTheme.Spacing.lg)
+                    .padding(.vertical, AppTheme.Spacing.smMd)
                     .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Color.white.opacity(0.08))
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.lg, style: .continuous)
+                            .fill(Color.white.opacity(AppTheme.Opacity.faint))
                     )
                     .textSelection(.enabled)
             }
@@ -38,7 +38,7 @@ struct AgentMessageView: View {
 
     @ViewBuilder
     private var assistantBody: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             ForEach(Array(message.blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .text(let text):
@@ -72,30 +72,30 @@ private struct ToolRunRow: View {
     }
     private var statusTint: Color {
         guard let result else { return AppTheme.Text.mutedColor }
-        return result.isError ? .red.opacity(0.8) : AppTheme.Text.tertiaryColor
+        return result.isError ? .red.opacity(AppTheme.Opacity.prominent) : AppTheme.Text.tertiaryColor
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             Button {
                 withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() }
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: AppTheme.Spacing.sm) {
                     if isRunning {
                         ProgressView()
                             .controlSize(.mini)
-                            .frame(width: 10, height: 10)
+                            .frame(width: AppTheme.Spacing.md, height: AppTheme.Spacing.md)
                     } else {
                         Image(systemName: statusIcon)
-                            .font(.system(size: 10))
+                            .font(.system(size: AppTheme.FontSize.xs))
                             .foregroundStyle(statusTint)
                     }
                     Text(name)
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(.system(size: AppTheme.FontSize.sm, weight: .medium, design: .monospaced))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .opacity(isRunning ? 0.7 : 1.0)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 8, weight: .semibold))
+                        .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                 }
@@ -104,17 +104,17 @@ private struct ToolRunRow: View {
             .buttonStyle(.plain)
 
             if expanded {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
                     argsSection
                     if let result { resultSection(result) }
                 }
-                .font(.system(size: 10, design: .monospaced))
+                .font(.system(size: AppTheme.FontSize.xs, design: .monospaced))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(10)
+                .padding(AppTheme.Spacing.md)
                 .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.white.opacity(0.04))
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
+                        .fill(Color.white.opacity(AppTheme.Opacity.subtle))
                 )
                 .textSelection(.enabled)
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -124,8 +124,8 @@ private struct ToolRunRow: View {
 
     @ViewBuilder
     private var argsSection: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text("args").font(.system(size: 9)).foregroundStyle(AppTheme.Text.mutedColor)
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            Text("args").font(.system(size: AppTheme.FontSize.xxs)).foregroundStyle(AppTheme.Text.mutedColor)
             Text(prettyPrinted(inputJSON))
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -133,10 +133,10 @@ private struct ToolRunRow: View {
 
     @ViewBuilder
     private func resultSection(_ r: ToolRunResult) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             Text(r.isError ? "error" : "result")
-                .font(.system(size: 9))
-                .foregroundStyle(r.isError ? .red.opacity(0.75) : AppTheme.Text.mutedColor)
+                .font(.system(size: AppTheme.FontSize.xxs))
+                .foregroundStyle(r.isError ? .red.opacity(AppTheme.Opacity.prominent) : AppTheme.Text.mutedColor)
             ForEach(Array(r.content.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .text(let s):

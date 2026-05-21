@@ -257,11 +257,11 @@ extension MediaPanelView {
                     }
                 } label: {
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .rotationEffect(.degrees(isCollapsed ? -90 : 0))
-                        .frame(width: 14, height: 14)
-                        .hoverHighlight(cornerRadius: 4)
+                        .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
+                        .hoverHighlight(cornerRadius: AppTheme.Radius.xsSm)
                 }
                 .buttonStyle(.plain)
                 .focusable(false)
@@ -273,13 +273,13 @@ extension MediaPanelView {
                     } label: {
                         HStack(spacing: AppTheme.Spacing.xs) {
                             Image(systemName: "folder.fill")
-                                .font(.system(size: 10))
+                                .font(.system(size: AppTheme.FontSize.xs))
                                 .foregroundStyle(Color.accentColor.opacity(0.85))
                             groupedSectionTitle(title)
                         }
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
-                        .hoverHighlight(cornerRadius: 4)
+                        .padding(.horizontal, AppTheme.Spacing.xs)
+                        .padding(.vertical, AppTheme.Spacing.xxs)
+                        .hoverHighlight(cornerRadius: AppTheme.Radius.xsSm)
                     }
                     .buttonStyle(.plain)
                     .focusable(false)
@@ -328,11 +328,11 @@ extension MediaPanelView {
         .padding(AppTheme.Spacing.xs)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .fill(isTargeted.wrappedValue ? Color.accentColor.opacity(0.08) : .clear)
+                .fill(isTargeted.wrappedValue ? Color.accentColor.opacity(AppTheme.Opacity.faint) : .clear)
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .strokeBorder(isTargeted.wrappedValue ? Color.accentColor.opacity(0.5) : .clear, lineWidth: 1)
+                .strokeBorder(isTargeted.wrappedValue ? Color.accentColor.opacity(AppTheme.Opacity.strong) : .clear, lineWidth: AppTheme.BorderWidth.thin)
         )
         .contentShape(Rectangle())
         .onDrop(of: [.fileURL, .text], isTargeted: isTargeted) { providers in
@@ -350,7 +350,7 @@ extension MediaPanelView {
                 .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
                 .foregroundStyle(AppTheme.Text.primaryColor)
         } else {
-            HStack(spacing: 3) {
+            HStack(spacing: AppTheme.Spacing.xs) {
                 ForEach(Array(segments.enumerated()), id: \.offset) { idx, segment in
                     if idx > 0 {
                         Text("/")
@@ -493,16 +493,16 @@ struct AssetFramePreferenceKey: PreferenceKey {
 private struct FolderDragPreview: View {
     let name: String
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: AppTheme.Spacing.xs) {
             Image(systemName: "folder.fill")
                 .foregroundStyle(Color.accentColor)
             Text(name)
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                 .lineLimit(1)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
-        .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+        .padding(.horizontal, AppTheme.Spacing.smMd)
+        .padding(.vertical, AppTheme.Spacing.sm)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
+        .shadow(color: .black.opacity(AppTheme.Opacity.medium), radius: 4, y: 2)
     }
 }

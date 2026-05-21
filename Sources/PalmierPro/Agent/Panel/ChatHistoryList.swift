@@ -36,21 +36,21 @@ struct ChatHistoryList: View {
 
     private func row(session: ChatSession) -> some View {
         let isCurrent = session.id == currentId
-        return HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
+        return HStack(spacing: AppTheme.Spacing.smMd) {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+                HStack(spacing: AppTheme.Spacing.xs) {
                     Text(session.title)
                         .font(.system(size: AppTheme.FontSize.xs, weight: isCurrent ? .semibold : .regular))
                         .foregroundStyle(AppTheme.Text.primaryColor)
                         .lineLimit(1)
                     if !session.isOpen {
                         Text("closed")
-                            .font(.system(size: 8, weight: .medium))
+                            .font(.system(size: AppTheme.FontSize.micro, weight: .medium))
                             .foregroundStyle(AppTheme.Text.mutedColor)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
+                            .padding(.horizontal, AppTheme.Spacing.xs)
+                            .padding(.vertical, AppTheme.Spacing.xxs)
                             .background(
-                                Capsule().fill(Color.white.opacity(0.06))
+                                Capsule().fill(Color.white.opacity(AppTheme.Opacity.hint))
                             )
                     }
                 }

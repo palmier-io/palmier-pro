@@ -154,8 +154,8 @@ struct AIEditTab: View {
                 Image(systemName: icon)
                     .font(.system(size: AppTheme.FontSize.md))
                     .foregroundStyle(isEnabled ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
-                    .frame(width: 16)
-                VStack(alignment: .leading, spacing: 2) {
+                    .frame(width: AppTheme.Spacing.lgXl)
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
                     Text(title)
                         .font(.system(size: AppTheme.FontSize.md, weight: .medium))
                         .foregroundStyle(isEnabled ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
@@ -200,7 +200,7 @@ struct AIEditTab: View {
 
             if action == .rerun, availability.isAvailable, let gen = asset.generationInput {
                 rerunParameters(gen)
-                    .padding(.leading, 24)
+                    .padding(.leading, AppTheme.Spacing.xlXxl)
                     .padding(.top, AppTheme.Spacing.xs)
             }
         }
@@ -208,7 +208,7 @@ struct AIEditTab: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .fill(Color.white.opacity(0.04))
+                .fill(Color.white.opacity(AppTheme.Opacity.subtle))
         )
         .help(disabledReason ?? "")
     }
@@ -345,7 +345,7 @@ struct AIEditTab: View {
                 }
             }
             if !gen.prompt.isEmpty {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
                     HStack(spacing: AppTheme.Spacing.xs) {
                         Text("Prompt")
                             .font(.system(size: AppTheme.FontSize.xs))
@@ -359,7 +359,7 @@ struct AIEditTab: View {
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.top, 2)
+                .padding(.top, AppTheme.Spacing.xxs)
             }
         }
     }
@@ -369,7 +369,7 @@ struct AIEditTab: View {
             Image(systemName: icon)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.mutedColor)
-                .frame(width: 14)
+                .frame(width: AppTheme.IconSize.xs)
             Text(label)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.mutedColor)

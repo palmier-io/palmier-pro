@@ -234,11 +234,11 @@ struct MediaPanelView: View {
     }
 
     private var breadcrumbBar: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: AppTheme.Spacing.xs) {
             ForEach(Array(breadcrumbItems.enumerated()), id: \.element.id) { idx, item in
                 if idx > 0 {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 9))
+                        .font(.system(size: AppTheme.FontSize.xxs))
                         .foregroundStyle(AppTheme.Text.mutedColor)
                 }
                 breadcrumbChip(item: item, isLeaf: idx == breadcrumbItems.count - 1)
@@ -258,9 +258,9 @@ struct MediaPanelView: View {
             Text(item.name)
                 .font(.system(size: AppTheme.FontSize.xs, weight: isLeaf ? .semibold : .regular))
                 .foregroundStyle(textColor)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .hoverHighlight(cornerRadius: 4)
+                .padding(.horizontal, AppTheme.Spacing.sm)
+                .padding(.vertical, AppTheme.Spacing.xxs)
+                .hoverHighlight(cornerRadius: AppTheme.Radius.xsSm)
         }
         .buttonStyle(.plain)
         .focusable(false)
@@ -357,9 +357,9 @@ struct MediaPanelView: View {
     }
 
     private var searchField: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: AppTheme.Spacing.xs) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 10))
+                .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
             TextField("Search", text: $searchQuery)
                 .textFieldStyle(.plain)
@@ -368,7 +368,7 @@ struct MediaPanelView: View {
             if !searchQuery.isEmpty {
                 Button { searchQuery = "" } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 10))
+                        .font(.system(size: AppTheme.FontSize.xs))
                         .foregroundStyle(AppTheme.Text.mutedColor)
                 }
                 .buttonStyle(.plain)
@@ -376,8 +376,8 @@ struct MediaPanelView: View {
                 .help("Clear search")
             }
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.vertical, AppTheme.Spacing.xs)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
                 .fill(AppTheme.Border.subtleColor)
@@ -403,7 +403,7 @@ struct MediaPanelView: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: 4) {
+            HStack(spacing: AppTheme.Spacing.xs) {
                 Image(systemName: systemImage)
                 if !compact {
                     Text(title)
@@ -412,7 +412,7 @@ struct MediaPanelView: View {
             .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
             .foregroundStyle(accentStyle ?? AnyShapeStyle(AppTheme.Text.secondaryColor))
             .padding(.horizontal, AppTheme.Spacing.sm)
-            .padding(.vertical, 4)
+            .padding(.vertical, AppTheme.Spacing.xs)
             .hoverHighlight()
             .help(title)
         }
@@ -433,9 +433,9 @@ struct MediaPanelView: View {
     ) -> some View {
         Menu(content: content) {
             Image(systemName: systemName)
-                .font(.system(size: 10))
+                .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(foregroundStyle)
-                .frame(width: 22, height: 22)
+                .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -515,8 +515,8 @@ struct MediaPanelView: View {
     var marqueeOverlay: some View {
         if let rect = marqueeSelection.rect {
             Rectangle()
-                .stroke(Color.white.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                .background(Rectangle().fill(Color.white.opacity(0.1)))
+                .stroke(Color.white.opacity(0.6), style: StrokeStyle(lineWidth: AppTheme.BorderWidth.thin, dash: [3, 3]))
+                .background(Rectangle().fill(Color.white.opacity(AppTheme.Opacity.soft)))
                 .frame(width: rect.width, height: rect.height)
                 .position(x: rect.midX, y: rect.midY)
                 .allowsHitTesting(false)
@@ -539,7 +539,7 @@ struct MediaPanelView: View {
             Spacer()
 
             Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: 36, weight: .light))
+                .font(.system(size: AppTheme.FontSize.display, weight: .light))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
 
             VStack(spacing: AppTheme.Spacing.xs) {
@@ -561,13 +561,13 @@ struct MediaPanelView: View {
         RoundedRectangle(cornerRadius: AppTheme.Radius.md)
             .strokeBorder(
                 Color.accentColor.opacity(0.6),
-                style: StrokeStyle(lineWidth: 2, dash: [8, 4])
+                style: StrokeStyle(lineWidth: AppTheme.BorderWidth.thick, dash: [8, 4])
             )
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                    .fill(Color.accentColor.opacity(0.05))
+                    .fill(Color.accentColor.opacity(AppTheme.Opacity.subtle))
             )
-            .padding(4)
+            .padding(AppTheme.Spacing.xs)
     }
 
     // MARK: - Import

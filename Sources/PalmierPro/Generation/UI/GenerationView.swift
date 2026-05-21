@@ -386,9 +386,9 @@ struct GenerationView: View {
                     editor.showGenerationPanel = false
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        .frame(width: 22, height: 22)
+                        .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
                         .hoverHighlight()
                 }
                 .buttonStyle(.plain)
@@ -451,21 +451,21 @@ struct GenerationView: View {
             .background {
                 let r = AppTheme.Radius.concentric(outer: AppTheme.Radius.lg, padding: AppTheme.Spacing.sm)
                 RoundedRectangle(cornerRadius: r)
-                    .fill(Color.white.opacity(0.03))
+                    .fill(Color.white.opacity(AppTheme.Opacity.subtle))
             }
             .overlay {
                 let r = AppTheme.Radius.concentric(outer: AppTheme.Radius.lg, padding: AppTheme.Spacing.sm)
                 RoundedRectangle(cornerRadius: r)
                     .strokeBorder(
-                        isPromptFocused ? Color.accentColor.opacity(0.5) : Color.white.opacity(0.10),
-                        lineWidth: 1
+                        isPromptFocused ? Color.accentColor.opacity(AppTheme.Opacity.strong) : Color.white.opacity(AppTheme.Opacity.soft),
+                        lineWidth: AppTheme.BorderWidth.thin
                     )
             }
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.lg, padding: AppTheme.Spacing.sm)))
             .padding(.horizontal, AppTheme.Spacing.sm)
             .padding(.bottom, AppTheme.Spacing.sm)
         }
-        .padding(.top, 2)
+        .padding(.top, AppTheme.Spacing.xxs)
         .frame(height: clampedPanelHeight, alignment: .top)
         .background {
             ZStack {
@@ -517,9 +517,9 @@ struct GenerationView: View {
 
     private var resizeHandle: some View {
         Capsule()
-            .fill(Color.white.opacity(0.18))
+            .fill(Color.white.opacity(AppTheme.Opacity.muted))
             .frame(width: 32, height: 3)
-            .frame(maxWidth: .infinity, minHeight: 10)
+            .frame(maxWidth: .infinity, minHeight: AppTheme.Spacing.md)
             .contentShape(Rectangle())
             .pointerStyle(.rowResize)
             .gesture(
@@ -551,11 +551,11 @@ struct GenerationView: View {
             .padding(.vertical, AppTheme.Spacing.xs + 1)
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(Color.white.opacity(0.03))
+                    .fill(Color.white.opacity(AppTheme.Opacity.subtle))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                    .strokeBorder(Color.white.opacity(AppTheme.Opacity.faint), lineWidth: AppTheme.BorderWidth.thin)
             )
     }
 
@@ -607,16 +607,16 @@ struct GenerationView: View {
                             .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                             .foregroundStyle(AppTheme.Text.primaryColor)
                         Text(tag.kindLabel)
-                            .font(.system(size: 9))
+                            .font(.system(size: AppTheme.FontSize.xxs))
                             .foregroundStyle(AppTheme.Text.tertiaryColor)
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, AppTheme.Spacing.sm)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, AppTheme.Spacing.xs)
                     .frame(minWidth: 160, alignment: .leading)
                     .background(
                         RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                            .fill(index == highlightedMentionIndex ? Color.accentColor.opacity(0.22) : .clear)
+                            .fill(index == highlightedMentionIndex ? Color.accentColor.opacity(AppTheme.Opacity.moderate) : .clear)
                     )
                     .contentShape(Rectangle())
                     .onTapGesture { pickRefTag(tag) }
@@ -624,7 +624,7 @@ struct GenerationView: View {
                 }
             }
         }
-        .padding(4)
+        .padding(AppTheme.Spacing.xs)
         .frame(minWidth: 180)
         .glassEffect(.clear, in: .rect(cornerRadius: AppTheme.Radius.md))
     }
@@ -686,7 +686,7 @@ struct GenerationView: View {
     // MARK: - Secondary fields (lyrics / style instructions)
 
     private var inputDivider: some View {
-        Rectangle().fill(Color.white.opacity(0.06)).frame(height: 0.5)
+        Rectangle().fill(Color.white.opacity(AppTheme.Opacity.hint)).frame(height: AppTheme.BorderWidth.hairline)
     }
 
     private func secondaryField(
@@ -752,17 +752,17 @@ struct GenerationView: View {
         } label: {
             HStack(spacing: AppTheme.Spacing.xs) {
                 Image(systemName: "person.wave.2")
-                    .font(.system(size: 9))
+                    .font(.system(size: AppTheme.FontSize.xxs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                 Text(selectedVoice.isEmpty ? (audioModel.defaultVoice ?? "Voice") : selectedVoice)
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 7, weight: .semibold))
+                    .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
             .padding(.horizontal, AppTheme.Spacing.xs)
-            .padding(.vertical, 3)
+            .padding(.vertical, AppTheme.Spacing.xs)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -801,24 +801,24 @@ struct GenerationView: View {
                             ? AppTheme.Text.primaryColor
                             : AppTheme.Text.tertiaryColor)
                         .padding(.horizontal, AppTheme.Spacing.sm)
-                        .padding(.vertical, 3)
+                        .padding(.vertical, AppTheme.Spacing.xs)
                         .background(
-                            RoundedRectangle(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: 2))
-                                .fill(framesRefsMode == mode ? Color.white.opacity(0.08) : .clear)
+                            RoundedRectangle(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: AppTheme.Spacing.xxs))
+                                .fill(framesRefsMode == mode ? Color.white.opacity(AppTheme.Opacity.faint) : .clear)
                         )
-                        .hoverHighlight(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: 2))
+                        .hoverHighlight(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: AppTheme.Spacing.xxs))
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(2)
+        .padding(AppTheme.Spacing.xxs)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .fill(Color.white.opacity(0.03))
+                .fill(Color.white.opacity(AppTheme.Opacity.subtle))
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .strokeBorder(AppTheme.Border.primaryColor, lineWidth: 1)
+                .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.thin)
         )
         .fixedSize()
     }
@@ -1035,14 +1035,14 @@ struct GenerationView: View {
                 .frame(width: 80, height: 56)
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
                 .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .strokeBorder(AppTheme.Border.primaryColor, lineWidth: 1))
+                    .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.thin))
                 .overlay(alignment: .topTrailing) {
                     Button { onClear() } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.8))
+                            .font(.system(size: AppTheme.FontSize.smMd))
+                            .foregroundStyle(.white.opacity(AppTheme.Opacity.prominent))
                             .shadow(radius: 2)
-                            .frame(width: 20, height: 20)
+                            .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -1101,7 +1101,7 @@ struct GenerationView: View {
                 ZStack {
                     Rectangle().fill(.quaternary)
                     Image(systemName: asset.type.sfSymbolName)
-                        .font(.system(size: 14))
+                        .font(.system(size: AppTheme.FontSize.mdLg))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                 }
             }
@@ -1109,26 +1109,26 @@ struct GenerationView: View {
         .frame(width: 80, height: 56)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
         .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-            .strokeBorder(AppTheme.Border.primaryColor, lineWidth: 1))
+            .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.thin))
         .overlay(alignment: .bottomLeading) {
             if let tag {
                 Text(tag)
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
                     .monospacedDigit()
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(Color.black.opacity(0.55), in: Capsule())
-                    .padding(3)
+                    .padding(.horizontal, AppTheme.Spacing.xs)
+                    .padding(.vertical, AppTheme.Spacing.xxs)
+                    .background(Color.black.opacity(AppTheme.Opacity.strong), in: Capsule())
+                    .padding(AppTheme.Spacing.xs)
             }
         }
         .overlay(alignment: .topTrailing) {
             Button { onRemove() } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.8))
+                    .font(.system(size: AppTheme.FontSize.smMd))
+                    .foregroundStyle(.white.opacity(AppTheme.Opacity.prominent))
                     .shadow(radius: 2)
-                    .frame(width: 20, height: 20)
+                    .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -1171,18 +1171,18 @@ struct GenerationView: View {
         onDrop: @escaping (MediaAsset) -> Void
     ) -> some View {
         Image(systemName: iconName)
-            .font(.system(size: 12))
+            .font(.system(size: AppTheme.FontSize.smMd))
             .foregroundStyle(isTargeted.wrappedValue ? Color.accentColor : AppTheme.Text.mutedColor)
             .frame(width: 80, height: 56)
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(isTargeted.wrappedValue ? Color.accentColor.opacity(0.08) : Color.white.opacity(0.02))
+                    .fill(isTargeted.wrappedValue ? Color.accentColor.opacity(AppTheme.Opacity.faint) : Color.white.opacity(AppTheme.Opacity.subtle))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
                     .strokeBorder(
-                        isTargeted.wrappedValue ? Color.accentColor.opacity(0.5) : AppTheme.Border.primaryColor,
-                        style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                        isTargeted.wrappedValue ? Color.accentColor.opacity(AppTheme.Opacity.strong) : AppTheme.Border.primaryColor,
+                        style: StrokeStyle(lineWidth: AppTheme.BorderWidth.thin, dash: [4, 3])
                     )
             )
             .overlay {
@@ -1200,7 +1200,7 @@ struct GenerationView: View {
     private var submitButton: some View {
         Button { submitGeneration() } label: {
             Image(systemName: "arrow.up.circle.fill")
-                .font(.system(size: 24))
+                .font(.system(size: AppTheme.FontSize.title1))
         }
         .buttonStyle(.plain)
         .foregroundStyle(canSubmit ? Color.accentColor : AppTheme.Text.mutedColor)
@@ -1222,9 +1222,9 @@ struct GenerationView: View {
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) { selectedType = type }
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: AppTheme.Spacing.xs) {
                         Image(systemName: type.icon)
-                            .font(.system(size: 9, weight: .medium))
+                            .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
                         if showLabels {
                             Text(type.rawValue)
                                 .font(.system(size: AppTheme.FontSize.sm, weight: .medium))

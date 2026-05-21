@@ -39,13 +39,13 @@ struct ClipRulerBlock: View {
             VStack(spacing: 0) {
                 RulerView(clipStart: clip.startFrame, span: span, fps: editor.timeline.fps)
                     .frame(height: KeyframesMetrics.rulerHeight)
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(tint.opacity(0.35))
+                RoundedRectangle(cornerRadius: AppTheme.Radius.xs)
+                    .fill(tint.opacity(AppTheme.Opacity.medium))
                     .overlay(alignment: .leading) {
                         Text(editor.clipDisplayLabel(for: clip))
-                            .font(.system(size: 9, weight: .medium))
+                            .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
                             .foregroundStyle(.white.opacity(0.95))
-                            .padding(.horizontal, 5)
+                            .padding(.horizontal, AppTheme.Spacing.sm)
                             .lineLimit(1)
                     }
                     .frame(height: KeyframesMetrics.stripHeight)
@@ -89,7 +89,7 @@ struct KeyframesLaneRow: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
-                Rectangle().fill(.white.opacity(0.04))
+                Rectangle().fill(.white.opacity(AppTheme.Opacity.subtle))
                 Canvas { ctx, size in
                     let half = KeyframesMetrics.diamondSize / 2
                     let y = size.height / 2
@@ -102,7 +102,7 @@ struct KeyframesLaneRow: View {
                         d.addLine(to: CGPoint(x: x - half, y: y))
                         d.closeSubpath()
                         ctx.fill(d, with: .color(tint))
-                        ctx.stroke(d, with: .color(.black.opacity(0.4)), lineWidth: 0.5)
+                        ctx.stroke(d, with: .color(.black.opacity(0.4)), lineWidth: AppTheme.BorderWidth.hairline)
                     }
                 }
 
@@ -301,7 +301,7 @@ struct KeyframesPanel: View {
                 var p = Path()
                 p.move(to: CGPoint(x: x, y: 0))
                 p.addLine(to: CGPoint(x: x, y: size.height))
-                ctx.stroke(p, with: .color(.yellow), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                ctx.stroke(p, with: .color(.yellow), style: StrokeStyle(lineWidth: AppTheme.BorderWidth.thin, dash: [4, 4]))
             }
             .allowsHitTesting(false)
         }
@@ -318,7 +318,7 @@ struct KeyframesPanel: View {
                     Playhead.appendPath(path, x: x, top: Playhead.triangleSize, bottom: size.height, triangle: true)
                     let color = Color(nsColor: Playhead.color)
                     ctx.fill(Path(path), with: .color(color))
-                    ctx.stroke(Path(path), with: .color(color), lineWidth: 1)
+                    ctx.stroke(Path(path), with: .color(color), lineWidth: AppTheme.BorderWidth.thin)
                 }
             }
         }

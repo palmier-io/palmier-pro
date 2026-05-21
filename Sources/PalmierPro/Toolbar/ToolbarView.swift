@@ -12,7 +12,7 @@ struct ToolbarView: View {
             }
 
             Divider()
-                .frame(height: 20)
+                .frame(height: AppTheme.Spacing.xl)
 
             // Tool mode
             HStack(spacing: AppTheme.Spacing.md) {
@@ -21,7 +21,7 @@ struct ToolbarView: View {
             }
 
             Divider()
-                .frame(height: 20)
+                .frame(height: AppTheme.Spacing.xl)
 
             // Split, trim buttons
             HStack(spacing: AppTheme.Spacing.md) {
@@ -31,7 +31,7 @@ struct ToolbarView: View {
             }
 
             Divider()
-                .frame(height: 20)
+                .frame(height: AppTheme.Spacing.xl)
 
             // Add content
             HStack(spacing: AppTheme.Spacing.md) {

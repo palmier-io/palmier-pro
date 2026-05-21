@@ -37,7 +37,7 @@ struct ProjectActivityView: View {
                     .padding(.vertical, AppTheme.Spacing.sm)
             } else {
                 ScrollView(.vertical, showsIndicators: true) {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
                         ForEach(entries) { entry in
                             row(entry)
                         }
@@ -55,7 +55,7 @@ struct ProjectActivityView: View {
             Image(systemName: entry.sfSymbolName)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: 14)
+                .frame(width: AppTheme.IconSize.xs)
             Text(CostEstimator.format(entry.costCredits))
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .monospacedDigit()
@@ -72,8 +72,8 @@ struct ProjectActivityView: View {
                 .foregroundStyle(AppTheme.Text.mutedColor)
                 .lineLimit(1)
         }
-        .padding(.vertical, 3)
-        .padding(.horizontal, 2)
+        .padding(.vertical, AppTheme.Spacing.xs)
+        .padding(.horizontal, AppTheme.Spacing.xxs)
     }
 
     private func relativeTime(_ date: Date?) -> String {
@@ -89,9 +89,9 @@ struct ProjectActivityButton: View {
     var body: some View {
         Button(action: { isPresented.toggle() }) {
             Image(systemName: "dollarsign.circle")
-                .font(.system(size: 11))
+                .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
-                .frame(width: 26, height: 26)
+                .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)
                 .hoverHighlight()
         }
         .buttonStyle(.plain)

@@ -49,9 +49,9 @@ struct AIAccessGate: ViewModifier {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppTheme.Radius.xl))
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Radius.xl)
-                .stroke(AppTheme.Border.subtleColor, lineWidth: 0.5)
+                .stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)
         )
-        .shadow(color: .black.opacity(0.25), radius: 24, y: 12)
+        .shadow(color: .black.opacity(AppTheme.Opacity.moderate), radius: 24, y: 12)
         .padding(AppTheme.Spacing.md)
     }
 

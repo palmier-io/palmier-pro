@@ -2,7 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     private let columns = [
-        GridItem(.adaptive(minimum: 140, maximum: 170), spacing: 18)
+        GridItem(.adaptive(minimum: 140, maximum: 170), spacing: AppTheme.Spacing.xl)
     ]
 
     var body: some View {
@@ -12,7 +12,7 @@ struct HomeView: View {
 
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black.opacity(0.35))
+                .background(Color.black.opacity(AppTheme.Opacity.medium))
         }
         .frame(minWidth: 760, minHeight: 480)
         .background(.ultraThinMaterial)
@@ -34,9 +34,9 @@ struct HomeView: View {
 
             Spacer()
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 14)
-        .padding(.bottom, 28)
+        .padding(.horizontal, AppTheme.Spacing.xlXxl)
+        .padding(.top, AppTheme.Spacing.lg)
+        .padding(.bottom, AppTheme.Spacing.xxl)
     }
 
     @ViewBuilder
@@ -47,7 +47,7 @@ struct HomeView: View {
                 emptyState
             } else {
                 ScrollView {
-                    LazyVGrid(columns: columns, spacing: 18) {
+                    LazyVGrid(columns: columns, spacing: AppTheme.Spacing.xl) {
                         ForEach(entries) { entry in
                             ProjectCard(
                                 entry: entry,
@@ -56,8 +56,8 @@ struct HomeView: View {
                             )
                         }
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 24)
+                    .padding(.horizontal, AppTheme.Spacing.xlXxl)
+                    .padding(.bottom, AppTheme.Spacing.xlXxl)
                 }
                 .scrollEdgeEffectStyle(.soft, for: .top)
             }

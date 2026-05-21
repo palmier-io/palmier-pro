@@ -21,22 +21,22 @@ struct FolderTileView: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             ZStack {
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(Color(white: 1.0, opacity: 0.05))
+                    .fill(Color(white: 1.0, opacity: AppTheme.Opacity.subtle))
                 Image(systemName: "folder.fill")
-                    .font(.system(size: 36, weight: .light))
+                    .font(.system(size: AppTheme.FontSize.display, weight: .light))
                     .foregroundStyle(Color.accentColor.opacity(0.85))
                 if childCount > 0 {
                     VStack {
                         HStack {
                             Spacer()
                             Text("\(childCount)")
-                                .font(.system(size: 9, weight: .semibold))
+                                .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .monospacedDigit()
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
+                                .padding(.horizontal, AppTheme.Spacing.sm)
+                                .padding(.vertical, AppTheme.Spacing.xxs)
                                 .background(.ultraThinMaterial, in: .capsule)
-                                .padding(4)
+                                .padding(AppTheme.Spacing.xs)
                         }
                         Spacer()
                     }
@@ -74,11 +74,11 @@ struct FolderTileView: View {
                         .onTapGesture(count: 2) { beginRename() }
                 }
             }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
+            .padding(.horizontal, AppTheme.Spacing.xs)
+            .padding(.vertical, AppTheme.Spacing.xxs)
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(isRenaming ? Color.white.opacity(0.08) : .clear)
+                    .fill(isRenaming ? Color.white.opacity(AppTheme.Opacity.faint) : .clear)
             )
         }
         .frame(maxWidth: .infinity)
@@ -107,8 +107,8 @@ struct FolderTileView: View {
     }
 
     private var borderWidth: CGFloat {
-        if isDropHover { return 2 }
-        if isSelected { return 2 }
+        if isDropHover { return AppTheme.BorderWidth.thick }
+        if isSelected { return AppTheme.BorderWidth.thick }
         return 0
     }
 

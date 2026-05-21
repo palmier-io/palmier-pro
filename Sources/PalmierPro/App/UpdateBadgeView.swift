@@ -10,11 +10,11 @@ struct UpdateBadgeView: View {
                     updater.checkForUpdates(nil)
                 } label: {
                     Text(badgeLabel)
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                         .foregroundStyle(.white.opacity(0.95))
                         .padding(.leading, AppTheme.Spacing.sm)
-                        .padding(.trailing, 2)
-                        .padding(.vertical, 2)
+                        .padding(.trailing, AppTheme.Spacing.xxs)
+                        .padding(.vertical, AppTheme.Spacing.xxs)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -24,11 +24,11 @@ struct UpdateBadgeView: View {
                     updater.dismissUpdate()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.55))
-                        .padding(.leading, 2)
+                        .font(.system(size: AppTheme.FontSize.micro, weight: .bold))
+                        .foregroundStyle(.white.opacity(AppTheme.Opacity.strong))
+                        .padding(.leading, AppTheme.Spacing.xxs)
                         .padding(.trailing, AppTheme.Spacing.xs)
-                        .padding(.vertical, 2)
+                        .padding(.vertical, AppTheme.Spacing.xxs)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)

@@ -27,7 +27,7 @@ struct AgentPanelView: View {
             HStack(spacing: AppTheme.Spacing.xs) {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 2) {
+                        HStack(spacing: AppTheme.Spacing.xxs) {
                             ForEach(service.openSessions) { session in
                                 ChatTabView(
                                     session: session,
@@ -58,9 +58,9 @@ struct AgentPanelView: View {
     private var newTabButton: some View {
         Button { service.newChat() } label: {
             Image(systemName: "plus")
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: 20, height: 20)
+                .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
         }
         .buttonStyle(.plain)
         .focusable(false)
@@ -72,9 +72,9 @@ struct AgentPanelView: View {
     private var historyButton: some View {
         Button { showHistory.toggle() } label: {
             Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: 20, height: 20)
+                .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
         }
         .buttonStyle(.plain)
         .focusable(false)
@@ -98,12 +98,12 @@ struct AgentPanelView: View {
                 Button(m.displayName) { service.model = m }
             }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: AppTheme.Spacing.xs) {
                 Text(service.model.displayName)
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
         }
@@ -138,7 +138,7 @@ struct AgentPanelView: View {
     private var messageList: some View {
         Group {
             if service.messages.isEmpty && !service.isStreaming {
-                VStack(spacing: 8) {
+                VStack(spacing: AppTheme.Spacing.smMd) {
                     emptyState
                     if let err = service.streamError {
                         Text(err)
@@ -147,7 +147,7 @@ struct AgentPanelView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, AppTheme.Spacing.lgXl)
             } else {
                 scrollingMessages
             }
@@ -157,7 +157,7 @@ struct AgentPanelView: View {
     private var scrollingMessages: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 18) {
+                LazyVStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
                     let results = toolResults
                     ForEach(service.messages) { msg in
                         AgentMessageView(message: msg, toolResults: results)
@@ -173,9 +173,9 @@ struct AgentPanelView: View {
                             .padding(.top, AppTheme.Spacing.sm)
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, AppTheme.Spacing.lgXl)
                 .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.sm)
-                .padding(.bottom, 8)
+                .padding(.bottom, AppTheme.Spacing.smMd)
                 .frame(maxWidth: Layout.chatColumnMax)
                 .frame(maxWidth: .infinity)
             }
@@ -217,9 +217,9 @@ struct AgentPanelView: View {
             modelPicker
             apiKeyButton
         }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 12)
-        .padding(.top, 4)
+        .padding(.horizontal, AppTheme.Spacing.mdLg)
+        .padding(.bottom, AppTheme.Spacing.mdLg)
+        .padding(.top, AppTheme.Spacing.xs)
         .frame(maxWidth: Layout.chatColumnMax)
         .frame(maxWidth: .infinity)
     }
@@ -241,8 +241,8 @@ private struct ChatTabView: View {
 
     var body: some View {
         Button(action: onSelect) {
-            VStack(spacing: 3) {
-                HStack(spacing: 4) {
+            VStack(spacing: AppTheme.Spacing.xs) {
+                HStack(spacing: AppTheme.Spacing.xs) {
                     Text(displayTitle)
                         .font(.system(size: AppTheme.FontSize.xs, weight: isActive ? .semibold : .regular))
                         .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
@@ -251,9 +251,9 @@ private struct ChatTabView: View {
                     if hovering || isActive {
                         Button(action: onClose) {
                             Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .medium))
+                                .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
                                 .foregroundStyle(AppTheme.Text.mutedColor)
-                                .frame(width: 12, height: 12)
+                                .frame(width: AppTheme.Spacing.mdLg, height: AppTheme.Spacing.mdLg)
                         }
                         .buttonStyle(.plain)
                         .focusable(false)
@@ -261,10 +261,10 @@ private struct ChatTabView: View {
                 }
                 Rectangle()
                     .fill(isActive ? AppTheme.Text.primaryColor : Color.clear)
-                    .frame(height: 1.5)
+                    .frame(height: AppTheme.BorderWidth.medium)
             }
-            .padding(.horizontal, 6)
-            .padding(.top, 2)
+            .padding(.horizontal, AppTheme.Spacing.sm)
+            .padding(.top, AppTheme.Spacing.xxs)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

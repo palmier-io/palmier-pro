@@ -217,7 +217,7 @@ struct InspectorView: View {
                             .foregroundStyle(foreground)
                         Rectangle()
                             .fill(isActive ? foreground : AnyShapeStyle(Color.clear))
-                            .frame(height: 1.5)
+                            .frame(height: AppTheme.BorderWidth.medium)
                     }
                     .padding(.vertical, AppTheme.Spacing.xs)
                     .contentShape(Rectangle())
@@ -269,15 +269,15 @@ struct InspectorView: View {
             Button {
                 editor.keyframesPanelVisible.toggle()
             } label: {
-                HStack(spacing: 4) {
+                HStack(spacing: AppTheme.Spacing.xs) {
                     Image(systemName: on ? "diamond.fill" : "diamond")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     Text("Keyframes")
                         .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 }
                 .foregroundStyle(on ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
+                .padding(.horizontal, AppTheme.Spacing.smMd)
+                .padding(.vertical, AppTheme.Spacing.xs)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -419,7 +419,7 @@ struct InspectorView: View {
             .padding(AppTheme.Spacing.md)
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(Color.white.opacity(0.04))
+                    .fill(Color.white.opacity(AppTheme.Opacity.subtle))
             )
     }
 
@@ -485,7 +485,7 @@ struct InspectorView: View {
                 }
             } label: {
                 Image(systemName: onKeyframe ? "diamond.fill" : "diamond")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(onKeyframe ? AppTheme.Accent.timecodeColor : AppTheme.Text.tertiaryColor)
                     .frame(width: KeyframesMetrics.stampButtonWidth, height: 18)
                     .contentShape(Rectangle())
@@ -510,7 +510,7 @@ struct InspectorView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .frame(width: KeyframesMetrics.navButtonWidth, height: 18)
                 .contentShape(Rectangle())
@@ -522,7 +522,7 @@ struct InspectorView: View {
     }
 
     /// Indent property rows to align with the section header's title text
-    private var sectionContentIndent: CGFloat { 20 }
+    private var sectionContentIndent: CGFloat { AppTheme.Spacing.xl }
 
     private func transformHeader(clips: [Clip]) -> some View {
         collapsibleHeader(
@@ -618,7 +618,7 @@ struct InspectorView: View {
             Image(systemName: icon)
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
-                .frame(width: 16, alignment: .leading)
+                .frame(width: AppTheme.Spacing.lgXl, alignment: .leading)
             Text(title)
                 .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                 .foregroundStyle(AppTheme.Text.primaryColor)
@@ -630,7 +630,7 @@ struct InspectorView: View {
             Image(systemName: "arrow.counterclockwise")
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: 22, height: 22)
+                .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
@@ -716,7 +716,7 @@ struct InspectorView: View {
                         .frame(height: 24)
                         .background(
                             RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                                .fill(isActive ? Color.white.opacity(0.10) : Color.white.opacity(0.04))
+                                .fill(isActive ? Color.white.opacity(AppTheme.Opacity.soft) : Color.white.opacity(AppTheme.Opacity.subtle))
                         )
                 }
                 .buttonStyle(.plain)
@@ -810,7 +810,7 @@ struct InspectorView: View {
                             GenerationReferencesStrip(generationInput: gen)
 
                             if !gen.prompt.isEmpty {
-                                VStack(alignment: .leading, spacing: 2) {
+                                VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
                                     HStack(spacing: AppTheme.Spacing.xs) {
                                         Text("Prompt")
                                             .font(.system(size: AppTheme.FontSize.xs))
@@ -838,7 +838,7 @@ struct InspectorView: View {
             Image(systemName: icon)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.mutedColor)
-                .frame(width: 14)
+                .frame(width: AppTheme.IconSize.xs)
             Text(label)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)

@@ -41,7 +41,7 @@ struct TextTab: View {
             .padding(AppTheme.Spacing.xs)
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.white.opacity(AppTheme.Opacity.hint))
             )
         }
     }
@@ -131,7 +131,7 @@ struct TextTab: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .tint(Color.white.opacity(0.5))
+            .tint(Color.white.opacity(AppTheme.Opacity.strong))
             .fixedSize()
         }
     }
@@ -154,7 +154,7 @@ struct TextTab: View {
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.mini)
-                .tint(Color.white.opacity(0.5))
+                .tint(Color.white.opacity(AppTheme.Opacity.strong))
             }
 
             if shadow.enabled {
@@ -193,13 +193,13 @@ struct TextTab: View {
                         }
                     }
                 }
-                .padding(.leading, 20)
-                .padding(.top, 2)
+                .padding(.leading, AppTheme.Spacing.xl)
+                .padding(.top, AppTheme.Spacing.xxs)
                 .overlay(alignment: .leading) {
                     Rectangle()
                         .fill(Color.white.opacity(0.12))
-                        .frame(width: 1)
-                        .padding(.leading, 7)
+                        .frame(width: AppTheme.BorderWidth.thin)
+                        .padding(.leading, AppTheme.Spacing.sm)
                 }
             }
         }

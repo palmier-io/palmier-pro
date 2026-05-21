@@ -39,7 +39,7 @@ struct ScrubbableNumberField: View {
     }
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: AppTheme.Spacing.xs) {
             ZStack {
                 if isEditing {
                     TextField("", text: $editText)
@@ -63,8 +63,8 @@ struct ScrubbableNumberField: View {
                 }
             }
             .frame(width: fieldWidth, alignment: .trailing)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
+            .padding(.horizontal, AppTheme.Spacing.sm)
+            .padding(.vertical, AppTheme.Spacing.xxs)
             .overlay(scrubOverlay)
 
             if let trailingLabel {

@@ -13,22 +13,22 @@ struct FontPickerField: View {
         Button {
             presentMenu()
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: AppTheme.Spacing.xs) {
                 Text(displayName)
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, AppTheme.Spacing.smMd)
+            .padding(.vertical, AppTheme.Spacing.xs)
             .frame(maxWidth: 160, alignment: .trailing)
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.white.opacity(AppTheme.Opacity.hint))
             )
         }
         .buttonStyle(.plain)

@@ -25,7 +25,7 @@ struct AssetThumbnailView: View {
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
                     .strokeBorder(
                         isSelected ? Color.accentColor : Color.clear,
-                        lineWidth: isSelected ? 2 : 0
+                        lineWidth: isSelected ? AppTheme.BorderWidth.thick : 0
                     )
             )
             .onHover { hovering in
@@ -59,11 +59,11 @@ struct AssetThumbnailView: View {
                         .onTapGesture(count: 2) { beginRename() }
                 }
             }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
+            .padding(.horizontal, AppTheme.Spacing.xs)
+            .padding(.vertical, AppTheme.Spacing.xxs)
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(isRenaming ? Color.white.opacity(0.08) : .clear)
+                    .fill(isRenaming ? Color.white.opacity(AppTheme.Opacity.faint) : .clear)
             )
         }
         .frame(maxWidth: .infinity)
@@ -134,7 +134,7 @@ struct AssetThumbnailView: View {
                     .aspectRatio(contentMode: .fit)
             } else {
                 Image(systemName: asset.type.sfSymbolName)
-                    .font(.system(size: 20))
+                    .font(.system(size: AppTheme.FontSize.xl))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
         }
@@ -142,18 +142,18 @@ struct AssetThumbnailView: View {
 
     @ViewBuilder
     private var thumbnailBadges: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: AppTheme.Spacing.xs) {
             if asset.isGenerated && !asset.isGenerating {
                 sourceBadge
             }
         }
-        .padding(4)
+        .padding(AppTheme.Spacing.xs)
     }
 
     @ViewBuilder
     private var durationOverlay: some View {
         if showsDurationBadge {
-            durationBadge.padding(4)
+            durationBadge.padding(AppTheme.Spacing.xs)
         }
     }
 
@@ -162,14 +162,14 @@ struct AssetThumbnailView: View {
         if isHovering && !asset.isGenerating {
             Button { editor.agentService.attachMention(for: asset) } label: {
                 Image(systemName: "text.bubble")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 20, height: 20)
+                    .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
             }
             .buttonStyle(.plain)
-            .background(.black.opacity(0.55), in: .circle)
-            .overlay(Circle().strokeBorder(Color.white.opacity(0.15), lineWidth: 0.5))
-            .padding(4)
+            .background(.black.opacity(AppTheme.Opacity.strong), in: .circle)
+            .overlay(Circle().strokeBorder(Color.white.opacity(AppTheme.Opacity.muted), lineWidth: AppTheme.BorderWidth.hairline))
+            .padding(AppTheme.Spacing.xs)
             .transition(.opacity)
             .help("Add to chat")
         }
@@ -177,33 +177,33 @@ struct AssetThumbnailView: View {
 
     private var sourceBadge: some View {
         Text("AI")
-            .font(.system(size: 9, weight: .semibold))
+            .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
             .foregroundStyle(AppTheme.aiGradient)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
+            .padding(.horizontal, AppTheme.Spacing.sm)
+            .padding(.vertical, AppTheme.Spacing.xxs)
             .background(.ultraThinMaterial, in: .capsule)
     }
 
     private var durationBadge: some View {
         Text(formatDuration(asset.duration))
-            .font(.system(size: 9, weight: .medium))
+            .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
             .foregroundStyle(.white)
             .monospacedDigit()
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
+            .padding(.horizontal, AppTheme.Spacing.sm)
+            .padding(.vertical, AppTheme.Spacing.xxs)
             .background(.ultraThinMaterial, in: .capsule)
     }
 
     private func failedThumbnail(error: String) -> some View {
-        VStack(spacing: 2) {
+        VStack(spacing: AppTheme.Spacing.xxs) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 14))
-                .foregroundStyle(.red.opacity(0.8))
+                .font(.system(size: AppTheme.FontSize.mdLg))
+                .foregroundStyle(.red.opacity(AppTheme.Opacity.prominent))
             Text("Failed")
                 .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
             Text(error)
-                .font(.system(size: 9))
+                .font(.system(size: AppTheme.FontSize.xxs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .multilineTextAlignment(.center)
                 .lineLimit(3)

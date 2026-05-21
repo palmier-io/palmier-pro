@@ -54,23 +54,23 @@ struct GenerationReferencesStrip: View {
     }
 
     private func thumbnail(label: String, asset: MediaAsset) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             ZStack {
                 Rectangle().fill(Color.black)
                 if let thumb = asset.thumbnail {
                     Image(nsImage: thumb).resizable().aspectRatio(contentMode: .fit)
                 } else {
                     Image(systemName: asset.type.sfSymbolName)
-                        .font(.system(size: 14))
+                        .font(.system(size: AppTheme.FontSize.mdLg))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                 }
             }
             .frame(width: 72, height: 41)
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
             .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+                .strokeBorder(Color.white.opacity(AppTheme.Opacity.faint), lineWidth: AppTheme.BorderWidth.hairline))
             Text(label)
-                .font(.system(size: 9, weight: .medium))
+                .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
                 .foregroundStyle(AppTheme.Text.mutedColor)
                 .lineLimit(1)
         }

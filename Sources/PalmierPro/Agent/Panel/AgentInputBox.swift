@@ -67,14 +67,14 @@ struct AgentInputBox<LeadingTools: View>: View {
                 .onChange(of: mentionTab) { _, _ in highlightedMentionIndex = 0 }
             bottomBar
         }
-        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+        .glassEffect(.regular, in: .rect(cornerRadius: AppTheme.Radius.xl))
         .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.xl, style: .continuous)
                 .strokeBorder(
-                    isDropTargeted ? Color.accentColor.opacity(0.6)
-                        : focused ? Color.accentColor.opacity(0.45)
-                        : Color.white.opacity(0.06),
-                    lineWidth: (focused || isDropTargeted) ? 1 : 0.5
+                    isDropTargeted ? Color.accentColor.opacity(AppTheme.Opacity.strong)
+                        : focused ? Color.accentColor.opacity(AppTheme.Opacity.medium)
+                        : Color.white.opacity(AppTheme.Opacity.hint),
+                    lineWidth: (focused || isDropTargeted) ? AppTheme.BorderWidth.thin : AppTheme.BorderWidth.hairline
                 )
                 .allowsHitTesting(false)
         }
@@ -88,9 +88,9 @@ struct AgentInputBox<LeadingTools: View>: View {
             TextEditor(text: $draft)
                 .font(.body)
                 .scrollContentBackground(.hidden)
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-                .padding(.bottom, 4)
+                .padding(.horizontal, AppTheme.Spacing.mdLg)
+                .padding(.top, AppTheme.Spacing.smMd)
+                .padding(.bottom, AppTheme.Spacing.xs)
                 .focused($focused)
                 .frame(minHeight: 32, maxHeight: 64)
                 .onChange(of: draft) { _, new in updateMentionQuery(from: new) }
@@ -107,8 +107,8 @@ struct AgentInputBox<LeadingTools: View>: View {
                 Text("Ask, or @ to reference media")
                     .font(.body)
                     .foregroundStyle(AppTheme.Text.mutedColor)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
+                    .padding(.horizontal, AppTheme.Spacing.lgXl)
+                    .padding(.top, AppTheme.Spacing.mdLg)
                     .allowsHitTesting(false)
             }
         }
@@ -117,17 +117,17 @@ struct AgentInputBox<LeadingTools: View>: View {
     private var bottomBar: some View {
         VStack(spacing: 0) {
             Rectangle()
-                .fill(Color.white.opacity(0.06))
-                .frame(height: 0.5)
-            HStack(spacing: 10) {
+                .fill(Color.white.opacity(AppTheme.Opacity.hint))
+                .frame(height: AppTheme.BorderWidth.hairline)
+            HStack(spacing: AppTheme.Spacing.md) {
                 leadingTools
                 Spacer(minLength: 0)
-                GlassEffectContainer(spacing: 4) {
+                GlassEffectContainer(spacing: AppTheme.Spacing.xs) {
                     sendStopButton
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
+            .padding(.horizontal, AppTheme.Spacing.md)
+            .padding(.vertical, AppTheme.Spacing.xs)
         }
     }
 
@@ -136,8 +136,8 @@ struct AgentInputBox<LeadingTools: View>: View {
         if isSending {
             Button(action: onCancel) {
                 Image(systemName: "stop.fill")
-                    .font(.system(size: 10, weight: .bold))
-                    .frame(width: 18, height: 18)
+                    .font(.system(size: AppTheme.FontSize.xs, weight: .bold))
+                    .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)
@@ -149,8 +149,8 @@ struct AgentInputBox<LeadingTools: View>: View {
         } else {
             Button(action: onSend) {
                 Image(systemName: "arrow.up")
-                    .font(.system(size: 11, weight: .bold))
-                    .frame(width: 18, height: 18)
+                    .font(.system(size: AppTheme.FontSize.sm, weight: .bold))
+                    .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
             }
             .buttonStyle(.glassProminent)
             .buttonBorderShape(.circle)
@@ -158,7 +158,7 @@ struct AgentInputBox<LeadingTools: View>: View {
             .tint(.accentColor)
             .glassEffectID("sendStop", in: sendStopNamespace)
             .disabled(!canSend)
-            .opacity(canSend ? 1 : 0.5)
+            .opacity(canSend ? 1 : AppTheme.Opacity.strong)
             .transition(.scale.combined(with: .opacity))
         }
     }

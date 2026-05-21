@@ -10,12 +10,12 @@ struct ColorField: View {
 
     var body: some View {
         Button(action: open) {
-            RoundedRectangle(cornerRadius: 3)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.xs)
                 .fill(displayColor)
-                .frame(width: 24, height: 14)
+                .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.xs)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 3)
-                        .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.xs)
+                        .stroke(Color.white.opacity(AppTheme.Opacity.medium), lineWidth: AppTheme.BorderWidth.thin)
                 )
         }
         .buttonStyle(.plain)

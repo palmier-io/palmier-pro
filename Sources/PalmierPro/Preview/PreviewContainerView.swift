@@ -36,7 +36,7 @@ struct PreviewContainerView: View {
                 .frame(width: scaledWidth, height: scaledHeight)
                 .overlay(
                     Rectangle()
-                        .stroke(Color.white.opacity(editor.canvasZoom < 1.0 ? 0.25 : 0), lineWidth: 1)
+                        .stroke(Color.white.opacity(editor.canvasZoom < 1.0 ? AppTheme.Opacity.moderate : 0), lineWidth: AppTheme.BorderWidth.thin)
                 )
                 .position(x: geo.size.width / 2, y: geo.size.height / 2)
                 .offset(x: editor.canvasOffset.width, y: editor.canvasOffset.height)
@@ -114,7 +114,7 @@ struct PreviewContainerView: View {
             Image(systemName: "camera")
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
-                .frame(width: 24, height: 24)
+                .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
                 .hoverHighlight()
                 .help("Capture Frame to Media")
         }
@@ -264,17 +264,17 @@ struct PreviewContainerView: View {
 
     private func badgeLabel(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 9, weight: .bold, design: .rounded))
+            .font(.system(size: AppTheme.FontSize.xxs, weight: .bold, design: .rounded))
             .foregroundStyle(AppTheme.Text.secondaryColor)
             .padding(.horizontal, AppTheme.Spacing.sm)
-            .frame(height: 24)
+            .frame(height: AppTheme.IconSize.mdLg)
     }
 
     private func badgeIcon(_ systemName: String) -> some View {
         Image(systemName: systemName)
             .font(.system(size: AppTheme.FontSize.sm))
             .foregroundStyle(AppTheme.Text.secondaryColor)
-            .frame(width: 24, height: 24)
+            .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
     }
 
     // MARK: - Image preview
@@ -313,11 +313,11 @@ struct PreviewContainerView: View {
 
     private func failedPreview(error: String) -> some View {
         ZStack {
-            Color.black.opacity(0.65)
+            Color.black.opacity(AppTheme.Opacity.strong)
             VStack(spacing: AppTheme.Spacing.md) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 44))
-                    .foregroundStyle(.red.opacity(0.85))
+                    .font(.system(size: AppTheme.FontSize.display))
+                    .foregroundStyle(.red.opacity(AppTheme.Opacity.prominent))
                 Text("Generation Failed")
                     .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.primaryColor)
@@ -346,8 +346,8 @@ struct PreviewContainerView: View {
                         .padding(.vertical, AppTheme.Spacing.sm)
                     }
                     .buttonStyle(.plain)
-                    .background(.white.opacity(0.12), in: .capsule)
-                    .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 0.5))
+                    .background(.white.opacity(AppTheme.Opacity.soft), in: .capsule)
+                    .overlay(Capsule().strokeBorder(.white.opacity(AppTheme.Opacity.muted), lineWidth: AppTheme.BorderWidth.hairline))
                 }
             }
             .padding(AppTheme.Spacing.xl)
@@ -393,7 +393,7 @@ struct PreviewContainerView: View {
     private func tabItem(for tab: PreviewTab) -> some View {
         let isActive = tab.id == editor.activePreviewTabId
         let isHovered = hoveredTabId == tab.id
-        return HStack(spacing: 4) {
+        return HStack(spacing: AppTheme.Spacing.xs) {
             Text(tab.displayName)
                 .font(.system(size: AppTheme.FontSize.xs, weight: isActive ? .semibold : .medium))
                 .foregroundStyle(isActive || isHovered ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
@@ -404,11 +404,11 @@ struct PreviewContainerView: View {
             }
         }
         .padding(.horizontal, AppTheme.Spacing.xs)
-        .padding(.bottom, 4)
+        .padding(.bottom, AppTheme.Spacing.xs)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(isActive ? tab.underlineColor : Color.clear)
-                .frame(height: 1.5)
+                .frame(height: AppTheme.BorderWidth.medium)
         }
         .fixedSize()
         .contentShape(Rectangle())
@@ -430,7 +430,7 @@ struct PreviewContainerView: View {
             Image(systemName: systemName)
                 .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                 .foregroundStyle(enabled ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
-                .frame(width: 18, height: 22)
+                .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.md)
                 .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
         }
         .buttonStyle(.plain)
@@ -450,7 +450,7 @@ struct PreviewContainerView: View {
             Image(systemName: "ellipsis")
                 .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
-                .frame(width: 22, height: 22)
+                .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -466,9 +466,9 @@ struct PreviewContainerView: View {
             }
         } label: {
             Image(systemName: "xmark")
-                .font(.system(size: 8, weight: .bold))
+                .font(.system(size: AppTheme.FontSize.micro, weight: .bold))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: 14, height: 14)
+                .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
                 .hoverHighlight(cornerRadius: 7)
         }
         .buttonStyle(.plain)
@@ -489,7 +489,7 @@ struct PreviewContainerView: View {
             let barHeight: CGFloat = active ? 4 : 3
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.white.opacity(0.12))
+                    .fill(Color.white.opacity(AppTheme.Opacity.soft))
                     .frame(height: barHeight)
                 PreviewScrubProgress(
                     isTimeline: isTimeline,
@@ -536,8 +536,8 @@ struct PreviewContainerView: View {
             )
         }
         .frame(height: 12)
-        .animation(.easeOut(duration: 0.15), value: isScrubbing)
-        .animation(.easeOut(duration: 0.15), value: isScrubHovered)
+        .animation(.easeOut(duration: AppTheme.Anim.hover), value: isScrubbing)
+        .animation(.easeOut(duration: AppTheme.Anim.hover), value: isScrubHovered)
         .onDisappear {
             if isScrubHovered {
                 NSCursor.pop()

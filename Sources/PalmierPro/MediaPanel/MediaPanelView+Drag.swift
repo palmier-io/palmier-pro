@@ -58,22 +58,22 @@ extension MediaPanelView {
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .strokeBorder(Color.accentColor, lineWidth: 1.5)
+                    .strokeBorder(Color.accentColor, lineWidth: AppTheme.BorderWidth.medium)
             )
-            .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+            .shadow(color: .black.opacity(AppTheme.Opacity.medium), radius: 4, y: 2)
 
             if count > 1 {
                 Text("\(count)")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: AppTheme.FontSize.sm, weight: .bold))
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, AppTheme.Spacing.sm)
+                    .padding(.vertical, AppTheme.Spacing.xxs)
                     .background(Capsule().fill(Color.accentColor))
-                    .offset(x: 4, y: -4)
+                    .offset(x: AppTheme.Spacing.xs, y: -AppTheme.Spacing.xs)
             }
         }
-        .padding(.top, 4)
-        .padding(.trailing, 4)
+        .padding(.top, AppTheme.Spacing.xs)
+        .padding(.trailing, AppTheme.Spacing.xs)
     }
 }
 

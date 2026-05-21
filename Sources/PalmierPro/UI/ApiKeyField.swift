@@ -13,15 +13,15 @@ struct ApiKeyField: View {
 
     var body: some View {
         Button { isShown.toggle() } label: {
-            HStack(spacing: 3) {
+            HStack(spacing: AppTheme.Spacing.xs) {
                 Image(systemName: "key")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
                 Text(label)
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
             }
             .foregroundStyle(hasKey ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
             .padding(.horizontal, AppTheme.Spacing.sm)
-            .padding(.vertical, 3)
+            .padding(.vertical, AppTheme.Spacing.xs)
         }
         .buttonStyle(.plain)
         .popover(isPresented: $isShown, arrowEdge: .bottom) {

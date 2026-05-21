@@ -41,7 +41,7 @@ struct SettingsView: View {
 
             SettingsDetail(tab: selectedTab)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black.opacity(0.35))
+                .background(Color.black.opacity(AppTheme.Opacity.medium))
         }
         .frame(minWidth: 760, idealWidth: 980, minHeight: 480, idealHeight: 640)
         .background(.ultraThinMaterial)
@@ -71,7 +71,7 @@ private struct SettingsSidebar: View {
     }
 
     private var tabList: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
             ForEach(visibleTabs) { tab in
                 SidebarRowButton(
                     label: tab.label,
@@ -81,8 +81,8 @@ private struct SettingsSidebar: View {
                 )
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 10)
+        .padding(.horizontal, AppTheme.Spacing.smMd)
+        .padding(.vertical, AppTheme.Spacing.md)
     }
 }
 
@@ -93,13 +93,13 @@ private struct SettingsDetail: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(tab.label)
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                 Spacer()
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 28)
-            .padding(.bottom, 16)
+            .padding(.horizontal, AppTheme.Spacing.xlXxl)
+            .padding(.top, AppTheme.Spacing.xxl)
+            .padding(.bottom, AppTheme.Spacing.lgXl)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
@@ -113,8 +113,8 @@ private struct SettingsDetail: View {
                         StoragePane()
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 24)
+                .padding(.horizontal, AppTheme.Spacing.xlXxl)
+                .padding(.bottom, AppTheme.Spacing.xlXxl)
             }
             .scrollEdgeEffectStyle(.soft, for: .top)
         }
@@ -144,7 +144,7 @@ struct SettingsToggleRow: View {
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.small)
-                .padding(.top, 1)
+                .padding(.top, AppTheme.Spacing.xxs)
         }
     }
 }

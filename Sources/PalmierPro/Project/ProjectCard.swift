@@ -9,12 +9,12 @@ struct ProjectCard: View {
     @State private var thumbnail: NSImage?
     @State private var showDeleteConfirmation = false
 
-    private let cardRadius: CGFloat = 12
+    private let cardRadius: CGFloat = AppTheme.Radius.mdLg
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             // Thumbnail
-            Color(white: 0.10)
+            AppTheme.Background.placeholderColor
                 .aspectRatio(5.0/4.0, contentMode: .fit)
                 .overlay {
                     if let thumbnail {
@@ -23,7 +23,7 @@ struct ProjectCard: View {
                             .aspectRatio(contentMode: .fill)
                     } else {
                         Image(systemName: "film")
-                            .font(.system(size: 28, weight: .light))
+                            .font(.system(size: AppTheme.FontSize.title2, weight: .light))
                             .foregroundStyle(AppTheme.Text.mutedColor)
                     }
                 }
@@ -31,9 +31,9 @@ struct ProjectCard: View {
                     if !entry.isAccessible {
                         Color.black.opacity(0.6)
 
-                        VStack(spacing: 4) {
+                        VStack(spacing: AppTheme.Spacing.xs) {
                             Image(systemName: "questionmark.folder")
-                                .font(.system(size: 22))
+                                .font(.system(size: AppTheme.FontSize.title1))
                             Text("Not Found")
                                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                         }
@@ -57,7 +57,7 @@ struct ProjectCard: View {
             .frame(height: 60)
             .allowsHitTesting(false)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
                 Text(entry.name)
                     .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                     .foregroundStyle(entry.isAccessible ? .white : AppTheme.Text.mutedColor)
@@ -65,23 +65,23 @@ struct ProjectCard: View {
 
                 Text(Self.relativeString(for: entry.createdDate))
                     .font(.system(size: AppTheme.FontSize.xs))
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(.white.opacity(AppTheme.Opacity.medium))
             }
-            .padding(.horizontal, 10)
-            .padding(.bottom, 8)
+            .padding(.horizontal, AppTheme.Spacing.md)
+            .padding(.bottom, AppTheme.Spacing.smMd)
         }
         .opacity(entry.isAccessible ? 1.0 : 0.6)
         .overlay(alignment: .topTrailing) {
             if isHovered {
                 Button { showDeleteConfirmation = true } label: {
                     Image(systemName: "trash.fill")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: AppTheme.FontSize.smMd, weight: .semibold))
                         .foregroundStyle(.red)
-                        .frame(width: 28, height: 28)
+                        .frame(width: AppTheme.IconSize.lgXl, height: AppTheme.IconSize.lgXl)
                         .glassEffect(.regular, in: .circle)
                 }
                 .buttonStyle(.plain)
-                .padding(8)
+                .padding(AppTheme.Spacing.smMd)
                 .transition(.opacity.combined(with: .scale))
             }
         }
@@ -89,13 +89,13 @@ struct ProjectCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: cardRadius, style: .continuous)
                 .strokeBorder(
-                    Color.white.opacity(isHovered ? 0.15 : 0.06),
-                    lineWidth: 0.5
+                    Color.white.opacity(isHovered ? AppTheme.Opacity.muted : AppTheme.Opacity.hint),
+                    lineWidth: AppTheme.BorderWidth.hairline
                 )
         )
         .shadow(color: .black.opacity(isHovered ? 0.4 : 0.2), radius: isHovered ? 12 : 4, y: isHovered ? 4 : 2)
         .scaleEffect(isHovered ? 1.03 : 1.0)
-        .padding(4)
+        .padding(AppTheme.Spacing.xs)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
         .onHover { isHovered = $0 }
         .contextMenu {

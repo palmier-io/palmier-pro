@@ -3,10 +3,10 @@ import SwiftUI
 struct CropOverlayView: View {
     @Environment(EditorViewModel.self) var editor
 
-    private let handleSize: CGFloat = 8
+    private let handleSize: CGFloat = AppTheme.Spacing.smMd
     private let borderColor = AppTheme.Accent.timecodeColor
-    private let dimColor = Color.black.opacity(0.55)
-    private let guideColor = AppTheme.Accent.timecodeColor.opacity(0.35)
+    private let dimColor = Color.black.opacity(AppTheme.Opacity.strong)
+    private let guideColor = AppTheme.Accent.timecodeColor.opacity(AppTheme.Opacity.medium)
 
     var body: some View {
         GeometryReader { geo in
@@ -32,8 +32,8 @@ struct CropOverlayView: View {
                         thirds.move(to: CGPoint(x: cropRect.minX, y: cropRect.minY + cropRect.height * f))
                         thirds.addLine(to: CGPoint(x: cropRect.maxX, y: cropRect.minY + cropRect.height * f))
                     }
-                    ctx.stroke(thirds, with: .color(guideColor), lineWidth: 1)
-                    ctx.stroke(Path(cropRect), with: .color(borderColor), lineWidth: 1.5)
+                    ctx.stroke(thirds, with: .color(guideColor), lineWidth: AppTheme.BorderWidth.thin)
+                    ctx.stroke(Path(cropRect), with: .color(borderColor), lineWidth: AppTheme.BorderWidth.medium)
                 }
                 .allowsHitTesting(false)
 

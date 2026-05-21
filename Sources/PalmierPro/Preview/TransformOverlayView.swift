@@ -3,8 +3,8 @@ import SwiftUI
 struct TransformOverlayView: View {
     @Environment(EditorViewModel.self) var editor
 
-    private let handleSize: CGFloat = 8
-    private let borderColor = Color.white.opacity(0.5)
+    private let handleSize: CGFloat = AppTheme.Spacing.smMd
+    private let borderColor = Color.white.opacity(AppTheme.Opacity.strong)
 
     var body: some View {
         GeometryReader { geo in
@@ -15,7 +15,7 @@ struct TransformOverlayView: View {
                 let clipRect = clipFrame(clip.transformAt(frame: frame), videoRect: videoRect)
 
                 Rectangle()
-                    .stroke(borderColor, lineWidth: 1)
+                    .stroke(borderColor, lineWidth: AppTheme.BorderWidth.thin)
                     .frame(width: clipRect.width, height: clipRect.height)
                     .position(x: clipRect.midX, y: clipRect.midY)
 
@@ -61,7 +61,7 @@ struct TransformOverlayView: View {
     @State private var centerGuideX: Bool = false
     @State private var centerGuideY: Bool = false
 
-    private let centerGuideColor = Color(red: 1.0, green: 0.2, blue: 0.6).opacity(0.9)
+    private let centerGuideColor = Color(red: 1.0, green: 0.2, blue: 0.6).opacity(AppTheme.Opacity.prominent)
 
     private func moveGesture(clip: Clip, videoRect: CGRect) -> some Gesture {
         DragGesture()
