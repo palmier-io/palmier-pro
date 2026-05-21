@@ -47,8 +47,11 @@ final class ProjectRegistry {
     }
 
     /// Moves the project file to Trash and removes it from the registry.
+    /// If the file is already gone, just removes the registry entry.
     func delete(_ url: URL) throws {
-        try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+        }
         remove(url)
     }
 
