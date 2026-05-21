@@ -73,7 +73,19 @@ enum VideoTrimExtractor {
             throw ExtractionError(reason: "export preset unsupported")
         }
 
-        Log.generation.notice("trim-extract start frames=\(trim.trimStartFrame)..<\(trim.trimStartFrame + trim.sourceFramesConsumed) fps=\(trim.fps)")
+        // Pin output fps — without this the composition's timescale
+        // re-quantizes frame timings and exports a fractional rate
+        let nominal = (try? await videoTrack.load(.nominalFrameRate)) ?? 0
+        let targetFps: Int32 = nominal >= 24 && nominal <= 60
+            ? Int32(Float(nominal).rounded())
+            : 30
+        let videoComposition = try await AVMutableVideoComposition.videoComposition(
+            withPropertiesOf: composition
+        )
+        videoComposition.frameDuration = CMTime(value: 1, timescale: targetFps)
+        session.videoComposition = videoComposition
+
+        Log.generation.notice("trim-extract start frames=\(trim.trimStartFrame)..<\(trim.trimStartFrame + trim.sourceFramesConsumed) timelineFps=\(trim.fps) sourceFps=\(nominal) outFps=\(targetFps)")
         try await session.export(to: outputURL, as: .mp4)
         Log.generation.notice("trim-extract ok url=\(outputURL.lastPathComponent)")
         return outputURL
