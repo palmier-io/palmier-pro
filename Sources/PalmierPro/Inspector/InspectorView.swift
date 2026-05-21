@@ -242,7 +242,7 @@ struct InspectorView: View {
                     transformSection(clips: clips)
                     if !clips.isEmpty { cropSection(clip: single) }
                     speedSection(clips: clips + selectedAudioClips)
-                        .padding(.trailing, KeyframesMetrics.stampButtonWidth + AppTheme.Spacing.sm)
+                        .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.trailing, AppTheme.Spacing.sm)
@@ -301,12 +301,12 @@ struct InspectorView: View {
                         .frame(height: KeyframesMetrics.headerHeight)
                     volumeRow(audios: audios)
                     fadeRow(label: "Fade In", audios: audios, edge: .left)
-                        .padding(.trailing, KeyframesMetrics.stampButtonWidth + AppTheme.Spacing.sm)
+                        .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
                     fadeRow(label: "Fade Out", audios: audios, edge: .right)
-                        .padding(.trailing, KeyframesMetrics.stampButtonWidth + AppTheme.Spacing.sm)
+                        .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
                     if nonTextVisualClips.isEmpty {
                         speedSection(clips: audios)
-                            .padding(.trailing, KeyframesMetrics.stampButtonWidth + AppTheme.Spacing.sm)
+                            .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -460,36 +460,65 @@ struct InspectorView: View {
             HStack(spacing: AppTheme.Spacing.sm) {
                 fields()
                 if let clipId {
-                    keyframeStampButton(clipId: clipId, property: property)
+                    keyframeControls(clipId: clipId, property: property)
                 }
             }
         }
         .frame(height: KeyframesMetrics.rowHeight)
     }
 
-    private func keyframeStampButton(clipId: String, property: AnimatableProperty) -> some View {
+    private func keyframeControls(clipId: String, property: AnimatableProperty) -> some View {
         let frame = editor.activeFrame
         let inRange = editor.clipFor(id: clipId)?.contains(timelineFrame: frame) ?? false
         let onKeyframe = editor.hasKeyframe(clipId: clipId, property: property, at: frame)
-        return Button {
-            if onKeyframe {
-                editor.removeKeyframe(clipId: clipId, property: property, at: frame)
-            } else {
-                editor.stampKeyframe(clipId: clipId, property: property, frame: frame)
+        let prev = editor.previousKeyframeFrame(clipId: clipId, property: property, before: frame)
+        let next = editor.nextKeyframeFrame(clipId: clipId, property: property, after: frame)
+        return HStack(spacing: 0) {
+            keyframeNavButton(systemName: "chevron.left", help: "Go to previous keyframe", enabled: prev != nil) {
+                if let f = prev { editor.seekToFrame(f) }
             }
-        } label: {
-            Image(systemName: onKeyframe ? "diamond.fill" : "diamond")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(onKeyframe ? AppTheme.Accent.timecodeColor : AppTheme.Text.tertiaryColor)
-                .frame(width: KeyframesMetrics.stampButtonWidth, height: 18)
+            Button {
+                if onKeyframe {
+                    editor.removeKeyframe(clipId: clipId, property: property, at: frame)
+                } else {
+                    editor.stampKeyframe(clipId: clipId, property: property, frame: frame)
+                }
+            } label: {
+                Image(systemName: onKeyframe ? "diamond.fill" : "diamond")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(onKeyframe ? AppTheme.Accent.timecodeColor : AppTheme.Text.tertiaryColor)
+                    .frame(width: KeyframesMetrics.stampButtonWidth, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!inRange)
+            .opacity(inRange ? 1 : 0.4)
+            .help(!inRange ? "Move playhead inside the clip"
+                  : onKeyframe ? "Remove keyframe at playhead"
+                  : "Add keyframe at playhead")
+            keyframeNavButton(systemName: "chevron.right", help: "Go to next keyframe", enabled: next != nil) {
+                if let f = next { editor.seekToFrame(f) }
+            }
+        }
+    }
+
+    private func keyframeNavButton(
+        systemName: String,
+        help: String,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .frame(width: KeyframesMetrics.navButtonWidth, height: 18)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!inRange)
-        .opacity(inRange ? 1 : 0.4)
-        .help(!inRange ? "Move playhead inside the clip"
-              : onKeyframe ? "Remove keyframe at playhead"
-              : "Add keyframe at playhead")
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.3)
+        .help(help)
     }
 
     /// Indent property rows to align with the section header's title text
@@ -654,7 +683,7 @@ struct InspectorView: View {
                 Spacer()
 
                 if let clip {
-                    keyframeStampButton(clipId: clip.id, property: .crop)
+                    keyframeControls(clipId: clip.id, property: .crop)
                 }
             }
             .frame(height: KeyframesMetrics.rowHeight)

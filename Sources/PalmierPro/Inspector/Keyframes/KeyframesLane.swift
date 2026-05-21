@@ -7,6 +7,8 @@ enum KeyframesMetrics {
     static let headerHeight: CGFloat = rulerHeight + stripHeight
     static let rowHeight: CGFloat = 22
     static let stampButtonWidth: CGFloat = 22
+    static let navButtonWidth: CGFloat = 6
+    static let controlsColumnWidth: CGFloat = navButtonWidth * 2 + stampButtonWidth
     static let diamondSize: CGFloat = 8
 
     /// Map a timeline frame into the lane's local x. Inverse of `frameAt(...)`.

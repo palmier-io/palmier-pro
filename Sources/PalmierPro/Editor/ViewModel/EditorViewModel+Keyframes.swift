@@ -12,6 +12,14 @@ extension EditorViewModel {
         keyframeFrames(clipId: clipId, property: property).contains(frame)
     }
 
+    func previousKeyframeFrame(clipId: String, property: AnimatableProperty, before frame: Int) -> Int? {
+        keyframeFrames(clipId: clipId, property: property).filter { $0 < frame }.max()
+    }
+
+    func nextKeyframeFrame(clipId: String, property: AnimatableProperty, after frame: Int) -> Int? {
+        keyframeFrames(clipId: clipId, property: property).filter { $0 > frame }.min()
+    }
+
     func interpolation(clipId: String, property: AnimatableProperty, atFrame frame: Int) -> Interpolation? {
         clipFor(id: clipId)?.interpolation(for: property, atFrame: frame)
     }
