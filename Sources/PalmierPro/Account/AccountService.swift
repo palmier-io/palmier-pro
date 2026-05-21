@@ -24,11 +24,10 @@ struct AccountUser: Decodable, Sendable {
     let name: String?
     let image: String?
     let tier: AccountTier
-    let subscriptionStatus: String
-    let currentPeriodStart: Double?
     let currentPeriodEnd: Double?
     let cancelAtPeriodEnd: Bool?
     let spentCreditsThisPeriod: Int?
+    let purchasedCredits: Int?
 }
 
 struct AccountPlan: Decodable, Sendable {
@@ -40,6 +39,11 @@ struct AccountPlan: Decodable, Sendable {
 struct AccountResponse: Decodable, Sendable {
     let user: AccountUser
     let plan: AccountPlan?
+}
+
+enum TopOffLimits {
+    static let minDollars = 5
+    static let maxDollars = 1000
 }
 
 private struct UrlResponse: Decodable, Sendable {
@@ -60,22 +64,25 @@ final class AccountService {
     private(set) var isMisconfigured: Bool = false
     private(set) var account: AccountResponse?
     private(set) var lastError: String?
+    private(set) var isBuyingCredits: Bool = false
 
     var isSignedIn: Bool { !isMisconfigured && Clerk.shared.user != nil }
     var tier: AccountTier { account?.user.tier ?? .none }
     var isPaid: Bool { tier.isPaid }
 
     var spentCredits: Int { account?.user.spentCreditsThisPeriod ?? 0 }
-    var budgetCredits: Int? { account?.plan?.monthlyBudgetCredits }
-    var remainingCredits: Int? {
-        guard let budget = budgetCredits else { return nil }
-        return max(0, budget - spentCredits)
+    var budgetCredits: Int? {
+        guard let user = account?.user else { return nil }
+        let tierBudget = account?.plan?.monthlyBudgetCredits ?? 0
+        let total = tierBudget + (user.purchasedCredits ?? 0)
+        return total > 0 ? total : nil
     }
 
     @ObservationIgnored private(set) var convex: ConvexClientWithAuth<String>?
     @ObservationIgnored private var accountSubscription: AnyCancellable?
     @ObservationIgnored private var authEventTask: Task<Void, Never>?
     @ObservationIgnored private var didConfigure = false
+    @ObservationIgnored private var buyCreditsTask: Task<Void, Never>?
 
     private init() {}
 
@@ -188,7 +195,10 @@ final class AccountService {
     private func clearAccount() {
         accountSubscription?.cancel()
         accountSubscription = nil
+        buyCreditsTask?.cancel()
+        buyCreditsTask = nil
         account = nil
+        isBuyingCredits = false
     }
 
     func signInWithGoogle() async {
@@ -221,6 +231,32 @@ final class AccountService {
             openInBrowser(result.url)
         } catch {
             lastError = error.localizedDescription
+        }
+    }
+
+    func buyCredits(dollars: Int) {
+        guard let convex else { return }
+        guard (TopOffLimits.minDollars...TopOffLimits.maxDollars).contains(dollars) else {
+            lastError = "Amount must be $\(TopOffLimits.minDollars)–$\(TopOffLimits.maxDollars)."
+            return
+        }
+        if isBuyingCredits { return }
+        lastError = nil
+        isBuyingCredits = true
+        buyCreditsTask = Task { @MainActor [weak self] in
+            defer {
+                self?.isBuyingCredits = false
+                self?.buyCreditsTask = nil
+            }
+            do {
+                let result: UrlResponse = try await convex.action(
+                    "billing:createTopOffCheckoutSession",
+                    with: ["dollars": Double(dollars)]
+                )
+                self?.openInBrowser(result.url)
+            } catch {
+                self?.lastError = error.localizedDescription
+            }
         }
     }
 

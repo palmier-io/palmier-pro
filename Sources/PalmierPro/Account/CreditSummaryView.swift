@@ -25,14 +25,11 @@ struct CreditSummaryView: View {
     private func fullView(left: Int, budget: Int, remaining: Double) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             HStack(spacing: AppTheme.Spacing.xs) {
-                Text("Credits")
-                    .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
-                Spacer()
                 Text("\(left.formatted()) / \(budget.formatted())")
                     .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                     .monospacedDigit()
                     .foregroundStyle(barColor(remaining))
+                Spacer()
             }
             ProgressView(value: remaining)
                 .progressViewStyle(.linear)
