@@ -28,6 +28,16 @@ struct AccountUser: Decodable, Sendable {
     let cancelAtPeriodEnd: Bool?
     let spentCreditsThisPeriod: Int?
     let purchasedCredits: Int?
+
+    var displayName: String? {
+        guard let trimmed = name?.trimmingCharacters(in: .whitespaces),
+              !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+
+    var firstName: String? {
+        displayName?.split(separator: " ").first.map(String.init)
+    }
 }
 
 struct AccountPlan: Decodable, Sendable {
