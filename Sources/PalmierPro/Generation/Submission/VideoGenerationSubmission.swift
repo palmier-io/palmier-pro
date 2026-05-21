@@ -66,7 +66,7 @@ struct VideoGenerationSubmission {
                 buildParams: { uploaded in
                     .video(VideoGenerationParams(
                         prompt: genInput.prompt,
-                        duration: 0,
+                        duration: genInput.duration,
                         aspectRatio: genInput.aspectRatio,
                         resolution: genInput.resolution,
                         sourceVideoURL: uploaded.first,

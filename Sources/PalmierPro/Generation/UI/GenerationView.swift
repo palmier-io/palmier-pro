@@ -260,16 +260,23 @@ struct GenerationView: View {
         }
     }
 
+    private var effectiveVideoSeconds: Int {
+        guard videoModel.requiresSourceVideo else { return selectedDuration }
+        if let trim = editor.pendingEditTrimmedSource,
+           let sv = sourceVideo,
+           trim.sourceURL == sv.url, trim.hasTrim {
+            return max(1, Int(trim.durationSeconds.rounded()))
+        }
+        return max(0, Int((sourceVideo?.duration ?? 0).rounded()))
+    }
+
     /// Live credit estimate for the current form state.
     private var estimatedCost: Int? {
         switch selectedType {
         case .video:
-            let seconds = videoModel.requiresSourceVideo
-                ? Int((sourceVideo?.duration ?? 0).rounded())
-                : selectedDuration
             return CostEstimator.videoCost(
                 model: videoModel,
-                durationSeconds: seconds,
+                durationSeconds: effectiveVideoSeconds,
                 resolution: effectiveResolution,
                 generateAudio: effectiveGenerateAudio
             )
@@ -1468,7 +1475,7 @@ struct GenerationView: View {
         var genInput = GenerationInput(
             prompt: prompt,
             model: currentModelId,
-            duration: selectedType == .video ? selectedDuration : audioDuration,
+            duration: selectedType == .video ? effectiveVideoSeconds : audioDuration,
             aspectRatio: selectedAspectRatio,
             resolution: effectiveResolution,
             quality: selectedType == .image && imageModel.qualities != nil ? selectedQuality : nil,
