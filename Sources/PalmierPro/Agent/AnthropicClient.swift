@@ -1,10 +1,22 @@
 import Foundation
 
 enum AnthropicKeychain {
-    private static let filename = "anthropic-credentials"
-    static func save(_ key: String) { FileCredentialStore.save(key, filename: filename) }
-    static func load() -> String? { FileCredentialStore.load(filename: filename) }
-    static func delete() { FileCredentialStore.delete(filename: filename) }
+    private static let account = "anthropic-api-key"
+
+    static func save(_ key: String) { KeychainStore.save(key, account: account) }
+
+    static func load() -> String? {
+        #if DEBUG
+        if let env = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !env.isEmpty {
+            return env
+        }
+        #endif
+        return KeychainStore.load(account: account)
+    }
+
+    static func delete() { KeychainStore.delete(account: account) }
 }
 
 enum AnthropicModel: String, CaseIterable, Sendable {
