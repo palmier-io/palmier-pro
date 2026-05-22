@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct GeneratingOverlay: View {
-    var label: String = "Generating..."
+    var label: String = "Generating…"
 
     @State private var shimmerOffset: CGFloat = -1
     @State private var progress: CGFloat = 0

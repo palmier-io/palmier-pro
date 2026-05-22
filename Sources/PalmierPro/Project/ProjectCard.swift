@@ -34,7 +34,7 @@ struct ProjectCard: View {
                         VStack(spacing: AppTheme.Spacing.xs) {
                             Image(systemName: "questionmark.folder")
                                 .font(.system(size: AppTheme.FontSize.title1))
-                            Text("Not Found")
+                            Text("File missing")
                                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                         }
                         .foregroundStyle(AppTheme.Text.tertiaryColor)

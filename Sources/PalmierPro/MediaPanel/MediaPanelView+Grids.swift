@@ -451,14 +451,14 @@ extension MediaPanelView {
             ? editor.selectedMediaAssetIds
             : [asset.id]
         Menu("Move to Folder") {
-            Button("New Folder…") {
+            Button("New Folder") {
                 let id = editor.createFolder(name: "New Folder", in: currentFolderId)
                 editor.moveAssetsToFolder(assetIds: targetIds, folderId: id)
                 pendingFolderFocusId = id
                 renamingFolderId = id
             }
             if currentFolderId != nil || targetIds.contains(where: { id in editor.mediaAssets.first(where: { $0.id == id })?.folderId != nil }) {
-                Button("Library (root)") {
+                Button("Library") {
                     editor.moveAssetsToFolder(assetIds: targetIds, folderId: nil)
                 }
             }

@@ -3,7 +3,7 @@ import SwiftUI
 
 enum ExportMode: String, CaseIterable, Identifiable {
     case video = "MP4 Video"
-    case xml = "NLE Timeline"
+    case xml = "XML Timeline"
 
     var id: String { rawValue }
 }

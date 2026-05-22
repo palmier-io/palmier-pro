@@ -22,11 +22,11 @@ enum MainMenuBuilder {
         let menu = NSMenu(title: "Palmier Pro")
         menu.addItem(withTitle: "About Palmier Pro", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         menu.addItem(.separator())
-        let updatesItem = NSMenuItem(title: "Check for Updates...", action: #selector(Updater.checkForUpdates(_:)), keyEquivalent: "")
+        let updatesItem = NSMenuItem(title: "Check for Updates…", action: #selector(Updater.checkForUpdates(_:)), keyEquivalent: "")
         updatesItem.target = Updater.shared
         menu.addItem(updatesItem)
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Settings...", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
+        menu.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Palmier Pro", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.submenu = menu
@@ -39,19 +39,19 @@ enum MainMenuBuilder {
         let item = NSMenuItem()
         let menu = NSMenu(title: "File")
         menu.addItem(withTitle: "New", action: #selector(NSDocumentController.newDocument(_:)), keyEquivalent: "n")
-        menu.addItem(withTitle: "Open...", action: #selector(NSDocumentController.openDocument(_:)), keyEquivalent: "o")
+        menu.addItem(withTitle: "Open…", action: #selector(NSDocumentController.openDocument(_:)), keyEquivalent: "o")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Save", action: #selector(NSDocument.save(_:)), keyEquivalent: "s")
-        menu.addItem(withTitle: "Save As...", action: #selector(NSDocument.saveAs(_:)), keyEquivalent: "S")
+        menu.addItem(withTitle: "Save As…", action: #selector(NSDocument.saveAs(_:)), keyEquivalent: "S")
         menu.addItem(.separator())
 
-        let importItem = NSMenuItem(title: "Import Media...", action: #selector(EditorActions.importMedia(_:)), keyEquivalent: "i")
+        let importItem = NSMenuItem(title: "Import Media…", action: #selector(EditorActions.importMedia(_:)), keyEquivalent: "i")
         importItem.keyEquivalentModifierMask = [.command]
         menu.addItem(importItem)
 
         menu.addItem(.separator())
 
-        let exportItem = NSMenuItem(title: "Export...", action: #selector(EditorActions.showExport(_:)), keyEquivalent: "e")
+        let exportItem = NSMenuItem(title: "Export…", action: #selector(EditorActions.showExport(_:)), keyEquivalent: "e")
         exportItem.keyEquivalentModifierMask = [.command]
         menu.addItem(exportItem)
 

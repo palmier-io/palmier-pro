@@ -11,7 +11,7 @@ struct StoragePane: View {
                     Text("Cache")
                         .font(.system(size: AppTheme.FontSize.md))
                         .foregroundStyle(AppTheme.Text.primaryColor)
-                    Text("Saved image previews used during playback. Safe to clear — they'll be rebuilt when needed.")
+                    Text("Saved image previews used during playback. Safe to clear; they'll rebuild as needed.")
                         .font(.system(size: AppTheme.FontSize.sm))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .fixedSize(horizontal: false, vertical: true)
@@ -31,7 +31,7 @@ struct StoragePane: View {
 
                 Spacer(minLength: AppTheme.Spacing.lg)
 
-                Button("Clear") {
+                Button("Clear cache") {
                     clear()
                 }
                 .controlSize(.small)

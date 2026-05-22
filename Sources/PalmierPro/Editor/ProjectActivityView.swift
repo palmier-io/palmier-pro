@@ -95,7 +95,7 @@ struct ProjectActivityButton: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help("Project Activity — \(CostEstimator.format(editor.totalGenerationCost)) used")
+        .help("Project Activity · \(CostEstimator.format(editor.totalGenerationCost)) used")
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             ProjectActivityView(entries: editor.generationLogEntries)
         }

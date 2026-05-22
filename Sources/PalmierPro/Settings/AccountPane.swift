@@ -42,18 +42,18 @@ struct AccountPane: View {
     @ViewBuilder
     private var unpaidSection: some View {
         section(title: "Subscription") {
-            Text("Subscribe to unlock AI generation features.")
+            Text("Subscribe to use AI generation.")
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: AppTheme.Spacing.sm) {
-                Button("Subscribe Pro") {
+                Button("Upgrade to Pro") {
                     Task { await account.subscribe(tier: .pro) }
                 }
                 .buttonStyle(.borderedProminent)
 
-                Button("Subscribe Max") {
+                Button("Upgrade to Max") {
                     Task { await account.subscribe(tier: .max) }
                 }
                 .buttonStyle(.bordered)
@@ -70,7 +70,7 @@ struct AccountPane: View {
 
             if account.account?.user.cancelAtPeriodEnd == true,
                let date = formattedPeriodEnd {
-                Text("Cancels on \(date).")
+                Text("Cancels \(date)")
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(.orange)
             }
@@ -122,7 +122,7 @@ struct AccountPane: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 56)
                     .disabled(account.isBuyingCredits)
-                Text("= \(topOffCredits.formatted()) credits")
+                Text(topOffCredits == 1 ? "= 1 credit" : "= \(topOffCredits.formatted()) credits")
                     .font(.system(size: AppTheme.FontSize.sm))
                     .monospacedDigit()
                     .foregroundStyle(
@@ -143,7 +143,7 @@ struct AccountPane: View {
             .buttonStyle(.bordered)
             .disabled(account.isBuyingCredits || !isValidTopOff)
 
-            Text("$\(TopOffLimits.minDollars)–$\(TopOffLimits.maxDollars). Unused credits reset at the next billing cycle.")
+            Text("$\(TopOffLimits.minDollars)–$\(TopOffLimits.maxDollars) · Unused credits expire at your next billing date.")
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .fixedSize(horizontal: false, vertical: true)
@@ -207,7 +207,7 @@ struct AccountPane: View {
 
     @ViewBuilder
     private var signedOutBody: some View {
-        Text("Sign in to subscribe to Palmier. Required for AI generation features.")
+        Text("Sign in to subscribe and use AI generation.")
             .font(.system(size: AppTheme.FontSize.sm))
             .foregroundStyle(AppTheme.Text.tertiaryColor)
             .fixedSize(horizontal: false, vertical: true)

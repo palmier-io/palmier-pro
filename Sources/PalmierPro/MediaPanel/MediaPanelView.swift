@@ -353,7 +353,7 @@ struct MediaPanelView: View {
     // MARK: - Toolbar helpers
 
     private var itemCountText: some View {
-        Text("\(currentFolderItemCount) items")
+        Text(currentFolderItemCount == 1 ? "1 item" : "\(currentFolderItemCount) items")
             .font(.system(size: AppTheme.FontSize.xs))
             .foregroundStyle(AppTheme.Text.mutedColor)
             .monospacedDigit()

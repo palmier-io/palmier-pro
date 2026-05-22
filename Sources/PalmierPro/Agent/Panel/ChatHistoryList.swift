@@ -15,7 +15,7 @@ struct ChatHistoryList: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if sessions.isEmpty {
-                Text("No chat history")
+                Text("No conversations yet")
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .padding(AppTheme.Spacing.md)
@@ -44,7 +44,7 @@ struct ChatHistoryList: View {
                         .foregroundStyle(AppTheme.Text.primaryColor)
                         .lineLimit(1)
                     if !session.isOpen {
-                        Text("closed")
+                        Text("archived")
                             .font(.system(size: AppTheme.FontSize.micro, weight: .medium))
                             .foregroundStyle(AppTheme.Text.mutedColor)
                             .padding(.horizontal, AppTheme.Spacing.xs)

@@ -11,7 +11,7 @@ struct PrivacyPane: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             SettingsToggleRow(
                 title: "Send anonymous crash and error reports",
-                subtitle: "Helps us find and fix issues faster. We use Sentry for crash reports and never collect your media or project content.",
+                subtitle: "Helps us find and fix issues. Crash reports go to Sentry. Your media and project content are never collected.",
                 isOn: $telemetryEnabled
             )
             .onChange(of: telemetryEnabled) { _, newValue in

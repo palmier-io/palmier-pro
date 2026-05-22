@@ -58,7 +58,7 @@ struct AIEditTab: View {
             get: { rerunError != nil },
             set: { if !$0 { rerunError = nil } }
         )) {
-            Button("OK") { rerunError = nil }
+            Button("Dismiss") { rerunError = nil }
         } message: {
             Text(rerunError ?? "")
         }

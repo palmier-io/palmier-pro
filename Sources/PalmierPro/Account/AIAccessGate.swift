@@ -83,7 +83,7 @@ struct AIAccessGate: ViewModifier {
 private extension AIAccessGate.GateState {
     var title: String {
         switch self {
-        case .misconfigured: "AI unavailable"
+        case .misconfigured: "AI is unavailable"
         case .signInRequired: "Sign in to use AI"
         case .subscribeRequired: "Subscribe to use AI"
         case .allowed: ""
@@ -93,11 +93,11 @@ private extension AIAccessGate.GateState {
     var subtitle: String {
         switch self {
         case .misconfigured:
-            "This build was compiled without Palmier backend access."
+            "This build can't reach the Palmier backend. Download the signed release to use AI."
         case .signInRequired:
-            "Generate video, images, and audio with your Palmier account."
+            "Sign in to generate video, images, and audio."
         case .subscribeRequired:
-            "Unlock video, image, and audio generation on Pro or Max."
+            "A Pro or Max plan is required for AI generation."
         case .allowed:
             ""
         }

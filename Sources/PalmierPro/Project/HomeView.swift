@@ -39,55 +39,81 @@ struct HomeView: View {
         .padding(.bottom, AppTheme.Spacing.xxl)
     }
 
-    @ViewBuilder
     private var projectGrid: some View {
         let entries = ProjectRegistry.shared.sortedEntries
-        Group {
-            if entries.isEmpty {
-                emptyState
-            } else {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("RECENT PROJECTS")
-                        .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
-                        .tracking(AppTheme.Tracking.wide)
-                        .foregroundStyle(AppTheme.Text.mutedColor)
-                        .padding(.horizontal, AppTheme.Spacing.xlXxl)
-                        .padding(.bottom, AppTheme.Spacing.md)
-
-                    ScrollView {
-                        LazyVGrid(columns: columns, spacing: AppTheme.Spacing.xl) {
-                            ForEach(entries) { entry in
-                                ProjectCard(
-                                    entry: entry,
-                                    onOpen: { AppState.shared.openProject(at: $0) },
-                                    onRemove: { ProjectRegistry.shared.remove($0) }
-                                )
-                            }
-                        }
-                        .padding(.horizontal, AppTheme.Spacing.xlXxl)
-                        .padding(.bottom, AppTheme.Spacing.xlXxl)
+        return ScrollView {
+            LazyVGrid(columns: columns, spacing: AppTheme.Spacing.xl) {
+                if entries.isEmpty {
+                    NewProjectCard(action: { AppState.shared.createNewProject() })
+                } else {
+                    ForEach(entries) { entry in
+                        ProjectCard(
+                            entry: entry,
+                            onOpen: { AppState.shared.openProject(at: $0) },
+                            onRemove: { ProjectRegistry.shared.remove($0) }
+                        )
                     }
-                    .scrollEdgeEffectStyle(.soft, for: .top)
                 }
             }
+            .padding(.horizontal, AppTheme.Spacing.xlXxl)
+            .padding(.bottom, AppTheme.Spacing.xlXxl)
         }
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+}
 
-    private var emptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "film.stack")
-                .font(.system(size: 40))
-                .foregroundStyle(AppTheme.Text.mutedColor)
+private struct NewProjectCard: View {
+    let action: () -> Void
 
-            Text("No Recent Projects")
-                .font(.system(size: AppTheme.FontSize.lg, weight: .medium))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
+    @State private var isHovered = false
 
-            Text("Create a new project or open an existing one.")
-                .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
+    private let cardRadius: CGFloat = AppTheme.Radius.mdLg
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            AppTheme.Background.placeholderColor
+                .aspectRatio(5.0/4.0, contentMode: .fit)
+                .overlay {
+                    Image(systemName: "plus")
+                        .font(.system(size: AppTheme.FontSize.title2, weight: .light))
+                        .foregroundStyle(AppTheme.Text.mutedColor)
+                }
+                .clipped()
+
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black.opacity(0.7), location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 60)
+            .allowsHitTesting(false)
+
+            Text("Untitled")
+                .font(.system(size: AppTheme.FontSize.smMd, weight: .regular))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .padding(.horizontal, AppTheme.Spacing.md)
+                .padding(.bottom, AppTheme.Spacing.smMd)
         }
+        .contentShape(Rectangle())
+        .onTapGesture { action() }
+        .clipShape(RoundedRectangle(cornerRadius: cardRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: cardRadius, style: .continuous)
+                .strokeBorder(
+                    Color.white.opacity(isHovered ? AppTheme.Opacity.muted : AppTheme.Opacity.hint),
+                    lineWidth: AppTheme.BorderWidth.hairline
+                )
+        )
+        .shadow(color: .black.opacity(isHovered ? 0.4 : 0.2), radius: isHovered ? 12 : 4, y: isHovered ? 4 : 2)
+        .scaleEffect(isHovered ? 1.03 : 1.0)
+        .padding(AppTheme.Spacing.xs)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
+        .onHover { isHovered = $0 }
     }
 }
 

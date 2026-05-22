@@ -246,12 +246,12 @@ struct GenerationView: View {
 
     private var promptPlaceholder: String {
         switch selectedType {
-        case .image: "Describe the image..."
-        case .video: "Describe the video..."
+        case .image: "Describe the image"
+        case .video: "Describe the video"
         case .audio:
             switch audioModel.category {
-            case .tts: "Text to speak\(audioPromptHint)..."
-            case .music: "Describe the music style or mood\(audioPromptHint)..."
+            case .tts: "Text to speak\(audioPromptHint)"
+            case .music: "Describe the music style or mood\(audioPromptHint)"
             }
         }
     }
@@ -304,15 +304,15 @@ struct GenerationView: View {
 
     private var costHelpText: String {
         guard let cost = estimatedCost else {
-            return "Estimated cost at fal's listed prices. Actual billing may differ."
+            return "Estimated cost. Actual billing may differ slightly."
         }
         guard let left = remainingCredits else {
             return "\(cost) credits estimated. Actual billing may differ."
         }
         if cost > left {
-            return "\(cost) credits needed — only \(left.formatted()) remaining."
+            return "\(cost) credits needed. Only \(left.formatted()) remaining."
         }
-        return "\(cost) credits — \((left - cost).formatted()) credits remaining after this generation."
+        return "\(cost) credits. \((left - cost).formatted()) credits remaining after this generation."
     }
 
     private var settingsSummary: String {
@@ -448,7 +448,7 @@ struct GenerationView: View {
                 if selectedType == .audio && audioModel.supportsLyrics {
                     inputDivider
                     secondaryField(
-                        placeholder: "Lyrics (optional) — [Verse], [Chorus] tags supported",
+                        placeholder: "Lyrics (optional). [Verse] and [Chorus] tags supported.",
                         text: $lyrics,
                         minHeight: 60, maxHeight: 120
                     )
@@ -456,7 +456,7 @@ struct GenerationView: View {
                 if selectedType == .audio && audioModel.supportsStyleInstructions {
                     inputDivider
                     secondaryField(
-                        placeholder: "Style instructions (optional) — e.g. warm and slow, British accent",
+                        placeholder: "Style instructions (optional). e.g., warm and slow, British accent.",
                         text: $styleInstructions,
                         minHeight: 36, maxHeight: 72
                     )
@@ -930,8 +930,8 @@ struct GenerationView: View {
         case .video: selection.videoRefs.append(asset)
         case .audio: selection.audioRefs.append(asset)
         case .text:
-            let supported = ClipType.allCases.filter { refCap(for: $0) > 0 }.map(\.rawValue)
-            flashDropError("\(videoModel.displayName) only accepts \(supported.joined(separator: "/")) references")
+            let supported = ClipType.allCases.filter { refCap(for: $0) > 0 }.map(\.rawValue).joined(separator: " and ")
+            flashDropError("\(videoModel.displayName) only accepts \(supported) references.")
             return
         }
         if let err = selection.validate(for: videoModel) {
@@ -950,7 +950,6 @@ struct GenerationView: View {
         isTargeted: Binding<Bool>,
         expects: Set<ClipType>,
         iconName: String,
-        roleLabel: String,
         onDrop: @escaping (MediaAsset) -> Void
     ) -> some View {
         dropZone(
@@ -961,8 +960,8 @@ struct GenerationView: View {
             if expects.contains(asset.type) {
                 onDrop(asset)
             } else {
-                let types = expects.map(\.rawValue).sorted().joined(separator: "/")
-                flashDropError("\(roleLabel) expects \(types)")
+                let kinds = expects.map(\.rawValue).sorted().joined(separator: " or ")
+                flashDropError("Drop \(kinds) here.")
             }
         }
     }
@@ -1065,7 +1064,6 @@ struct GenerationView: View {
                     isTargeted: isTargeted,
                     expects: acceptedTypes,
                     iconName: iconName,
-                    roleLabel: label,
                     onDrop: onDrop
                 )
             }
@@ -1093,8 +1091,7 @@ struct GenerationView: View {
                 validatedDropZone(
                     isTargeted: $imageRefTargeted,
                     expects: [.image],
-                    iconName: "photo.badge.plus",
-                    roleLabel: "Reference"
+                    iconName: "photo.badge.plus"
                 ) { asset in
                     if imageReferences.contains(where: { $0.id == asset.id }) {
                         flashDropError("\(asset.name) is already a reference")

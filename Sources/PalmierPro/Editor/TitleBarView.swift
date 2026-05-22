@@ -120,7 +120,7 @@ struct ProjectNameField: View {
         )
         .overlay(alignment: .trailing) {
             if showError {
-                Text("Already exists")
+                Text("Name in use")
                     .font(.system(size: AppTheme.FontSize.xxs))
                     .foregroundStyle(.red.opacity(AppTheme.Opacity.prominent))
                     .padding(.trailing, 6)

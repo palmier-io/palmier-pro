@@ -7,7 +7,7 @@ struct NotificationsPane: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             SettingsToggleRow(
                 title: "Show notifications",
-                subtitle: "Notify when generated media is ready.",
+                subtitle: "Get a system notification when a generation finishes.",
                 isOn: $notificationsEnabled
             )
             .onChange(of: notificationsEnabled) { _, newValue in

@@ -191,7 +191,7 @@ struct AgentPanelView: View {
     }
 
     private var emptyState: some View {
-        Text(service.hasApiKey ? "Hi, how can I help you with videos today?" : "Add an Anthropic API key to start")
+        Text(service.hasApiKey ? "Describe a change, or @ a clip to start." : "Add an Anthropic API key to start")
             .font(.system(size: AppTheme.FontSize.md, weight: .medium))
             .foregroundStyle(AppTheme.Text.secondaryColor)
             .multilineTextAlignment(.center)

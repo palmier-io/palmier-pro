@@ -29,3 +29,10 @@ All UI styling MUST use `AppTheme` constants from `Sources/PalmierPro/UI/AppThem
 - **Animation durations** → `AppTheme.Anim.*`
 
 If a needed value doesn't exist in AppTheme, add it there first — don't hardcode it.
+
+## Voice
+
+Palmier Pro speaks like a quietly capable native Mac app for filmmakers: direct, technical, calm, and 
+confident. Prefer Apple HIG-style terseness over warmth. Never chatty or cute. Never marketing. When the
+product needs to ask for action, lead with the action verb; when it reports state, name the thing.
+

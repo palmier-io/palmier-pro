@@ -38,6 +38,15 @@ enum MentionTab: CaseIterable, Hashable {
         case .audio: .audio
         }
     }
+
+    var emptyLabel: String {
+        switch self {
+        case .all: "No media"
+        case .video: "No video clips"
+        case .image: "No images"
+        case .audio: "No audio"
+        }
+    }
 }
 
 /// Pure render. State lives on `AgentInputBox` so keyboard nav follows the focused TextEditor.
@@ -65,7 +74,7 @@ struct MentionPopover: View {
     @ViewBuilder
     private var contentArea: some View {
         if candidates.isEmpty {
-            Text(query.isEmpty ? "No \(tab.label.lowercased()) media" : "No matches for \"\(query)\"")
+            Text(query.isEmpty ? tab.emptyLabel : "No matches for \"\(query)\"")
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.mutedColor)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

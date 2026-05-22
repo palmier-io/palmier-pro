@@ -59,7 +59,7 @@ struct IdentityStrip: View {
     private func labels(for user: AccountUser?) -> Labels {
         let name = user?.displayName
         let email = user?.email
-        let primary = name ?? email ?? "Anonymous"
+        let primary = name ?? email ?? "Signed out"
         let secondary = name != nil ? email : nil
         let initial = (name ?? email)?.first.map { String($0).uppercased() } ?? "?"
         return Labels(primary: primary, secondary: secondary, initial: initial)
