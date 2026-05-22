@@ -202,6 +202,7 @@ struct VideoCaps: Decodable, Sendable {
     let framesAndReferencesExclusive: Bool
     let referenceTagNoun: String
     let requiresSourceVideo: Bool
+    let requiresReferenceImage: Bool
 }
 
 struct ImageCaps: Decodable, Sendable {

@@ -30,6 +30,7 @@ struct VideoModelConfig: Identifiable, Sendable {
     var framesAndReferencesExclusive: Bool { caps.framesAndReferencesExclusive }
     var referenceTagNoun: String { caps.referenceTagNoun }
     var requiresSourceVideo: Bool { caps.requiresSourceVideo }
+    var requiresReferenceImage: Bool { caps.requiresReferenceImage }
 
     var supportsReferences: Bool {
         maxReferenceImages > 0 || maxReferenceVideos > 0 || maxReferenceAudios > 0

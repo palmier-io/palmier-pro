@@ -140,7 +140,7 @@ struct GenerationView: View {
         guard AccountService.shared.isPaid else { return false }
         if selectedType == .video && videoModel.requiresSourceVideo {
             guard sourceVideo != nil else { return false }
-            if videoModel.supportsReferences && imageReferences.isEmpty { return false }
+            if videoModel.requiresReferenceImage && imageReferences.isEmpty { return false }
             if !videoModel.supportsReferences && isPromptEmpty { return false }
             return true
         }
