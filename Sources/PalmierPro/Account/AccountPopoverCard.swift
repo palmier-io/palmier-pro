@@ -5,7 +5,7 @@ struct AccountPopoverCard: View {
     @Bindable private var account = AccountService.shared
     @Environment(\.dismiss) private var dismiss
 
-    private static let cardWidth: CGFloat = 240
+    private static let cardWidth: CGFloat = 280
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
