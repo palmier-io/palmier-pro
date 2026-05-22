@@ -60,7 +60,7 @@ struct ProjectActivityView: View {
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .monospacedDigit()
                 .foregroundStyle(AppTheme.Text.secondaryColor)
-                .frame(width: 54, alignment: .leading)
+                .frame(width: 68, alignment: .leading)
             Text(entry.modelDisplayName)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
