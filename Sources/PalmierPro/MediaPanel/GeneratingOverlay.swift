@@ -52,9 +52,9 @@ struct GeneratingOverlay: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.white.opacity(0.15))
+                    .fill(Color.white.opacity(AppTheme.Opacity.muted))
                 Capsule()
-                    .fill(Color.white.opacity(0.6))
+                    .fill(Color.white.opacity(AppTheme.Opacity.strong))
                     .frame(width: geo.size.width * progress)
             }
         }

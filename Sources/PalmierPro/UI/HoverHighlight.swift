@@ -30,9 +30,9 @@ struct HoverHighlight: ViewModifier {
 
     private var fill: Color {
         switch (isActive, isHovered) {
-        case (true, true): Color.white.opacity(0.13)
-        case (true, false): Color.white.opacity(0.10)
-        case (false, true): Color.white.opacity(0.07)
+        case (true, true): Color.white.opacity(AppTheme.Opacity.muted)
+        case (true, false): Color.white.opacity(AppTheme.Opacity.soft)
+        case (false, true): Color.white.opacity(AppTheme.Opacity.faint)
         case (false, false): .clear
         }
     }

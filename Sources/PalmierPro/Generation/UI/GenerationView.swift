@@ -484,7 +484,7 @@ struct GenerationView: View {
         .frame(height: clampedPanelHeight, alignment: .top)
         .background {
             RoundedRectangle(cornerRadius: AppTheme.Radius.lg)
-                .fill(Color(white: 0.11))
+                .fill(AppTheme.Background.raisedColor)
                 .allowsHitTesting(false)
         }
         .overlay {
@@ -493,8 +493,8 @@ struct GenerationView: View {
                     LinearGradient(
                         stops: [
                             .init(color: Color.white.opacity(0.18), location: 0.0),
-                            .init(color: Color.white.opacity(0.08), location: 0.15),
-                            .init(color: Color.white.opacity(0.08), location: 1.0),
+                            .init(color: Color.white.opacity(AppTheme.Opacity.faint), location: 0.15),
+                            .init(color: Color.white.opacity(AppTheme.Opacity.faint), location: 1.0),
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -1264,7 +1264,7 @@ struct GenerationView: View {
         .padding(2)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .fill(Color.white.opacity(0.03))
+                .fill(Color.white.opacity(AppTheme.Opacity.subtle))
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
@@ -1402,7 +1402,7 @@ struct GenerationView: View {
                                 .padding(.vertical, 4)
                                 .background(
                                     RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                                        .fill(selection.wrappedValue == option ? Color.white.opacity(0.1) : Color.white.opacity(0.03))
+                                        .fill(selection.wrappedValue == option ? Color.white.opacity(AppTheme.Opacity.soft) : Color.white.opacity(AppTheme.Opacity.subtle))
                                 )
                         }
                         .buttonStyle(.plain)

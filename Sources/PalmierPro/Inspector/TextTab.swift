@@ -197,7 +197,7 @@ struct TextTab: View {
                 .padding(.top, AppTheme.Spacing.xxs)
                 .overlay(alignment: .leading) {
                     Rectangle()
-                        .fill(Color.white.opacity(0.12))
+                        .fill(Color.white.opacity(AppTheme.Opacity.soft))
                         .frame(width: AppTheme.BorderWidth.thin)
                         .padding(.leading, AppTheme.Spacing.sm)
                 }

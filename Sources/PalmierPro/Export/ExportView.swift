@@ -39,7 +39,7 @@ struct ExportView: View {
         }
         .frame(width: 580, height: 340)
         .presentationBackground {
-            Color(white: 0.08, opacity: 0.85)
+            AppTheme.Background.surfaceColor.opacity(0.85)
                 .background(.ultraThinMaterial)
         }
         .task { loadPreview() }
@@ -49,7 +49,7 @@ struct ExportView: View {
 
     private var previewPanel: some View {
         ZStack {
-            Color(white: 0.05)
+            AppTheme.Background.baseColor
 
             if let preview {
                 Image(nsImage: preview)

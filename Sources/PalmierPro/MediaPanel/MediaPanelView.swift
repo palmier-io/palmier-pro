@@ -168,9 +168,9 @@ struct MediaPanelView: View {
                 }
             }
 
-            searchField
+            Spacer(minLength: AppTheme.Spacing.sm)
 
-            Spacer(minLength: 0)
+            searchField
 
             // Drop count + slider when the panel is too narrow.
             ViewThatFits(in: .horizontal) {
@@ -521,7 +521,7 @@ struct MediaPanelView: View {
     var marqueeOverlay: some View {
         if let rect = marqueeSelection.rect {
             Rectangle()
-                .stroke(Color.white.opacity(0.6), style: StrokeStyle(lineWidth: AppTheme.BorderWidth.thin, dash: [3, 3]))
+                .stroke(Color.white.opacity(AppTheme.Opacity.strong), style: StrokeStyle(lineWidth: AppTheme.BorderWidth.thin, dash: [3, 3]))
                 .background(Rectangle().fill(Color.white.opacity(AppTheme.Opacity.soft)))
                 .frame(width: rect.width, height: rect.height)
                 .position(x: rect.midX, y: rect.midY)

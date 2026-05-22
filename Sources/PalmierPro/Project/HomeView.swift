@@ -168,7 +168,7 @@ final class HomeWindowController: NSWindowController {
         window.title = "Palmier Pro"
         window.setFrameAutosaveName("PalmierProHome-v2")
         window.appearance = NSAppearance(named: .darkAqua)
-        window.backgroundColor = NSColor(white: 0.08, alpha: 0.4)
+        window.backgroundColor = AppTheme.Background.base.withAlphaComponent(0.4)
         window.isOpaque = false
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
