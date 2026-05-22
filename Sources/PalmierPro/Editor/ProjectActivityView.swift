@@ -88,7 +88,7 @@ struct ProjectActivityButton: View {
 
     var body: some View {
         Button(action: { isPresented.toggle() }) {
-            Image(systemName: "dollarsign.circle")
+            Image(systemName: "clock.arrow.circlepath")
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)

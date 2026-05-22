@@ -6,7 +6,7 @@ struct TitleBarLeadingView: View {
     var body: some View {
         HStack(spacing: AppTheme.Spacing.smMd) {
             Button(action: { editor.agentPanelVisible.toggle() }) {
-                Image(systemName: "bubble.left")
+                Image(systemName: editor.agentPanelVisible ? "bubble.left.fill" : "bubble.left")
                     .font(.system(size: AppTheme.FontSize.md))
                     .foregroundStyle(AppTheme.aiGradient)
                     .opacity(editor.agentPanelVisible ? 1 : AppTheme.Opacity.strong)
@@ -24,6 +24,8 @@ struct TitleBarLeadingView: View {
             }
             .buttonStyle(.plain)
             .help("Home")
+
+            ProjectActivityButton()
         }
         .padding(.leading, AppTheme.Spacing.sm)
     }
@@ -37,8 +39,6 @@ struct TitleBarTrailingView: View {
             Spacer(minLength: 0)
 
             UpdateBadgeView()
-
-            ProjectActivityButton()
 
             LayoutPresetMenu()
 

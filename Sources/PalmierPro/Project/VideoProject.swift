@@ -117,6 +117,20 @@ final class VideoProject: NSDocument {
         set { super.displayName = newValue }
     }
 
+    override var fileURL: URL? {
+        get { super.fileURL }
+        set {
+            let oldURL = super.fileURL
+            super.fileURL = newValue
+            if let oldURL, let newURL = newValue,
+               oldURL.standardizedFileURL != newURL.standardizedFileURL {
+                MainActor.assumeIsolated {
+                    ProjectRegistry.shared.updateURL(from: oldURL, to: newURL)
+                }
+            }
+        }
+    }
+
     private nonisolated func replaceChild(_ name: String, with data: Data) {
         let wrapper = FileWrapper(regularFileWithContents: data)
         wrapper.preferredFilename = name
@@ -185,8 +199,8 @@ final class VideoProject: NSDocument {
         window.backgroundColor = NSColor(AppTheme.Background.surfaceColor)
         window.center()
 
-        window.addTitlebarSwiftUI(TitleBarLeadingView().environment(editorViewModel), side: .leading, width: 100)
-        window.addTitlebarSwiftUI(TitleBarTrailingView().environment(editorViewModel), side: .trailing, width: 260)
+        window.addTitlebarSwiftUI(TitleBarLeadingView().environment(editorViewModel), side: .leading, width: 140)
+        window.addTitlebarSwiftUI(TitleBarTrailingView().environment(editorViewModel), side: .trailing, width: 220)
 
         let controller = EditorWindowController(editorViewModel: editorViewModel, window: window)
         controller.shouldCascadeWindows = true
