@@ -81,9 +81,6 @@ struct PreviewContainerView: View {
                 transportButton("forward.frame.fill") { seekTo(playheadFrame + 1) }
                 transportButton("forward.end.fill") { seekTo(duration) }
             }
-            .padding(.horizontal, AppTheme.Spacing.md)
-            .padding(.vertical, AppTheme.Spacing.xs)
-            .glassEffect(.regular, in: .capsule)
 
             Spacer()
 

@@ -16,43 +16,46 @@ struct AIEditTab: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-                if clipId != nil {
-                    replaceToggle
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
+                if hasScopeToggles {
+                    aiSection(title: "Scope") {
+                        if clipId != nil { replaceToggle }
+                        if trimmedClipAvailable { trimmedClipToggle }
+                    }
                 }
 
-                if trimmedClipAvailable {
-                    trimmedClipToggle
-                }
-
-                actionCard(
-                    action: .upscale,
-                    icon: "arrow.up.right.square",
-                    title: "Upscale",
-                    description: "Enhance resolution with AI"
-                )
-                actionCard(
-                    action: .edit,
-                    icon: "wand.and.stars",
-                    title: "Edit",
-                    description: "Transform with a prompt or motion reference"
-                )
-                actionCard(
-                    action: .rerun,
-                    icon: "arrow.clockwise",
-                    title: "Rerun",
-                    description: "Regenerate with the same parameters"
-                )
-                if asset.type == .image {
-                    actionCard(
-                        action: .createVideo,
-                        icon: "video.badge.plus",
-                        title: "Create Video",
-                        description: "Use this image to start a video generation"
+                aiSection(title: "Actions") {
+                    actionRow(
+                        action: .upscale,
+                        icon: "sparkles.rectangle.stack",
+                        title: "Upscale",
+                        description: "Enhance resolution with AI"
                     )
+                    actionRow(
+                        action: .edit,
+                        icon: "wand.and.stars",
+                        title: "Edit",
+                        description: "Transform with a prompt or motion reference"
+                    )
+                    actionRow(
+                        action: .rerun,
+                        icon: "arrow.clockwise",
+                        title: "Rerun",
+                        description: rerunDescription
+                    )
+                    if asset.type == .image {
+                        actionRow(
+                            action: .createVideo,
+                            icon: "video.badge.plus",
+                            title: "Create Video",
+                            description: "Use as first frame or reference"
+                        )
+                    }
                 }
             }
-            .padding(AppTheme.Spacing.md)
+            .padding(.horizontal, AppTheme.Spacing.lg)
+            .padding(.vertical, AppTheme.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .alert("Rerun failed", isPresented: Binding(
             get: { rerunError != nil },
@@ -65,46 +68,76 @@ struct AIEditTab: View {
         .aiAccessGate()
     }
 
+    private var hasScopeToggles: Bool {
+        clipId != nil || trimmedClipAvailable
+    }
+
+    private var rerunDescription: String {
+        guard let gen = asset.generationInput,
+              let cost = CostEstimator.cost(for: gen) else {
+            return "Regenerate with the same parameters"
+        }
+        return "Regenerate · \(CostEstimator.format(cost))"
+    }
+
+    private func aiSection<Content: View>(
+        title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            Text(title.uppercased())
+                .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
+                .tracking(AppTheme.Tracking.wide)
+                .foregroundStyle(AppTheme.Text.mutedColor)
+            VStack(spacing: AppTheme.Spacing.smMd) {
+                content()
+            }
+        }
+    }
+
     // MARK: - Replace toggle
 
     private var replaceToggle: some View {
-        HStack(spacing: AppTheme.Spacing.sm) {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(replaceClipSource ? AppTheme.Accent.primary : AppTheme.Text.tertiaryColor)
-            Text("Replace clip source")
-                .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
-            Spacer(minLength: AppTheme.Spacing.xs)
-            Toggle("", isOn: $replaceClipSource)
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                .labelsHidden()
-        }
-        .padding(.horizontal, AppTheme.Spacing.sm)
-        .padding(.vertical, AppTheme.Spacing.xs)
-        .help("Swap the clip's media when generation completes. Speed, volume, trim, and transform are preserved.")
+        scopeToggleRow(
+            icon: "arrow.triangle.2.circlepath",
+            label: "Replace clip source",
+            help: "Swap the clip's media when generation completes. Speed, volume, trim, and transform are preserved.",
+            isOn: $replaceClipSource
+        )
     }
 
     // MARK: - Trimmed clip toggle
 
     private var trimmedClipToggle: some View {
+        scopeToggleRow(
+            icon: "scissors",
+            label: "Use trimmed portion only",
+            help: "Send only the visible clip range to the model, not the full source.",
+            isOn: $useTrimmedClip
+        )
+    }
+
+    private func scopeToggleRow(
+        icon: String,
+        label: String,
+        help: String,
+        isOn: Binding<Bool>
+    ) -> some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            Image(systemName: "scissors")
+            Image(systemName: icon)
                 .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(useTrimmedClip ? AppTheme.Accent.primary : AppTheme.Text.tertiaryColor)
-            Text("Use trimmed portion only")
+                .foregroundStyle(isOn.wrappedValue ? AppTheme.Accent.primary : AppTheme.Text.tertiaryColor)
+                .frame(width: AppTheme.Spacing.lgXl, alignment: .center)
+            Text(label)
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
             Spacer(minLength: AppTheme.Spacing.xs)
-            Toggle("", isOn: $useTrimmedClip)
+            Toggle("", isOn: isOn)
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .labelsHidden()
         }
-        .padding(.horizontal, AppTheme.Spacing.sm)
-        .padding(.vertical, AppTheme.Spacing.xs)
-        .help("Send only the visible clip range to the model, not the full source.")
+        .help(help)
     }
 
     private var timelineClip: Clip? {
@@ -132,10 +165,10 @@ struct AIEditTab: View {
         trimmedSourceIfEnabled()?.durationSeconds
     }
 
-    // MARK: - Action card
+    // MARK: - Action row
 
     @ViewBuilder
-    private func actionCard(
+    private func actionRow(
         action: EditAction,
         icon: String,
         title: String,
@@ -149,68 +182,61 @@ struct AIEditTab: View {
         let isEnabled = availability.isAvailable && canCall
         let disabledReason = canCall ? availability.reason : "Subscribe to Palmier to use AI"
 
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-                Image(systemName: icon)
-                    .font(.system(size: AppTheme.FontSize.md))
+        HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
+            Image(systemName: icon)
+                .font(.system(size: AppTheme.FontSize.md))
+                .foregroundStyle(isEnabled ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
+                .frame(width: AppTheme.Spacing.lgXl, alignment: .center)
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+                Text(title)
+                    .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                     .foregroundStyle(isEnabled ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
-                    .frame(width: AppTheme.Spacing.lgXl)
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-                    Text(title)
-                        .font(.system(size: AppTheme.FontSize.md, weight: .medium))
-                        .foregroundStyle(isEnabled ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
-                    Text(disabledReason ?? description)
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .foregroundStyle(disabledReason != nil ? AppTheme.Text.secondaryColor : AppTheme.Text.tertiaryColor)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: AppTheme.Spacing.sm)
-                if action == .upscale {
-                    Menu(title) {
-                        ForEach(UpscaleModelConfig.models(for: asset.type)) { model in
-                            Button {
-                                runUpscale(model)
-                            } label: {
-                                Text(upscaleLabel(for: model))
-                            }
-                        }
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                    .controlSize(.small)
-                    .disabled(!isEnabled)
-                } else if action == .createVideo {
-                    Menu(title) {
-                        Button("Set as first frame") { sendToVideo(asReference: false) }
-                        Button("Set as reference") { sendToVideo(asReference: true) }
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                    .controlSize(.small)
-                    .disabled(!isEnabled)
-                } else {
-                    Button(title) {
-                        present(action)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(!isEnabled)
-                }
+                Text(disabledReason ?? description)
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(disabledReason != nil ? AppTheme.Text.secondaryColor : AppTheme.Text.tertiaryColor)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-
-            if action == .rerun, availability.isAvailable, let gen = asset.generationInput {
-                rerunParameters(gen)
-                    .padding(.leading, AppTheme.Spacing.xlXxl)
-                    .padding(.top, AppTheme.Spacing.xs)
-            }
+            Spacer(minLength: AppTheme.Spacing.sm)
+            actionTrigger(action: action, title: title, isEnabled: isEnabled)
         }
-        .padding(AppTheme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .fill(Color.white.opacity(AppTheme.Opacity.subtle))
-        )
         .help(disabledReason ?? "")
+    }
+
+    @ViewBuilder
+    private func actionTrigger(action: EditAction, title: String, isEnabled: Bool) -> some View {
+        switch action {
+        case .upscale:
+            Menu(title) {
+                ForEach(UpscaleModelConfig.models(for: asset.type)) { model in
+                    Button {
+                        runUpscale(model)
+                    } label: {
+                        Text(upscaleLabel(for: model))
+                    }
+                }
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .controlSize(.small)
+            .disabled(!isEnabled)
+        case .createVideo:
+            Menu(title) {
+                Button("Set as first frame") { sendToVideo(asReference: false) }
+                Button("Set as reference") { sendToVideo(asReference: true) }
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .controlSize(.small)
+            .disabled(!isEnabled)
+        case .edit, .rerun:
+            Button(title) {
+                present(action)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(!isEnabled)
+        }
     }
 
     private func sendToVideo(asReference: Bool) {
@@ -316,69 +342,6 @@ struct AIEditTab: View {
         guard shouldReplace, let clipId else { return nil }
         return { [weak editor] in
             editor?.clearPendingReplacement(clipId: clipId)
-        }
-    }
-
-    @ViewBuilder
-    private func rerunParameters(_ gen: GenerationInput) -> some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            rerunRow("cpu", label: "Model", value: ModelRegistry.displayName(for: gen.model))
-            let rerunCost = CostEstimator.cost(for: gen)
-            if rerunCost != nil {
-                rerunRow("creditcard", label: "Cost", value: CostEstimator.format(rerunCost))
-            }
-            if gen.duration > 0 {
-                rerunRow("clock", label: "Duration", value: "\(gen.duration)s")
-            }
-            if !gen.aspectRatio.isEmpty {
-                rerunRow("aspectratio", label: "Aspect", value: gen.aspectRatio)
-            }
-            if let r = gen.resolution {
-                rerunRow("rectangle.split.3x3", label: "Resolution", value: r)
-            }
-            if GenerationReferencesStrip.hasResolvableReferences(gen, in: editor.mediaAssets) {
-                GenerationReferencesStrip(generationInput: gen)
-            } else {
-                let refCount = gen.imageURLs?.count ?? 0
-                if refCount > 0 {
-                    rerunRow("photo.on.rectangle", label: "References", value: "\(refCount)")
-                }
-            }
-            if !gen.prompt.isEmpty {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-                    HStack(spacing: AppTheme.Spacing.xs) {
-                        Text("Prompt")
-                            .font(.system(size: AppTheme.FontSize.xs))
-                            .foregroundStyle(AppTheme.Text.mutedColor)
-                        Spacer()
-                        PromptCopyButton(text: gen.prompt)
-                    }
-                    Text(gen.prompt)
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .foregroundStyle(AppTheme.Text.secondaryColor)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.top, AppTheme.Spacing.xxs)
-            }
-        }
-    }
-
-    private func rerunRow(_ icon: String, label: String, value: String) -> some View {
-        HStack(spacing: AppTheme.Spacing.sm) {
-            Image(systemName: icon)
-                .font(.system(size: AppTheme.FontSize.xs))
-                .foregroundStyle(AppTheme.Text.mutedColor)
-                .frame(width: AppTheme.IconSize.xs)
-            Text(label)
-                .font(.system(size: AppTheme.FontSize.xs))
-                .foregroundStyle(AppTheme.Text.mutedColor)
-            Spacer()
-            Text(value)
-                .font(.system(size: AppTheme.FontSize.xs))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .lineLimit(1)
-                .textSelection(.enabled)
         }
     }
 

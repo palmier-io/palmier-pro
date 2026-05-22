@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Scrubbable number: drag the value horizontally to change it,
-/// click to type. Blue text marks it as draggable.
+/// click to type. A subtle warm accent color marks it as interactive.
 struct ScrubbableNumberField: View {
     let value: Double?
     let range: ClosedRange<Double>
@@ -141,7 +141,7 @@ struct ScrubbableNumberField: View {
 }
 
 enum ScrubbableTheme {
-    static let accent = Color(red: 0.42, green: 0.66, blue: 0.95)
+    static let accent = AppTheme.Accent.primary
 }
 
 /// AppKit mouse-tracking area for the scrubbable field.
