@@ -50,8 +50,30 @@ struct MediaPanelView: View {
         }
     }
 
-    private static let minThumbnailSize: Double = 72
-    private static let maxThumbnailSize: Double = 220
+    /// Only media types that can actually appear in the panel. ClipType.text
+    /// exists for timeline clips but is never assigned to a MediaAsset.
+    private static let filterableTypes: [ClipType] = [.video, .audio, .image]
+
+    private enum ThumbnailPreset: String, CaseIterable, Identifiable {
+        case small, medium, large, xlarge
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .small: "Small"
+            case .medium: "Medium"
+            case .large: "Large"
+            case .xlarge: "Extra Large"
+            }
+        }
+        var size: Double {
+            switch self {
+            case .small: 80
+            case .medium: 110
+            case .large: 150
+            case .xlarge: 200
+            }
+        }
+    }
 
     // MARK: - Body
 
@@ -65,9 +87,7 @@ struct MediaPanelView: View {
                         emptyStateView
                     } else {
                         VStack(spacing: 0) {
-                            if viewMode == .folder, !breadcrumbItems.isEmpty {
-                                breadcrumbBar
-                            }
+                            contextBar
                             switch viewMode {
                             case .folder: mediaGridView
                             case .flat: flatGridView
@@ -171,49 +191,6 @@ struct MediaPanelView: View {
             Spacer(minLength: AppTheme.Spacing.sm)
 
             searchField
-
-            // Drop count + slider when the panel is too narrow.
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: AppTheme.Spacing.xs) {
-                    itemCountText
-                    thumbnailSlider
-                }
-                itemCountText
-                EmptyView()
-            }
-
-            toolbarMenuIcon(systemName: viewMode.systemImage) {
-                ForEach(ViewMode.allCases, id: \.self) { mode in
-                    Button {
-                        setViewMode(mode)
-                    } label: {
-                        Label(mode.title, systemImage: viewMode == mode ? "checkmark" : mode.systemImage)
-                    }
-                }
-            }
-
-            toolbarMenuIcon(systemName: "arrow.up.arrow.down") {
-                ForEach(SortMode.allCases, id: \.self) { mode in
-                    Button(mode.title) { sortMode = mode }
-                }
-            }
-
-            toolbarMenuIcon(
-                systemName: "line.3.horizontal.decrease",
-                foregroundStyle: hasActiveFilters ? AppTheme.Accent.primary : AppTheme.Text.tertiaryColor
-            ) {
-                ForEach(ClipType.allCases, id: \.self) { type in
-                    Button { toggleFilter(type) } label: {
-                        Label(type.trackLabel, systemImage: filterTypes.contains(type) ? "checkmark" : "")
-                    }
-                }
-                Divider()
-                Button { filterAI.toggle() } label: {
-                    Label("AI Generated", systemImage: filterAI ? "checkmark" : "")
-                }
-                Divider()
-                Button("Clear Filters", action: clearFilters)
-            }
         }
         .padding(.horizontal, AppTheme.Spacing.sm)
         .frame(height: Layout.panelHeaderHeight)
@@ -222,7 +199,7 @@ struct MediaPanelView: View {
         }
     }
 
-    // MARK: - Breadcrumb
+    // MARK: - Context bar (breadcrumb + count + display controls)
 
     var breadcrumbItems: [BreadcrumbItem] {
         var items: [BreadcrumbItem] = [BreadcrumbItem(folderId: nil, name: "Library")]
@@ -238,21 +215,83 @@ struct MediaPanelView: View {
         var id: String { folderId ?? "__root__" }
     }
 
-    private var breadcrumbBar: some View {
+    private var contextBar: some View {
         HStack(spacing: AppTheme.Spacing.xs) {
-            ForEach(Array(breadcrumbItems.enumerated()), id: \.element.id) { idx, item in
-                if idx > 0 {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: AppTheme.FontSize.xxs))
-                        .foregroundStyle(AppTheme.Text.mutedColor)
+            if viewMode == .folder, !breadcrumbItems.isEmpty {
+                ForEach(Array(breadcrumbItems.enumerated()), id: \.element.id) { idx, item in
+                    if idx > 0 {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: AppTheme.FontSize.xxs))
+                            .foregroundStyle(AppTheme.Text.mutedColor)
+                    }
+                    breadcrumbChip(item: item, isLeaf: idx == breadcrumbItems.count - 1)
                 }
-                breadcrumbChip(item: item, isLeaf: idx == breadcrumbItems.count - 1)
+                Text("·")
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
             }
+
+            itemCountText
+
             Spacer(minLength: 0)
+
+            displayControls
         }
-        .padding(.horizontal, AppTheme.Spacing.md)
-        .padding(.top, AppTheme.Spacing.sm)
-        .padding(.bottom, AppTheme.Spacing.xs)
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.top, AppTheme.Spacing.xs)
+        .padding(.bottom, AppTheme.Spacing.xxs)
+    }
+
+    @ViewBuilder
+    private var displayControls: some View {
+        toolbarMenuIcon(systemName: viewMode.systemImage) {
+            Section("View") {
+                ForEach(ViewMode.allCases, id: \.self) { mode in
+                    Button {
+                        setViewMode(mode)
+                    } label: {
+                        Label(mode.title, systemImage: viewMode == mode ? "checkmark" : mode.systemImage)
+                    }
+                }
+            }
+            Divider()
+            Section("Thumbnail Size") {
+                ForEach(ThumbnailPreset.allCases) { preset in
+                    Button {
+                        thumbnailSize = preset.size
+                    } label: {
+                        Label(preset.title, systemImage: thumbnailSize == preset.size ? "checkmark" : "")
+                    }
+                }
+            }
+        }
+
+        toolbarMenuIcon(systemName: "arrow.up.arrow.down") {
+            ForEach(SortMode.allCases, id: \.self) { mode in
+                Button {
+                    sortMode = mode
+                } label: {
+                    Label(mode.title, systemImage: sortMode == mode ? "checkmark" : "")
+                }
+            }
+        }
+
+        toolbarMenuIcon(
+            systemName: "line.3.horizontal.decrease",
+            foregroundStyle: hasActiveFilters ? AppTheme.Accent.primary : AppTheme.Text.tertiaryColor
+        ) {
+            ForEach(Self.filterableTypes, id: \.self) { type in
+                Button { toggleFilter(type) } label: {
+                    Label(type.trackLabel, systemImage: filterTypes.contains(type) ? "checkmark" : "")
+                }
+            }
+            Divider()
+            Button { filterAI.toggle() } label: {
+                Label("AI Generated", systemImage: filterAI ? "checkmark" : "")
+            }
+            Divider()
+            Button("Clear Filters", action: clearFilters)
+        }
     }
 
     private func breadcrumbChip(item: BreadcrumbItem, isLeaf: Bool) -> some View {
@@ -388,17 +427,6 @@ struct MediaPanelView: View {
                 .fill(AppTheme.Border.subtleColor)
         )
         .frame(maxWidth: 180)
-    }
-
-    private var thumbnailSlider: some View {
-        Slider(
-            value: $thumbnailSize,
-            in: Self.minThumbnailSize...Self.maxThumbnailSize
-        )
-        .controlSize(.mini)
-        .tint(AppTheme.Accent.primary)
-        .frame(width: 60)
-        .help("Thumbnail size")
     }
 
     private func toolbarButton(
