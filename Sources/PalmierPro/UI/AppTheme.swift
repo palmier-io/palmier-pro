@@ -183,7 +183,6 @@ enum AppTheme {
         static let lg: CGFloat = 26
         static let lgXl: CGFloat = 28
         static let xl: CGFloat = 30
-        static let xxl: CGFloat = 56
     }
 
     // MARK: - Shadows
