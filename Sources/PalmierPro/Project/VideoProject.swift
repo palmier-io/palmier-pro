@@ -168,7 +168,7 @@ final class VideoProject: NSDocument {
                 ProjectSettingsMismatchView(mismatch: mismatch)
                     .environment(editorViewModel)
             }
-        let hostingController = NSHostingController(rootView: editorView)
+        let hostingController = NSHostingController(rootView: editorView.tint(AppTheme.Accent.primary))
 
         let window = NSWindow(contentViewController: hostingController)
         window.setContentSize(NSSize(width: 1280, height: 800))
@@ -267,7 +267,7 @@ final class VideoProject: NSDocument {
 
 extension NSWindow {
     func addTitlebarSwiftUI<V: View>(_ view: V, side: NSLayoutConstraint.Attribute, width: CGFloat) {
-        let host = NSHostingController(rootView: view)
+        let host = NSHostingController(rootView: view.tint(AppTheme.Accent.primary))
         host.view.translatesAutoresizingMaskIntoConstraints = false
 
         let wrapper = CornerAdaptiveView()

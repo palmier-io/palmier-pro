@@ -59,7 +59,7 @@ struct ProjectCard: View {
 
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
                 Text(entry.name)
-                    .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                    .font(.system(size: AppTheme.FontSize.smMd, weight: .regular))
                     .foregroundStyle(entry.isAccessible ? .white : AppTheme.Text.mutedColor)
                     .lineLimit(1)
 

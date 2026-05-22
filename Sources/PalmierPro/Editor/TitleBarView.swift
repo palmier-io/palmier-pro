@@ -11,7 +11,7 @@ struct TitleBarLeadingView: View {
                 .help(editor.isDocumentEdited ? "Unsaved changes" : "")
 
             Button(action: { editor.agentPanelVisible.toggle() }) {
-                Image(systemName: "apple.intelligence")
+                Image(systemName: "bubble.left")
                     .font(.system(size: AppTheme.FontSize.md))
                     .foregroundStyle(AppTheme.aiGradient)
                     .opacity(editor.agentPanelVisible ? 1 : AppTheme.Opacity.strong)

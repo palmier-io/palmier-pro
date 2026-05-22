@@ -58,7 +58,7 @@ extension MediaPanelView {
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .strokeBorder(Color.accentColor, lineWidth: AppTheme.BorderWidth.medium)
+                    .strokeBorder(AppTheme.Accent.primary, lineWidth: AppTheme.BorderWidth.medium)
             )
             .shadow(color: .black.opacity(AppTheme.Opacity.medium), radius: 4, y: 2)
 
@@ -68,7 +68,7 @@ extension MediaPanelView {
                     .foregroundStyle(.white)
                     .padding(.horizontal, AppTheme.Spacing.sm)
                     .padding(.vertical, AppTheme.Spacing.xxs)
-                    .background(Capsule().fill(Color.accentColor))
+                    .background(Capsule().fill(AppTheme.Accent.primary))
                     .offset(x: AppTheme.Spacing.xs, y: -AppTheme.Spacing.xs)
             }
         }

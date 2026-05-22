@@ -63,7 +63,7 @@ struct CreditSummaryView: View {
         switch remaining {
         case ..<0.05: return .red
         case ..<0.25: return .orange
-        default: return .accentColor
+        default: return AppTheme.Accent.primary
         }
     }
 }

@@ -10,7 +10,7 @@ struct IdentityStrip: View {
             avatar(initial: labels.initial)
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
                 Text(labels.primary)
-                    .font(.system(size: AppTheme.FontSize.md, weight: .semibold))
+                    .font(.system(size: AppTheme.FontSize.md, weight: .medium))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -31,7 +31,7 @@ struct IdentityStrip: View {
     private func avatar(initial: String) -> some View {
         ZStack {
             Circle()
-                .fill(account.isSignedIn ? Color.accentColor.opacity(AppTheme.Opacity.medium) : Color.white.opacity(AppTheme.Opacity.soft))
+                .fill(account.isSignedIn ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.medium) : Color.white.opacity(AppTheme.Opacity.soft))
             Text(initial)
                 .font(.system(size: AppTheme.FontSize.mdLg, weight: .semibold))
                 .foregroundStyle(AppTheme.Text.primaryColor)

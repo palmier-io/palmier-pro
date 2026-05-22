@@ -274,7 +274,7 @@ extension MediaPanelView {
                         HStack(spacing: AppTheme.Spacing.xs) {
                             Image(systemName: "folder.fill")
                                 .font(.system(size: AppTheme.FontSize.xs))
-                                .foregroundStyle(Color.accentColor.opacity(0.85))
+                                .foregroundStyle(AppTheme.Accent.primary.opacity(0.85))
                             groupedSectionTitle(title)
                         }
                         .padding(.horizontal, AppTheme.Spacing.xs)
@@ -328,11 +328,11 @@ extension MediaPanelView {
         .padding(AppTheme.Spacing.xs)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .fill(isTargeted.wrappedValue ? Color.accentColor.opacity(AppTheme.Opacity.faint) : .clear)
+                .fill(isTargeted.wrappedValue ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.faint) : .clear)
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .strokeBorder(isTargeted.wrappedValue ? Color.accentColor.opacity(AppTheme.Opacity.strong) : .clear, lineWidth: AppTheme.BorderWidth.thin)
+                .strokeBorder(isTargeted.wrappedValue ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.strong) : .clear, lineWidth: AppTheme.BorderWidth.thin)
         )
         .contentShape(Rectangle())
         .onDrop(of: [.fileURL, .text], isTargeted: isTargeted) { providers in
@@ -495,7 +495,7 @@ private struct FolderDragPreview: View {
     var body: some View {
         HStack(spacing: AppTheme.Spacing.xs) {
             Image(systemName: "folder.fill")
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(AppTheme.Accent.primary)
             Text(name)
                 .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                 .lineLimit(1)

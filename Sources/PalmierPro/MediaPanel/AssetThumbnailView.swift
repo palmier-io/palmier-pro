@@ -24,7 +24,7 @@ struct AssetThumbnailView: View {
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
                     .strokeBorder(
-                        isSelected ? Color.accentColor : Color.clear,
+                        isSelected ? AppTheme.Accent.primary : Color.clear,
                         lineWidth: isSelected ? AppTheme.BorderWidth.thick : 0
                     )
             )
@@ -161,7 +161,7 @@ struct AssetThumbnailView: View {
     private var hoverActions: some View {
         if isHovering && !asset.isGenerating {
             Button { editor.agentService.attachMention(for: asset) } label: {
-                Image(systemName: "text.bubble")
+                Image(systemName: "bubble.left")
                     .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
@@ -181,7 +181,7 @@ struct AssetThumbnailView: View {
             .foregroundStyle(AppTheme.aiGradient)
             .padding(.horizontal, AppTheme.Spacing.sm)
             .padding(.vertical, AppTheme.Spacing.xxs)
-            .background(.ultraThinMaterial, in: .capsule)
+            .background(Color.black.opacity(AppTheme.Opacity.prominent), in: .capsule)
     }
 
     private var durationBadge: some View {

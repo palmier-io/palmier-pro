@@ -351,7 +351,7 @@ private struct PanelFocusRing: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: AppTheme.Radius.xs)
-            .strokeBorder(isFocused ? Color.accentColor : Color.black, lineWidth: AppTheme.BorderWidth.medium)
+            .strokeBorder(isFocused ? AppTheme.Accent.primary : Color.black, lineWidth: AppTheme.BorderWidth.medium)
             .opacity(isFocused ? 0.6 : 1)
             .animation(.easeOut(duration: AppTheme.Anim.transition), value: isFocused)
     }

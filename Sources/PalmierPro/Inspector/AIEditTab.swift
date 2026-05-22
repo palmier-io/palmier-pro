@@ -71,7 +71,7 @@ struct AIEditTab: View {
         HStack(spacing: AppTheme.Spacing.sm) {
             Image(systemName: "arrow.triangle.2.circlepath")
                 .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(replaceClipSource ? Color.accentColor : AppTheme.Text.tertiaryColor)
+                .foregroundStyle(replaceClipSource ? AppTheme.Accent.primary : AppTheme.Text.tertiaryColor)
             Text("Replace clip source")
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
@@ -92,7 +92,7 @@ struct AIEditTab: View {
         HStack(spacing: AppTheme.Spacing.sm) {
             Image(systemName: "scissors")
                 .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(useTrimmedClip ? Color.accentColor : AppTheme.Text.tertiaryColor)
+                .foregroundStyle(useTrimmedClip ? AppTheme.Accent.primary : AppTheme.Text.tertiaryColor)
             Text("Use trimmed portion only")
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)

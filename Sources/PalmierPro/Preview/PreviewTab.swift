@@ -34,14 +34,14 @@ enum PreviewTab: Identifiable, Equatable {
 
     var tintColor: Color {
         switch self {
-        case .timeline: Color.accentColor.opacity(0.15)
+        case .timeline: AppTheme.Accent.primary.opacity(0.15)
         case .mediaAsset(_, _, let type): Color(type.themeColor).opacity(0.25)
         }
     }
 
     var underlineColor: Color {
         switch self {
-        case .timeline: Color.accentColor
+        case .timeline: AppTheme.Accent.primary
         case .mediaAsset(_, _, let type): Color(type.themeColor)
         }
     }

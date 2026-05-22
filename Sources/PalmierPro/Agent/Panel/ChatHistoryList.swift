@@ -72,7 +72,7 @@ struct ChatHistoryList: View {
         }
         .padding(.horizontal, AppTheme.Spacing.md)
         .padding(.vertical, 6)
-        .background(isCurrent ? Color.accentColor.opacity(0.15) : .clear)
+        .background(isCurrent ? AppTheme.Accent.primary.opacity(0.15) : .clear)
         .contentShape(Rectangle())
         .onTapGesture { onSelect(session.id) }
     }

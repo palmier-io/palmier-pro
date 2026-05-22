@@ -127,7 +127,7 @@ struct MentionPopover: View {
                     .padding(.vertical, 5)
                     .background(
                         t == tab
-                            ? Color.accentColor.opacity(0.18)
+                            ? AppTheme.Accent.primary.opacity(0.18)
                             : Color.clear,
                         in: RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
                     )
@@ -168,6 +168,6 @@ struct MentionPopover: View {
         }
         .padding(.horizontal, AppTheme.Spacing.sm)
         .padding(.vertical, 4)
-        .background(isHighlighted ? Color.accentColor.opacity(0.15) : .clear)
+        .background(isHighlighted ? AppTheme.Accent.primary.opacity(0.15) : .clear)
     }
 }

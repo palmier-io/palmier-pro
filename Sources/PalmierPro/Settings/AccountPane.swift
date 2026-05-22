@@ -184,7 +184,7 @@ struct AccountPane: View {
                 .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .textCase(.uppercase)
-                .tracking(0.5)
+                .tracking(AppTheme.Tracking.wide)
             content()
         }
     }

@@ -93,7 +93,8 @@ private struct SettingsDetail: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(tab.label)
-                    .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
+                    .font(.system(size: AppTheme.FontSize.title2, weight: .light))
+                    .tracking(AppTheme.Tracking.tight)
                     .foregroundStyle(AppTheme.Text.primaryColor)
                 Spacer()
             }
@@ -154,7 +155,7 @@ final class SettingsWindowController: NSWindowController {
     static let shared = SettingsWindowController()
 
     private init() {
-        let hosting = NSHostingController(rootView: SettingsView())
+        let hosting = NSHostingController(rootView: SettingsView().tint(AppTheme.Accent.primary))
         let window = NSWindow(contentViewController: hosting)
         window.setContentSize(NSSize(width: 980, height: 640))
         window.minSize = NSSize(width: 760, height: 480)

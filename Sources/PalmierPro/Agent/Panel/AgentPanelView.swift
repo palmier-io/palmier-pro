@@ -48,11 +48,15 @@ struct AgentPanelView: View {
                 historyButton
             }
             .padding(.horizontal, AppTheme.Spacing.sm)
-            .padding(.vertical, AppTheme.Spacing.xs)
-            .glassEffect(.regular, in: .capsule)
+            .frame(maxWidth: .infinity)
+            .frame(height: Layout.panelHeaderHeight)
+            .glassEffect(.regular, in: Rectangle())
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(AppTheme.Border.subtleColor)
+                    .frame(height: AppTheme.BorderWidth.hairline)
+            }
         }
-        .padding(.horizontal, AppTheme.Spacing.sm)
-        .padding(.top, AppTheme.Spacing.xs)
     }
 
     private var newTabButton: some View {
@@ -179,6 +183,7 @@ struct AgentPanelView: View {
                 .frame(maxWidth: Layout.chatColumnMax)
                 .frame(maxWidth: .infinity)
             }
+            .scrollIndicators(.never)
             .scrollEdgeEffectStyle(.soft, for: .bottom)
             .onChange(of: service.messages.count) { _, _ in scrollToBottom(proxy) }
             .onChange(of: service.isStreaming) { _, _ in scrollToBottom(proxy) }

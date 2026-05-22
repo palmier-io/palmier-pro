@@ -746,7 +746,7 @@ private struct PreviewScrubProgress: View {
         let g = geometry
         ZStack(alignment: .leading) {
             Capsule()
-                .fill(Color.accentColor)
+                .fill(AppTheme.Accent.primary)
                 .frame(width: max(0, g.size.width * progress), height: g.barHeight)
             Circle()
                 .fill(Color.white)

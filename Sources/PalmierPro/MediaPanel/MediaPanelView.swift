@@ -149,17 +149,22 @@ struct MediaPanelView: View {
     // MARK: - Toolbar
 
     private var toolbar: some View {
-        HStack(spacing: AppTheme.Spacing.xs) {
+        let showGenerate = !AccountService.shared.isMisconfigured
+        return HStack(spacing: AppTheme.Spacing.xs) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: AppTheme.Spacing.xs) {
                     toolbarButton(title: "Import", systemImage: "plus", compact: false, action: importMedia)
                     toolbarButton(title: "New Folder", systemImage: "folder.badge.plus", compact: false, action: createNewFolderInCurrent)
-                    toolbarButton(title: "Generate", systemImage: "sparkles", compact: false, accentStyle: AnyShapeStyle(AppTheme.aiGradient), action: toggleGenerationPanel)
+                    if showGenerate {
+                        toolbarButton(title: "Generate", systemImage: "sparkles", compact: false, accentStyle: AnyShapeStyle(AppTheme.aiGradient), action: toggleGenerationPanel)
+                    }
                 }
                 HStack(spacing: AppTheme.Spacing.xs) {
                     toolbarButton(title: "Import", systemImage: "plus", compact: true, action: importMedia)
                     toolbarButton(title: "New Folder", systemImage: "folder.badge.plus", compact: true, action: createNewFolderInCurrent)
-                    toolbarButton(title: "Generate", systemImage: "sparkles", compact: true, accentStyle: AnyShapeStyle(AppTheme.aiGradient), action: toggleGenerationPanel)
+                    if showGenerate {
+                        toolbarButton(title: "Generate", systemImage: "sparkles", compact: true, accentStyle: AnyShapeStyle(AppTheme.aiGradient), action: toggleGenerationPanel)
+                    }
                 }
             }
 
@@ -195,7 +200,7 @@ struct MediaPanelView: View {
 
             toolbarMenuIcon(
                 systemName: "line.3.horizontal.decrease",
-                foregroundStyle: hasActiveFilters ? Color.accentColor : AppTheme.Text.tertiaryColor
+                foregroundStyle: hasActiveFilters ? AppTheme.Accent.primary : AppTheme.Text.tertiaryColor
             ) {
                 ForEach(ClipType.allCases, id: \.self) { type in
                     Button { toggleFilter(type) } label: {
@@ -391,6 +396,7 @@ struct MediaPanelView: View {
             in: Self.minThumbnailSize...Self.maxThumbnailSize
         )
         .controlSize(.mini)
+        .tint(AppTheme.Accent.primary)
         .frame(width: 60)
         .help("Thumbnail size")
     }
@@ -544,7 +550,8 @@ struct MediaPanelView: View {
 
             VStack(spacing: AppTheme.Spacing.xs) {
                 Text("No media yet")
-                    .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+                    .font(.system(size: AppTheme.FontSize.title1, weight: .light))
+                    .tracking(AppTheme.Tracking.tight)
                     .foregroundStyle(AppTheme.Text.primaryColor)
 
                 Text("Drop files here or import from disk")
@@ -560,12 +567,12 @@ struct MediaPanelView: View {
     private var dropHighlight: some View {
         RoundedRectangle(cornerRadius: AppTheme.Radius.md)
             .strokeBorder(
-                Color.accentColor.opacity(0.6),
+                AppTheme.Accent.primary.opacity(0.6),
                 style: StrokeStyle(lineWidth: AppTheme.BorderWidth.thick, dash: [8, 4])
             )
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                    .fill(Color.accentColor.opacity(AppTheme.Opacity.subtle))
+                    .fill(AppTheme.Accent.primary.opacity(AppTheme.Opacity.subtle))
             )
             .padding(AppTheme.Spacing.xs)
     }

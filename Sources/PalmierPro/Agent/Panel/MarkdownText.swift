@@ -6,44 +6,44 @@ struct MarkdownText: View {
     let text: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             ForEach(Array(Self.cachedParse(text).enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .prose(let attr):
                     Text(attr)
-                        .font(.system(.body, design: .rounded))
+                        .font(.body)
                         .foregroundStyle(AppTheme.Text.primaryColor)
-                        .lineSpacing(5)
+                        .lineSpacing(AppTheme.Spacing.xs)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
 
                 case .code(let language, let code):
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
                         if let language, !language.isEmpty {
                             Text(language)
-                                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                                .font(.system(size: AppTheme.FontSize.xxs, weight: .medium, design: .monospaced))
                                 .foregroundStyle(AppTheme.Text.mutedColor)
                                 .textCase(.uppercase)
                         }
                         Text(code)
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
                             .foregroundStyle(AppTheme.Text.primaryColor)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(10)
+                            .padding(AppTheme.Spacing.md)
                             .background(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(Color.black.opacity(0.28))
+                                RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
+                                    .fill(Color.black.opacity(AppTheme.Opacity.moderate))
                             )
                     }
 
                 case .table(let header, let rows, let alignments):
-                    Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 6) {
+                    Grid(alignment: .topLeading, horizontalSpacing: AppTheme.Spacing.mdLg, verticalSpacing: AppTheme.Spacing.sm) {
                         GridRow {
                             ForEach(Array(header.enumerated()), id: \.offset) { idx, cell in
                                 Text(cell)
-                                    .font(.system(.body, design: .rounded).weight(.semibold))
+                                    .font(.body.weight(.semibold))
                                     .foregroundStyle(AppTheme.Text.primaryColor)
                                     .textSelection(.enabled)
                                     .gridColumnAlignment(columnAlign(alignments, at: idx))
@@ -54,17 +54,17 @@ struct MarkdownText: View {
                             GridRow {
                                 ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
                                     Text(cell)
-                                        .font(.system(.body, design: .rounded))
+                                        .font(.body)
                                         .foregroundStyle(AppTheme.Text.primaryColor)
                                         .textSelection(.enabled)
                                 }
                             }
                         }
                     }
-                    .padding(10)
+                    .padding(AppTheme.Spacing.md)
                     .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color.black.opacity(0.15))
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
+                            .fill(Color.black.opacity(AppTheme.Opacity.muted))
                     )
                 }
             }
@@ -119,8 +119,7 @@ struct MarkdownText: View {
             if let lvl = headingLevel {
                 part.font = .system(
                     size: headingSize(lvl),
-                    weight: lvl <= 1 ? .bold : .semibold,
-                    design: .rounded
+                    weight: lvl <= 1 ? .bold : .semibold
                 )
             }
             prose.append(part)

@@ -46,20 +46,29 @@ struct HomeView: View {
             if entries.isEmpty {
                 emptyState
             } else {
-                ScrollView {
-                    LazyVGrid(columns: columns, spacing: AppTheme.Spacing.xl) {
-                        ForEach(entries) { entry in
-                            ProjectCard(
-                                entry: entry,
-                                onOpen: { AppState.shared.openProject(at: $0) },
-                                onRemove: { ProjectRegistry.shared.remove($0) }
-                            )
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("RECENT PROJECTS")
+                        .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
+                        .tracking(AppTheme.Tracking.wide)
+                        .foregroundStyle(AppTheme.Text.mutedColor)
+                        .padding(.horizontal, AppTheme.Spacing.xlXxl)
+                        .padding(.bottom, AppTheme.Spacing.md)
+
+                    ScrollView {
+                        LazyVGrid(columns: columns, spacing: AppTheme.Spacing.xl) {
+                            ForEach(entries) { entry in
+                                ProjectCard(
+                                    entry: entry,
+                                    onOpen: { AppState.shared.openProject(at: $0) },
+                                    onRemove: { ProjectRegistry.shared.remove($0) }
+                                )
+                            }
                         }
+                        .padding(.horizontal, AppTheme.Spacing.xlXxl)
+                        .padding(.bottom, AppTheme.Spacing.xlXxl)
                     }
-                    .padding(.horizontal, AppTheme.Spacing.xlXxl)
-                    .padding(.bottom, AppTheme.Spacing.xlXxl)
+                    .scrollEdgeEffectStyle(.soft, for: .top)
                 }
-                .scrollEdgeEffectStyle(.soft, for: .top)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -87,7 +96,8 @@ private struct WelcomeTitle: View {
 
     var body: some View {
         Text(title)
-            .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
+            .font(.system(size: AppTheme.FontSize.title2, weight: .light))
+            .tracking(AppTheme.Tracking.tight)
             .foregroundStyle(AppTheme.Text.primaryColor)
     }
 
@@ -151,7 +161,7 @@ final class HomeWindowController: NSWindowController {
     static let shared = HomeWindowController()
 
     private init() {
-        let hostingController = NSHostingController(rootView: HomeView())
+        let hostingController = NSHostingController(rootView: HomeView().tint(AppTheme.Accent.primary))
         let window = NSWindow(contentViewController: hostingController)
         window.setContentSize(NSSize(width: 980, height: 640))
         window.minSize = NSSize(width: 760, height: 480)

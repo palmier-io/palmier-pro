@@ -37,15 +37,18 @@ enum AppTheme {
 
     enum Accent {
         static let timecodeColor = Color(red: 0.95, green: 0.6, blue: 0.2)
+
+        /// Warm off-white
+        static let primary = Color(red: 0.961, green: 0.937, blue: 0.894)
     }
 
+    /// Monochrome silver shimmer
     static let aiGradient = LinearGradient(
-        colors: [
-            Color(red: 1.00, green: 0.55, blue: 0.20),
-            Color(red: 0.98, green: 0.36, blue: 0.58),
-            Color(red: 0.67, green: 0.36, blue: 0.96),
-            Color(red: 0.29, green: 0.60, blue: 0.99),
-            Color(red: 0.25, green: 0.85, blue: 0.95),
+        stops: [
+            .init(color: Color(white: 1.00), location: 0.00),
+            .init(color: Color(white: 0.78), location: 0.45),
+            .init(color: Color(white: 0.60), location: 0.55),
+            .init(color: Color(white: 1.00), location: 1.00),
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
@@ -54,7 +57,7 @@ enum AppTheme {
     // MARK: - Glass
 
     enum Glass {
-        static let primaryTint = Color.accentColor.opacity(0.05)
+        static let primaryTint = Accent.primary.opacity(0.05)
     }
 
     // MARK: - Text
@@ -146,10 +149,19 @@ enum AppTheme {
     // MARK: - Font weights
 
     enum FontWeight {
+        static let light: Font.Weight = .light
         static let regular: Font.Weight = .regular
         static let medium: Font.Weight = .medium
         static let semibold: Font.Weight = .semibold
         static let bold: Font.Weight = .bold
+    }
+
+    // MARK: - Tracking (letter-spacing)
+
+    enum Tracking {
+        static let tight: CGFloat = -0.5
+        static let normal: CGFloat = 0
+        static let wide: CGFloat = 1.5
     }
 
     // MARK: - Icon sizes (square frame dimensions)

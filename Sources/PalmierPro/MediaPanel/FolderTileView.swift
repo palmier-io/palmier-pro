@@ -24,7 +24,7 @@ struct FolderTileView: View {
                     .fill(Color(white: 1.0, opacity: AppTheme.Opacity.subtle))
                 Image(systemName: "folder.fill")
                     .font(.system(size: AppTheme.FontSize.display, weight: .light))
-                    .foregroundStyle(Color.accentColor.opacity(0.85))
+                    .foregroundStyle(AppTheme.Accent.primary.opacity(0.85))
                 if childCount > 0 {
                     VStack {
                         HStack {
@@ -101,8 +101,8 @@ struct FolderTileView: View {
     }
 
     private var borderColor: Color {
-        if isDropHover { return Color.accentColor.opacity(0.8) }
-        if isSelected { return Color.accentColor }
+        if isDropHover { return AppTheme.Accent.primary.opacity(0.8) }
+        if isSelected { return AppTheme.Accent.primary }
         return Color.clear
     }
 

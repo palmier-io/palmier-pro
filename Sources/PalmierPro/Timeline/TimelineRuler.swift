@@ -31,7 +31,7 @@ enum TimelineRuler {
         let endFrame = Int((scrollOffsetX + rect.width) / pixelsPerFrame) + framesPerMajor
 
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular),
+            .font: NSFont.monospacedDigitSystemFont(ofSize: AppTheme.FontSize.xs, weight: .regular),
             .foregroundColor: AppTheme.Text.tertiary,
         ]
 

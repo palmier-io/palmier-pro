@@ -71,8 +71,8 @@ struct AgentInputBox<LeadingTools: View>: View {
         .overlay {
             RoundedRectangle(cornerRadius: AppTheme.Radius.xl, style: .continuous)
                 .strokeBorder(
-                    isDropTargeted ? Color.accentColor.opacity(AppTheme.Opacity.strong)
-                        : focused ? Color.accentColor.opacity(AppTheme.Opacity.medium)
+                    isDropTargeted ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.strong)
+                        : focused ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.medium)
                         : Color.white.opacity(AppTheme.Opacity.hint),
                     lineWidth: (focused || isDropTargeted) ? AppTheme.BorderWidth.thin : AppTheme.BorderWidth.hairline
                 )
@@ -88,6 +88,7 @@ struct AgentInputBox<LeadingTools: View>: View {
             TextEditor(text: $draft)
                 .font(.body)
                 .scrollContentBackground(.hidden)
+                .scrollIndicators(.never)
                 .padding(.horizontal, AppTheme.Spacing.mdLg)
                 .padding(.top, AppTheme.Spacing.smMd)
                 .padding(.bottom, AppTheme.Spacing.xs)
@@ -155,7 +156,7 @@ struct AgentInputBox<LeadingTools: View>: View {
             .buttonStyle(.glassProminent)
             .buttonBorderShape(.circle)
             .controlSize(.regular)
-            .tint(.accentColor)
+            .tint(AppTheme.Accent.primary)
             .glassEffectID("sendStop", in: sendStopNamespace)
             .disabled(!canSend)
             .opacity(canSend ? 1 : AppTheme.Opacity.strong)
