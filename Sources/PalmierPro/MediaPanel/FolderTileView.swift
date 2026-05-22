@@ -16,6 +16,7 @@ struct FolderTileView: View {
 
     @State private var renameDraft: String = ""
     @FocusState private var isRenameFieldFocused: Bool
+    @State private var lastClickTime: Date?
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
@@ -51,7 +52,6 @@ struct FolderTileView: View {
                     )
             )
             .contentShape(Rectangle())
-            .onTapGesture(count: 2) { onOpen() }
 
             ZStack(alignment: .leading) {
                 if isRenaming {
@@ -71,7 +71,6 @@ struct FolderTileView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .foregroundStyle(AppTheme.Text.primaryColor)
-                        .onTapGesture(count: 2) { beginRename() }
                 }
             }
             .padding(.horizontal, AppTheme.Spacing.xs)
@@ -83,7 +82,7 @@ struct FolderTileView: View {
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
-        .onTapGesture { onTap() }
+        .onTapGesture { handleClick() }
         .contextMenu { contextMenuItems }
         .onAppear {
             if shouldAutoFocus {
@@ -123,6 +122,17 @@ struct FolderTileView: View {
     private func beginRename() {
         renameDraft = folder.name
         isRenaming = true
+    }
+
+    private func handleClick() {
+        let now = Date()
+        if let last = lastClickTime, now.timeIntervalSince(last) < NSEvent.doubleClickInterval {
+            onOpen()
+            lastClickTime = nil
+        } else {
+            onTap()
+            lastClickTime = now
+        }
     }
 
     private func commit() {
