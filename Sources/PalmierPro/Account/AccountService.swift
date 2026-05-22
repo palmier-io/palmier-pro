@@ -155,8 +155,8 @@ final class AccountService {
         guard let convex else { return }
 
         let loginResult = await convex.loginFromCache()
-        if case .failure = loginResult {
-            try? await Clerk.shared.auth.signOut()
+        if case .failure(let error) = loginResult {
+            lastError = error.localizedDescription
             return
         }
 
@@ -293,5 +293,28 @@ final class AccountService {
             return
         }
         NSWorkspace.shared.open(url)
+    }
+}
+
+// MARK: - Display helpers
+
+extension AccountService {
+    var displayPrimaryText: String {
+        if !isSignedIn { return "Signed out" }
+        let user = account?.user
+        return user?.displayName ?? user?.email ?? "Signed in"
+    }
+
+    var displaySecondaryText: String? {
+        guard isSignedIn else { return nil }
+        let user = account?.user
+        return user?.displayName != nil ? user?.email : nil
+    }
+
+    var displayInitial: String {
+        guard isSignedIn else { return "" }
+        let user = account?.user
+        let source = user?.displayName ?? user?.email ?? ""
+        return source.first.map { String($0).uppercased() } ?? ""
     }
 }
