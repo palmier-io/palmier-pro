@@ -40,6 +40,8 @@ enum Layout {
     static let panelHeaderHeight: CGFloat = 28
     static let toolbarHeight: CGFloat = 38
 
+    static let panelGap: CGFloat = 5
+
     // Timeline
     static let timelineMinHeight: CGFloat = 100
     static let timelineMaxHeight: CGFloat = 700

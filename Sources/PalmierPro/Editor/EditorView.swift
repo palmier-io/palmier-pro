@@ -52,7 +52,7 @@ final class EditorSplitViewController: NSSplitViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        splitView.dividerStyle = .thick
+        splitView.dividerStyle = .thin
         buildLayout(editor.layoutPreset)
     }
 
@@ -275,7 +275,7 @@ final class EditorSplitViewController: NSSplitViewController {
     private func makeChildSplit(isVertical: Bool) -> NSSplitViewController {
         let vc = NSSplitViewController()
         vc.splitView.isVertical = isVertical
-        vc.splitView.dividerStyle = .thick
+        vc.splitView.dividerStyle = .thin
         return vc
     }
 
@@ -312,13 +312,17 @@ final class EditorSplitViewController: NSSplitViewController {
     }
 
     private func makeHosting<V: View>(_ content: V, panel: EditorViewModel.FocusedPanel) -> NSHostingController<some View> {
+        let inset = Layout.panelGap / 2
         let hc = NSHostingController(
             rootView: content
                 .environment(editor)
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                 .background(AppTheme.Background.surfaceColor)
+                .padding(inset)
+                .background(AppTheme.Background.baseColor)
                 .overlay {
                     PanelFocusRing(editor: editor, panel: panel)
+                        .padding(inset)
                         .allowsHitTesting(false)
                 }
         )
@@ -350,9 +354,9 @@ private struct PanelFocusRing: View {
     private var isFocused: Bool { editor.focusedPanel == panel }
 
     var body: some View {
-        RoundedRectangle(cornerRadius: AppTheme.Radius.xs)
-            .strokeBorder(isFocused ? AppTheme.Accent.primary : Color.black, lineWidth: AppTheme.BorderWidth.medium)
-            .opacity(isFocused ? 0.6 : 1)
+        Rectangle()
+            .strokeBorder(AppTheme.Accent.primary, lineWidth: AppTheme.BorderWidth.medium)
+            .opacity(isFocused ? 0.6 : 0)
             .animation(.easeOut(duration: AppTheme.Anim.transition), value: isFocused)
     }
 }

@@ -127,28 +127,6 @@ final class AppState {
         }
     }
 
-    @discardableResult
-    func renameProject(at url: URL, to newName: String) -> URL? {
-        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
-        let newURL = url.deletingLastPathComponent()
-            .appendingPathComponent("\(trimmed).\(Project.fileExtension)")
-        guard newURL != url else { return url }
-        guard !FileManager.default.fileExists(atPath: newURL.path) else { return nil }
-
-        do {
-            try FileManager.default.moveItem(at: url, to: newURL)
-            if let doc = activeProject, doc.fileURL == url {
-                doc.fileURL = newURL
-            }
-            ProjectRegistry.shared.updateURL(from: url, to: newURL)
-            return newURL
-        } catch {
-            return nil
-        }
-    }
-
     func openProjectFromPanel() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [Self.projectContentType]

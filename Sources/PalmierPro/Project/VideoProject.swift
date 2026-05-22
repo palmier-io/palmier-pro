@@ -112,6 +112,11 @@ final class VideoProject: NSDocument {
         editorViewModel.isDocumentEdited = isDocumentEdited
     }
 
+    override var displayName: String! {
+        get { fileURL?.deletingPathExtension().lastPathComponent ?? Project.defaultProjectName }
+        set { super.displayName = newValue }
+    }
+
     private nonisolated func replaceChild(_ name: String, with data: Data) {
         let wrapper = FileWrapper(regularFileWithContents: data)
         wrapper.preferredFilename = name
@@ -173,21 +178,22 @@ final class VideoProject: NSDocument {
         let window = NSWindow(contentViewController: hostingController)
         window.setContentSize(NSSize(width: 1280, height: 800))
         window.minSize = NSSize(width: 960, height: 600)
-        window.title = "Palmier Pro"
         window.setFrameAutosaveName("PalmierProWindow")
         window.appearance = NSAppearance(named: .darkAqua)
-        window.titleVisibility = .hidden
+        window.titleVisibility = .visible
         window.titlebarAppearsTransparent = true
         window.backgroundColor = NSColor(AppTheme.Background.surfaceColor)
         window.center()
 
-        window.addTitlebarSwiftUI(TitleBarLeadingView().environment(editorViewModel), side: .leading, width: 280)
-        window.addTitlebarSwiftUI(TitleBarTrailingView().environment(editorViewModel), side: .trailing, width: 280)
+        window.addTitlebarSwiftUI(TitleBarLeadingView().environment(editorViewModel), side: .leading, width: 100)
+        window.addTitlebarSwiftUI(TitleBarTrailingView().environment(editorViewModel), side: .trailing, width: 260)
 
         let controller = EditorWindowController(editorViewModel: editorViewModel, window: window)
         controller.shouldCascadeWindows = true
         controller.installKeyMonitor()
         addWindowController(controller)
+
+        window.standardWindowButton(.documentIconButton)?.isHidden = true
 
         AppState.shared.showEditor(for: self)
 
