@@ -18,19 +18,24 @@ struct TransformOverlayView: View {
                 let halfW = clipRect.width / 2
                 let halfH = clipRect.height / 2
 
+                let hit = rotatedHitTarget(clipRect.size, degrees: rotation)
+                Rectangle()
+                    .fill(Color.white.opacity(0.001))
+                    .frame(width: hit.frame.width, height: hit.frame.height)
+                    .contentShape(hit.shape)
+                    .position(x: clipRect.midX, y: clipRect.midY)
+                    .gesture(moveGesture(clip: clip, videoRect: videoRect))
+
                 ZStack {
                     Rectangle()
                         .stroke(borderColor, lineWidth: AppTheme.BorderWidth.thin)
-                    Rectangle()
-                        .fill(Color.white.opacity(0.001))
-                        .gesture(moveGesture(clip: clip, videoRect: videoRect, rotation: rotation))
                     ForEach(Corner.allCases, id: \.self) { corner in
                         let off = cornerOffset(corner, halfW: halfW, halfH: halfH)
                         Rectangle()
                             .fill(borderColor)
                             .frame(width: handleSize, height: handleSize)
                             .offset(x: off.x, y: off.y)
-                            .gesture(resizeGesture(clip: clip, corner: corner, videoRect: videoRect, rotation: rotation))
+                            .gesture(resizeGesture(clip: clip, corner: corner, videoRect: videoRect))
                     }
                 }
                 .frame(width: clipRect.width, height: clipRect.height)
@@ -66,19 +71,21 @@ struct TransformOverlayView: View {
 
     private let centerGuideColor = Color(red: 1.0, green: 0.2, blue: 0.6).opacity(AppTheme.Opacity.prominent)
 
-    private func moveGesture(clip: Clip, videoRect: CGRect, rotation: Double) -> some Gesture {
+    private func moveGesture(clip: Clip, videoRect: CGRect) -> some Gesture {
         DragGesture()
             .onChanged { value in
                 if dragStart == nil { dragStart = clip.transformAt(frame: editor.activeFrame) }
                 guard let start = dragStart else { return }
-                let (moved, snap) = movedTransform(start, by: value.translation, in: videoRect, rotated: rotation != 0)
+                let rotated = start.rotation != 0
+                let (moved, snap) = movedTransform(start, by: value.translation, in: videoRect, rotated: rotated)
                 if centerGuideX != snap.x { centerGuideX = snap.x }
                 if centerGuideY != snap.y { centerGuideY = snap.y }
                 editor.applyTransform(clipId: clip.id, newTransform: moved)
             }
             .onEnded { value in
                 guard let start = dragStart else { return }
-                let (moved, _) = movedTransform(start, by: value.translation, in: videoRect, rotated: rotation != 0)
+                let rotated = start.rotation != 0
+                let (moved, _) = movedTransform(start, by: value.translation, in: videoRect, rotated: rotated)
                 dragStart = nil
                 if centerGuideX { centerGuideX = false }
                 if centerGuideY { centerGuideY = false }
@@ -105,7 +112,7 @@ struct TransformOverlayView: View {
         return (t, snap)
     }
 
-    private func resizeGesture(clip: Clip, corner: Corner, videoRect: CGRect, rotation: Double) -> some Gesture {
+    private func resizeGesture(clip: Clip, corner: Corner, videoRect: CGRect) -> some Gesture {
         DragGesture()
             .onChanged { value in
                 if resizeStart == nil {
@@ -115,14 +122,13 @@ struct TransformOverlayView: View {
                         : nil
                 }
                 guard let start = resizeStart else { return }
-                let localTranslation = unrotate(value.translation, byDegrees: rotation)
 
                 if let startScale = resizeStartFontScale {
-                    let newScale = textScale(from: localTranslation, corner: corner, start: start, startScale: startScale, videoRect: videoRect)
+                    let newScale = textScale(from: value.translation, corner: corner, start: start, startScale: startScale, videoRect: videoRect)
                     editor.applyTextStyle(clipId: clip.id) { $0.fontScale = newScale }
                     editor.fitTextClipToContent(clipId: clip.id)
                 } else {
-                    let resized = resizedTransform(start, corner: corner, by: localTranslation, in: videoRect, mediaCanvasAspect: mediaCanvasAspect, rotated: rotation != 0)
+                    let resized = resizedTransform(start, corner: corner, by: value.translation, in: videoRect, mediaCanvasAspect: mediaCanvasAspect, rotated: start.rotation != 0)
                     editor.applyTransform(clipId: clip.id, newTransform: resized)
                 }
             }
@@ -131,28 +137,16 @@ struct TransformOverlayView: View {
                 let startScale = resizeStartFontScale
                 resizeStart = nil
                 resizeStartFontScale = nil
-                let localTranslation = unrotate(value.translation, byDegrees: rotation)
 
                 if let startScale {
-                    let newScale = textScale(from: localTranslation, corner: corner, start: start, startScale: startScale, videoRect: videoRect)
+                    let newScale = textScale(from: value.translation, corner: corner, start: start, startScale: startScale, videoRect: videoRect)
                     editor.commitTextStyle(clipId: clip.id) { $0.fontScale = newScale }
                     editor.fitTextClipToContent(clipId: clip.id)
                 } else {
-                    let resized = resizedTransform(start, corner: corner, by: localTranslation, in: videoRect, mediaCanvasAspect: mediaCanvasAspect, rotated: rotation != 0)
+                    let resized = resizedTransform(start, corner: corner, by: value.translation, in: videoRect, mediaCanvasAspect: mediaCanvasAspect, rotated: start.rotation != 0)
                     editor.commitTransform(clipId: clip.id, newTransform: resized, actionName: "Change Scale")
                 }
             }
-    }
-
-    /// Inverse-rotate a screen-space drag delta back into the clip's local (un-rotated) axes.
-    private func unrotate(_ translation: CGSize, byDegrees degrees: Double) -> CGSize {
-        guard degrees != 0 else { return translation }
-        let rad = degrees * .pi / 180
-        let c = cos(rad), s = sin(rad)
-        return CGSize(
-            width:  translation.width * c + translation.height * s,
-            height: -translation.width * s + translation.height * c
-        )
     }
 
     private func textScale(from translation: CGSize, corner: Corner, start: Transform, startScale: Double, videoRect: CGRect) -> Double {
@@ -171,6 +165,7 @@ struct TransformOverlayView: View {
             Log.preview.warning("resizedTransform: collapsed videoRect \(videoRect.debugDescription) — skipping")
             return start
         }
+        let minSize = 0.05
         let dx = translation.width / videoRect.width
         let dy = translation.height / videoRect.height
         let tl = start.topLeft
@@ -184,12 +179,28 @@ struct TransformOverlayView: View {
         case .bottomRight: right += dx; bottom += dy
         }
 
+        // Stop the dragged edge at the opposite edge so the rect can never invert
+        switch corner {
+        case .topLeft:
+            left = min(left, right - minSize)
+            top = min(top, bottom - minSize)
+        case .topRight:
+            right = max(right, left + minSize)
+            top = min(top, bottom - minSize)
+        case .bottomLeft:
+            left = min(left, right - minSize)
+            bottom = max(bottom, top + minSize)
+        case .bottomRight:
+            right = max(right, left + minSize)
+            bottom = max(bottom, top + minSize)
+        }
+
         if let aspect = mediaCanvasAspect {
             let w = right - left
             let h = bottom - top
             let widthFromHeight = h * aspect
 
-            if abs(w) >= abs(widthFromHeight) {
+            if w >= widthFromHeight {
                 let adjustedH = w / aspect
                 switch corner {
                 case .topLeft, .topRight: top = bottom - adjustedH
@@ -228,11 +239,13 @@ struct TransformOverlayView: View {
             }
         }
 
-        return Transform(
+        var out = Transform(
             topLeft: (left, top),
             width: max(0.05, right - left),
             height: max(0.05, bottom - top)
         )
+        out.rotation = start.rotation
+        return out
     }
 
     // MARK: - Layout
@@ -266,6 +279,19 @@ struct TransformOverlayView: View {
         case .bottomLeft:  CGPoint(x: -halfW, y:  halfH)
         case .bottomRight: CGPoint(x:  halfW, y:  halfH)
         }
+    }
+
+    private func rotatedHitTarget(_ size: CGSize, degrees: Double) -> (frame: CGSize, shape: Path) {
+        let rad = degrees * .pi / 180
+        let absC = abs(cos(rad)), absS = abs(sin(rad))
+        let frame = CGSize(
+            width:  size.width * absC + size.height * absS,
+            height: size.width * absS + size.height * absC
+        )
+        let transform = CGAffineTransform(translationX: -size.width / 2, y: -size.height / 2)
+            .concatenating(CGAffineTransform(rotationAngle: rad))
+            .concatenating(CGAffineTransform(translationX: frame.width / 2, y: frame.height / 2))
+        return (frame, Path(CGRect(origin: .zero, size: size)).applying(transform))
     }
 
     private var mediaCanvasAspect: Double? {
