@@ -134,11 +134,13 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
 
     /// Sampled topLeft (normalized canvas space) at `frame`
     func topLeftAt(frame: Int) -> (x: Double, y: Double) {
-        let tl = transform.topLeft
-        if let p = positionTrack?.sample(at: keyframeOffset(forFrame: frame), fallback: AnimPair(a: tl.x, b: tl.y)) {
+        if let track = positionTrack, track.isActive {
+            let p = track.sample(at: keyframeOffset(forFrame: frame), fallback: AnimPair(a: 0, b: 0))
             return (p.a, p.b)
         }
-        return tl
+        let c = transform.center
+        let sz = sizeAt(frame: frame)
+        return (c.x - sz.width / 2, c.y - sz.height / 2)
     }
 
     /// Sampled (width, height) at `frame`
@@ -281,54 +283,89 @@ extension Clip {
 }
 
 struct Transform: Codable, Sendable, Equatable {
-    var x: Double = 0       // 0 = left edge
-    var y: Double = 0       // 0 = top edge
-    var width: Double = 1   // 1 = full canvas width
-    var height: Double = 1  // 1 = full canvas height
+    var centerX: Double = 0.5
+    var centerY: Double = 0.5
+    var width: Double = 1
+    var height: Double = 1
     var flipHorizontal: Bool = false
     var flipVertical: Bool = false
 
-    /// Top-left corner in normalized canvas space (0–1).
     var topLeft: (x: Double, y: Double) {
-        (x + width / 2.0 - 0.5, y + height / 2.0 - 0.5)
+        (centerX - width / 2, centerY - height / 2)
+    }
+
+    var center: (x: Double, y: Double) {
+        (centerX, centerY)
     }
 
     init(
-        x: Double = 0,
-        y: Double = 0,
+        centerX: Double = 0.5,
+        centerY: Double = 0.5,
         width: Double = 1,
         height: Double = 1,
         flipHorizontal: Bool = false,
         flipVertical: Bool = false
     ) {
-        self.x = x; self.y = y; self.width = width; self.height = height
+        self.centerX = centerX
+        self.centerY = centerY
+        self.width = width
+        self.height = height
         self.flipHorizontal = flipHorizontal
         self.flipVertical = flipVertical
     }
 
     init(topLeft tl: (x: Double, y: Double), width w: Double, height h: Double) {
+        self.centerX = tl.x + w / 2
+        self.centerY = tl.y + h / 2
         self.width = w
         self.height = h
-        self.x = tl.x - w / 2.0 + 0.5
-        self.y = tl.y - h / 2.0 + 0.5
     }
 
     init(center c: (x: Double, y: Double), width w: Double, height h: Double) {
-        self.init(topLeft: (c.x - w / 2.0, c.y - h / 2.0), width: w, height: h)
+        self.centerX = c.x
+        self.centerY = c.y
+        self.width = w
+        self.height = h
     }
 
     private enum CodingKeys: String, CodingKey {
-        case x, y, width, height, flipHorizontal, flipVertical
+        case centerX, centerY, width, height, flipHorizontal, flipVertical
+        // Legacy keys
+        case x, y
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.x = try c.decodeIfPresent(Double.self, forKey: .x) ?? 0
-        self.y = try c.decodeIfPresent(Double.self, forKey: .y) ?? 0
-        self.width = try c.decodeIfPresent(Double.self, forKey: .width) ?? 1
-        self.height = try c.decodeIfPresent(Double.self, forKey: .height) ?? 1
+        let w = try c.decodeIfPresent(Double.self, forKey: .width) ?? 1
+        let h = try c.decodeIfPresent(Double.self, forKey: .height) ?? 1
+        if let cx = try c.decodeIfPresent(Double.self, forKey: .centerX) {
+            self.centerX = cx
+        } else if let oldX = try c.decodeIfPresent(Double.self, forKey: .x) {
+            self.centerX = oldX + w - 0.5
+        } else {
+            self.centerX = 0.5
+        }
+        if let cy = try c.decodeIfPresent(Double.self, forKey: .centerY) {
+            self.centerY = cy
+        } else if let oldY = try c.decodeIfPresent(Double.self, forKey: .y) {
+            self.centerY = oldY + h - 0.5
+        } else {
+            self.centerY = 0.5
+        }
+        self.width = w
+        self.height = h
         self.flipHorizontal = try c.decodeIfPresent(Bool.self, forKey: .flipHorizontal) ?? false
         self.flipVertical = try c.decodeIfPresent(Bool.self, forKey: .flipVertical) ?? false
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(centerX, forKey: .centerX)
+        try c.encode(centerY, forKey: .centerY)
+        try c.encode(width, forKey: .width)
+        try c.encode(height, forKey: .height)
+        try c.encode(flipHorizontal, forKey: .flipHorizontal)
+        try c.encode(flipVertical, forKey: .flipVertical)
     }
 
     /// Snap a value to canvas boundaries (0 or 1) within threshold.
@@ -338,50 +375,38 @@ struct Transform: Codable, Sendable, Equatable {
         return value
     }
 
-    /// Snap clip edges and center to canvas boundaries (0, 0.5, 1).
+    /// Snap clip edges to canvas boundaries (0 or 1).
     mutating func snapToCanvasEdges(threshold: Double) {
         let tl = topLeft
-
         let snappedLeft = Self.snapToBoundary(tl.x, threshold: threshold)
         let snappedRight = Self.snapToBoundary(tl.x + width, threshold: threshold)
         if snappedLeft != tl.x {
-            x -= (tl.x - snappedLeft)
+            centerX -= (tl.x - snappedLeft)
         } else if snappedRight != tl.x + width {
-            x -= (tl.x + width - snappedRight)
-        } else if abs(x) < threshold {
-            x = 0
+            centerX -= (tl.x + width - snappedRight)
         }
 
         let tl2 = topLeft
         let snappedTop = Self.snapToBoundary(tl2.y, threshold: threshold)
         let snappedBottom = Self.snapToBoundary(tl2.y + height, threshold: threshold)
         if snappedTop != tl2.y {
-            y -= (tl2.y - snappedTop)
+            centerY -= (tl2.y - snappedTop)
         } else if snappedBottom != tl2.y + height {
-            y -= (tl2.y + height - snappedBottom)
-        } else if abs(y) < threshold {
-            y = 0
+            centerY -= (tl2.y + height - snappedBottom)
         }
-    }
-
-    /// Clip center in normalized canvas space (0–1).
-    var center: (x: Double, y: Double) {
-        let tl = topLeft
-        return (tl.x + width / 2, tl.y + height / 2)
     }
 
     /// Snap per-axis within threshold. Return tuple lets callers draw guide indicators.
     @discardableResult
     mutating func snapCenterToCanvasCenter(thresholdH: Double, thresholdV: Double) -> (x: Bool, y: Bool) {
-        let c = center
         var snappedX = false
         var snappedY = false
-        if abs(c.x - 0.5) < thresholdH {
-            x -= (c.x - 0.5)
+        if abs(centerX - 0.5) < thresholdH {
+            centerX = 0.5
             snappedX = true
         }
-        if abs(c.y - 0.5) < thresholdV {
-            y -= (c.y - 0.5)
+        if abs(centerY - 0.5) < thresholdV {
+            centerY = 0.5
             snappedY = true
         }
         return (snappedX, snappedY)

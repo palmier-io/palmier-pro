@@ -382,12 +382,9 @@ enum XMLExporter {
         private func buildVideoFilters(_ clip: Clip) -> String {
             let opacity = clip.opacity
             let t = clip.transform
-            let cx = (t.x + t.width / 2.0 - 0.5) * Double(seqWidth)
-            let cy = -((t.y + t.height / 2.0 - 0.5) * Double(seqHeight))
+            let cx = (t.centerX - 0.5) * Double(seqWidth)
+            let cy = -(t.centerY - 0.5) * Double(seqHeight)
 
-            // Basic Motion `scale` is 100% = 1:1 source pixels, so a source larger than
-            // the sequence zooms in. Translate Palmier's "fill the canvas" transform into
-            // an explicit uniform percentage. FCP7 has no non-uniform scale — X wins.
             let scalePct: Double
             if let sw = resolver.entry(for: clip.mediaRef)?.sourceWidth, sw > 0 {
                 scalePct = (Double(seqWidth) / Double(sw)) * t.width * 100

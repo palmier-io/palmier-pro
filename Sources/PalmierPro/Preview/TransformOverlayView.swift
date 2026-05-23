@@ -89,8 +89,8 @@ struct TransformOverlayView: View {
             return (start, (false, false))
         }
         var t = start
-        t.x += translation.width / videoRect.width
-        t.y += translation.height / videoRect.height
+        t.centerX += translation.width / videoRect.width
+        t.centerY += translation.height / videoRect.height
         t.snapToCanvasEdges(threshold: Snap.thresholdPixels / Double(videoRect.width))
         let snap = t.snapCenterToCanvasCenter(
             thresholdH: Snap.thresholdPixels / Double(videoRect.width),

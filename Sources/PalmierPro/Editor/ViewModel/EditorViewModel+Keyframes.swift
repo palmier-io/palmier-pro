@@ -147,8 +147,9 @@ extension EditorViewModel {
         let newY = setY ?? tl.y
         if clip.positionTrack?.isActive == true {
             clip.upsertKeyframe(in: \.positionTrack, frame: frame, value: AnimPair(a: newX, b: newY))
-        } else {
-            clip.transform = Transform(topLeft: (newX, newY), width: clip.transform.width, height: clip.transform.height)
+            let sz = clip.sizeAt(frame: frame)
+            clip.transform.centerX = newX + sz.width / 2
+            clip.transform.centerY = newY + sz.height / 2
         }
     }
 
@@ -168,7 +169,8 @@ extension EditorViewModel {
         if clip.scaleTrack?.isActive == true {
             clip.upsertKeyframe(in: \.scaleTrack, frame: activeFrame, value: AnimPair(a: w, b: h))
         } else {
-            clip.transform = Transform(center: clip.transform.center, width: w, height: h)
+            clip.transform.width = w
+            clip.transform.height = h
         }
     }
 
