@@ -27,6 +27,7 @@ struct ChatHistoryList: View {
                         }
                     }
                 }
+                .scrollIndicators(.never)
                 .frame(maxHeight: 360)
             }
         }
@@ -61,8 +62,8 @@ struct ChatHistoryList: View {
             Spacer()
             if !isCurrent {
                 Button { onDelete(session.id) } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9))
+                    Image(systemName: "trash")
+                        .font(.system(size: AppTheme.FontSize.xs))
                         .foregroundStyle(AppTheme.Text.mutedColor)
                 }
                 .buttonStyle(.plain)

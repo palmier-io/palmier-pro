@@ -116,17 +116,6 @@ struct AgentPanelView: View {
         .fixedSize()
     }
 
-    private var apiKeyButton: some View {
-        ApiKeyField(
-            label: "anthropic",
-            placeholder: "Paste Anthropic API key (sk-ant-…)",
-            hasKey: service.hasApiKey,
-            maskedKey: service.maskedApiKey,
-            onSave: { service.setApiKey($0) },
-            onDelete: { service.removeApiKey() }
-        )
-    }
-
     private var toolResults: [String: ToolRunResult] {
         var out: [String: ToolRunResult] = [:]
         for msg in service.messages where msg.role == .user {
@@ -190,11 +179,38 @@ struct AgentPanelView: View {
         }
     }
 
+    @ViewBuilder
     private var emptyState: some View {
-        Text(service.hasApiKey ? "Describe a change, or @ a clip to start." : "Add an Anthropic API key to start")
-            .font(.system(size: AppTheme.FontSize.md, weight: .medium))
-            .foregroundStyle(AppTheme.Text.secondaryColor)
+        if service.hasApiKey {
+            Text("Describe a change, or @ a clip to start.")
+                .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .multilineTextAlignment(.center)
+        } else {
+            missingKeyState
+        }
+    }
+
+    private var missingKeyState: some View {
+        VStack(spacing: AppTheme.Spacing.md) {
+            Image(systemName: "key.horizontal")
+                .font(.system(size: 28, weight: .light))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+
+            VStack(spacing: AppTheme.Spacing.xs) {
+                Text("AI Chat uses your own Anthropic API key to talk to Claude.")
+                    .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+            }
             .multilineTextAlignment(.center)
+
+            Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
+                Text("Open Settings")
+                    .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+        }
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
@@ -220,7 +236,6 @@ struct AgentPanelView: View {
             onCancel: { service.cancel() }
         ) {
             modelPicker
-            apiKeyButton
         }
         .padding(.horizontal, AppTheme.Spacing.mdLg)
         .padding(.bottom, AppTheme.Spacing.mdLg)

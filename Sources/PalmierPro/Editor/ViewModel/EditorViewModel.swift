@@ -71,8 +71,6 @@ final class EditorViewModel {
     var pendingEditTrimmedSource: TrimmedSource?
     /// Clip ids currently awaiting an AI-generated replacement.
     var pendingReplacements: Set<String> = []
-    var showHelp: Bool = false
-    var helpTab: HelpTab = .shortcuts
     var cropEditingActive: Bool = false
     var cropAspectLock: CropAspectLock = .free
     var previewTabs: [PreviewTab] = [.timeline]

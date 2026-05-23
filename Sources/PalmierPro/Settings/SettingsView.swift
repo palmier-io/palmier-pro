@@ -29,7 +29,11 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @Bindable private var account = AccountService.shared
-    @State private var selectedTab: SettingsTab = .account
+    @State private var selectedTab: SettingsTab
+
+    init(initialTab: SettingsTab = .account) {
+        _selectedTab = State(initialValue: initialTab)
+    }
 
     private var visibleTabs: [SettingsTab] {
         SettingsTab.allCases.filter { tab in
@@ -159,8 +163,11 @@ struct SettingsToggleRow: View {
 final class SettingsWindowController: NSWindowController {
     static let shared = SettingsWindowController()
 
+    private var hosting: NSHostingController<AnyView>?
+
     private init() {
-        let hosting = NSHostingController(rootView: SettingsView().tint(AppTheme.Accent.primary))
+        let initialView = SettingsView().tint(AppTheme.Accent.primary)
+        let hosting = NSHostingController(rootView: AnyView(initialView))
         let window = NSWindow(contentViewController: hosting)
         window.setContentSize(NSSize(width: 980, height: 640))
         window.minSize = NSSize(width: 760, height: 480)
@@ -174,13 +181,17 @@ final class SettingsWindowController: NSWindowController {
         window.isMovableByWindowBackground = true
         window.styleMask.insert(.fullSizeContentView)
         window.center()
+        self.hosting = hosting
         super.init(window: window)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    func show() {
+    func show(tab: SettingsTab? = nil) {
+        if let tab {
+            hosting?.rootView = AnyView(SettingsView(initialTab: tab).tint(AppTheme.Accent.primary))
+        }
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

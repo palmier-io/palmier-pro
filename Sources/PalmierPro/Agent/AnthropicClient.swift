@@ -1,9 +1,16 @@
 import Foundation
 
+extension Notification.Name {
+    static let anthropicAPIKeyChanged = Notification.Name("anthropicAPIKeyChanged")
+}
+
 enum AnthropicKeychain {
     private static let account = "anthropic-api-key"
 
-    static func save(_ key: String) { KeychainStore.save(key, account: account) }
+    static func save(_ key: String) {
+        KeychainStore.save(key, account: account)
+        NotificationCenter.default.post(name: .anthropicAPIKeyChanged, object: nil)
+    }
 
     static func load() -> String? {
         #if DEBUG
@@ -16,7 +23,10 @@ enum AnthropicKeychain {
         return KeychainStore.load(account: account)
     }
 
-    static func delete() { KeychainStore.delete(account: account) }
+    static func delete() {
+        KeychainStore.delete(account: account)
+        NotificationCenter.default.post(name: .anthropicAPIKeyChanged, object: nil)
+    }
 }
 
 enum AnthropicModel: String, CaseIterable, Sendable {

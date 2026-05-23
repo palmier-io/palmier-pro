@@ -6,23 +6,27 @@ import Observation
 final class AgentService {
 
     private var apiKey: String = AnthropicKeychain.load() ?? ""
+    nonisolated(unsafe) private var apiKeyObserver: NSObjectProtocol?
+
+    init() {
+        apiKeyObserver = NotificationCenter.default.addObserver(
+            forName: .anthropicAPIKeyChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.apiKey = AnthropicKeychain.load() ?? ""
+            }
+        }
+    }
+
+    deinit {
+        if let token = apiKeyObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
+    }
 
     var hasApiKey: Bool { !apiKey.isEmpty }
-
-    var maskedApiKey: String {
-        guard apiKey.count > 6 else { return String(repeating: "\u{2022}", count: apiKey.count) }
-        return apiKey.prefix(3) + String(repeating: "\u{2022}", count: apiKey.count - 6) + apiKey.suffix(3)
-    }
-
-    func setApiKey(_ key: String) {
-        AnthropicKeychain.save(key)
-        apiKey = key
-    }
-
-    func removeApiKey() {
-        AnthropicKeychain.delete()
-        apiKey = ""
-    }
 
     var model: AnthropicModel = {
         if let raw = UserDefaults.standard.string(forKey: "agentModel"),

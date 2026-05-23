@@ -2,12 +2,30 @@ import Foundation
 import MCP
 
 /// HTTP adapter. Tool handling lives in `ToolExecutor`.
+@Observable
 @MainActor
 final class MCPService {
 
     static let port: UInt16 = 19789
 
+    private static let enabledKey = "io.palmier.pro.mcp.enabled"
+
+    static var isEnabledPreference: Bool {
+        get {
+            let defaults = UserDefaults.standard
+            if defaults.object(forKey: enabledKey) == nil { return true }
+            return defaults.bool(forKey: enabledKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: enabledKey)
+        }
+    }
+
+    private(set) var isRunning: Bool = false
+
+    @ObservationIgnored
     private let toolExecutor: ToolExecutor
+    @ObservationIgnored
     private var httpServer: MCPHTTPServer?
 
     init(editorProvider: @escaping () -> EditorViewModel?) {
@@ -30,12 +48,14 @@ final class MCPService {
             return server
         }
         self.httpServer = httpServer
-        Task {
+        Task { @MainActor [weak self] in
             do {
                 try await httpServer.start()
                 Log.mcp.notice("http server started port=\(Self.port)")
+                self?.isRunning = true
             } catch {
                 Log.mcp.error("http server failed to start: \(error.localizedDescription)")
+                self?.isRunning = false
             }
         }
     }
@@ -45,6 +65,7 @@ final class MCPService {
             Task { await server.stop() }
         }
         httpServer = nil
+        isRunning = false
         Log.mcp.notice("http server stopped")
     }
 

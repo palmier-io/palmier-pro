@@ -34,4 +34,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func showSettings(_ sender: Any?) {
         SettingsWindowController.shared.show()
     }
+
+    @MainActor
+    @objc func showKeyboardShortcuts(_ sender: Any?) {
+        HelpWindowController.shared.show(tab: .shortcuts)
+    }
+
+    @MainActor
+    @objc func showMCPInstructions(_ sender: Any?) {
+        HelpWindowController.shared.show(tab: .mcp)
+    }
 }

@@ -177,12 +177,6 @@ final class VideoProject: NSDocument {
                 ExportView()
                     .environment(editorViewModel)
             }
-            .sheet(isPresented: Bindable(editorViewModel).showHelp) { [editorViewModel] in
-                HelpView()
-                    .environment(editorViewModel)
-                    .presentationSizing(.fitted)
-                    .presentationBackground(.ultraThinMaterial)
-            }
             .sheet(item: Bindable(editorViewModel).pendingSettingsMismatch) { [editorViewModel] mismatch in
                 ProjectSettingsMismatchView(mismatch: mismatch)
                     .environment(editorViewModel)

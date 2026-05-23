@@ -8,16 +8,33 @@ final class AppState {
 
     private(set) var activeProject: VideoProject?
 
-    @ObservationIgnored
-    private var mcpService: MCPService?
+    private(set) var mcpService: MCPService?
 
     func startMCPService() {
         guard mcpService == nil else { return }
+        guard MCPService.isEnabledPreference else {
+            Log.mcp.notice("mcp disabled in settings; not starting")
+            return
+        }
         let service = MCPService(editorProvider: { [weak self] in
             self?.activeProject?.editorViewModel
         })
         service.start()
         mcpService = service
+    }
+
+    func stopMCPService() {
+        mcpService?.stop()
+        mcpService = nil
+    }
+
+    func setMCPEnabled(_ enabled: Bool) {
+        MCPService.isEnabledPreference = enabled
+        if enabled {
+            startMCPService()
+        } else {
+            stopMCPService()
+        }
     }
 
     func showHome() {
