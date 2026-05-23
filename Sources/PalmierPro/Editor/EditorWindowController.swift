@@ -200,16 +200,6 @@ extension EditorWindowController: EditorActions {
         editorViewModel.showExportDialog = true
     }
 
-    @objc func showKeyboardShortcuts(_ sender: Any?) {
-        editorViewModel.helpTab = .shortcuts
-        editorViewModel.showHelp = true
-    }
-
-    @objc func showMCPInstructions(_ sender: Any?) {
-        editorViewModel.helpTab = .mcp
-        editorViewModel.showHelp = true
-    }
-
     @objc func copy(_ sender: Any?) {
         guard canHandleClipboardShortcut(),
               !editorViewModel.selectedClipIds.isEmpty else { return }
@@ -237,6 +227,9 @@ extension EditorWindowController: EditorActions {
     @objc func toggleInspectorPanel(_ sender: Any?) { editorViewModel.inspectorPanelVisible.toggle() }
     @objc func toggleAgentPanel(_ sender: Any?) { editorViewModel.agentPanelVisible.toggle() }
     @objc func toggleMaximizePanel(_ sender: Any?) { toggleMaximizePanelAction() }
+    @objc func setLayoutDefault(_ sender: Any?) { editorViewModel.layoutPreset = .default }
+    @objc func setLayoutMedia(_ sender: Any?) { editorViewModel.layoutPreset = .media }
+    @objc func setLayoutVertical(_ sender: Any?) { editorViewModel.layoutPreset = .vertical }
 
     private func toggleMaximizePanelAction() {
         if editorViewModel.maximizedPanel != nil {
@@ -260,6 +253,15 @@ extension EditorWindowController: EditorActions {
         case #selector(toggleMaximizePanel(_:)):
             menuItem.state = editorViewModel.maximizedPanel != nil ? .on : .off
             return editorViewModel.maximizedPanel != nil || editorViewModel.focusedPanel != nil
+        case #selector(setLayoutDefault(_:)):
+            menuItem.state = editorViewModel.layoutPreset == .default ? .on : .off
+            return true
+        case #selector(setLayoutMedia(_:)):
+            menuItem.state = editorViewModel.layoutPreset == .media ? .on : .off
+            return true
+        case #selector(setLayoutVertical(_:)):
+            menuItem.state = editorViewModel.layoutPreset == .vertical ? .on : .off
+            return true
         case #selector(copy(_:)), #selector(cut(_:)):
             return canHandleClipboardShortcut() && !editorViewModel.selectedClipIds.isEmpty
         case #selector(paste(_:)):

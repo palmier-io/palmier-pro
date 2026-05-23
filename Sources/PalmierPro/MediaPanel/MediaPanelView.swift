@@ -187,6 +187,7 @@ struct MediaPanelView: View {
                     }
                 }
             }
+            .layoutPriority(1)
 
             Spacer(minLength: AppTheme.Spacing.sm)
 
