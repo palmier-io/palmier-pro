@@ -74,13 +74,14 @@ extension Crop: KeyframeInterpolatable {
 
 /// Identifies which clip property an inspector lane / stamp button drives.
 enum AnimatableProperty: String, CaseIterable, Sendable {
-    case opacity, position, scale, crop, volume
+    case opacity, position, scale, rotation, crop, volume
 
     var displayName: String {
         switch self {
         case .opacity:  "Opacity"
         case .position: "Position"
         case .scale:    "Scale"
+        case .rotation: "Rotation"
         case .crop:     "Crop"
         case .volume:   "Volume"
         }
@@ -105,6 +106,7 @@ extension Clip {
         case .opacity:  offsets = opacityTrack?.keyframes.map(\.frame) ?? []
         case .position: offsets = positionTrack?.keyframes.map(\.frame) ?? []
         case .scale:    offsets = scaleTrack?.keyframes.map(\.frame) ?? []
+        case .rotation: offsets = rotationTrack?.keyframes.map(\.frame) ?? []
         case .crop:     offsets = cropTrack?.keyframes.map(\.frame) ?? []
         case .volume:   offsets = volumeTrack?.keyframes.map(\.frame) ?? []
         }
@@ -117,6 +119,7 @@ extension Clip {
         case .opacity:  return opacityTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
         case .position: return positionTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
         case .scale:    return scaleTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
+        case .rotation: return rotationTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
         case .crop:     return cropTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
         case .volume:   return volumeTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
         }
@@ -129,6 +132,7 @@ extension Clip {
         for kf in opacityTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
         for kf in positionTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
         for kf in scaleTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
+        for kf in rotationTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
         for kf in cropTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
         for kf in volumeTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
         return s.sorted()
@@ -157,6 +161,9 @@ extension Clip {
         case .scale:
             scaleTrack?.remove(at: o)
             if scaleTrack?.keyframes.isEmpty == true { scaleTrack = nil }
+        case .rotation:
+            rotationTrack?.remove(at: o)
+            if rotationTrack?.keyframes.isEmpty == true { rotationTrack = nil }
         case .crop:
             cropTrack?.remove(at: o)
             if cropTrack?.keyframes.isEmpty == true { cropTrack = nil }
@@ -171,6 +178,7 @@ extension Clip {
         case .opacity:  opacityTrack = nil
         case .position: positionTrack = nil
         case .scale:    scaleTrack = nil
+        case .rotation: rotationTrack = nil
         case .crop:     cropTrack = nil
         case .volume:   volumeTrack = nil
         }
@@ -191,6 +199,10 @@ extension Clip {
             if let i = scaleTrack?.keyframes.firstIndex(where: { $0.frame == o }) {
                 scaleTrack?.keyframes[i].interpolationOut = interpolation
             }
+        case .rotation:
+            if let i = rotationTrack?.keyframes.firstIndex(where: { $0.frame == o }) {
+                rotationTrack?.keyframes[i].interpolationOut = interpolation
+            }
         case .crop:
             if let i = cropTrack?.keyframes.firstIndex(where: { $0.frame == o }) {
                 cropTrack?.keyframes[i].interpolationOut = interpolation
@@ -208,6 +220,7 @@ extension Clip {
         case .opacity:  opacityTrack?.move(from: fromO, to: toO)
         case .position: positionTrack?.move(from: fromO, to: toO)
         case .scale:    scaleTrack?.move(from: fromO, to: toO)
+        case .rotation: rotationTrack?.move(from: fromO, to: toO)
         case .crop:     cropTrack?.move(from: fromO, to: toO)
         case .volume:   volumeTrack?.move(from: fromO, to: toO)
         }

@@ -40,6 +40,8 @@ extension EditorViewModel {
             case .scale:
                 let sz = clip.sizeAt(frame: f)
                 clip.upsertKeyframe(in: \.scaleTrack, frame: f, value: AnimPair(a: sz.width, b: sz.height))
+            case .rotation:
+                clip.upsertKeyframe(in: \.rotationTrack, frame: f, value: clip.rotationAt(frame: f))
             case .crop:
                 clip.upsertKeyframe(in: \.cropTrack, frame: f, value: clip.cropAt(frame: f))
             case .volume:
@@ -98,6 +100,23 @@ extension EditorViewModel {
         }
     }
 
+    func applyRotation(clipId: String, valueDeg: Double) {
+        applyClipProperty(clipId: clipId) { self.writeRotation(into: &$0, valueDeg: valueDeg) }
+    }
+
+    func commitRotation(clipId: String, valueDeg: Double) {
+        commitClipProperty(clipId: clipId) { self.writeRotation(into: &$0, valueDeg: valueDeg) }
+        undoManager?.setActionName("Change Rotation")
+    }
+
+    private func writeRotation(into clip: inout Clip, valueDeg: Double) {
+        if clip.rotationTrack?.isActive == true {
+            clip.upsertKeyframe(in: \.rotationTrack, frame: activeFrame, value: valueDeg)
+        } else {
+            clip.transform.rotation = valueDeg
+        }
+    }
+
     func applyVolume(clipId: String, valueDb: Double) {
         applyClipProperty(clipId: clipId) { self.writeVolume(into: &$0, valueDb: valueDb) }
     }
@@ -145,12 +164,12 @@ extension EditorViewModel {
         let tl = clip.topLeftAt(frame: frame)
         let newX = setX ?? tl.x
         let newY = setY ?? tl.y
+        let sz = clip.sizeAt(frame: frame)
         if clip.positionTrack?.isActive == true {
             clip.upsertKeyframe(in: \.positionTrack, frame: frame, value: AnimPair(a: newX, b: newY))
-            let sz = clip.sizeAt(frame: frame)
-            clip.transform.centerX = newX + sz.width / 2
-            clip.transform.centerY = newY + sz.height / 2
         }
+        clip.transform.centerX = newX + sz.width / 2
+        clip.transform.centerY = newY + sz.height / 2
     }
 
     func applyScale(clipId: String, newScale: Double) {
@@ -184,19 +203,24 @@ extension EditorViewModel {
     }
 
     private func writeTransform(into clip: inout Clip, newTransform: Transform) {
-        let posActive = clip.positionTrack?.isActive == true
-        let scaleActive = clip.scaleTrack?.isActive == true
         let frame = activeFrame
-
-        if posActive {
+        if clip.positionTrack?.isActive == true {
             let tl = newTransform.topLeft
             clip.upsertKeyframe(in: \.positionTrack, frame: frame, value: AnimPair(a: tl.x, b: tl.y))
+        } else {
+            clip.transform.centerX = newTransform.centerX
+            clip.transform.centerY = newTransform.centerY
         }
-        if scaleActive {
+        if clip.scaleTrack?.isActive == true {
             clip.upsertKeyframe(in: \.scaleTrack, frame: frame, value: AnimPair(a: newTransform.width, b: newTransform.height))
+        } else {
+            clip.transform.width = newTransform.width
+            clip.transform.height = newTransform.height
         }
-        if !posActive && !scaleActive {
-            clip.transform = newTransform
+        if clip.rotationTrack?.isActive == true {
+            clip.upsertKeyframe(in: \.rotationTrack, frame: frame, value: newTransform.rotation)
+        } else {
+            clip.transform.rotation = newTransform.rotation
         }
     }
 

@@ -394,7 +394,10 @@ enum XMLExporter {
 
             let needsCenter = abs(cx) > 0.1 || abs(cy) > 0.1
             let needsScale = abs(scalePct - 100) > 0.1
-            guard needsCenter || needsScale || opacity != 1.0 else { return "" }
+            // FCP7 Basic Motion rotation is counter-clockwise positive; our model is clockwise positive.
+            let rotationFcp = -t.rotation
+            let needsRotation = abs(rotationFcp) > 0.05
+            guard needsCenter || needsScale || needsRotation || opacity != 1.0 else { return "" }
 
             var params = ""
             if needsScale {
@@ -406,6 +409,18 @@ enum XMLExporter {
                               <valuemin>0</valuemin>
                               <valuemax>1000</valuemax>
                               <value>\(String(format: "%.2f", scalePct))</value>
+                            </parameter>
+                """
+            }
+            if needsRotation {
+                params += """
+
+                            <parameter>
+                              <parameterid>rotation</parameterid>
+                              <name>Rotation</name>
+                              <valuemin>-100000</valuemin>
+                              <valuemax>100000</valuemax>
+                              <value>\(String(format: "%.2f", rotationFcp))</value>
                             </parameter>
                 """
             }

@@ -259,6 +259,7 @@ struct KeyframesPanel: View {
     private static let videoRows: [(AnimatableProperty, String)] = [
         (.position, "Position"),
         (.scale,    "Scale"),
+        (.rotation, "Rotation"),
         (.opacity,  "Opacity"),
         (.crop,     "Crop"),
     ]

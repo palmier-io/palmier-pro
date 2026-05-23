@@ -474,6 +474,9 @@ struct InspectorView: View {
                     animatableRow(label: "Scale", clipId: single?.id, property: .scale) {
                         scaleScrubField(clips: clips)
                     }
+                    animatableRow(label: "Rotation", clipId: single?.id, property: .rotation) {
+                        rotationScrubField(clips: clips)
+                    }
                     animatableRow(label: "Opacity", clipId: single?.id, property: .opacity) {
                         opacityScrubField(clips: clips)
                     }
@@ -575,6 +578,7 @@ struct InspectorView: View {
                         $0.opacityTrack = nil
                         $0.positionTrack = nil
                         $0.scaleTrack = nil
+                        $0.rotationTrack = nil
                     }
                 }
             } : nil
@@ -598,6 +602,26 @@ struct InspectorView: View {
             for c in clips { editor.commitScale(clipId: c.id, newScale: newVal) }
             editor.undoManager?.endUndoGrouping()
             editor.undoManager?.setActionName("Change Scale")
+        }
+    }
+
+    @ViewBuilder
+    private func rotationScrubField(clips: [Clip]) -> some View {
+        ScrubbableNumberField(
+            value: sharedClipValue(clips) { $0.rotationAt(frame: editor.activeFrame) },
+            range: -3600...3600,
+            displayMultiplier: 1,
+            format: "%.0f",
+            valueSuffix: "°",
+            fieldWidth: 50,
+            onChanged: { newVal in
+                for c in clips { editor.applyRotation(clipId: c.id, valueDeg: newVal) }
+            }
+        ) { newVal in
+            editor.undoManager?.beginUndoGrouping()
+            for c in clips { editor.commitRotation(clipId: c.id, valueDeg: newVal) }
+            editor.undoManager?.endUndoGrouping()
+            editor.undoManager?.setActionName("Change Rotation")
         }
     }
 

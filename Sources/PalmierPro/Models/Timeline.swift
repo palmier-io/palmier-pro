@@ -103,6 +103,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var opacityTrack: KeyframeTrack<Double>?
     var positionTrack: KeyframeTrack<AnimPair>?
     var scaleTrack: KeyframeTrack<AnimPair>?
+    var rotationTrack: KeyframeTrack<Double>?
     var cropTrack: KeyframeTrack<Crop>?
     var volumeTrack: KeyframeTrack<Double>?
 
@@ -113,7 +114,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         case audioFadeInInterpolation, audioFadeOutInterpolation
         case opacity, transform, crop
         case linkGroupId, textContent, textStyle
-        case opacityTrack, positionTrack, scaleTrack, cropTrack, volumeTrack
+        case opacityTrack, positionTrack, scaleTrack, rotationTrack, cropTrack, volumeTrack
     }
 
     /// Frame where this clip ends on the timeline
@@ -130,6 +131,10 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
 
     func opacityAt(frame: Int) -> Double {
         opacityTrack?.sample(at: keyframeOffset(forFrame: frame), fallback: opacity) ?? opacity
+    }
+
+    func rotationAt(frame: Int) -> Double {
+        rotationTrack?.sample(at: keyframeOffset(forFrame: frame), fallback: transform.rotation) ?? transform.rotation
     }
 
     /// Sampled topLeft (normalized canvas space) at `frame`
@@ -154,11 +159,15 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     func transformAt(frame: Int) -> Transform {
         let tl = topLeftAt(frame: frame)
         let sz = sizeAt(frame: frame)
-        return Transform(topLeft: (tl.x, tl.y), width: sz.width, height: sz.height)
+        var t = Transform(topLeft: (tl.x, tl.y), width: sz.width, height: sz.height)
+        t.rotation = rotationAt(frame: frame)
+        return t
     }
 
     var hasTransformAnimation: Bool {
-        (positionTrack?.isActive ?? false) || (scaleTrack?.isActive ?? false)
+        (positionTrack?.isActive ?? false)
+            || (scaleTrack?.isActive ?? false)
+            || (rotationTrack?.isActive ?? false)
     }
 
     func cropAt(frame: Int) -> Crop {
@@ -276,6 +285,7 @@ extension Clip {
             opacityTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .opacityTrack),
             positionTrack: try? c.decode(KeyframeTrack<AnimPair>.self, forKey: .positionTrack),
             scaleTrack: try? c.decode(KeyframeTrack<AnimPair>.self, forKey: .scaleTrack),
+            rotationTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .rotationTrack),
             cropTrack: try? c.decode(KeyframeTrack<Crop>.self, forKey: .cropTrack),
             volumeTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .volumeTrack)
         )
@@ -287,6 +297,7 @@ struct Transform: Codable, Sendable, Equatable {
     var centerY: Double = 0.5
     var width: Double = 1
     var height: Double = 1
+    var rotation: Double = 0 // degrees, positive = clockwise
     var flipHorizontal: Bool = false
     var flipVertical: Bool = false
 
@@ -303,6 +314,7 @@ struct Transform: Codable, Sendable, Equatable {
         centerY: Double = 0.5,
         width: Double = 1,
         height: Double = 1,
+        rotation: Double = 0,
         flipHorizontal: Bool = false,
         flipVertical: Bool = false
     ) {
@@ -310,6 +322,7 @@ struct Transform: Codable, Sendable, Equatable {
         self.centerY = centerY
         self.width = width
         self.height = height
+        self.rotation = rotation
         self.flipHorizontal = flipHorizontal
         self.flipVertical = flipVertical
     }
@@ -329,7 +342,7 @@ struct Transform: Codable, Sendable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case centerX, centerY, width, height, flipHorizontal, flipVertical
+        case centerX, centerY, width, height, rotation, flipHorizontal, flipVertical
         // Legacy keys
         case x, y
     }
@@ -354,6 +367,7 @@ struct Transform: Codable, Sendable, Equatable {
         }
         self.width = w
         self.height = h
+        self.rotation = try c.decodeIfPresent(Double.self, forKey: .rotation) ?? 0
         self.flipHorizontal = try c.decodeIfPresent(Bool.self, forKey: .flipHorizontal) ?? false
         self.flipVertical = try c.decodeIfPresent(Bool.self, forKey: .flipVertical) ?? false
     }
@@ -364,6 +378,7 @@ struct Transform: Codable, Sendable, Equatable {
         try c.encode(centerY, forKey: .centerY)
         try c.encode(width, forKey: .width)
         try c.encode(height, forKey: .height)
+        try c.encode(rotation, forKey: .rotation)
         try c.encode(flipHorizontal, forKey: .flipHorizontal)
         try c.encode(flipVertical, forKey: .flipVertical)
     }

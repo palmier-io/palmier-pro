@@ -369,8 +369,15 @@ enum CompositionBuilder {
             let sy = (renderSize.height / natSize.height) * t.height * (t.flipVertical ? -1 : 1)
             let tx = (t.flipHorizontal ? tl.x + t.width : tl.x) * renderSize.width
             let ty = (t.flipVertical ? tl.y + t.height : tl.y) * renderSize.height
-            return CGAffineTransform(scaleX: sx, y: sy)
+            let placed = CGAffineTransform(scaleX: sx, y: sy)
                 .concatenating(CGAffineTransform(translationX: tx, y: ty))
+            guard t.rotation != 0 else { return placed }
+            let cx = t.centerX * renderSize.width
+            let cy = t.centerY * renderSize.height
+            return placed
+                .concatenating(CGAffineTransform(translationX: -cx, y: -cy))
+                .concatenating(CGAffineTransform(rotationAngle: t.rotation * .pi / 180))
+                .concatenating(CGAffineTransform(translationX: cx, y: cy))
         }
 
         guard clip.hasTransformAnimation else {
@@ -378,12 +385,15 @@ enum CompositionBuilder {
             return
         }
 
-        // Union of position + scale offsets, defensively clamped to [0, durationFrames].
+        // Union of position + scale + rotation offsets, defensively clamped to [0, durationFrames].
         var offsetSet = Set<Int>()
         for kf in clip.positionTrack?.keyframes ?? [] where kf.frame >= 0 && kf.frame <= clip.durationFrames {
             offsetSet.insert(kf.frame)
         }
         for kf in clip.scaleTrack?.keyframes ?? [] where kf.frame >= 0 && kf.frame <= clip.durationFrames {
+            offsetSet.insert(kf.frame)
+        }
+        for kf in clip.rotationTrack?.keyframes ?? [] where kf.frame >= 0 && kf.frame <= clip.durationFrames {
             offsetSet.insert(kf.frame)
         }
         let offsets = offsetSet.sorted()
