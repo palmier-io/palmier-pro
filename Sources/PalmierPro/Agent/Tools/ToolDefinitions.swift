@@ -56,10 +56,10 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addTrack,
-            description: "Adds a new track at the top of its zone — visual tracks (video/image) insert at index 0; audio tracks insert at the top of the audio zone (just below the visual tracks). Track type must match the clips you intend to place on it (video/audio/image). Label is cosmetic.",
+            description: "Adds a new track at the top of its zone — video tracks insert at index 0; audio tracks insert at the top of the audio zone (just below the video tracks). Only 'video' and 'audio' are valid: visual media (video clips, images, text) all live on video tracks. Label is cosmetic.",
             inputSchema: objectSchema(
                 properties: [
-                    "type": ["type": "string", "enum": ["video", "audio", "image"], "description": "Track type"],
+                    "type": ["type": "string", "enum": ["video", "audio"], "description": "Track type. Use 'video' for any visual media (video clips, images, text overlays)."],
                     "label": ["type": "string", "description": "Display label. Defaults to the type name (e.g. 'Video')."],
                 ],
                 required: ["type"]

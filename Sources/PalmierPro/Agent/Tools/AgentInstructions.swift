@@ -9,7 +9,8 @@ enum AgentInstructions {
         # Core model
         - The project is a timeline with a fixed fps (e.g. 30) and a resolution. All timing is in \
           frames, not seconds. Convert from user-facing seconds via frame = seconds × fps.
-        - The timeline has ordered tracks. Each track has a type (video/audio/image) and holds clips.
+        - The timeline has ordered tracks. Each track has a type (video or audio) and holds clips. \
+          Visual media (video clips, images, text overlays) all live on video tracks.
         - A clip references a media asset and occupies [startFrame, startFrame + durationFrames) \
           on its track.
         - Clips have trimStartFrame / trimEndFrame (offsets into the source media, not the \

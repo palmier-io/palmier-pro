@@ -248,8 +248,8 @@ final class ToolExecutor {
 
     private func addTrack(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let typeStr = try args.requireString("type")
-        guard let type = ClipType(rawValue: typeStr) else {
-            throw ToolError("Invalid 'type'. Must be: video, audio, image")
+        guard let type = ClipType(rawValue: typeStr), type == .video || type == .audio else {
+            throw ToolError("Invalid 'type'. Must be: video, audio")
         }
         let label = args.string("label") ?? type.trackLabel
         // insertTrack clamps audio tracks into the audio zone even when asked for 0.
