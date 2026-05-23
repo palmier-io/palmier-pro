@@ -114,7 +114,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .updateClips,
-            description: "Updates one or more existing clips (timing, trim, speed, volume, opacity, transform) as a single undoable action. Handles every clip type — text clips also accept content and style fields (content, fontName, fontSize, color, alignment). trimStartFrame/trimEndFrame are offsets from the source media, not the timeline. speed 1.0 is normal, <1.0 slows (clip gets longer on the timeline), >1.0 speeds up. volume and opacity are 0.0–1.0. transform uses 0–1 normalized canvas coords, partial merge (pass only centerY to reposition vertically). When a text clip's content or font changes without an explicit transform, the bounding box auto-refits. Per-update, omit fields to leave them unchanged. Text-only fields on non-text clips are rejected.",
+            description: "Updates one or more existing clips (timing, trim, speed, volume, opacity, transform) as a single undoable action. Handles every clip type — text clips also accept content and style fields (content, fontName, fontSize, color, alignment). trimStartFrame/trimEndFrame are offsets from the source media, not the timeline. speed 1.0 is normal, <1.0 slows (clip gets longer on the timeline), >1.0 speeds up. volume and opacity are 0.0–1.0. transform uses 0–1 normalized canvas coords, partial merge (pass only centerY to reposition vertically); flipHorizontal/flipVertical mirror the clip across the corresponding axis (no effect on text clips). When a text clip's content or font changes without an explicit transform, the bounding box auto-refits. Per-update, omit fields to leave them unchanged. Text-only fields on non-text clips are rejected.",
             inputSchema: objectSchema(
                 properties: [
                     "updates": [
@@ -133,12 +133,14 @@ enum ToolDefinitions {
                                 "opacity": ["type": "number", "description": "Opacity 0.0-1.0 (default 1.0)"],
                                 "transform": [
                                     "type": "object",
-                                    "description": "Partial transform. Any combination of centerX, centerY, width, height; omitted fields keep their current value.",
+                                    "description": "Partial transform. Any combination of centerX, centerY, width, height, flipHorizontal, flipVertical; omitted fields keep their current value.",
                                     "properties": [
                                         "centerX": ["type": "number"],
                                         "centerY": ["type": "number"],
                                         "width": ["type": "number"],
                                         "height": ["type": "number"],
+                                        "flipHorizontal": ["type": "boolean", "description": "Mirror the clip across the vertical axis."],
+                                        "flipVertical": ["type": "boolean", "description": "Mirror the clip across the horizontal axis."],
                                     ],
                                 ],
                                 "content": ["type": "string", "description": "Text clips only. New text content."],

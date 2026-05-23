@@ -373,7 +373,7 @@ final class ToolExecutor {
         let speed: Double?
         let volume: Double?
         let opacity: Double?
-        let transform: (cx: Double?, cy: Double?, w: Double?, h: Double?)?
+        let transform: (cx: Double?, cy: Double?, w: Double?, h: Double?, flipH: Bool?, flipV: Bool?)?
         let content: String?
         let fontName: String?
         let fontSize: Double?
@@ -409,15 +409,21 @@ final class ToolExecutor {
                 throw ToolError("\(path): clip \(clipId) is a \(clipType.rawValue) clip; fields '\(textOnlySeen.sorted().joined(separator: "', '"))' are only valid on text clips")
             }
 
-            var transform: (cx: Double?, cy: Double?, w: Double?, h: Double?)?
+            var transform: (cx: Double?, cy: Double?, w: Double?, h: Double?, flipH: Bool?, flipV: Bool?)?
             if let tDict = entry["transform"] as? [String: Any] {
-                try validateUnknownKeys(tDict, allowed: ["centerX", "centerY", "width", "height"], path: "\(path).transform")
+                try validateUnknownKeys(
+                    tDict,
+                    allowed: ["centerX", "centerY", "width", "height", "flipHorizontal", "flipVertical"],
+                    path: "\(path).transform"
+                )
                 let cx = tDict.double("centerX")
                 let cy = tDict.double("centerY")
                 let w = tDict.double("width")
                 let h = tDict.double("height")
-                if cx != nil || cy != nil || w != nil || h != nil {
-                    transform = (cx, cy, w, h)
+                let flipH = tDict.bool("flipHorizontal")
+                let flipV = tDict.bool("flipVertical")
+                if cx != nil || cy != nil || w != nil || h != nil || flipH != nil || flipV != nil {
+                    transform = (cx, cy, w, h, flipH, flipV)
                 }
             }
 
@@ -465,7 +471,10 @@ final class ToolExecutor {
                     let cy = t.cy ?? center.y
                     let w = t.w ?? cur.width
                     let h = t.h ?? cur.height
-                    clip.transform = Transform(center: (cx, cy), width: w, height: h)
+                    var next = Transform(center: (cx, cy), width: w, height: h)
+                    next.flipHorizontal = t.flipH ?? cur.flipHorizontal
+                    next.flipVertical = t.flipV ?? cur.flipVertical
+                    clip.transform = next
                     changed.append("transform")
                 }
 

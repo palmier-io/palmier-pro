@@ -285,14 +285,25 @@ struct Transform: Codable, Sendable, Equatable {
     var y: Double = 0       // 0 = top edge
     var width: Double = 1   // 1 = full canvas width
     var height: Double = 1  // 1 = full canvas height
+    var flipHorizontal: Bool = false
+    var flipVertical: Bool = false
 
     /// Top-left corner in normalized canvas space (0–1).
     var topLeft: (x: Double, y: Double) {
         (x + width / 2.0 - 0.5, y + height / 2.0 - 0.5)
     }
 
-    init(x: Double = 0, y: Double = 0, width: Double = 1, height: Double = 1) {
+    init(
+        x: Double = 0,
+        y: Double = 0,
+        width: Double = 1,
+        height: Double = 1,
+        flipHorizontal: Bool = false,
+        flipVertical: Bool = false
+    ) {
         self.x = x; self.y = y; self.width = width; self.height = height
+        self.flipHorizontal = flipHorizontal
+        self.flipVertical = flipVertical
     }
 
     init(topLeft tl: (x: Double, y: Double), width w: Double, height h: Double) {
@@ -304,6 +315,20 @@ struct Transform: Codable, Sendable, Equatable {
 
     init(center c: (x: Double, y: Double), width w: Double, height h: Double) {
         self.init(topLeft: (c.x - w / 2.0, c.y - h / 2.0), width: w, height: h)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case x, y, width, height, flipHorizontal, flipVertical
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.x = try c.decodeIfPresent(Double.self, forKey: .x) ?? 0
+        self.y = try c.decodeIfPresent(Double.self, forKey: .y) ?? 0
+        self.width = try c.decodeIfPresent(Double.self, forKey: .width) ?? 1
+        self.height = try c.decodeIfPresent(Double.self, forKey: .height) ?? 1
+        self.flipHorizontal = try c.decodeIfPresent(Bool.self, forKey: .flipHorizontal) ?? false
+        self.flipVertical = try c.decodeIfPresent(Bool.self, forKey: .flipVertical) ?? false
     }
 
     /// Snap a value to canvas boundaries (0 or 1) within threshold.

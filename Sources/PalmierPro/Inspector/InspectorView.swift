@@ -478,6 +478,7 @@ struct InspectorView: View {
                         opacityScrubField(clips: clips)
                     }
                     cropRow(single: single)
+                    flipRow(clips: clips)
                 }
                 .padding(.leading, sectionContentIndent)
             }
@@ -680,6 +681,60 @@ struct InspectorView: View {
             Spacer()
             trailing()
         }
+    }
+
+    // MARK: - Flip
+
+    @ViewBuilder
+    private func flipRow(clips: [Clip]) -> some View {
+        let activeH = clips.first?.transform.flipHorizontal ?? false
+        let activeV = clips.first?.transform.flipVertical ?? false
+        propertyRow(label: "Flip") {
+            HStack(spacing: AppTheme.Spacing.xs) {
+                flipToggleButton(
+                    systemName: "arrow.left.and.right",
+                    isOn: activeH,
+                    help: activeH ? "Remove horizontal flip" : "Flip horizontally"
+                ) {
+                    let newValue = !activeH
+                    commitToClips(clips, actionName: "Flip Horizontal") { c in
+                        editor.commitClipProperty(clipId: c.id) { $0.transform.flipHorizontal = newValue }
+                    }
+                }
+                flipToggleButton(
+                    systemName: "arrow.up.and.down",
+                    isOn: activeV,
+                    help: activeV ? "Remove vertical flip" : "Flip vertically"
+                ) {
+                    let newValue = !activeV
+                    commitToClips(clips, actionName: "Flip Vertical") { c in
+                        editor.commitClipProperty(clipId: c.id) { $0.transform.flipVertical = newValue }
+                    }
+                }
+            }
+        }
+        .frame(height: KeyframesMetrics.rowHeight)
+    }
+
+    private func flipToggleButton(
+        systemName: String,
+        isOn: Bool,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                .foregroundStyle(isOn ? AppTheme.Accent.primary : AppTheme.Text.secondaryColor)
+                .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
+                .background(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.xs)
+                        .fill(Color.white.opacity(isOn ? AppTheme.Opacity.subtle : 0))
+                )
+                .hoverHighlight()
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 
     // MARK: - Crop

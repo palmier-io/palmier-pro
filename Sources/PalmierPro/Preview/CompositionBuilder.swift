@@ -365,10 +365,12 @@ enum CompositionBuilder {
     ) {
         let affine: (Transform) -> CGAffineTransform = { t in
             let tl = t.topLeft
-            return CGAffineTransform(
-                scaleX: (renderSize.width / natSize.width) * t.width,
-                y: (renderSize.height / natSize.height) * t.height
-            ).concatenating(CGAffineTransform(translationX: tl.x * renderSize.width, y: tl.y * renderSize.height))
+            let sx = (renderSize.width / natSize.width) * t.width * (t.flipHorizontal ? -1 : 1)
+            let sy = (renderSize.height / natSize.height) * t.height * (t.flipVertical ? -1 : 1)
+            let tx = (t.flipHorizontal ? tl.x + t.width : tl.x) * renderSize.width
+            let ty = (t.flipVertical ? tl.y + t.height : tl.y) * renderSize.height
+            return CGAffineTransform(scaleX: sx, y: sy)
+                .concatenating(CGAffineTransform(translationX: tx, y: ty))
         }
 
         guard clip.hasTransformAnimation else {
