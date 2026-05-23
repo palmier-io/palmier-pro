@@ -82,10 +82,9 @@ final class TimelineInputController {
                 } else {
                     editor.selectedClipIds.insert(clip.id)
                 }
-            } else if isOption {
-                // Override: select only the clicked clip regardless of link group.
+            } else if isOption, !editor.selectedClipIds.contains(clip.id) {
                 editor.selectedClipIds = [clip.id]
-            } else if !editor.selectedClipIds.contains(clip.id) {
+            } else if !isOption, !editor.selectedClipIds.contains(clip.id) {
                 editor.selectedClipIds = linkedOn ? editor.expandToLinkGroup([clip.id]) : [clip.id]
             }
 
@@ -119,7 +118,7 @@ final class TimelineInputController {
             } else if isCommand, clip.mediaType == .audio,
                       addVolumeKeyframeOnClick(at: point, clip: clip, clipRect: rect) {
                 dragState = .idle
-            } else if localX <= Trim.handleWidth {
+            } else if !isOption, localX <= Trim.handleWidth {
                 dragState = .trimLeft(DragState.TrimDrag(
                     clipId: clip.id,
                     trackIndex: hit.trackIndex,
@@ -130,7 +129,7 @@ final class TimelineInputController {
                     hasNoSourceMedia: clip.mediaType == .image || clip.mediaType == .text,
                     propagateToLinked: linkedOn
                 ))
-            } else if localX >= rect.width - Trim.handleWidth {
+            } else if !isOption, localX >= rect.width - Trim.handleWidth {
                 dragState = .trimRight(DragState.TrimDrag(
                     clipId: clip.id,
                     trackIndex: hit.trackIndex,
@@ -153,7 +152,8 @@ final class TimelineInputController {
                     lead: .init(clipId: clip.id, originalTrack: hit.trackIndex, originalFrame: clip.startFrame),
                     companions: companions,
                     grabOffsetFrames: grabFrame - clip.startFrame,
-                    dropTarget: .existingTrack(hit.trackIndex)
+                    dropTarget: .existingTrack(hit.trackIndex),
+                    isDuplicate: isOption
                 ))
             }
         } else {
@@ -348,25 +348,35 @@ final class TimelineInputController {
             switch drag.dropTarget {
             case .existingTrack:
                 let pinned = pinnedCompanionIds(for: drag)
-                editor.moveClips(drag.all.map { p in
+                let moves = drag.all.map { p in
                     let destTrack = pinned.contains(p.clipId) ? p.originalTrack : p.originalTrack + trackDelta
-                    return (p.clipId, destTrack, p.originalFrame + clampedDelta)
-                })
+                    return (clipId: p.clipId, toTrack: destTrack, toFrame: p.originalFrame + clampedDelta)
+                }
+                if drag.isDuplicate {
+                    editor.duplicateClipsToPositions(moves)
+                } else {
+                    editor.moveClips(moves)
+                }
             case .newTrackAt(let insertIndex):
                 // Existing companions at or below the inserted track shift down.
                 editor.undoManager?.beginUndoGrouping()
                 let clipType = editor.timeline.tracks[drag.lead.originalTrack].type
                 let newIdx = editor.insertTrack(at: insertIndex, type: clipType, label: clipType.trackLabel)
-                let moves: [(String, Int, Int)] = drag.all.map { p in
+                let moves: [(clipId: String, toTrack: Int, toFrame: Int)] = drag.all.map { p in
                     if drag.isLead(p) {
                         return (p.clipId, newIdx, p.originalFrame + clampedDelta)
                     }
                     let shifted = p.originalTrack >= newIdx ? p.originalTrack + 1 : p.originalTrack
                     return (p.clipId, shifted, p.originalFrame + clampedDelta)
                 }
-                editor.moveClips(moves)
+                if drag.isDuplicate {
+                    editor.duplicateClipsToPositions(moves)
+                    editor.undoManager?.setActionName(moves.count == 1 ? "Duplicate Clip to New Track" : "Duplicate Clips to New Track")
+                } else {
+                    editor.moveClips(moves)
+                    editor.undoManager?.setActionName("Move Clip to New Track")
+                }
                 editor.undoManager?.endUndoGrouping()
-                editor.undoManager?.setActionName("Move Clip to New Track")
             }
 
         case .trimLeft(let drag):

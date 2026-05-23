@@ -79,13 +79,6 @@ final class EditorWindowController: NSWindowController {
             }
             return true
 
-        case 2: // D key
-            if cmd {
-                editorViewModel.duplicateSelectedClips()
-                return true
-            }
-            return false
-
         case 8: // C key
             if !cmd {
                 editorViewModel.toolMode = .razor
@@ -217,6 +210,29 @@ extension EditorWindowController: EditorActions {
         editorViewModel.showHelp = true
     }
 
+    @objc func copy(_ sender: Any?) {
+        guard canHandleClipboardShortcut(),
+              !editorViewModel.selectedClipIds.isEmpty else { return }
+        editorViewModel.copySelectedClipsToClipboard()
+    }
+
+    @objc func cut(_ sender: Any?) {
+        guard canHandleClipboardShortcut(),
+              !editorViewModel.selectedClipIds.isEmpty else { return }
+        editorViewModel.copySelectedClipsToClipboard()
+        editorViewModel.deleteSelectedClips()
+    }
+
+    @objc func paste(_ sender: Any?) {
+        guard canHandleClipboardShortcut(),
+              editorViewModel.canPasteClips else { return }
+        editorViewModel.pasteClipsAtPlayhead()
+    }
+
+    private func canHandleClipboardShortcut() -> Bool {
+        editorViewModel.focusedPanel == .timeline
+    }
+
     @objc func toggleMediaPanel(_ sender: Any?) { editorViewModel.mediaPanelVisible.toggle() }
     @objc func toggleInspectorPanel(_ sender: Any?) { editorViewModel.inspectorPanelVisible.toggle() }
     @objc func toggleAgentPanel(_ sender: Any?) { editorViewModel.agentPanelVisible.toggle() }
@@ -244,6 +260,10 @@ extension EditorWindowController: EditorActions {
         case #selector(toggleMaximizePanel(_:)):
             menuItem.state = editorViewModel.maximizedPanel != nil ? .on : .off
             return editorViewModel.maximizedPanel != nil || editorViewModel.focusedPanel != nil
+        case #selector(copy(_:)), #selector(cut(_:)):
+            return canHandleClipboardShortcut() && !editorViewModel.selectedClipIds.isEmpty
+        case #selector(paste(_:)):
+            return canHandleClipboardShortcut() && editorViewModel.canPasteClips
         default:
             return true
         }

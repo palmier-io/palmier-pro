@@ -230,8 +230,9 @@ final class TimelineView: NSView {
                     let originalRect = geo.clipRect(for: clip, trackIndex: ti)
 
                     if originalRect.intersects(dirtyRect) {
+                        let originalOpacity = drag.isDuplicate ? 1.0 : 0.3
                         ClipRenderer.draw(clip, type: clip.mediaType, in: originalRect,
-                                          isSelected: false, opacity: 0.3, context: ctx,
+                                          isSelected: drag.isDuplicate && isSelected, opacity: originalOpacity, context: ctx,
                                           cache: editor.mediaVisualCache,
                                           displayName: editor.clipDisplayLabel(for: clip),
                                           fps: editor.timeline.fps)
@@ -469,8 +470,9 @@ final class TimelineView: NSView {
     override func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
         let trackIndex = geometry.trackAt(y: point.y)
+        let clickFrame = max(0, geometry.frameAt(x: point.x))
         guard let hit = inputController.hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) else {
-            return nil
+            return emptyAreaMenu(trackIndex: trackIndex, frame: clickFrame)
         }
         let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
         let clipRect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
@@ -521,8 +523,20 @@ final class TimelineView: NSView {
         }
 
         let menu = NSMenu()
+
+        let copyItem = NSMenuItem(title: "Copy", action: #selector(performCopyClips(_:)), keyEquivalent: "")
+        copyItem.target = self
+        menu.addItem(copyItem)
+
+        if editor.canPasteClips {
+            let pasteItem = NSMenuItem(title: "Paste", action: #selector(performPasteClips(_:)), keyEquivalent: "")
+            pasteItem.target = self
+            pasteItem.representedObject = ["trackIndex": hit.trackIndex, "frame": clickFrame] as [String: Any]
+            menu.addItem(pasteItem)
+        }
+
         if clip.mediaType == .video || clip.mediaType == .audio {
-            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            menu.addItem(.separator())
             let item = NSMenuItem(
                 title: "Save as Media",
                 action: #selector(performSaveAsMedia(_:)),
@@ -533,18 +547,42 @@ final class TimelineView: NSView {
             menu.addItem(item)
         }
         if editor.canLinkSelected {
-            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            menu.addItem(.separator())
             let item = NSMenuItem(title: "Link", action: #selector(performLink(_:)), keyEquivalent: "")
             item.target = self
             menu.addItem(item)
         }
         if editor.canUnlinkSelected {
-            if !menu.items.isEmpty && !editor.canLinkSelected { menu.addItem(.separator()) }
+            if !editor.canLinkSelected { menu.addItem(.separator()) }
             let item = NSMenuItem(title: "Unlink", action: #selector(performUnlink(_:)), keyEquivalent: "")
             item.target = self
             menu.addItem(item)
         }
         return menu.items.isEmpty ? nil : menu
+    }
+
+    private func emptyAreaMenu(trackIndex: Int, frame: Int) -> NSMenu? {
+        guard editor.canPasteClips,
+              editor.timeline.tracks.indices.contains(trackIndex) else { return nil }
+        let menu = NSMenu()
+        let item = NSMenuItem(title: "Paste", action: #selector(performPasteClips(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = ["trackIndex": trackIndex, "frame": frame] as [String: Any]
+        menu.addItem(item)
+        return menu
+    }
+
+    @objc private func performCopyClips(_ sender: Any?) {
+        editor.copySelectedClipsToClipboard()
+    }
+
+    @objc private func performPasteClips(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let info = item.representedObject as? [String: Any],
+              let trackIndex = info["trackIndex"] as? Int,
+              let frame = info["frame"] as? Int else { return }
+        editor.pasteClips(atTrack: trackIndex, atFrame: frame)
+        needsDisplay = true
     }
 
     @objc private func performLink(_ sender: Any?) {

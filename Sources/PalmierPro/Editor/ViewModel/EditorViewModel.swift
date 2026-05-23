@@ -51,6 +51,7 @@ final class EditorViewModel {
     var selectedClipIds: Set<String> = []
     var selectedMediaAssetIds: Set<String> = []
     var selectedFolderIds: Set<String> = []
+    var clipClipboard: [ClipClipboardEntry] = []
     var zoomScale: Double = Defaults.pixelsPerFrame
     var canvasZoom: CGFloat = 1.0 {
         didSet {
