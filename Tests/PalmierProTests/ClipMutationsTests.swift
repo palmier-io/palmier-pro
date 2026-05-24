@@ -1,0 +1,236 @@
+import Foundation
+import Testing
+@testable import PalmierPro
+
+/// Direct tests against EditorViewModel's clip-mutation APIs. The same logic is exercised
+/// indirectly through ToolExecutor tests, but these probe the underlying contracts
+/// (split with linked partners, prune behavior, speed math ripple, etc.) head-on.
+@MainActor
+private func editor(_ tracks: [Track] = []) -> EditorViewModel {
+    let e = EditorViewModel()
+    e.timeline = Fixtures.timeline(tracks: tracks)
+    return e
+}
+
+@Suite("EditorViewModel — applyClipSpeed")
+@MainActor
+struct ApplyClipSpeedTests {
+
+    @Test func applyClipSpeedDoublesScalesDurationDownByHalf() {
+        let clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        e.applyClipSpeed(clipId: "c1", newSpeed: 2.0)
+        let updated = e.timeline.tracks[0].clips[0]
+        #expect(updated.speed == 2.0)
+        // sourceFrames=60*1=60; newDuration = 60/2 = 30.
+        #expect(updated.durationFrames == 30)
+    }
+
+    @Test func applyClipSpeedHalfDoublesDuration() {
+        let clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        e.applyClipSpeed(clipId: "c1", newSpeed: 0.5)
+        #expect(e.timeline.tracks[0].clips[0].durationFrames == 120)
+    }
+
+    @Test func applyClipSpeedRipplesContiguousChainOnSameTrack() {
+        // Two clips touching at frame 60: c1 [0, 60), c2 [60, 90).
+        // Speeding c1 to 2.0 shrinks it to [0, 30) → contiguous c2 should ripple to [30, 60).
+        let c1 = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        let c2 = Fixtures.clip(id: "c2", start: 60, duration: 30)
+        let e = editor([Fixtures.videoTrack(clips: [c1, c2])])
+        e.applyClipSpeed(clipId: "c1", newSpeed: 2.0)
+        let updated = e.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(updated[0].durationFrames == 30)
+        #expect(updated[1].startFrame == 30)
+    }
+
+    @Test func applyClipSpeedDoesNotRippleNonContiguousFollowers() {
+        // c2 has a gap before it → not part of the contiguous chain, should not move.
+        let c1 = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        let c2 = Fixtures.clip(id: "c2", start: 100, duration: 30)
+        let e = editor([Fixtures.videoTrack(clips: [c1, c2])])
+        e.applyClipSpeed(clipId: "c1", newSpeed: 2.0)
+        let updated = e.timeline.tracks[0].clips.first { $0.id == "c2" }!
+        #expect(updated.startFrame == 100)
+    }
+}
+
+@Suite("EditorViewModel — splitClip")
+@MainActor
+struct SplitClipTests {
+
+    @Test func splitClipDividesAtFrameAndReturnsRightHalfId() {
+        let clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let rightIds = e.splitClip(clipId: "c1", atFrame: 30)
+        #expect(rightIds.count == 1)
+        let clips = e.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(clips.count == 2)
+        #expect(clips[0].durationFrames == 30)
+        #expect(clips[1].durationFrames == 30)
+        #expect(clips[1].id == rightIds[0])
+    }
+
+    @Test func splitClipReturnsEmptyForUnknownId() {
+        let e = editor()
+        #expect(e.splitClip(clipId: "ghost", atFrame: 10).isEmpty)
+    }
+
+    @Test func splitAtClipBoundaryIsRejected() {
+        let clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        // atFrame must be strictly inside (clip.startFrame, clip.endFrame).
+        #expect(e.splitClip(clipId: "c1", atFrame: 0).isEmpty)
+        #expect(e.splitClip(clipId: "c1", atFrame: 60).isEmpty)
+        // Verify the clip was not modified.
+        #expect(e.timeline.tracks[0].clips.count == 1)
+    }
+
+    @Test func splitWithLinkedPartnerSplitsBothAndRegroupsRightHalves() {
+        // video + audio sharing g1. After split at 30, the right halves should share a
+        // *new* group id (not the original g1).
+        var v = Fixtures.clip(id: "v", start: 0, duration: 60)
+        v.linkGroupId = "g1"
+        var a = Fixtures.clip(id: "a", mediaType: .audio, start: 0, duration: 60)
+        a.linkGroupId = "g1"
+
+        let e = editor([
+            Fixtures.videoTrack(clips: [v]),
+            Fixtures.audioTrack(clips: [a]),
+        ])
+        let rightIds = Set(e.splitClip(clipId: "v", atFrame: 30))
+        #expect(rightIds.count == 2, "both partners should split")
+
+        let allClips = e.timeline.tracks.flatMap(\.clips)
+        // The two right halves share a single group id, distinct from "g1".
+        let rightGroups = Set(allClips.filter { rightIds.contains($0.id) }.compactMap(\.linkGroupId))
+        #expect(rightGroups.count == 1)
+        #expect(rightGroups.first != "g1")
+
+        // The two left halves still share the original group.
+        let leftIds: Set<String> = ["v", "a"]
+        let leftGroups = Set(allClips.filter { leftIds.contains($0.id) }.compactMap(\.linkGroupId))
+        #expect(leftGroups == ["g1"])
+    }
+}
+
+@Suite("EditorViewModel — removeClips")
+@MainActor
+struct RemoveClipsTests {
+
+    @Test func removeClipsPrunesEmptyTracksByDefault() {
+        let clip = Fixtures.clip(id: "c1", start: 0, duration: 30)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        e.removeClips(ids: ["c1"])
+        #expect(e.timeline.tracks.isEmpty)
+    }
+
+    @Test func removeClipsWithPruneFalseKeepsEmptyTracks() {
+        let clip = Fixtures.clip(id: "c1", start: 0, duration: 30)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        e.removeClips(ids: ["c1"], prune: false)
+        #expect(e.timeline.tracks.count == 1)
+        #expect(e.timeline.tracks[0].clips.isEmpty)
+    }
+
+    @Test func removeClipsIsNoOpForUnknownIds() {
+        let clip = Fixtures.clip(id: "c1", start: 0, duration: 30)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        e.removeClips(ids: ["ghost"])
+        #expect(e.timeline.tracks[0].clips.count == 1)
+    }
+
+    @Test func removeClipsAlsoClearsSelection() {
+        let clip = Fixtures.clip(id: "c1", start: 0, duration: 30)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        e.selectedClipIds = ["c1", "ghost"]
+        e.removeClips(ids: ["c1"])
+        // c1 dropped from selection; "ghost" was never a real clip but also dropped since
+        // selection subtract is set-based, not membership-checked.
+        #expect(!e.selectedClipIds.contains("c1"))
+    }
+}
+
+@Suite("EditorViewModel — moveClips")
+@MainActor
+struct MoveClipsTests {
+
+    @Test func moveClipsMovesSingleClipToTargetTrackAndFrame() {
+        let c1 = Fixtures.clip(id: "c1", start: 0, duration: 30)
+        let e = editor([
+            Fixtures.videoTrack(clips: [c1]),
+            Fixtures.videoTrack(clips: []),
+        ])
+        let destTrackId = e.timeline.tracks[1].id
+        e.moveClips([(clipId: "c1", toTrack: 1, toFrame: 100)])
+        let loc = e.findClip(id: "c1")!
+        #expect(e.timeline.tracks[loc.trackIndex].id == destTrackId)
+        #expect(e.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame == 100)
+    }
+
+    @Test func moveClipsRejectsIncompatibleTrackType() {
+        // Moving a video clip onto an audio track is silently skipped (type mismatch).
+        let c1 = Fixtures.clip(id: "c1", start: 0, duration: 30)
+        let e = editor([
+            Fixtures.videoTrack(clips: [c1]),
+            Fixtures.audioTrack(clips: []),
+        ])
+        e.moveClips([(clipId: "c1", toTrack: 1, toFrame: 100)])
+        let loc = e.findClip(id: "c1")!
+        // Clip stayed on the original (video) track.
+        #expect(e.timeline.tracks[loc.trackIndex].type == .video)
+    }
+
+    @Test func moveClipsClampsNegativeFrameToZero() {
+        let c1 = Fixtures.clip(id: "c1", start: 0, duration: 30)
+        let e = editor([
+            Fixtures.videoTrack(clips: [c1]),
+            Fixtures.videoTrack(clips: []),
+        ])
+        e.moveClips([(clipId: "c1", toTrack: 1, toFrame: -50)])
+        let loc = e.findClip(id: "c1")!
+        #expect(e.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame == 0)
+    }
+}
+
+@Suite("EditorViewModel — clearRegion")
+@MainActor
+struct ClearRegionTests {
+
+    @Test func clearRegionRemovesClipFullyInside() {
+        let inside = Fixtures.clip(id: "inside", start: 50, duration: 30) // [50, 80)
+        let e = editor([Fixtures.videoTrack(clips: [inside])])
+        e.clearRegion(trackIndex: 0, start: 0, end: 100)
+        #expect(e.timeline.tracks.isEmpty || e.timeline.tracks[0].clips.isEmpty)
+    }
+
+    @Test func clearRegionTrimsLeftOverlapper() {
+        // Clip [0, 100) with region [50, 200) → trim end so clip becomes [0, 50).
+        let clip = Fixtures.clip(id: "c1", start: 0, duration: 100)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        e.clearRegion(trackIndex: 0, start: 50, end: 200)
+        let remaining = e.timeline.tracks[0].clips[0]
+        #expect(remaining.startFrame == 0)
+        #expect(remaining.durationFrames == 50)
+    }
+
+    @Test func clearRegionTrimsRightOverlapper() {
+        // Clip [100, 200) with region [0, 150) → trim start so clip becomes [150, 200).
+        let clip = Fixtures.clip(id: "c1", start: 100, duration: 100)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        e.clearRegion(trackIndex: 0, start: 0, end: 150)
+        let remaining = e.timeline.tracks[0].clips[0]
+        #expect(remaining.startFrame == 150)
+        #expect(remaining.durationFrames == 50)
+    }
+
+    @Test func clearRegionLeavesAdjacentClipUntouched() {
+        // Half-open boundary: clip starts exactly at regionEnd → not touched.
+        let clip = Fixtures.clip(id: "c1", start: 100, duration: 30)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        e.clearRegion(trackIndex: 0, start: 0, end: 100)
+        #expect(e.timeline.tracks[0].clips[0].startFrame == 100)
+        #expect(e.timeline.tracks[0].clips[0].durationFrames == 30)
+    }
+}
