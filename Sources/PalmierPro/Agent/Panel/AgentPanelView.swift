@@ -72,6 +72,7 @@ struct AgentPanelView: View {
     }
 
     @State private var showHistory = false
+    @State private var isScrolledFromBottom = false
 
     private var historyButton: some View {
         Button { showHistory.toggle() } label: {
@@ -178,9 +179,38 @@ struct AgentPanelView: View {
             }
             .scrollIndicators(.never)
             .scrollEdgeEffectStyle(.soft, for: .bottom)
+            .onScrollGeometryChange(for: Bool.self) { geo in
+                let distance = geo.contentSize.height - geo.contentOffset.y - geo.containerSize.height
+                return distance > 80
+            } action: { _, newValue in
+                withAnimation(.easeOut(duration: 0.15)) { isScrolledFromBottom = newValue }
+            }
             .onChange(of: service.messages.count) { _, _ in scrollToBottom(proxy) }
             .onChange(of: service.isStreaming) { _, _ in scrollToBottom(proxy) }
+            .overlay(alignment: .bottomTrailing) {
+                if isScrolledFromBottom {
+                    scrollToBottomButton(proxy: proxy)
+                        .padding(.trailing, AppTheme.Spacing.mdLg)
+                        .padding(.bottom, AppTheme.Spacing.mdLg)
+                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                }
+            }
         }
+    }
+
+    private func scrollToBottomButton(proxy: ScrollViewProxy) -> some View {
+        Button {
+            scrollToBottom(proxy)
+        } label: {
+            Image(systemName: "arrow.down")
+                .font(.system(size: AppTheme.FontSize.smMd, weight: .semibold))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .frame(width: AppTheme.IconSize.lgXl, height: AppTheme.IconSize.lgXl)
+                .glassEffect(.regular, in: .circle)
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .help("Scroll to latest")
     }
 
     @ViewBuilder
