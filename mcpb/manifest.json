@@ -1,0 +1,23 @@
+{
+  "manifest_version": "0.4",
+  "name": "palmier-pro",
+  "display_name": "Palmier Pro",
+  "version": "0.1.0",
+  "description": "Edit your Palmier Pro project timeline from Claude Desktop.",
+  "long_description": "Connects Claude Desktop to the local MCP server inside Palmier Pro — an AI-native Mac video editor. Once installed, Claude can read your timeline, edit clips, generate media, and manage tracks. Requires Palmier Pro to be running with a project open.",
+  "icon": "icon.png",
+  "author": {
+    "name": "Palmier",
+    "url": "https://palmier.io"
+  },
+  "homepage": "https://palmier.io",
+  "keywords": ["video", "editor", "timeline", "creative", "media"],
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"]
+    }
+  }
+}

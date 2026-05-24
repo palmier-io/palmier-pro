@@ -149,7 +149,7 @@ struct AgentPane: View {
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
             HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-                Text("Lets external clients like Claude Desktop, Claude Code, and Cursor edit your timeline.")
+                Text("Lets external clients like Cursor, Claude Desktop, Claude Code, and Codex edit your timeline.")
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)

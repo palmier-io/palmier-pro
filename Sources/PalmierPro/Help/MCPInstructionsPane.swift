@@ -3,12 +3,30 @@ import SwiftUI
 
 struct MCPInstructionsPane: View {
     private var serverURL: String { "http://127.0.0.1:\(MCPService.port)" }
+    private var mcpEndpoint: String { "\(serverURL)/mcp" }
 
     private var claudeCodeCommand: String {
-        "claude mcp add --transport http palmier-pro \(serverURL)"
+        "claude mcp add --transport http palmier-pro \(mcpEndpoint)"
     }
 
-    private var clientJSONConfig: String {
+    private var codexCommand: String {
+        "codex mcp add palmier-pro --url \(mcpEndpoint)"
+    }
+
+    private var cursorJSONConfig: String {
+        """
+        {
+          "mcpServers": {
+            "palmier-pro": {
+              "type": "http",
+              "url": "\(mcpEndpoint)"
+            }
+          }
+        }
+        """
+    }
+
+    private var claudeDesktopJSONConfig: String {
         """
         {
           "mcpServers": {
@@ -17,7 +35,10 @@ struct MCPInstructionsPane: View {
               "args": [
                 "-y",
                 "mcp-remote",
-                "\(serverURL)/mcp"
+                "\(mcpEndpoint)",
+                "--allow-http",
+                "--transport",
+                "http-only"
               ]
             }
           }
@@ -25,23 +46,32 @@ struct MCPInstructionsPane: View {
         """
     }
 
+    private var cursorDeepLink: URL? {
+        let config: [String: String] = ["type": "http", "url": mcpEndpoint]
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: config, options: [.sortedKeys]),
+            let encoded = data.base64EncodedString().addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+        else { return nil }
+        return URL(string: "cursor://anysphere.cursor-deeplink/mcp/install?name=palmier-pro&config=\(encoded)")
+    }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xlXxl) {
                 overviewSection
 
                 urlSection
 
-                claudeCodeSection
+                cursorSection
 
                 claudeDesktopSection
 
-                cursorSection
+                claudeCodeSection
 
-                tipSection
+                codexSection
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
+            .padding(.horizontal, AppTheme.Spacing.xlXxl)
+            .padding(.vertical, AppTheme.Spacing.xl)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
@@ -49,108 +79,137 @@ struct MCPInstructionsPane: View {
     // MARK: - Sections
 
     private var overviewSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             sectionHeading("Overview")
-            Text("Palmier Pro exposes your open project as an MCP server. Point any MCP-capable client at the URL below to let it edit the timeline, generate media, and read project state.")
-                .font(.system(size: 12))
+            Text("Palmier Pro exposes your open project as an MCP server. Connect any MCP clients to let it be your AI assistant.")
+                .font(.system(size: AppTheme.FontSize.smMd))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var urlSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
             sectionHeading("Server URL")
-            HStack(spacing: 8) {
-                Text(serverURL)
+            HStack(spacing: AppTheme.Spacing.smMd) {
+                Text(mcpEndpoint)
                     .font(.system(.callout, design: .monospaced))
                     .foregroundStyle(AppTheme.Text.primaryColor)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, AppTheme.Spacing.mdLg)
+                    .padding(.vertical, AppTheme.Spacing.smMd)
                     .background(
                         RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
                             .fill(.ultraThinMaterial)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                            .stroke(AppTheme.Border.subtleColor, lineWidth: 1)
+                            .stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
                     )
 
-                CopyButton(value: serverURL)
+                CopyButton(value: mcpEndpoint)
                 Spacer()
             }
         }
     }
 
-    private var claudeCodeSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionHeading("Connect from Claude Code")
-            Text("Run this once in your terminal:")
-                .font(.system(size: 11))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-            codeBlock(claudeCodeCommand)
+    private var cursorSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            sectionHeading("Connect from Cursor", prominent: true)
+            installButton(label: "Install in Cursor", systemImage: "arrow.down.circle") {
+                if let url = cursorDeepLink {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            manualFallback(
+                intro: "Add this to ~/.cursor/mcp.json in your project:",
+                code: cursorJSONConfig
+            )
         }
     }
 
     private var claudeDesktopSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionHeading("Connect from Claude Desktop")
-            stepRow(1, "Open Claude → Settings → Developer → Edit Config.")
-            stepRow(2, "Merge this into the file. If mcpServers already exists, add the palmier-pro entry alongside your other servers:")
-            codeBlock(clientJSONConfig)
-            stepRow(3, "Save the file and fully quit + relaunch Claude Desktop. Palmier Pro should appear in the tools menu.")
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            sectionHeading("Connect from Claude Desktop", prominent: true)
+            installButton(label: "Install in Claude Desktop", systemImage: "arrow.down.circle") {
+                openClaudeDesktopBundle()
+            }
+            manualFallback(
+                intro: "Open Claude Desktop → Settings → Developer → Edit Config, then merge this into mcpServers:",
+                code: claudeDesktopJSONConfig
+            )
         }
     }
 
-    private var cursorSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionHeading("Connect from Cursor")
-            stepRow(1, "Open Cursor Settings (⌘,) → Features → MCP → Add New MCP Server. Or edit ~/.cursor/mcp.json (global) or .cursor/mcp.json in your project root.")
-            stepRow(2, "Merge this into the file:")
-            codeBlock(clientJSONConfig)
-            stepRow(3, "Save the file. Cursor picks up the change on the next agent run — no restart needed, but reload the window if it doesn't show up.")
+    private func openClaudeDesktopBundle() {
+        guard let url = Bundle.module.url(forResource: "palmier-pro", withExtension: "mcpb") else {
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
+    private var claudeCodeSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            sectionHeading("Connect from Claude Code", prominent: true)
+            Text("Run this once in your terminal:")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            CodeBlockView(content: claudeCodeCommand)
         }
     }
 
-    private var tipSection: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "info.circle")
-                .font(.system(size: 11))
+    private var codexSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            sectionHeading("Connect from Codex", prominent: true)
+            Text("Run this once in your terminal:")
+                .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .padding(.top, 2)
-            Text("The MCP server only runs while a project window is open. If your client can't connect, make sure Palmier Pro is running with a project loaded.")
-                .font(.system(size: 11))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .fixedSize(horizontal: false, vertical: true)
+            CodeBlockView(content: codexCommand)
         }
-        .padding(.top, 4)
     }
 
     // MARK: - Helpers
 
-    private func sectionHeading(_ text: String) -> some View {
+    private func sectionHeading(_ text: String, prominent: Bool = false) -> some View {
         Text(text)
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(AppTheme.Text.tertiaryColor)
+            .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
+            .foregroundStyle(prominent ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
             .textCase(.uppercase)
             .tracking(0.3)
     }
 
-    private func stepRow(_ number: Int, _ text: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text("\(number).")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: 16, alignment: .trailing)
-            Text(text)
-                .font(.system(size: 11))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
-                .fixedSize(horizontal: false, vertical: true)
+    private func installButton(label: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: AppTheme.Spacing.sm) {
+                Image(systemName: systemImage)
+                    .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
+                Text(label)
+                    .font(.system(size: AppTheme.FontSize.smMd, weight: .medium))
+            }
+            .foregroundStyle(AppTheme.Text.primaryColor)
+            .padding(.horizontal, AppTheme.Spacing.mdLg)
+            .padding(.vertical, AppTheme.Spacing.smMd)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+                    .fill(AppTheme.Accent.primary.opacity(AppTheme.Opacity.muted))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+                    .stroke(AppTheme.Accent.primary.opacity(AppTheme.Opacity.medium), lineWidth: AppTheme.BorderWidth.thin)
+            )
         }
+        .buttonStyle(.plain)
     }
 
-    private func codeBlock(_ content: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+    private func manualFallback(intro: String, code: String) -> some View {
+        ManualFallback(intro: intro, code: code)
+    }
+}
+
+private struct CodeBlockView: View {
+    let content: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: AppTheme.Spacing.smMd) {
             Text(content)
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(AppTheme.Text.primaryColor)
@@ -159,16 +218,56 @@ struct MCPInstructionsPane: View {
 
             CopyButton(value: content)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, AppTheme.Spacing.mdLg)
+        .padding(.vertical, AppTheme.Spacing.md)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
                 .fill(.ultraThinMaterial)
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                .stroke(AppTheme.Border.subtleColor, lineWidth: 1)
+                .stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
         )
+    }
+}
+
+private struct ManualFallback: View {
+    let intro: String
+    let code: String
+    @State private var expanded: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            Button(action: toggle) {
+                HStack(spacing: AppTheme.Spacing.sm) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                    Text("Manual setup")
+                        .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                }
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if expanded {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                    Text(intro)
+                        .font(.system(size: AppTheme.FontSize.sm))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .fixedSize(horizontal: false, vertical: true)
+                    CodeBlockView(content: code)
+                }
+            }
+        }
+        .padding(.top, AppTheme.Spacing.xxs)
+    }
+
+    private func toggle() {
+        withAnimation(.easeInOut(duration: AppTheme.Anim.hover)) {
+            expanded.toggle()
+        }
     }
 }
 
@@ -179,9 +278,9 @@ private struct CopyButton: View {
     var body: some View {
         Button(action: copy) {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                 .foregroundStyle(copied ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
-                .frame(width: 26, height: 26)
+                .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
