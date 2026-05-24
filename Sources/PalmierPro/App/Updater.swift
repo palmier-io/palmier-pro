@@ -32,12 +32,12 @@ final class Updater: NSObject {
 }
 
 extension Updater: SPUUpdaterDelegate {
-    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+    @objc func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
         updateAvailable = true
         updateVersion = item.displayVersionString
     }
 
-    func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
+    @objc func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
         updateAvailable = false
         updateVersion = nil
     }
