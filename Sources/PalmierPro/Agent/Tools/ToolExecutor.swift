@@ -348,10 +348,16 @@ final class ToolExecutor {
             guard editor.findClip(id: id) != nil else { throw ToolError("Clip not found: \(id)") }
         }
         let expanded = editor.expandToLinkGroup(Set(clipIds))
+        let tracksBefore = Set(editor.timeline.tracks.map(\.id))
         editor.removeClips(ids: expanded)
+        let prunedCount = tracksBefore.subtracting(editor.timeline.tracks.map(\.id)).count
+
         let extras = expanded.count - clipIds.count
-        let note = extras > 0 ? " (+\(extras) linked)" : ""
-        return .ok("Removed \(expanded.count) clip\(expanded.count == 1 ? "" : "s")\(note): \(clipIds.joined(separator: ", "))")
+        let linkedNote = extras > 0 ? " (+\(extras) linked)" : ""
+        let pruneNote = prunedCount > 0
+            ? ". Pruned \(prunedCount) empty track\(prunedCount == 1 ? "" : "s") — track indices have shifted; re-read with get_timeline before next index-based call"
+            : ""
+        return .ok("Removed \(expanded.count) clip\(expanded.count == 1 ? "" : "s")\(linkedNote)\(pruneNote): \(clipIds.joined(separator: ", "))")
     }
 
     private static let updateClipsAllowedKeys: Set<String> = [
@@ -967,7 +973,11 @@ final class ToolExecutor {
         if filter == nil || filter == "upscale" {
             out += UpscaleModelConfig.allModels.map { Self.upscaleModelInfo($0) }
         }
-        guard let json = Self.jsonString(out) else { return .error("Failed to encode model list") }
+        let body: [String: Any] = [
+            "models": out,
+            "loaded": ModelCatalog.shared.isLoaded,
+        ]
+        guard let json = Self.jsonString(body) else { return .error("Failed to encode model list") }
         return .ok(json)
     }
 
