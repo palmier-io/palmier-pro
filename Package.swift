@@ -41,5 +41,10 @@ let package = Package(
                 .copy("Resources/MCPB/palmier-pro.mcpb"),
             ]
         ),
+        .testTarget(
+            name: "PalmierProTests",
+            dependencies: ["PalmierPro"],
+            path: "Tests/PalmierProTests"
+        ),
     ]
 )

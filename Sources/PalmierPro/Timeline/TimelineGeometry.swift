@@ -20,11 +20,20 @@ struct TimelineGeometry {
 
     @MainActor
     init(editor: EditorViewModel, bounds: NSRect, headerWidth: Double = 0) {
-        self.pixelsPerFrame = editor.zoomScale
+        self.init(
+            pixelsPerFrame: editor.zoomScale,
+            headerWidth: headerWidth,
+            trackHeights: editor.timeline.tracks.map(\.displayHeight),
+            bounds: bounds
+        )
+    }
+
+    init(pixelsPerFrame: Double, headerWidth: Double = 0, trackHeights: [CGFloat], bounds: NSRect = .zero) {
+        self.pixelsPerFrame = pixelsPerFrame
         self.headerWidth = headerWidth
         self.rulerHeight = Layout.rulerHeight
-        self.trackCount = editor.timeline.tracks.count
-        self.trackHeights = editor.timeline.tracks.map(\.displayHeight)
+        self.trackCount = trackHeights.count
+        self.trackHeights = trackHeights
         self.bounds = bounds
 
         var cumY: [CGFloat] = []
