@@ -239,3 +239,47 @@ struct SnapEngineTests {
         #expect(state.currentProbeOffset == 30)
     }
 }
+
+// MARK: - Adversarial
+
+@Suite("SnapEngine — adversarial")
+struct SnapEngineAdversarialTests {
+
+    private let basePx: Double = 8
+    private let pxPerFrame: Double = 4
+
+    @Test func doesNotLeaveStateBehindWhenNoTargetMatches() {
+        var state = SnapEngine.SnapState()
+        let targets = [SnapEngine.SnapTarget(frame: 1000, kind: .clipEdge)]
+        let r = SnapEngine.findSnap(
+            position: 50, targets: targets, state: &state,
+            baseThreshold: basePx, pixelsPerFrame: pxPerFrame
+        )
+        #expect(r == nil)
+        #expect(state.currentlySnappedTo == nil)
+        #expect(state.currentProbeOffset == 0)
+    }
+
+    @Test func zeroPixelsPerFrameDoesNotCrash() {
+        // pixelsPerFrame=0 → frame threshold is ∞. Don't crash.
+        var state = SnapEngine.SnapState()
+        let targets = [SnapEngine.SnapTarget(frame: 50, kind: .clipEdge)]
+        _ = SnapEngine.findSnap(
+            position: 1_000_000,
+            targets: targets, state: &state,
+            baseThreshold: 8, pixelsPerFrame: 0
+        )
+    }
+
+    @Test func emptyProbeOffsetsProducesNoSnap() {
+        var state = SnapEngine.SnapState()
+        let targets = [SnapEngine.SnapTarget(frame: 50, kind: .clipEdge)]
+        let r = SnapEngine.findSnap(
+            position: 50,
+            probeOffsets: [],
+            targets: targets, state: &state,
+            baseThreshold: basePx, pixelsPerFrame: pxPerFrame
+        )
+        #expect(r == nil)
+    }
+}

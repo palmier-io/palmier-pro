@@ -90,3 +90,27 @@ struct RGBAHexTests {
         #expect(TextStyle.RGBA(hex: "QWERTYUI") == nil)
     }
 }
+
+// MARK: - Adversarial
+
+@Suite("RGBA hex — adversarial")
+struct RGBAHexAdversarialTests {
+
+    @Test func acceptsLowercaseAndMixedCase() {
+        let upper = TextStyle.RGBA(hex: "FF8800")
+        let lower = TextStyle.RGBA(hex: "ff8800")
+        let mixed = TextStyle.RGBA(hex: "Ff8800")
+        #expect(upper?.r == lower?.r && lower?.r == mixed?.r)
+        #expect(upper?.g == lower?.g && lower?.g == mixed?.g)
+    }
+
+    @Test func rejectsZeroXPrefix() {
+        // "0xFF8800" is 8 chars → 8-digit path. "0x" is not valid hex → nil.
+        #expect(TextStyle.RGBA(hex: "0xFF8800") == nil)
+    }
+
+    @Test func rejectsEmbeddedWhitespace() {
+        // Only leading/trailing whitespace is trimmed; internal whitespace breaks parsing.
+        #expect(TextStyle.RGBA(hex: "FF 00 00") == nil)
+    }
+}

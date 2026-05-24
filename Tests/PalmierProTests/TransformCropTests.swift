@@ -134,3 +134,41 @@ struct CropAspectLockTests {
         #expect(CropAspectLock.allCases.count == 8)
     }
 }
+
+// MARK: - Adversarial
+
+@Suite("Transform — adversarial")
+struct TransformAdversarialTests {
+
+    // MARK: - Invariants
+
+    @Test func topLeftInitRoundtrips() {
+        // Init from topLeft and ask for it back — catches silent drift if anyone adds fields.
+        let original = (x: 0.2, y: 0.4)
+        let t = Transform(topLeft: original, width: 0.4, height: 0.2)
+        #expect(abs(t.topLeft.x - original.x) < 1e-9)
+        #expect(abs(t.topLeft.y - original.y) < 1e-9)
+    }
+
+    // MARK: - Edge inputs
+
+    @Test func snapToBoundaryWithNaNValueDoesNotCrashOrSnap() {
+        // abs(NaN) is NaN, NaN < threshold is false → NaN passes through unchanged. No crash.
+        let result = Transform.snapToBoundary(.nan, threshold: 0.05)
+        #expect(result.isNaN)
+    }
+
+    @Test func snapToBoundaryWithInfinityIsLeftAlone() {
+        let result = Transform.snapToBoundary(.infinity, threshold: 0.05)
+        #expect(result.isInfinite)
+    }
+
+    @Test func snapCenterToCanvasCenterWithNaNCenterDoesNotCrash() {
+        var t = Transform()
+        t.centerX = .nan
+        t.centerY = 0.5
+        let (snappedX, snappedY) = t.snapCenterToCanvasCenter(thresholdH: 0.05, thresholdV: 0.05)
+        #expect(snappedX == false) // NaN comparisons are always false
+        #expect(snappedY == true)
+    }
+}

@@ -1,11 +1,13 @@
 func formatTimecode(frame: Int, fps: Int) -> String {
     guard fps > 0 else { return "00:00:00:00" }
-    let totalSeconds = frame / fps
-    let ff = frame % fps
+    let absFrame = abs(frame)
+    let totalSeconds = absFrame / fps
+    let ff = absFrame % fps
     let ss = totalSeconds % 60
     let mm = (totalSeconds / 60) % 60
     let hh = totalSeconds / 3600
-    return "\(twoDigit(hh)):\(twoDigit(mm)):\(twoDigit(ss)):\(twoDigit(ff))"
+    let sign = frame < 0 ? "-" : ""
+    return "\(sign)\(twoDigit(hh)):\(twoDigit(mm)):\(twoDigit(ss)):\(twoDigit(ff))"
 }
 
 private func twoDigit(_ value: Int) -> String {

@@ -26,18 +26,25 @@ struct SmoothSubdivisionsTests {
         #expect(result == [110, 120, 130, 140, 150, 160, 170])
     }
 
-    @Test func subdivisionCountEqualsSegmentsMinusOne() {
-        // Regardless of span, the count is always smoothSegments - 1.
+    @Test func subdivisionCountIsAtMostSegmentsMinusOne() {
+        // Tight spans collapse duplicates after dedupe — count is bounded but may be smaller.
         let result = CompositionBuilder.smoothSubdivisions(from: 0, to: 3)
-        #expect(result.count == CompositionBuilder.smoothSegments - 1)
+        #expect(result.count <= CompositionBuilder.smoothSegments - 1)
     }
 
-    @Test func smallSpanCollapsesIntoDuplicateOffsets() {
-        // span=1 with 8 segments: each s × 1/8 rounds to 0 or 1 (banker's rounding at 0.5).
-        // The returned offsets contain duplicates — callers that build a Set deduplicate.
+    @Test func returnsDistinctOffsetsInAscendingOrder() {
+        // The function dedupes internally so callers don't have to.
+        for (a, b) in [(0, 1), (0, 3), (100, 110), (0, 1000)] {
+            let result = CompositionBuilder.smoothSubdivisions(from: a, to: b)
+            #expect(Set(result).count == result.count, "duplicates in \(result) for span \(a)..\(b)")
+            #expect(result == result.sorted(), "not ascending: \(result)")
+        }
+    }
+
+    @Test func tightSpansCollapseDuplicateOffsets() {
+        // span=1: 7 raw subdivisions round to {0, 1}. After dedupe → 2 distinct offsets.
         let result = CompositionBuilder.smoothSubdivisions(from: 0, to: 1)
-        #expect(result.count == 7)
-        #expect(Set(result) == [0, 1])
+        #expect(result == [0, 1])
     }
 }
 
@@ -419,5 +426,22 @@ struct AffineTransformTests {
         let a = CompositionBuilder.affineTransform(for: rotated, natSize: nat, renderSize: render)
         let b = CompositionBuilder.affineTransform(for: plain, natSize: nat, renderSize: render)
         #expect(approxEqual(a, b))
+    }
+}
+
+// MARK: - Adversarial
+
+@Suite("CompositionBuilder — adversarial")
+struct CompositionBuilderAdversarialTests {
+
+    @Test func affineTransformWithZeroNatSizeProducesInfiniteOrNaNScale() {
+        // natSize=0 means scale = renderSize/0 = ∞ (or NaN if renderSize is also 0).
+        // Caller must validate natSize > 0; we document the math here rather than crash.
+        let result = CompositionBuilder.affineTransform(
+            for: Transform(),
+            natSize: CGSize(width: 0, height: 0),
+            renderSize: CGSize(width: 1920, height: 1080)
+        )
+        #expect(result.a.isInfinite || result.a.isNaN)
     }
 }

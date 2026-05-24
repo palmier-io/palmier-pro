@@ -280,7 +280,8 @@ enum CompositionBuilder {
     static func smoothSubdivisions(from a: Int, to b: Int) -> [Int] {
         guard b > a else { return [] }
         let span = Double(b - a)
-        return (1..<smoothSegments).map { a + Int((span * Double($0) / Double(smoothSegments)).rounded()) }
+        let raw = (1..<smoothSegments).map { a + Int((span * Double($0) / Double(smoothSegments)).rounded()) }
+        return Array(Set(raw)).sorted()
     }
 
     /// Walks the composite gain (`volumeAt` already folds in static volume × kf × fade) and

@@ -31,13 +31,14 @@ struct ClipMathTests {
 
     // MARK: - contains(timelineFrame:)
 
-    @Test func containsIncludesBothEnds() {
-        // Note: contains uses `<= endFrame` — the start of the next clip is "contained" too.
+    @Test func containsIsHalfOpen() {
+        // Half-open interval [startFrame, endFrame). endFrame belongs to whatever comes next,
+        // matching the convention used by OverwriteEngine and RippleEngine.
         let clip = Fixtures.clip(start: 50, duration: 30) // endFrame = 80
-        #expect(clip.contains(timelineFrame: 50))
-        #expect(clip.contains(timelineFrame: 80))
+        #expect(clip.contains(timelineFrame: 50))   // start is in
+        #expect(clip.contains(timelineFrame: 79))   // last visible frame is in
+        #expect(!clip.contains(timelineFrame: 80))  // endFrame is NOT in
         #expect(!clip.contains(timelineFrame: 49))
-        #expect(!clip.contains(timelineFrame: 81))
     }
 
     // MARK: - timelineFrame(sourceSeconds:fps:)
@@ -132,5 +133,74 @@ struct ClipMathTests {
         clip.audioFadeInInterpolation = .linear
         // fade at frame 5 = 0.5; static volume = 0.5 → 0.25.
         #expect(abs(clip.volumeAt(frame: 5) - 0.25) < 1e-9)
+    }
+}
+
+// MARK: - Adversarial
+
+@Suite("Clip math — adversarial")
+struct ClipMathAdversarialTests {
+
+    /// Cross-API consistency probe — currently FAILS.
+    /// Clip.contains uses `<= endFrame` (inclusive), Clip.timelineFrame uses `< endFrame`
+    /// (exclusive). The `.disabled` flag test below encodes the proposed resolution.
+    @Test func clipContainsAndTimelineFrameAgreeAtEndFrame() {
+        let clip = Fixtures.clip(start: 0, duration: 30)
+        let containsEnd = clip.contains(timelineFrame: 30)
+        let mappedEnd = clip.timelineFrame(sourceSeconds: 1.0, fps: 30)
+        if containsEnd {
+            #expect(mappedEnd == 30, "contains says endFrame is inside but timelineFrame won't map to it")
+        } else {
+            #expect(mappedEnd == nil)
+        }
+    }
+
+    /// Resolved: endFrame is exclusive. This test pins the decision so the boundary
+    /// convention can't drift back without a test failure.
+    @Test func endFrameIsExclusive() {
+        let clip = Fixtures.clip(start: 0, duration: 30)
+        #expect(clip.contains(timelineFrame: 30) == false)
+    }
+
+    // MARK: - Edge inputs
+
+    @Test func zeroDurationClipDoesNotCrashFadeMultiplier() {
+        var clip = Fixtures.clip(start: 0, duration: 0)
+        clip.audioFadeInFrames = 5
+        clip.audioFadeInInterpolation = .linear
+        _ = clip.fadeMultiplier(at: 0)
+        _ = clip.fadeMultiplier(at: -1)
+        _ = clip.fadeMultiplier(at: 1)
+    }
+
+    @Test func zeroSpeedDoesNotDivideByZeroInTimelineFrame() {
+        // The implementation guards with `max(speed, 0.0001)` — verify no crash.
+        let clip = Fixtures.clip(start: 0, duration: 100, speed: 0)
+        _ = clip.timelineFrame(sourceSeconds: 1.0, fps: 30)
+    }
+
+    @Test func negativeStartFrameProducesNegativeEndFrame() {
+        let clip = Fixtures.clip(start: -50, duration: 30)
+        #expect(clip.endFrame == -20)
+        #expect(clip.contains(timelineFrame: -40))
+        #expect(!clip.contains(timelineFrame: 0))
+    }
+}
+
+@Suite("Timeline — invariants")
+struct TimelineInvariantTests {
+
+    @Test func timelineTotalFramesEqualsMaximumTrackEndFrame() {
+        let timeline = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 50)]),
+            Fixtures.audioTrack(clips: [Fixtures.clip(start: 100, duration: 80)]),
+        ])
+        let manualMax = timeline.tracks.map(\.endFrame).max() ?? 0
+        #expect(timeline.totalFrames == manualMax)
+    }
+
+    @Test func emptyTimelineHasZeroTotalFrames() {
+        let timeline = Fixtures.timeline(tracks: [])
+        #expect(timeline.totalFrames == 0)
     }
 }

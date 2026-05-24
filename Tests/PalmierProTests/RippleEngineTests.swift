@@ -117,3 +117,43 @@ struct RippleEngineTests {
         #expect(shifts == [ClipShift(clipId: "b", newStartFrame: 225)])
     }
 }
+
+// MARK: - Adversarial
+
+@Suite("RippleEngine — adversarial")
+struct RippleEngineAdversarialTests {
+
+    @Test func shiftsPreserveStartFrameOrder() {
+        let clips = [
+            Fixtures.clip(id: "a", start: 0, duration: 50),
+            Fixtures.clip(id: "b", start: 100, duration: 50),
+            Fixtures.clip(id: "c", start: 200, duration: 50),
+            Fixtures.clip(id: "d", start: 300, duration: 50),
+        ]
+        let shifts = RippleEngine.computeRippleShifts(clips: clips, removedIds: ["b", "c"])
+        var newStarts: [(String, Int)] = clips
+            .filter { !["b", "c"].contains($0.id) }
+            .map { ($0.id, $0.startFrame) }
+        for shift in shifts {
+            if let idx = newStarts.firstIndex(where: { $0.0 == shift.clipId }) {
+                newStarts[idx] = (shift.clipId, shift.newStartFrame)
+            }
+        }
+        let aIdx = newStarts.firstIndex { $0.0 == "a" }!
+        let dIdx = newStarts.firstIndex { $0.0 == "d" }!
+        #expect(aIdx < dIdx)
+        let starts = newStarts.map(\.1)
+        #expect(starts == starts.sorted())
+    }
+
+    @Test func pushDoesNotMakeClipsCollide() {
+        let clips = [
+            Fixtures.clip(id: "anchor", start: 0, duration: 50),
+            Fixtures.clip(id: "follower", start: 100, duration: 50),
+        ]
+        let shifts = RippleEngine.computeRipplePush(clips: clips, insertFrame: 100, pushAmount: 30)
+        let followerNewStart = shifts.first { $0.clipId == "follower" }?.newStartFrame
+        #expect(followerNewStart == 130)
+        #expect(50 <= followerNewStart!) // anchor ends at 50, no overlap
+    }
+}

@@ -65,16 +65,25 @@ struct KeyframeTrackMutationTests {
         #expect(track.keyframes.map(\.frame) == [10])
     }
 
-    @Test func moveOntoExistingFrameReplacesIt() {
-        // move() calls upsert(), and upsert replaces on same-frame collisions.
-        // The moved kf's value wins; the previous occupant is dropped.
+    @Test func moveOntoExistingFrameIsRefused() {
+        // move() refuses when the destination is occupied — both keyframes survive unchanged.
+        // Callers must clear the destination first if they want a replace.
         var track = KeyframeTrack<Double>()
         track.upsert(Keyframe(frame: 5, value: 0.5))
         track.upsert(Keyframe(frame: 10, value: 1.0))
         track.move(from: 5, to: 10)
+        #expect(track.keyframes.count == 2)
+        #expect(track.keyframes.first(where: { $0.frame == 5 })?.value == 0.5)
+        #expect(track.keyframes.first(where: { $0.frame == 10 })?.value == 1.0)
+    }
+
+    @Test func moveOntoSameFrameIsNoOp() {
+        // Edge case: moving a keyframe onto its own frame must not refuse itself.
+        var track = KeyframeTrack<Double>()
+        track.upsert(Keyframe(frame: 10, value: 0.5))
+        track.move(from: 10, to: 10)
         #expect(track.keyframes.count == 1)
-        #expect(track.keyframes[0].frame == 10)
-        #expect(track.keyframes[0].value == 0.5) // the moved one wins
+        #expect(track.keyframes[0].value == 0.5)
     }
 }
 
@@ -196,5 +205,62 @@ struct InterpolationPrimitiveTests {
         #expect(result.top == 0.25)
         #expect(result.right == 0.25)
         #expect(result.bottom == 0.25)
+    }
+}
+
+// MARK: - Adversarial
+
+@Suite("Keyframes — adversarial")
+struct KeyframeAdversarialTests {
+
+    // MARK: - Invariants
+
+    @Test func trackStaysSortedAcrossScrambledUpserts() {
+        var track = KeyframeTrack<Double>()
+        let order = [50, 10, 90, 30, 70, 0, 40, 20, 80, 60]
+        for f in order {
+            track.upsert(Keyframe(frame: f, value: Double(f)))
+        }
+        let frames = track.keyframes.map(\.frame)
+        #expect(frames == frames.sorted())
+    }
+
+    @Test func upsertCollapsesRepeatedSameFrameWrites() {
+        var track = KeyframeTrack<Double>()
+        for v in [1.0, 2.0, 3.0, 4.0] {
+            track.upsert(Keyframe(frame: 10, value: v))
+        }
+        #expect(track.keyframes.count == 1)
+        #expect(track.keyframes[0].value == 4.0) // last-write-wins
+    }
+
+    @Test func smoothstepStaysInUnitIntervalForUnitInputs() {
+        for t in stride(from: 0.0, through: 1.0, by: 0.05) {
+            let s = smoothstep(t)
+            #expect(s >= 0 && s <= 1, "smoothstep(\(t)) = \(s) escaped [0, 1]")
+        }
+    }
+
+    @Test func smoothstepIsMonotonicallyNonDecreasingOnUnitInterval() {
+        // Note: monotonicity alone is too weak — mutation testing showed `3t²` passes
+        // this property too. Endpoint pinning (smoothstepEndpointsAreZeroAndOne) handles
+        // the part this test misses.
+        var prev = smoothstep(0)
+        for i in 1...100 {
+            let t = Double(i) / 100.0
+            let s = smoothstep(t)
+            #expect(s >= prev)
+            prev = s
+        }
+    }
+
+    // MARK: - Edge inputs
+
+    @Test func trackAcceptsNegativeFramesAndStaysSorted() {
+        var track = KeyframeTrack<Double>()
+        track.upsert(Keyframe(frame: -10, value: 0))
+        track.upsert(Keyframe(frame: 10, value: 1))
+        track.upsert(Keyframe(frame: -5, value: 0.5))
+        #expect(track.keyframes.map(\.frame) == [-10, -5, 10])
     }
 }

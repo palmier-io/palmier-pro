@@ -30,6 +30,7 @@ struct KeyframeTrack<Value: Codable & Sendable & Equatable>: Codable, Sendable, 
 
     mutating func move(from oldFrame: Int, to newFrame: Int) {
         guard let i = keyframes.firstIndex(where: { $0.frame == oldFrame }) else { return }
+        if newFrame != oldFrame, keyframes.contains(where: { $0.frame == newFrame }) { return }
         var kf = keyframes.remove(at: i)
         kf.frame = newFrame
         upsert(kf)
@@ -92,7 +93,7 @@ enum AnimatableProperty: String, CaseIterable, Sendable {
 
 extension Clip {
     func contains(timelineFrame frame: Int) -> Bool {
-        frame >= startFrame && frame <= endFrame
+        frame >= startFrame && frame < endFrame
     }
 
     /// Absolute timeline frame → clip-relative offset (used internally in track storage)
