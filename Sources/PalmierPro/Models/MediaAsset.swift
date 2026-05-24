@@ -101,10 +101,11 @@ final class MediaAsset: Identifiable {
         }
 
         let avAsset = AVURLAsset(url: url)
-        if let d = try? await avAsset.load(.duration) {
+        if type != .video, let d = try? await avAsset.load(.duration) {
             duration = d.seconds
         }
         if type == .video {
+            var videoDuration: Double?
             if let videoTrack = try? await avAsset.loadTracks(withMediaType: .video).first {
                 if let size = try? await videoTrack.load(.naturalSize),
                    let transform = try? await videoTrack.load(.preferredTransform) {
@@ -115,6 +116,12 @@ final class MediaAsset: Identifiable {
                 if let rate = try? await videoTrack.load(.nominalFrameRate), rate > 0 {
                     sourceFPS = Double(rate)
                 }
+                videoDuration = (try? await videoTrack.load(.timeRange))?.duration.seconds
+            }
+            if let videoDuration {
+                duration = videoDuration
+            } else if let d = try? await avAsset.load(.duration) {
+                duration = d.seconds
             }
             if let audioTracks = try? await avAsset.loadTracks(withMediaType: .audio) {
                 hasAudio = !audioTracks.isEmpty
