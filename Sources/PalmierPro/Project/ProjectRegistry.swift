@@ -28,6 +28,11 @@ final class ProjectRegistry {
         load()
     }
 
+    init(fileURL: URL) {
+        self.fileURL = fileURL
+        load()
+    }
+
     // MARK: - Mutations
 
     func register(_ url: URL) {

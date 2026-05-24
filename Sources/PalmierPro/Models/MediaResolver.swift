@@ -4,7 +4,6 @@ import Foundation
 final class MediaResolver: @unchecked Sendable {
     private let manifest: () -> MediaManifest
     private let projectURL: () -> URL?
-    private var cachedEntries: [String: MediaManifestEntry] = [:]
 
     init(manifest: @escaping () -> MediaManifest, projectURL: @escaping () -> URL?) {
         self.manifest = manifest
@@ -29,10 +28,6 @@ final class MediaResolver: @unchecked Sendable {
     }
 
     func entry(for assetId: String) -> MediaManifestEntry? {
-        let m = manifest()
-        if m.entries.count != cachedEntries.count {
-            cachedEntries = Dictionary(uniqueKeysWithValues: m.entries.map { ($0.id, $0) })
-        }
-        return cachedEntries[assetId]
+        manifest().entries.first(where: { $0.id == assetId })
     }
 }
