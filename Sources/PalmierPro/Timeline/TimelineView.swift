@@ -209,10 +209,7 @@ final class TimelineView: NSView {
             return Set(drag.all.map(\.clipId))
         }()
 
-        let moveTrackDelta = moveDrag.map { d -> Int in
-            if case .existingTrack(let i) = d.dropTarget { return i - d.lead.originalTrack }
-            return 0
-        } ?? 0
+        let moveTrackDelta = moveDrag?.trackDelta ?? 0
         let movePinnedIds = moveDrag.map(inputController.pinnedCompanionIds(for:)) ?? []
 
         let trimPartnerIds: Set<String> = {
@@ -242,17 +239,17 @@ final class TimelineView: NSView {
 
                     var ghostClip = clip
                     ghostClip.startFrame = max(0, clip.startFrame + frameDelta)
-                    let ghostRect: NSRect
-                    let isLead = clip.id == drag.lead.clipId
+                    let isPinned = movePinnedIds.contains(clip.id)
+                    let onLeadRow = ti == drag.lead.originalTrack
 
-                    if isLead, case .existingTrack(let idx) = drag.dropTarget,
-                       editor.timeline.tracks.indices.contains(idx) {
-                        ghostRect = geo.clipRect(for: ghostClip, trackIndex: idx)
-                    } else if isLead, let y = geo.ghostY(for: drag.dropTarget) {
+                    let ghostRect: NSRect
+                    if case .newTrackAt = drag.dropTarget,
+                       !isPinned, onLeadRow,
+                       let y = geo.ghostY(for: drag.dropTarget) {
                         ghostRect = geo.clipRect(for: ghostClip, atY: Double(y), height: Layout.trackHeight)
                     } else {
-                        let pinned = movePinnedIds.contains(clip.id)
-                        ghostRect = geo.clipRect(for: ghostClip, trackIndex: pinned ? ti : ti + moveTrackDelta)
+                        let destTrack = isPinned ? ti : ti + moveTrackDelta
+                        ghostRect = geo.clipRect(for: ghostClip, trackIndex: destTrack)
                     }
                     if ghostRect.intersects(dirtyRect) {
                         ClipRenderer.draw(ghostClip, type: clip.mediaType, in: ghostRect,

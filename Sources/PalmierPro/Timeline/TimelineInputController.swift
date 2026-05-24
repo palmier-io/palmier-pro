@@ -217,16 +217,13 @@ final class TimelineInputController {
             }
             let minOrigFrame = drag.all.map(\.originalFrame).min() ?? 0
             drag.deltaFrames = max(-minOrigFrame, drag.deltaFrames)
-            let rawTarget = geometry.dropTargetAt(y: point.y)
-            let row: Int? = {
-                if case .existingTrack(let t) = rawTarget { return t }
-                return drag.companions.isEmpty ? nil : geometry.trackAt(y: point.y)
-            }()
-            if let row {
-                let clamped = clampedTrackDelta(for: drag, proposed: row - drag.lead.originalTrack)
-                drag.dropTarget = .existingTrack(drag.lead.originalTrack + clamped)
+            let cursorTarget = geometry.dropTargetAt(y: point.y)
+            if case .existingTrack(let cursorTrack) = cursorTarget {
+                let leadTrack = drag.lead.originalTrack
+                let clamped = clampedTrackDelta(for: drag, proposed: cursorTrack - leadTrack)
+                drag.dropTarget = .existingTrack(leadTrack + clamped)
             } else {
-                drag.dropTarget = rawTarget
+                drag.dropTarget = cursorTarget
             }
             dragState = .moveClip(drag)
 
@@ -331,51 +328,37 @@ final class TimelineInputController {
     func mouseUp(with event: NSEvent, geometry: TimelineGeometry) {
         switch dragState {
         case .moveClip(let drag):
-            let minOrigFrame = drag.all.map(\.originalFrame).min()!
-            let clampedDelta = max(-minOrigFrame, drag.deltaFrames)
-            let trackDelta: Int = {
-                if case .existingTrack(let idx) = drag.dropTarget {
-                    return idx - drag.lead.originalTrack
-                }
-                return 0
-            }()
-
-            if case .existingTrack = drag.dropTarget,
-               trackDelta == 0, drag.deltaFrames == 0 {
+            if case .existingTrack(let idx) = drag.dropTarget,
+               idx == drag.lead.originalTrack, drag.deltaFrames == 0 {
                 break
             }
 
+            let minOrigFrame = drag.all.map(\.originalFrame).min()!
+            let frameDelta = max(-minOrigFrame, drag.deltaFrames)
+            let pinned = pinnedCompanionIds(for: drag)
+            let leadTrack = drag.lead.originalTrack
+
             switch drag.dropTarget {
             case .existingTrack:
-                let pinned = pinnedCompanionIds(for: drag)
+                // Rigid translation: non-pinned shift by trackDelta; pinned hold their row.
+                let delta = drag.trackDelta
                 let moves = drag.all.map { p in
-                    let destTrack = pinned.contains(p.clipId) ? p.originalTrack : p.originalTrack + trackDelta
-                    return (clipId: p.clipId, toTrack: destTrack, toFrame: p.originalFrame + clampedDelta)
+                    let toTrack = pinned.contains(p.clipId) ? p.originalTrack : p.originalTrack + delta
+                    return (clipId: p.clipId, toTrack: toTrack, toFrame: p.originalFrame + frameDelta)
                 }
-                if drag.isDuplicate {
-                    editor.duplicateClipsToPositions(moves)
-                } else {
-                    editor.moveClips(moves)
-                }
+                commitMoves(moves, isDuplicate: drag.isDuplicate)
+
             case .newTrackAt(let insertIndex):
-                // Existing companions at or below the inserted track shift down.
                 editor.undoManager?.beginUndoGrouping()
-                let clipType = editor.timeline.tracks[drag.lead.originalTrack].type
-                let newIdx = editor.insertTrack(at: insertIndex, type: clipType, label: clipType.trackLabel)
-                let moves: [(clipId: String, toTrack: Int, toFrame: Int)] = drag.all.map { p in
-                    if drag.isLead(p) {
-                        return (p.clipId, newIdx, p.originalFrame + clampedDelta)
-                    }
+                let trackType = editor.timeline.tracks[leadTrack].type
+                let newIdx = editor.insertTrack(at: insertIndex, type: trackType, label: trackType.trackLabel)
+                let moves = drag.all.map { p in
+                    let hops = !pinned.contains(p.clipId) && p.originalTrack == leadTrack
                     let shifted = p.originalTrack >= newIdx ? p.originalTrack + 1 : p.originalTrack
-                    return (p.clipId, shifted, p.originalFrame + clampedDelta)
+                    return (clipId: p.clipId, toTrack: hops ? newIdx : shifted, toFrame: p.originalFrame + frameDelta)
                 }
-                if drag.isDuplicate {
-                    editor.duplicateClipsToPositions(moves)
-                    editor.undoManager?.setActionName(moves.count == 1 ? "Duplicate Clip to New Track" : "Duplicate Clips to New Track")
-                } else {
-                    editor.moveClips(moves)
-                    editor.undoManager?.setActionName("Move Clip to New Track")
-                }
+                commitMoves(moves, isDuplicate: drag.isDuplicate)
+                editor.undoManager?.setActionName(newTrackActionName(count: moves.count, isDuplicate: drag.isDuplicate))
                 editor.undoManager?.endUndoGrouping()
             }
 
@@ -662,12 +645,37 @@ final class TimelineInputController {
         editor.seekToFrame(frame, mode: .interactiveScrub)
     }
 
-    func pinnedCompanionIds(for drag: DragState.MoveClipDrag) -> Set<String> {
-        let clips = editor.timeline.tracks.flatMap(\.clips)
-        guard let leadLink = clips.first(where: { $0.id == drag.lead.clipId })?.linkGroupId else {
-            return []
+    private func commitMoves(_ moves: [(clipId: String, toTrack: Int, toFrame: Int)], isDuplicate: Bool) {
+        if isDuplicate {
+            editor.duplicateClipsToPositions(moves)
+        } else {
+            editor.moveClips(moves)
         }
-        return Set(clips.lazy.filter { $0.id != drag.lead.clipId && $0.linkGroupId == leadLink }.map(\.id))
+    }
+
+    private func newTrackActionName(count: Int, isDuplicate: Bool) -> String {
+        switch (isDuplicate, count) {
+        case (true, 1): return "Duplicate Clip to New Track"
+        case (true, _): return "Duplicate Clips to New Track"
+        default:        return "Move Clip to New Track"
+        }
+    }
+
+    func pinnedCompanionIds(for drag: DragState.MoveClipDrag) -> Set<String> {
+        let tracks = editor.timeline.tracks
+        guard tracks.indices.contains(drag.lead.originalTrack) else { return [] }
+        let leadTrackType = tracks[drag.lead.originalTrack].type
+        let clips = tracks.flatMap(\.clips)
+        let leadLink = clips.first(where: { $0.id == drag.lead.clipId })?.linkGroupId
+        var pinned: Set<String> = []
+        for c in clips where c.id != drag.lead.clipId {
+            if let leadLink, c.linkGroupId == leadLink {
+                pinned.insert(c.id)
+            } else if !leadTrackType.isCompatible(with: c.mediaType) {
+                pinned.insert(c.id)
+            }
+        }
+        return pinned
     }
 
     /// Clamps track movement to valid, type-compatible tracks.
