@@ -30,6 +30,12 @@ All UI styling MUST use `AppTheme` constants from `Sources/PalmierPro/UI/AppThem
 
 If a needed value doesn't exist in AppTheme, add it there first — don't hardcode it.
 
+## Drag and drop
+
+SwiftUI `.onDrop` on a parent view shadows every drop target inside its layout area on macOS 26 — even AppKit `NSDraggingDestination` children registered directly with the window. Inner `.onDrop` modifiers silently never fire while a parent `.onDrop` is active.
+
+Rule: **any drop target that spans an area containing other drop targets must use native AppKit** (see `MediaPanelDropArea` in `Sources/PalmierPro/MediaPanel/`). Inner / leaf drops can stay SwiftUI `.onDrop`. Do not stack SwiftUI `.onDrop` modifiers in parent/child layouts.
+
 ## Voice
 
 Palmier Pro speaks like a quietly capable native Mac app for filmmakers: direct, technical, calm, and 

@@ -82,23 +82,24 @@ struct MediaPanelView: View {
             toolbar
 
             ZStack(alignment: .top) {
-                VStack(spacing: 0) {
-                    if showsEmptyState {
-                        emptyStateView
-                    } else {
-                        VStack(spacing: 0) {
-                            contextBar
-                            switch viewMode {
-                            case .folder: mediaGridView
-                            case .flat: flatGridView
-                            case .grouped: groupedGridView
+                MediaPanelDropArea(
+                    isTargeted: $isDropTargeted,
+                    onDrop: { urls in handlePanelFinderDrop(urls: urls) }
+                ) {
+                    VStack(spacing: 0) {
+                        if showsEmptyState {
+                            emptyStateView
+                        } else {
+                            VStack(spacing: 0) {
+                                contextBar
+                                switch viewMode {
+                                case .folder: mediaGridView
+                                case .flat: flatGridView
+                                case .grouped: groupedGridView
+                                }
                             }
                         }
                     }
-                }
-                .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
-                    handleProviderDrop(providers, into: currentFolderId)
-                    return true
                 }
                 .overlay {
                     if isDropTargeted { dropHighlight.allowsHitTesting(false) }

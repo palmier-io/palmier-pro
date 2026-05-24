@@ -80,6 +80,20 @@ extension MediaPanelView {
 // MARK: - Drop handlers (folder tile, breadcrumb, panel-level Finder drop)
 
 extension MediaPanelView {
+    @MainActor
+    func handlePanelFinderDrop(urls: [URL]) {
+        Self.handlePanelFinderDrop(urls: urls, into: currentFolderId, editor: editor)
+    }
+
+    @MainActor
+    static func handlePanelFinderDrop(urls: [URL], into destFolderId: String?, editor: EditorViewModel) {
+        for url in urls {
+            if let asset = editor.addMediaAsset(from: url), destFolderId != nil {
+                editor.moveAssetsToFolder(assetIds: [asset.id], folderId: destFolderId)
+            }
+        }
+    }
+
     func handleProviderDrop(_ providers: [NSItemProvider], into destFolderId: String?) {
         for provider in providers {
             // Finder drops: file URL.
@@ -98,20 +112,22 @@ extension MediaPanelView {
             if provider.canLoadObject(ofClass: NSString.self) {
                 _ = provider.loadObject(ofClass: NSString.self) { obj, _ in
                     guard let text = obj as? String else { return }
-                    Task { @MainActor in resolveTextDrop(text, into: destFolderId) }
+                    Task { @MainActor in
+                        Self.resolveTextDrop(text, into: destFolderId, editor: editor)
+                    }
                 }
             }
         }
     }
 
     @MainActor
-    private func resolveTextDrop(_ text: String, into destFolderId: String?) {
+    static func resolveTextDrop(_ text: String, into destFolderId: String?, editor: EditorViewModel) {
         var assetIds: Set<String> = []
         var folderIds: Set<String> = []
         for line in text.split(separator: "\n").map(String.init) where !line.isEmpty {
-            if let folderId = Self.folderId(fromDragString: line) {
+            if let folderId = folderId(fromDragString: line) {
                 folderIds.insert(folderId)
-            } else if let id = Self.assetId(fromDragString: line),
+            } else if let id = assetId(fromDragString: line),
                       editor.mediaAssets.contains(where: { $0.id == id }) {
                 assetIds.insert(id)
             }
