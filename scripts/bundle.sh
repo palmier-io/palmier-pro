@@ -85,6 +85,12 @@ else
   echo "!! missing Fonts/ in SwiftPM resource bundle at $RES_BUNDLE" >&2
   exit 1
 fi
+if [ -f "$RES_BUNDLE/palmier-pro.mcpb" ]; then
+  cp "$RES_BUNDLE/palmier-pro.mcpb" "$APP/Contents/Resources/"
+else
+  echo "!! missing palmier-pro.mcpb in SwiftPM resource bundle at $RES_BUNDLE" >&2
+  exit 1
+fi
 
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/PalmierPro"
 touch "$APP"

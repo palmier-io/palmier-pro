@@ -141,9 +141,9 @@ struct MCPInstructionsPane: View {
     }
 
     private func openClaudeDesktopBundle() {
-        guard let url = Bundle.module.url(forResource: "palmier-pro", withExtension: "mcpb") else {
-            return
-        }
+        guard let resourceURL = Bundle.main.resourceURL else { return }
+        let url = resourceURL.appendingPathComponent("palmier-pro.mcpb")
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
         NSWorkspace.shared.open(url)
     }
 
