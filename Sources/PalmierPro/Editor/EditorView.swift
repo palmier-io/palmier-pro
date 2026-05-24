@@ -19,7 +19,22 @@ struct EditorView: NSViewControllerRepresentable {
 
 // MARK: - Split view controller
 
-final class EditorSplitViewController: NSSplitViewController {
+/// Thicker divider hit area for panel resizing
+class PaddedDividerSplitViewController: NSSplitViewController {
+    override func splitView(
+        _ splitView: NSSplitView,
+        effectiveRect proposedEffectiveRect: NSRect,
+        forDrawnRect drawnRect: NSRect,
+        ofDividerAt dividerIndex: Int
+    ) -> NSRect {
+        let pad = Layout.panelGap / 2
+        return splitView.isVertical
+            ? drawnRect.insetBy(dx: -pad, dy: 0)
+            : drawnRect.insetBy(dx: 0, dy: -pad)
+    }
+}
+
+final class EditorSplitViewController: PaddedDividerSplitViewController {
     private let editor: EditorViewModel
     private var currentPreset: LayoutPreset?
     private var currentMaximized: EditorViewModel.FocusedPanel?
@@ -273,7 +288,7 @@ final class EditorSplitViewController: NSSplitViewController {
     // MARK: - Shared item builders
 
     private func makeChildSplit(isVertical: Bool) -> NSSplitViewController {
-        let vc = NSSplitViewController()
+        let vc = PaddedDividerSplitViewController()
         vc.splitView.isVertical = isVertical
         vc.splitView.dividerStyle = .thin
         return vc
