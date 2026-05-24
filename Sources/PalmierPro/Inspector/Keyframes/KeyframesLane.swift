@@ -146,8 +146,12 @@ struct KeyframesLaneRow: View {
                 if snapped != d.currentFrame {
                     editor.applyMoveKeyframe(clipId: clip.id, property: property,
                                              fromFrame: d.currentFrame, toFrame: snapped)
-                    d.currentFrame = snapped
-                    drag = d
+                    let kfStillAtCurrent = editor.clipFor(id: clip.id)?
+                        .keyframeFrames(for: property).contains(d.currentFrame) ?? false
+                    if !kfStillAtCurrent {
+                        d.currentFrame = snapped
+                        drag = d
+                    }
                 }
             }
             .onEnded { value in
