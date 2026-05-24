@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import PalmierPro
@@ -585,5 +586,168 @@ struct HandlePanelFinderDropTests {
 
         #expect(e.mediaAssets.count == 3)
         #expect(e.mediaAssets.allSatisfy { $0.folderId == dest })
+    }
+}
+
+// MARK: - clipboardHasImportableMedia
+
+/// Drives Edit > Paste menu validation. Uses a unique pasteboard per test so
+/// parallel tests don't collide on `NSPasteboard.general`.
+@Suite("MediaPanelView — clipboardHasImportableMedia")
+@MainActor
+struct ClipboardProbeTests {
+
+    private func freshPasteboard() -> NSPasteboard {
+        let pb = NSPasteboard.withUniqueName()
+        pb.clearContents()
+        return pb
+    }
+
+    @Test func emptyPasteboardIsFalse() {
+        let pb = freshPasteboard()
+        #expect(MediaPanelView.clipboardHasImportableMedia(pasteboard: pb) == false)
+    }
+
+    @Test func textOnlyIsFalse() {
+        let pb = freshPasteboard()
+        pb.setString("hello", forType: .string)
+        #expect(MediaPanelView.clipboardHasImportableMedia(pasteboard: pb) == false)
+    }
+
+    @Test func pngIsTrue() {
+        let pb = freshPasteboard()
+        pb.setData(Data([0]), forType: .png)
+        #expect(MediaPanelView.clipboardHasImportableMedia(pasteboard: pb))
+    }
+
+    @Test func tiffIsTrue() {
+        let pb = freshPasteboard()
+        pb.setData(Data([0]), forType: .tiff)
+        #expect(MediaPanelView.clipboardHasImportableMedia(pasteboard: pb))
+    }
+
+    @Test func fileURLIsTrue() {
+        let pb = freshPasteboard()
+        pb.writeObjects([URL(fileURLWithPath: "/tmp/x.mp4") as NSURL])
+        #expect(MediaPanelView.clipboardHasImportableMedia(pasteboard: pb))
+    }
+}
+
+// MARK: - handleClipboardPaste
+
+@Suite("MediaPanelView — handleClipboardPaste")
+@MainActor
+struct HandleClipboardPasteTests {
+
+    private func freshPasteboard() -> NSPasteboard {
+        let pb = NSPasteboard.withUniqueName()
+        pb.clearContents()
+        return pb
+    }
+
+    @Test func pngBytesImportAtRootWhenDestinationIsNil() {
+        let e = editor()
+        let pb = freshPasteboard()
+        pb.setData(Data([0x89, 0x50, 0x4E, 0x47]), forType: .png)
+
+        MediaPanelView.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+
+        #expect(e.mediaAssets.count == 1)
+        #expect(e.mediaAssets.first?.type == .image)
+        #expect(e.mediaAssets.first?.url.pathExtension == "png")
+        #expect(e.mediaAssets.first?.folderId == nil)
+    }
+
+    @Test func pngBytesLandInDestinationFolder() {
+        let e = editor()
+        let dest = e.createFolder(name: "Dest")
+        let pb = freshPasteboard()
+        pb.setData(Data([0x89, 0x50, 0x4E, 0x47]), forType: .png)
+
+        MediaPanelView.handleClipboardPaste(pasteboard: pb, into: dest, editor: e)
+
+        #expect(e.mediaAssets.first?.folderId == dest)
+        #expect(e.mediaManifest.entries.first?.folderId == dest)
+    }
+
+    @Test func tiffBytesImportWithTiffExtension() {
+        let e = editor()
+        let pb = freshPasteboard()
+        pb.setData(Data([0x4D, 0x4D, 0x00, 0x2A]), forType: .tiff)
+
+        MediaPanelView.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+
+        #expect(e.mediaAssets.count == 1)
+        #expect(e.mediaAssets.first?.url.pathExtension == "tiff")
+    }
+
+    @Test func fileURLRoutesThroughFinderDrop() {
+        let e = editor()
+        let url = URL(fileURLWithPath: "/tmp/\(UUID().uuidString)-clip.mp4")
+        let pb = freshPasteboard()
+        pb.writeObjects([url as NSURL])
+
+        MediaPanelView.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+
+        #expect(e.mediaAssets.count == 1)
+        #expect(e.mediaAssets.first?.type == .video)
+    }
+
+    @Test func fileURLLandsInDestinationFolder() {
+        let e = editor()
+        let dest = e.createFolder(name: "Dest")
+        let url = URL(fileURLWithPath: "/tmp/\(UUID().uuidString)-clip.mp4")
+        let pb = freshPasteboard()
+        pb.writeObjects([url as NSURL])
+
+        MediaPanelView.handleClipboardPaste(pasteboard: pb, into: dest, editor: e)
+
+        #expect(e.mediaAssets.first?.folderId == dest)
+    }
+
+    /// When both a file URL and raw image bytes are on the pasteboard (Finder
+    /// items always carry a TIFF preview alongside the file URL), the URL wins —
+    /// avoids creating both the file-imported asset and a duplicate "pasted-*"
+    /// image asset for the same payload.
+    @Test func fileURLTakesPrecedenceOverImageData() {
+        let e = editor()
+        let url = URL(fileURLWithPath: "/tmp/\(UUID().uuidString)-clip.mp4")
+        let pb = freshPasteboard()
+        pb.setData(Data([0x89, 0x50, 0x4E, 0x47]), forType: .png)
+        pb.writeObjects([url as NSURL])
+
+        MediaPanelView.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+
+        #expect(e.mediaAssets.count == 1)
+        #expect(e.mediaAssets.first?.type == .video)
+    }
+
+    @Test func emptyPasteboardIsNoOp() {
+        let e = editor()
+        let pb = freshPasteboard()
+
+        MediaPanelView.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+
+        #expect(e.mediaAssets.isEmpty)
+    }
+
+    @Test func textOnlyPasteboardIsNoOp() {
+        let e = editor()
+        let pb = freshPasteboard()
+        pb.setString("just some text", forType: .string)
+
+        MediaPanelView.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+
+        #expect(e.mediaAssets.isEmpty)
+    }
+
+    @Test func fileURLWithUnsupportedExtensionIsNoOp() {
+        let e = editor()
+        let pb = freshPasteboard()
+        pb.writeObjects([URL(fileURLWithPath: "/tmp/\(UUID().uuidString)-readme.txt") as NSURL])
+
+        MediaPanelView.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+
+        #expect(e.mediaAssets.isEmpty)
     }
 }

@@ -214,6 +214,10 @@ extension EditorWindowController: EditorActions {
     }
 
     @objc func paste(_ sender: Any?) {
+        if editorViewModel.focusedPanel == .media {
+            editorViewModel.mediaPanelPasteRequestTick &+= 1
+            return
+        }
         guard canHandleClipboardShortcut(),
               editorViewModel.canPasteClips else { return }
         editorViewModel.pasteClipsAtPlayhead()
@@ -265,6 +269,9 @@ extension EditorWindowController: EditorActions {
         case #selector(copy(_:)), #selector(cut(_:)):
             return canHandleClipboardShortcut() && !editorViewModel.selectedClipIds.isEmpty
         case #selector(paste(_:)):
+            if editorViewModel.focusedPanel == .media {
+                return MediaPanelView.clipboardHasImportableMedia()
+            }
             return canHandleClipboardShortcut() && editorViewModel.canPasteClips
         default:
             return true

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -117,6 +118,32 @@ extension MediaPanelView {
                     }
                 }
             }
+        }
+    }
+
+    static func clipboardHasImportableMedia(pasteboard pb: NSPasteboard = .general) -> Bool {
+        let types = pb.types ?? []
+        return types.contains(.fileURL) || types.contains(.png) || types.contains(.tiff)
+    }
+
+    @MainActor
+    func handleClipboardPaste() {
+        Self.handleClipboardPaste(pasteboard: .general, into: currentFolderId, editor: editor)
+    }
+
+    @MainActor
+    static func handleClipboardPaste(pasteboard pb: NSPasteboard, into destFolderId: String?, editor: EditorViewModel) {
+        if let urls = pb.readObjects(forClasses: [NSURL.self]) as? [URL], !urls.isEmpty {
+            handlePanelFinderDrop(urls: urls, into: destFolderId, editor: editor)
+            return
+        }
+        for (type, ext): (NSPasteboard.PasteboardType, String) in [(.png, "png"), (.tiff, "tiff")] {
+            guard let data = pb.data(forType: type),
+                  let asset = editor.importPastedImageData(data, fileExtension: ext) else { continue }
+            if let folderId = destFolderId {
+                editor.moveAssetsToFolder(assetIds: [asset.id], folderId: folderId)
+            }
+            return
         }
     }
 
