@@ -8,6 +8,8 @@
   <img src="./assets/macos-badge.png" alt="Download palmierpro for macOS" width="180" />
 </a>
 
+<sub><i>Requires macOS 26 (Tahoe)</i></sub>
+
 </div>
 
 <img src="./assets/palmier-ui.png" alt="palmierpro UI" width="900" />
