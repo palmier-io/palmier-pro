@@ -190,7 +190,11 @@ final class SettingsWindowController: NSWindowController {
 
     func show(tab: SettingsTab? = nil) {
         if let tab {
-            hosting?.rootView = AnyView(SettingsView(initialTab: tab).tint(AppTheme.Accent.primary))
+            hosting?.rootView = AnyView(
+                SettingsView(initialTab: tab)
+                    .id(UUID())
+                    .tint(AppTheme.Accent.primary)
+            )
         }
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)

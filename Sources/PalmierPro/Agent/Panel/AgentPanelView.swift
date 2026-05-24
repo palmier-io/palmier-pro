@@ -7,7 +7,7 @@ struct AgentPanelView: View {
 
     private var canSend: Bool {
         !service.isStreaming &&
-        service.hasApiKey &&
+        service.canStream &&
         !service.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -97,13 +97,14 @@ struct AgentPanelView: View {
     }
 
     private var modelPicker: some View {
-        Menu {
-            ForEach(AnthropicModel.allCases, id: \.self) { m in
+        let locked = service.availableModels.count <= 1
+        return Menu {
+            ForEach(service.availableModels, id: \.self) { m in
                 Button(m.displayName) { service.model = m }
             }
         } label: {
             HStack(spacing: AppTheme.Spacing.xs) {
-                Text(service.model.displayName)
+                Text(service.effectiveModel.displayName)
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                 Image(systemName: "chevron.down")
@@ -114,6 +115,17 @@ struct AgentPanelView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        .disabled(locked)
+    }
+
+    @ViewBuilder
+    private var byokIndicator: some View {
+        if service.hasApiKey {
+            Text("using API key")
+                .font(.system(size: AppTheme.FontSize.xs).italic())
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .help("Streaming through your Anthropic API key (BYOK)")
+        }
     }
 
     private var toolResults: [String: ToolRunResult] {
@@ -133,11 +145,7 @@ struct AgentPanelView: View {
             if service.messages.isEmpty && !service.isStreaming {
                 VStack(spacing: AppTheme.Spacing.smMd) {
                     emptyState
-                    if let err = service.streamError {
-                        Text(err)
-                            .font(.system(size: AppTheme.FontSize.xs))
-                            .foregroundStyle(.red)
-                    }
+                    errorBanner
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .padding(.horizontal, AppTheme.Spacing.lgXl)
@@ -159,12 +167,8 @@ struct AgentPanelView: View {
                     if service.isStreaming {
                         ThinkingDots().id("streaming-indicator")
                     }
-                    if let err = service.streamError {
-                        Text(err)
-                            .font(.system(size: AppTheme.FontSize.xs))
-                            .foregroundStyle(.red)
-                            .padding(.top, AppTheme.Spacing.sm)
-                    }
+                    errorBanner
+                        .padding(.top, AppTheme.Spacing.sm)
                 }
                 .padding(.horizontal, AppTheme.Spacing.lgXl)
                 .padding(.top, Layout.panelHeaderHeight + AppTheme.Spacing.sm)
@@ -180,8 +184,49 @@ struct AgentPanelView: View {
     }
 
     @ViewBuilder
+    private var errorBanner: some View {
+        if let err = service.streamError {
+            HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
+                Text(err.localizedDescription ?? "")
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.leading)
+                if let cta = errorCTA(for: err) {
+                    Button(action: cta.action) {
+                        Text(cta.title)
+                            .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+        }
+    }
+
+    private struct ErrorCTA {
+        let title: String
+        let action: () -> Void
+    }
+
+    private func errorCTA(for error: PalmierClientError?) -> ErrorCTA? {
+        guard let error else { return nil }
+        switch error {
+        case .unauthenticated:
+            return ErrorCTA(title: "Sign in") {
+                SettingsWindowController.shared.show(tab: .account)
+            }
+        case .insufficientCredits:
+            return ErrorCTA(title: "View plans") {
+                SettingsWindowController.shared.show(tab: .account)
+            }
+        case .upstream:
+            return nil
+        }
+    }
+
+    @ViewBuilder
     private var emptyState: some View {
-        if service.hasApiKey {
+        if service.canStream {
             Text("Describe a change, or @ a clip to start.")
                 .font(.system(size: AppTheme.FontSize.md, weight: .medium))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
@@ -191,26 +236,34 @@ struct AgentPanelView: View {
         }
     }
 
+    @ViewBuilder
     private var missingKeyState: some View {
-        VStack(spacing: AppTheme.Spacing.md) {
-            Image(systemName: "key.horizontal")
-                .font(.system(size: 28, weight: .light))
+        let account = AccountService.shared
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Button(action: { SettingsWindowController.shared.show(tab: .account) }) {
+                Text(missingKeyPrimaryAction(account: account))
+                    .underline()
+                    .foregroundStyle(AppTheme.Accent.primary)
+            }
+            .buttonStyle(.plain)
+
+            Text("or use")
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
 
-            VStack(spacing: AppTheme.Spacing.xs) {
-                Text("AI Chat uses your own Anthropic API key to talk to Claude.")
-                    .font(.system(size: AppTheme.FontSize.md, weight: .medium))
-                    .foregroundStyle(AppTheme.Text.primaryColor)
-            }
-            .multilineTextAlignment(.center)
-
             Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
-                Text("Open Settings")
-                    .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                Text("your own Anthropic key")
+                    .underline()
+                    .foregroundStyle(AppTheme.Accent.primary)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
+            .buttonStyle(.plain)
         }
+        .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+    }
+
+    private func missingKeyPrimaryAction(account: AccountService) -> String {
+        if !account.isSignedIn { return "Sign in" }
+        if !account.isPaid { return "Subscribe" }
+        return "Open Settings"
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
@@ -236,6 +289,7 @@ struct AgentPanelView: View {
             onCancel: { service.cancel() }
         ) {
             modelPicker
+            byokIndicator
         }
         .padding(.horizontal, AppTheme.Spacing.mdLg)
         .padding(.bottom, AppTheme.Spacing.mdLg)

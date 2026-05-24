@@ -119,7 +119,11 @@ final class HelpWindowController: NSWindowController {
     required init?(coder: NSCoder) { fatalError() }
 
     func show(tab: HelpTab = .shortcuts) {
-        hosting?.rootView = AnyView(HelpView(initialTab: tab).tint(AppTheme.Accent.primary))
+        hosting?.rootView = AnyView(
+            HelpView(initialTab: tab)
+                .id(UUID())
+                .tint(AppTheme.Accent.primary)
+        )
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

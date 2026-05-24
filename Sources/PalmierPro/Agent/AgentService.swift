@@ -28,6 +28,33 @@ final class AgentService {
 
     var hasApiKey: Bool { !apiKey.isEmpty }
 
+    var canStream: Bool {
+        if hasApiKey { return true }
+        let account = AccountService.shared
+        return account.isSignedIn && account.isPaid
+    }
+
+    var availableModels: [AnthropicModel] {
+        if hasApiKey { return AnthropicModel.allCases }
+        return [.sonnet46]
+    }
+
+    private func selectClient() -> (any AgentClient)? {
+        let chosen = effectiveModel
+        if hasApiKey { return AnthropicClient(apiKey: apiKey, model: chosen) }
+        let account = AccountService.shared
+        if account.isSignedIn && account.isPaid {
+            return PalmierClient(model: chosen)
+        }
+        return nil
+    }
+
+    var effectiveModel: AnthropicModel {
+        let available = availableModels
+        if available.contains(model) { return model }
+        return available.first ?? .sonnet46
+    }
+
     var model: AnthropicModel = {
         if let raw = UserDefaults.standard.string(forKey: "agentModel"),
            let m = AnthropicModel(rawValue: raw) {
@@ -42,7 +69,7 @@ final class AgentService {
     var currentSessionId: UUID?
     var messages: [AgentMessage] = []
     var isStreaming: Bool = false
-    var streamError: String?
+    var streamError: PalmierClientError?
     var onSessionsChanged: (@MainActor () -> Void)?
 
     var draft: String = ""
@@ -145,8 +172,8 @@ final class AgentService {
     }
 
     func send(text: String, mentions: [AgentMention]) {
-        guard hasApiKey else {
-            streamError = "No Anthropic API key is set."
+        guard canStream else {
+            streamError = .upstream("Sign in to a paid plan or add an Anthropic API key to start.")
             return
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -178,7 +205,10 @@ final class AgentService {
     }
 
     private func runLoop() async {
-        let client = AnthropicClient(apiKey: apiKey, model: model)
+        guard let client = selectClient() else {
+            streamError = .upstream("No backend available.")
+            return
+        }
         let tools = ToolDefinitions.all.map {
             AnthropicToolSchema(name: $0.name.rawValue, description: $0.description, inputSchema: $0.inputSchema)
         }
@@ -220,9 +250,13 @@ final class AgentService {
             } catch is CancellationError {
                 dropEmptyAssistantTurn(at: assistantIndex)
                 break loop
+            } catch let err as PalmierClientError {
+                dropEmptyAssistantTurn(at: assistantIndex)
+                streamError = err
+                break loop
             } catch {
                 dropEmptyAssistantTurn(at: assistantIndex)
-                streamError = error.localizedDescription
+                streamError = .upstream(error.localizedDescription)
                 break loop
             }
         }

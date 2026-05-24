@@ -1,33 +1,6 @@
 import Foundation
 
-extension Notification.Name {
-    static let anthropicAPIKeyChanged = Notification.Name("anthropicAPIKeyChanged")
-}
-
-enum AnthropicKeychain {
-    private static let account = "anthropic-api-key"
-
-    static func save(_ key: String) {
-        KeychainStore.save(key, account: account)
-        NotificationCenter.default.post(name: .anthropicAPIKeyChanged, object: nil)
-    }
-
-    static func load() -> String? {
-        #if DEBUG
-        if let env = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !env.isEmpty {
-            return env
-        }
-        #endif
-        return KeychainStore.load(account: account)
-    }
-
-    static func delete() {
-        KeychainStore.delete(account: account)
-        NotificationCenter.default.post(name: .anthropicAPIKeyChanged, object: nil)
-    }
-}
+// MARK: - Shared value types
 
 enum AnthropicModel: String, CaseIterable, Sendable {
     case sonnet46 = "claude-sonnet-4-6"
@@ -85,56 +58,23 @@ enum AnthropicClientError: LocalizedError {
     }
 }
 
-struct AnthropicClient: Sendable {
-    let apiKey: String
-    let model: AnthropicModel
-    var maxTokens: Int = 8192
+// MARK: - Client protocol
 
-    private static let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
-
+protocol AgentClient: Sendable {
     func stream(
         system: String,
         tools: [AnthropicToolSchema],
         messages: [AnthropicMessage]
-    ) -> AsyncThrowingStream<AnthropicStreamEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    try await run(system: system, tools: tools, messages: messages, continuation: continuation)
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
-    }
+    ) -> AsyncThrowingStream<AnthropicStreamEvent, Error>
+}
 
-    private func run(
-        system: String,
-        tools: [AnthropicToolSchema],
-        messages: [AnthropicMessage],
+// MARK: - Shared SSE parser
+
+enum AnthropicSSE {
+    static func parse(
+        bytes: URLSession.AsyncBytes,
         continuation: AsyncThrowingStream<AnthropicStreamEvent, Error>.Continuation
     ) async throws {
-        guard !apiKey.isEmpty else { throw AnthropicClientError.missingAPIKey }
-
-        var request = URLRequest(url: Self.endpoint)
-        request.httpMethod = "POST"
-        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
-        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        request.setValue("application/json", forHTTPHeaderField: "content-type")
-        request.setValue("text/event-stream", forHTTPHeaderField: "accept")
-        request.httpBody = try JSONSerialization.data(withJSONObject: buildBody(
-            system: system, tools: tools, messages: messages
-        ))
-
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
-        if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
-            var body = ""
-            for try await line in bytes.lines { body += line + "\n" }
-            throw AnthropicClientError.httpError(status: http.statusCode, body: body)
-        }
-
         var pendingTools: [Int: (id: String, name: String, json: String)] = [:]
         for try await line in bytes.lines {
             try Task.checkCancellation()
@@ -188,9 +128,17 @@ struct AnthropicClient: Sendable {
             }
         }
     }
+}
 
-    private func buildBody(
-        system: String, tools: [AnthropicToolSchema], messages: [AnthropicMessage]
+// MARK: - Request body builder
+
+enum AnthropicRequestBody {
+    static func build(
+        model: AnthropicModel,
+        maxTokens: Int,
+        system: String,
+        tools: [AnthropicToolSchema],
+        messages: [AnthropicMessage]
     ) -> [String: Any] {
         var toolBlocks: [[String: Any]] = tools.map {
             ["name": $0.name, "description": $0.description, "input_schema": $0.inputSchema]
