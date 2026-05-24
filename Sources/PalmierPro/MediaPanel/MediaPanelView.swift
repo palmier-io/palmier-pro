@@ -164,6 +164,7 @@ struct MediaPanelView: View {
         }
         currentFolderId = id
         viewMode = .folder
+        editor.selectedFolderIds.removeAll()
     }
 
     // MARK: - Toolbar
