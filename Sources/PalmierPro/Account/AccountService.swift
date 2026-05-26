@@ -17,6 +17,14 @@ enum AccountTier: String, Decodable, Sendable {
         case .max: return "Max plan"
         }
     }
+
+    var upgradeLabel: String {
+        switch self {
+        case .none: return ""
+        case .pro: return "Pro"
+        case .max: return "Max"
+        }
+    }
 }
 
 struct AccountUser: Decodable, Sendable {
@@ -46,6 +54,14 @@ struct AccountPlan: Decodable, Sendable {
     let monthlyBudgetCredits: Int?
 }
 
+struct AvailablePlan: Decodable, Sendable, Identifiable {
+    let tier: AccountTier
+    let monthlyPriceUsd: Int
+    let monthlyBudgetCredits: Int?
+
+    var id: String { tier.rawValue }
+}
+
 struct AccountResponse: Decodable, Sendable {
     let user: AccountUser
     let plan: AccountPlan?
@@ -73,6 +89,7 @@ final class AccountService {
     private(set) var isLoading: Bool = true
     private(set) var isMisconfigured: Bool = false
     private(set) var account: AccountResponse?
+    private(set) var availablePlans: [AvailablePlan] = []
     private(set) var lastError: String?
     private(set) var isBuyingCredits: Bool = false
 
@@ -90,6 +107,7 @@ final class AccountService {
 
     @ObservationIgnored private(set) var convex: ConvexClientWithAuth<String>?
     @ObservationIgnored private var accountSubscription: AnyCancellable?
+    @ObservationIgnored private var plansSubscription: AnyCancellable?
     @ObservationIgnored private var authEventTask: Task<Void, Never>?
     @ObservationIgnored private var didConfigure = false
     @ObservationIgnored private var buyCreditsTask: Task<Void, Never>?
@@ -121,6 +139,7 @@ final class AccountService {
             deploymentUrl: deploymentURL.absoluteString,
             authProvider: ClerkConvexAuthProvider()
         )
+        startPlansSubscription()
 
         authEventTask = Task { @MainActor [weak self] in
             await self?.handleInitialAuthState()
@@ -182,6 +201,19 @@ final class AccountService {
             }
         }
         startAccountSubscription()
+    }
+
+    private func startPlansSubscription() {
+        plansSubscription?.cancel()
+        plansSubscription = convex?
+            .subscribe(to: "billing:listPlans", yielding: [AvailablePlan].self)
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { _ in },
+                receiveValue: { [weak self] plans in
+                    self?.availablePlans = plans
+                }
+            )
     }
 
     private func startAccountSubscription() {
@@ -316,5 +348,9 @@ extension AccountService {
         let user = account?.user
         let source = user?.displayName ?? user?.email ?? ""
         return source.first.map { String($0).uppercased() } ?? ""
+    }
+
+    func availablePlan(for tier: AccountTier) -> AvailablePlan? {
+        availablePlans.first { $0.tier == tier }
     }
 }

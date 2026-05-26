@@ -76,20 +76,72 @@ struct AccountPopoverCard: View {
             creditsBlock
 
             if !account.isPaid {
-                HStack(spacing: AppTheme.Spacing.sm) {
-                    Button("Upgrade to Pro") {
-                        Task { await account.subscribe(tier: .pro) }
-                        dismiss()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    Button("Max") {
-                        Task { await account.subscribe(tier: .max) }
-                        dismiss()
-                    }
-                    .buttonStyle(.bordered)
-                }
+                upgradeBlock
             }
         }
+    }
+
+    @ViewBuilder
+    private var upgradeBlock: some View {
+        VStack(spacing: AppTheme.Spacing.xs) {
+            if let pro = account.availablePlan(for: .pro) {
+                planRow(plan: pro, isPrimary: true)
+            }
+            if let max = account.availablePlan(for: .max) {
+                planRow(plan: max, isPrimary: false)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func planRow(plan: AvailablePlan, isPrimary: Bool) -> some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Text(plan.tier.upgradeLabel)
+                .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+
+            Text("$\(plan.monthlyPriceUsd)/mo")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .monospacedDigit()
+
+            if let credits = plan.monthlyBudgetCredits {
+                Text(creditsShortLabel(credits))
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .monospacedDigit()
+            }
+
+            Spacer(minLength: 0)
+
+            upgradeActionButton(tier: plan.tier, isPrimary: isPrimary)
+        }
+    }
+
+    @ViewBuilder
+    private func upgradeActionButton(tier: AccountTier, isPrimary: Bool) -> some View {
+        if isPrimary {
+            Button("Upgrade") {
+                Task { await account.subscribe(tier: tier) }
+                dismiss()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        } else {
+            Button("Upgrade") {
+                Task { await account.subscribe(tier: tier) }
+                dismiss()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+    }
+
+    private func creditsShortLabel(_ credits: Int) -> String {
+        if credits >= 1000, credits % 1000 == 0 {
+            return "\(credits / 1000)k credits"
+        }
+        return "\(credits.formatted()) credits"
     }
 
     @ViewBuilder

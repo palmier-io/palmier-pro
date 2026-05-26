@@ -47,17 +47,83 @@ struct AccountPane: View {
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: AppTheme.Spacing.sm) {
-                Button("Upgrade to Pro") {
-                    Task { await account.subscribe(tier: .pro) }
-                }
-                .buttonStyle(.borderedProminent)
+            if account.availablePlans.isEmpty {
+                HStack(spacing: AppTheme.Spacing.sm) {
+                    Button("Upgrade to Pro") {
+                        Task { await account.subscribe(tier: .pro) }
+                    }
+                    .buttonStyle(.borderedProminent)
 
-                Button("Upgrade to Max") {
-                    Task { await account.subscribe(tier: .max) }
+                    Button("Upgrade to Max") {
+                        Task { await account.subscribe(tier: .max) }
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
+            } else {
+                HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
+                    if let pro = account.availablePlan(for: .pro) {
+                        planCard(plan: pro, isPrimary: true)
+                            .frame(maxWidth: 180)
+                    }
+                    if let max = account.availablePlan(for: .max) {
+                        planCard(plan: max, isPrimary: false)
+                            .frame(maxWidth: 180)
+                    }
+                    Spacer(minLength: 0)
+                }
+
+                Text("Credits cover AI generation and chat.")
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func planCard(plan: AvailablePlan, isPrimary: Bool) -> some View {
+        card {
+            cardCaption(plan.tier.planLabel)
+
+            HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.xxs) {
+                Text("$\(plan.monthlyPriceUsd)")
+                    .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                Text("/ month")
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+            }
+
+            if let credits = plan.monthlyBudgetCredits {
+                Text("\(credits.formatted()) credits / month")
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .monospacedDigit()
+            }
+
+            Spacer(minLength: AppTheme.Spacing.xs)
+
+            upgradeButton(for: plan, isPrimary: isPrimary)
+        }
+    }
+
+    @ViewBuilder
+    private func upgradeButton(for plan: AvailablePlan, isPrimary: Bool) -> some View {
+        let label = "Upgrade to \(plan.tier.upgradeLabel)"
+        if isPrimary {
+            Button {
+                Task { await account.subscribe(tier: plan.tier) }
+            } label: {
+                Text(label).frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+        } else {
+            Button {
+                Task { await account.subscribe(tier: plan.tier) }
+            } label: {
+                Text(label).frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
         }
     }
 
