@@ -100,16 +100,26 @@ struct AccountPopoverCard: View {
                 .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
-            Text("$\(plan.monthlyPriceUsd)/mo")
+            Text("$\(plan.effectiveMonthlyPriceUsd)/mo")
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .monospacedDigit()
+
+            if plan.hasDiscount {
+                Text("$\(plan.monthlyPriceUsd)")
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .strikethrough()
+                    .monospacedDigit()
+                    .lineLimit(1)
+            }
 
             if let credits = plan.monthlyBudgetCredits {
                 Text(creditsShortLabel(credits))
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .monospacedDigit()
+                    .lineLimit(1)
             }
 
             Spacer(minLength: 0)

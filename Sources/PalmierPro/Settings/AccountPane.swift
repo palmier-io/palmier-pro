@@ -85,10 +85,16 @@ struct AccountPane: View {
         card {
             cardCaption(plan.tier.planLabel)
 
-            HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.xxs) {
-                Text("$\(plan.monthlyPriceUsd)")
+            HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.xs) {
+                Text("$\(plan.effectiveMonthlyPriceUsd)")
                     .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.primaryColor)
+                if plan.hasDiscount {
+                    Text("$\(plan.monthlyPriceUsd)")
+                        .font(.system(size: AppTheme.FontSize.sm))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .strikethrough()
+                }
                 Text("/ month")
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)

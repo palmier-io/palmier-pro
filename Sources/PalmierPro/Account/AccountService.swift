@@ -57,9 +57,17 @@ struct AccountPlan: Decodable, Sendable {
 struct AvailablePlan: Decodable, Sendable, Identifiable {
     let tier: AccountTier
     let monthlyPriceUsd: Int
+    let discountedMonthlyPriceUsd: Int?
     let monthlyBudgetCredits: Int?
 
     var id: String { tier.rawValue }
+    var effectiveMonthlyPriceUsd: Int {
+        hasDiscount ? discountedMonthlyPriceUsd! : monthlyPriceUsd
+    }
+    var hasDiscount: Bool {
+        guard let discounted = discountedMonthlyPriceUsd else { return false }
+        return discounted < monthlyPriceUsd
+    }
 }
 
 struct AccountResponse: Decodable, Sendable {
@@ -209,7 +217,11 @@ final class AccountService {
             .subscribe(to: "billing:listPlans", yielding: [AvailablePlan].self)
             .receive(on: DispatchQueue.main)
             .sink(
-                receiveCompletion: { _ in },
+                receiveCompletion: { [weak self] completion in
+                    if case .failure(let err) = completion {
+                        self?.lastError = err.localizedDescription
+                    }
+                },
                 receiveValue: { [weak self] plans in
                     self?.availablePlans = plans
                 }
