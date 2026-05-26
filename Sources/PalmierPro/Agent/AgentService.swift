@@ -452,7 +452,7 @@ final class AgentService {
         let json = String(data: data, encoding: .utf8) ?? "[]"
         var notes: [String] = []
         if !inlined.inlinedIds.isEmpty {
-            notes.append("Assets marked \"inlined\": true are attached as image blocks in this message — do not call read_media for them.")
+            notes.append("Assets marked \"inlined\": true are attached as image blocks in this message — do not call inspect_media for them.")
         }
         if !inlined.failures.isEmpty {
             notes.append("Assets with \"inlineError\" could not be attached; tell the user the image could not be read rather than describing it.")

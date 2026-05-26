@@ -175,57 +175,6 @@ struct ToolExecutorReadOnlyTests {
     }
 }
 
-@Suite("ToolExecutor — track handlers")
-@MainActor
-struct ToolExecutorTrackTests {
-
-    @Test func addTrackCreatesVideoTrack() async throws {
-        let h = ToolHarness()
-        let result = await h.runRaw("add_track", args: ["type": "video", "label": "MyVideo"])
-        #expect(result.isError == false)
-        #expect(h.editor.timeline.tracks.contains { $0.label == "MyVideo" && $0.type == .video })
-    }
-
-    @Test func addTrackUsesDefaultLabelWhenOmitted() async throws {
-        let h = ToolHarness()
-        let result = await h.runRaw("add_track", args: ["type": "audio"])
-        #expect(result.isError == false)
-        let audioTrack = h.editor.timeline.tracks.first { $0.type == .audio }
-        #expect(audioTrack != nil)
-        #expect(audioTrack?.label.isEmpty == false)
-    }
-
-    @Test func addTrackRejectsInvalidType() async throws {
-        let h = ToolHarness()
-        let result = await h.runRaw("add_track", args: ["type": "subtitle"])
-        #expect(result.isError)
-        #expect(ToolHarness.textOf(result).lowercased().contains("invalid"))
-    }
-
-    @Test func addTrackRequiresTypeArg() async throws {
-        let h = ToolHarness()
-        let result = await h.runRaw("add_track", args: [:])
-        #expect(result.isError)
-    }
-
-    @Test func removeTrackDropsTheNamedTrack() async throws {
-        let h = ToolHarness()
-        _ = await h.runRaw("add_track", args: ["type": "video", "label": "Temp"])
-        let trackId = h.editor.timeline.tracks.first { $0.label == "Temp" }!.id
-
-        let result = await h.runRaw("remove_track", args: ["trackId": trackId])
-        #expect(result.isError == false)
-        #expect(h.editor.timeline.tracks.contains { $0.id == trackId } == false)
-    }
-
-    @Test func removeTrackRejectsMissingId() async throws {
-        let h = ToolHarness()
-        let result = await h.runRaw("remove_track", args: ["trackId": "does-not-exist"])
-        #expect(result.isError)
-        #expect(ToolHarness.textOf(result).lowercased().contains("not found"))
-    }
-}
-
 @Suite("ToolExecutor — clip handlers")
 @MainActor
 struct ToolExecutorClipTests {
@@ -233,7 +182,7 @@ struct ToolExecutorClipTests {
     /// Build a harness with one video track and one video asset ready to place.
     private func setupWithVideoTrack() async -> (ToolHarness, MediaAsset) {
         let h = ToolHarness()
-        _ = await h.runRaw("add_track", args: ["type": "video"])
+        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video")
         let asset = h.addAsset(type: .video)
         return (h, asset)
     }
@@ -289,7 +238,7 @@ struct ToolExecutorClipTests {
     @Test func addClipsRejectsIncompatibleAssetForTrack() async throws {
         // Audio asset onto a video track.
         let h = ToolHarness()
-        _ = await h.runRaw("add_track", args: ["type": "video"])
+        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video")
         let audio = h.addAsset(type: .audio)
         let result = await h.runRaw("add_clips", args: [
             "entries": [[
@@ -321,6 +270,109 @@ struct ToolExecutorClipTests {
         let h = ToolHarness()
         let result = await h.runRaw("add_clips", args: ["entries": []])
         #expect(result.isError)
+    }
+
+    @Test func addClipsAutoCreatesTrackWhenIndexOmitted() async throws {
+        let h = ToolHarness()
+        let asset = h.addAsset(type: .video)
+        let initialCount = h.editor.timeline.tracks.count
+        let result = await h.runRaw("add_clips", args: [
+            "entries": [[
+                "mediaRef": asset.id,
+                "startFrame": 0,
+                "durationFrames": 30,
+            ]]
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        #expect(h.editor.timeline.tracks.count == initialCount + 1)
+        let createdTrack = h.editor.timeline.tracks.first { $0.type == .video }
+        #expect(createdTrack?.clips.first?.mediaRef == asset.id)
+    }
+
+    @Test func addClipsSharesOneTrackForMultipleVisualEntriesWhenOmitted() async throws {
+        let h = ToolHarness()
+        let a = h.addAsset(type: .video)
+        let b = h.addAsset(type: .image)
+        let initialCount = h.editor.timeline.tracks.count
+        let result = await h.runRaw("add_clips", args: [
+            "entries": [
+                ["mediaRef": a.id, "startFrame": 0, "durationFrames": 30],
+                ["mediaRef": b.id, "startFrame": 60, "durationFrames": 30],
+            ]
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        // One shared video track was created.
+        #expect(h.editor.timeline.tracks.count == initialCount + 1)
+        let videoTracks = h.editor.timeline.tracks.filter { $0.type == .video }
+        #expect(videoTracks.count == 1)
+        #expect(videoTracks.first?.clips.count == 2)
+    }
+
+    @Test func addClipsCreatesSeparateTracksForVideoAndAudioWhenOmitted() async throws {
+        let h = ToolHarness()
+        let video = h.addAsset(type: .video)
+        let audio = h.addAsset(type: .audio)
+        let initial = h.editor.timeline.tracks.count
+        let result = await h.runRaw("add_clips", args: [
+            "entries": [
+                ["mediaRef": video.id, "startFrame": 0, "durationFrames": 30],
+                ["mediaRef": audio.id, "startFrame": 0, "durationFrames": 30],
+            ]
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        // Exactly one video + one audio track created.
+        #expect(h.editor.timeline.tracks.count == initial + 2)
+        let videoTracks = h.editor.timeline.tracks.filter { $0.type == .video }
+        let audioTracks = h.editor.timeline.tracks.filter { $0.type == .audio }
+        #expect(videoTracks.count == 1)
+        #expect(audioTracks.count == 1)
+        // Each clip landed on a track of its matching type.
+        #expect(videoTracks.first?.clips.first?.mediaRef == video.id)
+        #expect(audioTracks.first?.clips.first?.mediaRef == audio.id)
+    }
+
+    /// Regression for the stale-shared-index bug: when audio entries are interleaved with video
+    /// in an all-omit batch, inserting the video track must not strand earlier audio clips on
+    /// the (now-shifted) wrong index.
+    @Test func addClipsAudioBeforeVideoAllOmittedRoutesByType() async throws {
+        let h = ToolHarness()
+        let audio1 = h.addAsset(type: .audio)
+        let video = h.addAsset(type: .video)
+        let audio2 = h.addAsset(type: .audio)
+        let result = await h.runRaw("add_clips", args: [
+            "entries": [
+                ["mediaRef": audio1.id, "startFrame": 0, "durationFrames": 30],
+                ["mediaRef": video.id, "startFrame": 0, "durationFrames": 30],
+                ["mediaRef": audio2.id, "startFrame": 60, "durationFrames": 30],
+            ]
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        // Two audio clips on one shared audio track; one video clip on one shared video track.
+        let videoTracks = h.editor.timeline.tracks.filter { $0.type == .video }
+        let audioTracks = h.editor.timeline.tracks.filter { $0.type == .audio }
+        #expect(videoTracks.count == 1)
+        #expect(audioTracks.count == 1)
+        #expect(videoTracks.first?.clips.count == 1)
+        #expect(audioTracks.first?.clips.count == 2)
+        // Confirm by-type routing: no audio mediaRef on the video track and vice versa.
+        let audioRefs = audioTracks.first?.clips.map(\.mediaRef).sorted() ?? []
+        #expect(audioRefs == [audio1.id, audio2.id].sorted())
+        #expect(videoTracks.first?.clips.first?.mediaRef == video.id)
+    }
+
+    @Test func addClipsRejectsMixedTrackIndexUsage() async throws {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video")
+        let a = h.addAsset(type: .video)
+        let b = h.addAsset(type: .video)
+        let result = await h.runRaw("add_clips", args: [
+            "entries": [
+                ["mediaRef": a.id, "trackIndex": 0, "startFrame": 0, "durationFrames": 30],
+                ["mediaRef": b.id, "startFrame": 60, "durationFrames": 30], // omitted trackIndex
+            ]
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("Mixed trackIndex"))
     }
 
     // MARK: - remove_clips
@@ -431,54 +483,7 @@ struct ToolExecutorClipTests {
         #expect(ToolHarness.textOf(result).contains("outside"))
     }
 
-    // MARK: - move_clip
-
-    @Test func moveClipChangesTrackAndStartFrame() async throws {
-        let (h, asset) = await setupWithVideoTrack()
-        // Add a second video track so we have somewhere to move to.
-        _ = await h.runRaw("add_track", args: ["type": "video"])
-        // Capture destination track id BEFORE the move; index can shift if the source track
-        // empties and gets pruned away.
-        let destTrackId = h.editor.timeline.tracks[1].id
-        _ = await h.runRaw("add_clips", args: [
-            "entries": [[
-                "mediaRef": asset.id,
-                "trackIndex": 0,
-                "startFrame": 0,
-                "durationFrames": 60,
-            ]]
-        ])
-        let clipId = h.editor.timeline.tracks[0].clips[0].id
-
-        let result = await h.runRaw("move_clip", args: [
-            "clipId": clipId,
-            "toTrack": 1,
-            "toFrame": 100,
-        ])
-        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
-        // Find the moved clip by id. Track index may have shifted after pruning.
-        let loc = h.editor.findClip(id: clipId)
-        #expect(loc != nil, "clip should still exist after move")
-        if let loc {
-            let destTrack = h.editor.timeline.tracks[loc.trackIndex]
-            #expect(destTrack.id == destTrackId, "clip should be on the requested destination track")
-            #expect(destTrack.clips[loc.clipIndex].startFrame == 100)
-        }
-    }
-
-    @Test func moveClipRejectsMissingClip() async throws {
-        let h = ToolHarness()
-        _ = await h.runRaw("add_track", args: ["type": "video"])
-        let result = await h.runRaw("move_clip", args: [
-            "clipId": "ghost",
-            "toTrack": 0,
-            "toFrame": 0,
-        ])
-        #expect(result.isError)
-        #expect(ToolHarness.textOf(result).contains("not found"))
-    }
-
-    // MARK: - update_clips
+    // MARK: - move_clips
 
     /// Add a video clip and return its id, for tests that need an existing clip.
     private func addedClip(in h: ToolHarness, asset: MediaAsset, duration: Int = 60) async -> String {
@@ -493,12 +498,118 @@ struct ToolExecutorClipTests {
         return h.editor.timeline.tracks[0].clips[0].id
     }
 
-    @Test func updateClipsChangesSpeedAndVolume() async throws {
+    @Test func moveClipsChangesTrackAndFrame() async throws {
         let (h, asset) = await setupWithVideoTrack()
+        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video")
+        let destTrackId = h.editor.timeline.tracks[1].id
         let clipId = await addedClip(in: h, asset: asset)
 
-        let result = await h.runRaw("update_clips", args: [
-            "updates": [["clipId": clipId, "speed": 2.0, "volume": 0.5]]
+        let result = await h.runRaw("move_clips", args: [
+            "moves": [["clipId": clipId, "toTrack": 1, "toFrame": 100]]
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        if let loc = h.editor.findClip(id: clipId) {
+            let destTrack = h.editor.timeline.tracks[loc.trackIndex]
+            #expect(destTrack.id == destTrackId)
+            #expect(destTrack.clips[loc.clipIndex].startFrame == 100)
+        } else {
+            Issue.record("clip disappeared after move")
+        }
+    }
+
+    @Test func moveClipsRequiresAtLeastOneOfTrackOrFrame() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        let clipId = await addedClip(in: h, asset: asset)
+        let result = await h.runRaw("move_clips", args: [
+            "moves": [["clipId": clipId]]
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("toTrack"))
+    }
+
+    @Test func moveClipsRejectsIncompatibleTrack() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        _ = h.editor.insertTrack(at: 0, type: .audio, label: "Audio")
+        let clipId = await addedClip(in: h, asset: asset)
+        let audioIdx = h.editor.timeline.tracks.firstIndex(where: { $0.type == .audio })!
+        let result = await h.runRaw("move_clips", args: [
+            "moves": [["clipId": clipId, "toTrack": audioIdx]]
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("incompatible"))
+    }
+
+    @Test func moveClipsRejectsMissingClipId() async throws {
+        let h = ToolHarness()
+        let result = await h.runRaw("move_clips", args: [
+            "moves": [["clipId": "ghost", "toFrame": 30]]
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).lowercased().contains("not found"))
+    }
+
+    @Test func moveClipsRejectsEmptyMovesArray() async throws {
+        let h = ToolHarness()
+        let result = await h.runRaw("move_clips", args: ["moves": []])
+        #expect(result.isError)
+    }
+
+    // MARK: - move_clips: linked-partner propagation
+
+    /// Place a video-with-audio asset so placeClip auto-creates the linked audio track,
+    /// then return the resulting (videoClipId, audioClipId).
+    private func setupLinkedPair() async -> (ToolHarness, videoId: String, audioId: String) {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video")
+        let asset = h.addAsset(type: .video, duration: 5, hasAudio: true)
+        let ids = h.editor.placeClip(asset: asset, trackIndex: 0, startFrame: 0, durationFrames: 60)
+        return (h, ids[0], ids[1])
+    }
+
+    @Test func moveClipsFrameDeltaPropagatesToLinkedPartner() async throws {
+        let (h, videoId, audioId) = await setupLinkedPair()
+        let result = await h.runRaw("move_clips", args: [
+            "moves": [["clipId": videoId, "toFrame": 60]]
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        guard let videoLoc = h.editor.findClip(id: videoId),
+              let audioLoc = h.editor.findClip(id: audioId) else {
+            Issue.record("clips disappeared"); return
+        }
+        let videoClip = h.editor.timeline.tracks[videoLoc.trackIndex].clips[videoLoc.clipIndex]
+        let audioClip = h.editor.timeline.tracks[audioLoc.trackIndex].clips[audioLoc.clipIndex]
+        #expect(videoClip.startFrame == 60)
+        #expect(audioClip.startFrame == 60, "linked audio should track the video's frame delta")
+        #expect(ToolHarness.textOf(result).contains("linked"))
+    }
+
+    @Test func moveClipsTrackChangeDoesNotMoveLinkedPartner() async throws {
+        let (h, videoId, audioId) = await setupLinkedPair()
+        // Add a second video track so the video has somewhere to move to.
+        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video2")
+        guard let audioLoc = h.editor.findClip(id: audioId) else { Issue.record("setup failed"); return }
+        let audioTrackId = h.editor.timeline.tracks[audioLoc.trackIndex].id
+
+        let result = await h.runRaw("move_clips", args: [
+            "moves": [["clipId": videoId, "toTrack": 0, "toFrame": 120]]
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        guard let newAudioLoc = h.editor.findClip(id: audioId) else {
+            Issue.record("audio partner disappeared"); return
+        }
+        let audioClip = h.editor.timeline.tracks[newAudioLoc.trackIndex].clips[newAudioLoc.clipIndex]
+        #expect(h.editor.timeline.tracks[newAudioLoc.trackIndex].id == audioTrackId,
+                "linked audio should stay on its own track when video moves track")
+        #expect(audioClip.startFrame == 120, "linked audio should move by the same frame delta")
+    }
+
+    // MARK: - set_clip_properties
+
+    @Test func setClipPropertiesChangesSpeedAndVolume() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        let clipId = await addedClip(in: h, asset: asset)
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId], "speed": 2.0, "volume": 0.5,
         ])
         #expect(result.isError == false, "\(ToolHarness.textOf(result))")
         let clip = h.editor.timeline.tracks[0].clips[0]
@@ -506,48 +617,250 @@ struct ToolExecutorClipTests {
         #expect(clip.volume == 0.5)
     }
 
-    @Test func updateClipsChangesOpacity() async throws {
+    @Test func setClipPropertiesChangesOpacity() async throws {
         let (h, asset) = await setupWithVideoTrack()
         let clipId = await addedClip(in: h, asset: asset)
-
-        _ = await h.runRaw("update_clips", args: [
-            "updates": [["clipId": clipId, "opacity": 0.25]]
+        _ = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId], "opacity": 0.25,
         ])
         #expect(h.editor.timeline.tracks[0].clips[0].opacity == 0.25)
     }
 
-    @Test func updateClipsRejectsUnknownKey() async throws {
+    @Test func setClipPropertiesAppliesUniformlyToMultipleClips() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        let id1 = await addedClip(in: h, asset: asset, duration: 30)
+        // Place a second clip at a non-overlapping range on the same track.
+        _ = await h.runRaw("add_clips", args: [
+            "entries": [["mediaRef": asset.id, "trackIndex": 0, "startFrame": 60, "durationFrames": 30]]
+        ])
+        let id2 = h.editor.timeline.tracks[0].clips.first { $0.id != id1 }!.id
+        _ = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [id1, id2], "volume": 0.4,
+        ])
+        for clip in h.editor.timeline.tracks[0].clips {
+            #expect(clip.volume == 0.4, "all listed clips share the property value")
+        }
+    }
+
+    @Test func setClipPropertiesRejectsUnknownKey() async throws {
         let (h, asset) = await setupWithVideoTrack()
         let clipId = await addedClip(in: h, asset: asset)
-        let result = await h.runRaw("update_clips", args: [
-            "updates": [["clipId": clipId, "unknownField": 99]]
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId], "unknownField": 99,
         ])
         #expect(result.isError)
     }
 
-    @Test func updateClipsRejectsMissingClipId() async throws {
+    @Test func setClipPropertiesRejectsMissingClipId() async throws {
         let h = ToolHarness()
-        let result = await h.runRaw("update_clips", args: [
-            "updates": [["clipId": "ghost", "speed": 2.0]]
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": ["ghost"], "speed": 2.0,
         ])
         #expect(result.isError)
         #expect(ToolHarness.textOf(result).lowercased().contains("not found"))
     }
 
-    @Test func updateClipsRejectsTextOnlyFieldsOnVideoClip() async throws {
+    @Test func setClipPropertiesRejectsTextOnlyFieldsOnVideoClip() async throws {
         let (h, asset) = await setupWithVideoTrack()
         let clipId = await addedClip(in: h, asset: asset)
-        let result = await h.runRaw("update_clips", args: [
-            "updates": [["clipId": clipId, "fontSize": 48]]
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId], "fontSize": 48,
         ])
         #expect(result.isError)
-        #expect(ToolHarness.textOf(result).contains("text clips"))
+        #expect(ToolHarness.textOf(result).contains("text"))
     }
 
-    @Test func updateClipsRejectsEmptyUpdatesArray() async throws {
+    @Test func setClipPropertiesRejectsEmptyClipIds() async throws {
         let h = ToolHarness()
-        let result = await h.runRaw("update_clips", args: ["updates": []])
+        let result = await h.runRaw("set_clip_properties", args: ["clipIds": [], "speed": 2.0])
         #expect(result.isError)
+    }
+
+    @Test func setClipPropertiesRejectsNoProperties() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        let clipId = await addedClip(in: h, asset: asset)
+        let result = await h.runRaw("set_clip_properties", args: ["clipIds": [clipId]])
+        #expect(result.isError)
+    }
+
+    @Test func setClipPropertiesDurationAndSpeedPropagateToLinkedPartner() async throws {
+        let (h, videoId, audioId) = await setupLinkedPair()
+        _ = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [videoId], "durationFrames": 30, "speed": 2.0,
+        ])
+        guard let videoLoc = h.editor.findClip(id: videoId),
+              let audioLoc = h.editor.findClip(id: audioId) else {
+            Issue.record("clips disappeared"); return
+        }
+        let videoClip = h.editor.timeline.tracks[videoLoc.trackIndex].clips[videoLoc.clipIndex]
+        let audioClip = h.editor.timeline.tracks[audioLoc.trackIndex].clips[audioLoc.clipIndex]
+        #expect(videoClip.durationFrames == 30 && audioClip.durationFrames == 30)
+        #expect(videoClip.speed == 2.0 && audioClip.speed == 2.0)
+    }
+
+    @Test func setClipPropertiesOpacityDoesNotPropagateToLinkedPartner() async throws {
+        let (h, videoId, audioId) = await setupLinkedPair()
+        _ = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [videoId], "opacity": 0.5,
+        ])
+        guard let videoLoc = h.editor.findClip(id: videoId),
+              let audioLoc = h.editor.findClip(id: audioId) else {
+            Issue.record("clips disappeared"); return
+        }
+        let videoClip = h.editor.timeline.tracks[videoLoc.trackIndex].clips[videoLoc.clipIndex]
+        let audioClip = h.editor.timeline.tracks[audioLoc.trackIndex].clips[audioLoc.clipIndex]
+        #expect(videoClip.opacity == 0.5)
+        #expect(audioClip.opacity == 1.0, "opacity is per-clip and must not propagate")
+    }
+
+    @Test func setClipPropertiesScalarClearsExistingKeyframeTrack() async throws {
+        let (h, clipId) = await setupClipForKeyframes()
+        _ = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "volume",
+            "keyframes": [[0, 1.0], [30, 0.0]],
+        ])
+        _ = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId], "volume": 0.5,
+        ])
+        guard let loc = h.editor.findClip(id: clipId) else { Issue.record("clip gone"); return }
+        let clip = h.editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        #expect(clip.volume == 0.5)
+        #expect(clip.volumeTrack == nil)
+    }
+
+    // MARK: - set_keyframes
+
+    /// Place a video clip (no linked audio) and return (harness, clipId).
+    private func setupClipForKeyframes() async -> (ToolHarness, String) {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video")
+        let asset = h.addAsset(type: .video)
+        let ids = h.editor.placeClip(asset: asset, trackIndex: 0, startFrame: 0, durationFrames: 60)
+        return (h, ids[0])
+    }
+
+    @Test func setKeyframesSetsVolume() async throws {
+        let (h, clipId) = await setupClipForKeyframes()
+        let result = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "volume",
+            "keyframes": [[0, 1.0], [30, 0.0, "linear"], [60, 1.0]],
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        guard let loc = h.editor.findClip(id: clipId) else { Issue.record("clip gone"); return }
+        let kfs = h.editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].volumeTrack?.keyframes ?? []
+        #expect(kfs.count == 3)
+        #expect(kfs[0].frame == 0 && kfs[0].value == 1.0 && kfs[0].interpolationOut == .smooth)
+        #expect(kfs[1].frame == 30 && kfs[1].value == 0.0 && kfs[1].interpolationOut == .linear)
+        #expect(kfs[2].frame == 60 && kfs[2].value == 1.0)
+    }
+
+    @Test func setKeyframesClearsWhenEmpty() async throws {
+        let (h, clipId) = await setupClipForKeyframes()
+        _ = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "opacity",
+            "keyframes": [[0, 1.0], [30, 0.0]],
+        ])
+        _ = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "opacity", "keyframes": [],
+        ])
+        guard let loc = h.editor.findClip(id: clipId) else { Issue.record("clip gone"); return }
+        #expect(h.editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].opacityTrack == nil)
+    }
+
+    @Test func setKeyframesSortsAndDedupes() async throws {
+        let (h, clipId) = await setupClipForKeyframes()
+        let result = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "volume",
+            "keyframes": [[60, 0.3], [0, 1.0], [30, 0.5], [30, 0.8]],
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        guard let loc = h.editor.findClip(id: clipId) else { Issue.record("clip gone"); return }
+        let kfs = h.editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].volumeTrack?.keyframes ?? []
+        #expect(kfs.map(\.frame) == [0, 30, 60])
+        #expect(kfs[0].value == 1.0)
+        #expect(kfs[1].value == 0.8, "duplicate frame 30 keeps the last value (last-write-wins)")
+        #expect(kfs[2].value == 0.3)
+    }
+
+    @Test func setKeyframesRejectsNonFiniteValues() async throws {
+        let (h, clipId) = await setupClipForKeyframes()
+        let result = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "volume",
+            "keyframes": [[0, Double.infinity]],
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("finite"))
+    }
+
+    @Test func setKeyframesAcceptsPositionAndCrop() async throws {
+        let (h, clipId) = await setupClipForKeyframes()
+        let posResult = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "position",
+            "keyframes": [[0, 0.5, 0.5], [30, 0.7, 0.3, "linear"]],
+        ])
+        #expect(posResult.isError == false, "\(ToolHarness.textOf(posResult))")
+        let cropResult = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "crop",
+            "keyframes": [[0, 0, 0, 0, 0], [60, 0.1, 0.1, 0.1, 0.1]],
+        ])
+        #expect(cropResult.isError == false, "\(ToolHarness.textOf(cropResult))")
+        guard let loc = h.editor.findClip(id: clipId) else { Issue.record("clip gone"); return }
+        let clip = h.editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        let pos = clip.positionTrack?.keyframes ?? []
+        #expect(pos.count == 2)
+        #expect(pos[0].value.a == 0.5 && pos[0].value.b == 0.5)
+        #expect(pos[1].value.a == 0.7 && pos[1].value.b == 0.3 && pos[1].interpolationOut == .linear)
+        let crop = clip.cropTrack?.keyframes ?? []
+        #expect(crop.count == 2)
+        #expect(crop[1].value.top == 0.1 && crop[1].value.right == 0.1
+                && crop[1].value.bottom == 0.1 && crop[1].value.left == 0.1)
+    }
+
+    @Test func setKeyframesRejectsUnknownProperty() async throws {
+        let (h, clipId) = await setupClipForKeyframes()
+        let result = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "loudness", "keyframes": [[0, 1.0]],
+        ])
+        #expect(result.isError)
+    }
+
+    @Test func setKeyframesRejectsMissingClipId() async throws {
+        let h = ToolHarness()
+        let result = await h.runRaw("set_keyframes", args: [
+            "clipId": "ghost", "property": "volume", "keyframes": [[0, 1.0]],
+        ])
+        #expect(result.isError)
+    }
+
+    @Test func getTimelineEmitsTupleKeyframes() async throws {
+        let (h, clipId) = await setupClipForKeyframes()
+        _ = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "volume",
+            "keyframes": [[0, 1.0], [30, 0.0, "linear"]],
+        ])
+        _ = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "position",
+            "keyframes": [[0, 0.5, 0.5], [60, 0.2, 0.8]],
+        ])
+        let json = try await h.runOK("get_timeline") as? [String: Any]
+        let tracks = (json?["tracks"] as? [[String: Any]]) ?? []
+        let clip = tracks.flatMap { ($0["clips"] as? [[String: Any]]) ?? [] }
+            .first { ($0["id"] as? String) == clipId }
+        let kfs = clip?["keyframes"] as? [String: Any]
+        #expect(kfs != nil, "keyframes should be present on the clip in get_timeline output")
+        let volRows = kfs?["volume"] as? [[Any]]
+        #expect(volRows?.count == 2)
+        // Default interp 'smooth' is omitted from the tuple.
+        #expect(volRows?[0].count == 2)
+        // Non-default interp appears as the trailing element.
+        #expect(volRows?[1].count == 3)
+        #expect((volRows?[1][2] as? String) == "linear")
+        let posRows = kfs?["position"] as? [[Any]]
+        #expect(posRows?.count == 2)
+        #expect(posRows?[0].count == 3)
+        // Track wrappers are removed.
+        #expect(clip?["volumeTrack"] == nil)
+        #expect(clip?["positionTrack"] == nil)
     }
 }
 
@@ -578,7 +891,7 @@ struct ToolExecutorTextFolderTests {
 
     @Test func addTextsPlacesOnExplicitTrack() async throws {
         let h = ToolHarness()
-        _ = await h.runRaw("add_track", args: ["type": "video"])
+        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video")
         let result = await h.runRaw("add_texts", args: [
             "entries": [[
                 "trackIndex": 0,
@@ -596,7 +909,7 @@ struct ToolExecutorTextFolderTests {
 
     @Test func addTextsRejectsAudioTargetTrack() async throws {
         let h = ToolHarness()
-        _ = await h.runRaw("add_track", args: ["type": "audio"])
+        _ = h.editor.insertTrack(at: 0, type: .audio, label: "Audio")
         let result = await h.runRaw("add_texts", args: [
             "entries": [[
                 "trackIndex": 0,
@@ -611,7 +924,7 @@ struct ToolExecutorTextFolderTests {
 
     @Test func addTextsRejectsMixedTrackIndexUsage() async throws {
         let h = ToolHarness()
-        _ = await h.runRaw("add_track", args: ["type": "video"])
+        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video")
         let result = await h.runRaw("add_texts", args: [
             "entries": [
                 ["trackIndex": 0, "startFrame": 0, "durationFrames": 30, "content": "A"],
@@ -624,7 +937,7 @@ struct ToolExecutorTextFolderTests {
 
     @Test func addTextsRejectsZeroDuration() async throws {
         let h = ToolHarness()
-        _ = await h.runRaw("add_track", args: ["type": "video"])
+        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video")
         let result = await h.runRaw("add_texts", args: [
             "entries": [[
                 "trackIndex": 0,

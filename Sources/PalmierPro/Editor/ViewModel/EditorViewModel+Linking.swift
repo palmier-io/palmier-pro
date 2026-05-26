@@ -62,6 +62,32 @@ extension EditorViewModel {
         return []
     }
 
+    /// For a single-clip frame move, returns the linked-partner moves needed to keep
+    /// audio/video in sync
+    func partnerMoves(forMoveOf clipId: String, toFrame: Int) -> [(clipId: String, toFrame: Int)] {
+        guard let lead = findClip(id: clipId) else { return [] }
+        let currentFrame = timeline.tracks[lead.trackIndex].clips[lead.clipIndex].startFrame
+        let delta = toFrame - currentFrame
+        guard delta != 0 else { return [] }
+        return linkedPartnerIds(of: clipId).compactMap { pid in
+            guard let pLoc = findClip(id: pid) else { return nil }
+            let pClip = timeline.tracks[pLoc.trackIndex].clips[pLoc.clipIndex]
+            return (clipId: pid, toFrame: max(0, pClip.startFrame + delta))
+        }
+    }
+
+    /// Returns the linked-partner IDs that should receive a timing-style change
+    /// (durationFrames, trim, speed) applied uniformly to `clipIds`.
+    func timingPropagationPartners(of clipIds: Set<String>) -> Set<String> {
+        var out: Set<String> = []
+        for id in clipIds {
+            for pid in linkedPartnerIds(of: id) where !clipIds.contains(pid) {
+                out.insert(pid)
+            }
+        }
+        return out
+    }
+
     // MARK: - Out-of-sync offset
 
     /// Batch-compute out-of-sync offsets for every linked clip in a single

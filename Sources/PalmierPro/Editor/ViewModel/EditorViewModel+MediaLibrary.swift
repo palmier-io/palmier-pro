@@ -73,7 +73,8 @@ extension EditorViewModel {
         let natural = TextLayout.naturalSize(
             content: clip.textContent ?? " ",
             style: clip.textStyle ?? TextStyle(),
-            maxWidth: CGFloat(canvasW) * 0.9
+            maxWidth: CGFloat(canvasW) * 0.9,
+            canvasHeight: CGFloat(canvasH)
         )
         let needW = Double(natural.width) / canvasW
         let needH = Double(natural.height) / canvasH
@@ -335,7 +336,7 @@ extension EditorViewModel {
                     resolved = t
                 } else {
                     let natural = TextLayout.naturalSize(
-                        content: spec.content, style: spec.style, maxWidth: CGFloat(canvasW) * 0.9
+                        content: spec.content, style: spec.style, maxWidth: CGFloat(canvasW) * 0.9, canvasHeight: CGFloat(canvasH)
                     )
                     let w = Double(natural.width) / canvasW
                     let h = Double(natural.height) / canvasH
@@ -372,7 +373,7 @@ extension EditorViewModel {
 
         let canvasW = Double(timeline.width)
         let canvasH = Double(timeline.height)
-        let natural = TextLayout.naturalSize(content: content, style: style, maxWidth: CGFloat(canvasW) * 0.9)
+        let natural = TextLayout.naturalSize(content: content, style: style, maxWidth: CGFloat(canvasW) * 0.9, canvasHeight: CGFloat(canvasH))
         let w = Double(natural.width) / canvasW
         let h = Double(natural.height) / canvasH
         let transform = Transform(topLeft: ((1 - w) / 2, (1 - h) / 2), width: w, height: h)

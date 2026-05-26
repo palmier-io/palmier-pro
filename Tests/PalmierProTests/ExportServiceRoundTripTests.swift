@@ -61,4 +61,47 @@ struct ExportServiceRoundTripTests {
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         #expect(!videoTracks.isEmpty, "exported file has no video tracks")
     }
+
+    /// Regression for the AVFoundation crash where a transform keyframe at clip-offset 0
+    /// caused `emitTransform`'s leading setTransform to overlap the first ramp's time range.
+    @Test func exportSurvivesTransformKeyframeAtClipOffsetZero() async throws {
+        let renderSize = CGSize(width: 320, height: 180)
+        let blackURL = try await ImageVideoGenerator.blackVideo(size: renderSize)
+        let mediaRef = "black-fixture"
+        var manifest = MediaManifest()
+        manifest.entries = [MediaManifestEntry(
+            id: mediaRef, name: "black", type: .video,
+            source: .external(absolutePath: blackURL.path), duration: 5.0
+        )]
+        let resolver = MediaResolver(manifest: { manifest }, projectURL: { nil })
+
+        // Ken-Burns–style scale + position keyframes, both starting at clip offset 0.
+        // Mirrors the agent input that crashed: scale (1,1)→(1.08,1.08), position (0,0)→(-0.04,0).
+        var clip = Fixtures.clip(id: "c1", mediaRef: mediaRef, start: 0, duration: 30)
+        clip.scaleTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: AnimPair(a: 1.0, b: 1.0), interpolationOut: .linear),
+            Keyframe(frame: 30, value: AnimPair(a: 1.08, b: 1.08), interpolationOut: .linear),
+        ])
+        clip.positionTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: AnimPair(a: 0, b: 0), interpolationOut: .linear),
+            Keyframe(frame: 30, value: AnimPair(a: -0.04, b: 0), interpolationOut: .linear),
+        ])
+
+        var timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+        timeline.width = Int(renderSize.width)
+        timeline.height = Int(renderSize.height)
+
+        let outURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("export-\(UUID().uuidString).mp4")
+        defer { try? FileManager.default.removeItem(at: outURL) }
+
+        let svc = ExportService()
+        await svc.export(
+            timeline: timeline, resolver: resolver,
+            format: .h264, resolution: .r720p,
+            outputURL: outURL
+        )
+        #expect(svc.error == nil, "export reported error: \(svc.error ?? "")")
+        #expect(FileManager.default.fileExists(atPath: outURL.path))
+    }
 }

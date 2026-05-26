@@ -415,8 +415,10 @@ enum CompositionBuilder {
             CMTime(value: CMTimeValue(clip.startFrame + offset), timescale: timescale)
         }
 
-        // Hold the first kf's value before it
-        config.setTransform(affine(clip.transformAt(frame: clip.startFrame + firstOffset)), at: start)
+        // Hold the first kf's value during the [start, firstKf) gap.
+        if firstOffset > 0 {
+            config.setTransform(affine(clip.transformAt(frame: clip.startFrame + firstOffset)), at: start)
+        }
 
         // Subdivide each segment using fractional CMTimes so consecutive ramps never
         // share a timeRange (integer-frame rounding would collapse short spans).
