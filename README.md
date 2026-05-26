@@ -99,7 +99,7 @@ What is not free is the Generative AI features.
 
 **What platforms does it support?**
 
-macOS only, specifically macOS 26 (Tahoe) or later.
+macOS 26 (Tahoe) only.
 
 **Why was Palmier Pro built?**
 
@@ -123,6 +123,21 @@ Yes! You can treat it as a open source video editor. You should try it out if yo
 2. Want to connect video editor to your Claude (free)
 3. Want to create generative AI footage
 
+**Do you have feature parity with Adobe Premiere Pro or CapCut?**
+
+Not yet. This is still a very early product with a small team behind it, but we are pushing it to get better every day. To give you a clear list:
+
+What we don't have yet:
+
+1. Effects
+2. Transitions
+3. Color grading
+3. Masking
+4. Graphics
+
+We launched it because it was enough for us to make professional AI videos. We acknowledge that without AI features, this is quite a bare-bone video editor. That's why we decided to open source it and release the video editor for free, because we want to improve the product with the community.
+
+
 **What's the difference between MCP server and the in-app chat?**
 
 They share the same prompt and tools. The MCP server is free to use for your MCP clients, and the in-app chat requires either BYOK or subscription. The differences are mostly the UX.
@@ -130,6 +145,7 @@ They share the same prompt and tools. The MCP server is free to use for your MCP
 In-app chat:
 1. You can @ to reference media, which is particularly useful when iterating on generative media. 
 2. Less context switching. It lives right inside the timeline.
+3. It has more control on the context window.
 
 External chat with MCP server:
 1. Centralized spending on tokens. You don't have to worry about paying for another service.
