@@ -190,12 +190,15 @@ struct AccountPopoverCard: View {
     // MARK: - Footer (Settings + Sign in / Sign out)
 
     private var footerRow: some View {
-        HStack(spacing: AppTheme.Spacing.xs) {
+        VStack(spacing: AppTheme.Spacing.xxs) {
             footerButton(label: "Settings", systemImage: "gearshape") {
                 SettingsWindowController.shared.show()
                 dismiss()
             }
-            Spacer(minLength: 0)
+            footerButton(label: "Feedback", systemImage: "bubble.left.and.bubble.right") {
+                FeedbackWindowController.shared.show()
+                dismiss()
+            }
             if account.isSignedIn {
                 footerButton(label: "Sign out", systemImage: "rectangle.portrait.and.arrow.right") {
                     Task { await account.signOut() }
@@ -217,6 +220,7 @@ struct AccountPopoverCard: View {
                     .font(.system(size: AppTheme.FontSize.smMd))
                 Text(label)
                     .font(.system(size: AppTheme.FontSize.sm))
+                Spacer(minLength: 0)
             }
             .foregroundStyle(AppTheme.Text.secondaryColor)
             .padding(.horizontal, AppTheme.Spacing.sm)
