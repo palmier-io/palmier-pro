@@ -37,6 +37,16 @@ struct CropOverlayView: View {
                 }
                 .allowsHitTesting(false)
 
+                Rectangle()
+                    .fill(Color.clear)
+                    .contentShape(Rectangle())
+                    .frame(width: cropRect.width, height: cropRect.height)
+                    .position(x: cropRect.midX, y: cropRect.midY)
+                    .onHover { hovering in
+                        if hovering { NSCursor.openHand.push() } else { NSCursor.pop() }
+                    }
+                    .gesture(panGesture(clip: clip, clipRect: clipRect))
+
                 ForEach(Corner.allCases, id: \.self) { corner in
                     let pos = cornerPosition(corner, in: cropRect)
                     Rectangle()
@@ -53,6 +63,33 @@ struct CropOverlayView: View {
     // MARK: - Drag
 
     @State private var dragStart: Crop?
+
+    private func panGesture(clip: Clip, clipRect: CGRect) -> some Gesture {
+        DragGesture()
+            .onChanged { value in
+                if dragStart == nil { dragStart = clip.cropAt(frame: editor.activeFrame) }
+                guard let start = dragStart else { return }
+                let updated = pannedCrop(start, by: value.translation, clipRect: clipRect)
+                editor.applyCrop(clipId: clip.id, newCrop: updated)
+            }
+            .onEnded { value in
+                guard let start = dragStart else { return }
+                let updated = pannedCrop(start, by: value.translation, clipRect: clipRect)
+                dragStart = nil
+                editor.commitCrop(clipId: clip.id, newCrop: updated)
+            }
+    }
+
+    private func pannedCrop(_ start: Crop, by translation: CGSize, clipRect: CGRect) -> Crop {
+        guard clipRect.width > 0, clipRect.height > 0 else { return start }
+        let dx = Double(translation.width / clipRect.width)
+        let dy = Double(translation.height / clipRect.height)
+        let visW = 1 - start.left - start.right
+        let visH = 1 - start.top - start.bottom
+        let L = max(0, min(start.left + dx, 1 - visW))
+        let T = max(0, min(start.top + dy, 1 - visH))
+        return Crop(left: L, top: T, right: 1 - visW - L, bottom: 1 - visH - T)
+    }
 
     private func resizeGesture(clip: Clip, corner: Corner, clipRect: CGRect) -> some Gesture {
         DragGesture()

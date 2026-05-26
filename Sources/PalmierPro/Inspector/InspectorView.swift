@@ -715,7 +715,7 @@ struct InspectorView: View {
         let activeV = clips.first?.transform.flipVertical ?? false
         propertyRow(label: "Flip") {
             HStack(spacing: AppTheme.Spacing.xs) {
-                flipToggleButton(
+                iconToggleButton(
                     systemName: "arrow.left.and.right",
                     isOn: activeH,
                     help: activeH ? "Remove horizontal flip" : "Flip horizontally"
@@ -725,7 +725,7 @@ struct InspectorView: View {
                         editor.commitClipProperty(clipId: c.id) { $0.transform.flipHorizontal = newValue }
                     }
                 }
-                flipToggleButton(
+                iconToggleButton(
                     systemName: "arrow.up.and.down",
                     isOn: activeV,
                     help: activeV ? "Remove vertical flip" : "Flip vertically"
@@ -740,7 +740,7 @@ struct InspectorView: View {
         .frame(height: KeyframesMetrics.rowHeight)
     }
 
-    private func flipToggleButton(
+    private func iconToggleButton(
         systemName: String,
         isOn: Bool,
         help: String,
@@ -767,24 +767,18 @@ struct InspectorView: View {
     private func cropRow(single: Clip?) -> some View {
         let editing = editor.cropEditingActive && single != nil
         let disabled = single == nil
-        HStack(spacing: AppTheme.Spacing.sm) {
-            Button {
-                editor.cropEditingActive.toggle()
-            } label: {
-                Text("Crop")
-                    .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(editing ? AppTheme.Accent.timecodeColor : AppTheme.Text.secondaryColor)
-                    .lineLimit(1)
-                    .fixedSize()
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(disabled)
-            .help(disabled ? "Crop applies to one clip at a time"
-                  : editing ? "Stop editing crop on canvas"
-                  : "Edit crop on canvas")
-            Spacer()
+        propertyRow(label: "Crop") {
             HStack(spacing: AppTheme.Spacing.sm) {
+                iconToggleButton(
+                    systemName: "crop",
+                    isOn: editing,
+                    help: disabled ? "Crop applies to one clip at a time"
+                          : editing ? "Stop editing crop on canvas"
+                          : "Edit crop on canvas"
+                ) {
+                    editor.cropEditingActive.toggle()
+                }
+                .disabled(disabled)
                 cropMenu(single: single)
                 if let cid = single?.id {
                     keyframeControls(clipId: cid, property: .crop)
@@ -814,7 +808,7 @@ struct InspectorView: View {
             HStack(spacing: AppTheme.Spacing.xs) {
                 Text(active.label)
                     .font(.system(size: AppTheme.FontSize.sm, weight: .medium).monospacedDigit())
-                    .foregroundStyle(AppTheme.Accent.primary)
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
                 Image(systemName: "chevron.down")
                     .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
