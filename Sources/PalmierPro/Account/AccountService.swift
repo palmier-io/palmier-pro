@@ -84,6 +84,10 @@ private struct UrlResponse: Decodable, Sendable {
     let url: String
 }
 
+private struct OkResponse: Decodable, Sendable {
+    let ok: Bool
+}
+
 @Observable
 @MainActor
 final class AccountService {
@@ -312,6 +316,32 @@ final class AccountService {
                 self?.lastError = error.localizedDescription
             }
         }
+    }
+
+    func sendFeedback(
+        message: String,
+        email: String?,
+        mayContact: Bool,
+        screenshotPngBase64: String?,
+        appVersion: String,
+        osVersion: String
+    ) async throws {
+        guard let convex else {
+            throw NSError(
+                domain: "Palmier.Feedback",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Backend not configured."]
+            )
+        }
+        var args: [String: ConvexEncodable?] = [
+            "message": message,
+            "mayContact": mayContact,
+            "appVersion": appVersion,
+            "osVersion": osVersion,
+        ]
+        if let email { args["email"] = email }
+        if let screenshotPngBase64 { args["screenshotPngBase64"] = screenshotPngBase64 }
+        let _: OkResponse = try await convex.action("feedback:send", with: args)
     }
 
     func manageSubscription() async {
