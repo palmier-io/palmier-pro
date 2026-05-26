@@ -127,8 +127,8 @@ struct AgentInputBox<LeadingTools: View>: View {
                     sendStopButton
                 }
             }
-            .padding(.horizontal, AppTheme.Spacing.md)
-            .padding(.vertical, AppTheme.Spacing.xs)
+            .padding(.horizontal, AppTheme.Spacing.sm)
+            .padding(.vertical, AppTheme.Spacing.sm)
         }
     }
 
