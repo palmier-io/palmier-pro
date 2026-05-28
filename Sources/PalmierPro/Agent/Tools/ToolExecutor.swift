@@ -60,12 +60,16 @@ final class ToolExecutor {
         return asset
     }
 
-    func resolveFolderId(_ args: [String: Any], editor: EditorViewModel) throws -> String? {
-        guard let id = args.string("folderId") else { return nil }
-        guard editor.folder(id: id) != nil else {
-            throw ToolError("folderId not found: \(id)")
+    func resolveFolderId(
+        _ args: [String: Any], editor: EditorViewModel, fallbackReferences: [MediaAsset] = []
+    ) throws -> String? {
+        if let id = args.string("folderId") {
+            guard editor.folder(id: id) != nil else {
+                throw ToolError("folderId not found: \(id)")
+            }
+            return id
         }
-        return id
+        return fallbackReferences.last?.folderId
     }
 
     nonisolated static func jsonString(_ obj: Any) -> String? {

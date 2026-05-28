@@ -118,7 +118,9 @@ extension ToolExecutor {
             aspectRatio: aspectRatio, resolution: resolution
         )
 
-        let folderId = try resolveFolderId(args, editor: editor)
+        let folderId = try resolveFolderId(
+            args, editor: editor, fallbackReferences: inputAssets.textToVideoReferences
+        )
         let placeholderId = VideoGenerationSubmission.make(
             genInput: genInput,
             model: model,
@@ -170,7 +172,7 @@ extension ToolExecutor {
             prompt: prompt, model: modelId, duration: 0,
             aspectRatio: aspectRatio, resolution: resolution, quality: quality
         )
-        let folderId = try resolveFolderId(args, editor: editor)
+        let folderId = try resolveFolderId(args, editor: editor, fallbackReferences: refs)
         let placeholderId = ImageGenerationSubmission.make(
             genInput: genInput,
             model: model,

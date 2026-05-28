@@ -1557,6 +1557,11 @@ struct GenerationView: View {
             } else {
                 placeholderDuration = Double(selectedDuration)
             }
+            let videoFolderId: String? = editFolderId ?? (
+                model.requiresSourceVideo
+                    ? (inputAssets.sourceVideo?.folderId ?? inputAssets.imageRefs.last?.folderId)
+                    : inputAssets.textToVideoReferences.last?.folderId
+            )
             VideoGenerationSubmission.make(
                 genInput: genInput,
                 model: model,
@@ -1564,7 +1569,7 @@ struct GenerationView: View {
                 placeholderDuration: placeholderDuration,
                 trimmedSourceOverride: trimmedSource,
                 name: name,
-                folderId: editFolderId,
+                folderId: videoFolderId,
                 generateAudio: effectiveGenerateAudio
             ).submit(
                 service: editor.generationService,
@@ -1581,7 +1586,7 @@ struct GenerationView: View {
                 references: imageReferences,
                 name: name,
                 numImages: imageCount,
-                folderId: editFolderId
+                folderId: editFolderId ?? imageReferences.last?.folderId
             ).submit(
                 service: editor.generationService,
                 projectURL: editor.projectURL,
