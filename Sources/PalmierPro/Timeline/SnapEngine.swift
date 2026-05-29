@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 enum SnapEngine {
@@ -89,6 +90,7 @@ enum SnapEngine {
         }
 
         guard let best else { return nil }
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         state.currentlySnappedTo = best.target.frame
         state.currentProbeOffset = best.probeOffset
         return SnapResult(frame: best.target.frame, probeOffset: best.probeOffset, x: Double(best.target.frame) * pixelsPerFrame)
