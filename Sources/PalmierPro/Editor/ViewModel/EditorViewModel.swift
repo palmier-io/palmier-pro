@@ -146,6 +146,7 @@ final class EditorViewModel {
     var mediaPanelOpenFolderId: String?
     var mediaPanelCurrentFolderId: String?
     var mediaPanelPasteRequestTick: Int = 0
+    var mediaPanelToast: String?
 
     init() {
         mediaResolver = MediaResolver(

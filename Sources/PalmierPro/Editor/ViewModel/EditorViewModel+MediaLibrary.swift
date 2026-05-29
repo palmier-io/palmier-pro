@@ -34,9 +34,16 @@ extension EditorViewModel {
         }
     }
 
+    func dismissMediaPanelToast() {
+        mediaPanelToast = nil
+    }
+
     @discardableResult
     func addMediaAsset(from url: URL) -> MediaAsset? {
-        guard let type = ClipType(fileExtension: url.pathExtension.lowercased()) else { return nil }
+        guard let type = ClipType(fileExtension: url.pathExtension.lowercased()) else {
+            mediaPanelToast = "Can't import \"\(url.lastPathComponent)\" — unsupported file type."
+            return nil
+        }
         let name = url.deletingPathExtension().lastPathComponent
         let asset = MediaAsset(url: url, type: type, name: name)
         importMediaAsset(asset)

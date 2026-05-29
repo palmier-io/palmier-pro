@@ -104,6 +104,13 @@ struct MediaPanelView: View {
                 .overlay {
                     if isDropTargeted { dropHighlight.allowsHitTesting(false) }
                 }
+                .overlay(alignment: .bottom) {
+                    if let toast = editor.mediaPanelToast {
+                        toastBanner(toast)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
+                .animation(.easeInOut(duration: AppTheme.Anim.transition), value: editor.mediaPanelToast)
             }
 
             if editor.showGenerationPanel {
@@ -136,6 +143,38 @@ struct MediaPanelView: View {
         }
         .onChange(of: currentFolderId, initial: true) { _, folderId in
             editor.mediaPanelCurrentFolderId = folderId
+        }
+    }
+
+    private func toastBanner(_ message: String) -> some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: AppTheme.FontSize.smMd, weight: .semibold))
+                .foregroundStyle(AppTheme.Accent.timecodeColor)
+            Text(message)
+                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, AppTheme.Spacing.mdLg)
+        .padding(.vertical, AppTheme.Spacing.smMd)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+                .fill(AppTheme.Background.prominentColor)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+                        .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.hairline)
+                )
+        )
+        .shadow(AppTheme.Shadow.lg)
+        .padding(.horizontal, AppTheme.Spacing.lgXl)
+        .padding(.bottom, AppTheme.Spacing.lgXl)
+        .onTapGesture { editor.dismissMediaPanelToast() }
+        .task(id: message) {
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            editor.dismissMediaPanelToast()
         }
     }
 
