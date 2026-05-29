@@ -1535,6 +1535,11 @@ struct GenerationView: View {
             }
         }()
 
+        let autoOpenPreview: (String) -> Void = { newAssetId in
+            guard replacementClipId == nil else { return }
+            editorRef.selectMediaPanelItem(newAssetId)
+        }
+
         switch selectedType {
         case .video:
             let model = videoModel
@@ -1561,8 +1566,8 @@ struct GenerationView: View {
                 model.requiresSourceVideo
                     ? (inputAssets.sourceVideo?.folderId ?? inputAssets.imageRefs.last?.folderId)
                     : inputAssets.textToVideoReferences.last?.folderId
-            )
-            VideoGenerationSubmission.make(
+            ) ?? editor.mediaPanelCurrentFolderId
+            let videoAssetId = VideoGenerationSubmission.make(
                 genInput: genInput,
                 model: model,
                 inputAssets: inputAssets,
@@ -1578,15 +1583,16 @@ struct GenerationView: View {
                 onComplete: makeOnComplete(trimmedSource?.hasTrim == true),
                 onFailure: onFailure
             )
+            autoOpenPreview(videoAssetId)
         case .image:
             let model = imageModel
-            ImageGenerationSubmission.make(
+            let imageAssetId = ImageGenerationSubmission.make(
                 genInput: genInput,
                 model: model,
                 references: imageReferences,
                 name: name,
                 numImages: imageCount,
-                folderId: editFolderId ?? imageReferences.last?.folderId
+                folderId: editFolderId ?? imageReferences.last?.folderId ?? editor.mediaPanelCurrentFolderId
             ).submit(
                 service: editor.generationService,
                 projectURL: editor.projectURL,
@@ -1594,6 +1600,7 @@ struct GenerationView: View {
                 onComplete: makeOnComplete(false),
                 onFailure: onFailure
             )
+            autoOpenPreview(imageAssetId)
         case .audio:
             let model = audioModel
             let params = audioParams(audioDuration: audioDuration)
@@ -1602,7 +1609,7 @@ struct GenerationView: View {
                 model: model,
                 params: params,
                 name: name,
-                folderId: editFolderId
+                folderId: editFolderId ?? editor.mediaPanelCurrentFolderId
             ).submit(
                 service: editor.generationService,
                 projectURL: editor.projectURL,

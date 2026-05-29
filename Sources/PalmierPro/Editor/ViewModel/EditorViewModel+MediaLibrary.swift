@@ -141,7 +141,7 @@ extension EditorViewModel {
         return keys
     }
 
-    private func selectMediaPanelItem(_ key: String) {
+    func selectMediaPanelItem(_ key: String) {
         if let folderId = MediaPanelItemKey.folderId(from: key) {
             guard folder(id: folderId) != nil else { return }
             mediaPanelScrollTarget = key

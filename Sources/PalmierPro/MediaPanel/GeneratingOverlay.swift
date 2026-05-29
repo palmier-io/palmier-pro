@@ -1,7 +1,18 @@
 import SwiftUI
 
 struct GeneratingOverlay: View {
+    enum Size {
+        case thumbnail
+        case preview
+
+        var fontSize: CGFloat { self == .preview ? AppTheme.FontSize.xl : AppTheme.FontSize.xs }
+        var spacing: CGFloat { self == .preview ? AppTheme.Spacing.md : AppTheme.Spacing.sm }
+        var barWidth: CGFloat { self == .preview ? 160 : 60 }
+        var barHeight: CGFloat { self == .preview ? 4 : 3 }
+    }
+
     var label: String = "Generating…"
+    var size: Size = .thumbnail
 
     @State private var shimmerOffset: CGFloat = -1
     @State private var progress: CGFloat = 0
@@ -12,7 +23,7 @@ struct GeneratingOverlay: View {
     private static let progressTarget: CGFloat = 0.9
 
     var body: some View {
-        VStack(spacing: AppTheme.Spacing.sm) {
+        VStack(spacing: size.spacing) {
             shimmerText
             progressBar
         }
@@ -28,11 +39,11 @@ struct GeneratingOverlay: View {
 
     private var shimmerText: some View {
         Text(label)
-            .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+            .font(.system(size: size.fontSize, weight: .medium))
             .foregroundStyle(.white.opacity(0.5))
             .overlay {
                 Text(label)
-                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                    .font(.system(size: size.fontSize, weight: .medium))
                     .foregroundStyle(.white)
                     .mask {
                         LinearGradient(
@@ -58,6 +69,6 @@ struct GeneratingOverlay: View {
                     .frame(width: geo.size.width * progress)
             }
         }
-        .frame(width: 60, height: 3)
+        .frame(width: size.barWidth, height: size.barHeight)
     }
 }

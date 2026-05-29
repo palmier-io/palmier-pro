@@ -134,6 +134,9 @@ struct MediaPanelView: View {
         .onChange(of: editor.mediaPanelPasteRequestTick) { _, _ in
             handleClipboardPaste()
         }
+        .onChange(of: currentFolderId, initial: true) { _, folderId in
+            editor.mediaPanelCurrentFolderId = folderId
+        }
     }
 
     /// If the current folder, rename target, or hover target has been deleted,

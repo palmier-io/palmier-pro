@@ -27,6 +27,9 @@ struct PreviewContainerView: View {
                     if let error = activeFailedError {
                         failedPreview(error: error)
                     }
+                    if let asset = activeMediaAsset, asset.isGenerating {
+                        generatingPreview(label: asset.generatingLabel)
+                    }
                     if editor.cropEditingActive {
                         CropOverlayView()
                     } else {
@@ -306,6 +309,34 @@ struct PreviewContainerView: View {
         guard let asset = activeMediaAsset,
               case .failed(let error) = asset.generationStatus else { return nil }
         return error
+    }
+
+    private func generatingPreview(label: String) -> some View {
+        ZStack {
+            if let image = activeGeneratingReferenceImage {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .blur(radius: 24)
+            }
+            Color.black.opacity(AppTheme.Opacity.strong)
+            GeneratingOverlay(label: label, size: .preview)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+        .allowsHitTesting(false)
+    }
+
+    private var activeGeneratingReferenceImage: NSImage? {
+        guard let input = activeMediaAsset?.generationInput else { return nil }
+        let refIds = (input.imageURLAssetIds ?? []) + (input.referenceImageAssetIds ?? [])
+        for id in refIds {
+            guard let ref = editor.mediaAssets.first(where: { $0.id == id }), ref.type == .image else { continue }
+            if let image = ref.thumbnail ?? NSImage(contentsOf: ref.url) {
+                return image
+            }
+        }
+        return nil
     }
 
     private func failedPreview(error: String) -> some View {
