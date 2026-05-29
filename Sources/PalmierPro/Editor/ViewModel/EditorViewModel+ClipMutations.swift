@@ -128,7 +128,7 @@ extension EditorViewModel {
         var left = clip
         left.durationFrames = splitOffset
         left.trimEndFrame = clip.trimEndFrame + rightSource
-        left.audioFadeOutFrames = 0
+        left.fadeOutFrames = 0
         left.clampFadesToDuration()
 
         var right = clip
@@ -136,7 +136,7 @@ extension EditorViewModel {
         right.startFrame = atFrame
         right.durationFrames = clip.durationFrames - splitOffset
         right.trimStartFrame = clip.trimStartFrame + leftSource
-        right.audioFadeInFrames = 0
+        right.fadeInFrames = 0
         right.clampFadesToDuration()
 
         // Boundary kfs at the cut keep the volume curve continuous across the split.

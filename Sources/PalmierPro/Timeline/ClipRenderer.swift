@@ -10,11 +10,12 @@ enum ClipRenderer {
     static let volumeRubberBandTopDb: Double = 6
     static let volumeRubberBandBottomDb: Double = -60
     static let fadeKneeTopInset: CGFloat = 4
-    static func fadeKneeY(in audioBodyRect: NSRect) -> CGFloat {
-        audioBodyRect.minY + fadeKneeTopInset
+    static func fadeKneeY(in body: NSRect) -> CGFloat {
+        body.minY + fadeKneeTopInset
     }
 
-    static func audioBodyRect(in clipRect: NSRect) -> NSRect {
+    /// The clip card's body area below the label bar
+    static func clipBodyRect(in clipRect: NSRect) -> NSRect {
         NSRect(
             x: clipRect.minX,
             y: clipRect.minY + labelBarHeight,
@@ -24,17 +25,17 @@ enum ClipRenderer {
     }
 
     /// Y axis is flipped: high dB → smaller Y.
-    static func y(forDb db: Double, in audioBodyRect: NSRect) -> CGFloat {
+    static func y(forDb db: Double, in body: NSRect) -> CGFloat {
         let top = volumeRubberBandTopDb
         let bottom = volumeRubberBandBottomDb
         let clamped = min(top, max(bottom, db))
         let frac = (top - clamped) / (top - bottom)
-        return audioBodyRect.minY + CGFloat(frac) * audioBodyRect.height
+        return body.minY + CGFloat(frac) * body.height
     }
 
-    static func db(forY y: CGFloat, in audioBodyRect: NSRect) -> Double {
-        guard audioBodyRect.height > 0 else { return 0 }
-        let frac = max(0, min(1, Double((y - audioBodyRect.minY) / audioBodyRect.height)))
+    static func db(forY y: CGFloat, in body: NSRect) -> Double {
+        guard body.height > 0 else { return 0 }
+        let frac = max(0, min(1, Double((y - body.minY) / body.height)))
         return volumeRubberBandTopDb - frac * (volumeRubberBandTopDb - volumeRubberBandBottomDb)
     }
 
@@ -104,6 +105,8 @@ enum ClipRenderer {
 
         if type == .audio {
             drawVolumeRubberBand(clip: clip, in: rect, isSelected: isSelected, context: context)
+        } else {
+            drawOpacityFades(clip: clip, in: rect, isSelected: isSelected, context: context)
         }
 
         // Color-coded left edge strip (uses the same source-type as the fill).
@@ -235,7 +238,7 @@ enum ClipRenderer {
         let pxPerFrame = rect.width / CGFloat(clip.durationFrames)
         guard pxPerFrame > 0 else { return }
 
-        let body = audioBodyRect(in: rect)
+        let body = clipBodyRect(in: rect)
         let alpha: CGFloat = isSelected ? 0.95 : 0.75
         let lineColor = NSColor.white.withAlphaComponent(alpha).cgColor
         let fadeColor = NSColor.white.withAlphaComponent(alpha * 0.7).cgColor
@@ -285,30 +288,30 @@ enum ClipRenderer {
         context.strokePath()
 
         // Fade endpoints. Knees sit in a fixed "fade lane" near the top of the body
-        let leftOffset = min(clip.audioFadeInFrames, clip.durationFrames)
-        let rightOffset = max(0, clip.durationFrames - clip.audioFadeOutFrames)
+        let leftOffset = min(clip.fadeInFrames, clip.durationFrames)
+        let rightOffset = max(0, clip.durationFrames - clip.fadeOutFrames)
         let leftKneeX = fadeHandleRenderX(in: rect, kfOffset: leftOffset, isLeft: true, pxPerFrame: pxPerFrame)
         let rightKneeX = fadeHandleRenderX(in: rect, kfOffset: rightOffset, isLeft: false, pxPerFrame: pxPerFrame)
         let kneeY = fadeKneeY(in: body)
         let silenceY = body.maxY
 
         // 2) Fade-in: darken the wedge above the curve, stroke the fade curve.
-        if clip.audioFadeInFrames > 0 {
+        if clip.fadeInFrames > 0 {
             drawFadeWedge(
                 silentCorner: CGPoint(x: rect.minX, y: silenceY),
                 knee: CGPoint(x: leftKneeX, y: kneeY),
-                interpolation: clip.audioFadeInInterpolation,
+                interpolation: clip.fadeInInterpolation,
                 color: fadeColor,
                 context: context
             )
         }
 
         // 3) Fade-out: symmetric on the right edge.
-        if clip.audioFadeOutFrames > 0 {
+        if clip.fadeOutFrames > 0 {
             drawFadeWedge(
                 silentCorner: CGPoint(x: rect.maxX, y: silenceY),
                 knee: CGPoint(x: rightKneeX, y: kneeY),
-                interpolation: clip.audioFadeOutInterpolation,
+                interpolation: clip.fadeOutInterpolation,
                 color: fadeColor,
                 context: context
             )
@@ -345,25 +348,85 @@ enum ClipRenderer {
         context.stroke(rightKneeRect)
     }
 
+    private static func drawOpacityFades(clip: Clip, in rect: NSRect, isSelected: Bool, context: CGContext) {
+        guard clip.durationFrames > 0 else { return }
+        guard clip.fadeInFrames > 0 || clip.fadeOutFrames > 0 || isSelected else { return }
+        let pxPerFrame = rect.width / CGFloat(clip.durationFrames)
+        guard pxPerFrame > 0 else { return }
+
+        let body = clipBodyRect(in: rect)
+        let alpha: CGFloat = isSelected ? 0.95 : 0.75
+        let lineColor = NSColor.white.withAlphaComponent(alpha).cgColor
+        let fadeColor = NSColor.white.withAlphaComponent(alpha * 0.7).cgColor
+
+        let leftOffset = min(clip.fadeInFrames, clip.durationFrames)
+        let rightOffset = max(0, clip.durationFrames - clip.fadeOutFrames)
+        let leftKneeX = fadeHandleRenderX(in: rect, kfOffset: leftOffset, isLeft: true, pxPerFrame: pxPerFrame)
+        let rightKneeX = fadeHandleRenderX(in: rect, kfOffset: rightOffset, isLeft: false, pxPerFrame: pxPerFrame)
+        let kneeY = fadeKneeY(in: body)
+        let silenceY = body.maxY
+
+        if clip.fadeInFrames > 0 {
+            drawFadeWedge(
+                silentCorner: CGPoint(x: rect.minX, y: silenceY),
+                knee: CGPoint(x: leftKneeX, y: kneeY),
+                interpolation: clip.fadeInInterpolation,
+                color: fadeColor,
+                fillTopY: body.minY,
+                fillAlpha: 0.6,
+                context: context
+            )
+        }
+
+        if clip.fadeOutFrames > 0 {
+            drawFadeWedge(
+                silentCorner: CGPoint(x: rect.maxX, y: silenceY),
+                knee: CGPoint(x: rightKneeX, y: kneeY),
+                interpolation: clip.fadeOutInterpolation,
+                color: fadeColor,
+                fillTopY: body.minY,
+                fillAlpha: 0.6,
+                context: context
+            )
+        }
+
+        guard isSelected else { return }
+
+        context.setFillColor(lineColor)
+        context.setStrokeColor(NSColor.black.withAlphaComponent(0.5).cgColor)
+        context.setLineWidth(0.5)
+        let half = volumeKeyframeSize / 2
+        let leftKneeRect = CGRect(x: leftKneeX - half, y: kneeY - half, width: volumeKeyframeSize, height: volumeKeyframeSize)
+        let rightKneeRect = CGRect(x: rightKneeX - half, y: kneeY - half, width: volumeKeyframeSize, height: volumeKeyframeSize)
+        context.fill(leftKneeRect)
+        context.stroke(leftKneeRect)
+        context.fill(rightKneeRect)
+        context.stroke(rightKneeRect)
+    }
+
     private static func drawFadeWedge(
         silentCorner: CGPoint,
         knee: CGPoint,
         interpolation: Interpolation,
         color: CGColor,
+        fillTopY: CGFloat? = nil,
+        fillAlpha: CGFloat = 0.35,
         context: CGContext
     ) {
         let curve = fadeCurvePoints(from: silentCorner, to: knee, interpolation: interpolation)
+        let topY = fillTopY ?? knee.y
 
-        // Fill the wedge above the curve: silentCorner → up to kneeY → across to knee → curve back.
+        // Fill the wedge above the curve
         let fill = CGMutablePath()
         fill.move(to: silentCorner)
-        fill.addLine(to: CGPoint(x: silentCorner.x, y: knee.y))
-        fill.addLine(to: knee)
+        fill.addLine(to: CGPoint(x: silentCorner.x, y: topY))
+        fill.addLine(to: CGPoint(x: knee.x, y: topY))
+        if topY != knee.y { fill.addLine(to: knee) }
         for p in curve.reversed().dropFirst() { fill.addLine(to: p) }
         fill.closeSubpath()
         context.saveGState()
         context.addPath(fill)
-        context.setFillColor(NSColor.black.withAlphaComponent(0.35).cgColor)
+        context.setFillColor(NSColor.black.withAlphaComponent(fillAlpha).cgColor)
         context.fillPath()
         context.restoreGState()
 

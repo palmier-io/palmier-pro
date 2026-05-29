@@ -329,9 +329,9 @@ struct InspectorView: View {
                     sectionTitleLabel(title: "Levels")
                         .frame(height: KeyframesMetrics.headerHeight, alignment: .bottomLeading)
                     volumeRow(audios: audios)
-                    fadeRow(label: "Fade In", audios: audios, edge: .left)
+                    fadeRow(label: "Fade In", clips: audios, edge: .left)
                         .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
-                    fadeRow(label: "Fade Out", audios: audios, edge: .right)
+                    fadeRow(label: "Fade Out", clips: audios, edge: .right)
                         .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
                     if nonTextVisualClips.isEmpty {
                         speedSection(clips: audios)
@@ -351,8 +351,8 @@ struct InspectorView: View {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
                     sectionTitleLabel(title: "Levels")
                     volumeRow(audios: audios)
-                    fadeRow(label: "Fade In", audios: audios, edge: .left)
-                    fadeRow(label: "Fade Out", audios: audios, edge: .right)
+                    fadeRow(label: "Fade In", clips: audios, edge: .left)
+                    fadeRow(label: "Fade Out", clips: audios, edge: .right)
                 }
                 if nonTextVisualClips.isEmpty {
                     speedSection(clips: audios)
@@ -389,14 +389,15 @@ struct InspectorView: View {
     }
 
     @ViewBuilder
-    private func fadeRow(label: String, audios: [Clip], edge: FadeEdge) -> some View {
+    private func fadeRow(label: String, clips: [Clip], edge: FadeEdge) -> some View {
         let fps = Double(max(1, editor.timeline.fps))
-        let single = audios.count == 1 ? audios.first : nil
+        let single = clips.count == 1 ? clips.first : nil
         let maxSeconds = single.map { Double($0.durationFrames) / fps } ?? 60.0
+        let actionName = edge == .left ? "Change Fade In" : "Change Fade Out"
         propertyRow(label: label) {
             ScrubbableNumberField(
-                value: sharedClipValue(audios) { clip in
-                    Double(edge == .left ? clip.audioFadeInFrames : clip.audioFadeOutFrames) / fps
+                value: sharedClipValue(clips) { clip in
+                    Double(clip.fadeFrames(edge)) / fps
                 },
                 range: 0...maxSeconds,
                 format: "%.2f",
@@ -405,11 +406,11 @@ struct InspectorView: View {
                 fieldWidth: 56,
                 onChanged: { seconds in
                     let frames = Int((seconds * fps).rounded())
-                    for c in audios { editor.applyFade(clipId: c.id, edge: edge, frames: frames) }
+                    for c in clips { editor.applyFade(clipId: c.id, edge: edge, frames: frames) }
                 }
             ) { seconds in
                 let frames = Int((seconds * fps).rounded())
-                commitToClips(audios, actionName: edge == .left ? "Change Fade In" : "Change Fade Out") { c in
+                commitToClips(clips, actionName: actionName) { c in
                     editor.commitFade(clipId: c.id, edge: edge, frames: frames)
                 }
             }
@@ -579,6 +580,10 @@ struct InspectorView: View {
                         $0.positionTrack = nil
                         $0.scaleTrack = nil
                         $0.rotationTrack = nil
+                        $0.fadeInFrames = 0
+                        $0.fadeOutFrames = 0
+                        $0.fadeInInterpolation = .linear
+                        $0.fadeOutInterpolation = .linear
                     }
                 }
             } : nil
@@ -628,7 +633,7 @@ struct InspectorView: View {
     @ViewBuilder
     private func opacityScrubField(clips: [Clip]) -> some View {
         ScrubbableNumberField(
-            value: sharedClipValue(clips) { $0.opacityAt(frame: editor.activeFrame) },
+            value: sharedClipValue(clips) { $0.rawOpacityAt(frame: editor.activeFrame) },
             range: 0...1,
             displayMultiplier: 100,
             format: "%.0f",

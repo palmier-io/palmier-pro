@@ -7,7 +7,7 @@ enum DragState {
     case trimLeft(TrimDrag)
     case trimRight(TrimDrag)
     case audioVolumeKf(AudioVolumeKfDrag)
-    case audioFadeKnee(AudioFadeKneeDrag)
+    case fadeKnee(FadeKneeDrag)
     case marquee(MarqueeDrag)
 
     struct AudioVolumeKfDrag {
@@ -25,7 +25,7 @@ enum DragState {
         var currentDb: Double
     }
 
-    struct AudioFadeKneeDrag {
+    struct FadeKneeDrag {
         let clipId: String
         let trackIndex: Int
         let edge: FadeEdge

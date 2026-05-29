@@ -81,15 +81,15 @@ struct ClipMathTests {
 
     @Test func fadeMultiplierIsZeroOutsideClipRange() {
         var clip = Fixtures.clip(start: 0, duration: 100)
-        clip.audioFadeInFrames = 10
+        clip.fadeInFrames = 10
         #expect(clip.fadeMultiplier(at: -1) == 0)
         #expect(clip.fadeMultiplier(at: 101) == 0)
     }
 
     @Test func linearFadeInRampsZeroToOne() {
         var clip = Fixtures.clip(start: 0, duration: 100)
-        clip.audioFadeInFrames = 10
-        clip.audioFadeInInterpolation = .linear
+        clip.fadeInFrames = 10
+        clip.fadeInInterpolation = .linear
         #expect(clip.fadeMultiplier(at: 0) == 0)
         #expect(clip.fadeMultiplier(at: 5) == 0.5)
         #expect(clip.fadeMultiplier(at: 10) == 1.0)
@@ -98,8 +98,8 @@ struct ClipMathTests {
 
     @Test func smoothFadeInUsesSmoothstep() {
         var clip = Fixtures.clip(start: 0, duration: 100)
-        clip.audioFadeInFrames = 10
-        clip.audioFadeInInterpolation = .smooth
+        clip.fadeInFrames = 10
+        clip.fadeInInterpolation = .smooth
         // smoothstep(0)=0, smoothstep(0.5)=0.5, smoothstep(1)=1.
         #expect(clip.fadeMultiplier(at: 0) == 0)
         #expect(clip.fadeMultiplier(at: 5) == 0.5)
@@ -108,10 +108,10 @@ struct ClipMathTests {
 
     @Test func combinedFadesTakeMinimumOfInAndOut() {
         var clip = Fixtures.clip(start: 0, duration: 100)
-        clip.audioFadeInFrames = 20
-        clip.audioFadeOutFrames = 20
-        clip.audioFadeInInterpolation = .linear
-        clip.audioFadeOutInterpolation = .linear
+        clip.fadeInFrames = 20
+        clip.fadeOutFrames = 20
+        clip.fadeInInterpolation = .linear
+        clip.fadeOutInterpolation = .linear
         // Start: fadeIn=0, fadeOut=1 → min=0.
         #expect(clip.fadeMultiplier(at: 0) == 0)
         // End: fadeIn=1, fadeOut=0 → min=0.
@@ -129,10 +129,82 @@ struct ClipMathTests {
 
     @Test func volumeAtMultipliesStaticVolumeByFade() {
         var clip = Fixtures.clip(start: 0, duration: 100, volume: 0.5)
-        clip.audioFadeInFrames = 10
-        clip.audioFadeInInterpolation = .linear
+        clip.fadeInFrames = 10
+        clip.fadeInInterpolation = .linear
         // fade at frame 5 = 0.5; static volume = 0.5 → 0.25.
         #expect(abs(clip.volumeAt(frame: 5) - 0.25) < 1e-9)
+    }
+
+    // MARK: - opacityAt + rawOpacityAt
+
+    @Test func opacityAtReturnsStaticOpacityWithoutFade() {
+        var clip = Fixtures.clip(start: 0, duration: 100)
+        clip.opacity = 0.5
+        #expect(clip.opacityAt(frame: 50) == 0.5)
+    }
+
+    @Test func opacityAtMultipliesStaticOpacityByFade() {
+        var clip = Fixtures.clip(start: 0, duration: 100)
+        clip.opacity = 0.5
+        clip.fadeInFrames = 10
+        clip.fadeInInterpolation = .linear
+        // base 0.5 × linear fade at frame 5 (0.5) = 0.25.
+        #expect(abs(clip.opacityAt(frame: 5) - 0.25) < 1e-9)
+    }
+
+    @Test func opacityAtMultipliesKeyframedOpacityByFade() {
+        var clip = Fixtures.clip(start: 0, duration: 100)
+        clip.opacity = 1.0
+        clip.opacityTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 0.4),
+            Keyframe(frame: 100, value: 0.4)
+        ])
+        clip.fadeOutFrames = 20
+        clip.fadeOutInterpolation = .linear
+        // At frame 90: keyframed opacity = 0.4, fadeOut multiplier = 0.5 → 0.2.
+        #expect(abs(clip.opacityAt(frame: 90) - 0.2) < 1e-9)
+    }
+
+    @Test func opacityAtIgnoresFadeForAudioClips() {
+        // Audio clips share the same fade fields as visual clips, but fades modulate volume
+        // there — opacity should stay at the authored value.
+        var clip = Fixtures.clip(mediaType: .audio, start: 0, duration: 100)
+        clip.opacity = 1.0
+        clip.fadeInFrames = 10
+        clip.fadeInInterpolation = .linear
+        #expect(clip.opacityAt(frame: 5) == 1.0)
+    }
+
+    @Test func rawOpacityAtIgnoresFade() {
+        // Round-trip guard for the inspector / stampKeyframe path: rawOpacityAt must
+        // return the authored value even when a fade would zero it visually.
+        var clip = Fixtures.clip(start: 0, duration: 100)
+        clip.opacity = 1.0
+        clip.fadeInFrames = 10
+        clip.fadeInInterpolation = .linear
+        #expect(clip.rawOpacityAt(frame: 0) == 1.0)
+        #expect(clip.rawOpacityAt(frame: 5) == 1.0)
+        #expect(clip.opacityAt(frame: 5) == 0.5)
+    }
+
+    // MARK: - clampFadesToDuration / setFade
+
+    @Test func clampClipsFadesToDuration() {
+        var clip = Fixtures.clip(start: 0, duration: 100)
+        clip.fadeInFrames = 80
+        clip.fadeOutFrames = 80
+        clip.clampFadesToDuration()
+        // fadeOut clamps to remainder after fadeIn: 100 - 80 = 20.
+        #expect(clip.fadeInFrames == 80)
+        #expect(clip.fadeOutFrames == 20)
+    }
+
+    @Test func setFadeWritesEdgeFields() {
+        var clip = Fixtures.clip(start: 0, duration: 100)
+        clip.setFade(.left, frames: 25)
+        clip.setFade(.right, frames: 30)
+        #expect(clip.fadeInFrames == 25)
+        #expect(clip.fadeOutFrames == 30)
     }
 }
 
@@ -166,8 +238,8 @@ struct ClipMathAdversarialTests {
 
     @Test func zeroDurationClipDoesNotCrashFadeMultiplier() {
         var clip = Fixtures.clip(start: 0, duration: 0)
-        clip.audioFadeInFrames = 5
-        clip.audioFadeInInterpolation = .linear
+        clip.fadeInFrames = 5
+        clip.fadeInInterpolation = .linear
         _ = clip.fadeMultiplier(at: 0)
         _ = clip.fadeMultiplier(at: -1)
         _ = clip.fadeMultiplier(at: 1)

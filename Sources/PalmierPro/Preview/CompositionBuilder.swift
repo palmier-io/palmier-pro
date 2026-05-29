@@ -284,30 +284,41 @@ enum CompositionBuilder {
         return Array(Set(raw)).sorted()
     }
 
-    /// Walks the composite gain (`volumeAt` already folds in static volume × kf × fade) and
-    /// emits a sequence of non-overlapping linear ramps between every breakpoint.
-    /// Keyframes, fade endpoints, hold steps, and smooth subdivisions all become breakpoints.
+    /// Linear-ramp envelope for the clip's volume curve. `volumeAt` already folds in static × kf × fade.
     private static func emitVolumeEnvelope(
         params: AVMutableAudioMixInputParameters,
         clip: Clip,
         timescale: CMTimeScale
     ) {
+        let kfs = (clip.volumeTrack?.keyframes ?? []).filter { $0.frame >= 0 && $0.frame <= clip.durationFrames }
+        let hasFade = clip.fadeInFrames > 0 || clip.fadeOutFrames > 0
+        if kfs.isEmpty && !hasFade && Float(clip.volume) == 1.0 { return }
+
+        emitEnvelopeRamps(
+            clip: clip,
+            kfs: kfs,
+            timescale: timescale,
+            sampleAt: { Float(clip.volumeAt(frame: clip.startFrame + $0)) },
+            emit: { start, end, range in
+                params.setVolumeRamp(fromStartVolume: start, toEndVolume: end, timeRange: range)
+            }
+        )
+    }
+
+    /// Piecewise-linear envelope shared by audio volume and video opacity fade emission.
+    private static func emitEnvelopeRamps(
+        clip: Clip,
+        kfs: [Keyframe<Double>],
+        timescale: CMTimeScale,
+        sampleAt: (Int) -> Float,
+        emit: (Float, Float, CMTimeRange) -> Void
+    ) {
         let dur = clip.durationFrames
         guard dur > 0 else { return }
-        let baseVolume = Float(clip.volume)
-        let kfs = (clip.volumeTrack?.keyframes ?? []).filter { $0.frame >= 0 && $0.frame <= dur }
-        let hasKfs = !kfs.isEmpty
-        let hasFadeIn = clip.audioFadeInFrames > 0
-        let hasFadeOut = clip.audioFadeOutFrames > 0
 
-        if !hasKfs && !hasFadeIn && !hasFadeOut && baseVolume == 1.0 { return }
-
-        // 1) Collect breakpoint offsets.
         var offsetSet: Set<Int> = [0, dur]
         for kf in kfs { offsetSet.insert(kf.frame) }
-
-        // Smooth kf segments subdivide; hold segments get a frame-before-step breakpoint.
-        for i in 0..<max(0, kfs.count - 1) {
+        for i in kfs.indices.dropLast() {
             let a = kfs[i], b = kfs[i + 1]
             switch a.interpolationOut {
             case .smooth: offsetSet.formUnion(smoothSubdivisions(from: a.frame, to: b.frame))
@@ -315,42 +326,29 @@ enum CompositionBuilder {
             case .linear: break
             }
         }
-
-        if hasFadeIn {
-            let endOffset = min(dur, clip.audioFadeInFrames)
+        if clip.fadeInFrames > 0 {
+            let endOffset = min(dur, clip.fadeInFrames)
             offsetSet.insert(endOffset)
-            if clip.audioFadeInInterpolation == .smooth {
+            if clip.fadeInInterpolation == .smooth {
                 offsetSet.formUnion(smoothSubdivisions(from: 0, to: endOffset))
             }
         }
-        if hasFadeOut {
-            let startOffset = max(0, dur - clip.audioFadeOutFrames)
+        if clip.fadeOutFrames > 0 {
+            let startOffset = max(0, dur - clip.fadeOutFrames)
             offsetSet.insert(startOffset)
-            if clip.audioFadeOutInterpolation == .smooth {
+            if clip.fadeOutInterpolation == .smooth {
                 offsetSet.formUnion(smoothSubdivisions(from: startOffset, to: dur))
             }
         }
 
         let offsets = offsetSet.sorted()
-
-        let cmTime: (Int) -> CMTime = { offset in
-            CMTime(value: CMTimeValue(clip.startFrame + offset), timescale: timescale)
-        }
-        let gainAt: (Int) -> Float = { offset in
-            Float(clip.volumeAt(frame: clip.startFrame + offset))
-        }
-
-        // 2) Emit a linear ramp between each pair of consecutive offsets.
-        for i in 0..<(offsets.count - 1) {
+        for i in offsets.indices.dropLast() {
             let aOff = offsets[i], bOff = offsets[i + 1]
             guard bOff > aOff else { continue }
-            let aT = cmTime(aOff), bT = cmTime(bOff)
+            let aT = CMTime(value: CMTimeValue(clip.startFrame + aOff), timescale: timescale)
+            let bT = CMTime(value: CMTimeValue(clip.startFrame + bOff), timescale: timescale)
             guard bT > aT else { continue }
-            params.setVolumeRamp(
-                fromStartVolume: gainAt(aOff),
-                toEndVolume: gainAt(bOff),
-                timeRange: CMTimeRange(start: aT, end: bT)
-            )
+            emit(sampleAt(aOff), sampleAt(bOff), CMTimeRange(start: aT, end: bT))
         }
     }
 
@@ -484,7 +482,7 @@ enum CompositionBuilder {
         }
     }
 
-    /// Emit the opacity instructions from a clip's keyframes
+    /// Opacity instructions for a clip's keyframes + fade envelope.
     private static func emitOpacity(
         config: inout AVVideoCompositionLayerInstruction.Configuration,
         clip: Clip,
@@ -492,16 +490,36 @@ enum CompositionBuilder {
         end: CMTime,
         timescale: CMTimeScale
     ) {
-        let ops = trackOps(track: clip.opacityTrack, fallback: clip.opacity, clip: clip,
-                           clipStart: start, clipEnd: end, timescale: timescale)
-        for op in ops {
-            switch op {
-            case .setStatic(let v, let t):
-                config.setOpacity(Float(v), at: t)
-            case .ramp(let a, let b, let range):
-                config.addOpacityRamp(.init(timeRange: range, start: Float(a), end: Float(b)))
+        let hasFade = clip.fadeInFrames > 0 || clip.fadeOutFrames > 0
+
+        if !hasFade {
+            let ops = trackOps(track: clip.opacityTrack, fallback: clip.opacity, clip: clip,
+                               clipStart: start, clipEnd: end, timescale: timescale)
+            for op in ops {
+                switch op {
+                case .setStatic(let v, let t):
+                    config.setOpacity(Float(v), at: t)
+                case .ramp(let a, let b, let range):
+                    config.addOpacityRamp(.init(timeRange: range, start: Float(a), end: Float(b)))
+                }
             }
+            return
         }
+
+        let kfs = (clip.opacityTrack?.isActive == true)
+            ? (clip.opacityTrack?.keyframes ?? []).filter { $0.frame >= 0 && $0.frame <= clip.durationFrames }
+            : []
+
+        config.setOpacity(Float(clip.opacityAt(frame: clip.startFrame)), at: start)
+        emitEnvelopeRamps(
+            clip: clip,
+            kfs: kfs,
+            timescale: timescale,
+            sampleAt: { Float(clip.opacityAt(frame: clip.startFrame + $0)) },
+            emit: { aVal, bVal, range in
+                config.addOpacityRamp(.init(timeRange: range, start: aVal, end: bVal))
+            }
+        )
     }
 
     /// One emitted ramp instruction. Generated by `trackOps` and consumed per-property by

@@ -27,10 +27,10 @@ struct ProjectRoundTripTests {
 
     @Test func clipPreservesFadeAndSpeedAndTrimAcrossRoundTrip() throws {
         var clip = Fixtures.clip(start: 0, duration: 60, trimStart: 10, trimEnd: 5, speed: 1.5, volume: 0.75)
-        clip.audioFadeInFrames = 12
-        clip.audioFadeOutFrames = 8
-        clip.audioFadeInInterpolation = .linear
-        clip.audioFadeOutInterpolation = .hold
+        clip.fadeInFrames = 12
+        clip.fadeOutFrames = 8
+        clip.fadeInInterpolation = .linear
+        clip.fadeOutInterpolation = .hold
         clip.opacity = 0.5
         let track = Fixtures.videoTrack(clips: [clip])
         let timeline = Fixtures.timeline(tracks: [track])
@@ -41,10 +41,10 @@ struct ProjectRoundTripTests {
         #expect(dc.trimEndFrame == 5)
         #expect(dc.speed == 1.5)
         #expect(dc.volume == 0.75)
-        #expect(dc.audioFadeInFrames == 12)
-        #expect(dc.audioFadeOutFrames == 8)
-        #expect(dc.audioFadeInInterpolation == .linear)
-        #expect(dc.audioFadeOutInterpolation == .hold)
+        #expect(dc.fadeInFrames == 12)
+        #expect(dc.fadeOutFrames == 8)
+        #expect(dc.fadeInInterpolation == .linear)
+        #expect(dc.fadeOutInterpolation == .hold)
         #expect(dc.opacity == 0.5)
     }
 
@@ -151,8 +151,8 @@ struct ProjectRoundTripTests {
         #expect(clip.speed == 1.0)
         #expect(clip.volume == 1.0)
         #expect(clip.opacity == 1.0)
-        #expect(clip.audioFadeInFrames == 0)
-        #expect(clip.audioFadeInInterpolation == .smooth)
+        #expect(clip.fadeInFrames == 0)
+        #expect(clip.fadeInInterpolation == .linear)
         #expect(clip.transform == Transform())
         #expect(clip.crop == Crop())
         #expect(clip.linkGroupId == nil)

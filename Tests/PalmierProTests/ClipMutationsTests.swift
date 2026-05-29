@@ -2,9 +2,7 @@ import Foundation
 import Testing
 @testable import PalmierPro
 
-/// Direct tests against EditorViewModel's clip-mutation APIs. The same logic is exercised
-/// indirectly through ToolExecutor tests, but these probe the underlying contracts
-/// (split with linked partners, prune behavior, speed math ripple, etc.) head-on.
+/// Direct tests against EditorViewModel's clip-mutation APIs
 @MainActor
 private func editor(_ tracks: [Track] = []) -> EditorViewModel {
     let e = EditorViewModel()
@@ -112,6 +110,53 @@ struct SplitClipTests {
         let leftIds: Set<String> = ["v", "a"]
         let leftGroups = Set(allClips.filter { leftIds.contains($0.id) }.compactMap(\.linkGroupId))
         #expect(leftGroups == ["g1"])
+    }
+
+    @Test func splitClipZerosOpacityFadesAcrossCut() {
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        clip.fadeInFrames = 15
+        clip.fadeOutFrames = 20
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        _ = e.splitClip(clipId: "c1", atFrame: 30)
+        let halves = e.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(halves.count == 2)
+        #expect(halves[0].fadeInFrames == 15)
+        #expect(halves[0].fadeOutFrames == 0)
+        #expect(halves[1].fadeInFrames == 0)
+        #expect(halves[1].fadeOutFrames == 20)
+    }
+}
+
+@Suite("EditorViewModel — applyTimelineSettings")
+@MainActor
+struct ApplyTimelineSettingsTests {
+
+    @Test func rescalesOpacityFadesByFpsRatio() {
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        clip.fadeInFrames = 30
+        clip.fadeOutFrames = 30
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        e.applyTimelineSettings(fps: 60, width: 1920, height: 1080)
+        let updated = e.timeline.tracks[0].clips[0]
+        #expect(updated.fadeInFrames == 60)
+        #expect(updated.fadeOutFrames == 60)
+    }
+}
+
+@Suite("EditorViewModel — stampKeyframe")
+@MainActor
+struct StampKeyframeTests {
+
+    @Test func opacityStoresAuthoredValueNotFadedValue() {
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 100)
+        clip.opacity = 1.0
+        clip.fadeInFrames = 10
+        clip.fadeInInterpolation = .linear
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        e.stampKeyframe(clipId: "c1", property: .opacity, frame: 5)
+        let kf = e.timeline.tracks[0].clips[0].opacityTrack?.keyframes.first
+        #expect(kf?.frame == 5)
+        #expect(kf?.value == 1.0)
     }
 }
 

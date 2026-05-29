@@ -40,8 +40,8 @@ extension EditorViewModel {
                         }
                         timeline.tracks[ti].clips[ci].volumeTrack = track.keyframes.isEmpty ? nil : track
                     }
-                    timeline.tracks[ti].clips[ci].audioFadeInFrames = Int((Double(clip.audioFadeInFrames) * scale).rounded())
-                    timeline.tracks[ti].clips[ci].audioFadeOutFrames = Int((Double(clip.audioFadeOutFrames) * scale).rounded())
+                    timeline.tracks[ti].clips[ci].fadeInFrames = Int((Double(clip.fadeInFrames) * scale).rounded())
+                    timeline.tracks[ti].clips[ci].fadeOutFrames = Int((Double(clip.fadeOutFrames) * scale).rounded())
                     timeline.tracks[ti].clips[ci].clampVolumeKfsToDuration()
                     timeline.tracks[ti].clips[ci].clampFadesToDuration()
                 }

@@ -55,7 +55,7 @@ final class TextLayerController {
         CATransaction.setDisableActions(true)
         for (clip, layer) in zip(clips, sublayers) {
             let visible = frame >= clip.startFrame && frame < clip.endFrame
-            let target: Float = visible ? Float(clip.opacity) : 0
+            let target: Float = visible ? Float(clip.opacityAt(frame: frame)) : 0
             if layer.opacity != target { layer.opacity = target }
         }
         CATransaction.commit()
@@ -101,7 +101,7 @@ final class TextLayerController {
             let layer = makeTextLayer()
             applyStyle(to: layer, clip: clip, containerSize: canvasSize)
             let visible = frame >= clip.startFrame && frame < clip.endFrame
-            layer.opacity = visible ? Float(clip.opacity) : 0
+            layer.opacity = visible ? Float(clip.opacityAt(frame: frame)) : 0
             host.addSublayer(layer)
         }
         return host
@@ -173,7 +173,7 @@ final class TextLayerController {
         }
     }
 
-    /// Drives the layer's export-time opacity: 0 before `startFrame`, `clip.opacity` during, 0 after.
+    /// Export-time opacity
     private static func applyOpacityAnimation(
         to layer: CATextLayer,
         clip: Clip,
@@ -181,26 +181,21 @@ final class TextLayerController {
         totalSeconds: Double
     ) {
         let fpsD = Double(max(1, fps))
-        let opacity = Float(clip.opacity)
         let total = max(0.001, totalSeconds)
-        let startFrac = min(1, max(0, Double(clip.startFrame) / fpsD / total))
-        let endFrac = min(1, max(0, Double(clip.endFrame) / fpsD / total))
+        let totalFrames = max(1, Int((total * fpsD).rounded()))
+
+        layer.opacity = 0
 
         // Discrete keyframes: values[i] holds in [keyTimes[i], keyTimes[i+1]),
         // so values.count == keyTimes.count - 1. https://developer.apple.com/documentation/quartzcore/cakeyframeanimation
-        var keyTimes: [NSNumber] = [0]
-        var values: [Float] = []
-
-        if startFrac > 0 {
-            values.append(0)
-            keyTimes.append(NSNumber(value: startFrac))
+        var keyTimes: [NSNumber] = [NSNumber(value: 0)]
+        var values: [NSNumber] = []
+        for frame in 0..<totalFrames {
+            let visible = frame >= clip.startFrame && frame < clip.endFrame
+            let v = visible ? clip.opacityAt(frame: frame) : 0
+            values.append(NSNumber(value: Float(v)))
+            keyTimes.append(NSNumber(value: Double(frame + 1) / Double(totalFrames)))
         }
-        values.append(opacity)
-        if endFrac < 1 {
-            keyTimes.append(NSNumber(value: endFrac))
-            values.append(0)
-        }
-        keyTimes.append(1)
 
         let anim = CAKeyframeAnimation(keyPath: "opacity")
         anim.calculationMode = .discrete
@@ -210,6 +205,6 @@ final class TextLayerController {
         anim.duration = total
         anim.fillMode = .both
         anim.isRemovedOnCompletion = false
-        layer.add(anim, forKey: "visibility")
+        layer.add(anim, forKey: "opacity")
     }
 }

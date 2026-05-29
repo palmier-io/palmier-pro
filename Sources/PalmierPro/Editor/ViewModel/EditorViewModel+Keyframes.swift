@@ -33,7 +33,7 @@ extension EditorViewModel {
         commitClipProperty(clipId: clipId) { clip in
             switch property {
             case .opacity:
-                clip.upsertKeyframe(in: \.opacityTrack, frame: f, value: clip.opacityAt(frame: f))
+                clip.upsertKeyframe(in: \.opacityTrack, frame: f, value: clip.rawOpacityAt(frame: f))
             case .position:
                 let tl = clip.topLeftAt(frame: f)
                 clip.upsertKeyframe(in: \.positionTrack, frame: f, value: AnimPair(a: tl.x, b: tl.y))
@@ -134,7 +134,7 @@ extension EditorViewModel {
         }
     }
 
-    // MARK: - Audio fades
+    // MARK: - Fades
 
     func applyFade(clipId: String, edge: FadeEdge, frames: Int) {
         applyClipProperty(clipId: clipId) { $0.setFade(edge, frames: frames) }

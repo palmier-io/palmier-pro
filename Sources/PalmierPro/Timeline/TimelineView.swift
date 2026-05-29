@@ -474,16 +474,18 @@ final class TimelineView: NSView {
         let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
         let clipRect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
 
-        // Fade knee menu — must come before kf hit-test, mirroring mouseDown priority.
-        if clip.mediaType == .audio,
-           let edge = inputController.audioFadeKneeHit(at: point, clip: clip, clipRect: clipRect) {
+        if let edge = inputController.fadeKneeHit(at: point, clip: clip, clipRect: clipRect) {
             let menu = NSMenu()
-            let current = edge == .left ? clip.audioFadeInInterpolation : clip.audioFadeOutInterpolation
+            let current = clip.fadeInterpolation(edge)
             let mk: (String, Interpolation) -> NSMenuItem = { title, interp in
                 let item = NSMenuItem(title: title, action: #selector(self.performSetFadeInterpolation(_:)), keyEquivalent: "")
                 item.target = self
                 item.state = current == interp ? .on : .off
-                item.representedObject = ["clipId": clip.id, "edgeIsLeft": edge == .left, "interp": interp.rawValue] as [String: Any]
+                item.representedObject = [
+                    "clipId": clip.id,
+                    "edgeIsLeft": edge == .left,
+                    "interp": interp.rawValue
+                ] as [String: Any]
                 return item
             }
             menu.addItem(mk("Linear", .linear))

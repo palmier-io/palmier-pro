@@ -141,7 +141,7 @@ struct TimelineGeometry {
 
     /// Interior keyframe hit point: just pxPerFrame placement, no edge insetting.
     func audioVolumeKfPoint(clip: Clip, kfOffset: Int, kfDb: Double, in clipRect: NSRect) -> CGPoint {
-        let body = ClipRenderer.audioBodyRect(in: clipRect)
+        let body = ClipRenderer.clipBodyRect(in: clipRect)
         let pxPerFrame = clip.durationFrames > 0 ? clipRect.width / CGFloat(clip.durationFrames) : 0
         let x = clipRect.minX + CGFloat(kfOffset) * pxPerFrame
         return CGPoint(x: x, y: ClipRenderer.y(forDb: kfDb, in: body))
@@ -154,12 +154,12 @@ struct TimelineGeometry {
     }
 
     /// Hit rect for a fade knee — sits in the fixed fade lane near the top of the body.
-    func audioFadeKneeRect(clip: Clip, edge: FadeEdge, in clipRect: NSRect) -> NSRect {
-        let body = ClipRenderer.audioBodyRect(in: clipRect)
+    func fadeKneeRect(clip: Clip, edge: FadeEdge, in clipRect: NSRect) -> NSRect {
+        let body = ClipRenderer.clipBodyRect(in: clipRect)
         let pxPerFrame = clip.durationFrames > 0 ? clipRect.width / CGFloat(clip.durationFrames) : 0
         let kfOffset = edge == .left
-            ? min(clip.audioFadeInFrames, clip.durationFrames)
-            : max(0, clip.durationFrames - clip.audioFadeOutFrames)
+            ? min(clip.fadeInFrames, clip.durationFrames)
+            : max(0, clip.durationFrames - clip.fadeOutFrames)
         let x = ClipRenderer.fadeHandleRenderX(in: clipRect, kfOffset: kfOffset, isLeft: edge == .left, pxPerFrame: pxPerFrame)
         let y = ClipRenderer.fadeKneeY(in: body)
         let half = ClipRenderer.volumeKeyframeHitSize / 2

@@ -86,10 +86,10 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var trimEndFrame: Int = 0
     var speed: Double = 1.0
     var volume: Double = 1.0
-    var audioFadeInFrames: Int = 0
-    var audioFadeOutFrames: Int = 0
-    var audioFadeInInterpolation: Interpolation = .smooth
-    var audioFadeOutInterpolation: Interpolation = .smooth
+    var fadeInFrames: Int = 0
+    var fadeOutFrames: Int = 0
+    var fadeInInterpolation: Interpolation = .linear
+    var fadeOutInterpolation: Interpolation = .linear
     var opacity: Double = 1.0
     var transform: Transform = Transform()
     var crop: Crop = Crop()
@@ -110,8 +110,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     private enum CodingKeys: String, CodingKey {
         case id, mediaRef, mediaType, sourceClipType, startFrame, durationFrames
         case trimStartFrame, trimEndFrame, speed, volume
-        case audioFadeInFrames, audioFadeOutFrames
-        case audioFadeInInterpolation, audioFadeOutInterpolation
+        case fadeInFrames, fadeOutFrames, fadeInInterpolation, fadeOutInterpolation
         case opacity, transform, crop
         case linkGroupId, textContent, textStyle
         case opacityTrack, positionTrack, scaleTrack, rotationTrack, cropTrack, volumeTrack
@@ -130,6 +129,13 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     private func keyframeOffset(forFrame frame: Int) -> Int { frame - startFrame }
 
     func opacityAt(frame: Int) -> Double {
+        let base = rawOpacityAt(frame: frame)
+        guard mediaType != .audio, fadeInFrames > 0 || fadeOutFrames > 0 else { return base }
+        return base * fadeMultiplier(at: frame)
+    }
+
+    /// Authored opacity without the fade envelope
+    func rawOpacityAt(frame: Int) -> Double {
         opacityTrack?.sample(at: keyframeOffset(forFrame: frame), fallback: opacity) ?? opacity
     }
 
@@ -192,20 +198,20 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         return volume * kfGain * fadeMultiplier(at: frame)
     }
 
-    /// 0…1 fade multiplier from the head/tail ramps; 1 outside the fade regions.
+    /// 0…1 envelope from the fade head/tail ramps.
     func fadeMultiplier(at frame: Int) -> Double {
         let rel = frame - startFrame
         guard rel >= 0, rel <= durationFrames else { return 0 }
         let inMul: Double = {
-            guard audioFadeInFrames > 0 else { return 1.0 }
-            let t = min(1.0, Double(rel) / Double(audioFadeInFrames))
-            return audioFadeInInterpolation == .smooth ? smoothstep(t) : t
+            guard fadeInFrames > 0 else { return 1.0 }
+            let t = min(1.0, Double(rel) / Double(fadeInFrames))
+            return fadeInInterpolation == .smooth ? smoothstep(t) : t
         }()
         let outRem = durationFrames - rel
         let outMul: Double = {
-            guard audioFadeOutFrames > 0 else { return 1.0 }
-            let t = min(1.0, Double(outRem) / Double(audioFadeOutFrames))
-            return audioFadeOutInterpolation == .smooth ? smoothstep(t) : t
+            guard fadeOutFrames > 0 else { return 1.0 }
+            let t = min(1.0, Double(outRem) / Double(fadeOutFrames))
+            return fadeOutInterpolation == .smooth ? smoothstep(t) : t
         }()
         return min(inMul, outMul)
     }
@@ -233,24 +239,33 @@ extension Clip {
 
     /// Clamp fade ramps so head + tail can't exceed the clip's duration.
     mutating func clampFadesToDuration() {
-        audioFadeInFrames = max(0, min(audioFadeInFrames, durationFrames))
-        audioFadeOutFrames = max(0, min(audioFadeOutFrames, durationFrames - audioFadeInFrames))
+        fadeInFrames = max(0, min(fadeInFrames, durationFrames))
+        fadeOutFrames = max(0, min(fadeOutFrames, durationFrames - fadeInFrames))
     }
 
-    /// Set the fade length for one edge and clamp to fit. Centralizes the FadeEdge → field mapping.
+    /// Set the fade length for one edge and clamp to fit.
     mutating func setFade(_ edge: FadeEdge, frames: Int) {
+        let v = max(0, frames)
         switch edge {
-        case .left:  audioFadeInFrames = max(0, frames)
-        case .right: audioFadeOutFrames = max(0, frames)
+        case .left:  fadeInFrames  = v
+        case .right: fadeOutFrames = v
         }
         clampFadesToDuration()
     }
 
     mutating func setFadeInterpolation(_ edge: FadeEdge, _ interpolation: Interpolation) {
         switch edge {
-        case .left:  audioFadeInInterpolation = interpolation
-        case .right: audioFadeOutInterpolation = interpolation
+        case .left:  fadeInInterpolation  = interpolation
+        case .right: fadeOutInterpolation = interpolation
         }
+    }
+
+    func fadeFrames(_ edge: FadeEdge) -> Int {
+        edge == .left ? fadeInFrames : fadeOutFrames
+    }
+
+    func fadeInterpolation(_ edge: FadeEdge) -> Interpolation {
+        edge == .left ? fadeInInterpolation : fadeOutInterpolation
     }
 
     mutating func setDuration(_ newDuration: Int) {
@@ -272,10 +287,10 @@ extension Clip {
             trimEndFrame: (try? c.decode(Int.self, forKey: .trimEndFrame)) ?? 0,
             speed: (try? c.decode(Double.self, forKey: .speed)) ?? 1.0,
             volume: (try? c.decode(Double.self, forKey: .volume)) ?? 1.0,
-            audioFadeInFrames: (try? c.decode(Int.self, forKey: .audioFadeInFrames)) ?? 0,
-            audioFadeOutFrames: (try? c.decode(Int.self, forKey: .audioFadeOutFrames)) ?? 0,
-            audioFadeInInterpolation: (try? c.decode(Interpolation.self, forKey: .audioFadeInInterpolation)) ?? .smooth,
-            audioFadeOutInterpolation: (try? c.decode(Interpolation.self, forKey: .audioFadeOutInterpolation)) ?? .smooth,
+            fadeInFrames: (try? c.decode(Int.self, forKey: .fadeInFrames)) ?? 0,
+            fadeOutFrames: (try? c.decode(Int.self, forKey: .fadeOutFrames)) ?? 0,
+            fadeInInterpolation: (try? c.decode(Interpolation.self, forKey: .fadeInInterpolation)) ?? .linear,
+            fadeOutInterpolation: (try? c.decode(Interpolation.self, forKey: .fadeOutInterpolation)) ?? .linear,
             opacity: (try? c.decode(Double.self, forKey: .opacity)) ?? 1.0,
             transform: (try? c.decode(Transform.self, forKey: .transform)) ?? Transform(),
             crop: (try? c.decode(Crop.self, forKey: .crop)) ?? Crop(),
