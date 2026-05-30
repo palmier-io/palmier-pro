@@ -49,6 +49,7 @@ final class EditorViewModel {
     var activeFrame: Int { playheadState.timelineFrame }
     var isPlaying: Bool = false
     var selectedClipIds: Set<String> = []
+    var selectedGap: GapSelection?
     var selectedMediaAssetIds: Set<String> = []
     var selectedFolderIds: Set<String> = []
     var clipClipboard: [ClipClipboardEntry] = []

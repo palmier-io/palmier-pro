@@ -131,6 +131,7 @@ final class TimelineView: NSView {
 
         drawTrackBackgrounds(geometry: geo, context: ctx)
         drawClips(geometry: geo, dirtyRect: dirtyRect, context: ctx)
+        drawGapSelection(geometry: geo, context: ctx)
         syncPendingReplacementOverlays(geometry: geo)
 
         if let assets = externalDragAssets, !assets.isEmpty, let target = externalDropTarget {
@@ -294,6 +295,26 @@ final class TimelineView: NSView {
                                   fps: editor.timeline.fps)
             }
         }
+    }
+
+    // MARK: - Gap selection
+
+    private func drawGapSelection(geometry geo: TimelineGeometry, context ctx: CGContext) {
+        guard let gap = editor.selectedGap,
+              editor.timeline.tracks.indices.contains(gap.trackIndex) else { return }
+        let y = Double(geo.trackY(at: gap.trackIndex))
+        let height = Double(geo.trackHeight(at: gap.trackIndex))
+        let minX = geo.xForFrame(gap.range.start)
+        let maxX = geo.xForFrame(gap.range.end)
+        let rect = NSRect(x: minX, y: y + 2, width: maxX - minX, height: height - 4)
+
+        ctx.setFillColor(NSColor.white.withAlphaComponent(0.12).cgColor)
+        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.9).cgColor)
+        ctx.setLineWidth(1)
+        ctx.setLineDash(phase: 0, lengths: [3, 3])
+        ctx.addRect(rect.insetBy(dx: 0.5, dy: 0.5))
+        ctx.drawPath(using: .fillStroke)
+        ctx.setLineDash(phase: 0, lengths: [])
     }
 
     // MARK: - Pending replacement overlays

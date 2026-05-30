@@ -50,6 +50,7 @@ enum Layout {
     static let trackHeaderWidth: CGFloat = 100
     static let dropZoneHeight: CGFloat = 60
     static let insertThreshold: CGFloat = 10
+    static let dragThreshold: CGFloat = 3
 
     // Preview
     static let previewMinWidth: CGFloat = 400

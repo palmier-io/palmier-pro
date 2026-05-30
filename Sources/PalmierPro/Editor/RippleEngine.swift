@@ -15,6 +15,12 @@ struct FrameRange: Equatable, Sendable {
     var length: Int { end - start }
 }
 
+/// A user-selected empty gap on a single track
+struct GapSelection: Equatable, Sendable {
+    let trackIndex: Int
+    let range: FrameRange
+}
+
 /// Pure functions for ripple editing: computing how clips shift after
 /// insertions or deletions.
 enum RippleEngine {

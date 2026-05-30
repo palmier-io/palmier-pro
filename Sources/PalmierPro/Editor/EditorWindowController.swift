@@ -73,7 +73,11 @@ final class EditorWindowController: NSWindowController {
                     editorViewModel.deleteSelectedMediaAssets()
                 }
             } else if shift {
-                editorViewModel.rippleDeleteSelectedClips()
+                if editorViewModel.selectedGap != nil {
+                    editorViewModel.rippleDeleteSelectedGap()
+                } else {
+                    editorViewModel.rippleDeleteSelectedClips()
+                }
             } else {
                 editorViewModel.deleteSelectedClips()
             }

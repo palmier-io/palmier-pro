@@ -51,6 +51,7 @@ final class TimelineInputController {
         }
 
         let trackIndex = geometry.trackAt(y: point.y)
+        editor.selectedGap = nil // re-selected below if this lands in a gap
 
         if editor.toolMode == .razor {
             if let hit = hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) {
@@ -159,6 +160,7 @@ final class TimelineInputController {
             if !event.modifierFlags.contains(.shift) {
                 editor.selectedClipIds.removeAll()
             }
+            editor.selectedGap = hitTestGap(at: point, trackIndex: trackIndex, geometry: geometry)
             dragState = .marquee(DragState.MarqueeDrag(origin: point, baseSelection: editor.selectedClipIds))
         }
 
@@ -301,6 +303,9 @@ final class TimelineInputController {
                 width: abs(point.x - marq.origin.x),
                 height: abs(point.y - marq.origin.y)
             )
+            if marq.current.width > Layout.dragThreshold || marq.current.height > Layout.dragThreshold {
+                editor.selectedGap = nil
+            }
             var selected = marq.baseSelection
             for (ti, track) in editor.timeline.tracks.enumerated() {
                 for clip in track.clips {
@@ -618,6 +623,25 @@ final class TimelineInputController {
             }
         }
         return nil
+    }
+
+    /// Empty track space bounded on the right by a clip: `[previousClipEnd, nextClipStart)`.
+    func hitTestGap(
+        at point: NSPoint,
+        trackIndex: Int,
+        geometry: TimelineGeometry
+    ) -> GapSelection? {
+        guard editor.timeline.tracks.indices.contains(trackIndex) else { return nil }
+        let top = Double(geometry.trackY(at: trackIndex))
+        let bottom = top + Double(geometry.trackHeight(at: trackIndex))
+        guard point.y >= top, point.y < bottom else { return nil }
+
+        let frame = geometry.frameAt(x: point.x)
+        let clips = editor.timeline.tracks[trackIndex].clips
+        guard !clips.contains(where: { frame >= $0.startFrame && frame < $0.endFrame }) else { return nil }
+        guard let nextStart = clips.map(\.startFrame).filter({ $0 > frame }).min() else { return nil }
+        let prevEnd = clips.map(\.endFrame).filter { $0 <= frame }.max() ?? 0
+        return GapSelection(trackIndex: trackIndex, range: FrameRange(start: prevEnd, end: nextStart))
     }
 
     // MARK: - Helpers

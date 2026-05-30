@@ -61,6 +61,42 @@ extension EditorViewModel {
         }
     }
 
+    func rippleDeleteSelectedGap() {
+        guard let gap = selectedGap,
+              timeline.tracks.indices.contains(gap.trackIndex),
+              gap.range.length > 0 else { return }
+        // An out-of-band edit may have filled the gap.
+        guard !timeline.tracks[gap.trackIndex].clips.contains(where: {
+            $0.startFrame < gap.range.end && $0.endFrame > gap.range.start
+        }) else { selectedGap = nil; return }
+
+        var shiftsByTrack: [Int: [ClipShift]] = [:]
+        for ti in timeline.tracks.indices {
+            guard ti == gap.trackIndex || timeline.tracks[ti].syncLocked else { continue }
+            let shifts = RippleEngine.computeRippleShiftsForRanges(
+                clips: timeline.tracks[ti].clips,
+                removedRanges: [gap.range]
+            )
+            // The gap track only ever moves clips into freed space; sync-locked followers may collide.
+            if ti != gap.trackIndex, let reason = validateShifts(trackIndex: ti, shifts: shifts) {
+                refuseRipple(reason: reason)
+                return
+            }
+            shiftsByTrack[ti] = shifts
+        }
+
+        withTimelineSwap(actionName: "Ripple Delete") {
+            shiftsByTrack.values.forEach { shifts in
+                shifts.forEach { shift in
+                    if let loc = findClip(id: shift.clipId) {
+                        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame = shift.newStartFrame
+                    }
+                }
+            }
+        }
+        selectedGap = nil
+    }
+
     /// Ripple insert: add clips at `atFrame` and push everything past it right by the
     /// insertion's duration on the target track and every sync-locked track.
     func rippleInsertClips(assets: [MediaAsset], trackIndex: Int, atFrame: Int) {
