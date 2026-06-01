@@ -344,6 +344,40 @@ struct CompositionBuildValidationTests {
     }
 }
 
+// MARK: - build() unreadable-asset resilience
+
+@Suite("CompositionBuilder.build — unreadable assets")
+struct CompositionBuildUnreadableAssetTests {
+
+    private let renderSize = CGSize(width: 1920, height: 1080)
+
+    /// Write non-media bytes to a temp .mov so AVFoundation throws "Cannot Open" on loadTracks.
+    private func garbageVideoURL() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("garbage-\(UUID().uuidString).mov")
+        try Data("not a real movie".utf8).write(to: url)
+        return url
+    }
+
+    @Test func unreadableClipIsSkippedInsteadOfAbortingRebuild() async throws {
+        // Regression: a single clip whose backing file can't be opened must not
+        // throw out of build() and blank the whole preview — it should be skipped.
+        let badURL = try garbageVideoURL()
+        defer { try? FileManager.default.removeItem(at: badURL) }
+
+        let clip = Fixtures.clip(mediaRef: "bad", start: 0, duration: 30)
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+
+        // Should NOT throw — the bad clip is skipped and a composition returns.
+        let result = try await CompositionBuilder.build(
+            timeline: timeline,
+            resolveURL: { $0 == "bad" ? badURL : nil },
+            renderSize: renderSize
+        )
+        #expect(result.composition.duration.isValid)
+    }
+}
+
 // MARK: - affineTransform
 
 @Suite("CompositionBuilder.affineTransform")

@@ -79,7 +79,14 @@ enum CompositionBuilder {
 
                 guard !Task.isCancelled else { throw CancellationError() }
                 let sourceAsset = AVURLAsset(url: mediaURL)
-                guard let sourceTrack = try await sourceAsset.loadTracks(withMediaType: mediaType).first else { continue }
+                let sourceTrack: AVAssetTrack
+                do {
+                    guard let track = try await sourceAsset.loadTracks(withMediaType: mediaType).first else { continue }
+                    sourceTrack = track
+                } catch {
+                    Log.preview.error("loadTracks failed — skipping clip. clipId=\(clip.id) mediaRef=\(clip.mediaRef): \(error.localizedDescription)")
+                    continue
+                }
 
                 if !isAudio, let natSize = try? await sourceTrack.load(.naturalSize),
                    natSize.width > 0, natSize.height > 0 {
