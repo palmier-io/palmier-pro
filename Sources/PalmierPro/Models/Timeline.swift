@@ -198,6 +198,16 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         return volume * kfGain * fadeMultiplier(at: frame)
     }
 
+    func rawVolumeAt(frame: Int) -> Double {
+        let kfGain: Double
+        if let track = volumeTrack, track.isActive {
+            kfGain = VolumeScale.linearFromDb(track.sample(at: keyframeOffset(forFrame: frame), fallback: 0))
+        } else {
+            kfGain = 1.0
+        }
+        return volume * kfGain
+    }
+
     /// 0…1 envelope from the fade head/tail ramps.
     func fadeMultiplier(at frame: Int) -> Double {
         let rel = frame - startFrame

@@ -314,7 +314,7 @@ struct XMLExporterTests {
         #expect(!xml.contains("audiolevels"))
     }
 
-    @Test func opacityNotOneEmitsBasicMotionWithOpacity() throws {
+    @Test func opacityNotOneEmitsDedicatedOpacityEffect() throws {
         let (resolver, tmpDir) = try makeResolver(entries: [videoManifestEntry(id: "media-v", in: NSTemporaryDirectory())])
         var clip = Fixtures.clip(id: "c1", mediaRef: "media-v", start: 0, duration: 30)
         clip.opacity = 0.5
@@ -324,7 +324,8 @@ struct XMLExporterTests {
         XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
-        #expect(xml.contains("<effectid>basic</effectid>"))
+        // FCP7 keeps opacity in its own Opacity effect, not inside Basic Motion.
+        #expect(xml.contains("<effectid>opacity</effectid>"))
         #expect(xml.contains("<parameterid>opacity</parameterid>"))
         // opacity 0.5 → 50.0%
         #expect(xml.contains("<value>50.0</value>"))
@@ -561,5 +562,221 @@ struct XMLExporterTests {
         if let b = bottomRange, let t = topRange {
             #expect(b.lowerBound < t.lowerBound, "bottom track should appear before top track in FCP XML")
         }
+    }
+
+    // MARK: - Keyframes, crop, transitions, NTSC
+
+    /// Resolver backed by a real temp file so `resolveURL` (which checks `fileExists`) keeps
+    /// the clip; `sourceFPS` drives the file-rate NTSC flag.
+    private func fixture(width: Int = 3840, height: Int = 2160, sourceFPS: Double? = nil) throws -> (MediaResolver, URL) {
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kf-\(UUID().uuidString).mov")
+        try Data().write(to: file)
+        var entry = MediaManifestEntry(
+            id: "media-1", name: "Clip", type: .video,
+            source: .external(absolutePath: file.path), duration: 5,
+            sourceWidth: width, sourceHeight: height
+        )
+        entry.sourceFPS = sourceFPS
+        var manifest = MediaManifest()
+        manifest.entries = [entry]
+        return (MediaResolver(manifest: { manifest }, projectURL: { nil }), file)
+    }
+
+    private func export(_ clip: Clip, resolver: MediaResolver) -> String {
+        let track = clip.mediaType == .audio
+            ? Fixtures.audioTrack(clips: [clip])
+            : Fixtures.videoTrack(clips: [clip])
+        let timeline = Fixtures.timeline(tracks: [track])
+        let out = FileManager.default.temporaryDirectory
+            .appendingPathComponent("export-\(UUID().uuidString).xml")
+        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: out)
+        return (try? String(contentsOf: out, encoding: .utf8)) ?? ""
+    }
+
+    @Test func positionKeyframesEmitVaryingCenter() throws {
+        let (resolver, file) = try fixture()
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        // topLeft (0,0) → center (0.5,0.5) → export (0,0); topLeft (0.5,0.5) → center (1,1) → (1920,-1080).
+        var clip = Fixtures.clip(start: 0, duration: 200)
+        clip.positionTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: AnimPair(a: 0.0, b: 0.0)),
+            Keyframe(frame: 100, value: AnimPair(a: 0.5, b: 0.5)),
+        ])
+        let xml = export(clip, resolver: resolver)
+
+        #expect(xml.contains("<parameterid>center</parameterid>"))
+        // Center is normalized (0 = frame center), not pixels, positive toward bottom-right.
+        // topLeft (0.5,0.5) + size 1 → center (1,1) → horiz 0.5, vert 0.5.
+        #expect(xml.contains("<horiz>0.50000</horiz>"))
+        #expect(xml.contains("<vert>0.50000</vert>"))
+    }
+
+    @Test func opacityKeyframesEmittedWithClipRelativeWhen() throws {
+        let (resolver, file) = try fixture()
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        // Clip starts at frame 100; keyframes are stored clip-relative.
+        var clip = Fixtures.clip(start: 100, duration: 200)
+        clip.opacityTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 30, value: 1.0),
+            Keyframe(frame: 150, value: 0.5),
+        ])
+        let xml = export(clip, resolver: resolver)
+
+        // Own Opacity effect, not folded into Basic Motion.
+        #expect(xml.contains("<effectid>opacity</effectid>"))
+        // <when> is clip-relative (the stored offset), and values scale to 0–100.
+        #expect(xml.contains("<when>30</when>"))
+        #expect(xml.contains("<value>100.0</value>"))
+        #expect(xml.contains("<when>150</when>"))
+        #expect(xml.contains("<value>50.0</value>"))
+    }
+
+    @Test func volumeKeyframesEmittedOnAudioClip() throws {
+        let (resolver, file) = try fixture()
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        var clip = Fixtures.clip(mediaType: .audio, start: 0, duration: 100)
+        clip.volumeTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 0),    // 0 dB → linear 1
+            Keyframe(frame: 50, value: -6),  // attenuated
+        ])
+        let xml = export(clip, resolver: resolver)
+
+        #expect(xml.contains("<effectid>audiolevels</effectid>"))
+        #expect(xml.contains("<when>0</when>"))
+        #expect(xml.contains("<when>50</when>"))
+        // A keyframe block lives inside the Level parameter.
+        #expect(xml.contains("<keyframe>"))
+    }
+
+    @Test func fadesEmitSingleSidedCrossDissolveTransitions() throws {
+        let (resolver, file) = try fixture()
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        var clip = Fixtures.clip(start: 100, duration: 200)
+        clip.fadeInFrames = 30
+        clip.fadeOutFrames = 20
+        let xml = export(clip, resolver: resolver)
+
+        #expect(xml.contains("<effectid>Cross Dissolve</effectid>"))
+        // Fade-in: start-black spanning [start, start+fadeIn).
+        #expect(xml.contains("<alignment>start-black</alignment>"))
+        #expect(xml.contains("<start>100</start>"))
+        #expect(xml.contains("<end>130</end>"))
+        // Fade-out: end-black spanning [end-fadeOut, end).
+        #expect(xml.contains("<alignment>end-black</alignment>"))
+        #expect(xml.contains("<start>280</start>"))
+        #expect(xml.contains("<end>300</end>"))
+        // The transition precedes its clipitem in document order.
+        let tIdx = try #require(xml.range(of: "start-black"))
+        let cIdx = try #require(xml.range(of: "<clipitem"))
+        #expect(tIdx.lowerBound < cIdx.lowerBound)
+    }
+
+    @Test func audioClipFadesEmitCrossFadeTransitions() throws {
+        let (resolver, file) = try fixture()
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        var clip = Fixtures.clip(mediaType: .audio, start: 0, duration: 100)
+        clip.fadeInFrames = 10
+        clip.fadeOutFrames = 15
+        let xml = export(clip, resolver: resolver)
+
+        // Audio uses Cross Fade, not the video Cross Dissolve, and carries no wipe tags.
+        #expect(xml.contains("<effectid>KGAudioTransCrossFade0dB</effectid>"))
+        #expect(xml.contains("<mediatype>audio</mediatype>"))
+        #expect(!xml.contains("Cross Dissolve"))
+        #expect(!xml.contains("<wipecode>"))
+        // Fade-in [0,10) and fade-out [85,100).
+        #expect(xml.contains("<start>0</start>"))
+        #expect(xml.contains("<end>10</end>"))
+        #expect(xml.contains("<start>85</start>"))
+        #expect(xml.contains("<end>100</end>"))
+    }
+
+    @Test func noFadeEmitsNoTransition() throws {
+        let (resolver, file) = try fixture()
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        let clip = Fixtures.clip(start: 0, duration: 100)
+        let xml = export(clip, resolver: resolver)
+
+        #expect(!xml.contains("<transitionitem>"))
+    }
+
+    @Test func staticCropEmitsCropFilterAsPercentages() throws {
+        let (resolver, file) = try fixture()
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        var clip = Fixtures.clip(start: 0, duration: 100)
+        clip.crop = Crop(left: 0.1, top: 0.25, right: 0.2, bottom: 0.05)
+        let xml = export(clip, resolver: resolver)
+
+        #expect(xml.contains("<effectid>crop</effectid>"))
+        #expect(xml.contains("<parameterid>left</parameterid>"))
+        // 0.1 → 10%, 0.25 → 25%.
+        #expect(xml.contains("<value>10.00</value>"))
+        #expect(xml.contains("<value>25.00</value>"))
+        #expect(!xml.contains("<keyframe>"))
+    }
+
+    @Test func cropKeyframesEmitClipRelativeWhen() throws {
+        let (resolver, file) = try fixture()
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        var clip = Fixtures.clip(start: 40, duration: 200)
+        clip.cropTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: Crop()),
+            Keyframe(frame: 60, value: Crop(left: 0.5, top: 0, right: 0, bottom: 0)),
+        ])
+        let xml = export(clip, resolver: resolver)
+
+        #expect(xml.contains("<effectid>crop</effectid>"))
+        #expect(xml.contains("<when>0</when>"))
+        #expect(xml.contains("<when>60</when>"))
+        #expect(xml.contains("<value>50.00</value>"))
+    }
+
+    @Test func identityCropEmitsNoFilter() throws {
+        let (resolver, file) = try fixture()
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        let clip = Fixtures.clip(start: 0, duration: 100)
+        let xml = export(clip, resolver: resolver)
+
+        #expect(!xml.contains("<effectid>crop</effectid>"))
+    }
+
+    @Test func ntscSourceMarksFileRateTrue() throws {
+        // 29.97 footage → the <file> rate carries ntsc TRUE, while the sequence stays FALSE.
+        let (resolver, file) = try fixture(sourceFPS: 30000.0 / 1001.0)
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        let xml = export(Fixtures.clip(start: 0, duration: 100), resolver: resolver)
+        #expect(xml.contains("<ntsc>TRUE</ntsc>"))   // the source file
+        #expect(xml.contains("<ntsc>FALSE</ntsc>"))  // the sequence
+    }
+
+    @Test func cleanFpsSourceStaysNtscFalse() throws {
+        let (resolver, file) = try fixture(sourceFPS: 30.0)
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        let xml = export(Fixtures.clip(start: 0, duration: 100), resolver: resolver)
+        #expect(!xml.contains("<ntsc>TRUE</ntsc>"))
+    }
+
+    @Test func noKeyframesStillEmitsStaticValueOnly() throws {
+        let (resolver, file) = try fixture()
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        var clip = Fixtures.clip(start: 0, duration: 100)
+        clip.opacity = 0.5
+        let xml = export(clip, resolver: resolver)
+
+        #expect(xml.contains("<effectid>opacity</effectid>"))
+        #expect(!xml.contains("<keyframe>"))
     }
 }
