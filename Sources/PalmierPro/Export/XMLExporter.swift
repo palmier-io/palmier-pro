@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 /// Exports a Timeline as XMEML 4 (Final Cut Pro 7 XML)
@@ -55,6 +56,8 @@ enum XMLExporter {
         /// Clip id → position within its media type, used to emit `<link>` cross-references.
         private var clipAddresses: [String: ClipAddress] = [:]
         private var clipsByLinkGroup: [String: [Clip]] = [:]
+        /// Source start timecode (frames) per media ref; nil = no timecode track. Avoids re-reading per file.
+        private var startFrameCache: [String: Int?] = [:]
 
         private struct FileKey: Hashable { let mediaRef: String; let isAudio: Bool }
         private struct ClipAddress { let trackIndex: Int; let clipIndex: Int; let isAudio: Bool }  // indices 1-based
@@ -186,8 +189,17 @@ enum XMLExporter {
             emittedFiles.insert(key)
 
             let entry = resolver.entry(for: mediaRef)
-            let pathUrl = resolver.resolveURL(for: mediaRef)?.absoluteString ?? "media/\(mediaRef)"
-            let durationFrames = entry.map { max(0, secondsToFrame(seconds: $0.duration, fps: fps)) } ?? 0
+            let url = resolver.resolveURL(for: mediaRef)
+            // Resolve matches media by exact filename + extension.
+            let fileName = url?.lastPathComponent ?? entry?.name ?? mediaRef
+            // Resolve needs Premiere's extra-slash host form; the canonical single-slash one fails.
+            let pathUrl = url
+                .map { $0.absoluteString.replacingOccurrences(of: "file://", with: "file://localhost//") }
+                ?? "media/\(mediaRef)"
+            // A still decodes to exactly 1 frame; Resolve marks it offline if the file declares more than
+            // that, so stills report duration 1 (matching DaVinci's own export) rather than the held length.
+            let isImage = entry?.type == .image
+            let durationFrames = isImage ? 1 : (entry.map { max(0, secondsToFrame(seconds: $0.duration, fps: fps)) } ?? 0)
             // NTSC flag follows the source's real fps (29.97 → TRUE), avoiding 0.1% sync drift.
             let (timebase, ntsc) = rateTags(forFPS: entry?.sourceFPS ?? Double(fps))
 
@@ -196,7 +208,7 @@ enum XMLExporter {
                     el("samplecharacteristics", [leaf("samplerate", 48000), leaf("depth", 16)]),
                     leaf("channelcount", 2),
                   ])])
-                : el("media", [el("video", [el("samplecharacteristics", [
+                : el("media", [el("video", (isImage ? [leaf("duration", 1)] : []) + [el("samplecharacteristics", [
                     leaf("width", entry?.sourceWidth ?? seqWidth),
                     leaf("height", entry?.sourceHeight ?? seqHeight),
                     bool("anamorphic", false),
@@ -205,13 +217,63 @@ enum XMLExporter {
                     rate(timebase, ntsc: ntsc),
                   ])])])
 
+            // timecode is required for Davinci Resolve. Either read from source or emit a dummy 00:00:00:00.
+            let dropFrame = ntsc && timebase % 30 == 0
+            let startFrame = sourceStartFrame(for: mediaRef) ?? 0
+            let timecode = el("timecode", [
+                rate(timebase, ntsc: ntsc),
+                leaf("string", formatTimecode(frame: startFrame, fps: timebase, dropFrame: dropFrame)),
+                leaf("frame", startFrame),
+                leaf("displayformat", dropFrame ? "DF" : "NDF"),
+            ])
             return el("file", attrs: [("id", fileId)], [
-                leaf("name", entry?.name ?? mediaRef),
+                leaf("name", fileName),
                 leaf("pathurl", pathUrl),
                 rate(timebase, ntsc: ntsc),
                 leaf("duration", durationFrames),
+                timecode,
                 media,
             ])
+        }
+
+        /// Source start timecode — one read serves both the video and audio file nodes.
+        private func sourceStartFrame(for mediaRef: String) -> Int? {
+            if let cached = startFrameCache[mediaRef] { return cached }
+            let frame = resolver.resolveURL(for: mediaRef).flatMap(Builder.readStartTimecodeFrame)
+            startFrameCache[mediaRef] = frame
+            return frame
+        }
+
+        /// Start frame from the QuickTime `tmcd` track; skip the leading edit-boundary buffer (no data buffer).
+        private static func readStartTimecodeFrame(url: URL) -> Int? {
+            let asset = AVURLAsset(url: url)
+            guard let track = asset.tracks(withMediaType: .timecode).first,
+                  let reader = try? AVAssetReader(asset: asset) else { return nil }
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+            guard reader.canAdd(output) else { return nil }
+            reader.add(output)
+            guard reader.startReading() else { return nil }
+            while let sample = output.copyNextSampleBuffer() {
+                guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
+                var be: UInt32 = 0
+                guard CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: 4, destination: &be) == kCMBlockBufferNoErr
+                else { return nil }
+                return Int(UInt32(bigEndian: be))
+            }
+            return nil
+        }
+
+        /// Frame count → SMPTE string; drop-frame (29.97/59.94) uses `;` separators and skips dropped frames.
+        private func formatTimecode(frame: Int, fps: Int, dropFrame: Bool) -> String {
+            var f = frame
+            if dropFrame {
+                let drop = Int((Double(fps) * 0.066666).rounded())   // 2 @ 30, 4 @ 60
+                let d = f / (fps * 600), m = f % (fps * 600)
+                f += drop * 9 * d + (m > drop ? drop * ((m - drop) / (fps * 60)) : 0)
+            }
+            let sep = dropFrame ? ";" : ":"
+            let ff = f % fps, ss = (f / fps) % 60, mm = (f / (fps * 60)) % 60, hh = f / (fps * 3600)
+            return String(format: "%02d\(sep)%02d\(sep)%02d\(sep)%02d", hh, mm, ss, ff)
         }
 
         // MARK: - Links
