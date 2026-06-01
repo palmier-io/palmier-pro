@@ -196,11 +196,9 @@ enum XMLExporter {
             let pathUrl = url
                 .map { $0.absoluteString.replacingOccurrences(of: "file://", with: "file://localhost//") }
                 ?? "media/\(mediaRef)"
-            // A still decodes to exactly 1 frame; Resolve marks it offline if the file declares more than
-            // that, so stills report duration 1 (matching DaVinci's own export) rather than the held length.
+            // A still decodes to exactly 1 frame
             let isImage = entry?.type == .image
             let durationFrames = isImage ? 1 : (entry.map { max(0, secondsToFrame(seconds: $0.duration, fps: fps)) } ?? 0)
-            // NTSC flag follows the source's real fps (29.97 → TRUE), avoiding 0.1% sync drift.
             let (timebase, ntsc) = rateTags(forFPS: entry?.sourceFPS ?? Double(fps))
 
             let media: XMLNode = isAudio
