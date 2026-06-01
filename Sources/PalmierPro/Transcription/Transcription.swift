@@ -47,12 +47,30 @@ enum Transcription {
         return try await transcribe(fileURL: tempAudioURL)
     }
 
-    static func transcribe(fileURL: URL) async throws -> TranscriptionResult {
-        let locale = Locale.current
-        let supported = await SpeechTranscriber.supportedLocales
-        guard supported.contains(where: { $0.identifier(.bcp47) == locale.identifier(.bcp47) }) else {
-            throw TranscriptionError.unsupportedLocale(locale.identifier)
+    static func bestSupportedLocale(from supported: [Locale]) -> Locale? {
+        let candidates = Locale.preferredLanguages.map(Locale.init(identifier:)) + [Locale.current]
+        return matchLocale(candidates: candidates, supported: supported)
+    }
+
+    /// Match by language code — `Locale.current` carries region overrides (`en_US@rg=frzzzz`)
+    /// that `supportedLocales` never has. Prefer exact region, else any region for that language.
+    static func matchLocale(candidates: [Locale], supported: [Locale]) -> Locale? {
+        for candidate in candidates {
+            guard let lang = candidate.language.languageCode?.identifier else { continue }
+            let sameLang = supported.filter { $0.language.languageCode?.identifier == lang }
+            guard !sameLang.isEmpty else { continue }
+            let region = candidate.region?.identifier
+            return sameLang.first { $0.region?.identifier == region } ?? sameLang.first
         }
+        return nil
+    }
+
+    static func transcribe(fileURL: URL) async throws -> TranscriptionResult {
+        let supported = await SpeechTranscriber.supportedLocales
+        guard let locale = bestSupportedLocale(from: supported) else {
+            throw TranscriptionError.unsupportedLocale(Locale.current.identifier(.bcp47))
+        }
+        Log.transcription.notice("transcribe locale=\(locale.identifier(.bcp47))")
 
         let transcriber = SpeechTranscriber(
             locale: locale,
