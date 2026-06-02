@@ -257,12 +257,16 @@ final class VideoProject: NSDocument {
         let fps = editorViewModel.timeline.fps
         let resolver = editorViewModel.mediaResolver
         for entry in editorViewModel.mediaManifest.entries {
-            guard let url = resolver.resolveURL(for: entry.id) else {
+            guard let url = resolver.expectedURL(for: entry.id) else {
                 Log.project.warning("restore: could not resolve URL for entry id=\(entry.id) name=\(entry.name)")
                 continue
             }
             let asset = MediaAsset(entry: entry, resolvedURL: url)
             editorViewModel.mediaAssets.append(asset)
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                Log.project.warning("restore: media file missing id=\(entry.id) name=\(entry.name) path=\(url.path)")
+                continue
+            }
             if asset.type == .audio || asset.type == .video {
                 cache.generateWaveform(for: asset)
             }

@@ -108,6 +108,10 @@ extension EditorViewModel {
         return mediaResolver.displayName(for: clip.mediaRef)
     }
 
+    func isClipMediaMissing(_ clip: Clip) -> Bool {
+        clip.mediaType != .text && mediaResolver.isMissing(for: clip.mediaRef)
+    }
+
     enum MediaSelectionDirection {
         case left, right, up, down
 

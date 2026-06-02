@@ -11,16 +11,24 @@ final class MediaResolver: @unchecked Sendable {
     }
 
     func resolveURL(for assetId: String) -> URL? {
+        guard let url = expectedURL(for: assetId) else { return nil }
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    func expectedURL(for assetId: String) -> URL? {
         guard let entry = entry(for: assetId) else { return nil }
-        let url: URL
         switch entry.source {
         case .external(let absolutePath):
-            url = URL(fileURLWithPath: absolutePath)
+            return URL(fileURLWithPath: absolutePath)
         case .project(let relativePath):
             guard let base = projectURL() else { return nil }
-            url = base.appendingPathComponent(relativePath)
+            return base.appendingPathComponent(relativePath)
         }
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    func isMissing(for assetId: String) -> Bool {
+        guard let url = expectedURL(for: assetId) else { return true }
+        return !FileManager.default.fileExists(atPath: url.path)
     }
 
     func displayName(for assetId: String) -> String {

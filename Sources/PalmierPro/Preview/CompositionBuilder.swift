@@ -60,6 +60,7 @@ enum CompositionBuilder {
             }
 
             var cursor = CMTime.zero
+            var insertedCount = 0
             for clip in sortedClips {
                 let mediaURL: URL
                 guard let resolved = resolveURL(clip.mediaRef) else { continue }
@@ -79,7 +80,14 @@ enum CompositionBuilder {
 
                 guard !Task.isCancelled else { throw CancellationError() }
                 let sourceAsset = AVURLAsset(url: mediaURL)
-                guard let sourceTrack = try await sourceAsset.loadTracks(withMediaType: mediaType).first else { continue }
+                let sourceTrack: AVAssetTrack
+                do {
+                    guard let track = try await sourceAsset.loadTracks(withMediaType: mediaType).first else { continue }
+                    sourceTrack = track
+                } catch {
+                    Log.preview.error("loadTracks failed — skipping clip. clipId=\(clip.id) mediaRef=\(clip.mediaRef): \(error.localizedDescription)")
+                    continue
+                }
 
                 if !isAudio, let natSize = try? await sourceTrack.load(.naturalSize),
                    natSize.width > 0, natSize.height > 0 {
@@ -123,9 +131,14 @@ enum CompositionBuilder {
                 }
 
                 cursor = clipStart + clipDuration
+                insertedCount += 1
             }
 
             if !isAudio {
+                guard insertedCount > 0 else {
+                    composition.removeTrack(compTrack)
+                    continue
+                }
                 let naturalSize = (try? await compTrack.load(.naturalSize)).flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil } ?? renderSize
                 trackMappings.append(TrackMapping(compositionTrack: compTrack, kind: .timeline(trackIndex: trackIdx), naturalSize: naturalSize, endTime: cursor, isVideo: true))
             }

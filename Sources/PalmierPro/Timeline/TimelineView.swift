@@ -223,6 +223,7 @@ final class TimelineView: NSView {
         for (ti, track) in editor.timeline.tracks.enumerated() {
             for clip in track.clips {
                 let isSelected = editor.selectedClipIds.contains(clip.id)
+                let clipMissing = editor.isClipMediaMissing(clip)
 
                 if let drag = moveDrag, allDraggedIds.contains(clip.id) {
                     let originalRect = geo.clipRect(for: clip, trackIndex: ti)
@@ -233,7 +234,7 @@ final class TimelineView: NSView {
                                           isSelected: drag.isDuplicate && isSelected, opacity: originalOpacity, context: ctx,
                                           cache: editor.mediaVisualCache,
                                           displayName: editor.clipDisplayLabel(for: clip),
-                                          fps: editor.timeline.fps)
+                                          fps: editor.timeline.fps, isMissing: clipMissing)
                     }
 
                     let frameDelta = drag.deltaFrames
@@ -257,7 +258,7 @@ final class TimelineView: NSView {
                                           isSelected: true, opacity: 0.7, context: ctx,
                                           cache: editor.mediaVisualCache,
                                           displayName: editor.clipDisplayLabel(for: clip),
-                                          fps: editor.timeline.fps)
+                                          fps: editor.timeline.fps, isMissing: clipMissing)
                     }
                     continue
                 }
@@ -280,7 +281,7 @@ final class TimelineView: NSView {
                                           isSelected: isSelected, context: ctx,
                                           cache: editor.mediaVisualCache,
                                           displayName: editor.clipDisplayLabel(for: clip),
-                                          fps: editor.timeline.fps)
+                                          fps: editor.timeline.fps, isMissing: clipMissing)
                     }
                     continue
                 }
@@ -292,7 +293,7 @@ final class TimelineView: NSView {
                                   cache: editor.mediaVisualCache,
                                   displayName: editor.clipDisplayLabel(for: clip),
                                   linkOffset: linkOffsets[clip.id],
-                                  fps: editor.timeline.fps)
+                                  fps: editor.timeline.fps, isMissing: clipMissing)
             }
         }
     }
@@ -385,7 +386,8 @@ final class TimelineView: NSView {
             ClipRenderer.draw(ghost.clip, type: ghost.clip.mediaType, in: ghost.rect,
                               isSelected: true, opacity: 0.5, context: ctx,
                               cache: editor.mediaVisualCache,
-                              fps: editor.timeline.fps)
+                              fps: editor.timeline.fps,
+                              isMissing: editor.isClipMediaMissing(ghost.clip))
         }
     }
 

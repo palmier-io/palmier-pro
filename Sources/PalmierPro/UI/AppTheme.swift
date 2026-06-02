@@ -68,6 +68,14 @@ enum AppTheme {
         static let primaryTint = Accent.primary.opacity(0.05)
     }
 
+    // MARK: - Status
+
+    enum Status {
+        static let error = NSColor(red: 0xE5/255.0, green: 0x4F/255.0, blue: 0x4F/255.0, alpha: 1)
+
+        static var errorColor: Color { Color(error) }
+    }
+
     // MARK: - Text
 
     enum Text {
