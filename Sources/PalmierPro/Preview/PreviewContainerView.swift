@@ -30,6 +30,9 @@ struct PreviewContainerView: View {
                     if let asset = activeMediaAsset, asset.isGenerating {
                         generatingPreview(label: asset.generatingLabel)
                     }
+                    if activeMediaMissing {
+                        missingPreview
+                    }
                     if editor.cropEditingActive {
                         CropOverlayView()
                     } else {
@@ -311,6 +314,11 @@ struct PreviewContainerView: View {
         return error
     }
 
+    private var activeMediaMissing: Bool {
+        guard let asset = activeMediaAsset, case .none = asset.generationStatus else { return false }
+        return editor.mediaResolver.isMissing(for: asset.id)
+    }
+
     private func generatingPreview(label: String) -> some View {
         ZStack {
             if let image = activeGeneratingReferenceImage {
@@ -337,6 +345,33 @@ struct PreviewContainerView: View {
             }
         }
         return nil
+    }
+
+    private var missingPreview: some View {
+        ZStack {
+            Color.black.opacity(AppTheme.Opacity.strong)
+            VStack(spacing: AppTheme.Spacing.md) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: AppTheme.FontSize.display))
+                    .foregroundStyle(AppTheme.Status.errorColor)
+                Text("Media Missing")
+                    .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                if let asset = activeMediaAsset {
+                    Text(asset.url.path)
+                        .font(.system(size: AppTheme.FontSize.sm))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                        .multilineTextAlignment(.center)
+                        .textSelection(.enabled)
+                        .lineLimit(3)
+                        .truncationMode(.middle)
+                        .padding(.horizontal, AppTheme.Spacing.lg)
+                }
+            }
+            .padding(AppTheme.Spacing.xl)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func failedPreview(error: String) -> some View {

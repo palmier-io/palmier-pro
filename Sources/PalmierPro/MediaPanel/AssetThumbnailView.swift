@@ -23,10 +23,7 @@ struct AssetThumbnailView: View {
             .overlay(alignment: .bottomTrailing) { durationOverlay }
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .strokeBorder(
-                        isSelected ? AppTheme.Accent.primary : Color.clear,
-                        lineWidth: isSelected ? AppTheme.BorderWidth.thick : 0
-                    )
+                    .strokeBorder(borderColor, lineWidth: borderWidth)
             )
             .onHover { hovering in
                 withAnimation(.easeOut(duration: 0.12)) { isHovering = hovering }
@@ -128,6 +125,8 @@ struct AssetThumbnailView: View {
                 GeneratingOverlay(label: asset.generatingLabel)
             } else if case .failed(let error) = asset.generationStatus {
                 failedThumbnail(error: error)
+            } else if isMissing {
+                missingThumbnail
             } else if let thumbnail = asset.thumbnail {
                 Image(nsImage: thumbnail)
                     .resizable()
@@ -213,6 +212,18 @@ struct AssetThumbnailView: View {
         .help(error)
     }
 
+    private var missingThumbnail: some View {
+        VStack(spacing: AppTheme.Spacing.xxs) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: AppTheme.FontSize.mdLg))
+                .foregroundStyle(AppTheme.Status.errorColor)
+            Text("Media Missing")
+                .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+        }
+        .help("The source file for this media could not be found.")
+    }
+
     private func formatDuration(_ seconds: Double) -> String {
         let total = Int(seconds)
         let m = total / 60
@@ -222,6 +233,21 @@ struct AssetThumbnailView: View {
 
     private var isSelected: Bool {
         editor.selectedMediaAssetIds.contains(asset.id)
+    }
+
+    private var isMissing: Bool {
+        // Generating/downloading/failed assets have their own states — not "missing".
+        guard case .none = asset.generationStatus else { return false }
+        return editor.mediaResolver.isMissing(for: asset.id)
+    }
+
+    private var borderColor: Color {
+        if isMissing { return AppTheme.Status.errorColor }
+        return isSelected ? AppTheme.Accent.primary : .clear
+    }
+
+    private var borderWidth: CGFloat {
+        (isMissing || isSelected) ? AppTheme.BorderWidth.thick : 0
     }
 
     private var showsDurationBadge: Bool {

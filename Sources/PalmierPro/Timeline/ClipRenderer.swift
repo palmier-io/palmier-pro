@@ -58,7 +58,8 @@ enum ClipRenderer {
         cache: MediaVisualCache? = nil,
         displayName: String? = nil,
         linkOffset: Int? = nil,
-        fps: Int
+        fps: Int,
+        isMissing: Bool = false
     ) {
         if opacity < 1.0 {
             context.saveGState()
@@ -125,6 +126,17 @@ enum ClipRenderer {
         } else {
             context.setStrokeColor(AppTheme.Border.primary.cgColor)
             context.setLineWidth(0.5)
+            context.addPath(path)
+            context.strokePath()
+        }
+
+        // Red wash + border for clips whose source media is missing.
+        if isMissing {
+            context.setFillColor(AppTheme.Status.error.withAlphaComponent(AppTheme.Opacity.moderate).cgColor)
+            context.addPath(path)
+            context.fillPath()
+            context.setStrokeColor(AppTheme.Status.error.withAlphaComponent(AppTheme.Opacity.prominent).cgColor)
+            context.setLineWidth(AppTheme.BorderWidth.medium)
             context.addPath(path)
             context.strokePath()
         }
