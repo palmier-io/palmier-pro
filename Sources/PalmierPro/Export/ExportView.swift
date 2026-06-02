@@ -3,9 +3,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 enum ExportMode: String, CaseIterable, Identifiable {
-    case video = "MP4 Video"
-    case xml = "XML Timeline"
-    case palmierProject = "Palmier Project"
+    case video = "Video (.mp4)"
+    case xml = "Timeline (.xml)"
+    case palmierProject = "Palmier Project (.palmier)"
 
     var id: String { rawValue }
 }
@@ -30,18 +30,17 @@ struct ExportView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Main content: preview + settings
-            HStack(alignment: .top, spacing: 0) {
-                previewPanel
+            HStack(spacing: 0) {
                 settingsPanel
+                    .frame(width: 360)
+                previewPanel
+                    .frame(maxWidth: .infinity)
             }
+            .frame(maxHeight: .infinity)
 
-            Divider().opacity(0.3)
-
-            // Bottom bar
             bottomBar
         }
-        .frame(width: 580, height: 340)
+        .frame(width: 860, height: 560)
         .presentationBackground {
             AppTheme.Background.surfaceColor.opacity(0.85)
                 .background(.ultraThinMaterial)
@@ -52,49 +51,56 @@ struct ExportView: View {
         }
     }
 
-    // MARK: - Preview (left)
+    private func panelHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: AppTheme.FontSize.title2, weight: .light))
+            .tracking(AppTheme.Tracking.tight)
+            .foregroundStyle(AppTheme.Text.primaryColor)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, AppTheme.Spacing.xl)
+            .padding(.vertical, AppTheme.Spacing.md)
+    }
+
+    // MARK: - Preview (right)
 
     private var previewPanel: some View {
         ZStack {
-            AppTheme.Background.baseColor
-
             if let preview {
                 Image(nsImage: preview)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
             } else {
                 Image(systemName: "film")
-                    .font(.system(size: 32, weight: .light))
+                    .font(.system(size: AppTheme.FontSize.title2, weight: .light))
                     .foregroundStyle(AppTheme.Text.mutedColor)
             }
         }
-        .frame(width: 240)
-        .frame(maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AppTheme.Background.baseColor)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
         .padding(AppTheme.Spacing.xl)
     }
 
-    // MARK: - Settings (right)
+    // MARK: - Settings (left)
 
     private var settingsPanel: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Title
-            Text("Export")
-                .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
-                .foregroundStyle(AppTheme.Text.primaryColor)
-                .padding(.bottom, AppTheme.Spacing.lg)
+        VStack(spacing: 0) {
+            panelHeader("Export")
 
-            // Format picker
-            Picker("", selection: $mode) {
-                ForEach(ExportMode.allCases) { m in
-                    Text(m.rawValue).tag(m)
-                }
-            }
-            .pickerStyle(.segmented)
-            .padding(.bottom, AppTheme.Spacing.lg)
-
+            VStack(alignment: .leading, spacing: 0) {
             // Settings rows
             VStack(spacing: 0) {
+                settingRow(label: "Format") {
+                    Picker("", selection: $mode) {
+                        ForEach(ExportMode.allCases) { m in
+                            Text(m.rawValue).tag(m)
+                        }
+                    }
+                    .labelsHidden()
+                }
+
+                Divider().opacity(0.2)
+
                 switch mode {
                 case .video:
                     settingRow(label: "Codec") {
@@ -133,8 +139,13 @@ struct ExportView: View {
                         Text("Works with DaVinci Resolve, Premiere Pro, and Final Cut Pro.")
                             .font(.system(size: AppTheme.FontSize.xs))
                             .foregroundStyle(AppTheme.Text.tertiaryColor)
+
+                        Text("Text overlays, flips, and keyframe easing aren't included.")
+                            .font(.system(size: AppTheme.FontSize.xs))
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
                     }
-                    .padding(.vertical, AppTheme.Spacing.md)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, AppTheme.Spacing.sm)
 
                 case .palmierProject:
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
@@ -148,7 +159,8 @@ struct ExportView: View {
                                 .foregroundStyle(AppTheme.Status.errorColor)
                         }
                     }
-                    .padding(.vertical, AppTheme.Spacing.md)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, AppTheme.Spacing.sm)
                 }
             }
 
@@ -180,9 +192,9 @@ struct ExportView: View {
             }
 
             Spacer()
+            }
+            .padding(AppTheme.Spacing.xl)
         }
-        .padding(.top, AppTheme.Spacing.xl)
-        .padding(.trailing, AppTheme.Spacing.xl)
     }
 
     // MARK: - Bottom bar
