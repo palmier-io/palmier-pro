@@ -125,6 +125,39 @@ final class ExportService {
         isExporting = false
     }
 
+    /// Writes a self-contained `.palmier` bundle (all media collected internally).
+    @discardableResult
+    func exportPalmierProject(
+        timeline: Timeline,
+        manifest: MediaManifest,
+        generationLog: GenerationLog,
+        sourceProjectURL: URL?,
+        outputURL: URL
+    ) async -> PalmierProjectExporter.Report? {
+        isExporting = true
+        progress = 0
+        error = nil
+        defer { isExporting = false }
+
+        do {
+            Log.export.notice("palmier export start url=\(outputURL.lastPathComponent)")
+            let report = try await Task.detached(priority: .userInitiated) {
+                try PalmierProjectExporter.export(
+                    timeline: timeline, manifest: manifest, generationLog: generationLog,
+                    sourceProjectURL: sourceProjectURL, to: outputURL,
+                    progress: { p in Task { @MainActor in self.progress = p } }
+                )
+            }.value
+            progress = 1.0
+            Log.export.notice("palmier export ok collected=\(report.collected.count) missing=\(report.missing.count)")
+            return report
+        } catch {
+            self.error = Self.detailedMessage(for: error)
+            Log.export.error("palmier export failed: \(Self.detailedMessage(for: error))")
+            return nil
+        }
+    }
+
     private func makeExportSession(
         timeline: Timeline,
         resolver: MediaResolver,

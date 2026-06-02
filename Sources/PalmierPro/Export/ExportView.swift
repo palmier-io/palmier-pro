@@ -1,9 +1,11 @@
 import AVFoundation
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum ExportMode: String, CaseIterable, Identifiable {
     case video = "MP4 Video"
     case xml = "XML Timeline"
+    case palmierProject = "Palmier Project"
 
     var id: String { rawValue }
 }
@@ -23,6 +25,8 @@ struct ExportView: View {
     @State private var codec: VideoCodec = .h264
     @State private var resolution: ExportResolution = .r1080p
     @State private var preview: NSImage?
+    @State private var palmierResult: String?
+    @State private var palmierSummary: (collect: Int, missing: Int, bytes: Int64) = (0, 0, 0)
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,7 +46,10 @@ struct ExportView: View {
             AppTheme.Background.surfaceColor.opacity(0.85)
                 .background(.ultraThinMaterial)
         }
-        .task { loadPreview() }
+        .task {
+            loadPreview()
+            palmierSummary = computePalmierSummary()
+        }
     }
 
     // MARK: - Preview (left)
@@ -128,6 +135,20 @@ struct ExportView: View {
                             .foregroundStyle(AppTheme.Text.tertiaryColor)
                     }
                     .padding(.vertical, AppTheme.Spacing.md)
+
+                case .palmierProject:
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                        Text("Saves a copy of this project with all media bundled inside, so it opens on any machine.")
+                            .font(.system(size: AppTheme.FontSize.sm))
+                            .foregroundStyle(AppTheme.Text.secondaryColor)
+
+                        if palmierSummary.missing > 0 {
+                            Text("\(palmierSummary.missing) media file\(palmierSummary.missing == 1 ? "" : "s") missing — they'll be skipped.")
+                                .font(.system(size: AppTheme.FontSize.xs))
+                                .foregroundStyle(AppTheme.Status.errorColor)
+                        }
+                    }
+                    .padding(.vertical, AppTheme.Spacing.md)
                 }
             }
 
@@ -151,6 +172,13 @@ struct ExportView: View {
                     .padding(.top, AppTheme.Spacing.sm)
             }
 
+            if let palmierResult {
+                Text(palmierResult)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .padding(.top, AppTheme.Spacing.sm)
+            }
+
             Spacer()
         }
         .padding(.top, AppTheme.Spacing.xl)
@@ -167,15 +195,21 @@ struct ExportView: View {
                     Image(systemName: "clock")
                     Text(duration)
                 }
-                if mode == .video {
+                switch mode {
+                case .video:
                     HStack(spacing: AppTheme.Spacing.xs) {
                         Image(systemName: "doc")
                         Text("~\(estimatedFileSize)")
                     }
                     let out = resolution.renderSize(for: CGSize(width: editor.timeline.width, height: editor.timeline.height))
                     Text("\(Int(out.width))×\(Int(out.height))")
-                } else {
+                case .xml:
                     Text("\(editor.timeline.width)×\(editor.timeline.height)")
+                case .palmierProject:
+                    HStack(spacing: AppTheme.Spacing.xs) {
+                        Image(systemName: "shippingbox")
+                        Text("~\(ByteCountFormatter.string(fromByteCount: palmierSummary.bytes, countStyle: .file))")
+                    }
                 }
             }
             .font(.system(size: AppTheme.FontSize.xs))
@@ -226,7 +260,7 @@ struct ExportView: View {
 
     private var exportFormat: ExportFormat {
         switch mode {
-        case .xml: .xml
+        case .xml, .palmierProject: .xml   // palmierProject has its own path; never rendered
         case .video:
             switch codec {
             case .h264: .h264
@@ -234,6 +268,22 @@ struct ExportView: View {
             case .prores: .prores
             }
         }
+    }
+
+    /// Quick estimate for exporting a Palmier Project
+    private func computePalmierSummary() -> (collect: Int, missing: Int, bytes: Int64) {
+        var collect = 0, missing = 0
+        var bytes: Int64 = 0
+        for entry in editor.mediaManifest.entries {
+            let url: URL? = switch entry.source {
+            case .external(let path): URL(fileURLWithPath: path)
+            case .project(let rel): editor.projectURL?.appendingPathComponent(rel)
+            }
+            guard let url, FileManager.default.fileExists(atPath: url.path) else { missing += 1; continue }
+            if case .external = entry.source { collect += 1 }
+            bytes += Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
+        return (collect, missing, bytes)
     }
 
     private func loadPreview() {
@@ -257,6 +307,7 @@ struct ExportView: View {
     }
 
     private func startExport() {
+        if mode == .palmierProject { startPalmierExport(); return }
         let format = exportFormat
         let panel = NSSavePanel()
         panel.allowedContentTypes = [
@@ -278,6 +329,35 @@ struct ExportView: View {
                 )
                 if service.error == nil {
                     editor.showExportDialog = false
+                }
+            }
+        }
+    }
+
+    private func startPalmierExport() {
+        palmierResult = nil
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(Project.typeIdentifier) ?? .package]
+        let base = editor.projectURL?.deletingPathExtension().lastPathComponent ?? Project.defaultProjectName
+        panel.nameFieldStringValue = "\(base).\(Project.fileExtension)"
+
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            Task {
+                let report = await service.exportPalmierProject(
+                    timeline: editor.timeline,
+                    manifest: editor.mediaManifest,
+                    generationLog: editor.generationLog,
+                    sourceProjectURL: editor.projectURL,
+                    outputURL: url
+                )
+                guard let report, service.error == nil else { return }
+                if report.missing.isEmpty {
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                    editor.showExportDialog = false
+                } else {
+                    // Keep the dialog open so the user sees what couldn't be included.
+                    palmierResult = "Exported, but \(report.missing.count) media file\(report.missing.count == 1 ? "" : "s") were missing and couldn't be included."
                 }
             }
         }
