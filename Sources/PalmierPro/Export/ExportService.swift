@@ -111,15 +111,15 @@ final class ExportService {
                     self.error = "Export was cancelled"
                     Log.export.notice("export cancelled")
                 } else {
-                    self.error = error.localizedDescription
-                    Log.export.error("export failed: \(error.localizedDescription)")
+                    self.error = Self.detailedMessage(for: error)
+                    Log.export.error("export failed: \(Self.detailedMessage(for: error))")
                 }
             }
 
             progressTask.cancel()
         } catch {
-            self.error = error.localizedDescription
-            Log.export.error("export setup failed: \(error.localizedDescription)")
+            self.error = Self.detailedMessage(for: error)
+            Log.export.error("export setup failed: \(Self.detailedMessage(for: error))")
         }
 
         isExporting = false
@@ -159,6 +159,21 @@ final class ExportService {
         )
         session.videoComposition = mutableVC
         return session
+    }
+
+    private static func detailedMessage(for error: Error) -> String {
+        let ns = error as NSError
+        var message = ns.localizedDescription
+        if let reason = ns.localizedFailureReason, !message.contains(reason) {
+            message += " — \(reason)"
+        }
+        var codes: [String] = []
+        var current: NSError? = ns
+        while let e = current {
+            codes.append("\(e.domain) \(e.code)")
+            current = e.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return "\(message) (\(codes.joined(separator: " → ")))"
     }
 
     // MARK: - Export preset mapping
