@@ -449,5 +449,17 @@
                 type="application/octet-stream"
                 sparkle:edSignature="Kd8H37JCtJ7cT34EwWJkWaFFc2NzbmwlG7hKFH4C5TwLgpfp9SlE2v0EHo+xX69FBEDkMuG+gNQ/NnmX1HE7DA=="/>
         </item>
+        <item>
+            <title>Version 0.2.13</title>
+            <pubDate>Mon, 01 Jun 2026 17:51:58 -0700</pubDate>
+            <sparkle:version>39</sparkle:version>
+            <sparkle:shortVersionString>0.2.13</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/palmier-io/palmier-pro/releases/download/v0.2.13/PalmierPro.dmg"
+                length="20295549"
+                type="application/octet-stream"
+                sparkle:edSignature="+D+u332LHiGbwiqKOPth1Whob+VM7AhWoOfiZNRjbi64yDdwZwHCdaPZCZoJtun4/lLns296o7gSuj+Dk8X1CA=="/>
+        </item>
     </channel>
 </rss>
