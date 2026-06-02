@@ -60,6 +60,7 @@ enum CompositionBuilder {
             }
 
             var cursor = CMTime.zero
+            var insertedCount = 0
             for clip in sortedClips {
                 let mediaURL: URL
                 guard let resolved = resolveURL(clip.mediaRef) else { continue }
@@ -130,9 +131,14 @@ enum CompositionBuilder {
                 }
 
                 cursor = clipStart + clipDuration
+                insertedCount += 1
             }
 
             if !isAudio {
+                guard insertedCount > 0 else {
+                    composition.removeTrack(compTrack)
+                    continue
+                }
                 let naturalSize = (try? await compTrack.load(.naturalSize)).flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil } ?? renderSize
                 trackMappings.append(TrackMapping(compositionTrack: compTrack, kind: .timeline(trackIndex: trackIdx), naturalSize: naturalSize, endTime: cursor, isVideo: true))
             }
