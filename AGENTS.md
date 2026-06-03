@@ -11,7 +11,7 @@ swift run
 
 ## Code style
 
-- Keep comments minimal. Only write one when the *why* is non-obvious (hidden constraint, subtle invariant, workaround for a specific bug). Don't restate what the code does, don't narrate the current change, don't leave `// removed X` breadcrumbs. One short line max — no multi-line comment blocks or paragraph docstrings.
+- Keep comments minimal. Only write one when the *why* is non-obvious. Don't restate what the code does, don't narrate the current change, don't leave `// removed X` breadcrumbs. One short line max — no multi-line comment blocks or paragraph docstrings.
 
 ## Design System
 

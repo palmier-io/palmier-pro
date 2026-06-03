@@ -122,7 +122,17 @@ struct AssetThumbnailView: View {
     private var thumbnailContent: some View {
         Group {
             if asset.isGenerating {
-                GeneratingOverlay(label: asset.generatingLabel)
+                ZStack {
+                    if let image = generatingReferenceImage {
+                        Image(nsImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .blur(radius: 12)
+                        Color.black.opacity(AppTheme.Opacity.strong)
+                    }
+                    GeneratingOverlay(label: asset.generatingLabel)
+                }
+                .clipped()
             } else if case .failed(let error) = asset.generationStatus {
                 failedThumbnail(error: error)
             } else if isMissing {
@@ -137,6 +147,18 @@ struct AssetThumbnailView: View {
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
         }
+    }
+
+    private var generatingReferenceImage: NSImage? {
+        guard let input = asset.generationInput else { return nil }
+        let refIds = (input.imageURLAssetIds ?? []) + (input.referenceImageAssetIds ?? [])
+        for id in refIds {
+            guard let ref = editor.mediaAssets.first(where: { $0.id == id }), ref.type == .image else { continue }
+            if let image = ref.thumbnail ?? NSImage(contentsOf: ref.url) {
+                return image
+            }
+        }
+        return nil
     }
 
     @ViewBuilder
