@@ -104,8 +104,12 @@ final class AccountService {
     private(set) var availablePlans: [AvailablePlan] = []
     private(set) var lastError: String?
     private(set) var isBuyingCredits: Bool = false
+    private(set) var authState: AuthState<String> = .loading
 
-    var isSignedIn: Bool { !isMisconfigured && Clerk.shared.user != nil }
+    var isSignedIn: Bool {
+        guard !isMisconfigured, case .authenticated = authState else { return false }
+        return true
+    }
     var tier: AccountTier { account?.user.tier ?? .none }
     var isPaid: Bool { tier.isPaid }
 
@@ -122,7 +126,7 @@ final class AccountService {
     @ObservationIgnored private(set) var convex: ConvexClientWithAuth<String>?
     @ObservationIgnored private var accountSubscription: AnyCancellable?
     @ObservationIgnored private var plansSubscription: AnyCancellable?
-    @ObservationIgnored private var authEventTask: Task<Void, Never>?
+    @ObservationIgnored private var authStateTask: Task<Void, Never>?
     @ObservationIgnored private var didConfigure = false
     @ObservationIgnored private var buyCreditsTask: Task<Void, Never>?
 
@@ -155,43 +159,35 @@ final class AccountService {
         )
         startPlansSubscription()
 
-        authEventTask = Task { @MainActor [weak self] in
-            await self?.handleInitialAuthState()
-            for await event in Clerk.shared.auth.events {
+        startAuthObservation()
+    }
+
+    private func startAuthObservation() {
+        guard let convex else { return }
+        authStateTask = Task { @MainActor [weak self] in
+            // Wait for Clerk to restore any cached session first.
+            for _ in 0..<50 where !Clerk.shared.isLoaded {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            for await state in convex.authState.values {
                 guard let self else { return }
-                switch event {
-                case .sessionChanged(_, let new):
-                    if new?.status == .active {
-                        await provisionAndSubscribe()
-                    } else if new == nil {
-                        clearAccount()
-                    }
-                case .signedOut, .accountDeleted:
-                    clearAccount()
-                default:
-                    break
+                self.authState = state
+                switch state {
+                case .loading:
+                    self.isLoading = true
+                case .authenticated:
+                    await self.provisionAndSubscribe()
+                    self.isLoading = false
+                case .unauthenticated:
+                    self.clearAccount()
+                    self.isLoading = Clerk.shared.session != nil
                 }
             }
         }
     }
 
-    private func handleInitialAuthState() async {
-        for _ in 0..<50 where !Clerk.shared.isLoaded {
-            try? await Task.sleep(nanoseconds: 100_000_000)
-        }
-        isLoading = false
-        guard isSignedIn else { return }
-        await provisionAndSubscribe()
-    }
-
     private func provisionAndSubscribe() async {
         guard let convex else { return }
-
-        let loginResult = await convex.loginFromCache()
-        if case .failure(let error) = loginResult {
-            lastError = error.localizedDescription
-            return
-        }
 
         let user = Clerk.shared.user
         let name = [user?.firstName, user?.lastName]
@@ -203,15 +199,14 @@ final class AccountService {
             "image": user?.imageUrl,
         ]
 
-        do {
-            try await convex.mutation("users:upsertFromAuth", with: args)
-        } catch {
-            try? await Task.sleep(nanoseconds: 500_000_000)
+        for attempt in 0..<3 {
             do {
                 try await convex.mutation("users:upsertFromAuth", with: args)
+                break
             } catch {
                 lastError = error.localizedDescription
-                return
+                if attempt == 2 { return }
+                try? await Task.sleep(nanoseconds: 500_000_000)
             }
         }
         startAccountSubscription()
