@@ -254,7 +254,6 @@ final class VideoProject: NSDocument {
 
     private func restoreAssetsFromManifest() {
         let cache = editorViewModel.mediaVisualCache
-        let fps = editorViewModel.timeline.fps
         let resolver = editorViewModel.mediaResolver
         for entry in editorViewModel.mediaManifest.entries {
             guard let url = resolver.expectedURL(for: entry.id) else {
@@ -271,7 +270,7 @@ final class VideoProject: NSDocument {
                 cache.generateWaveform(for: asset)
             }
             if asset.type == .video {
-                cache.generateThumbnails(for: asset, fps: fps)
+                cache.generateVideoThumbnails(for: asset)
             }
             if asset.type == .image {
                 cache.generateImageThumbnail(for: asset)

@@ -303,7 +303,7 @@ extension EditorViewModel {
         switch asset.type {
         case .video:
             mediaVisualCache.generateWaveform(for: asset)
-            mediaVisualCache.generateThumbnails(for: asset, fps: timeline.fps)
+            mediaVisualCache.generateVideoThumbnails(for: asset)
         case .audio:
             mediaVisualCache.generateWaveform(for: asset)
         case .image:

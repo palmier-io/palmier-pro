@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import DSWaveformImage
+import ImageIO
 
 @MainActor
 final class MediaVisualCache {
@@ -15,11 +16,13 @@ final class MediaVisualCache {
     // MARK: - Video thumbnails (sorted by time)
 
     private var videoThumbnails: [String: [(time: Double, image: CGImage)]] = [:]
-    private var thumbnailInFlight: Set<String> = []
+    private var videoThumbnailInFlight: Set<String> = []
 
     // MARK: - Image thumbnails (single still per asset)
 
     private var imageThumbnails: [String: CGImage] = [:]
+    private var imageThumbnailInFlight: Set<String> = []
+    private static let imageThumbnailGate = AsyncSemaphore(value: 4)
 
     // MARK: - Redraw trigger
 
@@ -52,7 +55,7 @@ final class MediaVisualCache {
             defer { Task { await Self.waveformGate.signal() } }
             let analyzer = WaveformAnalyzer()
             let duration = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
-            let count = min(20_000, max(4000, Int(duration * 150)))
+            let count = Self.waveformSampleCount(duration: duration)
             let result = try? await analyzer.samples(fromAudioAt: url, count: count)
             guard let self else { return }
             await MainActor.run { [self] in
@@ -67,69 +70,92 @@ final class MediaVisualCache {
 
     func generateImageThumbnail(for asset: MediaAsset) {
         let key = asset.id
-        guard imageThumbnails[key] == nil else { return }
-        guard let nsImage = NSImage(contentsOf: asset.url),
-              let fullImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
+        guard imageThumbnails[key] == nil, !imageThumbnailInFlight.contains(key) else { return }
+        imageThumbnailInFlight.insert(key)
 
-        // Downscale to match video thumbnail size (120x68) to avoid storing full-resolution images
-        let maxWidth = 120
-        let maxHeight = 68
-        let scale = min(CGFloat(maxWidth) / CGFloat(fullImage.width), CGFloat(maxHeight) / CGFloat(fullImage.height), 1.0)
-        let scaledWidth = Int(CGFloat(fullImage.width) * scale)
-        let scaledHeight = Int(CGFloat(fullImage.height) * scale)
+        let url = asset.url
+        Task.detached(priority: .utility) { [weak self] in
+            await Self.imageThumbnailGate.wait()
+            defer { Task { await Self.imageThumbnailGate.signal() } }
 
-        guard let colorSpace = fullImage.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB),
-              let ctx = CGContext(data: nil, width: scaledWidth, height: scaledHeight,
-                                 bitsPerComponent: 8, bytesPerRow: 0, space: colorSpace,
-                                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
-              let scaled = (ctx.draw(fullImage, in: CGRect(x: 0, y: 0, width: scaledWidth, height: scaledHeight)),
-                            ctx.makeImage()).1
-        else {
-            imageThumbnails[key] = fullImage
-            self.timelineView?.needsDisplay = true
-            return
+            let thumbnail = Self.makeImageThumbnail(url: url)
+            guard let self else { return }
+            await MainActor.run { [self] in
+                self.imageThumbnailInFlight.remove(key)
+                if let thumbnail {
+                    self.imageThumbnails[key] = thumbnail
+                    self.timelineView?.needsDisplay = true
+                }
+            }
         }
-
-        imageThumbnails[key] = scaled
-        self.timelineView?.needsDisplay = true
     }
 
-    func generateThumbnails(for asset: MediaAsset, fps: Int) {
+    func generateVideoThumbnails(for asset: MediaAsset) {
         let key = asset.id
-        guard videoThumbnails[key] == nil, !thumbnailInFlight.contains(key) else { return }
-        thumbnailInFlight.insert(key)
+        guard videoThumbnails[key] == nil, !videoThumbnailInFlight.contains(key) else { return }
+        videoThumbnailInFlight.insert(key)
 
         let url = asset.url
         Task.detached(priority: .userInitiated) { [weak self] in
             var results: [(time: Double, image: CGImage)] = []
             let avAsset = AVURLAsset(url: url)
             let duration = (try? await avAsset.load(.duration).seconds) ?? 0
-            guard duration > 0 else { return }
+            let times = Self.videoThumbnailTimes(duration: duration)
 
-            let generator = AVAssetImageGenerator(asset: avAsset)
-            generator.maximumSize = CGSize(width: 120, height: 68)
-            generator.appliesPreferredTrackTransform = true
-            generator.requestedTimeToleranceBefore = CMTime(seconds: 1.0, preferredTimescale: 600)
-            generator.requestedTimeToleranceAfter = CMTime(seconds: 1.0, preferredTimescale: 600)
+            if !times.isEmpty {
+                let generator = AVAssetImageGenerator(asset: avAsset)
+                generator.maximumSize = CGSize(width: 120, height: 68)
+                generator.appliesPreferredTrackTransform = true
+                generator.requestedTimeToleranceBefore = CMTime(seconds: 1.0, preferredTimescale: 600)
+                generator.requestedTimeToleranceAfter = CMTime(seconds: 1.0, preferredTimescale: 600)
 
-            let interval = max(1.0, duration < 10 ? 1.0 : 2.0)
-            var t = 0.0
-            while t < duration {
-                let cmTime = CMTime(seconds: t, preferredTimescale: 600)
-                if let cgImage = try? await generator.image(at: cmTime).image {
-                    results.append((time: t, image: cgImage))
+                for await result in generator.images(for: times) {
+                    if case .success(requestedTime: let requestedTime, image: let image, actualTime: _) = result {
+                        results.append((time: requestedTime.seconds, image: image))
+                    }
                 }
-                t += interval
+                results.sort { $0.time < $1.time }
             }
 
             guard let self else { return }
             await MainActor.run { [self] in
-                self.thumbnailInFlight.remove(key)
+                self.videoThumbnailInFlight.remove(key)
                 if !results.isEmpty {
                     self.videoThumbnails[key] = results
                     self.timelineView?.needsDisplay = true
                 }
             }
         }
+    }
+
+    private nonisolated static func makeImageThumbnail(url: URL) -> CGImage? {
+        let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        let thumbnailOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 120,
+            kCGImageSourceShouldCache: false,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, sourceOptions) else { return nil }
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions as CFDictionary)
+    }
+
+    private nonisolated static func waveformSampleCount(duration: Double) -> Int {
+        guard duration.isFinite, duration > 0 else { return 4000 }
+        if duration >= Double(20_000) / 150 { return 20_000 }
+        return max(4000, Int(duration * 150))
+    }
+
+    private nonisolated static func videoThumbnailTimes(duration: Double) -> [CMTime] {
+        guard duration.isFinite, duration > 0 else { return [] }
+        let interval = duration < 10 ? 1.0 : 2.0
+        var times: [CMTime] = []
+        var time = 0.0
+        while time < duration {
+            times.append(CMTime(seconds: time, preferredTimescale: 600))
+            time += interval
+        }
+        return times
     }
 }
