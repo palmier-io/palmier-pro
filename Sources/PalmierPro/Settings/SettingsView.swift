@@ -3,6 +3,7 @@ import SwiftUI
 enum SettingsTab: String, CaseIterable, Identifiable {
     case account
     case general
+    case models
     case agent
     case storage
 
@@ -12,6 +13,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .account: return "Account"
         case .general: return "General"
+        case .models: return "Models"
         case .agent: return "Agent"
         case .storage: return "Storage"
         }
@@ -21,6 +23,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .account: return "person.circle"
         case .general: return "gearshape"
+        case .models: return "square.stack.3d.up"
         case .agent: return "paperplane"
         case .storage: return "internaldrive"
         }
@@ -117,6 +120,8 @@ private struct SettingsDetail: View {
                     case .general:
                         NotificationsPane()
                         PrivacyPane()
+                    case .models:
+                        ModelsPane()
                     case .agent:
                         AgentPane()
                     case .storage:

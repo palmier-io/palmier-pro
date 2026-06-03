@@ -133,6 +133,38 @@ struct GenerationView: View {
     private var videoModel: VideoModelConfig { VideoModelConfig.allModels[selectedVideoModelIndex] }
     private var imageModel: ImageModelConfig { ImageModelConfig.allModels[selectedImageModelIndex] }
     private var audioModel: AudioModelConfig { AudioModelConfig.allModels[selectedAudioModelIndex] }
+
+    private var enabledVideoModels: [(index: Int, model: VideoModelConfig)] {
+        VideoModelConfig.allModels.enumerated()
+            .filter { ModelPreferences.shared.isEnabled($0.element.id) }
+            .map { (index: $0.offset, model: $0.element) }
+    }
+    private var enabledImageModels: [(index: Int, model: ImageModelConfig)] {
+        ImageModelConfig.allModels.enumerated()
+            .filter { ModelPreferences.shared.isEnabled($0.element.id) }
+            .map { (index: $0.offset, model: $0.element) }
+    }
+    private var enabledAudioModels: [(index: Int, model: AudioModelConfig)] {
+        AudioModelConfig.allModels.enumerated()
+            .filter { ModelPreferences.shared.isEnabled($0.element.id) }
+            .map { (index: $0.offset, model: $0.element) }
+    }
+
+    private func normalizeModelSelection() {
+        switch selectedType {
+        case .video: selectedVideoModelIndex = enabledIndex(selectedVideoModelIndex, in: VideoModelConfig.allModels.map(\.id))
+        case .image: selectedImageModelIndex = enabledIndex(selectedImageModelIndex, in: ImageModelConfig.allModels.map(\.id))
+        case .audio: selectedAudioModelIndex = enabledIndex(selectedAudioModelIndex, in: AudioModelConfig.allModels.map(\.id))
+        }
+    }
+
+    /// Keeps an enabled selection untouched
+    private func enabledIndex(_ current: Int, in ids: [String]) -> Int {
+        let prefs = ModelPreferences.shared
+        if ids.indices.contains(current), prefs.isEnabled(ids[current]) { return current }
+        return ids.firstIndex { prefs.isEnabled($0) } ?? current
+    }
+
     private var trimmedPrompt: String { prompt.trimmingCharacters(in: .whitespaces) }
     private var isPromptEmpty: Bool { trimmedPrompt.isEmpty }
 
@@ -513,10 +545,20 @@ struct GenerationView: View {
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.lg))
         .padding(AppTheme.Spacing.sm)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { panelWidth = $0 }
-        .onAppear { consumePendingPanelSeed() }
+        .onAppear {
+            let hadSeed = editor.pendingPanelSeed != nil
+            consumePendingPanelSeed()
+            // A seeded edit may reuse a now-disabled model; keep its selection.
+            if !hadSeed { normalizeModelSelection() }
+        }
         .onChange(of: editor.pendingPanelSeed?.asset.id) { _, _ in consumePendingPanelSeed() }
+        .onChange(of: ModelPreferences.shared.disabledIds) { _, _ in
+            guard !isPopulatingPanel else { return }
+            normalizeModelSelection()
+        }
         .onChange(of: selectedType) { _, newValue in
             guard !isPopulatingPanel else { return }
+            normalizeModelSelection()
             resetSettings()
             clearReferences()
             if newValue == .audio { resetAudioState() }
@@ -1282,17 +1324,23 @@ struct GenerationView: View {
         Menu {
             switch selectedType {
             case .video:
-                ForEach(Array(VideoModelConfig.allModels.enumerated()), id: \.offset) { index, m in
-                    Button(m.displayName) { selectedVideoModelIndex = index }
+                ForEach(enabledVideoModels, id: \.index) { item in
+                    Button(item.model.displayName) { selectedVideoModelIndex = item.index }
                 }
             case .image:
-                ForEach(Array(ImageModelConfig.allModels.enumerated()), id: \.offset) { index, m in
-                    Button(m.displayName) { selectedImageModelIndex = index }
+                ForEach(enabledImageModels, id: \.index) { item in
+                    Button(item.model.displayName) { selectedImageModelIndex = item.index }
                 }
             case .audio:
-                ForEach(Array(AudioModelConfig.allModels.enumerated()), id: \.offset) { index, m in
-                    Button(m.displayName) { selectedAudioModelIndex = index }
+                ForEach(enabledAudioModels, id: \.index) { item in
+                    Button(item.model.displayName) { selectedAudioModelIndex = item.index }
                 }
+            }
+            Divider()
+            Button {
+                SettingsWindowController.shared.show(tab: .models)
+            } label: {
+                Label("Add models…", systemImage: "plus")
             }
         } label: {
             HStack(spacing: AppTheme.Spacing.xs) {
