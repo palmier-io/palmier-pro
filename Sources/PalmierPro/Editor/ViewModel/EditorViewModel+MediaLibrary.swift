@@ -89,8 +89,17 @@ extension EditorViewModel {
         let currentH = clip.transform.height
         if abs(needW - currentW) < 0.0001 && abs(needH - currentH) < 0.0001 { return }
         let tl = clip.transform.topLeft
-        let cx = tl.x + currentW / 2
         let cy = tl.y + currentH / 2
+        let alignment = (clip.textStyle ?? TextStyle()).alignment
+        let cx: Double
+        switch alignment {
+        case .left:
+            cx = tl.x + needW / 2
+        case .right:
+            cx = (tl.x + currentW) - needW / 2
+        case .center:
+            cx = tl.x + currentW / 2
+        }
         applyClipProperty(clipId: clipId, rebuild: false) {
             $0.transform = Transform(center: (cx, cy), width: needW, height: needH)
         }
