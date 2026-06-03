@@ -378,6 +378,124 @@ struct CompositionBuildUnreadableAssetTests {
     }
 }
 
+// MARK: - audio composition tracks
+
+@Suite("CompositionBuilder.build — audio tracks")
+struct CompositionBuildAudioTrackTests {
+
+    @Test func normalAudioClipsShareCompositionTrack() async throws {
+        let audioURL = try makeSilentWav(durationSeconds: 3)
+        defer { try? FileManager.default.removeItem(at: audioURL) }
+
+        let first = Fixtures.clip(id: "a1", mediaRef: "audio", mediaType: .audio, start: 0, duration: 24)
+        let second = Fixtures.clip(id: "a2", mediaRef: "audio", mediaType: .audio, start: 24, duration: 24)
+        let timeline = Fixtures.timeline(fps: 24, tracks: [
+            Fixtures.audioTrack(clips: [first, second]),
+        ])
+
+        let result = try await CompositionBuilder.build(
+            timeline: timeline,
+            resolveURL: { _ in audioURL },
+            renderSize: CGSize(width: 320, height: 180)
+        )
+
+        let audioMappings = result.trackMappings.filter { !$0.isVideo }
+        #expect(audioMappings.count == 1)
+        #expect(audioMappings.first.flatMap(clipIds) == ["a1", "a2"])
+    }
+
+    @Test func speedChangedAudioClipsUseDedicatedCompositionTracks() async throws {
+        let audioURL = try makeSilentWav(durationSeconds: 4)
+        defer { try? FileManager.default.removeItem(at: audioURL) }
+
+        let first = Fixtures.clip(id: "a1", mediaRef: "audio", mediaType: .audio, start: 0, duration: 24)
+        let speed = Fixtures.clip(id: "speed", mediaRef: "audio", mediaType: .audio, start: 24, duration: 24, speed: 2)
+        let third = Fixtures.clip(id: "a3", mediaRef: "audio", mediaType: .audio, start: 48, duration: 24)
+        let timeline = Fixtures.timeline(fps: 24, tracks: [
+            Fixtures.audioTrack(clips: [first, speed, third]),
+        ])
+
+        let result = try await CompositionBuilder.build(
+            timeline: timeline,
+            resolveURL: { _ in audioURL },
+            renderSize: CGSize(width: 320, height: 180)
+        )
+
+        let audioMappings = result.trackMappings.filter { !$0.isVideo }
+        #expect(audioMappings.count == 2)
+        #expect(Set(audioMappings.map(\.compositionTrack.trackID)).count == 2)
+        #expect(Set(audioMappings.compactMap(clipIds)) == [["a1", "a3"], ["speed"]])
+    }
+
+    @Test func fractionalSpeedAudioUsesTruncatedSourceFramesForCompositionInsertion() async throws {
+        let audioURL = try makeSilentWav(durationSeconds: 4)
+        defer { try? FileManager.default.removeItem(at: audioURL) }
+
+        let clip = Fixtures.clip(
+            id: "short-speed",
+            mediaRef: "audio",
+            mediaType: .audio,
+            start: 60,
+            duration: 13,
+            speed: 1.0530859375
+        )
+        #expect(clip.sourceFramesConsumed == 14)
+
+        let timeline = Fixtures.timeline(fps: 24, tracks: [
+            Fixtures.audioTrack(clips: [clip]),
+        ])
+
+        let result = try await CompositionBuilder.build(
+            timeline: timeline,
+            resolveURL: { _ in audioURL },
+            renderSize: CGSize(width: 320, height: 180)
+        )
+
+        let audioMapping = try #require(result.trackMappings.first { !$0.isVideo })
+        let mediaSegment = try #require(audioMapping.compositionTrack.segments.first { !$0.isEmpty })
+        #expect(mediaSegment.timeMapping.source.duration == CMTime(value: 13, timescale: 24))
+        #expect(mediaSegment.timeMapping.target.duration == CMTime(value: 13, timescale: 24))
+    }
+
+    private func clipIds(_ mapping: TrackMapping) -> Set<String>? {
+        guard case .timeline(_, let ids) = mapping.kind else { return nil }
+        return ids
+    }
+
+    private func makeSilentWav(durationSeconds: Double) throws -> URL {
+        let sampleRate = 44_100
+        let channels = 1
+        let bitsPerSample = 16
+        let sampleCount = Int(durationSeconds * Double(sampleRate))
+        let dataSize = sampleCount * channels * bitsPerSample / 8
+
+        var data = Data()
+        data.append(contentsOf: "RIFF".utf8)
+        appendLE(UInt32(36 + dataSize), to: &data)
+        data.append(contentsOf: "WAVEfmt ".utf8)
+        appendLE(UInt32(16), to: &data)
+        appendLE(UInt16(1), to: &data)
+        appendLE(UInt16(channels), to: &data)
+        appendLE(UInt32(sampleRate), to: &data)
+        appendLE(UInt32(sampleRate * channels * bitsPerSample / 8), to: &data)
+        appendLE(UInt16(channels * bitsPerSample / 8), to: &data)
+        appendLE(UInt16(bitsPerSample), to: &data)
+        data.append(contentsOf: "data".utf8)
+        appendLE(UInt32(dataSize), to: &data)
+        data.append(Data(repeating: 0, count: dataSize))
+
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("silent-\(UUID().uuidString).wav")
+        try data.write(to: url)
+        return url
+    }
+
+    private func appendLE<T: FixedWidthInteger>(_ value: T, to data: inout Data) {
+        var little = value.littleEndian
+        withUnsafeBytes(of: &little) { data.append(contentsOf: $0) }
+    }
+}
+
 // MARK: - affineTransform
 
 @Suite("CompositionBuilder.affineTransform")

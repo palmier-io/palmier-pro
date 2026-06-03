@@ -2,7 +2,7 @@ import AVFoundation
 
 struct TrackMapping: @unchecked Sendable {
     enum Kind {
-        case timeline(trackIndex: Int)
+        case timeline(trackIndex: Int, clipIds: Set<String>?)
         case blackTail(range: CMTimeRange)
     }
     let compositionTrack: AVMutableCompositionTrack
@@ -53,95 +53,130 @@ enum CompositionBuilder {
             let isAudio = track.type == .audio
             let mediaType: AVMediaType = isAudio ? .audio : .video
 
-            guard let compTrack = composition.addMutableTrack(withMediaType: mediaType, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
-
             if isAudio {
-                trackMappings.append(TrackMapping(compositionTrack: compTrack, kind: .timeline(trackIndex: trackIdx), naturalSize: .zero, endTime: .zero, isVideo: false))
+                var normalTrack: AVMutableCompositionTrack?
+                var normalClipIds = Set<String>()
+                var normalCursor = CMTime.zero
+
+                for clip in sortedClips {
+                    guard let source = try await loadSource(
+                        clip: clip,
+                        mediaType: mediaType,
+                        resolveURL: resolveURL,
+                        resolveSourceSize: resolveSourceSize,
+                        renderSize: renderSize
+                    ) else {
+                        continue
+                    }
+
+                    if clip.speed != 1.0 {
+                        guard let compTrack = composition.addMutableTrack(
+                            withMediaType: mediaType,
+                            preferredTrackID: kCMPersistentTrackID_Invalid
+                        ) else { continue }
+                        var cursor = CMTime.zero
+                        if await insertClip(
+                            clip,
+                            sourceAsset: source.asset,
+                            sourceTrack: source.track,
+                            into: compTrack,
+                            cursor: &cursor,
+                            timescale: timescale
+                        ) {
+                            trackMappings.append(TrackMapping(
+                                compositionTrack: compTrack,
+                                kind: .timeline(trackIndex: trackIdx, clipIds: [clip.id]),
+                                naturalSize: .zero,
+                                endTime: .zero,
+                                isVideo: false
+                            ))
+                        } else {
+                            composition.removeTrack(compTrack)
+                        }
+                    } else {
+                        if normalTrack == nil {
+                            normalTrack = composition.addMutableTrack(
+                                withMediaType: mediaType,
+                                preferredTrackID: kCMPersistentTrackID_Invalid
+                            )
+                        }
+                        guard let compTrack = normalTrack else { continue }
+                        if await insertClip(
+                            clip,
+                            sourceAsset: source.asset,
+                            sourceTrack: source.track,
+                            into: compTrack,
+                            cursor: &normalCursor,
+                            timescale: timescale
+                        ) {
+                            normalClipIds.insert(clip.id)
+                        }
+                    }
+                }
+
+                if let normalTrack {
+                    if normalClipIds.isEmpty {
+                        composition.removeTrack(normalTrack)
+                    } else {
+                        trackMappings.append(TrackMapping(
+                            compositionTrack: normalTrack,
+                            kind: .timeline(trackIndex: trackIdx, clipIds: normalClipIds),
+                            naturalSize: .zero,
+                            endTime: .zero,
+                            isVideo: false
+                        ))
+                    }
+                }
+                continue
             }
+
+            guard let compTrack = composition.addMutableTrack(
+                withMediaType: mediaType,
+                preferredTrackID: kCMPersistentTrackID_Invalid
+            ) else { continue }
 
             var cursor = CMTime.zero
             var insertedCount = 0
             for clip in sortedClips {
-                let mediaURL: URL
-                guard let resolved = resolveURL(clip.mediaRef) else { continue }
-                if clip.mediaType == .image {
-                    let imageSize = resolveSourceSize(clip.mediaRef) ?? ImageVideoGenerator.imageNativeSize(url: resolved) ?? renderSize
-                    do {
-                        mediaURL = try await ImageVideoGenerator.stillVideo(
-                            for: resolved, mediaRef: clip.mediaRef, size: imageSize
-                        )
-                    } catch {
-                        Log.preview.error("stillVideo failed mediaRef=\(clip.mediaRef) size=\(Int(imageSize.width))x\(Int(imageSize.height)): \(error.localizedDescription)")
-                        continue
-                    }
-                } else {
-                    mediaURL = resolved
-                }
-
-                guard !Task.isCancelled else { throw CancellationError() }
-                let sourceAsset = AVURLAsset(url: mediaURL)
-                let sourceTrack: AVAssetTrack
-                do {
-                    guard let track = try await sourceAsset.loadTracks(withMediaType: mediaType).first else { continue }
-                    sourceTrack = track
-                } catch {
-                    Log.preview.error("loadTracks failed — skipping clip. clipId=\(clip.id) mediaRef=\(clip.mediaRef): \(error.localizedDescription)")
+                guard let source = try await loadSource(
+                    clip: clip,
+                    mediaType: mediaType,
+                    resolveURL: resolveURL,
+                    resolveSourceSize: resolveSourceSize,
+                    renderSize: renderSize
+                ) else {
                     continue
                 }
 
-                if !isAudio, let natSize = try? await sourceTrack.load(.naturalSize),
+                if let natSize = try? await source.track.load(.naturalSize),
                    natSize.width > 0, natSize.height > 0 {
                     clipNaturalSizes[clip.id] = natSize
                 }
 
-                let clipStart = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
-                let trimStartFrame = clip.mediaType == .image ? max(0, clip.trimStartFrame) : clip.trimStartFrame
-                let trimStart = CMTime(value: CMTimeValue(trimStartFrame), timescale: timescale)
-                let clipDuration = CMTime(value: CMTimeValue(clip.durationFrames), timescale: timescale)
-
-                if clipStart > cursor {
-                    let gap = clipStart - cursor
-                    compTrack.insertEmptyTimeRange(CMTimeRange(start: cursor, duration: gap))
+                if await insertClip(
+                    clip,
+                    sourceAsset: source.asset,
+                    sourceTrack: source.track,
+                    into: compTrack,
+                    cursor: &cursor,
+                    timescale: timescale
+                ) {
+                    insertedCount += 1
                 }
-
-                let sourceDuration: CMTime
-                if clip.speed != 1.0 {
-                    sourceDuration = CMTime(value: Int64(Double(clip.durationFrames) * clip.speed), timescale: timescale)
-                } else {
-                    sourceDuration = clipDuration
-                }
-                let sourceRange = CMTimeRange(start: trimStart, duration: sourceDuration)
-
-                do {
-                    try compTrack.insertTimeRange(sourceRange, of: sourceTrack, at: clipStart)
-                } catch {
-                    // Skip the bad clip rather than aborting the whole rebuild
-                    let srcSeconds = (try? await sourceAsset.load(.duration).seconds) ?? 0
-                    Log.preview.error("""
-                        insertTimeRange failed — skipping clip. \
-                        clipId=\(clip.id) mediaRef=\(clip.mediaRef) \
-                        trimStart=\(clip.trimStartFrame)f durationFrames=\(clip.durationFrames)f \
-                        speed=\(clip.speed) sourceSeconds=\(String(format: "%.3f", srcSeconds)) \
-                        error=\(error.localizedDescription)
-                        """)
-                    continue
-                }
-                if clip.speed != 1.0 {
-                    compTrack.scaleTimeRange(CMTimeRange(start: clipStart, duration: sourceDuration), toDuration: clipDuration)
-                }
-
-                cursor = clipStart + clipDuration
-                insertedCount += 1
             }
 
-            if !isAudio {
-                guard insertedCount > 0 else {
-                    composition.removeTrack(compTrack)
-                    continue
-                }
-                let naturalSize = (try? await compTrack.load(.naturalSize)).flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil } ?? renderSize
-                trackMappings.append(TrackMapping(compositionTrack: compTrack, kind: .timeline(trackIndex: trackIdx), naturalSize: naturalSize, endTime: cursor, isVideo: true))
+            guard insertedCount > 0 else {
+                composition.removeTrack(compTrack)
+                continue
             }
+            let naturalSize = (try? await compTrack.load(.naturalSize)).flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil } ?? renderSize
+            trackMappings.append(TrackMapping(
+                compositionTrack: compTrack,
+                kind: .timeline(trackIndex: trackIdx, clipIds: nil),
+                naturalSize: naturalSize,
+                endTime: cursor,
+                isVideo: true
+            ))
         }
 
         guard !Task.isCancelled else { throw CancellationError() }
@@ -175,6 +210,91 @@ enum CompositionBuilder {
             trackMappings: trackMappings,
             clipNaturalSizes: clipNaturalSizes
         )
+    }
+
+    private static func loadSource(
+        clip: Clip,
+        mediaType: AVMediaType,
+        resolveURL: @Sendable (String) -> URL?,
+        resolveSourceSize: @Sendable (String) -> CGSize?,
+        renderSize: CGSize
+    ) async throws -> (asset: AVURLAsset, track: AVAssetTrack)? {
+        let mediaURL: URL
+        guard let resolved = resolveURL(clip.mediaRef) else { return nil }
+        if clip.mediaType == .image {
+            let imageSize = resolveSourceSize(clip.mediaRef)
+                ?? ImageVideoGenerator.imageNativeSize(url: resolved)
+                ?? renderSize
+            do {
+                mediaURL = try await ImageVideoGenerator.stillVideo(
+                    for: resolved,
+                    mediaRef: clip.mediaRef,
+                    size: imageSize
+                )
+            } catch {
+                Log.preview.error("stillVideo failed mediaRef=\(clip.mediaRef) size=\(Int(imageSize.width))x\(Int(imageSize.height)): \(error.localizedDescription)")
+                return nil
+            }
+        } else {
+            mediaURL = resolved
+        }
+
+        guard !Task.isCancelled else { throw CancellationError() }
+        let sourceAsset = AVURLAsset(url: mediaURL)
+        do {
+            guard let sourceTrack = try await sourceAsset.loadTracks(withMediaType: mediaType).first else {
+                return nil
+            }
+            return (sourceAsset, sourceTrack)
+        } catch {
+            Log.preview.error("loadTracks failed — skipping clip. clipId=\(clip.id) mediaRef=\(clip.mediaRef): \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private static func insertClip(
+        _ clip: Clip,
+        sourceAsset: AVURLAsset,
+        sourceTrack: AVAssetTrack,
+        into compTrack: AVMutableCompositionTrack,
+        cursor: inout CMTime,
+        timescale: CMTimeScale
+    ) async -> Bool {
+        let clipStart = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
+        let trimStartFrame = clip.mediaType == .image ? max(0, clip.trimStartFrame) : clip.trimStartFrame
+        let trimStart = CMTime(value: CMTimeValue(trimStartFrame), timescale: timescale)
+        let clipDuration = CMTime(value: CMTimeValue(clip.durationFrames), timescale: timescale)
+
+        if clipStart > cursor {
+            let gap = clipStart - cursor
+            compTrack.insertEmptyTimeRange(CMTimeRange(start: cursor, duration: gap))
+        }
+
+        let sourceFrames = clip.speed == 1.0
+            ? clip.durationFrames
+            : max(1, Int(Double(clip.durationFrames) * clip.speed))
+        let sourceDuration = CMTime(value: CMTimeValue(sourceFrames), timescale: timescale)
+        let sourceRange = CMTimeRange(start: trimStart, duration: sourceDuration)
+
+        do {
+            try compTrack.insertTimeRange(sourceRange, of: sourceTrack, at: clipStart)
+        } catch {
+            let srcSeconds = (try? await sourceAsset.load(.duration).seconds) ?? 0
+            Log.preview.error("""
+                insertTimeRange failed — skipping clip. \
+                clipId=\(clip.id) mediaRef=\(clip.mediaRef) \
+                trimStart=\(clip.trimStartFrame)f durationFrames=\(clip.durationFrames)f \
+                speed=\(clip.speed) sourceSeconds=\(String(format: "%.3f", srcSeconds)) \
+                error=\(error.localizedDescription)
+                """)
+            return false
+        }
+        if clip.speed != 1.0 {
+            compTrack.scaleTimeRange(CMTimeRange(start: clipStart, duration: sourceDuration), toDuration: clipDuration)
+        }
+
+        cursor = clipStart + clipDuration
+        return true
     }
 
     private static func insertBlackTail(
@@ -217,7 +337,7 @@ enum CompositionBuilder {
 
         let audioMix = AVMutableAudioMix()
         audioMix.inputParameters = trackMappings.filter { !$0.isVideo }.compactMap { mapping in
-            guard case .timeline(let trackIndex) = mapping.kind,
+            guard case .timeline(let trackIndex, let clipIds) = mapping.kind,
                   timeline.tracks.indices.contains(trackIndex) else { return nil }
             let track = timeline.tracks[trackIndex]
             let params = AVMutableAudioMixInputParameters(track: mapping.compositionTrack)
@@ -227,6 +347,7 @@ enum CompositionBuilder {
             }
             var prevEndFrame = Int.min
             for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) {
+                if let clipIds, !clipIds.contains(clip.id) { continue }
                 guard clip.durationFrames > 0, clip.startFrame >= prevEndFrame else { continue }
                 emitVolumeEnvelope(params: params, clip: clip, timescale: timescale)
                 prevEndFrame = clip.startFrame + clip.durationFrames
@@ -245,12 +366,13 @@ enum CompositionBuilder {
                     liConfig.setOpacity(0, at: range.end)
                 }
                 return AVVideoCompositionLayerInstruction(configuration: liConfig)
-            case .timeline(let trackIndex):
+            case .timeline(let trackIndex, let clipIds):
                 let track = timeline.tracks.indices.contains(trackIndex)
                     ? timeline.tracks[trackIndex] : nil
                 if let track, !track.hidden {
                     for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame })
                         where clip.mediaType != .text {
+                        if let clipIds, !clipIds.contains(clip.id) { continue }
                         let start = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
                         let end = CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale)
                         let natSize = clipNaturalSizes[clip.id] ?? mapping.naturalSize
