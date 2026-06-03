@@ -25,7 +25,7 @@ extension ToolExecutor {
             dict["tracks"] = tracks
         }
         dict["currentFrame"] = editor.currentFrame
-        dict["canGenerate"] = AccountService.shared.isPaid
+        dict["canGenerate"] = AccountService.shared.isSignedIn && AccountService.shared.hasCredits
         guard let json = Self.jsonString(dict) else { throw ToolError("Failed to encode timeline") }
         return .ok(json)
     }

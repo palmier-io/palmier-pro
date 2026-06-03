@@ -31,19 +31,18 @@ final class AgentService {
     var canStream: Bool {
         if hasApiKey { return true }
         let account = AccountService.shared
-        return account.isSignedIn && account.isPaid
+        return account.isSignedIn && account.hasCredits
     }
 
     var availableModels: [AnthropicModel] {
         if hasApiKey { return AnthropicModel.allCases }
-        return [.sonnet46]
+        return AccountService.shared.isPaid ? [.sonnet46] : [.haiku45]
     }
 
     private func selectClient() -> (any AgentClient)? {
         let chosen = effectiveModel
         if hasApiKey { return AnthropicClient(apiKey: apiKey, model: chosen) }
-        let account = AccountService.shared
-        if account.isSignedIn && account.isPaid {
+        if AccountService.shared.isSignedIn {
             return PalmierClient(model: chosen)
         }
         return nil

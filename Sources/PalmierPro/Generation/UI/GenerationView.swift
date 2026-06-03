@@ -137,7 +137,7 @@ struct GenerationView: View {
     private var isPromptEmpty: Bool { trimmedPrompt.isEmpty }
 
     private var canSubmit: Bool {
-        guard AccountService.shared.isPaid else { return false }
+        guard canAffordGeneration else { return false }
         if selectedType == .video && videoModel.requiresSourceVideo {
             guard sourceVideo != nil else { return false }
             if videoModel.requiresReferenceImage && imageReferences.isEmpty { return false }
@@ -300,6 +300,12 @@ struct GenerationView: View {
     private var hasInsufficientCredits: Bool {
         guard let cost = estimatedCost, let left = remainingCredits else { return false }
         return cost > left
+    }
+
+    private var canAffordGeneration: Bool {
+        guard let left = remainingCredits else { return true }
+        if let cost = estimatedCost { return cost <= left }
+        return left > 0
     }
 
     private var costHelpText: String {

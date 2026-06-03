@@ -186,34 +186,9 @@ struct AccountPane: View {
         card {
             cardCaption("Buy more")
 
-            HStack(spacing: AppTheme.Spacing.sm) {
-                Text("$")
-                    .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
-                TextField("", value: $topOffDollars, format: .number)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 56)
-                    .disabled(account.isBuyingCredits)
-                Text(topOffCredits == 1 ? "= 1 credit" : "= \(topOffCredits.formatted()) credits")
-                    .font(.system(size: AppTheme.FontSize.sm))
-                    .monospacedDigit()
-                    .foregroundStyle(
-                        isValidTopOff
-                            ? AppTheme.Text.secondaryColor
-                            : AppTheme.Text.tertiaryColor
-                    )
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-
-            Button {
+            TopOffField(dollars: $topOffDollars) {
                 account.buyCredits(dollars: topOffDollars)
-            } label: {
-                Text(buyButtonLabel)
-                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
-            .disabled(account.isBuyingCredits || !isValidTopOff)
 
             Text("$\(TopOffLimits.minDollars)–$\(TopOffLimits.maxDollars) · Unused credits expire at your next billing date.")
                 .font(.system(size: AppTheme.FontSize.xs))
@@ -259,16 +234,6 @@ struct AccountPane: View {
                 .tracking(AppTheme.Tracking.wide)
             content()
         }
-    }
-
-    private var topOffCredits: Int { max(0, topOffDollars) * 100 }
-
-    private var isValidTopOff: Bool {
-        (TopOffLimits.minDollars...TopOffLimits.maxDollars).contains(topOffDollars)
-    }
-
-    private var buyButtonLabel: String {
-        isValidTopOff ? "Buy $\(topOffDollars)" : "Buy"
     }
 
     private var formattedPeriodEnd: String? {

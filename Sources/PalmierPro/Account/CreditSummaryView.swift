@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Compact "X / Y credits used" pill with a progress bar underneath.
-/// Hides when the user has no active plan or the budget is unknown.
 struct CreditSummaryView: View {
     enum Style {
         case full   // settings: bigger title + progress bar
@@ -10,14 +8,26 @@ struct CreditSummaryView: View {
 
     let style: Style
     @Bindable private var account = AccountService.shared
+    @State private var showActions = false
 
     var body: some View {
-        if let budget = account.budgetCredits, account.isPaid {
+        if let budget = account.budgetCredits {
             let left = max(0, budget - account.spentCredits)
             let remaining = budget > 0 ? min(1.0, Double(left) / Double(budget)) : 0
             switch style {
-            case .full: fullView(left: left, budget: budget, remaining: remaining)
-            case .compact: compactView(left: left, budget: budget, remaining: remaining)
+            case .full:
+                fullView(left: left, budget: budget, remaining: remaining)
+            case .compact:
+                Button {
+                    showActions = true
+                } label: {
+                    compactView(left: left, budget: budget, remaining: remaining)
+                }
+                .buttonStyle(.plain)
+                .help("Manage credits")
+                .popover(isPresented: $showActions, arrowEdge: .bottom) {
+                    CreditActionsPopover(isPresented: $showActions)
+                }
             }
         }
     }
@@ -65,5 +75,75 @@ struct CreditSummaryView: View {
         case ..<0.25: return .orange
         default: return AppTheme.Accent.primary
         }
+    }
+}
+
+private struct CreditActionsPopover: View {
+    @Bindable private var account = AccountService.shared
+    @Binding var isPresented: Bool
+    @State private var topOffDollars: Int = 20
+
+    private static let popoverWidth: CGFloat = 240
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            if account.isPaid {
+                paidActions
+            } else {
+                freeActions
+            }
+
+            if let error = account.lastError {
+                Text(error)
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(AppTheme.Spacing.md)
+        .frame(width: Self.popoverWidth)
+    }
+
+    // MARK: - Free tier
+
+    @ViewBuilder
+    private var freeActions: some View {
+        sectionCaption("Upgrade to add credits")
+        Button { openAccountSettings() } label: {
+            Text("Account settings").frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.small)
+    }
+
+    // MARK: - Paid tier
+
+    @ViewBuilder
+    private var paidActions: some View {
+        sectionCaption("Add credits")
+        TopOffField(dollars: $topOffDollars, controlSize: .small, fillWidth: false) {
+            account.buyCredits(dollars: topOffDollars)
+            isPresented = false
+        } trailing: {
+            Button { openAccountSettings() } label: {
+                Text("Account settings")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+    }
+
+    // MARK: - Shared
+
+    @ViewBuilder
+    private func sectionCaption(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+            .foregroundStyle(AppTheme.Text.tertiaryColor)
+    }
+
+    private func openAccountSettings() {
+        SettingsWindowController.shared.show(tab: .account)
+        isPresented = false
     }
 }

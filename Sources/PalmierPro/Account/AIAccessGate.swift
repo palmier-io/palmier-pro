@@ -7,13 +7,11 @@ struct AIAccessGate: ViewModifier {
         case allowed
         case misconfigured
         case signInRequired
-        case subscribeRequired
     }
 
     private var state: GateState {
         if account.isMisconfigured { return .misconfigured }
         if !account.isSignedIn { return .signInRequired }
-        if !account.isPaid { return .subscribeRequired }
         return .allowed
     }
 
@@ -66,14 +64,6 @@ struct AIAccessGate: ViewModifier {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-        case .subscribeRequired:
-            Button {
-                Task { await account.subscribe(tier: .pro) }
-            } label: {
-                Text("Subscribe").frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
         case .misconfigured, .allowed:
             EmptyView()
         }
@@ -83,9 +73,8 @@ struct AIAccessGate: ViewModifier {
 private extension AIAccessGate.GateState {
     var title: String {
         switch self {
-        case .misconfigured: "AI is unavailable"
+        case .misconfigured: "AI unavailable"
         case .signInRequired: "Sign in to use AI"
-        case .subscribeRequired: "Subscribe to use AI"
         case .allowed: ""
         }
     }
@@ -95,9 +84,7 @@ private extension AIAccessGate.GateState {
         case .misconfigured:
             "This build can't reach the Palmier backend. Download the signed release to use AI."
         case .signInRequired:
-            "Sign in to generate video, images, and audio."
-        case .subscribeRequired:
-            "A Pro or Max plan is required for AI generation."
+            "Generate video, images, and audio."
         case .allowed:
             ""
         }

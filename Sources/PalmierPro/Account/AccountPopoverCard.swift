@@ -156,7 +156,7 @@ struct AccountPopoverCard: View {
 
     @ViewBuilder
     private var creditsBlock: some View {
-        if let budget = account.budgetCredits, account.isPaid {
+        if let budget = account.budgetCredits {
             let left = max(0, budget - account.spentCredits)
             let remaining = budget > 0 ? min(1.0, Double(left) / Double(budget)) : 0
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {

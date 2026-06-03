@@ -178,9 +178,8 @@ struct AIEditTab: View {
             for: asset,
             effectiveDurationOverride: effectiveDurationForAvailability
         )
-        let canCall = AccountService.shared.isPaid
-        let isEnabled = availability.isAvailable && canCall
-        let disabledReason = canCall ? availability.reason : "Subscribe to Palmier to use AI"
+        let isEnabled = availability.isAvailable
+        let disabledReason = availability.reason
 
         HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
             Image(systemName: icon)

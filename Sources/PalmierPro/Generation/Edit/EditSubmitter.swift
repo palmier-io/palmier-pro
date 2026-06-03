@@ -15,7 +15,7 @@ enum EditSubmitter {
         onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
         onFailure: (@MainActor () -> Void)? = nil
     ) -> String? {
-        guard AccountService.shared.isPaid else { return nil }
+        guard AccountService.shared.isSignedIn else { return nil }
 
         let effectiveDuration: Int = {
             if let trim = trimmedSource, trim.hasTrim {
@@ -95,7 +95,7 @@ enum EditSubmitter {
         onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
         onFailure: (@MainActor () -> Void)? = nil
     ) throws -> String {
-        guard AccountService.shared.isPaid else {
+        guard AccountService.shared.isSignedIn else {
             throw RerunError.unauthorized
         }
         guard let stored = asset.generationInput else { throw RerunError.notGenerated }

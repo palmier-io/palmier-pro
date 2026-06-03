@@ -113,9 +113,11 @@ final class AccountService {
     var budgetCredits: Int? {
         guard let user = account?.user else { return nil }
         let tierBudget = account?.plan?.monthlyBudgetCredits ?? 0
-        let total = tierBudget + (user.purchasedCredits ?? 0)
-        return total > 0 ? total : nil
+        return tierBudget + (user.purchasedCredits ?? 0)
     }
+
+    var remainingCredits: Int { max(0, (budgetCredits ?? 0) - spentCredits) }
+    var hasCredits: Bool { remainingCredits > 0 }
 
     @ObservationIgnored private(set) var convex: ConvexClientWithAuth<String>?
     @ObservationIgnored private var accountSubscription: AnyCancellable?

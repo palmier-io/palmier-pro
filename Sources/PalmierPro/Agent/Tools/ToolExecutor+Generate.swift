@@ -3,8 +3,11 @@ import Foundation
 extension ToolExecutor {
     func generate(_ editor: EditorViewModel, _ args: [String: Any], type: ClipType) throws -> ToolResult {
         let prompt = try args.requireString("prompt")
-        guard AccountService.shared.isPaid else {
-            throw ToolError("Generation requires an active Palmier subscription. Tell the user to sign in and subscribe.")
+        guard AccountService.shared.isSignedIn else {
+            throw ToolError("Generation requires signing in to Palmier. Tell the user to sign in.")
+        }
+        guard AccountService.shared.hasCredits else {
+            throw ToolError("Out of credits. Tell the user to add credits or subscribe to keep generating.")
         }
         switch type {
         case .video:
@@ -245,8 +248,11 @@ extension ToolExecutor {
         guard asset.type == .video || asset.type == .image else {
             throw ToolError("Upscale supports video and image assets only (got \(asset.type.rawValue))")
         }
-        guard AccountService.shared.isPaid else {
-            throw ToolError("Upscale requires an active Palmier subscription. Tell the user to sign in and subscribe.")
+        guard AccountService.shared.isSignedIn else {
+            throw ToolError("Upscale requires signing in to Palmier. Tell the user to sign in.")
+        }
+        guard AccountService.shared.hasCredits else {
+            throw ToolError("Out of credits. Tell the user to add credits or subscribe to keep generating.")
         }
 
         let available = UpscaleModelConfig.models(for: asset.type)

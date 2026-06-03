@@ -97,26 +97,27 @@ struct AgentPanelView: View {
         }
     }
 
+    @ViewBuilder
     private var modelPicker: some View {
-        let locked = service.availableModels.count <= 1
-        return Menu {
-            ForEach(service.availableModels, id: \.self) { m in
-                Button(m.displayName) { service.model = m }
+        if service.hasApiKey {
+            Menu {
+                ForEach(service.availableModels, id: \.self) { m in
+                    Button(m.displayName) { service.model = m }
+                }
+            } label: {
+                HStack(spacing: AppTheme.Spacing.xs) {
+                    Text(service.effectiveModel.displayName)
+                        .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
             }
-        } label: {
-            HStack(spacing: AppTheme.Spacing.xs) {
-                Text(service.effectiveModel.displayName)
-                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .disabled(locked)
     }
 
     @ViewBuilder
@@ -310,16 +311,21 @@ struct AgentPanelView: View {
 
     private var footer: some View {
         @Bindable var service = editor.agentService
-        return AgentInputBox(
-            draft: $service.draft,
-            mentions: $service.mentions,
-            isSending: service.isStreaming,
-            canSend: canSend,
-            onSend: submit,
-            onCancel: { service.cancel() }
-        ) {
-            modelPicker
-            byokIndicator
+        return VStack(spacing: AppTheme.Spacing.sm) {
+            if !service.canStream && !service.messages.isEmpty {
+                missingKeyState
+            }
+            AgentInputBox(
+                draft: $service.draft,
+                mentions: $service.mentions,
+                isSending: service.isStreaming,
+                canSend: canSend,
+                onSend: submit,
+                onCancel: { service.cancel() }
+            ) {
+                modelPicker
+                byokIndicator
+            }
         }
         .padding(.horizontal, AppTheme.Spacing.mdLg)
         .padding(.bottom, AppTheme.Spacing.mdLg)
