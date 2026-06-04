@@ -52,8 +52,6 @@ enum Transcription {
         return matchLocale(candidates: candidates, supported: supported)
     }
 
-    /// Match by language code — `Locale.current` carries region overrides (`en_US@rg=frzzzz`)
-    /// that `supportedLocales` never has. Prefer exact region, else any region for that language.
     static func matchLocale(candidates: [Locale], supported: [Locale]) -> Locale? {
         for candidate in candidates {
             guard let lang = candidate.language.languageCode?.identifier else { continue }
@@ -130,20 +128,59 @@ enum Transcription {
         return decoded
     }
 
+    /// Decode the asset's audio track to a PCM file with AVAssetReader
     private static func extractAudioTrack(from videoURL: URL) async throws -> URL {
         let asset = AVURLAsset(url: videoURL)
-        guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
-            throw TranscriptionError.audioExtractionFailed(
-                "Could not create export session for \(videoURL.lastPathComponent)"
-            )
+        guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
+            throw TranscriptionError.audioExtractionFailed("No audio track in \(videoURL.lastPathComponent)")
         }
-        let outURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("palmier-stt-\(UUID().uuidString).m4a")
-        Log.transcription.notice("extract start video=\(videoURL.lastPathComponent)")
-        do {
-            try await export.export(to: outURL, as: .m4a)
-        } catch {
+
+        let reader: AVAssetReader
+        do { reader = try AVAssetReader(asset: asset) } catch {
             throw TranscriptionError.audioExtractionFailed(error.localizedDescription)
+        }
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false,
+        ])
+        guard reader.canAdd(output) else {
+            throw TranscriptionError.audioExtractionFailed("Cannot read audio from \(videoURL.lastPathComponent)")
+        }
+        reader.add(output)
+
+        let outURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("palmier-stt-\(UUID().uuidString).caf")
+        Log.transcription.notice("extract start video=\(videoURL.lastPathComponent)")
+
+        guard reader.startReading() else {
+            throw TranscriptionError.audioExtractionFailed(reader.error?.localizedDescription ?? "Reader could not start")
+        }
+
+        var audioFile: AVAudioFile?
+        while let sample = output.copyNextSampleBuffer() {
+            guard let desc = CMSampleBufferGetFormatDescription(sample),
+                  let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc),
+                  let format = AVAudioFormat(streamDescription: asbd) else { continue }
+            let frames = AVAudioFrameCount(CMSampleBufferGetNumSamples(sample))
+            guard frames > 0, let pcm = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { continue }
+            pcm.frameLength = frames
+            CMSampleBufferCopyPCMDataIntoAudioBufferList(
+                sample, at: 0, frameCount: Int32(frames), into: pcm.mutableAudioBufferList
+            )
+            if audioFile == nil {
+                audioFile = try AVAudioFile(forWriting: outURL, settings: format.settings)
+            }
+            try audioFile?.write(from: pcm)
+        }
+
+        if reader.status == .failed {
+            throw TranscriptionError.audioExtractionFailed(reader.error?.localizedDescription ?? "Read failed")
+        }
+        guard audioFile != nil else {
+            throw TranscriptionError.audioExtractionFailed("No audio samples in \(videoURL.lastPathComponent)")
         }
         let bytes = (try? FileManager.default.attributesOfItem(atPath: outURL.path)[.size] as? Int) ?? 0
         Log.transcription.notice("extract ok bytes=\(bytes) out=\(outURL.lastPathComponent)")

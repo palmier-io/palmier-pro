@@ -4,6 +4,7 @@ import SwiftUI
 struct InspectorRow<Trailing: View>: View {
     let icon: String
     let label: String
+    var labelHelp: String? = nil
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
@@ -15,6 +16,12 @@ struct InspectorRow<Trailing: View>: View {
             Text(label)
                 .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                 .foregroundStyle(AppTheme.Text.primaryColor)
+            if let labelHelp {
+                Image(systemName: "info.circle")
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .help(labelHelp)
+            }
             Spacer()
             trailing()
         }

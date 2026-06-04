@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 // MARK: - Folder-drag string contract
 
-extension MediaPanelView {
+extension MediaTab {
     static let folderDragScheme = "palmier-folder://"
     static let assetDragScheme = "palmier-asset://"
 
@@ -27,7 +27,7 @@ extension MediaPanelView {
 
 // MARK: - Drag payload + preview (asset → timeline / folder)
 
-extension MediaPanelView {
+extension MediaTab {
     func dragPayload(for asset: MediaAsset) -> String {
         if editor.selectedMediaAssetIds.contains(asset.id) {
             return selectedMediaAssetsInOrder
@@ -80,7 +80,7 @@ extension MediaPanelView {
 
 // MARK: - Drop handlers (folder tile, breadcrumb, panel-level Finder drop)
 
-extension MediaPanelView {
+extension MediaTab {
     @MainActor
     func handlePanelFinderDrop(urls: [URL]) {
         Self.handlePanelFinderDrop(urls: urls, into: currentFolderId, editor: editor)

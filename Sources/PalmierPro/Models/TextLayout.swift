@@ -28,7 +28,7 @@ enum TextLayout {
         let shadowPad = style.shadow.enabled ? shadowPadding * 2 : 0
         return CGSize(
             width: max(1, ceil(bounding.width) + shadowPad + slack),
-            height: max(1, ceil(bounding.height) + shadowPad + slack)
+            height: max(1, ceil(bounding.height) + slack)
         )
     }
 }

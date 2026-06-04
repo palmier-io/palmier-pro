@@ -7,19 +7,27 @@ struct TextTab: View {
     private var style: TextStyle { clip.textStyle ?? TextStyle() }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxl) {
             contentField
-            fontRow
-            sizeSlider
-            opacitySlider
-            colorRow
-            shadowSection
-            alignmentRow
-            positionSection
+            InspectorSection("Typography") {
+                fontRow
+                sizeSlider
+            }
+            InspectorSection("Appearance") {
+                colorRow
+                opacitySlider
+                backgroundRow
+                borderRow
+                shadowRow
+            }
+            InspectorSection("Layout") {
+                alignmentRow
+                positionSection
+            }
         }
     }
 
-    // MARK: - Sections
+    // MARK: - Controls
 
     private var contentField: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
@@ -136,19 +144,56 @@ struct TextTab: View {
         }
     }
 
-    @ViewBuilder
-    private var shadowSection: some View {
-        let shadow = style.shadow
+    private var backgroundRow: some View {
+        toggleColorRow(
+            icon: "rectangle.fill",
+            label: "Background",
+            enabled: style.background.enabled,
+            color: style.background.color.swiftUIColor,
+            debounceKey: "backgroundColor",
+            setEnabled: { $0.background.enabled = $1 },
+            setColor: { $0.background.color = $1 }
+        )
+    }
 
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            InspectorRow(icon: "square.on.square", label: "Shadow") {
+    private var borderRow: some View {
+        toggleColorRow(
+            icon: "a.square",
+            label: "Border",
+            enabled: style.border.enabled,
+            color: style.border.color.swiftUIColor,
+            debounceKey: "borderColor",
+            setEnabled: { $0.border.enabled = $1 },
+            setColor: { $0.border.color = $1 }
+        )
+    }
+
+    private func toggleColorRow(
+        icon: String,
+        label: String,
+        enabled: Bool,
+        color: Color,
+        debounceKey: String,
+        setEnabled: @escaping (inout TextStyle, Bool) -> Void,
+        setColor: @escaping (inout TextStyle, TextStyle.RGBA) -> Void
+    ) -> some View {
+        InspectorRow(icon: icon, label: label) {
+            HStack(spacing: AppTheme.Spacing.sm) {
+                ColorField(
+                    displayColor: color,
+                    onUserChange: { new in
+                        editor.debouncedCommitTextStyle(clipId: clip.id, key: debounceKey) {
+                            setColor(&$0, TextStyle.RGBA(new))
+                        }
+                    }
+                )
+                .opacity(enabled ? AppTheme.Opacity.opaque : AppTheme.Opacity.medium)
+                .disabled(!enabled)
                 Toggle(
                     "",
                     isOn: Binding(
-                        get: { shadow.enabled },
-                        set: { new in
-                            editor.commitTextStyle(clipId: clip.id) { $0.shadow.enabled = new }
-                        }
+                        get: { enabled },
+                        set: { new in editor.commitTextStyle(clipId: clip.id) { setEnabled(&$0, new) } }
                     )
                 )
                 .labelsHidden()
@@ -156,53 +201,19 @@ struct TextTab: View {
                 .controlSize(.mini)
                 .tint(Color.white.opacity(AppTheme.Opacity.strong))
             }
-
-            if shadow.enabled {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-                    HStack(spacing: AppTheme.Spacing.xs) {
-                        Text("Color")
-                            .font(.system(size: AppTheme.FontSize.sm))
-                            .foregroundStyle(AppTheme.Text.secondaryColor)
-                        Spacer()
-                        ColorField(
-                            displayColor: shadow.color.swiftUIColor,
-                            onUserChange: { new in
-                                editor.debouncedCommitTextStyle(clipId: clip.id, key: "shadowColor") {
-                                    $0.shadow.color = TextStyle.RGBA(new)
-                                }
-                            }
-                        )
-                    }
-
-                    HStack(spacing: AppTheme.Spacing.xs) {
-                        Text("Blur")
-                            .font(.system(size: AppTheme.FontSize.sm))
-                            .foregroundStyle(AppTheme.Text.secondaryColor)
-                        Spacer()
-                        ScrubbableNumberField(
-                            value: shadow.blur,
-                            range: 0...40,
-                            format: "%.0f",
-                            valueSuffix: " pt",
-                            fieldWidth: 50,
-                            onChanged: { newVal in
-                                editor.applyTextStyle(clipId: clip.id) { $0.shadow.blur = newVal }
-                            }
-                        ) { newVal in
-                            editor.commitTextStyle(clipId: clip.id) { $0.shadow.blur = newVal }
-                        }
-                    }
-                }
-                .padding(.leading, AppTheme.Spacing.xl)
-                .padding(.top, AppTheme.Spacing.xxs)
-                .overlay(alignment: .leading) {
-                    Rectangle()
-                        .fill(Color.white.opacity(AppTheme.Opacity.soft))
-                        .frame(width: AppTheme.BorderWidth.thin)
-                        .padding(.leading, AppTheme.Spacing.sm)
-                }
-            }
         }
+    }
+
+    private var shadowRow: some View {
+        toggleColorRow(
+            icon: "square.on.square",
+            label: "Shadow",
+            enabled: style.shadow.enabled,
+            color: style.shadow.color.swiftUIColor,
+            debounceKey: "shadowColor",
+            setEnabled: { $0.shadow.enabled = $1 },
+            setColor: { $0.shadow.color = $1 }
+        )
     }
 
     @ViewBuilder

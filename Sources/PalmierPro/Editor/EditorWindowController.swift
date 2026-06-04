@@ -197,7 +197,7 @@ extension EditorWindowController: EditorActions {
     @objc func skipFramesBackward(_ sender: Any?) { editorViewModel.skipBackward() }
 
     @objc func importMedia(_ sender: Any?) {
-        // Handled by MediaPanelView directly
+        // Handled by MediaTab directly
     }
 
     @objc func showExport(_ sender: Any?) {
@@ -274,7 +274,7 @@ extension EditorWindowController: EditorActions {
             return canHandleClipboardShortcut() && !editorViewModel.selectedClipIds.isEmpty
         case #selector(paste(_:)):
             if editorViewModel.focusedPanel == .media {
-                return MediaPanelView.clipboardHasImportableMedia()
+                return MediaTab.clipboardHasImportableMedia()
             }
             return canHandleClipboardShortcut() && editorViewModel.canPasteClips
         default:

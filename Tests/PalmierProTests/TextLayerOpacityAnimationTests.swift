@@ -77,4 +77,14 @@ struct TextLayerOpacityAnimationTests {
         #expect(values[29].floatValue == 0)
         // Timeline is exactly the clip length here so no post-clip frames.
     }
+
+    @Test func appliesBorderStyleToTextLayer() {
+        var clip = textClip(start: 0, duration: 30)
+        var style = TextStyle()
+        style.border.enabled = true
+        clip.textStyle = style
+        let (_, layer) = animation(for: clip)
+        #expect(layer?.borderColor != nil)
+        #expect(layer?.borderWidth == AppTheme.BorderWidth.thin)
+    }
 }

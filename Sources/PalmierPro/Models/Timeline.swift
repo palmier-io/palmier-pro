@@ -94,6 +94,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var transform: Transform = Transform()
     var crop: Crop = Crop()
     var linkGroupId: String?
+    var captionGroupId: String?
 
     // Text clips only.
     var textContent: String?
@@ -112,7 +113,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         case trimStartFrame, trimEndFrame, speed, volume
         case fadeInFrames, fadeOutFrames, fadeInInterpolation, fadeOutInterpolation
         case opacity, transform, crop
-        case linkGroupId, textContent, textStyle
+        case linkGroupId, captionGroupId, textContent, textStyle
         case opacityTrack, positionTrack, scaleTrack, rotationTrack, cropTrack, volumeTrack
     }
 
@@ -305,6 +306,7 @@ extension Clip {
             transform: (try? c.decode(Transform.self, forKey: .transform)) ?? Transform(),
             crop: (try? c.decode(Crop.self, forKey: .crop)) ?? Crop(),
             linkGroupId: try? c.decode(String.self, forKey: .linkGroupId),
+            captionGroupId: try? c.decode(String.self, forKey: .captionGroupId),
             textContent: try? c.decode(String.self, forKey: .textContent),
             textStyle: try? c.decode(TextStyle.self, forKey: .textStyle),
             opacityTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .opacityTrack),

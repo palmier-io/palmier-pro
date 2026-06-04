@@ -18,15 +18,16 @@ enum AppTheme {
         static var surfaceColor: Color { Color(surface) }
         static var raisedColor: Color { Color(raised) }
         static var prominentColor: Color { Color(prominent) }
+        static var previewCanvasColor: Color { .black }
         static var placeholderColor: Color { Color(placeholder) }
     }
 
     // MARK: - Borders
 
     enum Border {
-        static let primary = NSColor.white.withAlphaComponent(0.12)
-        static let subtle = NSColor.white.withAlphaComponent(0.08)
-        static let divider = NSColor.white.withAlphaComponent(0.35)
+        static let primary = NSColor.white.withAlphaComponent(0.16)
+        static let subtle = NSColor.white.withAlphaComponent(0.12)
+        static let divider = NSColor.white.withAlphaComponent(0.44)
 
         static var primaryColor: Color { Color(primary) }
         static var subtleColor: Color { Color(subtle) }
@@ -79,10 +80,10 @@ enum AppTheme {
     // MARK: - Text
 
     enum Text {
-        static let primary = NSColor.white.withAlphaComponent(0.96)
-        static let secondary = NSColor.white.withAlphaComponent(0.70)
-        static let tertiary = NSColor.white.withAlphaComponent(0.50)
-        static let muted = NSColor.white.withAlphaComponent(0.25)
+        static let primary = NSColor.white.withAlphaComponent(1.0)
+        static let secondary = NSColor.white.withAlphaComponent(0.80)
+        static let tertiary = NSColor.white.withAlphaComponent(0.62)
+        static let muted = NSColor.white.withAlphaComponent(0.34)
 
         static var primaryColor: Color { Color(primary) }
         static var secondaryColor: Color { Color(secondary) }
@@ -93,6 +94,7 @@ enum AppTheme {
     // MARK: - Opacity
 
     enum Opacity {
+        static let opaque: Double = 1
         static let subtle: Double = 0.04
         static let hint: Double = 0.06
         static let faint: Double = 0.08
@@ -193,6 +195,23 @@ enum AppTheme {
         static let xl: CGFloat = 30
     }
 
+    enum ComponentSize {
+        static let captionPreviewMaxHeight: CGFloat = 170
+        static let captionPreviewMaxTextWidthRatio: CGFloat = 0.9
+    }
+
+    enum Caption {
+        static let defaultFontSize: Double = 48
+        static let minFontSize: Double = 12
+        static let maxFontSize: Double = 300
+        static let minPosition: Double = 0
+        static let maxPosition: Double = 1
+        static let centerSnapValue: CGFloat = 0.5
+        static let centerSnapThreshold: Double = 0.02
+        static let defaultCenterY: CGFloat = 0.85
+        static let defaultCenter = CGPoint(x: centerSnapValue, y: defaultCenterY)
+    }
+
     // MARK: - Shadows
 
     struct ShadowStyle {
@@ -221,6 +240,15 @@ enum AppTheme {
 extension View {
     func shadow(_ style: AppTheme.ShadowStyle) -> some View {
         shadow(color: style.color, radius: style.radius, x: style.x, y: style.y)
+    }
+
+    func panelHeaderBar() -> some View {
+        frame(maxWidth: .infinity)
+            .frame(height: Layout.panelHeaderHeight)
+            .background(AppTheme.Background.raisedColor)
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(AppTheme.Border.primaryColor).frame(height: AppTheme.BorderWidth.thin)
+            }
     }
 }
 

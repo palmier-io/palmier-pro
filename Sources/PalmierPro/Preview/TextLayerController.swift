@@ -159,6 +159,10 @@ final class TextLayerController {
         )
         layer.alignmentMode = style.alignment.caTextAlignmentMode
 
+        layer.backgroundColor = style.background.enabled ? style.background.color.nsColor.cgColor : nil
+        layer.borderColor = style.border.enabled ? style.border.color.nsColor.cgColor : nil
+        layer.borderWidth = style.border.enabled ? AppTheme.BorderWidth.thin * scale : 0
+
         if style.shadow.enabled {
             layer.shadowColor = style.shadow.color.nsColor.cgColor
             layer.shadowOpacity = 1

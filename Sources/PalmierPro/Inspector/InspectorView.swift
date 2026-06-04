@@ -44,7 +44,7 @@ struct InspectorView: View {
                 Spacer()
             }
             .padding(.horizontal, AppTheme.Spacing.lg)
-            .padding(.vertical, AppTheme.Spacing.sm)
+            .panelHeaderBar()
 
             // Content layer
             if selectedVisualClip != nil || selectedAudioClip != nil {

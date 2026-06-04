@@ -226,39 +226,39 @@ struct FolderEdgeCaseTests {
 /// switched the asset payload from a raw file:// URL to this scheme — if it
 /// reverts, the file-URL conformance check in handleProviderDrop would
 /// re-route in-panel asset drags as Finder drops (duplicate imports).
-@Suite("MediaPanelView — drag payload contract")
+@Suite("MediaTab — drag payload contract")
 @MainActor
 struct DragPayloadContractTests {
 
     @Test func assetStringRoundTrips() {
         let id = "asset-123"
-        let line = MediaPanelView.assetDragString(forAssetId: id)
-        #expect(MediaPanelView.assetId(fromDragString: line) == id)
+        let line = MediaTab.assetDragString(forAssetId: id)
+        #expect(MediaTab.assetId(fromDragString: line) == id)
     }
 
     @Test func folderStringRoundTrips() {
         let id = "folder-abc"
-        let line = MediaPanelView.folderDragString(forFolderId: id)
-        #expect(MediaPanelView.folderId(fromDragString: line) == id)
+        let line = MediaTab.folderDragString(forFolderId: id)
+        #expect(MediaTab.folderId(fromDragString: line) == id)
     }
 
     @Test func sentinelsDoNotCrossDecode() {
-        let assetLine = MediaPanelView.assetDragString(forAssetId: "x")
-        let folderLine = MediaPanelView.folderDragString(forFolderId: "y")
-        #expect(MediaPanelView.folderId(fromDragString: assetLine) == nil)
-        #expect(MediaPanelView.assetId(fromDragString: folderLine) == nil)
+        let assetLine = MediaTab.assetDragString(forAssetId: "x")
+        let folderLine = MediaTab.folderDragString(forFolderId: "y")
+        #expect(MediaTab.folderId(fromDragString: assetLine) == nil)
+        #expect(MediaTab.assetId(fromDragString: folderLine) == nil)
     }
 
     @Test func fileURLDoesNotDecodeAsAssetOrFolder() {
         let line = "file:///tmp/foo.mp4"
-        #expect(MediaPanelView.assetId(fromDragString: line) == nil)
-        #expect(MediaPanelView.folderId(fromDragString: line) == nil)
+        #expect(MediaTab.assetId(fromDragString: line) == nil)
+        #expect(MediaTab.folderId(fromDragString: line) == nil)
     }
 }
 
 // MARK: - resolveTextDrop routing
 
-@Suite("MediaPanelView — resolveTextDrop")
+@Suite("MediaTab — resolveTextDrop")
 @MainActor
 struct ResolveTextDropTests {
 
@@ -267,9 +267,9 @@ struct ResolveTextDropTests {
         let dest = e.createFolder(name: "Dest")
         let a = asset(name: "x", folderId: nil)
         e.importMediaAsset(a)
-        let payload = MediaPanelView.assetDragString(forAssetId: a.id)
+        let payload = MediaTab.assetDragString(forAssetId: a.id)
 
-        MediaPanelView.resolveTextDrop(payload, into: dest, editor: e)
+        MediaTab.resolveTextDrop(payload, into: dest, editor: e)
 
         #expect(e.mediaAssets.first(where: { $0.id == a.id })?.folderId == dest)
     }
@@ -278,9 +278,9 @@ struct ResolveTextDropTests {
         let e = editor()
         let parent = e.createFolder(name: "Parent")
         let child = e.createFolder(name: "Child")
-        let payload = MediaPanelView.folderDragString(forFolderId: child)
+        let payload = MediaTab.folderDragString(forFolderId: child)
 
-        MediaPanelView.resolveTextDrop(payload, into: parent, editor: e)
+        MediaTab.resolveTextDrop(payload, into: parent, editor: e)
 
         #expect(e.folder(id: child)?.parentFolderId == parent)
     }
@@ -294,12 +294,12 @@ struct ResolveTextDropTests {
         e.importMediaAsset(a1)
         e.importMediaAsset(a2)
         let payload = [
-            MediaPanelView.assetDragString(forAssetId: a1.id),
-            MediaPanelView.folderDragString(forFolderId: movableFolder),
-            MediaPanelView.assetDragString(forAssetId: a2.id),
+            MediaTab.assetDragString(forAssetId: a1.id),
+            MediaTab.folderDragString(forFolderId: movableFolder),
+            MediaTab.assetDragString(forAssetId: a2.id),
         ].joined(separator: "\n")
 
-        MediaPanelView.resolveTextDrop(payload, into: dest, editor: e)
+        MediaTab.resolveTextDrop(payload, into: dest, editor: e)
 
         #expect(e.mediaAssets.first(where: { $0.id == a1.id })?.folderId == dest)
         #expect(e.mediaAssets.first(where: { $0.id == a2.id })?.folderId == dest)
@@ -311,9 +311,9 @@ struct ResolveTextDropTests {
         let folder = e.createFolder(name: "Box")
         let a = asset(name: "x", folderId: folder)
         e.importMediaAsset(a)
-        let payload = MediaPanelView.assetDragString(forAssetId: a.id)
+        let payload = MediaTab.assetDragString(forAssetId: a.id)
 
-        MediaPanelView.resolveTextDrop(payload, into: nil, editor: e)
+        MediaTab.resolveTextDrop(payload, into: nil, editor: e)
 
         #expect(e.mediaAssets.first(where: { $0.id == a.id })?.folderId == nil)
     }
@@ -321,9 +321,9 @@ struct ResolveTextDropTests {
     @Test func unknownAssetIdIsIgnored() {
         let e = editor()
         let dest = e.createFolder(name: "Dest")
-        let payload = MediaPanelView.assetDragString(forAssetId: "ghost-asset")
+        let payload = MediaTab.assetDragString(forAssetId: "ghost-asset")
 
-        MediaPanelView.resolveTextDrop(payload, into: dest, editor: e)
+        MediaTab.resolveTextDrop(payload, into: dest, editor: e)
 
         // No phantom asset row should be inserted.
         #expect(e.mediaAssets.isEmpty)
@@ -338,10 +338,10 @@ struct ResolveTextDropTests {
             "file:///tmp/garbage.mp4",
             "",
             "random nonsense",
-            MediaPanelView.assetDragString(forAssetId: a.id),
+            MediaTab.assetDragString(forAssetId: a.id),
         ].joined(separator: "\n")
 
-        MediaPanelView.resolveTextDrop(payload, into: dest, editor: e)
+        MediaTab.resolveTextDrop(payload, into: dest, editor: e)
 
         // The one valid line routed; the rest were skipped without side effects.
         #expect(e.mediaAssets.first(where: { $0.id == a.id })?.folderId == dest)
@@ -352,9 +352,9 @@ struct ResolveTextDropTests {
         let parent = e.createFolder(name: "Parent")
         let child = e.createFolder(name: "Child", in: parent)
         // Try to make parent a child of its own descendant.
-        let payload = MediaPanelView.folderDragString(forFolderId: parent)
+        let payload = MediaTab.folderDragString(forFolderId: parent)
 
-        MediaPanelView.resolveTextDrop(payload, into: child, editor: e)
+        MediaTab.resolveTextDrop(payload, into: child, editor: e)
 
         #expect(e.folder(id: parent)?.parentFolderId == nil)
     }
@@ -365,7 +365,7 @@ struct ResolveTextDropTests {
         let a = asset(name: "x", folderId: nil)
         e.importMediaAsset(a)
 
-        MediaPanelView.resolveTextDrop("", into: dest, editor: e)
+        MediaTab.resolveTextDrop("", into: dest, editor: e)
 
         #expect(e.mediaAssets.first(where: { $0.id == a.id })?.folderId == nil)
     }
@@ -541,7 +541,7 @@ struct MoveMediaSelectionTests {
 
 // MARK: - handlePanelFinderDrop
 
-@Suite("MediaPanelView — handlePanelFinderDrop")
+@Suite("MediaTab — handlePanelFinderDrop")
 @MainActor
 struct HandlePanelFinderDropTests {
 
@@ -549,7 +549,7 @@ struct HandlePanelFinderDropTests {
         let e = editor()
         let url = URL(fileURLWithPath: "/tmp/\(UUID().uuidString)-clip.mp4")
 
-        MediaPanelView.handlePanelFinderDrop(urls: [url], into: nil, editor: e)
+        MediaTab.handlePanelFinderDrop(urls: [url], into: nil, editor: e)
 
         #expect(e.mediaAssets.count == 1)
         #expect(e.mediaAssets.first?.folderId == nil)
@@ -560,7 +560,7 @@ struct HandlePanelFinderDropTests {
         let dest = e.createFolder(name: "Dest")
         let url = URL(fileURLWithPath: "/tmp/\(UUID().uuidString)-clip.mp4")
 
-        MediaPanelView.handlePanelFinderDrop(urls: [url], into: dest, editor: e)
+        MediaTab.handlePanelFinderDrop(urls: [url], into: dest, editor: e)
 
         #expect(e.mediaAssets.count == 1)
         #expect(e.mediaAssets.first?.folderId == dest)
@@ -570,7 +570,7 @@ struct HandlePanelFinderDropTests {
         let e = editor()
         let url = URL(fileURLWithPath: "/tmp/\(UUID().uuidString)-readme.txt")
 
-        MediaPanelView.handlePanelFinderDrop(urls: [url], into: nil, editor: e)
+        MediaTab.handlePanelFinderDrop(urls: [url], into: nil, editor: e)
 
         #expect(e.mediaAssets.isEmpty)
     }
@@ -582,7 +582,7 @@ struct HandlePanelFinderDropTests {
             URL(fileURLWithPath: "/tmp/\(UUID().uuidString)-clip.mp4")
         }
 
-        MediaPanelView.handlePanelFinderDrop(urls: urls, into: dest, editor: e)
+        MediaTab.handlePanelFinderDrop(urls: urls, into: dest, editor: e)
 
         #expect(e.mediaAssets.count == 3)
         #expect(e.mediaAssets.allSatisfy { $0.folderId == dest })
@@ -593,7 +593,7 @@ struct HandlePanelFinderDropTests {
 
 /// Drives Edit > Paste menu validation. Uses a unique pasteboard per test so
 /// parallel tests don't collide on `NSPasteboard.general`.
-@Suite("MediaPanelView — clipboardHasImportableMedia")
+@Suite("MediaTab — clipboardHasImportableMedia")
 @MainActor
 struct ClipboardProbeTests {
 
@@ -605,37 +605,37 @@ struct ClipboardProbeTests {
 
     @Test func emptyPasteboardIsFalse() {
         let pb = freshPasteboard()
-        #expect(MediaPanelView.clipboardHasImportableMedia(pasteboard: pb) == false)
+        #expect(MediaTab.clipboardHasImportableMedia(pasteboard: pb) == false)
     }
 
     @Test func textOnlyIsFalse() {
         let pb = freshPasteboard()
         pb.setString("hello", forType: .string)
-        #expect(MediaPanelView.clipboardHasImportableMedia(pasteboard: pb) == false)
+        #expect(MediaTab.clipboardHasImportableMedia(pasteboard: pb) == false)
     }
 
     @Test func pngIsTrue() {
         let pb = freshPasteboard()
         pb.setData(Data([0]), forType: .png)
-        #expect(MediaPanelView.clipboardHasImportableMedia(pasteboard: pb))
+        #expect(MediaTab.clipboardHasImportableMedia(pasteboard: pb))
     }
 
     @Test func tiffIsTrue() {
         let pb = freshPasteboard()
         pb.setData(Data([0]), forType: .tiff)
-        #expect(MediaPanelView.clipboardHasImportableMedia(pasteboard: pb))
+        #expect(MediaTab.clipboardHasImportableMedia(pasteboard: pb))
     }
 
     @Test func fileURLIsTrue() {
         let pb = freshPasteboard()
         pb.writeObjects([URL(fileURLWithPath: "/tmp/x.mp4") as NSURL])
-        #expect(MediaPanelView.clipboardHasImportableMedia(pasteboard: pb))
+        #expect(MediaTab.clipboardHasImportableMedia(pasteboard: pb))
     }
 }
 
 // MARK: - handleClipboardPaste
 
-@Suite("MediaPanelView — handleClipboardPaste")
+@Suite("MediaTab — handleClipboardPaste")
 @MainActor
 struct HandleClipboardPasteTests {
 
@@ -650,7 +650,7 @@ struct HandleClipboardPasteTests {
         let pb = freshPasteboard()
         pb.setData(Data([0x89, 0x50, 0x4E, 0x47]), forType: .png)
 
-        MediaPanelView.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+        MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
 
         #expect(e.mediaAssets.count == 1)
         #expect(e.mediaAssets.first?.type == .image)
@@ -664,7 +664,7 @@ struct HandleClipboardPasteTests {
         let pb = freshPasteboard()
         pb.setData(Data([0x89, 0x50, 0x4E, 0x47]), forType: .png)
 
-        MediaPanelView.handleClipboardPaste(pasteboard: pb, into: dest, editor: e)
+        MediaTab.handleClipboardPaste(pasteboard: pb, into: dest, editor: e)
 
         #expect(e.mediaAssets.first?.folderId == dest)
         #expect(e.mediaManifest.entries.first?.folderId == dest)
@@ -675,7 +675,7 @@ struct HandleClipboardPasteTests {
         let pb = freshPasteboard()
         pb.setData(Data([0x4D, 0x4D, 0x00, 0x2A]), forType: .tiff)
 
-        MediaPanelView.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+        MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
 
         #expect(e.mediaAssets.count == 1)
         #expect(e.mediaAssets.first?.url.pathExtension == "tiff")
@@ -687,7 +687,7 @@ struct HandleClipboardPasteTests {
         let pb = freshPasteboard()
         pb.writeObjects([url as NSURL])
 
-        MediaPanelView.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+        MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
 
         #expect(e.mediaAssets.count == 1)
         #expect(e.mediaAssets.first?.type == .video)
@@ -700,7 +700,7 @@ struct HandleClipboardPasteTests {
         let pb = freshPasteboard()
         pb.writeObjects([url as NSURL])
 
-        MediaPanelView.handleClipboardPaste(pasteboard: pb, into: dest, editor: e)
+        MediaTab.handleClipboardPaste(pasteboard: pb, into: dest, editor: e)
 
         #expect(e.mediaAssets.first?.folderId == dest)
     }
@@ -716,7 +716,7 @@ struct HandleClipboardPasteTests {
         pb.setData(Data([0x89, 0x50, 0x4E, 0x47]), forType: .png)
         pb.writeObjects([url as NSURL])
 
-        MediaPanelView.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+        MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
 
         #expect(e.mediaAssets.count == 1)
         #expect(e.mediaAssets.first?.type == .video)
@@ -726,7 +726,7 @@ struct HandleClipboardPasteTests {
         let e = editor()
         let pb = freshPasteboard()
 
-        MediaPanelView.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+        MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
 
         #expect(e.mediaAssets.isEmpty)
     }
@@ -736,7 +736,7 @@ struct HandleClipboardPasteTests {
         let pb = freshPasteboard()
         pb.setString("just some text", forType: .string)
 
-        MediaPanelView.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+        MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
 
         #expect(e.mediaAssets.isEmpty)
     }
@@ -746,7 +746,7 @@ struct HandleClipboardPasteTests {
         let pb = freshPasteboard()
         pb.writeObjects([URL(fileURLWithPath: "/tmp/\(UUID().uuidString)-readme.txt") as NSURL])
 
-        MediaPanelView.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+        MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
 
         #expect(e.mediaAssets.isEmpty)
     }

@@ -8,6 +8,8 @@ struct TextStyle: Codable, Sendable, Equatable {
     var color: RGBA = RGBA()
     var alignment: Alignment = .center
     var shadow: Shadow = Shadow()
+    var background: Fill = Fill(enabled: false, color: RGBA(r: 0, g: 0, b: 0, a: 0.6))
+    var border: Fill = Fill(enabled: false, color: RGBA(r: 0, g: 0, b: 0, a: 1))
 
     enum Alignment: String, Codable, Sendable, CaseIterable {
         case left
@@ -32,8 +34,14 @@ struct TextStyle: Codable, Sendable, Equatable {
         var blur: Double = 6
     }
 
+    /// Toggleable solid color — used for the text box background and border.
+    struct Fill: Codable, Sendable, Equatable {
+        var enabled: Bool = false
+        var color: RGBA = RGBA()
+    }
+
     private enum CodingKeys: String, CodingKey {
-        case fontName, fontSize, fontScale, color, alignment, shadow
+        case fontName, fontSize, fontScale, color, alignment, shadow, background, border
     }
 }
 
@@ -47,7 +55,9 @@ extension TextStyle {
             fontScale: (try? c.decode(Double.self, forKey: .fontScale)) ?? 1.0,
             color: (try? c.decode(RGBA.self, forKey: .color)) ?? RGBA(),
             alignment: (try? c.decode(Alignment.self, forKey: .alignment)) ?? .center,
-            shadow: (try? c.decode(Shadow.self, forKey: .shadow)) ?? Shadow()
+            shadow: (try? c.decode(Shadow.self, forKey: .shadow)) ?? Shadow(),
+            background: (try? c.decode(Fill.self, forKey: .background)) ?? Fill(enabled: false, color: RGBA(r: 0, g: 0, b: 0, a: 0.6)),
+            border: (try? c.decode(Fill.self, forKey: .border)) ?? Fill(enabled: false, color: RGBA(r: 0, g: 0, b: 0, a: 1))
         )
     }
 }
@@ -57,7 +67,7 @@ extension TextStyle {
 extension TextStyle.RGBA {
     var nsColor: NSColor {
         NSColor(
-            calibratedRed: CGFloat(r),
+            srgbRed: CGFloat(r),
             green: CGFloat(g),
             blue: CGFloat(b),
             alpha: CGFloat(a)

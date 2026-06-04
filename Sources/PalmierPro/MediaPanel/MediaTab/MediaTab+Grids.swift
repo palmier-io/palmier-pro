@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 
 // MARK: - Grid layout types
 
-extension MediaPanelView {
+extension MediaTab {
     struct MediaCell: Identifiable {
         enum Kind { case folder(MediaFolder), asset(MediaAsset) }
         let kind: Kind
@@ -37,7 +37,7 @@ extension MediaPanelView {
 
 // MARK: - Layout math
 
-extension MediaPanelView {
+extension MediaTab {
     func gridDimensions(width: CGFloat) -> GridDimensions {
         let spacing = AppTheme.Spacing.xl
         let outerPadding: CGFloat = AppTheme.Spacing.md * 2
@@ -77,7 +77,7 @@ extension MediaPanelView {
 
 // MARK: - Shared scroll/grid scaffolding (folder + flat modes)
 
-extension MediaPanelView {
+extension MediaTab {
     /// Shared scroll/grid/marquee scaffolding for folder and flat modes.
     @ViewBuilder
     fileprivate func gridScroll<Cell: Identifiable, Content: View>(
@@ -126,7 +126,7 @@ extension MediaPanelView {
 
 // MARK: - Folder mode (drill-in with breadcrumb)
 
-extension MediaPanelView {
+extension MediaTab {
     var mediaGridView: some View {
         GeometryReader { geo in
             let layout = computeLayout(width: geo.size.width)
@@ -149,7 +149,7 @@ extension MediaPanelView {
 
 // MARK: - Flat mode (every asset, no folders)
 
-extension MediaPanelView {
+extension MediaTab {
     var flatGridView: some View {
         let assets = sortAndFilter(editor.mediaAssets)
         let orderedIds = assets.map(\.id)
@@ -171,7 +171,7 @@ extension MediaPanelView {
 
 // MARK: - Grouped mode (folder sections with dividers)
 
-extension MediaPanelView {
+extension MediaTab {
     var groupedGridView: some View {
         // Bucket once so each section is O(1).
         let bucketed = editor.mediaAssets.reduce(into: [String?: [MediaAsset]]()) { dict, asset in
@@ -372,7 +372,7 @@ extension MediaPanelView {
 
 // MARK: - Cell renderers (asset + folder)
 
-extension MediaPanelView {
+extension MediaTab {
     func assetCellView(for asset: MediaAsset) -> some View {
         AssetThumbnailView(
             asset: asset,
@@ -421,7 +421,7 @@ extension MediaPanelView {
                 shouldAutoFocus: pendingFolderFocusId == folder.id,
                 onAutoFocusConsumed: { pendingFolderFocusId = nil }
             )
-            .draggable(MediaPanelView.folderDragString(forFolderId: folder.id)) {
+            .draggable(MediaTab.folderDragString(forFolderId: folder.id)) {
                 FolderDragPreview(name: folder.name)
             }
         }

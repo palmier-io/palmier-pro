@@ -29,7 +29,7 @@ extension EditorViewModel {
     /// Resolve a drag pasteboard payload (one `palmier-asset://<id>` per line).
     func assetsFromDragPayload(_ payload: String) -> [MediaAsset] {
         payload.split(separator: "\n").compactMap { line in
-            guard let id = MediaPanelView.assetId(fromDragString: String(line)) else { return nil }
+            guard let id = MediaTab.assetId(fromDragString: String(line)) else { return nil }
             return mediaAssets.first { $0.id == id }
         }
     }
@@ -330,6 +330,7 @@ extension EditorViewModel {
         let style: TextStyle
         /// When nil the box is auto-fit to content and centered on the canvas.
         let transform: Transform?
+        var captionGroupId: String? = nil
     }
 
     /// Batch variant of `addTextClip` for agent flows.
@@ -372,6 +373,7 @@ extension EditorViewModel {
                 )
                 clip.textContent = spec.content
                 clip.textStyle = spec.style
+                clip.captionGroupId = spec.captionGroupId
                 timeline.tracks[spec.trackIndex].clips.append(clip)
                 createdIds[i] = clip.id
             }

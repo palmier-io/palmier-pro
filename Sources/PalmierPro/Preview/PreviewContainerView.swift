@@ -12,7 +12,7 @@ struct PreviewContainerView: View {
         VStack(spacing: 0) {
             tabBar
                 .padding(.horizontal, AppTheme.Spacing.sm)
-                .padding(.top, AppTheme.Spacing.xs)
+                .panelHeaderBar()
 
             GeometryReader { geo in
                 let aspect = CGFloat(editor.timeline.width) / CGFloat(editor.timeline.height)
