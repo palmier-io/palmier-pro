@@ -78,7 +78,7 @@ final class AppState {
         project.windowControllers.first?.window?.makeKeyAndOrderFront(nil)
 
         guard let assetId,
-              project.editorViewModel.mediaAssets.contains(where: { $0.id == assetId }) else {
+              let asset = project.editorViewModel.mediaAssets.first(where: { $0.id == assetId }) else {
             return
         }
 
@@ -86,9 +86,7 @@ final class AppState {
         editor.mediaPanelVisible = true
         editor.maximizedPanel = nil
         editor.focusedPanel = .media
-        editor.selectedClipIds.removeAll()
-        editor.selectedFolderIds.removeAll()
-        editor.selectedMediaAssetIds = [assetId]
+        editor.selectMediaAsset(asset)
         editor.mediaPanelRevealAssetId = assetId
     }
 

@@ -76,10 +76,7 @@ struct GenerationReferencesStrip: View {
         }
         .help("\(label) · \(asset.name)")
         .onTapGesture {
-            editor.selectedClipIds.removeAll()
-            editor.selectedFolderIds.removeAll()
-            editor.selectedMediaAssetIds = [asset.id]
-            editor.openPreviewTab(for: asset)
+            editor.selectMediaAsset(asset)
             editor.mediaPanelRevealAssetId = asset.id
         }
     }

@@ -305,11 +305,9 @@ struct AssetThumbnailView: View {
             } else {
                 editor.selectedMediaAssetIds.insert(asset.id)
             }
+            editor.openPreviewTab(for: asset)   // tab follows, but keep multi-selection intact
         } else {
-            editor.selectedMediaAssetIds = [asset.id]
-            editor.selectedFolderIds.removeAll()
+            editor.selectMediaAsset(asset)
         }
-
-        editor.openPreviewTab(for: asset)
     }
 }

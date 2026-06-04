@@ -28,6 +28,11 @@ extension EditorViewModel {
         }
     }
 
+    func selectMediaAsset(_ asset: MediaAsset) {
+        openPreviewTab(for: asset)
+        syncSelectionToActiveTab()
+    }
+
     func openPreviewTab(for asset: MediaAsset) {
         let tab = PreviewTab.mediaAsset(id: asset.id, name: asset.name, type: asset.type)
         if !previewTabs.contains(where: { $0.id == tab.id }) {
