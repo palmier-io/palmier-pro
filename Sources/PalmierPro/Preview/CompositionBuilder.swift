@@ -3,7 +3,7 @@ import AVFoundation
 struct TrackMapping: @unchecked Sendable {
     enum Kind {
         case timeline(trackIndex: Int, clipIds: Set<String>?)
-        case blackTail(range: CMTimeRange)
+        case blackBackground(range: CMTimeRange)
     }
     let compositionTrack: AVMutableCompositionTrack
     let kind: Kind
@@ -187,15 +187,14 @@ enum CompositionBuilder {
 
         guard !Task.isCancelled else { throw CancellationError() }
 
-        // Pad video coverage to the full timeline so text-only tails actually render
-        let desiredDuration = CMTime(value: CMTimeValue(timeline.totalFrames), timescale: timescale)
+        // Opaque black background layer (bottommost) for full timeline
         let lastVideoEnd = trackMappings.filter(\.isVideo).map(\.endTime).max() ?? .zero
-        if desiredDuration > lastVideoEnd {
-            let tailRange = CMTimeRange(start: lastVideoEnd, duration: desiredDuration - lastVideoEnd)
-            if let mapping = try await insertBlackTail(
+        let desiredDuration = max(CMTime(value: CMTimeValue(timeline.totalFrames), timescale: timescale), lastVideoEnd)
+        if desiredDuration > .zero {
+            if let mapping = try await insertBlackBackground(
                 composition: composition,
                 size: renderSize,
-                range: tailRange
+                range: CMTimeRange(start: .zero, duration: desiredDuration)
             ) {
                 trackMappings.append(mapping)
             }
@@ -305,7 +304,7 @@ enum CompositionBuilder {
         return true
     }
 
-    private static func insertBlackTail(
+    private static func insertBlackBackground(
         composition: AVMutableComposition,
         size: CGSize,
         range: CMTimeRange
@@ -326,7 +325,7 @@ enum CompositionBuilder {
         )
         return TrackMapping(
             compositionTrack: compTrack,
-            kind: .blackTail(range: range),
+            kind: .blackBackground(range: range),
             naturalSize: size,
             endTime: range.end,
             isVideo: true
@@ -369,7 +368,7 @@ enum CompositionBuilder {
             liConfig.setOpacity(0, at: .zero)
 
             switch mapping.kind {
-            case .blackTail(let range):
+            case .blackBackground(let range):
                 liConfig.setOpacity(1, at: range.start)
                 if range.end < compositionDuration {
                     liConfig.setOpacity(0, at: range.end)
