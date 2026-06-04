@@ -124,10 +124,9 @@ struct AssetThumbnailView: View {
             if asset.isGenerating {
                 ZStack {
                     if let image = generatingReferenceImage {
-                        Image(nsImage: image)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .blur(radius: 12)
+                        Color.clear
+                            .overlay { Image(nsImage: image).resizable().scaledToFill().blur(radius: 12) }
+                            .clipped()
                         Color.black.opacity(AppTheme.Opacity.strong)
                     }
                     GeneratingOverlay(label: asset.generatingLabel)

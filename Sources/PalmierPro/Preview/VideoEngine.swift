@@ -21,6 +21,7 @@ final class VideoEngine {
 
     private var trackMappings: [TrackMapping] = []
     private var clipNaturalSizes: [String: CGSize] = [:]
+    private var clipTransforms: [String: CGAffineTransform] = [:]
     private var compositionDuration: CMTime = .zero
 
     private var pendingInteractiveSeek: (time: CMTime, tolerance: CMTime)?
@@ -154,6 +155,7 @@ final class VideoEngine {
 
             trackMappings = result.trackMappings
             clipNaturalSizes = result.clipNaturalSizes
+            clipTransforms = result.clipTransforms
             compositionDuration = result.composition.duration
 
             let item = AVPlayerItem(asset: result.composition)
@@ -179,6 +181,7 @@ final class VideoEngine {
             timeline: editor.timeline,
             trackMappings: trackMappings,
             clipNaturalSizes: clipNaturalSizes,
+            clipTransforms: clipTransforms,
             compositionDuration: compositionDuration,
             renderSize: CGSize(width: editor.timeline.width, height: editor.timeline.height)
         )

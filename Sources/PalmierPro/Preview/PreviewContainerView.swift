@@ -322,10 +322,9 @@ struct PreviewContainerView: View {
     private func generatingPreview(label: String) -> some View {
         ZStack {
             if let image = activeGeneratingReferenceImage {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .blur(radius: 24)
+                Color.clear
+                    .overlay { Image(nsImage: image).resizable().scaledToFill().blur(radius: 24) }
+                    .clipped()
             }
             Color.black.opacity(AppTheme.Opacity.strong)
             GeneratingOverlay(label: label, size: .preview)

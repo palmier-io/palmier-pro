@@ -127,10 +127,12 @@ final class MediaAsset: Identifiable {
                 hasAudio = !audioTracks.isEmpty
             }
             let gen = AVAssetImageGenerator(asset: avAsset)
-            gen.maximumSize = CGSize(width: 160, height: 90)
+            gen.maximumSize = CGSize(width: 320, height: 320)   // square budget — portrait gets full res too
             gen.appliesPreferredTrackTransform = true
             if let cgImage = try? await gen.image(at: .zero).image {
-                thumbnail = NSImage(cgImage: cgImage, size: NSSize(width: 160, height: 90))
+                // Use the generated frame's true pixel size — a hardcoded 16:9 size makes
+                // SwiftUI's aspectRatio squeeze non-16:9 (e.g. vertical) thumbnails.
+                thumbnail = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
             }
         }
     }

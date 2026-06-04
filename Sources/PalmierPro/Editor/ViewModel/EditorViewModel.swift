@@ -354,26 +354,24 @@ final class EditorViewModel {
         timeline.tracks[trackIndex].clips.sort { $0.startFrame < $1.startFrame }
     }
 
-    /// Letterboxes known-size assets into the canvas.
-    private func fitTransform(for asset: MediaAsset) -> Transform {
-        guard let sw = asset.sourceWidth, let sh = asset.sourceHeight, sw > 0, sh > 0 else {
+    func fitTransform(for asset: MediaAsset) -> Transform {
+        fitTransform(for: asset, canvasWidth: timeline.width, canvasHeight: timeline.height)
+    }
+
+    func fitTransform(for asset: MediaAsset, canvasWidth: Int, canvasHeight: Int) -> Transform {
+        guard let sw = asset.sourceWidth, let sh = asset.sourceHeight,
+              sw > 0, sh > 0, canvasWidth > 0, canvasHeight > 0 else {
             return Transform()
         }
-        let canvasAspect = Double(timeline.width) / Double(timeline.height)
+        let canvasAspect = Double(canvasWidth) / Double(canvasHeight)
         let sourceAspect = Double(sw) / Double(sh)
         if abs(canvasAspect - sourceAspect) < Defaults.aspectTolerance {
             return Transform()
         }
-        let scaleW: Double
-        let scaleH: Double
         if sourceAspect > canvasAspect {
-            scaleW = 1.0
-            scaleH = canvasAspect / sourceAspect
-        } else {
-            scaleW = sourceAspect / canvasAspect
-            scaleH = 1.0
+            return Transform(width: 1.0, height: canvasAspect / sourceAspect)
         }
-        return Transform(topLeft: (0, 0), width: scaleW, height: scaleH)
+        return Transform(width: sourceAspect / canvasAspect, height: 1.0)
     }
 
     /// Source aspect ratio relative to canvas; nil when source dimensions are unknown.

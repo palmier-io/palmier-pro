@@ -18,6 +18,7 @@ struct CompositionResult {
     let videoComposition: AVVideoComposition
     let trackMappings: [TrackMapping]
     let clipNaturalSizes: [String: CGSize]
+    let clipTransforms: [String: CGAffineTransform]
 }
 
 /// Builds an AVFoundation composition from a Timeline.
@@ -43,6 +44,7 @@ enum CompositionBuilder {
         let timescale = CMTimeScale(timeline.fps)
         var trackMappings: [TrackMapping] = []
         var clipNaturalSizes: [String: CGSize] = [:]
+        var clipTransforms: [String: CGAffineTransform] = [:]
 
         for (trackIdx, track) in timeline.tracks.enumerated() {
             // Text renders via CATextLayer overlay (preview) + animation tool (export) — never as composition tracks.
@@ -150,7 +152,11 @@ enum CompositionBuilder {
 
                 if let natSize = try? await source.track.load(.naturalSize),
                    natSize.width > 0, natSize.height > 0 {
-                    clipNaturalSizes[clip.id] = natSize
+                    // Store display size and transform for layer orientation.
+                    let pt = (try? await source.track.load(.preferredTransform)) ?? .identity
+                    let display = natSize.applying(pt)
+                    clipNaturalSizes[clip.id] = CGSize(width: abs(display.width), height: abs(display.height))
+                    clipTransforms[clip.id] = pt
                 }
 
                 if await insertClip(
@@ -199,6 +205,7 @@ enum CompositionBuilder {
             timeline: timeline,
             trackMappings: trackMappings,
             clipNaturalSizes: clipNaturalSizes,
+            clipTransforms: clipTransforms,
             compositionDuration: composition.duration,
             renderSize: renderSize
         )
@@ -208,7 +215,8 @@ enum CompositionBuilder {
             audioMix: audioMix,
             videoComposition: videoComposition,
             trackMappings: trackMappings,
-            clipNaturalSizes: clipNaturalSizes
+            clipNaturalSizes: clipNaturalSizes,
+            clipTransforms: clipTransforms
         )
     }
 
@@ -330,6 +338,7 @@ enum CompositionBuilder {
         timeline: Timeline,
         trackMappings: [TrackMapping],
         clipNaturalSizes: [String: CGSize] = [:],
+        clipTransforms: [String: CGAffineTransform] = [:],
         compositionDuration: CMTime,
         renderSize: CGSize
     ) -> (audioMix: AVMutableAudioMix, videoComposition: AVVideoComposition) {
@@ -376,13 +385,15 @@ enum CompositionBuilder {
                         let start = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
                         let end = CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale)
                         let natSize = clipNaturalSizes[clip.id] ?? mapping.naturalSize
+                        let preferredTransform = clipTransforms[clip.id] ?? .identity
 
                         emitOpacity(config: &liConfig, clip: clip, start: start, end: end, timescale: timescale)
                         liConfig.setOpacity(0, at: end)
                         emitTransform(config: &liConfig, clip: clip, start: start, end: end,
-                                      natSize: natSize, renderSize: renderSize, timescale: timescale)
+                                      natSize: natSize, preferredTransform: preferredTransform,
+                                      renderSize: renderSize, timescale: timescale)
                         emitCrop(config: &liConfig, clip: clip, start: start, end: end,
-                                 natSize: natSize, timescale: timescale)
+                                 natSize: natSize, preferredTransform: preferredTransform, timescale: timescale)
                     }
                 }
                 if mapping.endTime < compositionDuration {
@@ -513,11 +524,12 @@ enum CompositionBuilder {
         start: CMTime,
         end: CMTime,
         natSize: CGSize,
+        preferredTransform: CGAffineTransform,
         renderSize: CGSize,
         timescale: CMTimeScale
     ) {
         let affine: (Transform) -> CGAffineTransform = { t in
-            affineTransform(for: t, natSize: natSize, renderSize: renderSize)
+            preferredTransform.concatenating(affineTransform(for: t, natSize: natSize, renderSize: renderSize))
         }
 
         guard clip.hasTransformAnimation else {
@@ -595,15 +607,17 @@ enum CompositionBuilder {
         start: CMTime,
         end: CMTime,
         natSize: CGSize,
+        preferredTransform: CGAffineTransform,
         timescale: CMTimeScale
     ) {
+        let toSource = preferredTransform.inverted()
         let rect: (Crop) -> CGRect = { cp in
             CGRect(
                 x: cp.left * natSize.width,
                 y: cp.top * natSize.height,
                 width: max(1, cp.visibleWidthFraction * natSize.width),
                 height: max(1, cp.visibleHeightFraction * natSize.height)
-            )
+            ).applying(toSource)
         }
         let ops = trackOps(track: clip.cropTrack, fallback: clip.crop, clip: clip,
                            clipStart: start, clipEnd: end, timescale: timescale)

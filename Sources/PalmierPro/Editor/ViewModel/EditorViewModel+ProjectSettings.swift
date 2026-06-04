@@ -48,6 +48,19 @@ extension EditorViewModel {
             }
         }
 
+        // Refit auto-fitted clips to the new canvas aspect
+        if width != prevWidth || height != prevHeight {
+            for ti in timeline.tracks.indices {
+                for ci in timeline.tracks[ti].clips.indices {
+                    let clip = timeline.tracks[ti].clips[ci]
+                    guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }) else { continue }
+                    if clip.transform == fitTransform(for: asset, canvasWidth: prevWidth, canvasHeight: prevHeight) {
+                        timeline.tracks[ti].clips[ci].transform = fitTransform(for: asset, canvasWidth: width, canvasHeight: height)
+                    }
+                }
+            }
+        }
+
         timeline.fps = fps
         timeline.width = width
         timeline.height = height
