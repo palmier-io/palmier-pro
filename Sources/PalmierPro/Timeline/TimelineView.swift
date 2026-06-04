@@ -487,6 +487,10 @@ final class TimelineView: NSView {
         inputController.scrollWheel(with: event, geometry: geometry)
     }
 
+    override func magnify(with event: NSEvent) {
+        inputController.magnify(with: event)
+    }
+
     override func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
         let trackIndex = geometry.trackAt(y: point.y)

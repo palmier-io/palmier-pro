@@ -580,26 +580,47 @@ final class TimelineInputController {
         return true
     }
 
-    // MARK: - Scroll wheel (Option+scroll = zoom)
+    // MARK: - Zoom & pan
 
+    /// Option+scroll zooms; Cmd+scroll pans horizontally (maps vertical delta to X, for mouse wheels);
+    /// plain scroll pans (forwarded to the scroll view, both axes).
     func scrollWheel(with event: NSEvent, geometry: TimelineGeometry) {
-        guard event.modifierFlags.contains(.option) else {
-            view.superview?.superview?.scrollWheel(with: event)
+        if event.modifierFlags.contains(.option) {
+            let cursorDocX = view.convert(event.locationInWindow, from: nil).x
+            applyZoom(factor: exp(event.scrollingDeltaY * Zoom.scrollSensitivity), anchorDocX: cursorDocX)
             return
         }
 
+        if event.modifierFlags.contains(.command), let scrollView = view.enclosingScrollView {
+            let raw = event.scrollingDeltaX != 0 ? event.scrollingDeltaX : event.scrollingDeltaY
+            let delta = raw * Zoom.panSpeed
+            let origin = scrollView.contentView.bounds.origin
+            let maxX = max(0, view.bounds.width - scrollView.contentView.bounds.width)
+            let scrollX = min(maxX, max(0, origin.x - delta))
+            scrollView.contentView.setBoundsOrigin(NSPoint(x: scrollX, y: origin.y))
+            return
+        }
+
+        view.superview?.superview?.scrollWheel(with: event)
+    }
+
+    /// Trackpad pinch-to-zoom.
+    func magnify(with event: NSEvent) {
         let cursorDocX = view.convert(event.locationInWindow, from: nil).x
+        applyZoom(factor: 1.0 + event.magnification * Zoom.magnifySensitivity, anchorDocX: cursorDocX)
+    }
+
+    private func applyZoom(factor: Double, anchorDocX: CGFloat) {
         let scrollOrigin = view.enclosingScrollView?.contentView.bounds.origin.x ?? 0
-        let cursorViewportX = cursorDocX - scrollOrigin
+        let anchorViewportX = anchorDocX - scrollOrigin
+        let frameUnderCursor = max(0.0, anchorDocX / editor.zoomScale)
 
-        let frameUnderCursor = max(0.0, cursorDocX / geometry.pixelsPerFrame)
-
-        let delta = event.scrollingDeltaY * Zoom.scrollSensitivity
-        editor.zoomScale = max(editor.minZoomScale, min(Zoom.max, editor.zoomScale + delta))
+        let newScale = max(editor.minZoomScale, min(Zoom.max, editor.zoomScale * factor))
+        guard newScale != editor.zoomScale else { return }
+        editor.zoomScale = newScale
 
         if let scrollView = view.enclosingScrollView {
-            let newXForFrame = frameUnderCursor * editor.zoomScale
-            let scrollX = max(0, newXForFrame - cursorViewportX)
+            let scrollX = max(0, frameUnderCursor * editor.zoomScale - anchorViewportX)
             let origin = scrollView.contentView.bounds.origin
             scrollView.contentView.setBoundsOrigin(NSPoint(x: scrollX, y: origin.y))
         }

@@ -23,6 +23,11 @@ struct ShortcutsPane: View {
             ("Shift + Backspace", "Ripple Delete"),
             ("Opt + Drag", "Duplicate Clip"),
         ]),
+        ShortcutGroup(title: "Timeline", shortcuts: [
+            ("Opt + Scroll", "Zoom to Cursor"),
+            ("Pinch", "Zoom to Cursor"),
+            ("Cmd + Scroll", "Scroll Horizontally"),
+        ]),
         ShortcutGroup(title: "File", shortcuts: [
             ("Cmd + N", "New"),
             ("Cmd + O", "Open"),
@@ -47,16 +52,19 @@ struct ShortcutsPane: View {
         ]),
     ]
 
-    private static let leftColumn = Array(allShortcuts.prefix(3))
-    private static let rightColumn = Array(allShortcuts.dropFirst(3))
+    private static let leftColumn = Array(allShortcuts.prefix(4))
+    private static let rightColumn = Array(allShortcuts.dropFirst(4))
 
     var body: some View {
-        HStack(alignment: .top, spacing: 24) {
-            shortcutColumn(groups: Self.leftColumn)
-            shortcutColumn(groups: Self.rightColumn)
+        ScrollView {
+            HStack(alignment: .top, spacing: 24) {
+                shortcutColumn(groups: Self.leftColumn)
+                shortcutColumn(groups: Self.rightColumn)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 20)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 

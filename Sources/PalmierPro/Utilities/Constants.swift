@@ -81,7 +81,9 @@ enum TrackSize {
 enum Zoom {
     static let min: Double = 0.05
     static let max: Double = 40.0
-    static let scrollSensitivity: Double = 0.1
+    static let scrollSensitivity: Double = 0.04
+    static let magnifySensitivity: Double = 1.5 
+    static let panSpeed: Double = 5.0
     static let fitAllBuffer: Double = 3.0
 }
 
