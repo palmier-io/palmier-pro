@@ -176,13 +176,14 @@ struct AgentPane: View {
                     .fill((appState.mcpService?.isRunning ?? false) ? Color.green : AppTheme.Text.mutedColor)
                     .frame(width: 8, height: 8)
 
-                if (appState.mcpService?.isRunning ?? false) {
-                    Text("Running on ")
-                        .foregroundStyle(AppTheme.Text.secondaryColor)
-                    +
-                    Text("127.0.0.1:\(String(MCPService.port))")
-                        .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
-                        .foregroundStyle(AppTheme.Text.primaryColor)
+                if appState.mcpService?.isRunning ?? false {
+                    HStack(alignment: .firstTextBaseline, spacing: 0) {
+                        Text("Running on ")
+                            .foregroundStyle(AppTheme.Text.secondaryColor)
+                        Text("127.0.0.1:\(String(MCPService.port))")
+                            .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+                            .foregroundStyle(AppTheme.Text.primaryColor)
+                    }
                 } else {
                     Text("Stopped")
                         .foregroundStyle(AppTheme.Text.tertiaryColor)

@@ -6,7 +6,7 @@ import Observation
 final class AgentService {
 
     private var apiKey: String = AnthropicKeychain.load() ?? ""
-    nonisolated(unsafe) private var apiKeyObserver: NSObjectProtocol?
+    private var apiKeyObserver: NSObjectProtocol?
 
     init() {
         apiKeyObserver = NotificationCenter.default.addObserver(
@@ -20,7 +20,7 @@ final class AgentService {
         }
     }
 
-    deinit {
+    isolated deinit {
         if let token = apiKeyObserver {
             NotificationCenter.default.removeObserver(token)
         }

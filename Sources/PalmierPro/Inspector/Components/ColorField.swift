@@ -43,15 +43,12 @@ private final class ColorPanelBridge {
             forName: NSColorPanel.colorDidChangeNotification,
             object: nil,
             queue: .main
-        ) { [weak self] note in
-            // Extract primitives here so no non-Sendable crosses into MainActor.
-            guard let ns = (note.object as? NSColorPanel)?.color.usingColorSpace(.sRGB) else { return }
-            let r = Double(ns.redComponent)
-            let g = Double(ns.greenComponent)
-            let b = Double(ns.blueComponent)
-            let a = Double(ns.alphaComponent)
+        ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.relay(r: r, g: g, b: b, a: a)
+                guard let ns = NSColorPanel.shared.color.usingColorSpace(.sRGB) else { return }
+                self?.relay(
+                    r: Double(ns.redComponent), g: Double(ns.greenComponent),
+                    b: Double(ns.blueComponent), a: Double(ns.alphaComponent))
             }
         }
     }

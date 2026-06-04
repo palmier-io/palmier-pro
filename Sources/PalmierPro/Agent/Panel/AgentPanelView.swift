@@ -218,7 +218,7 @@ struct AgentPanelView: View {
     private var errorBanner: some View {
         if let err = service.streamError {
             HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-                Text(err.localizedDescription ?? "")
+                Text(err.localizedDescription)
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.leading)
