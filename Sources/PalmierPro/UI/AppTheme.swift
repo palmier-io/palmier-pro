@@ -6,10 +6,10 @@ enum AppTheme {
     // MARK: - Backgrounds
 
     enum Background {
-        static let base = NSColor(red: 6/255, green: 6/255, blue: 6/255, alpha: 1)
-        static let surface = NSColor(red: 12/255, green: 12/255, blue: 12/255, alpha: 1)
-        static let raised = NSColor(red: 20/255, green: 20/255, blue: 20/255, alpha: 1)
-        static let prominent = NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 1)
+        static let base = NSColor(red: 10/255, green: 10/255, blue: 10/255, alpha: 1)
+        static let surface = NSColor(red: 16/255, green: 16/255, blue: 16/255, alpha: 1)
+        static let raised = NSColor(red: 24/255, green: 24/255, blue: 24/255, alpha: 1)
+        static let prominent = NSColor(red: 36/255, green: 36/255, blue: 36/255, alpha: 1)
 
         /// Alias — empty media slot is a raised plate.
         static let placeholder = raised
