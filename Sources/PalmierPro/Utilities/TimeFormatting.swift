@@ -1,3 +1,5 @@
+import Foundation
+
 func formatTimecode(frame: Int, fps: Int) -> String {
     guard fps > 0 else { return "00:00:00:00" }
     let absFrame = abs(frame)
@@ -22,4 +24,18 @@ func frameToSeconds(frame: Int, fps: Int) -> Double {
 
 func secondsToFrame(seconds: Double, fps: Int) -> Int {
     Int(seconds * Double(fps))
+}
+
+extension Double {
+    func rounded(toPlaces places: Int) -> Double {
+        let factor = pow(10.0, Double(places))
+        return (self * factor).rounded() / factor
+    }
+
+    func jsonRounded(toPlaces places: Int) -> NSDecimalNumber {
+        NSDecimalNumber(value: self).rounding(accordingToBehavior:
+            NSDecimalNumberHandler(roundingMode: .plain, scale: Int16(places),
+                raiseOnExactness: false, raiseOnOverflow: false,
+                raiseOnUnderflow: false, raiseOnDivideByZero: false))
+    }
 }

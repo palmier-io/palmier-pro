@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct AgentMessageView: View {
@@ -141,8 +142,8 @@ private struct ToolRunRow: View {
                 switch block {
                 case .text(let s):
                     Text(s).frame(maxWidth: .infinity, alignment: .leading)
-                case .image:
-                    Text("(image payload)").foregroundStyle(AppTheme.Text.mutedColor)
+                case .image(let base64, _):
+                    ToolResultImageView(base64: base64)
                 }
             }
         }
@@ -157,5 +158,30 @@ private struct ToolRunRow: View {
             return "(no args)"
         }
         return s
+    }
+}
+
+private struct ToolResultImageView: View {
+    let base64: String
+    @State private var image: NSImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxHeight: AppTheme.ComponentSize.toolImagePreviewMaxHeight)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous))
+            } else {
+                Text("(image payload)").foregroundStyle(AppTheme.Text.mutedColor)
+            }
+        }
+        .task(id: base64) {
+            guard image == nil else { return }
+            let data = await Task.detached { Data(base64Encoded: base64) }.value
+            if let data { image = NSImage(data: data) }
+        }
     }
 }
