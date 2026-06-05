@@ -80,6 +80,8 @@ struct AssetThumbnailView: View {
         }
         if ids.count == 1, ids.first == asset.id {
             Button("Rename") { beginRename() }
+            AIEditMenu(asset: asset)
+            Divider()
         }
         Button("Reveal in Finder") { revealInFinder(ids: ids) }
         Button("Copy Path") { copyPaths(ids: ids) }

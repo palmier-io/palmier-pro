@@ -239,11 +239,7 @@ struct AIEditTab: View {
     }
 
     private func sendToVideo(asReference: Bool) {
-        guard let model = VideoModelConfig.allModels.first(where: {
-            !$0.requiresSourceVideo && (asReference ? $0.supportsReferences : $0.supportsFirstFrame)
-        }) else { return }
-        var stored = GenerationInput(prompt: "", model: model.id, duration: 0, aspectRatio: "", resolution: nil)
-        if asReference { stored.referenceImageAssetIds = [asset.id] } else { stored.imageURLAssetIds = [asset.id] }
+        guard let stored = EditSubmitter.createVideoSeed(for: asset, asReference: asReference) else { return }
         seedPanel(stored: stored, defaultName: "Video from \(asset.name)", trimmed: nil)
     }
 
@@ -251,7 +247,7 @@ struct AIEditTab: View {
         switch action {
         case .upscale, .createVideo: break // handled via menu
         case .edit:
-            guard let stored = editStoredInput() else { return }
+            guard let stored = EditSubmitter.editSeed(for: asset) else { return }
             seedPanel(stored: stored, defaultName: "Edited \(asset.name)", trimmed: trimmedSourceIfEnabled())
         case .rerun:
             let modelId = asset.generationInput?.model ?? ""
@@ -271,23 +267,6 @@ struct AIEditTab: View {
                 seedPanel(stored: stored, defaultName: nil, trimmed: nil)
             }
         }
-    }
-
-    private func editStoredInput() -> GenerationInput? {
-        let modelId: String
-        switch asset.type {
-        case .video:
-            guard let m = VideoModelConfig.allModels.first(where: { $0.requiresSourceVideo }) else { return nil }
-            modelId = m.id
-        case .image:
-            guard let m = ImageModelConfig.nanoBananaPro else { return nil }
-            modelId = m.id
-        case .audio, .text:
-            return nil
-        }
-        var stored = GenerationInput(prompt: "", model: modelId, duration: 0, aspectRatio: "", resolution: nil)
-        stored.imageURLAssetIds = [asset.id]
-        return stored
     }
 
     private func seedPanel(stored: GenerationInput, defaultName: String?, trimmed: TrimmedSource?) {

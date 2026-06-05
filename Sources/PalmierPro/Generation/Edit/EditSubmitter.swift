@@ -275,6 +275,36 @@ enum EditSubmitter {
         throw RerunError.unknownModel(modelId)
     }
 
+    // MARK: - Panel seeds
+
+    /// GenerationInput for an Edit action — opens the generation panel pre-filled with the asset as source.
+    static func editSeed(for asset: MediaAsset) -> GenerationInput? {
+        let modelId: String
+        switch asset.type {
+        case .video:
+            guard let m = VideoModelConfig.allModels.first(where: { $0.requiresSourceVideo }) else { return nil }
+            modelId = m.id
+        case .image:
+            guard let m = ImageModelConfig.nanoBananaPro else { return nil }
+            modelId = m.id
+        case .audio, .text:
+            return nil
+        }
+        var stored = GenerationInput(prompt: "", model: modelId, duration: 0, aspectRatio: "", resolution: nil)
+        stored.imageURLAssetIds = [asset.id]
+        return stored
+    }
+
+    /// GenerationInput for Create Video — uses the image as a first frame or as a reference.
+    static func createVideoSeed(for asset: MediaAsset, asReference: Bool) -> GenerationInput? {
+        guard let model = VideoModelConfig.allModels.first(where: {
+            !$0.requiresSourceVideo && (asReference ? $0.supportsReferences : $0.supportsFirstFrame)
+        }) else { return nil }
+        var stored = GenerationInput(prompt: "", model: model.id, duration: 0, aspectRatio: "", resolution: nil)
+        if asReference { stored.referenceImageAssetIds = [asset.id] } else { stored.imageURLAssetIds = [asset.id] }
+        return stored
+    }
+
     // MARK: - Names
 
     private static func upscaleName(for asset: MediaAsset) -> String {
