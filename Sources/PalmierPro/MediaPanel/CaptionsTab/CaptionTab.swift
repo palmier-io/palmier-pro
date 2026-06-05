@@ -5,6 +5,10 @@ struct CaptionTab: View {
 
     @State private var style = TextStyle(fontSize: AppTheme.Caption.defaultFontSize)
     @State private var center = AppTheme.Caption.defaultCenter
+    @State private var textCase: EditorViewModel.CaptionCase = .auto
+    @State private var censorProfanity = false
+    @State private var locale: Locale?
+    @State private var supportedLocales: [Locale] = []
     @State private var isGenerating = false
     @State private var note: String?
     @State private var sourceSnapshot: [String] = []
@@ -21,6 +25,11 @@ struct CaptionTab: View {
     private var allTargetCount: Int { editor.captionTargets(ids: []).count }
     private var effectiveCount: Int { sourceSnapshot.isEmpty ? allTargetCount : sourceSnapshot.count }
 
+    private static let translateLanguages = [
+        "Spanish", "French", "German", "Italian", "Portuguese",
+        "Japanese", "Korean", "Chinese", "Hindi", "Arabic"
+    ]
+
     private var sourceSummary: String {
         if !sourceSnapshot.isEmpty { return "Selected · \(sourceSnapshot.count)" }
         if allTargetCount == 0 { return "No audio" }
@@ -31,14 +40,14 @@ struct CaptionTab: View {
         ZStack {
             VStack(spacing: 0) {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.mdLg) {
                         sourceSection
                         styleSection
                         placementSection
                     }
                     .padding(.horizontal, AppTheme.Spacing.lgXl)
-                    .padding(.top, AppTheme.Spacing.lg)
-                    .padding(.bottom, AppTheme.Spacing.lg)
+                    .padding(.top, AppTheme.Spacing.md)
+                    .padding(.bottom, AppTheme.Spacing.md)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
 
@@ -51,6 +60,11 @@ struct CaptionTab: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AppTheme.Background.surfaceColor)
+        .task {
+            guard supportedLocales.isEmpty else { return }
+            supportedLocales = (await Transcription.supportedLocales())
+                .sorted { languageName($0) < languageName($1) }
+        }
         .onAppear { sourceSnapshot = liveTargets }
         .onChange(of: editor.selectedClipIds) { _, _ in
             let targets = liveTargets
@@ -65,8 +79,31 @@ struct CaptionTab: View {
                 label: "Audio",
                 labelHelp: "Uses all audio and video clips by default. Select clips on the timeline to transcribe only those."
             ) { valueText(sourceSummary) }
-            InspectorRow(icon: "globe", label: "Language") { valueText("Auto-detect") }
+            InspectorRow(icon: "globe", label: "Language") {
+                Menu {
+                    Button("Auto") { locale = nil }
+                    if !supportedLocales.isEmpty {
+                        Divider()
+                        ForEach(supportedLocales, id: \.identifier) { loc in
+                            Button(languageName(loc)) { locale = loc }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: AppTheme.Spacing.xxs) {
+                        Text(locale.map(languageName) ?? "Auto")
+                        Image(systemName: "chevron.up.chevron.down").font(.system(size: AppTheme.FontSize.xxs))
+                    }
+                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .lineLimit(1)
+                }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+            }
         }
+    }
+
+    private func languageName(_ loc: Locale) -> String {
+        Locale.current.localizedString(forIdentifier: loc.identifier) ?? loc.identifier(.bcp47)
     }
 
     private var styleSection: some View {
@@ -100,6 +137,28 @@ struct CaptionTab: View {
                         .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
                 }
             }
+            InspectorRow(icon: "textformat", label: "Case") {
+                Menu {
+                    ForEach(EditorViewModel.CaptionCase.allCases, id: \.self) { c in
+                        Button(c.label) { textCase = c }
+                    }
+                } label: {
+                    HStack(spacing: AppTheme.Spacing.xxs) {
+                        Text(textCase.label)
+                        Image(systemName: "chevron.up.chevron.down").font(.system(size: AppTheme.FontSize.xxs))
+                    }
+                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+            }
+            InspectorRow(icon: "exclamationmark.bubble", label: "Censor profanity") {
+                Toggle("", isOn: $censorProfanity)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
+            }
         }
     }
 
@@ -112,6 +171,53 @@ struct CaptionTab: View {
                 posField("Y", value: center.y) { center.y = $0 }
             }
         }
+    }
+
+    private var agentMenu: some View {
+        Menu {
+            Button {
+                captionTask("remove filler words (um, uh, er, like, you know) from the captions, keeping each caption's timing unchanged.")
+            } label: { Label("Remove filler words", systemImage: "text.badge.minus") }
+            Button {
+                captionTask("fix any misspelled names, brand names, or technical jargon in the captions using the surrounding context, keeping timing unchanged.")
+            } label: { Label("Fix names & jargon", systemImage: "checkmark.bubble") }
+            Button {
+                captionTask("add relevant emoji to the captions, keeping the text and timing otherwise unchanged.")
+            } label: { Label("Add emoji", systemImage: "face.smiling") }
+            Menu {
+                ForEach(Self.translateLanguages, id: \.self) { language in
+                    Button(language) {
+                        captionTask("translate the captions to \(language), keeping each caption's timing unchanged.")
+                    }
+                }
+            } label: { Label("Translate", systemImage: "globe") }
+        } label: {
+            HStack(spacing: AppTheme.Spacing.xs) {
+                Text("Agent Mode")
+                Image(systemName: "chevron.down").font(.system(size: AppTheme.FontSize.xs))
+            }
+            .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.semibold))
+            .foregroundStyle(AppTheme.aiGradient)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, AppTheme.Spacing.mdLg)
+            .padding(.vertical, AppTheme.Spacing.smMd)
+            .background(RoundedRectangle(cornerRadius: AppTheme.Radius.sm).fill(AppTheme.Background.raisedColor))
+            .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.sm).strokeBorder(AppTheme.aiGradient.opacity(AppTheme.Opacity.medium), lineWidth: AppTheme.BorderWidth.thin))
+        }
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
+        .help("Let Agent create captions for you. Choose a predefined task, or ask Agent in the chat.")
+    }
+
+    private func captionTask(_ task: String) {
+        handoff("If the timeline has no captions yet, transcribe the spoken audio and add captions on word boundaries first. Then \(task)")
+    }
+
+    private func handoff(_ prompt: String) {
+        let service = editor.agentService
+        service.newChat()
+        service.draft = prompt
+        editor.agentPanelVisible = true
     }
 
     private func valueText(_ text: String) -> some View {
@@ -205,17 +311,22 @@ struct CaptionTab: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Button(action: generate) {
-                Text("Generate Captions")
-                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.semibold))
-                    .foregroundStyle(AppTheme.Background.baseColor)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, AppTheme.Spacing.smMd)
-                    .background(RoundedRectangle(cornerRadius: AppTheme.Radius.sm).fill(AppTheme.Accent.primary))
-                    .opacity(effectiveCount == 0 ? AppTheme.Opacity.medium : AppTheme.Opacity.opaque)
+            HStack(spacing: AppTheme.Spacing.sm) {
+                Button(action: generate) {
+                    Text("Generate Captions")
+                        .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.semibold))
+                        .foregroundStyle(AppTheme.Background.baseColor)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, AppTheme.Spacing.smMd)
+                        .background(RoundedRectangle(cornerRadius: AppTheme.Radius.sm).fill(AppTheme.Accent.primary))
+                        .opacity(effectiveCount == 0 ? AppTheme.Opacity.medium : AppTheme.Opacity.opaque)
+                }
+                .buttonStyle(.plain).focusable(false)
+                .disabled(effectiveCount == 0 || isGenerating)
+
+                agentMenu
             }
-            .buttonStyle(.plain).focusable(false)
-            .disabled(effectiveCount == 0 || isGenerating)
         }
         .padding(.horizontal, AppTheme.Spacing.lgXl)
         .padding(.vertical, AppTheme.Spacing.md)
@@ -226,7 +337,10 @@ struct CaptionTab: View {
 
     private func generate() {
         note = nil
-        let request = EditorViewModel.CaptionRequest(sourceClipIds: sourceSnapshot, style: style, center: center)
+        let request = EditorViewModel.CaptionRequest(
+            sourceClipIds: sourceSnapshot, style: style, center: center,
+            textCase: textCase, censorProfanity: censorProfanity, locale: locale
+        )
         Task {
             isGenerating = true
             defer { isGenerating = false }
@@ -239,3 +353,4 @@ struct CaptionTab: View {
         }
     }
 }
+

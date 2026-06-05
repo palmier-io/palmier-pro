@@ -41,10 +41,14 @@ enum TranscriptionError: LocalizedError {
 }
 
 enum Transcription {
-    static func transcribeVideoAudio(videoURL: URL) async throws -> TranscriptionResult {
+    static func transcribeVideoAudio(videoURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil) async throws -> TranscriptionResult {
         let tempAudioURL = try await extractAudioTrack(from: videoURL)
         defer { try? FileManager.default.removeItem(at: tempAudioURL) }
-        return try await transcribe(fileURL: tempAudioURL)
+        return try await transcribe(fileURL: tempAudioURL, censorProfanity: censorProfanity, preferredLocale: preferredLocale)
+    }
+
+    static func supportedLocales() async -> [Locale] {
+        await SpeechTranscriber.supportedLocales
     }
 
     static func bestSupportedLocale(from supported: [Locale]) -> Locale? {
@@ -63,16 +67,21 @@ enum Transcription {
         return nil
     }
 
-    static func transcribe(fileURL: URL) async throws -> TranscriptionResult {
+    static func transcribe(fileURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil) async throws -> TranscriptionResult {
         let supported = await SpeechTranscriber.supportedLocales
-        guard let locale = bestSupportedLocale(from: supported) else {
-            throw TranscriptionError.unsupportedLocale(Locale.current.identifier(.bcp47))
+        let locale: Locale
+        if let preferredLocale, let match = matchLocale(candidates: [preferredLocale], supported: supported) {
+            locale = match
+        } else if let auto = bestSupportedLocale(from: supported) {
+            locale = auto
+        } else {
+            throw TranscriptionError.unsupportedLocale((preferredLocale ?? Locale.current).identifier(.bcp47))
         }
         Log.transcription.notice("transcribe locale=\(locale.identifier(.bcp47))")
 
         let transcriber = SpeechTranscriber(
             locale: locale,
-            transcriptionOptions: [],
+            transcriptionOptions: censorProfanity ? [.etiquetteReplacements] : [],
             reportingOptions: [],
             attributeOptions: [.audioTimeRange],
         )
@@ -171,7 +180,12 @@ enum Transcription {
                 sample, at: 0, frameCount: Int32(frames), into: pcm.mutableAudioBufferList
             )
             if audioFile == nil {
-                audioFile = try AVAudioFile(forWriting: outURL, settings: format.settings)
+                audioFile = try AVAudioFile(
+                    forWriting: outURL,
+                    settings: format.settings,
+                    commonFormat: format.commonFormat,
+                    interleaved: format.isInterleaved
+                )
             }
             try audioFile?.write(from: pcm)
         }

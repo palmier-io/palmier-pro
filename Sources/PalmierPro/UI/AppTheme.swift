@@ -196,7 +196,7 @@ enum AppTheme {
     }
 
     enum ComponentSize {
-        static let captionPreviewMaxHeight: CGFloat = 170
+        static let captionPreviewMaxHeight: CGFloat = 120
         static let captionPreviewMaxTextWidthRatio: CGFloat = 0.9
     }
 
@@ -208,7 +208,7 @@ enum AppTheme {
         static let maxPosition: Double = 1
         static let centerSnapValue: CGFloat = 0.5
         static let centerSnapThreshold: Double = 0.02
-        static let defaultCenterY: CGFloat = 0.85
+        static let defaultCenterY: CGFloat = 0.9
         static let defaultCenter = CGPoint(x: centerSnapValue, y: defaultCenterY)
     }
 

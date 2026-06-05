@@ -6,6 +6,29 @@ extension EditorViewModel {
         var sourceClipIds: [String] = []
         var style: TextStyle = TextStyle()
         var center: CGPoint = AppTheme.Caption.defaultCenter
+        var textCase: CaptionCase = .auto
+        var censorProfanity: Bool = false
+        var locale: Locale? = nil
+    }
+
+    enum CaptionCase: String, CaseIterable, Sendable {
+        case auto, upper, lower
+
+        var label: String {
+            switch self {
+            case .auto: "Auto"
+            case .upper: "UPPERCASE"
+            case .lower: "lowercase"
+            }
+        }
+
+        func apply(_ s: String) -> String {
+            switch self {
+            case .auto: s
+            case .upper: s.uppercased()
+            case .lower: s.lowercased()
+            }
+        }
     }
 
     func captionLineFits(_ line: String, style: TextStyle) -> Bool {
@@ -52,8 +75,8 @@ extension EditorViewModel {
                 } else {
                     guard let url = mediaResolver.resolveURL(for: clip.mediaRef) else { continue }
                     result = clip.mediaType == .audio
-                        ? try await Transcription.transcribe(fileURL: url)
-                        : try await Transcription.transcribeVideoAudio(videoURL: url)
+                        ? try await Transcription.transcribe(fileURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale)
+                        : try await Transcription.transcribeVideoAudio(videoURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale)
                     resultByMediaRef[clip.mediaRef] = result
                 }
                 phrasesByClipId[clipId] = CaptionBuilder.group(result.words) {
@@ -85,16 +108,23 @@ extension EditorViewModel {
         for clipId in targetIds {
             guard let phrases = phrasesByClipId[clipId], let loc = findClip(id: clipId) else { continue }
             let liveClip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            let cased = phrases.map {
+                CaptionBuilder.Phrase(text: request.textCase.apply($0.text), start: $0.start, end: $0.end)
+            }
             specs += CaptionBuilder.specs(
-                for: phrases, sourceClip: liveClip, trackIndex: 0, fps: fps,
+                for: cased, sourceClip: liveClip, trackIndex: 0, fps: fps,
                 style: request.style, captionGroupId: groupId, transformFor: transformFor
             )
         }
         guard !specs.isEmpty else { return [] }
 
+        undoManager?.beginUndoGrouping()
+        defer { undoManager?.endUndoGrouping() }
         let before = timeline
+        undoManager?.disableUndoRegistration()
         timeline.tracks.insert(Track(type: .video, label: "Captions"), at: 0)
         let ids = placeTextClips(specs)
+        undoManager?.enableUndoRegistration()
         guard !ids.isEmpty else {
             timeline = before
             videoEngine?.syncTextLayers()

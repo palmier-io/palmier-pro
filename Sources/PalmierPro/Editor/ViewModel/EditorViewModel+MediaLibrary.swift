@@ -348,7 +348,7 @@ extension EditorViewModel {
                 guard timeline.tracks.indices.contains(spec.trackIndex) else { continue }
                 let start = max(0, spec.startFrame)
                 let duration = max(1, spec.durationFrames)
-                clearRegion(trackIndex: spec.trackIndex, start: start, end: start + duration)
+                clearRegion(trackIndex: spec.trackIndex, start: start, end: start + duration, prune: false)
 
                 let resolved: Transform
                 if let t = spec.transform {
