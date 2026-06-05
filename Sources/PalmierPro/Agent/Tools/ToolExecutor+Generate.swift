@@ -37,6 +37,7 @@ extension ToolExecutor {
             throw ToolError("Model '\(model.id)' requires 'sourceVideoMediaRef' pointing to a video asset.")
         }
         let sourceAsset = try asset(sourceRef, editor: editor, label: "Source video")
+        let trimmed = try trimmedSource(args, editor: editor, source: sourceAsset)
 
         var imageRefs: [MediaAsset] = []
         for id in args.stringArray("referenceImageMediaRefs") {
@@ -59,7 +60,8 @@ extension ToolExecutor {
             genInput: genInput,
             model: model,
             inputAssets: inputAssets,
-            placeholderDuration: sourceAsset.duration > 0 ? sourceAsset.duration : 5,
+            placeholderDuration: trimmed?.durationSeconds ?? (sourceAsset.duration > 0 ? sourceAsset.duration : 5),
+            trimmedSourceOverride: trimmed,
             name: args.string("name"),
             folderId: sourceAsset.folderId,
             generateAudio: true
@@ -270,12 +272,36 @@ extension ToolExecutor {
             model = first
         }
 
+        let trimmed = try trimmedSource(args, editor: editor, source: asset)
         guard let placeholderId = EditSubmitter.submitUpscale(
-            asset: asset, model: model, editor: editor
+            asset: asset, model: model, editor: editor, trimmedSource: trimmed
         ) else {
             throw ToolError("Failed to start upscale")
         }
-        return .ok("Upscale started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), source: \(asset.name)")
+        return .ok("Upscale started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), source: \(asset.name)\(trimmed != nil ? " (trimmed range)" : "")")
+    }
+
+    private func trimmedSource(
+        _ args: [String: Any], editor: EditorViewModel, source: MediaAsset
+    ) throws -> TrimmedSource? {
+        guard let clipId = args.string("sourceClipId") else { return nil }
+        guard let clip = editor.clipFor(id: clipId) else {
+            throw ToolError("sourceClipId not found: \(clipId)")
+        }
+        guard clip.mediaRef == source.id else {
+            throw ToolError("sourceClipId \(clipId) references a different asset than the source")
+        }
+        guard source.type == .video else {
+            throw ToolError("sourceClipId only applies to video sources")
+        }
+        guard clip.trimStartFrame > 0 || clip.trimEndFrame > 0 else { return nil }
+        return TrimmedSource(
+            sourceURL: source.url,
+            trimStartFrame: clip.trimStartFrame,
+            trimEndFrame: clip.trimEndFrame,
+            sourceFramesConsumed: clip.sourceFramesConsumed,
+            fps: editor.timeline.fps
+        )
     }
 
     func listModels(_ args: [String: Any]) -> ToolResult {

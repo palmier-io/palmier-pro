@@ -218,20 +218,20 @@ struct MediaTab: View {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: AppTheme.Spacing.xs) {
                     toolbarButton(title: "Import", systemImage: "plus", compact: false, action: importMedia)
-                    toolbarButton(title: "New Folder", systemImage: "folder.badge.plus", compact: false, action: createNewFolderInCurrent)
                     if showGenerate {
                         toolbarButton(title: "Generate", systemImage: "sparkles", compact: false, filled: true, accentStyle: AnyShapeStyle(AppTheme.aiGradient), action: toggleGenerationPanel)
                     }
                 }
                 HStack(spacing: AppTheme.Spacing.xs) {
                     toolbarButton(title: "Import", systemImage: "plus", compact: true, action: importMedia)
-                    toolbarButton(title: "New Folder", systemImage: "folder.badge.plus", compact: true, action: createNewFolderInCurrent)
                     if showGenerate {
                         toolbarButton(title: "Generate", systemImage: "sparkles", compact: true, filled: true, accentStyle: AnyShapeStyle(AppTheme.aiGradient), action: toggleGenerationPanel)
                     }
                 }
             }
             .layoutPriority(1)
+
+            overflowMenu
 
             Spacer(minLength: 0)
         }
@@ -506,6 +506,28 @@ struct MediaTab: View {
         withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
             editor.showGenerationPanel.toggle()
         }
+    }
+
+    private var overflowMenu: some View {
+        let canOrganize = !AccountService.shared.isMisconfigured && !editor.mediaAssets.isEmpty
+        return toolbarMenuIcon(systemName: "ellipsis") {
+            Button(action: createNewFolderInCurrent) {
+                Label("New Folder", systemImage: "folder.badge.plus")
+            }
+            if canOrganize {
+                Button(action: organizeWithAgent) {
+                    Label("Organize with Agent", systemImage: "wand.and.stars")
+                }
+            }
+        }
+    }
+
+    private func organizeWithAgent() {
+        let folderHint = currentFolderId.map { _ in " Work within the current folder." } ?? ""
+        let service = editor.agentService
+        service.newChat()
+        service.draft = "Organize my media library. Review the assets, group related ones into clearly named folders, and give generically-named assets short descriptive names — inspect an asset when its name is unclear. Don't delete anything or change the timeline.\(folderHint)"
+        editor.agentPanelVisible = true
     }
 
     private func toolbarMenuIcon<Content: View>(

@@ -43,6 +43,10 @@ final class ToolExecutor {
             case .listFolders:   return listFolders(editor)
             case .createFolder:  return try createFolder(editor, args)
             case .moveToFolder:  return try moveToFolder(editor, args)
+            case .renameMedia:   return try renameMedia(editor, args)
+            case .renameFolder:  return try renameFolder(editor, args)
+            case .deleteMedia:   return try deleteMedia(editor, args)
+            case .deleteFolder:  return try deleteFolder(editor, args)
             }
         } catch let err as ToolError {
             return .error(err.message)

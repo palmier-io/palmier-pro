@@ -21,6 +21,10 @@ enum ToolName: String, CaseIterable, Sendable {
     case listFolders = "list_folders"
     case createFolder = "create_folder"
     case moveToFolder = "move_to_folder"
+    case renameMedia = "rename_media"
+    case renameFolder = "rename_folder"
+    case deleteMedia = "delete_media"
+    case deleteFolder = "delete_folder"
 }
 
 struct AgentTool: @unchecked Sendable {
@@ -232,6 +236,7 @@ enum ToolDefinitions {
                     "startFrameMediaRef": ["type": "string", "description": "Media asset ID to use as the first frame (image-to-video)"],
                     "endFrameMediaRef": ["type": "string", "description": "Media asset ID to use as the last frame (supported by some models)"],
                     "sourceVideoMediaRef": ["type": "string", "description": "Media asset ID of a source video (required by video-to-video edit models; ignores duration/aspectRatio/resolution)"],
+                    "sourceClipId": ["type": "string", "description": "Optional. Clip id (from get_timeline) referencing sourceVideoMediaRef. When set and the clip is trimmed, only the clip's visible range is sent to the model, not the full source — matches the UI's 'Use trimmed portion only'."],
                     "referenceImageMediaRefs": ["type": "array", "items": ["type": "string"], "description": "Media asset IDs of image references. Covers both reference-to-video generation (Seedance, Kling V3/O3 elements, Grok — refer as @Image1/@Element1 in prompt) and the single-image ref used by video-to-video edit models (Kling V3 Motion Control). See list_models maxReferenceImages for per-model cap."],
                     "referenceVideoMediaRefs": ["type": "array", "items": ["type": "string"], "description": "Media asset IDs of video references (Seedance only). Refer to them as @Video1, @Video2. See maxReferenceVideos and maxCombinedVideoRefSeconds."],
                     "referenceAudioMediaRefs": ["type": "array", "items": ["type": "string"], "description": "Media asset IDs of audio references (Seedance only). Refer to them as @Audio1, @Audio2. See maxReferenceAudios and maxCombinedAudioRefSeconds."],
@@ -282,6 +287,7 @@ enum ToolDefinitions {
                 properties: [
                     "mediaRef": ["type": "string", "description": "ID of the video or image asset to upscale"],
                     "model": ["type": "string", "description": "Upscaler model ID (e.g. 'bytedance-upscaler', 'seedvr-image-upscaler'). Defaults to the first model that supports the asset's type."],
+                    "sourceClipId": ["type": "string", "description": "Optional. Video clip id (from get_timeline) referencing mediaRef. When set and the clip is trimmed, only the clip's visible range is upscaled, not the full source."],
                 ],
                 required: ["mediaRef"]
             )
@@ -336,6 +342,56 @@ enum ToolDefinitions {
                     "folderId": ["type": "string", "description": "Destination folder id. Omit to move to the project root."],
                 ],
                 required: ["assetIds"]
+            )
+        ),
+        AgentTool(
+            name: .renameMedia,
+            description: "Renames a media asset in the library. Undoable.",
+            inputSchema: objectSchema(
+                properties: [
+                    "mediaRef": ["type": "string", "description": "Media asset id from get_media."],
+                    "name": ["type": "string", "description": "New display name."],
+                ],
+                required: ["mediaRef", "name"]
+            )
+        ),
+        AgentTool(
+            name: .renameFolder,
+            description: "Renames a folder in the media panel. Undoable.",
+            inputSchema: objectSchema(
+                properties: [
+                    "folderId": ["type": "string", "description": "Folder id from list_folders."],
+                    "name": ["type": "string", "description": "New folder name."],
+                ],
+                required: ["folderId", "name"]
+            )
+        ),
+        AgentTool(
+            name: .deleteMedia,
+            description: "Deletes media assets from the library. Any clips referencing them are removed from the timeline in the same undoable action.",
+            inputSchema: objectSchema(
+                properties: [
+                    "assetIds": [
+                        "type": "array",
+                        "items": ["type": "string"],
+                        "description": "Media asset ids to delete.",
+                    ],
+                ],
+                required: ["assetIds"]
+            )
+        ),
+        AgentTool(
+            name: .deleteFolder,
+            description: "Deletes folders and everything inside them (subfolders and assets). Clips referencing any deleted asset are removed from the timeline in the same undoable action.",
+            inputSchema: objectSchema(
+                properties: [
+                    "folderIds": [
+                        "type": "array",
+                        "items": ["type": "string"],
+                        "description": "Folder ids to delete.",
+                    ],
+                ],
+                required: ["folderIds"]
             )
         ),
         AgentTool(

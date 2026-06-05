@@ -515,7 +515,10 @@ extension EditorViewModel {
     }
 
     func deleteSelectedMediaAssets() {
-        let ids = selectedMediaAssetIds
+        deleteMediaAssets(ids: selectedMediaAssetIds)
+    }
+
+    func deleteMediaAssets(ids: Set<String>) {
         guard !ids.isEmpty else { return }
         guard mediaAssets.contains(where: { ids.contains($0.id) }) else { return }
 
