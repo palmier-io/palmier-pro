@@ -189,7 +189,7 @@ extension ToolExecutor {
 
         var meta = Self.baseMeta(for: asset)
         meta["hasAudio"] = asset.hasAudio
-        meta["frameTimestamps"] = frames.map(\.timestamp)
+        meta["frameTimestamps"] = frames.map { $0.timestamp.jsonRounded(toPlaces: 3) }
 
         if asset.hasAudio {
             do {
@@ -248,7 +248,7 @@ extension ToolExecutor {
     private static func baseMeta(for asset: MediaAsset) -> [String: Any] {
         var meta: [String: Any] = [
             "id": asset.id, "name": asset.name,
-            "type": asset.type.rawValue, "duration": asset.duration,
+            "type": asset.type.rawValue, "duration": asset.duration.jsonRounded(toPlaces: 3),
             "fileName": asset.url.lastPathComponent,
             "generationStatus": generationStatusString(asset.generationStatus),
         ]
