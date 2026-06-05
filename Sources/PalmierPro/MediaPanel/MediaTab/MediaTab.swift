@@ -91,7 +91,6 @@ struct MediaTab: View {
                             emptyStateView
                         } else {
                             VStack(spacing: 0) {
-                                contextBar
                                 switch viewMode {
                                 case .folder: mediaGridView
                                 case .flat: flatGridView
@@ -112,9 +111,11 @@ struct MediaTab: View {
                 }
                 .animation(.easeInOut(duration: AppTheme.Anim.transition), value: editor.mediaPanelToast)
             }
+            .layoutPriority(1)
 
             if editor.showGenerationPanel && !mediaAreaCollapsed {
-                GenerationView(containerHeight: mediaPanelHeight)
+                GenerationView(maxPanelHeight: generationPanelMaxHeight)
+                    .frame(maxHeight: CGFloat(generationPanelMaxHeight), alignment: .bottom)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -213,41 +214,50 @@ struct MediaTab: View {
     // MARK: - Toolbar
 
     private var toolbar: some View {
+        VStack(spacing: AppTheme.Spacing.xs) {
+            actionsRow
+            searchControlsRow
+            contextBar
+        }
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.top, AppTheme.Spacing.sm)
+        .padding(.bottom, AppTheme.Spacing.xs)
+        .background(AppTheme.Background.surfaceColor)
+    }
+
+    private var actionsRow: some View {
         let showGenerate = !AccountService.shared.isMisconfigured
         return HStack(spacing: AppTheme.Spacing.xs) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: AppTheme.Spacing.xs) {
-                    toolbarButton(title: "Import", systemImage: "plus", compact: false, action: importMedia)
-                    if showGenerate {
-                        toolbarButton(title: "Generate", systemImage: "sparkles", compact: false, filled: true, accentStyle: AnyShapeStyle(AppTheme.aiGradient), action: toggleGenerationPanel)
-                    }
-                }
-                HStack(spacing: AppTheme.Spacing.xs) {
-                    toolbarButton(title: "Import", systemImage: "plus", compact: true, action: importMedia)
-                    if showGenerate {
-                        toolbarButton(title: "Generate", systemImage: "sparkles", compact: true, filled: true, accentStyle: AnyShapeStyle(AppTheme.aiGradient), action: toggleGenerationPanel)
-                    }
-                }
+            toolbarButton(title: "Import", systemImage: "plus", action: importMedia)
+            if showGenerate {
+                toolbarButton(title: "Generate", systemImage: "sparkles", filled: true, accentStyle: AnyShapeStyle(AppTheme.aiGradient), action: toggleGenerationPanel)
             }
-            .layoutPriority(1)
 
             overflowMenu
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, AppTheme.Spacing.sm)
         .frame(height: Layout.panelHeaderHeight)
-        .padding(.top, AppTheme.Spacing.sm)
     }
 
-    // MARK: - Context bar (breadcrumb + count + display controls)
+    private var searchControlsRow: some View {
+        HStack(spacing: AppTheme.Spacing.xs) {
+            searchField
+                .layoutPriority(1)
+
+            displayControls
+        }
+        .frame(height: Layout.panelHeaderHeight)
+    }
+
+    // MARK: - Context bar (breadcrumb + count)
 
     var breadcrumbItems: [BreadcrumbItem] {
         var items: [BreadcrumbItem] = [BreadcrumbItem(folderId: nil, name: "Library")]
         for f in editor.folderPath(for: currentFolderId) {
             items.append(BreadcrumbItem(folderId: f.id, name: f.name))
         }
-        return items.count > 1 ? items : []
+        return items
     }
 
     struct BreadcrumbItem: Identifiable {
@@ -258,7 +268,32 @@ struct MediaTab: View {
 
     private var contextBar: some View {
         HStack(spacing: AppTheme.Spacing.xs) {
-            if viewMode == .folder, !breadcrumbItems.isEmpty {
+            contextPath
+                .layoutPriority(1)
+
+            Spacer(minLength: AppTheme.Spacing.xs)
+
+            itemCountText
+        }
+        .frame(height: AppTheme.MediaPanel.contextRowHeight)
+    }
+
+    @ViewBuilder
+    private var contextPath: some View {
+        if viewMode == .folder {
+            breadcrumbBar
+        } else {
+            Text(viewMode.title)
+                .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.semibold))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var breadcrumbBar: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: AppTheme.Spacing.xs) {
                 ForEach(Array(breadcrumbItems.enumerated()), id: \.element.id) { idx, item in
                     if idx > 0 {
                         Image(systemName: "chevron.right")
@@ -268,21 +303,14 @@ struct MediaTab: View {
                     breadcrumbChip(item: item, isLeaf: idx == breadcrumbItems.count - 1)
                 }
             }
-
-            searchField
-
-            itemCountText
-
-            displayControls
         }
-        .padding(.horizontal, AppTheme.Spacing.sm)
-        .padding(.top, AppTheme.Spacing.xs)
-        .padding(.bottom, AppTheme.Spacing.xxs)
+        .scrollIndicators(.hidden)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
     private var displayControls: some View {
-        toolbarMenuIcon(systemName: viewMode.systemImage) {
+        toolbarMenuIcon(systemName: "rectangle.grid.2x2") {
             Section("View") {
                 ForEach(ViewMode.allCases, id: \.self) { mode in
                     Button {
@@ -340,6 +368,7 @@ struct MediaTab: View {
             Text(item.name)
                 .font(.system(size: AppTheme.FontSize.xs, weight: isLeaf ? .semibold : .regular))
                 .foregroundStyle(textColor)
+                .lineLimit(1)
                 .padding(.horizontal, AppTheme.Spacing.sm)
                 .padding(.vertical, AppTheme.Spacing.xxs)
                 .hoverHighlight(cornerRadius: AppTheme.Radius.xsSm)
@@ -458,14 +487,23 @@ struct MediaTab: View {
                 .help("Clear search")
             }
         }
-        .padding(.leading, viewMode == .folder && !breadcrumbItems.isEmpty ? 0 : AppTheme.Spacing.smMd)
+        .padding(.leading, AppTheme.Spacing.smMd)
+        .padding(.trailing, AppTheme.Spacing.xs)
+        .padding(.vertical, AppTheme.Spacing.xs)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color.white.opacity(AppTheme.Opacity.subtle))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(Color.white.opacity(AppTheme.Opacity.faint), lineWidth: AppTheme.BorderWidth.thin)
+        )
     }
 
     private func toolbarButton(
         title: String,
         systemImage: String,
-        compact: Bool,
         filled: Bool = false,
         accentStyle: AnyShapeStyle? = nil,
         action: @escaping () -> Void
@@ -473,13 +511,10 @@ struct MediaTab: View {
         Button(action: action) {
             HStack(spacing: AppTheme.Spacing.xs) {
                 Image(systemName: systemImage)
-                if !compact {
-                    Text(title)
-                }
+                Text(title)
             }
             .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
             .foregroundStyle(filled ? AnyShapeStyle(AppTheme.Background.baseColor) : (accentStyle ?? AnyShapeStyle(AppTheme.Text.secondaryColor)))
-            .frame(width: compact ? AppTheme.IconSize.sm : nil)
             .padding(.horizontal, AppTheme.Spacing.smMd)
             .padding(.vertical, AppTheme.Spacing.xs)
             .hoverHighlight(cornerRadius: AppTheme.Radius.xl)
@@ -500,6 +535,10 @@ struct MediaTab: View {
     private var mediaAreaCollapsed: Bool {
         !editor.mediaPanelVisible
             || (editor.maximizedPanel != nil && editor.maximizedPanel != .media)
+    }
+
+    private var generationPanelMaxHeight: Double {
+        Double(max(0, mediaPanelHeight - AppTheme.GenerationPanel.mediaAreaMinHeight))
     }
 
     private func toggleGenerationPanel() {

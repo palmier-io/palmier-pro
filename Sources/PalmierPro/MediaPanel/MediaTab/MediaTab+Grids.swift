@@ -91,7 +91,7 @@ extension MediaTab {
     ) -> some View where Cell.ID == String {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
-                let columns = [GridItem(.adaptive(minimum: thumbnailSize), spacing: spacing)]
+                let columns = Array(repeating: GridItem(.fixed(tileWidth), spacing: spacing), count: max(cols, 1))
                 LazyVGrid(columns: columns, alignment: .leading, spacing: spacing) {
                     ForEach(cells) { cell in
                         cellView(cell)
@@ -130,16 +130,13 @@ extension MediaTab {
     var mediaGridView: some View {
         GeometryReader { geo in
             let layout = computeLayout(width: geo.size.width)
-            let topPadding: CGFloat = breadcrumbItems.isEmpty
-                ? AppTheme.Spacing.sm
-                : AppTheme.Spacing.xs
             gridScroll(
                 cells: layout.cells,
                 orderedIds: layout.orderedIds,
                 cols: layout.cols,
                 tileWidth: layout.tileWidth,
                 spacing: layout.spacing,
-                topPadding: topPadding
+                topPadding: AppTheme.Spacing.sm
             ) { cell in
                 cellView(for: cell)
             }

@@ -65,8 +65,8 @@ enum AppTheme {
 
     static let aiGradientDark = LinearGradient(
         stops: [
-            .init(color: Color(white: 0.09), location: 0.00),
-            .init(color: Color(white: 0.04), location: 1.00),
+            .init(color: Color(white: 0.11), location: 0.00),
+            .init(color: Color(white: 0.06), location: 1.00),
         ],
         startPoint: .top,
         endPoint: .bottom
@@ -229,10 +229,16 @@ enum AppTheme {
     }
 
     enum GenerationPanel {
-        static let reservedChromeHeight: Double = 120
+        static let mediaAreaMinHeight: CGFloat = 120
+        static let loadingHeight: CGFloat = 180
         static let promptMinHeight: CGFloat = 40
-        static let nameFieldMaxWidth: CGFloat = 200
-        static let typeLabelsMinWidth: CGFloat = 420
+        static let referenceTileWidth: CGFloat = 80
+        static let referenceTileHeight: CGFloat = 56
+    }
+
+    enum MediaPanel {
+        static let tabRailWidth: CGFloat = IconSize.lg + Spacing.sm * 2
+        static let contextRowHeight: CGFloat = IconSize.md
     }
 
     // MARK: - Shadows

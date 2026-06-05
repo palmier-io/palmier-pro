@@ -10,7 +10,6 @@ final class PreviewPlayheadState {
 struct PendingPanelSeed {
     let asset: MediaAsset
     let stored: GenerationInput
-    let defaultName: String?
 }
 
 @Observable

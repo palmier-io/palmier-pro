@@ -1,11 +1,10 @@
 import SwiftUI
 
 struct GenerationView: View {
-    let containerHeight: Double
+    let maxPanelHeight: Double
 
     @Environment(EditorViewModel.self) var editor
     @State private var prompt = ""
-    @State private var assetName = ""
     @State private var selectedType: GenerationType = .video
     @State private var selectedVideoModelIndex = 0
     @State private var selectedImageModelIndex = 0
@@ -66,8 +65,6 @@ struct GenerationView: View {
     @State private var measuredPanelHeight: CGFloat = 0
     @State private var measuredPromptHeight: CGFloat = 0
 
-    @State private var panelWidth: CGFloat = 0
-
     /// Everything in the panel except the prompt's variable height, recovered
     /// from two frame-consistent measurements so it never depends on the value
     /// we're trying to clamp.
@@ -75,12 +72,11 @@ struct GenerationView: View {
         max(0, measuredPanelHeight - measuredPromptHeight)
     }
 
-    /// Largest prompt growth that keeps the whole panel within the container
-    /// while leaving room for the rest of the media panel.
+    /// Largest prompt growth that keeps the panel inside its allotted slot.
     private var maxPromptExtra: Double {
-        guard measuredPanelHeight > 0 else { return .greatestFiniteMagnitude }
-        let available = containerHeight
-            - AppTheme.GenerationPanel.reservedChromeHeight
+        guard measuredPanelHeight > 0, maxPanelHeight > 0 else { return 0 }
+        let available = maxPanelHeight
+            - Double(AppTheme.Spacing.sm * 2)
             - Double(chromeHeight)
             - Double(AppTheme.GenerationPanel.promptMinHeight)
         return max(0, available)
@@ -376,12 +372,7 @@ struct GenerationView: View {
     // MARK: - Body
 
     private var refGridColumns: [GridItem] {
-        let minCell: CGFloat = 80
-        let spacing = AppTheme.Spacing.xs
-        let inset: CGFloat = AppTheme.Spacing.sm * 2 + AppTheme.Spacing.md * 2
-        let usable = max(minCell, panelWidth - inset)
-        let count = max(1, Int((usable + spacing) / (minCell + spacing)))
-        return Array(repeating: GridItem(.flexible(minimum: minCell), spacing: spacing), count: count)
+        [GridItem(.adaptive(minimum: AppTheme.GenerationPanel.referenceTileWidth), spacing: AppTheme.Spacing.xs)]
     }
 
     private var catalogReady: Bool {
@@ -409,7 +400,7 @@ struct GenerationView: View {
                 .foregroundStyle(AppTheme.Text.secondaryColor)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 180)
+        .frame(height: AppTheme.GenerationPanel.loadingHeight)
         .background {
             RoundedRectangle(cornerRadius: AppTheme.Radius.lg)
                 .fill(AppTheme.aiGradientDark)
@@ -452,14 +443,9 @@ struct GenerationView: View {
             }
 
             VStack(spacing: AppTheme.Spacing.xs) {
-                HStack(alignment: .bottom, spacing: AppTheme.Spacing.sm) {
-                    referencesContent
-                        .layoutPriority(1)
-                    Spacer(minLength: 0)
-                    nameField
-                        .layoutPriority(-1)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                referencesContent
+                    .layoutPriority(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 if let dropError {
                     Text(dropError)
@@ -521,7 +507,7 @@ struct GenerationView: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.lg))
         .padding(AppTheme.Spacing.sm)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { panelWidth = $0 }
+        .frame(maxHeight: max(0, CGFloat(maxPanelHeight)), alignment: .top)
         .onAppear {
             let hadSeed = editor.pendingPanelSeed != nil
             consumePendingPanelSeed()
@@ -602,30 +588,6 @@ struct GenerationView: View {
                         dragStartExtra = nil
                     }
             )
-    }
-
-    // MARK: - Name field
-
-    private var nameField: some View {
-        HStack(spacing: AppTheme.Spacing.xs) {
-            Image(systemName: "tag")
-                .font(.system(size: AppTheme.FontSize.xxs))
-                .foregroundStyle(AppTheme.Text.mutedColor)
-                .fixedSize()
-            TextField("Name", text: $assetName)
-                .font(.system(size: AppTheme.FontSize.xs))
-                .textFieldStyle(.plain)
-                .foregroundStyle(AppTheme.Text.secondaryColor)
-                .frame(minWidth: .zero, maxWidth: .infinity)
-                .clipped()
-        }
-        .padding(.horizontal, AppTheme.Spacing.smMd)
-        .padding(.vertical, AppTheme.Spacing.xs)
-        .frame(minWidth: .zero, maxWidth: AppTheme.GenerationPanel.nameFieldMaxWidth, alignment: .leading)
-        .background(Capsule().fill(Color.white.opacity(AppTheme.Opacity.subtle)))
-        .overlay(Capsule().strokeBorder(Color.white.opacity(AppTheme.Opacity.faint), lineWidth: AppTheme.BorderWidth.thin))
-        .clipped()
-        .help("Optional name for the generated asset.")
     }
 
     // MARK: - Prompt area (inside input box)
@@ -797,23 +759,28 @@ struct GenerationView: View {
                 }
                 if hasAnySettings { settingsButton }
 
-                Spacer()
+                Spacer(minLength: AppTheme.Spacing.xs)
 
-                HStack(spacing: AppTheme.Spacing.xs) {
-                    Image(systemName: "dollarsign.circle.fill")
-                        .font(.system(size: AppTheme.FontSize.sm))
-                    Text(estimatedCost.map { $0.formatted() } ?? "—")
-                        .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-                        .monospacedDigit()
-                }
-                .foregroundStyle(hasInsufficientCredits ? .red : AppTheme.Text.secondaryColor)
-                .help(costHelpText)
-
+                costEstimateLabel
                 submitButton
             }
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, AppTheme.Spacing.md)
             .padding(.vertical, AppTheme.Spacing.sm)
         }
+    }
+
+    private var costEstimateLabel: some View {
+        HStack(spacing: AppTheme.Spacing.xs) {
+            Image(systemName: "dollarsign.circle.fill")
+                .font(.system(size: AppTheme.FontSize.sm))
+            Text(estimatedCost.map { $0.formatted() } ?? "—")
+                .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                .monospacedDigit()
+                .lineLimit(1)
+        }
+        .foregroundStyle(hasInsufficientCredits ? .red : AppTheme.Text.secondaryColor)
+        .help(costHelpText)
     }
 
     private var voicePicker: some View {
@@ -831,6 +798,8 @@ struct GenerationView: View {
                 Text(selectedVoice.isEmpty ? (audioModel.defaultVoice ?? "Voice") : selectedVoice)
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 Image(systemName: "chevron.down")
                     .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -840,7 +809,6 @@ struct GenerationView: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .fixedSize()
         .hoverHighlight()
     }
 
@@ -1096,7 +1064,7 @@ struct GenerationView: View {
                         Rectangle().fill(.quaternary)
                     }
                 }
-                .frame(width: 80, height: 56)
+                .frame(width: AppTheme.GenerationPanel.referenceTileWidth, height: AppTheme.GenerationPanel.referenceTileHeight)
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
                 .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
                     .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.thin))
@@ -1168,7 +1136,7 @@ struct GenerationView: View {
                 }
             }
         }
-        .frame(width: 80, height: 56)
+        .frame(width: AppTheme.GenerationPanel.referenceTileWidth, height: AppTheme.GenerationPanel.referenceTileHeight)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
         .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
             .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.thin))
@@ -1235,7 +1203,7 @@ struct GenerationView: View {
         Image(systemName: iconName)
             .font(.system(size: AppTheme.FontSize.smMd))
             .foregroundStyle(isTargeted.wrappedValue ? AppTheme.Accent.primary : AppTheme.Text.mutedColor)
-            .frame(width: 80, height: 56)
+            .frame(width: AppTheme.GenerationPanel.referenceTileWidth, height: AppTheme.GenerationPanel.referenceTileHeight)
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
                     .fill(isTargeted.wrappedValue ? AppTheme.Accent.primary.opacity(AppTheme.Opacity.faint) : Color.white.opacity(AppTheme.Opacity.subtle))
@@ -1279,51 +1247,35 @@ struct GenerationView: View {
         selectedType == .video && videoModel.framesAndReferencesExclusive
     }
 
-    private var showsTypeLabels: Bool {
-        guard panelWidth > 0 else { return true }
-        return panelWidth >= AppTheme.GenerationPanel.typeLabelsMinWidth
-    }
-
     private var typeTabs: some View {
-        typeTabsBar(showLabels: showsTypeLabels)
-    }
-
-    private func typeTabsBar(showLabels: Bool) -> some View {
         HStack(spacing: 0) {
             ForEach(GenerationType.allCases, id: \.self) { type in
                 Button {
-                    withAnimation(.easeInOut(duration: 0.15)) { selectedType = type }
+                    withAnimation(.easeInOut(duration: AppTheme.Anim.hover)) { selectedType = type }
                 } label: {
-                    HStack(spacing: AppTheme.Spacing.xs) {
-                        Image(systemName: type.icon)
-                            .font(.system(size: AppTheme.FontSize.xxs, weight: selectedType == type ? .semibold : .medium))
-                            .foregroundStyle(selectedType == type ? type.accentColor : AppTheme.Text.tertiaryColor)
-                        if showLabels {
-                            Text(type.rawValue)
-                                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
-                                .foregroundStyle(selectedType == type ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
-                                .fixedSize()
-                        }
-                    }
-                    .padding(.horizontal, AppTheme.Spacing.sm)
-                    .padding(.vertical, 4)
+                    Image(systemName: type.icon)
+                        .font(.system(size: AppTheme.FontSize.smMd, weight: selectedType == type ? .semibold : .medium))
+                        .foregroundStyle(selectedType == type ? type.accentColor : AppTheme.Text.tertiaryColor)
+                        .frame(width: AppTheme.IconSize.xl + AppTheme.Spacing.lg, height: AppTheme.IconSize.md)
                     .background(
-                        RoundedRectangle(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: 2))
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: AppTheme.Spacing.xxs))
                             .fill(selectedType == type ? Color.white.opacity(AppTheme.Opacity.faint) : .clear)
                     )
-                    .hoverHighlight(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: 2))
+                    .hoverHighlight(cornerRadius: AppTheme.Radius.concentric(outer: AppTheme.Radius.sm, padding: AppTheme.Spacing.xxs))
                 }
                 .buttonStyle(.plain)
+                .help(type.rawValue)
+                .accessibilityLabel(type.rawValue)
             }
         }
-        .padding(2)
+        .padding(AppTheme.Spacing.xxs)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
                 .fill(Color.white.opacity(AppTheme.Opacity.subtle))
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .strokeBorder(AppTheme.Border.primaryColor, lineWidth: 1)
+                .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.thin)
         )
     }
 
@@ -1356,16 +1308,17 @@ struct GenerationView: View {
                 Text(currentModelName)
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 7, weight: .semibold))
+                    .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
             .padding(.horizontal, AppTheme.Spacing.xs)
-            .padding(.vertical, 3)
+            .padding(.vertical, AppTheme.Spacing.xxs)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .fixedSize()
         .hoverHighlight()
     }
 
@@ -1378,14 +1331,15 @@ struct GenerationView: View {
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .lineLimit(1)
+                    .truncationMode(.tail)
                 if supportsAudioToggle {
                     Image(systemName: generateAudio ? "speaker.wave.2.fill" : "speaker.slash.fill")
-                        .font(.system(size: 9))
+                        .font(.system(size: AppTheme.FontSize.xxs))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                 }
             }
             .padding(.horizontal, AppTheme.Spacing.xs)
-            .padding(.vertical, 3)
+            .padding(.vertical, AppTheme.Spacing.xxs)
             .hoverHighlight()
         }
         .buttonStyle(.plain)
@@ -1573,9 +1527,6 @@ struct GenerationView: View {
             genInput.numImages = imageCount
         }
 
-        let trimmedName = assetName.trimmingCharacters(in: .whitespaces)
-        let name: String? = trimmedName.isEmpty ? nil : trimmedName
-
         let replacementClipId = editor.pendingEditReplacementClipId
         editor.pendingEditReplacementClipId = nil
         let editorRef = editor
@@ -1636,7 +1587,6 @@ struct GenerationView: View {
                 inputAssets: inputAssets,
                 placeholderDuration: placeholderDuration,
                 trimmedSourceOverride: trimmedSource,
-                name: name,
                 folderId: videoFolderId,
                 generateAudio: effectiveGenerateAudio
             ).submit(
@@ -1653,7 +1603,6 @@ struct GenerationView: View {
                 genInput: genInput,
                 model: model,
                 references: imageReferences,
-                name: name,
                 numImages: imageCount,
                 folderId: editFolderId ?? imageReferences.last?.folderId ?? editor.mediaPanelCurrentFolderId
             ).submit(
@@ -1671,7 +1620,6 @@ struct GenerationView: View {
                 genInput: genInput,
                 model: model,
                 params: params,
-                name: name,
                 folderId: editFolderId ?? editor.mediaPanelCurrentFolderId
             ).submit(
                 service: editor.generationService,
@@ -1684,7 +1632,6 @@ struct GenerationView: View {
         lyrics = ""
         styleInstructions = ""
         prompt = ""
-        assetName = ""
         editFolderId = nil
         clearReferences()
     }
@@ -1699,11 +1646,11 @@ struct GenerationView: View {
 
     private func consumePendingPanelSeed() {
         guard let seed = editor.pendingPanelSeed else { return }
-        populatePanel(asset: seed.asset, stored: seed.stored, defaultName: seed.defaultName)
+        populatePanel(asset: seed.asset, stored: seed.stored)
         editor.pendingPanelSeed = nil
     }
 
-    private func populatePanel(asset: MediaAsset, stored: GenerationInput, defaultName: String?) {
+    private func populatePanel(asset: MediaAsset, stored: GenerationInput) {
         switch ModelRegistry.byId[stored.model] {
         case .video:
             guard let idx = VideoModelConfig.allModels.firstIndex(where: { $0.id == stored.model }) else { return }
@@ -1776,9 +1723,6 @@ struct GenerationView: View {
             break
         }
 
-        if let defaultName, assetName.isEmpty {
-            assetName = defaultName
-        }
         editFolderId = asset.folderId
 
         resetSettings()

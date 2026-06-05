@@ -53,7 +53,7 @@ struct AIEditMenu: View {
 
     private func edit() {
         guard let stored = EditSubmitter.editSeed(for: asset) else { return }
-        seedPanel(stored: stored, defaultName: "Edited \(asset.name)")
+        seedPanel(stored: stored)
     }
 
     private func rerun() {
@@ -61,19 +61,19 @@ struct AIEditMenu: View {
         if UpscaleModelConfig.allIds.contains(modelId) {
             _ = try? EditSubmitter.rerun(asset: asset, editor: editor)
         } else if let stored = asset.generationInput {
-            seedPanel(stored: stored, defaultName: nil)
+            seedPanel(stored: stored)
         }
     }
 
     private func createVideo(asReference: Bool) {
         guard let stored = EditSubmitter.createVideoSeed(for: asset, asReference: asReference) else { return }
-        seedPanel(stored: stored, defaultName: "Video from \(asset.name)")
+        seedPanel(stored: stored)
     }
 
-    private func seedPanel(stored: GenerationInput, defaultName: String?) {
+    private func seedPanel(stored: GenerationInput) {
         editor.pendingEditReplacementClipId = nil
         editor.pendingEditTrimmedSource = nil
-        editor.pendingPanelSeed = PendingPanelSeed(asset: asset, stored: stored, defaultName: defaultName)
+        editor.pendingPanelSeed = PendingPanelSeed(asset: asset, stored: stored)
         editor.showGenerationPanel = true
     }
 }

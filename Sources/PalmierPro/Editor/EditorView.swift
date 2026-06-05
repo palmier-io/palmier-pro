@@ -297,7 +297,7 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
 
     private func makeMediaItem() -> NSSplitViewItem {
         let item = NSSplitViewItem(viewController: mediaHC)
-        item.minimumThickness = Layout.mediaPanelMin
+        item.minimumThickness = Layout.mediaPanelMin + AppTheme.MediaPanel.tabRailWidth
         item.canCollapse = false
         item.isCollapsed = !editor.mediaPanelVisible
         mediaSplitItem = item

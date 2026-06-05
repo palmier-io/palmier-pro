@@ -240,7 +240,7 @@ struct AIEditTab: View {
 
     private func sendToVideo(asReference: Bool) {
         guard let stored = EditSubmitter.createVideoSeed(for: asset, asReference: asReference) else { return }
-        seedPanel(stored: stored, defaultName: "Video from \(asset.name)", trimmed: nil)
+        seedPanel(stored: stored, trimmed: nil)
     }
 
     private func present(_ action: EditAction) {
@@ -248,7 +248,7 @@ struct AIEditTab: View {
         case .upscale, .createVideo: break // handled via menu
         case .edit:
             guard let stored = EditSubmitter.editSeed(for: asset) else { return }
-            seedPanel(stored: stored, defaultName: "Edited \(asset.name)", trimmed: trimmedSourceIfEnabled())
+            seedPanel(stored: stored, trimmed: trimmedSourceIfEnabled())
         case .rerun:
             let modelId = asset.generationInput?.model ?? ""
             if UpscaleModelConfig.allIds.contains(modelId) {
@@ -264,15 +264,15 @@ struct AIEditTab: View {
                     rerunError = error.localizedDescription
                 }
             } else if let stored = asset.generationInput {
-                seedPanel(stored: stored, defaultName: nil, trimmed: nil)
+                seedPanel(stored: stored, trimmed: nil)
             }
         }
     }
 
-    private func seedPanel(stored: GenerationInput, defaultName: String?, trimmed: TrimmedSource?) {
+    private func seedPanel(stored: GenerationInput, trimmed: TrimmedSource?) {
         editor.pendingEditReplacementClipId = (shouldReplace ? clipId : nil)
         editor.pendingEditTrimmedSource = trimmed
-        editor.pendingPanelSeed = PendingPanelSeed(asset: asset, stored: stored, defaultName: defaultName)
+        editor.pendingPanelSeed = PendingPanelSeed(asset: asset, stored: stored)
         editor.showGenerationPanel = true
     }
 
