@@ -44,16 +44,6 @@ struct ChatHistoryList: View {
                         .font(.system(size: AppTheme.FontSize.xs, weight: isCurrent ? .semibold : .regular))
                         .foregroundStyle(AppTheme.Text.primaryColor)
                         .lineLimit(1)
-                    if !session.isOpen {
-                        Text("archived")
-                            .font(.system(size: AppTheme.FontSize.micro, weight: .medium))
-                            .foregroundStyle(AppTheme.Text.mutedColor)
-                            .padding(.horizontal, AppTheme.Spacing.xs)
-                            .padding(.vertical, AppTheme.Spacing.xxs)
-                            .background(
-                                Capsule().fill(Color.white.opacity(AppTheme.Opacity.hint))
-                            )
-                    }
                 }
                 Text(Self.formatter.localizedString(for: session.updatedAt, relativeTo: Date()))
                     .font(.system(size: 9))

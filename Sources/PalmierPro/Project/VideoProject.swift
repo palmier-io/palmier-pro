@@ -62,9 +62,11 @@ final class VideoProject: NSDocument {
         snapshotManifest = try? JSONEncoder().encode(editorViewModel.mediaManifest)
         snapshotGenerationLog = try? JSONEncoder().encode(editorViewModel.generationLog)
         snapshotThumbnail = captureThumbnail()
-        snapshotChatSessionFiles = editorViewModel.agentService.sessions.compactMap { session in
-            ChatSessionStore.encodeSession(session).map { (name: "\(session.id.uuidString).json", data: $0) }
-        }
+        snapshotChatSessionFiles = editorViewModel.agentService.sessions
+            .filter { !$0.messages.isEmpty }
+            .compactMap { session in
+                ChatSessionStore.encodeSession(session).map { (name: "\(session.id.uuidString).json", data: $0) }
+            }
         super.save(to: url, ofType: typeName, for: saveOperation, completionHandler: completionHandler)
     }
 

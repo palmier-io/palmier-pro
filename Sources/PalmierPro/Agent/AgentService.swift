@@ -100,16 +100,22 @@ final class AgentService {
     private var currentTask: Task<Void, Never>?
 
     func loadSessions(from projectURL: URL?) {
-        sessions = ChatSessionStore.load(from: projectURL).sorted { $0.updatedAt > $1.updatedAt }
-        if let first = sessions.first {
-            currentSessionId = first.id
-            messages = first.messages
-        } else {
-            let session = ChatSession()
-            sessions = [session]
-            currentSessionId = session.id
-            messages = []
-        }
+        sessions = ChatSessionStore.load(from: projectURL)
+            .filter { !$0.messages.isEmpty }
+            .map {
+                var session = $0
+                session.isOpen = false
+                return session
+            }
+            .sorted { $0.updatedAt > $1.updatedAt }
+
+        let session = ChatSession()
+        sessions.insert(session, at: 0)
+        currentSessionId = session.id
+        messages = []
+        draft = ""
+        mentions.removeAll()
+        streamError = nil
     }
 
     func newChat() {

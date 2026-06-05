@@ -3,6 +3,39 @@ import SwiftUI
 struct AgentPanelView: View {
     @Environment(EditorViewModel.self) var editor
 
+    private static let starterPrompts: [AgentStarterPrompt] = [
+        AgentStarterPrompt(
+            title: "Generate an AI video",
+            systemImage: "sparkles",
+            prompt: "Generate an AI video of "
+        ),
+        AgentStarterPrompt(
+            title: "Generate B-roll",
+            systemImage: "film",
+            prompt: "Generate B-roll for my timeline. Inspect the current edit, identify sections that would benefit from cutaways, generate suitable B-roll, and place it where it supports the story."
+        ),
+        AgentStarterPrompt(
+            title: "Create a letterbox opening",
+            systemImage: "camera.aperture",
+            prompt: "Create a cinematic opening for my timeline. Use the first visual clip, animate a subtle letterbox matte with top and bottom crop keyframes, and keep the motion restrained and polished."
+        ),
+        AgentStarterPrompt(
+            title: "Add captions to my timeline",
+            systemImage: "captions.bubble",
+            prompt: "Add captions to my timeline. Transcribe spoken audio in timeline clips, build readable caption phrases on word boundaries, and place them as text clips aligned to the edit."
+        ),
+        AgentStarterPrompt(
+            title: "Create a voiceover",
+            systemImage: "waveform",
+            prompt: "Create a voiceover for my timeline. Draft concise narration for the current edit, generate the voiceover, and add it to an audio track aligned with the timeline."
+        ),
+        AgentStarterPrompt(
+            title: "Organize my media into structured folders",
+            systemImage: "folder",
+            prompt: "Organize my media into structured folders. Review all assets, create clearly named folders by role, scene, or type, move assets into them, and rename generic files when useful. Don't delete anything or change the timeline."
+        ),
+    ]
+
     private var service: AgentService { editor.agentService }
 
     private var canSend: Bool {
@@ -258,10 +291,19 @@ struct AgentPanelView: View {
     @ViewBuilder
     private var emptyState: some View {
         if service.canStream {
-            Text("Describe a change, or @ a clip to start.")
-                .font(.system(size: AppTheme.FontSize.md, weight: .medium))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
-                .multilineTextAlignment(.center)
+            VStack(spacing: AppTheme.Spacing.smMd) {
+                Text("Ask anything, or start with:")
+                    .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .multilineTextAlignment(.center)
+                VStack(spacing: AppTheme.Spacing.xs) {
+                    ForEach(Self.starterPrompts) { starterPrompt in
+                        AgentStarterPromptButton(starterPrompt: starterPrompt) {
+                            populatePrompt(starterPrompt.prompt)
+                        }
+                    }
+                }
+            }
         } else {
             missingKeyState
         }
@@ -339,6 +381,54 @@ struct AgentPanelView: View {
         service.send(text: service.draft, mentions: service.mentions)
         service.draft = ""
         service.mentions.removeAll()
+    }
+
+    private func populatePrompt(_ prompt: String) {
+        service.draft = prompt
+        service.mentions.removeAll()
+    }
+}
+
+private struct AgentStarterPrompt: Identifiable {
+    let id = UUID()
+    let title: String
+    let systemImage: String
+    let prompt: String
+}
+
+private struct AgentStarterPromptButton: View {
+    let starterPrompt: AgentStarterPrompt
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: AppTheme.Spacing.sm) {
+                Image(systemName: starterPrompt.systemImage)
+                    .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
+                Text(starterPrompt.title)
+                    .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, AppTheme.Spacing.md)
+            .padding(.vertical, AppTheme.Spacing.xs)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+                    .fill(AppTheme.Background.raisedColor)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+                    .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)
+            )
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .help("Fill prompt")
     }
 }
 
