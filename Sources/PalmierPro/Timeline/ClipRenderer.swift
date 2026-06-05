@@ -59,7 +59,8 @@ enum ClipRenderer {
         displayName: String? = nil,
         linkOffset: Int? = nil,
         fps: Int,
-        isMissing: Bool = false
+        isMissing: Bool = false,
+        isGenerating: Bool = false
     ) {
         if opacity < 1.0 {
             context.saveGState()
@@ -131,7 +132,7 @@ enum ClipRenderer {
         }
 
         // Red wash + border for clips whose source media is missing.
-        if isMissing {
+        if isMissing && !isGenerating {
             context.setFillColor(AppTheme.Status.error.withAlphaComponent(AppTheme.Opacity.moderate).cgColor)
             context.addPath(path)
             context.fillPath()

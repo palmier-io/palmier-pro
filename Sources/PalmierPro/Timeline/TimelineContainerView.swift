@@ -61,7 +61,8 @@ struct TimelineContainerView: NSViewRepresentable {
             revision: editor.timelineRenderRevision,
             zoomScale: editor.zoomScale,
             selectedClipIds: editor.selectedClipIds,
-            pendingReplacements: editor.pendingReplacements
+            pendingReplacements: editor.pendingReplacements,
+            generatingAssetIds: Set(editor.mediaAssets.lazy.filter(\.isGenerating).map(\.id))
         )
 
         if context.coordinator.needsRender(for: renderState) {
@@ -95,6 +96,7 @@ struct TimelineContainerView: NSViewRepresentable {
         let zoomScale: Double
         let selectedClipIds: Set<String>
         let pendingReplacements: Set<String>
+        let generatingAssetIds: Set<String>
     }
 
     final class Coordinator: NSObject {

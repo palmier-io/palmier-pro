@@ -7,9 +7,8 @@ final class TimelineView: NSView {
     private(set) var inputController: TimelineInputController!
     private var playheadOverlay: PlayheadOverlay!
     private(set) var snapOverlay: SnapIndicatorOverlay!
-
-    /// NSHostingView per clip id awaiting a Replace-mode AI generation.
-    private var pendingReplacementOverlays: [String: NSHostingView<ClipGeneratingOverlay>] = [:]
+    private var generatingClipOverlays: [String: NSHostingView<ClipGeneratingOverlay>] = [:]
+    private var clipDisplayRects: [String: NSRect] = [:]
 
     // MARK: - Init
 
@@ -132,7 +131,7 @@ final class TimelineView: NSView {
         drawTrackBackgrounds(geometry: geo, context: ctx)
         drawClips(geometry: geo, dirtyRect: dirtyRect, context: ctx)
         drawGapSelection(geometry: geo, context: ctx)
-        syncPendingReplacementOverlays(geometry: geo)
+        syncGeneratingClipOverlays(geometry: geo)
 
         if let assets = externalDragAssets, !assets.isEmpty, let target = externalDropTarget {
             drawExternalDragGhosts(assets: assets, target: target, frame: externalDragFrame, geometry: geo, dirtyRect: bounds, context: ctx)
@@ -220,10 +219,12 @@ final class TimelineView: NSView {
 
         let linkOffsets = editor.linkGroupOffsets()
 
+        clipDisplayRects.removeAll(keepingCapacity: true)
         for (ti, track) in editor.timeline.tracks.enumerated() {
             for clip in track.clips {
                 let isSelected = editor.selectedClipIds.contains(clip.id)
                 let clipMissing = editor.isClipMediaMissing(clip)
+                let clipGenerating = editor.isClipMediaGenerating(clip)
 
                 if let drag = moveDrag, allDraggedIds.contains(clip.id) {
                     let originalRect = geo.clipRect(for: clip, trackIndex: ti)
@@ -234,7 +235,7 @@ final class TimelineView: NSView {
                                           isSelected: drag.isDuplicate && isSelected, opacity: originalOpacity, context: ctx,
                                           cache: editor.mediaVisualCache,
                                           displayName: editor.clipDisplayLabel(for: clip),
-                                          fps: editor.timeline.fps, isMissing: clipMissing)
+                                          fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
 
                     let frameDelta = drag.deltaFrames
@@ -253,12 +254,13 @@ final class TimelineView: NSView {
                         let destTrack = isPinned ? ti : ti + moveTrackDelta
                         ghostRect = geo.clipRect(for: ghostClip, trackIndex: destTrack)
                     }
+                    clipDisplayRects[clip.id] = ghostRect
                     if ghostRect.intersects(dirtyRect) {
                         ClipRenderer.draw(ghostClip, type: clip.mediaType, in: ghostRect,
                                           isSelected: true, opacity: 0.7, context: ctx,
                                           cache: editor.mediaVisualCache,
                                           displayName: editor.clipDisplayLabel(for: clip),
-                                          fps: editor.timeline.fps, isMissing: clipMissing)
+                                          fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
                     continue
                 }
@@ -276,24 +278,26 @@ final class TimelineView: NSView {
                         previewClip.trimEndFrame = clip.trimEndFrame - sourceDelta
                     }
                     let previewRect = geo.clipRect(for: previewClip, trackIndex: ti)
+                    clipDisplayRects[clip.id] = previewRect
                     if previewRect.intersects(dirtyRect) {
                         ClipRenderer.draw(previewClip, type: clip.mediaType, in: previewRect,
                                           isSelected: isSelected, context: ctx,
                                           cache: editor.mediaVisualCache,
                                           displayName: editor.clipDisplayLabel(for: clip),
-                                          fps: editor.timeline.fps, isMissing: clipMissing)
+                                          fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
                     continue
                 }
 
                 let rect = geo.clipRect(for: clip, trackIndex: ti)
+                clipDisplayRects[clip.id] = rect
                 guard rect.intersects(dirtyRect) else { continue }
                 ClipRenderer.draw(clip, type: clip.mediaType, in: rect,
                                   isSelected: isSelected, context: ctx,
                                   cache: editor.mediaVisualCache,
                                   displayName: editor.clipDisplayLabel(for: clip),
                                   linkOffset: linkOffsets[clip.id],
-                                  fps: editor.timeline.fps, isMissing: clipMissing)
+                                  fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
             }
         }
     }
@@ -318,31 +322,33 @@ final class TimelineView: NSView {
         ctx.setLineDash(phase: 0, lengths: [])
     }
 
-    // MARK: - Pending replacement overlays
+    // MARK: - Generating clip overlays
 
-    private func syncPendingReplacementOverlays(geometry geo: TimelineGeometry) {
-        let pending = editor.pendingReplacements
-
-        for (clipId, view) in pendingReplacementOverlays
-            where !pending.contains(clipId) || editor.findClip(id: clipId) == nil {
-            view.removeFromSuperview()
-            pendingReplacementOverlays.removeValue(forKey: clipId)
+    private func syncGeneratingClipOverlays(geometry geo: TimelineGeometry) {
+        var active: [String: NSRect] = [:]
+        for (ti, track) in editor.timeline.tracks.enumerated() {
+            for clip in track.clips
+                where editor.pendingReplacements.contains(clip.id) || editor.isClipMediaGenerating(clip) {
+                active[clip.id] = clipDisplayRects[clip.id] ?? geo.clipRect(for: clip, trackIndex: ti)
+            }
         }
 
-        for clipId in pending {
-            guard let loc = editor.findClip(id: clipId) else { continue }
-            let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-            let rect = geo.clipRect(for: clip, trackIndex: loc.trackIndex)
-            let view = pendingReplacementOverlays[clipId] ?? makePendingReplacementOverlay(for: clipId)
+        for (clipId, view) in generatingClipOverlays where active[clipId] == nil {
+            view.removeFromSuperview()
+            generatingClipOverlays.removeValue(forKey: clipId)
+        }
+
+        for (clipId, rect) in active {
+            let view = generatingClipOverlays[clipId] ?? makeGeneratingClipOverlay(for: clipId)
             if view.frame != rect { view.frame = rect }
         }
     }
 
-    private func makePendingReplacementOverlay(for clipId: String) -> NSHostingView<ClipGeneratingOverlay> {
+    private func makeGeneratingClipOverlay(for clipId: String) -> NSHostingView<ClipGeneratingOverlay> {
         let view = NSHostingView(rootView: ClipGeneratingOverlay())
         view.autoresizingMask = []
         addSubview(view)
-        pendingReplacementOverlays[clipId] = view
+        generatingClipOverlays[clipId] = view
         return view
     }
 
@@ -387,7 +393,8 @@ final class TimelineView: NSView {
                               isSelected: true, opacity: 0.5, context: ctx,
                               cache: editor.mediaVisualCache,
                               fps: editor.timeline.fps,
-                              isMissing: editor.isClipMediaMissing(ghost.clip))
+                              isMissing: editor.isClipMediaMissing(ghost.clip),
+                              isGenerating: editor.isClipMediaGenerating(ghost.clip))
         }
     }
 
