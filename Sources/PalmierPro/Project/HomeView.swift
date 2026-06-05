@@ -200,6 +200,7 @@ final class HomeWindowController: NSWindowController {
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
         window.styleMask.insert(.fullSizeContentView)
+        window.collectionBehavior = [.fullScreenNone]
         window.center()
 
         super.init(window: window)
