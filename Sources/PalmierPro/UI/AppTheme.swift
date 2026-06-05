@@ -6,10 +6,10 @@ enum AppTheme {
     // MARK: - Backgrounds
 
     enum Background {
-        static let base = NSColor(red: 13/255, green: 12/255, blue: 10/255, alpha: 1)
-        static let surface = NSColor(red: 22/255, green: 22/255, blue: 20/255, alpha: 1)
-        static let raised = NSColor(red: 30/255, green: 30/255, blue: 28/255, alpha: 1)
-        static let prominent = NSColor(red: 43/255, green: 43/255, blue: 40/255, alpha: 1)
+        static let base = NSColor(red: 6/255, green: 6/255, blue: 6/255, alpha: 1)
+        static let surface = NSColor(red: 12/255, green: 12/255, blue: 12/255, alpha: 1)
+        static let raised = NSColor(red: 20/255, green: 20/255, blue: 20/255, alpha: 1)
+        static let prominent = NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 1)
 
         /// Alias — empty media slot is a raised plate.
         static let placeholder = raised
@@ -61,6 +61,15 @@ enum AppTheme {
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
+    )
+
+    static let aiGradientDark = LinearGradient(
+        stops: [
+            .init(color: Color(white: 0.09), location: 0.00),
+            .init(color: Color(white: 0.04), location: 1.00),
+        ],
+        startPoint: .top,
+        endPoint: .bottom
     )
 
     // MARK: - Glass
@@ -200,6 +209,13 @@ enum AppTheme {
         static let captionPreviewMaxTextWidthRatio: CGFloat = 0.9
     }
 
+    enum Window {
+        static let homeDefault = NSSize(width: 1200, height: 1200)
+        static let homeMin = NSSize(width: 760, height: 480)
+        static let projectDefault = NSSize(width: 1600, height: 1000)
+        static let projectMin = NSSize(width: 960, height: 600)
+    }
+
     enum Caption {
         static let defaultFontSize: Double = 48
         static let minFontSize: Double = 12
@@ -210,6 +226,13 @@ enum AppTheme {
         static let centerSnapThreshold: Double = 0.02
         static let defaultCenterY: CGFloat = 0.9
         static let defaultCenter = CGPoint(x: centerSnapValue, y: defaultCenterY)
+    }
+
+    enum GenerationPanel {
+        static let reservedChromeHeight: Double = 120
+        static let promptMinHeight: CGFloat = 40
+        static let nameFieldMaxWidth: CGFloat = 200
+        static let typeLabelsMinWidth: CGFloat = 420
     }
 
     // MARK: - Shadows

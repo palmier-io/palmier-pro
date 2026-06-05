@@ -189,8 +189,8 @@ final class HomeWindowController: NSWindowController {
     private init() {
         let hostingController = NSHostingController(rootView: HomeView().tint(AppTheme.Accent.primary))
         let window = NSWindow(contentViewController: hostingController)
-        window.setContentSize(NSSize(width: 980, height: 640))
-        window.minSize = NSSize(width: 760, height: 480)
+        window.setContentSize(AppTheme.Window.homeDefault)
+        window.minSize = AppTheme.Window.homeMin
         window.title = "Palmier Pro"
         window.setFrameAutosaveName("PalmierProHome-v2")
         window.appearance = NSAppearance(named: .darkAqua)

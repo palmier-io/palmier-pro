@@ -9,7 +9,7 @@ struct MediaTab: View {
     @State var filterTypes: Set<ClipType> = []
     @State var filterAI = false
     @State var searchQuery: String = ""
-    @State var thumbnailSize: Double = 110
+    @State var thumbnailSize: Double = 80
     @State var viewMode: ViewMode = .folder
 
     // Navigation + selection state
@@ -113,7 +113,7 @@ struct MediaTab: View {
                 .animation(.easeInOut(duration: AppTheme.Anim.transition), value: editor.mediaPanelToast)
             }
 
-            if editor.showGenerationPanel {
+            if editor.showGenerationPanel && !mediaAreaCollapsed {
                 GenerationView(containerHeight: mediaPanelHeight)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -495,6 +495,11 @@ struct MediaTab: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
+    }
+
+    private var mediaAreaCollapsed: Bool {
+        !editor.mediaPanelVisible
+            || (editor.maximizedPanel != nil && editor.maximizedPanel != .media)
     }
 
     private func toggleGenerationPanel() {

@@ -17,10 +17,14 @@ struct MediaPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             panelTabBar
-            switch panelTab {
-            case .media: MediaTab()
-            case .captions: CaptionTab()
+            Group {
+                switch panelTab {
+                case .media: MediaTab()
+                case .captions: CaptionTab()
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .clipped()
         }
         .overlay(alignment: .trailing) {
             Rectangle().fill(AppTheme.Border.subtleColor).frame(width: AppTheme.BorderWidth.hairline)

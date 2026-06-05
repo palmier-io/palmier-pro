@@ -44,7 +44,7 @@ struct AIAccessGate: ViewModifier {
         }
         .padding(AppTheme.Spacing.xl)
         .frame(maxWidth: 320)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppTheme.Radius.xl))
+        .background(AppTheme.aiGradientDark, in: RoundedRectangle(cornerRadius: AppTheme.Radius.xl))
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Radius.xl)
                 .stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)

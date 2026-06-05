@@ -184,8 +184,8 @@ final class VideoProject: NSDocument {
         let hostingController = NSHostingController(rootView: editorView.tint(AppTheme.Accent.primary))
 
         let window = NSWindow(contentViewController: hostingController)
-        window.setContentSize(NSSize(width: 1280, height: 800))
-        window.minSize = NSSize(width: 960, height: 600)
+        window.setContentSize(AppTheme.Window.projectDefault)
+        window.minSize = AppTheme.Window.projectMin
         window.setFrameAutosaveName("PalmierProWindow")
         window.appearance = NSAppearance(named: .darkAqua)
         window.titleVisibility = .visible

@@ -38,7 +38,8 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
     private let editor: EditorViewModel
     private var currentPreset: LayoutPreset?
     private var currentMaximized: EditorViewModel.FocusedPanel?
-    private var pendingLayout: DispatchWorkItem?
+    private var pendingPositioning: (() -> Void)?
+    private var isPositioning = false
     private weak var agentSplitItem: NSSplitViewItem?
     private weak var mediaSplitItem: NSSplitViewItem?
     private weak var previewSplitItem: NSSplitViewItem?
@@ -165,7 +166,7 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
     }
 
     private func buildLayout(_ preset: LayoutPreset) {
-        pendingLayout?.cancel()
+        pendingPositioning = nil
 
         while !splitViewItems.isEmpty {
             removeSplitViewItem(splitViewItems.last!)
@@ -345,18 +346,32 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
         return hc
     }
 
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        runPendingPositioning()
+    }
+
     private func applyAfterLayout(_ apply: @escaping () -> Void) {
-        pendingLayout?.cancel()
-        let work = DispatchWorkItem { [weak self] in
+        pendingPositioning = { [weak self] in
             guard let self else { return }
-            self.view.layoutSubtreeIfNeeded()
-            guard self.view.bounds.width > 0 else { return }
             apply()
             self.mediaSplitItem?.isCollapsed = !self.editor.mediaPanelVisible
             self.inspectorSplitItem?.isCollapsed = !self.editor.inspectorPanelVisible
         }
-        pendingLayout = work
-        DispatchQueue.main.async(execute: work)
+        if view.bounds.width > 0 {
+            view.layoutSubtreeIfNeeded()
+            runPendingPositioning()
+        } else {
+            view.needsLayout = true
+        }
+    }
+
+    private func runPendingPositioning() {
+        guard !isPositioning, view.bounds.width > 0, let work = pendingPositioning else { return }
+        pendingPositioning = nil
+        isPositioning = true
+        work()
+        isPositioning = false
     }
 }
 
