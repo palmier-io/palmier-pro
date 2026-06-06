@@ -17,7 +17,7 @@ struct AgentPanelView: View {
         AgentStarterPrompt(
             title: "Create a letterbox opening",
             systemImage: "camera.aperture",
-            prompt: "Create a cinematic opening for my timeline. Use the first visual clip, animate a subtle letterbox matte with top and bottom crop keyframes, and keep the motion restrained and polished."
+            prompt: "Create a cinematic opening for my timeline. Use the first visual clip, animate a subtle letterbox matte with top and bottom crop keyframes, starting from crop to uncrop,and keep the motion restrained and polished."
         ),
         AgentStarterPrompt(
             title: "Add captions to my timeline",
