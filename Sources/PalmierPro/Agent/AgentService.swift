@@ -76,12 +76,43 @@ final class AgentService {
 
     func attachMention(for asset: MediaAsset) {
         editor?.agentPanelVisible = true
-        mentions.removeAll { !draft.contains("@\($0.displayName)") }
-        guard !mentions.contains(where: { $0.mediaRef == asset.id }) else { return }
+        pruneDetachedMentions()
+        guard !mentions.contains(where: { $0.mediaRef == asset.id && !$0.referencesTimelineClips }) else { return }
         let displayName = Self.disambiguatedMentionName(for: asset, existing: mentions)
+        appendMentionToken(displayName)
+        mentions.append(AgentMention(displayName: displayName, mediaRef: asset.id, type: asset.type))
+    }
+
+    func attachMentions(forClipIds clipIds: [String]) {
+        guard let editor, !clipIds.isEmpty else { return }
+        editor.agentPanelVisible = true
+        pruneDetachedMentions()
+
+        let existingClipIds = Set(mentions.compactMap(\.clipId))
+        for ref in Self.clipMentionReferences(for: clipIds, editor: editor) where !existingClipIds.contains(ref.clip.id) {
+            let displayName = Self.disambiguatedClipMentionName(
+                for: ref.clip,
+                label: ref.label,
+                fps: editor.timeline.fps,
+                existing: mentions
+            )
+            appendMentionToken(displayName)
+            mentions.append(AgentMention(
+                displayName: displayName,
+                mediaRef: ref.clip.mediaRef,
+                type: ref.clip.mediaType,
+                clipId: ref.clip.id
+            ))
+        }
+    }
+
+    private func pruneDetachedMentions() {
+        mentions.removeAll { !draft.contains("@\($0.displayName)") }
+    }
+
+    private func appendMentionToken(_ displayName: String) {
         let needsSpace = !draft.isEmpty && !draft.hasSuffix(" ") && !draft.hasSuffix("\n")
         draft += (needsSpace ? " " : "") + "@\(displayName) "
-        mentions.append(AgentMention(displayName: displayName, mediaRef: asset.id, type: asset.type))
     }
 
     static func disambiguatedMentionName(for asset: MediaAsset, existing: [AgentMention]) -> String {
@@ -91,6 +122,38 @@ final class AgentService {
         }
         let short = String(asset.id.prefix(6))
         return "\(base)#\(short)"
+    }
+
+    static func disambiguatedClipMentionName(
+        for clip: Clip,
+        label: String,
+        fps: Int,
+        existing: [AgentMention]
+    ) -> String {
+        let base = makeMentionDisplayName(from: "\(label)-\(formatTimecode(frame: clip.startFrame, fps: fps))")
+        let fallback = "Clip-\(String(clip.id.prefix(6)))"
+        let candidate = base.isEmpty ? fallback : base
+        if !existing.contains(where: { $0.displayName == candidate && $0.clipId != clip.id }) {
+            return candidate
+        }
+        let short = String(clip.id.prefix(6))
+        return "\(candidate)#\(short)"
+    }
+
+    private struct ClipMentionReference {
+        let clip: Clip
+        let label: String
+    }
+
+    private static func clipMentionReferences(for clipIds: [String], editor: EditorViewModel) -> [ClipMentionReference] {
+        let requested = Set(clipIds)
+        var refs: [ClipMentionReference] = []
+        for track in editor.timeline.tracks {
+            for clip in track.clips where requested.contains(clip.id) {
+                refs.append(ClipMentionReference(clip: clip, label: editor.clipDisplayLabel(for: clip)))
+            }
+        }
+        return refs
     }
 
     weak var editor: EditorViewModel? {
@@ -380,7 +443,7 @@ final class AgentService {
             var content = msg.blocks.compactMap(Self.contentBlockJSON)
             if msg.role == .user, !msg.mentions.isEmpty {
                 let inlined = inlineImageBlocks(for: msg.mentions)
-                let hint = Self.mentionHint(msg.mentions, inlined: inlined)
+                let hint = Self.mentionHint(msg.mentions, editor: editor, inlined: inlined)
                 content.insert(contentsOf: inlined.blocks, at: 0)
                 content.insert(["type": "text", "text": hint], at: 0)
             }
@@ -444,17 +507,41 @@ final class AgentService {
         }
     }
 
-    private static func mentionHint(_ mentions: [AgentMention], inlined: InlinedMentions = InlinedMentions()) -> String {
-        let entries: [[String: Any]] = mentions.map { m in
-            var e: [String: Any] = [
-                "mention": "@\(m.displayName)", "mediaRef": m.mediaRef, "type": m.type.rawValue,
-            ]
-            if inlined.inlinedIds.contains(m.mediaRef) { e["inlined"] = true }
-            if let reason = inlined.failures[m.mediaRef] { e["inlineError"] = reason }
-            return e
-        }
+    private static func mentionHint(
+        _ mentions: [AgentMention],
+        editor: EditorViewModel?,
+        inlined: InlinedMentions = InlinedMentions()
+    ) -> String {
+        let entries = mentionEntries(mentions, editor: editor, inlined: inlined)
         let data = (try? JSONSerialization.data(withJSONObject: entries)) ?? Data()
         let json = String(data: data, encoding: .utf8) ?? "[]"
+        let notes = mentionNotes(mentions, inlined: inlined)
+        let suffix = notes.isEmpty ? "" : " " + notes.joined(separator: " ")
+        return "Referenced assets and timeline clips in this message: \(json).\(suffix)"
+    }
+
+    private static func mentionEntries(
+        _ mentions: [AgentMention],
+        editor: EditorViewModel?,
+        inlined: InlinedMentions
+    ) -> [[String: Any]] {
+        mentions.map { mention in
+            var entry: [String: Any] = [
+                "mention": "@\(mention.displayName)",
+                "mediaRef": mention.mediaRef,
+                "type": mention.type.rawValue,
+            ]
+            if inlined.inlinedIds.contains(mention.mediaRef) { entry["inlined"] = true }
+            if let reason = inlined.failures[mention.mediaRef] { entry["inlineError"] = reason }
+            if let clipId = mention.clipId {
+                entry["clipId"] = clipId
+                entry["clip"] = Self.clipSummary(for: clipId, editor: editor)
+            }
+            return entry
+        }
+    }
+
+    private static func mentionNotes(_ mentions: [AgentMention], inlined: InlinedMentions) -> [String] {
         var notes: [String] = []
         if !inlined.inlinedIds.isEmpty {
             notes.append("Assets marked \"inlined\": true are attached as image blocks in this message — do not call inspect_media for them.")
@@ -462,8 +549,36 @@ final class AgentService {
         if !inlined.failures.isEmpty {
             notes.append("Assets with \"inlineError\" could not be attached; tell the user the image could not be read rather than describing it.")
         }
-        let suffix = notes.isEmpty ? "" : " " + notes.joined(separator: " ")
-        return "Referenced assets in this message: \(json).\(suffix)"
+        if mentions.contains(where: { $0.referencesTimelineClips }) {
+            notes.append("Entries with \"clipId\" refer to timeline clips; use clipId for timeline edits and pass it to inspect_media when inspecting visible source media.")
+        }
+        return notes
+    }
+
+    private static func clipSummary(for clipId: String, editor: EditorViewModel?) -> [String: Any] {
+        guard let editor else {
+            return ["clipId": clipId, "error": "editor unavailable"]
+        }
+        guard let loc = editor.findClip(id: clipId) else {
+            return ["clipId": clipId, "error": "clip not found"]
+        }
+        let track = editor.timeline.tracks[loc.trackIndex]
+        let clip = track.clips[loc.clipIndex]
+        return [
+            "clipId": clip.id,
+            "mediaRef": clip.mediaRef,
+            "mediaType": clip.mediaType.rawValue,
+            "sourceClipType": clip.sourceClipType.rawValue,
+            "label": editor.clipDisplayLabel(for: clip),
+            "trackIndex": loc.trackIndex,
+            "trackType": track.type.rawValue,
+            "startFrame": clip.startFrame,
+            "endFrame": clip.endFrame,
+            "durationFrames": clip.durationFrames,
+            "trimStartFrame": clip.trimStartFrame,
+            "trimEndFrame": clip.trimEndFrame,
+            "speed": clip.speed,
+        ]
     }
 
     private static func title(from message: AgentMessage) -> String {
@@ -547,11 +662,15 @@ struct AgentMention: Identifiable, Hashable, Codable {
     let displayName: String
     let mediaRef: String
     let type: ClipType
+    let clipId: String?
 
-    init(id: UUID = UUID(), displayName: String, mediaRef: String, type: ClipType) {
+    var referencesTimelineClips: Bool { clipId != nil }
+
+    init(id: UUID = UUID(), displayName: String, mediaRef: String, type: ClipType, clipId: String? = nil) {
         self.id = id
         self.displayName = displayName
         self.mediaRef = mediaRef
         self.type = type
+        self.clipId = clipId
     }
 }
