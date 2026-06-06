@@ -3,18 +3,7 @@ import SwiftUI
 extension MediaAsset {
     // Collapses spaces and hyphens so the inserted `@token` stays a single word.
     var mentionDisplayName: String {
-        var result = ""
-        var lastWasDash = false
-        for ch in name {
-            if ch == " " || ch == "-" {
-                if !lastWasDash { result.append("-") }
-                lastWasDash = true
-            } else {
-                result.append(ch)
-                lastWasDash = false
-            }
-        }
-        return result.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        makeMentionDisplayName(from: name)
     }
 }
 

@@ -556,6 +556,13 @@ final class TimelineView: NSView {
         }
 
         let menu = NSMenu()
+        let targetClipIds = selectedClipIdsInTimelineOrder()
+
+        let addToChatItem = NSMenuItem(title: "Add to Chat", action: #selector(performAddClipsToChat(_:)), keyEquivalent: "")
+        addToChatItem.target = self
+        addToChatItem.representedObject = targetClipIds
+        menu.addItem(addToChatItem)
+        menu.addItem(.separator())
 
         let copyItem = NSMenuItem(title: "Copy", action: #selector(performCopyClips(_:)), keyEquivalent: "")
         copyItem.target = self
@@ -603,6 +610,19 @@ final class TimelineView: NSView {
         item.representedObject = ["trackIndex": trackIndex, "frame": frame] as [String: Any]
         menu.addItem(item)
         return menu
+    }
+
+    private func selectedClipIdsInTimelineOrder() -> [String] {
+        let selected = editor.selectedClipIds
+        return editor.timeline.tracks.flatMap(\.clips).compactMap { clip in
+            selected.contains(clip.id) ? clip.id : nil
+        }
+    }
+
+    @objc private func performAddClipsToChat(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let clipIds = item.representedObject as? [String] else { return }
+        editor.agentService.attachMentions(forClipIds: clipIds)
     }
 
     @objc private func performCopyClips(_ sender: Any?) {
