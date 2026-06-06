@@ -1,6 +1,14 @@
 import AppKit
 import SwiftUI
 
+private final class IsolatedUndoTextView: NSTextView {
+    private let localUndoManager = UndoManager()
+
+    override var undoManager: UndoManager? {
+        localUndoManager
+    }
+}
+
 /// NSTextView-backed — SwiftUI `TextEditor`'s binding drops keystrokes when the parent re-renders per-apply.
 struct TextContentField: NSViewRepresentable {
     @Binding var text: String
@@ -14,7 +22,7 @@ struct TextContentField: NSViewRepresentable {
         scrollView.borderType = .noBorder
         scrollView.autohidesScrollers = true
 
-        let textView = NSTextView()
+        let textView = IsolatedUndoTextView()
         textView.isEditable = true
         textView.isSelectable = true
         textView.isRichText = false
@@ -32,6 +40,7 @@ struct TextContentField: NSViewRepresentable {
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.delegate = context.coordinator
         textView.string = text
+        textView.undoManager?.removeAllActions()
 
         scrollView.documentView = textView
         context.coordinator.textView = textView
@@ -45,7 +54,7 @@ struct TextContentField: NSViewRepresentable {
         guard textView.window?.firstResponder !== textView else { return }
         if textView.string != text {
             textView.string = text
-            textView.undoManager?.removeAllActions(withTarget: textView)
+            textView.undoManager?.removeAllActions()
         }
     }
 

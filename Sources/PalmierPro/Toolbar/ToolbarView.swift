@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ToolbarView: View {
@@ -7,8 +8,8 @@ struct ToolbarView: View {
         HStack(spacing: AppTheme.Spacing.md) {
             // Undo / Redo
             HStack(spacing: AppTheme.Spacing.md) {
-                toolbarButton("arrow.uturn.backward", help: "Undo (⌘Z)", action: { editor.undoManager?.undo() })
-                toolbarButton("arrow.uturn.forward", help: "Redo (⇧⌘Z)", action: { editor.undoManager?.redo() })
+                toolbarButton("arrow.uturn.backward", help: "Undo (⌘Z)", action: undo)
+                toolbarButton("arrow.uturn.forward", help: "Redo (⇧⌘Z)", action: redo)
             }
 
             Divider()
@@ -69,6 +70,14 @@ struct ToolbarView: View {
                 .help(help)
         }
         .buttonStyle(.plain)
+    }
+
+    private func undo() {
+        NSApp.sendAction(Selector(("undo:")), to: nil, from: nil)
+    }
+
+    private func redo() {
+        NSApp.sendAction(Selector(("redo:")), to: nil, from: nil)
     }
 
     private func toolModeButton(_ systemName: String, mode: ToolMode, help: String) -> some View {
