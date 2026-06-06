@@ -195,7 +195,7 @@ final class VideoProject: NSDocument {
         window.backgroundColor = NSColor(AppTheme.Background.surfaceColor)
         window.center()
 
-        window.addTitlebarSwiftUI(TitleBarLeadingView().environment(editorViewModel), side: .leading, width: 140)
+        window.addTitlebarSwiftUI(TitleBarLeadingView().environment(editorViewModel), side: .leading, width: AppTheme.IconSize.lg + AppTheme.Spacing.sm)
         window.addTitlebarSwiftUI(TitleBarTrailingView().environment(editorViewModel), side: .trailing, width: 220)
 
         let controller = EditorWindowController(editorViewModel: editorViewModel, window: window)
@@ -294,12 +294,22 @@ extension NSWindow {
         wrapper.addSubview(host.view)
 
         let safeArea = wrapper.layoutGuide(for: .safeArea(cornerAdaptation: .horizontal))
-        NSLayoutConstraint.activate([
+        var constraints = [
             host.view.topAnchor.constraint(equalTo: wrapper.topAnchor),
             host.view.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor),
-            host.view.leadingAnchor.constraint(equalTo: side == .leading ? safeArea.leadingAnchor : wrapper.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: side == .trailing ? safeArea.trailingAnchor : wrapper.trailingAnchor),
-        ])
+        ]
+        if side == .leading {
+            constraints.append(contentsOf: [
+                host.view.leadingAnchor.constraint(equalTo: safeArea.leadingAnchor),
+                host.view.trailingAnchor.constraint(lessThanOrEqualTo: wrapper.trailingAnchor),
+            ])
+        } else {
+            constraints.append(contentsOf: [
+                host.view.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor),
+                host.view.trailingAnchor.constraint(equalTo: safeArea.trailingAnchor),
+            ])
+        }
+        NSLayoutConstraint.activate(constraints)
 
         let accessory = NSTitlebarAccessoryViewController()
         accessory.view = wrapper
