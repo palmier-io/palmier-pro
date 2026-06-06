@@ -1,12 +1,5 @@
 import SwiftUI
 
-extension MediaAsset {
-    // Collapses spaces and hyphens so the inserted `@token` stays a single word.
-    var mentionDisplayName: String {
-        makeMentionDisplayName(from: name)
-    }
-}
-
 enum MentionTab: CaseIterable, Hashable {
     case all, video, image, audio
 

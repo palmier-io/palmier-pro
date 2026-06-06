@@ -97,10 +97,10 @@ struct AgentMentionTests {
         editor.setTimelineRange(startFrame: 30, endFrame: 90)
         editor.agentService.attachSelectedTimelineRangeMention()
 
-        let entries = AgentService.mentionEntries(
+        let entries = AgentMentionContext.mentionEntries(
             editor.agentService.mentions,
             editor: editor,
-            inlined: AgentService.InlinedMentions()
+            inlined: AgentMentionContext.InlinedMentions()
         )
 
         #expect(entries.count == 1)
@@ -138,10 +138,10 @@ struct AgentMentionTests {
         editor.agentService.attachMentions(forClipIds: ["clip-1"])
         editor.agentService.attachSelectedTimelineRangeMention()
 
-        let entries = AgentService.mentionEntries(
+        let entries = AgentMentionContext.mentionEntries(
             editor.agentService.mentions,
             editor: editor,
-            inlined: AgentService.InlinedMentions()
+            inlined: AgentMentionContext.InlinedMentions()
         )
         let kinds = entries.compactMap { $0["kind"] as? String }
         #expect(kinds == ["mediaAsset", "timelineClip", "timelineRange"])
@@ -198,7 +198,7 @@ struct AgentMentionTests {
             )
         )
 
-        let referenced = AgentService.referencedMentions(
+        let referenced = AgentMentionContext.referencedMentions(
             [assetMention, rangeMention],
             in: "Use @Range-00:00:01:00-00:00:03:00 only"
         )

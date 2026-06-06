@@ -143,7 +143,7 @@ final class AgentService {
         fps: Int,
         existing: [AgentMention]
     ) -> String {
-        let base = makeMentionDisplayName(from: "\(label)-\(formatTimecode(frame: clip.startFrame, fps: fps))")
+        let base = AgentMention.makeDisplayName(from: "\(label)-\(formatTimecode(frame: clip.startFrame, fps: fps))")
         let fallback = "Clip-\(String(clip.id.prefix(6)))"
         let candidate = base.isEmpty ? fallback : base
         if !existing.contains(where: { $0.displayName == candidate && $0.clipId != clip.id }) {
@@ -157,7 +157,7 @@ final class AgentService {
         for range: AgentTimelineRangeMention,
         existing: [AgentMention]
     ) -> String {
-        let base = makeMentionDisplayName(from: "Range-\(range.startTimecode)-\(range.endTimecode)")
+        let base = AgentMention.makeDisplayName(from: "Range-\(range.startTimecode)-\(range.endTimecode)")
         let fallback = "Range-\(range.startFrame)-\(range.endFrame)"
         let candidate = base.isEmpty ? fallback : base
         if !existing.contains(where: { $0.displayName == candidate && $0.timelineRange != range }) {
@@ -272,16 +272,12 @@ final class AgentService {
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let referencedMentions = Self.referencedMentions(mentions, in: trimmed)
+        let referencedMentions = AgentMentionContext.referencedMentions(mentions, in: trimmed)
 
         resolveOrphanToolUses()
         messages.append(AgentMessage(role: .user, blocks: [.text(trimmed)], mentions: referencedMentions))
         streamError = nil
         kickOffStream()
-    }
-
-    static func referencedMentions(_ mentions: [AgentMention], in text: String) -> [AgentMention] {
-        mentions.filter { text.contains("@\($0.displayName)") }
     }
 
     func cancel() {
@@ -474,7 +470,7 @@ final class AgentService {
             var content = msg.blocks.compactMap(Self.contentBlockJSON)
             if msg.role == .user, !msg.mentions.isEmpty {
                 let inlined = inlineImageBlocks(for: msg.mentions)
-                let hint = Self.mentionHint(msg.mentions, editor: editor, inlined: inlined)
+                let hint = AgentMentionContext.hint(msg.mentions, editor: editor, inlined: inlined)
                 content.insert(contentsOf: inlined.blocks, at: 0)
                 content.insert(["type": "text", "text": hint], at: 0)
             }
@@ -483,14 +479,8 @@ final class AgentService {
         }
     }
 
-    struct InlinedMentions {
-        var blocks: [[String: Any]] = []
-        var inlinedIds: Set<String> = []
-        var failures: [String: String] = [:]  // mediaRef → reason
-    }
-
-    private func inlineImageBlocks(for mentions: [AgentMention]) -> InlinedMentions {
-        var out = InlinedMentions()
+    private func inlineImageBlocks(for mentions: [AgentMention]) -> AgentMentionContext.InlinedMentions {
+        var out = AgentMentionContext.InlinedMentions()
         guard let editor else {
             for mention in mentions where mention.type == .image {
                 if let mediaRef = mention.mediaRef { out.failures[mediaRef] = "editor unavailable" }
@@ -539,92 +529,6 @@ final class AgentService {
                 "content": contentJSON, "is_error": isError,
             ]
         }
-    }
-
-    private static func mentionHint(
-        _ mentions: [AgentMention],
-        editor: EditorViewModel?,
-        inlined: InlinedMentions = InlinedMentions()
-    ) -> String {
-        let entries = mentionEntries(mentions, editor: editor, inlined: inlined)
-        let data = (try? JSONSerialization.data(withJSONObject: entries)) ?? Data()
-        let json = String(data: data, encoding: .utf8) ?? "[]"
-        let notes = mentionNotes(mentions, inlined: inlined)
-        let suffix = notes.isEmpty ? "" : " " + notes.joined(separator: " ")
-        return "Referenced assets and timeline context in this message: \(json).\(suffix)"
-    }
-
-    static func mentionEntries(
-        _ mentions: [AgentMention],
-        editor: EditorViewModel?,
-        inlined: InlinedMentions
-    ) -> [[String: Any]] {
-        mentions.map { mention in
-            var entry: [String: Any] = [
-                "mention": "@\(mention.displayName)",
-            ]
-            if let timelineRange = mention.timelineRange {
-                entry["kind"] = "timelineRange"
-                entry["timelineRange"] = timelineRange.summary
-                return entry
-            }
-
-            entry["kind"] = mention.clipId == nil ? "mediaAsset" : "timelineClip"
-            if let mediaRef = mention.mediaRef {
-                entry["mediaRef"] = mediaRef
-                if inlined.inlinedIds.contains(mediaRef) { entry["inlined"] = true }
-                if let reason = inlined.failures[mediaRef] { entry["inlineError"] = reason }
-            }
-            if let type = mention.type { entry["type"] = type.rawValue }
-            if let clipId = mention.clipId {
-                entry["clipId"] = clipId
-                entry["clip"] = Self.clipSummary(for: clipId, editor: editor)
-            }
-            return entry
-        }
-    }
-
-    private static func mentionNotes(_ mentions: [AgentMention], inlined: InlinedMentions) -> [String] {
-        var notes: [String] = []
-        if !inlined.inlinedIds.isEmpty {
-            notes.append("Assets marked \"inlined\": true are attached as image blocks in this message — do not call inspect_media for them.")
-        }
-        if !inlined.failures.isEmpty {
-            notes.append("Assets with \"inlineError\" could not be attached; tell the user the image could not be read rather than describing it.")
-        }
-        if mentions.contains(where: { $0.referencesTimelineClips }) {
-            notes.append("Entries with \"clipId\" refer to timeline clips; use clipId for timeline edits and pass it to inspect_media when inspecting visible source media.")
-        }
-        if mentions.contains(where: { $0.referencesTimelineRange }) {
-            notes.append("Entries with \"timelineRange\" refer to selected timeline time spans; their frame ranges are half-open: startFrame inclusive, endFrame exclusive.")
-        }
-        return notes
-    }
-
-    private static func clipSummary(for clipId: String, editor: EditorViewModel?) -> [String: Any] {
-        guard let editor else {
-            return ["clipId": clipId, "error": "editor unavailable"]
-        }
-        guard let loc = editor.findClip(id: clipId) else {
-            return ["clipId": clipId, "error": "clip not found"]
-        }
-        let track = editor.timeline.tracks[loc.trackIndex]
-        let clip = track.clips[loc.clipIndex]
-        return [
-            "clipId": clip.id,
-            "mediaRef": clip.mediaRef,
-            "mediaType": clip.mediaType.rawValue,
-            "sourceClipType": clip.sourceClipType.rawValue,
-            "label": editor.clipDisplayLabel(for: clip),
-            "trackIndex": loc.trackIndex,
-            "trackType": track.type.rawValue,
-            "startFrame": clip.startFrame,
-            "endFrame": clip.endFrame,
-            "durationFrames": clip.durationFrames,
-            "trimStartFrame": clip.trimStartFrame,
-            "trimEndFrame": clip.trimEndFrame,
-            "speed": clip.speed,
-        ]
     }
 
     private static func title(from message: AgentMessage) -> String {
@@ -700,73 +604,5 @@ enum AgentContentBlock: Codable {
             try c.encode(content, forKey: .content)
             try c.encode(isError, forKey: .isError)
         }
-    }
-}
-
-struct AgentMention: Identifiable, Hashable, Codable {
-    let id: UUID
-    let displayName: String
-    let mediaRef: String?
-    let type: ClipType?
-    let clipId: String?
-    let timelineRange: AgentTimelineRangeMention?
-
-    var referencesTimelineClips: Bool { clipId != nil }
-    var referencesTimelineRange: Bool { timelineRange != nil }
-    var referencesTimelineContext: Bool { referencesTimelineClips || referencesTimelineRange }
-
-    init(id: UUID = UUID(), displayName: String, mediaRef: String, type: ClipType, clipId: String? = nil) {
-        self.id = id
-        self.displayName = displayName
-        self.mediaRef = mediaRef
-        self.type = type
-        self.clipId = clipId
-        self.timelineRange = nil
-    }
-
-    init(id: UUID = UUID(), displayName: String, timelineRange: AgentTimelineRangeMention) {
-        self.id = id
-        self.displayName = displayName
-        self.mediaRef = nil
-        self.type = nil
-        self.clipId = nil
-        self.timelineRange = timelineRange
-    }
-}
-
-struct AgentTimelineRangeMention: Hashable, Codable {
-    let startFrame: Int
-    let endFrame: Int
-    let durationFrames: Int
-    let fps: Int
-    let startTimecode: String
-    let endTimecode: String
-    let durationTimecode: String
-    let rangeSemantics: String
-
-    init(range: TimelineRangeSelection, fps: Int) {
-        let normalized = range.normalized
-        let duration = max(0, normalized.endFrame - normalized.startFrame)
-        self.startFrame = normalized.startFrame
-        self.endFrame = normalized.endFrame
-        self.durationFrames = duration
-        self.fps = fps
-        self.startTimecode = formatTimecode(frame: normalized.startFrame, fps: fps)
-        self.endTimecode = formatTimecode(frame: normalized.endFrame, fps: fps)
-        self.durationTimecode = formatTimecode(frame: duration, fps: fps)
-        self.rangeSemantics = "startInclusiveEndExclusive"
-    }
-
-    var summary: [String: Any] {
-        [
-            "startFrame": startFrame,
-            "endFrame": endFrame,
-            "durationFrames": durationFrames,
-            "fps": fps,
-            "startTimecode": startTimecode,
-            "endTimecode": endTimecode,
-            "durationTimecode": durationTimecode,
-            "rangeSemantics": rangeSemantics,
-        ]
     }
 }
