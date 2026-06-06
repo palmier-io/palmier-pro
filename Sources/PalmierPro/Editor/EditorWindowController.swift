@@ -44,6 +44,7 @@ final class EditorWindowController: NSWindowController {
         let mods = event.modifierFlags
         let shift = mods.contains(.shift)
         let cmd = mods.contains(.command)
+        let rangeMarkShortcut = mods.intersection([.command, .option, .control]).isEmpty
 
         if editorViewModel.focusedPanel == .media, !shift,
            let direction = mediaArrowDirection(for: event.keyCode) {
@@ -97,6 +98,20 @@ final class EditorWindowController: NSWindowController {
             }
             return false
 
+        case 34: // I key
+            if rangeMarkShortcut {
+                editorViewModel.markTimelineRangeStart()
+                return true
+            }
+            return false
+
+        case 31: // O key
+            if rangeMarkShortcut {
+                editorViewModel.markTimelineRangeEnd()
+                return true
+            }
+            return false
+
         case 33: // [ key
             editorViewModel.trimStartToPlayhead()
             return true
@@ -135,6 +150,7 @@ final class EditorWindowController: NSWindowController {
                 return true
             }
             editorViewModel.selectedClipIds.removeAll()
+            editorViewModel.clearTimelineRange()
             editorViewModel.toolMode = .pointer
             return true
 

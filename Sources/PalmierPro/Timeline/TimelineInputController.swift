@@ -13,6 +13,13 @@ final class TimelineInputController {
     private var razorSnapState = SnapEngine.SnapState()
     private var scrubWasPlaying = false
 
+    private enum TimelineRangeEdge {
+        case start
+        case end
+    }
+
+    private static let timelineRangeEdgeHitSlop: CGFloat = 8
+
     init(editor: EditorViewModel, view: TimelineView) {
         self.editor = editor
         self.view = view
@@ -44,7 +51,14 @@ final class TimelineInputController {
         }
 
         if point.y >= scrollOffsetY && point.y < scrollOffsetY + geometry.rulerHeight {
-            beginPlayheadScrub(at: geometry.frameAt(x: point.x))
+            let frame = geometry.frameAt(x: point.x)
+            if let edge = timelineRangeEdgeHit(at: point, geometry: geometry) {
+                beginTimelineRangeEdgeDrag(edge)
+            } else if event.modifierFlags.contains(.shift) {
+                beginTimelineRangeSelection(at: frame)
+            } else {
+                beginPlayheadScrub(at: frame)
+            }
             return
         }
 
@@ -178,6 +192,28 @@ final class TimelineInputController {
             scrubToFrame(frame)
             view.updatePlayheadLayer()
             return
+
+        case .timelineRange(let drag):
+            let targets = SnapEngine.collectTargets(
+                tracks: editor.timeline.tracks,
+                playheadFrame: editor.currentFrame,
+                includePlayhead: true
+            )
+            let rangeEndFrame: Int
+            if let snap = SnapEngine.findSnap(
+                position: frame,
+                targets: targets,
+                state: &snapState,
+                baseThreshold: Snap.thresholdPixels,
+                pixelsPerFrame: geometry.pixelsPerFrame
+            ) {
+                snapIndicatorX = snap.x
+                rangeEndFrame = snap.frame
+            } else {
+                snapIndicatorX = nil
+                rangeEndFrame = frame
+            }
+            editor.setTimelineRange(startFrame: drag.anchorFrame, endFrame: rangeEndFrame)
 
         case .moveClip(var drag):
             let candidateFrame = frame - drag.grabOffsetFrames
@@ -404,6 +440,9 @@ final class TimelineInputController {
         case .scrubPlayhead:
             finishPlayheadScrub()
 
+        case .timelineRange:
+            editor.keepValidTimelineRangeOrClear()
+
         case .idle:
             break
         }
@@ -420,7 +459,13 @@ final class TimelineInputController {
         let scrollOffsetY = view.enclosingScrollView?.contentView.bounds.origin.y ?? 0
 
         if point.y >= scrollOffsetY && point.y < scrollOffsetY + geometry.rulerHeight {
-            NSCursor.pointingHand.set()
+            if timelineRangeEdgeHit(at: point, geometry: geometry) != nil {
+                NSCursor.resizeLeftRight.set()
+            } else if event.modifierFlags.contains(.shift) {
+                NSCursor.crosshair.set()
+            } else {
+                NSCursor.pointingHand.set()
+            }
             razorPreviewFrame = nil
             razorSnapState = SnapEngine.SnapState()
             return
@@ -663,6 +708,19 @@ final class TimelineInputController {
         return GapSelection(trackIndex: trackIndex, range: FrameRange(start: prevEnd, end: nextStart))
     }
 
+    private func timelineRangeEdgeHit(at point: NSPoint, geometry: TimelineGeometry) -> TimelineRangeEdge? {
+        guard let range = editor.validSelectedTimelineRange else { return nil }
+
+        let startX = CGFloat(geometry.xForFrame(range.startFrame))
+        let endX = CGFloat(geometry.xForFrame(range.endFrame))
+        let startDistance = abs(point.x - startX)
+        let endDistance = abs(point.x - endX)
+        let nearestDistance = min(startDistance, endDistance)
+
+        guard nearestDistance <= Self.timelineRangeEdgeHitSlop else { return nil }
+        return startDistance <= endDistance ? .start : .end
+    }
+
     // MARK: - Helpers
 
     private func beginPlayheadScrub(at frame: Int) {
@@ -681,6 +739,30 @@ final class TimelineInputController {
         editor.isScrubbing = false
         editor.seekToFrame(frame, mode: .exact)
         if shouldResume { editor.resumePlayback() }
+    }
+
+    private func beginTimelineRangeEdgeDrag(_ edge: TimelineRangeEdge) {
+        guard let range = editor.validSelectedTimelineRange else { return }
+        let anchorFrame: Int
+        switch edge {
+        case .start:
+            anchorFrame = range.endFrame
+        case .end:
+            anchorFrame = range.startFrame
+        }
+        dragState = .timelineRange(DragState.TimelineRangeDrag(anchorFrame: anchorFrame))
+        snapState = SnapEngine.SnapState()
+        snapIndicatorX = nil
+        editor.selectedGap = nil
+    }
+
+    private func beginTimelineRangeSelection(at frame: Int) {
+        dragState = .timelineRange(DragState.TimelineRangeDrag(anchorFrame: frame))
+        snapState = SnapEngine.SnapState()
+        snapIndicatorX = nil
+        editor.selectedClipIds.removeAll()
+        editor.selectedGap = nil
+        editor.setTimelineRange(startFrame: frame, endFrame: frame)
     }
 
     private func scrubToFrame(_ frame: Int) {

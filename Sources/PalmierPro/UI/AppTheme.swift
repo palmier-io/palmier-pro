@@ -45,7 +45,8 @@ enum AppTheme {
     // MARK: - Accent
 
     enum Accent {
-        static let timecodeColor = Color(red: 0.95, green: 0.6, blue: 0.2)
+        static let timecodeNSColor = NSColor(red: 0.95, green: 0.6, blue: 0.2, alpha: 1)
+        static let timecodeColor = Color(timecodeNSColor)
 
         /// Warm off-white
         static let primary = Color(red: 0.961, green: 0.937, blue: 0.894)

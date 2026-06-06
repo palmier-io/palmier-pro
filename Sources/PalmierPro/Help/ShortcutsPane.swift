@@ -24,6 +24,10 @@ struct ShortcutsPane: View {
             ("Opt + Drag", "Duplicate Clip"),
         ]),
         ShortcutGroup(title: "Timeline", shortcuts: [
+            ("Shift + Drag Ruler", "Select Range"),
+            ("Drag Range Edge", "Adjust Range"),
+            ("I", "Mark Range Start"),
+            ("O", "Mark Range End"),
             ("Opt + Scroll", "Zoom to Cursor"),
             ("Pinch", "Zoom to Cursor"),
             ("Cmd + Scroll", "Scroll Horizontally"),

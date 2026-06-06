@@ -9,6 +9,7 @@ enum DragState {
     case audioVolumeKf(AudioVolumeKfDrag)
     case fadeKnee(FadeKneeDrag)
     case marquee(MarqueeDrag)
+    case timelineRange(TimelineRangeDrag)
 
     struct AudioVolumeKfDrag {
         let clipId: String
@@ -80,5 +81,9 @@ enum DragState {
         let origin: NSPoint
         var current: NSRect = .zero
         var baseSelection: Set<String> = []
+    }
+
+    struct TimelineRangeDrag {
+        let anchorFrame: Int
     }
 }

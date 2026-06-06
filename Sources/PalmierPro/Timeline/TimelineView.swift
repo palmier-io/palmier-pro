@@ -129,6 +129,7 @@ final class TimelineView: NSView {
         let visibleWidth = enclosingScrollView?.contentView.bounds.width ?? bounds.width
 
         drawTrackBackgrounds(geometry: geo, context: ctx)
+        drawTimelineRangeSelectionTrackFill(geometry: geo, context: ctx)
         drawClips(geometry: geo, dirtyRect: dirtyRect, context: ctx)
         drawGapSelection(geometry: geo, context: ctx)
         syncGeneratingClipOverlays(geometry: geo)
@@ -184,6 +185,8 @@ final class TimelineView: NSView {
             scrollOffsetX: scrollOffset.x,
             context: ctx
         )
+        drawTimelineRangeSelectionRulerFill(geometry: geo, scrollOffset: scrollOffset, context: ctx)
+        drawTimelineRangeSelectionEdges(geometry: geo, scrollOffset: scrollOffset, context: ctx)
     }
 
     func updatePlayheadLayer() { playheadOverlay.update() }
@@ -303,6 +306,57 @@ final class TimelineView: NSView {
     }
 
     // MARK: - Gap selection
+
+    private func drawTimelineRangeSelectionTrackFill(geometry geo: TimelineGeometry, context ctx: CGContext) {
+        guard let range = editor.validSelectedTimelineRange else { return }
+        let minX = geo.xForFrame(range.startFrame)
+        let maxX = geo.xForFrame(range.endFrame)
+        let rect = NSRect(
+            x: minX,
+            y: Double(geo.rulerHeight),
+            width: maxX - minX,
+            height: max(0, Double(bounds.height - geo.rulerHeight))
+        )
+        ctx.setFillColor(AppTheme.Text.primary.withAlphaComponent(AppTheme.Opacity.hint).cgColor)
+        ctx.fill(rect)
+    }
+
+    private func drawTimelineRangeSelectionRulerFill(
+        geometry geo: TimelineGeometry,
+        scrollOffset: NSPoint,
+        context ctx: CGContext
+    ) {
+        guard let range = editor.validSelectedTimelineRange else { return }
+        let minX = geo.xForFrame(range.startFrame)
+        let maxX = geo.xForFrame(range.endFrame)
+        let rulerRect = NSRect(
+            x: minX,
+            y: scrollOffset.y,
+            width: maxX - minX,
+            height: Double(geo.rulerHeight)
+        )
+
+        ctx.setFillColor(AppTheme.Text.primary.withAlphaComponent(AppTheme.Opacity.soft).cgColor)
+        ctx.fill(rulerRect)
+    }
+
+    private func drawTimelineRangeSelectionEdges(
+        geometry geo: TimelineGeometry,
+        scrollOffset: NSPoint,
+        context ctx: CGContext
+    ) {
+        guard let range = editor.validSelectedTimelineRange else { return }
+        let minX = geo.xForFrame(range.startFrame)
+        let maxX = geo.xForFrame(range.endFrame)
+
+        ctx.setStrokeColor(AppTheme.Accent.timecodeNSColor.withAlphaComponent(AppTheme.Opacity.prominent).cgColor)
+        ctx.setLineWidth(AppTheme.BorderWidth.medium)
+        for x in [minX, maxX] {
+            ctx.move(to: CGPoint(x: x, y: Double(scrollOffset.y)))
+            ctx.addLine(to: CGPoint(x: x, y: Double(scrollOffset.y + geo.rulerHeight)))
+        }
+        ctx.strokePath()
+    }
 
     private func drawGapSelection(geometry geo: TimelineGeometry, context ctx: CGContext) {
         guard let gap = editor.selectedGap,
@@ -502,8 +556,9 @@ final class TimelineView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         let trackIndex = geometry.trackAt(y: point.y)
         let clickFrame = max(0, geometry.frameAt(x: point.x))
+        let clickedRange = editor.validSelectedTimelineRange?.contains(frame: clickFrame) ?? false
         guard let hit = inputController.hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) else {
-            return emptyAreaMenu(trackIndex: trackIndex, frame: clickFrame)
+            return emptyAreaMenu(trackIndex: trackIndex, frame: clickFrame, clickedRange: clickedRange)
         }
         let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
         let clipRect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
@@ -598,18 +653,41 @@ final class TimelineView: NSView {
             item.target = self
             menu.addItem(item)
         }
+        if clickedRange {
+            menu.addItem(.separator())
+            addTimelineRangeItems(to: menu)
+        }
         return menu.items.isEmpty ? nil : menu
     }
 
-    private func emptyAreaMenu(trackIndex: Int, frame: Int) -> NSMenu? {
-        guard editor.canPasteClips,
-              editor.timeline.tracks.indices.contains(trackIndex) else { return nil }
+    private func emptyAreaMenu(trackIndex: Int, frame: Int, clickedRange: Bool) -> NSMenu? {
         let menu = NSMenu()
-        let item = NSMenuItem(title: "Paste", action: #selector(performPasteClips(_:)), keyEquivalent: "")
-        item.target = self
-        item.representedObject = ["trackIndex": trackIndex, "frame": frame] as [String: Any]
-        menu.addItem(item)
+        if editor.canPasteClips,
+           editor.timeline.tracks.indices.contains(trackIndex) {
+            let item = NSMenuItem(title: "Paste", action: #selector(performPasteClips(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = ["trackIndex": trackIndex, "frame": frame] as [String: Any]
+            menu.addItem(item)
+        }
+        if clickedRange {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            addTimelineRangeItems(to: menu)
+        }
+        guard !menu.items.isEmpty else { return nil }
         return menu
+    }
+
+    private func addTimelineRangeItems(to menu: NSMenu) {
+        let addItem = NSMenuItem(title: "Add Range to Chat", action: #selector(performAddTimelineRangeToChat(_:)), keyEquivalent: "")
+        addItem.target = self
+        menu.addItem(addItem)
+        addClearRangeItem(to: menu)
+    }
+
+    private func addClearRangeItem(to menu: NSMenu) {
+        let item = NSMenuItem(title: "Clear Range", action: #selector(performClearTimelineRange(_:)), keyEquivalent: "")
+        item.target = self
+        menu.addItem(item)
     }
 
     private func selectedClipIdsInTimelineOrder() -> [String] {
@@ -623,6 +701,15 @@ final class TimelineView: NSView {
         guard let item = sender as? NSMenuItem,
               let clipIds = item.representedObject as? [String] else { return }
         editor.agentService.attachMentions(forClipIds: clipIds)
+    }
+
+    @objc private func performAddTimelineRangeToChat(_ sender: Any?) {
+        editor.agentService.attachSelectedTimelineRangeMention()
+    }
+
+    @objc private func performClearTimelineRange(_ sender: Any?) {
+        editor.clearTimelineRange()
+        needsDisplay = true
     }
 
     @objc private func performCopyClips(_ sender: Any?) {

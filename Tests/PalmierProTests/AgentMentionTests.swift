@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import PalmierPro
 
-@Suite("AgentService - clip mentions")
+@Suite("AgentService - mentions")
 @MainActor
 struct AgentMentionTests {
 
@@ -46,5 +46,163 @@ struct AgentMentionTests {
 
         #expect(editor.agentService.mentions.count == 1)
         #expect(editor.agentService.draft == "@Interview-Take-00:00:01:00 ")
+    }
+
+    @Test func attachTimelineRangeMentionAddsStructuredRangeReference() {
+        let editor = EditorViewModel()
+        editor.timeline = Fixtures.timeline(fps: 30)
+        editor.setTimelineRange(startFrame: 90, endFrame: 30)
+
+        editor.agentService.attachSelectedTimelineRangeMention()
+
+        #expect(editor.agentService.mentions.count == 1)
+        let mention = editor.agentService.mentions[0]
+        #expect(mention.mediaRef == nil)
+        #expect(mention.type == nil)
+        #expect(mention.clipId == nil)
+        #expect(mention.referencesTimelineRange)
+        #expect(mention.timelineRange == AgentTimelineRangeMention(
+            range: TimelineRangeSelection(startFrame: 30, endFrame: 90),
+            fps: 30
+        ))
+        #expect(editor.agentService.draft == "@Range-00:00:01:00-00:00:03:00 ")
+    }
+
+    @Test func attachTimelineRangeMentionDoesNotDuplicateExistingRange() {
+        let editor = EditorViewModel()
+        editor.timeline = Fixtures.timeline(fps: 30)
+        editor.setTimelineRange(startFrame: 30, endFrame: 90)
+
+        editor.agentService.attachSelectedTimelineRangeMention()
+        editor.agentService.attachSelectedTimelineRangeMention()
+
+        #expect(editor.agentService.mentions.count == 1)
+        #expect(editor.agentService.draft == "@Range-00:00:01:00-00:00:03:00 ")
+    }
+
+    @Test func attachTimelineRangeMentionIgnoresInvalidRange() {
+        let editor = EditorViewModel()
+        editor.timeline = Fixtures.timeline(fps: 30)
+        editor.setTimelineRange(startFrame: 30, endFrame: 30)
+
+        editor.agentService.attachSelectedTimelineRangeMention()
+
+        #expect(editor.agentService.mentions.isEmpty)
+        #expect(editor.agentService.draft.isEmpty)
+    }
+
+    @Test func timelineRangeMentionSerializesAgentContext() throws {
+        let editor = EditorViewModel()
+        editor.timeline = Fixtures.timeline(fps: 30)
+        editor.setTimelineRange(startFrame: 30, endFrame: 90)
+        editor.agentService.attachSelectedTimelineRangeMention()
+
+        let entries = AgentService.mentionEntries(
+            editor.agentService.mentions,
+            editor: editor,
+            inlined: AgentService.InlinedMentions()
+        )
+
+        #expect(entries.count == 1)
+        let entry = entries[0]
+        #expect(entry["mention"] as? String == "@Range-00:00:01:00-00:00:03:00")
+        #expect(entry["kind"] as? String == "timelineRange")
+
+        let range = try #require(entry["timelineRange"] as? [String: Any])
+        #expect(range["startFrame"] as? Int == 30)
+        #expect(range["endFrame"] as? Int == 90)
+        #expect(range["durationFrames"] as? Int == 60)
+        #expect(range["fps"] as? Int == 30)
+        #expect(range["startTimecode"] as? String == "00:00:01:00")
+        #expect(range["endTimecode"] as? String == "00:00:03:00")
+        #expect(range["durationTimecode"] as? String == "00:00:02:00")
+        #expect(range["rangeSemantics"] as? String == "startInclusiveEndExclusive")
+        #expect(try JSONSerialization.data(withJSONObject: entries).isEmpty == false)
+    }
+
+    @Test func timelineRangeMentionCoexistsWithAssetAndClipMentions() {
+        let editor = EditorViewModel()
+        let asset = MediaAsset(
+            id: "asset-video",
+            url: URL(fileURLWithPath: "/tmp/interview.mov"),
+            type: .video,
+            name: "Interview Take",
+            duration: 5
+        )
+        editor.importMediaAsset(asset)
+        let clip = Fixtures.clip(id: "clip-1", mediaRef: asset.id, start: 30, duration: 60)
+        editor.timeline = Fixtures.timeline(fps: 30, tracks: [Fixtures.videoTrack(clips: [clip])])
+        editor.setTimelineRange(startFrame: 30, endFrame: 90)
+
+        editor.agentService.attachMention(for: asset)
+        editor.agentService.attachMentions(forClipIds: ["clip-1"])
+        editor.agentService.attachSelectedTimelineRangeMention()
+
+        let entries = AgentService.mentionEntries(
+            editor.agentService.mentions,
+            editor: editor,
+            inlined: AgentService.InlinedMentions()
+        )
+        let kinds = entries.compactMap { $0["kind"] as? String }
+        #expect(kinds == ["mediaAsset", "timelineClip", "timelineRange"])
+        #expect(editor.agentService.draft == "@Interview-Take @Interview-Take-00:00:01:00 @Range-00:00:01:00-00:00:03:00 ")
+    }
+
+    @Test func timelineRangeMentionRoundTripsThroughChatSessionCodable() throws {
+        let mention = AgentMention(
+            displayName: "Range-00:00:01:00-00:00:03:00",
+            timelineRange: AgentTimelineRangeMention(
+                range: TimelineRangeSelection(startFrame: 30, endFrame: 90),
+                fps: 30
+            )
+        )
+        let message = AgentMessage(role: .user, blocks: [.text("@Range-00:00:01:00-00:00:03:00 summarize this")], mentions: [mention])
+        let session = ChatSession(messages: [message])
+
+        let data = try #require(ChatSessionStore.encodeSession(session))
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(ChatSession.self, from: data)
+
+        #expect(decoded.messages.count == 1)
+        #expect(decoded.messages[0].mentions.first?.timelineRange == mention.timelineRange)
+        #expect(decoded.messages[0].mentions.first?.mediaRef == nil)
+        #expect(decoded.messages[0].mentions.first?.type == nil)
+    }
+
+    @Test func legacyAssetMentionDecodesWithoutTimelineRangeField() throws {
+        let json = """
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "displayName": "Interview-Take",
+          "mediaRef": "asset-video",
+          "type": "video",
+          "clipId": null
+        }
+        """
+
+        let mention = try JSONDecoder().decode(AgentMention.self, from: Data(json.utf8))
+
+        #expect(mention.mediaRef == "asset-video")
+        #expect(mention.type == .video)
+        #expect(mention.timelineRange == nil)
+    }
+
+    @Test func referencedMentionsDropsMentionsRemovedFromDraft() {
+        let assetMention = AgentMention(displayName: "Interview-Take", mediaRef: "asset-video", type: .video)
+        let rangeMention = AgentMention(
+            displayName: "Range-00:00:01:00-00:00:03:00",
+            timelineRange: AgentTimelineRangeMention(
+                range: TimelineRangeSelection(startFrame: 30, endFrame: 90),
+                fps: 30
+            )
+        )
+
+        let referenced = AgentService.referencedMentions(
+            [assetMention, rangeMention],
+            in: "Use @Range-00:00:01:00-00:00:03:00 only"
+        )
+
+        #expect(referenced == [rangeMention])
     }
 }
