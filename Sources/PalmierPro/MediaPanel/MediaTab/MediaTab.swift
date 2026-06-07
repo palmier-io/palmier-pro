@@ -304,7 +304,7 @@ struct MediaTab: View {
                 }
             }
         }
-        .scrollIndicators(.hidden)
+        .scrollIndicators(.never)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
