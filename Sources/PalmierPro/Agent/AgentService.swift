@@ -73,6 +73,7 @@ final class AgentService {
 
     var draft: String = ""
     var mentions: [AgentMention] = []
+    private static let clipMentionLabelMaxLength = 24
 
     func attachMention(for asset: MediaAsset) {
         editor?.agentPanelVisible = true
@@ -93,6 +94,7 @@ final class AgentService {
             let displayName = Self.disambiguatedClipMentionName(
                 for: ref.clip,
                 label: ref.label,
+                trackLabel: ref.trackLabel,
                 fps: editor.timeline.fps,
                 existing: mentions
             )
@@ -140,10 +142,14 @@ final class AgentService {
     static func disambiguatedClipMentionName(
         for clip: Clip,
         label: String,
+        trackLabel: String,
         fps: Int,
         existing: [AgentMention]
     ) -> String {
-        let base = AgentMention.makeDisplayName(from: "\(label)-\(formatTimecode(frame: clip.startFrame, fps: fps))")
+        let shortLabel = compactClipMentionLabel(label)
+        let base = AgentMention.makeDisplayName(
+            from: "\(shortLabel)-\(trackLabel)-\(formatTimecode(frame: clip.startFrame, fps: fps))"
+        )
         let fallback = "Clip-\(String(clip.id.prefix(6)))"
         let candidate = base.isEmpty ? fallback : base
         if !existing.contains(where: { $0.displayName == candidate && $0.clipId != clip.id }) {
@@ -151,6 +157,13 @@ final class AgentService {
         }
         let short = String(clip.id.prefix(6))
         return "\(candidate)#\(short)"
+    }
+
+    private static func compactClipMentionLabel(_ label: String) -> String {
+        let display = AgentMention.makeDisplayName(from: label)
+        guard display.count > clipMentionLabelMaxLength else { return display }
+        let end = display.index(display.startIndex, offsetBy: clipMentionLabelMaxLength)
+        return String(display[..<end]).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
     }
 
     static func disambiguatedTimelineRangeMentionName(
@@ -169,14 +182,20 @@ final class AgentService {
     private struct ClipMentionReference {
         let clip: Clip
         let label: String
+        let trackLabel: String
     }
 
     private static func clipMentionReferences(for clipIds: [String], editor: EditorViewModel) -> [ClipMentionReference] {
         let requested = Set(clipIds)
         var refs: [ClipMentionReference] = []
-        for track in editor.timeline.tracks {
+        for (trackIndex, track) in editor.timeline.tracks.enumerated() {
+            let trackLabel = editor.timelineTrackDisplayLabel(at: trackIndex)
             for clip in track.clips where requested.contains(clip.id) {
-                refs.append(ClipMentionReference(clip: clip, label: editor.clipDisplayLabel(for: clip)))
+                refs.append(ClipMentionReference(
+                    clip: clip,
+                    label: editor.clipDisplayLabel(for: clip),
+                    trackLabel: trackLabel
+                ))
             }
         }
         return refs

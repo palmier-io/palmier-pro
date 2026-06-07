@@ -25,7 +25,7 @@ struct AgentMentionTests {
         #expect(editor.agentService.mentions[0].mediaRef == asset.id)
         #expect(editor.agentService.mentions[0].clipId == "clip-1")
         #expect(editor.agentService.mentions[0].referencesTimelineClips)
-        #expect(editor.agentService.draft == "@Interview-Take-00:00:01:00 ")
+        #expect(editor.agentService.draft == "@Interview-Take-V1-00:00:01:00 ")
     }
 
     @Test func attachClipMentionDoesNotDuplicateExistingClip() {
@@ -45,7 +45,32 @@ struct AgentMentionTests {
         editor.agentService.attachMentions(forClipIds: ["clip-1"])
 
         #expect(editor.agentService.mentions.count == 1)
-        #expect(editor.agentService.draft == "@Interview-Take-00:00:01:00 ")
+        #expect(editor.agentService.draft == "@Interview-Take-V1-00:00:01:00 ")
+    }
+
+    @Test func attachLinkedVideoAndAudioMentionsUseTrackLabelsAndShortNames() {
+        let editor = EditorViewModel()
+        let asset = MediaAsset(
+            id: "asset-video",
+            url: URL(fileURLWithPath: "/tmp/interview.mov"),
+            type: .video,
+            name: "Very Long Interview Take With Lots of Extra Context",
+            duration: 5
+        )
+        editor.importMediaAsset(asset)
+        var video = Fixtures.clip(id: "video-clip", mediaRef: asset.id, mediaType: .video, start: 30, duration: 60)
+        var audio = Fixtures.clip(id: "audio-clip", mediaRef: asset.id, mediaType: .audio, start: 30, duration: 60)
+        video.linkGroupId = "linked-1"
+        audio.linkGroupId = "linked-1"
+        editor.timeline = Fixtures.timeline(fps: 30, tracks: [
+            Fixtures.videoTrack(clips: [video]),
+            Fixtures.audioTrack(clips: [audio]),
+        ])
+
+        editor.agentService.attachMentions(forClipIds: ["video-clip", "audio-clip"])
+
+        #expect(editor.agentService.mentions.map(\.type) == [.video, .audio])
+        #expect(editor.agentService.draft == "@Very-Long-Interview-Take-V1-00:00:01:00 @Very-Long-Interview-Take-A1-00:00:01:00 ")
     }
 
     @Test func attachTimelineRangeMentionAddsStructuredRangeReference() {
@@ -145,7 +170,7 @@ struct AgentMentionTests {
         )
         let kinds = entries.compactMap { $0["kind"] as? String }
         #expect(kinds == ["mediaAsset", "timelineClip", "timelineRange"])
-        #expect(editor.agentService.draft == "@Interview-Take @Interview-Take-00:00:01:00 @Range-00:00:01:00-00:00:03:00 ")
+        #expect(editor.agentService.draft == "@Interview-Take @Interview-Take-V1-00:00:01:00 @Range-00:00:01:00-00:00:03:00 ")
     }
 
     @Test func timelineRangeMentionRoundTripsThroughChatSessionCodable() throws {

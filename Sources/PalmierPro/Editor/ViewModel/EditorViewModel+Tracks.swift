@@ -15,6 +15,17 @@ extension EditorViewModel {
         return clamped
     }
 
+    /// "V1", "A1", "I1" label for the track at the given index.
+    func timelineTrackDisplayLabel(at trackIndex: Int) -> String {
+        guard timeline.tracks.indices.contains(trackIndex) else { return "" }
+        let type = timeline.tracks[trackIndex].type
+        var n = 0
+        for i in 0...trackIndex where timeline.tracks[i].type == type {
+            n += 1
+        }
+        return "\(type.trackLabelPrefix)\(n)"
+    }
+
     /// Clamp `requested` so that visual (video/image) tracks always sit above every audio track.
     private func partitionedInsertionIndex(for type: ClipType, requested: Int) -> Int {
         let z = zones

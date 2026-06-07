@@ -61,7 +61,7 @@ final class TimelineHeaderView: NSView {
             ctx.fill(NSRect(x: 0, y: y, width: stripWidth, height: h))
 
             // Track label
-            let str = NSAttributedString(string: displayLabel(for: i), attributes: Self.labelAttrs)
+            let str = NSAttributedString(string: editor.timelineTrackDisplayLabel(at: i), attributes: Self.labelAttrs)
             let labelSize = str.size()
             let labelY = y + (h - labelSize.height) / 2
             str.draw(at: NSPoint(x: stripWidth + 6, y: labelY))
@@ -104,18 +104,6 @@ final class TimelineHeaderView: NSView {
             ctx.setFillColor(AppTheme.Border.divider.cgColor)
             ctx.fill(NSRect(x: 0, y: dividerY - 1, width: headerWidth, height: 2))
         }
-    }
-
-    /// Premiere-style "V1", "A1", "I1" label based on position among same-type tracks.
-    private func displayLabel(for trackIndex: Int) -> String {
-        let tracks = editor.timeline.tracks
-        guard tracks.indices.contains(trackIndex) else { return "" }
-        let type = tracks[trackIndex].type
-        var n = 0
-        for i in 0...trackIndex where tracks[i].type == type {
-            n += 1
-        }
-        return "\(type.trackLabelPrefix)\(n)"
     }
 
     /// Draw a toggleable SF Symbol button; returns the hit-test rect (padded).
