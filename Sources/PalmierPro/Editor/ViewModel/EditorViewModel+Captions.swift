@@ -48,12 +48,42 @@ extension EditorViewModel {
         }
     }
 
+    func captionCanTranscribe(_ clip: Clip) -> Bool {
+        guard clip.mediaType == .video || clip.mediaType == .audio else { return false }
+        guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }) else { return true }
+        return asset.type == .audio || (asset.type == .video && asset.hasAudio)
+    }
+
+    func captionUsesVideoAudioExtraction(for clip: Clip) -> Bool {
+        let assetType = mediaAssets.first(where: { $0.id == clip.mediaRef })?.type
+        return assetType == .video || (assetType == nil && clip.mediaType == .video)
+    }
+
     func captionTargets(ids: [String]) -> [Clip] {
         let pool: [Clip] = ids.isEmpty
             ? timeline.tracks.flatMap(\.clips)
             : ids.compactMap { findClip(id: $0).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex] } }
+        return captionTargets(in: pool)
+    }
+
+    func captionTargets(trackIds: Set<String>) -> [Clip] {
+        guard !trackIds.isEmpty else { return [] }
+        let audioGroups = Set(timeline.tracks.flatMap(\.clips).filter { $0.mediaType == .audio }.compactMap(\.linkGroupId))
+        let pool = timeline.tracks
+            .filter { trackIds.contains($0.id) }
+            .flatMap(\.clips)
+            .filter { !($0.mediaType == .video && $0.linkGroupId.map(audioGroups.contains) == true) }
+        return captionTargets(in: pool)
+    }
+
+    private func captionTargets(in pool: [Clip]) -> [Clip] {
+        let linkGroupsWithAudio = Set(pool.filter { $0.mediaType == .audio }.compactMap(\.linkGroupId))
         return pool
-            .filter { $0.mediaType == .video || $0.mediaType == .audio }
+            .filter { clip in
+                guard captionCanTranscribe(clip) else { return false }
+                guard clip.mediaType == .video, let groupId = clip.linkGroupId else { return true }
+                return !linkGroupsWithAudio.contains(groupId)
+            }
             .sorted { $0.startFrame < $1.startFrame }
     }
 
@@ -74,9 +104,9 @@ extension EditorViewModel {
                     result = cached
                 } else {
                     guard let url = mediaResolver.resolveURL(for: clip.mediaRef) else { continue }
-                    result = clip.mediaType == .audio
-                        ? try await Transcription.transcribe(fileURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale)
-                        : try await Transcription.transcribeVideoAudio(videoURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale)
+                    result = captionUsesVideoAudioExtraction(for: clip)
+                        ? try await Transcription.transcribeVideoAudio(videoURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale)
+                        : try await Transcription.transcribe(fileURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale)
                     resultByMediaRef[clip.mediaRef] = result
                 }
                 phrasesByClipId[clipId] = CaptionBuilder.group(result.words) {

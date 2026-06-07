@@ -5,13 +5,14 @@ struct CaptionTab: View {
 
     @State private var style = TextStyle(fontSize: AppTheme.Caption.defaultFontSize)
     @State private var center = AppTheme.Caption.defaultCenter
+    @State private var selectedTrackId: String?
+    @State private var selectedClipTargets: [String] = []
     @State private var textCase: EditorViewModel.CaptionCase = .auto
     @State private var censorProfanity = false
     @State private var locale: Locale?
     @State private var supportedLocales: [Locale] = []
     @State private var isGenerating = false
     @State private var note: String?
-    @State private var sourceSnapshot: [String] = []
 
     private static let previewText = "Captions will look like this"
 
@@ -23,7 +24,19 @@ struct CaptionTab: View {
         return editor.captionTargets(ids: Array(sel)).map(\.id)
     }
     private var allTargetCount: Int { editor.captionTargets(ids: []).count }
-    private var effectiveCount: Int { sourceSnapshot.isEmpty ? allTargetCount : sourceSnapshot.count }
+    private var sourceClipIds: [String] {
+        guard let selectedTrackId else { return selectedClipTargets }
+        return editor.captionTargets(trackIds: [selectedTrackId]).map(\.id)
+    }
+    private var automaticSourceSummary: String {
+        selectedClipTargets.isEmpty
+            ? (allTargetCount == 0 ? "No audio" : "All Audio · \(allTargetCount)")
+            : "Selected Clips · \(selectedClipTargets.count)"
+    }
+    private var effectiveCount: Int { selectedTrackId == nil && selectedClipTargets.isEmpty ? allTargetCount : sourceClipIds.count }
+    private var captionTrackIndices: [Int] {
+        editor.timeline.tracks.indices.filter { !editor.captionTargets(trackIds: [editor.timeline.tracks[$0].id]).isEmpty }
+    }
 
     private static let translateLanguages = [
         "Spanish", "French", "German", "Italian", "Portuguese",
@@ -31,9 +44,9 @@ struct CaptionTab: View {
     ]
 
     private var sourceSummary: String {
-        if !sourceSnapshot.isEmpty { return "Selected · \(sourceSnapshot.count)" }
-        if allTargetCount == 0 { return "No audio" }
-        return "All audio · \(allTargetCount)"
+        guard let selectedTrackId else { return automaticSourceSummary }
+        guard let index = editor.timeline.tracks.firstIndex(where: { $0.id == selectedTrackId }) else { return "No track" }
+        return "\(trackTitle(index)) · \(sourceClipIds.count)"
     }
 
     var body: some View {
@@ -65,20 +78,17 @@ struct CaptionTab: View {
             supportedLocales = (await Transcription.supportedLocales())
                 .sorted { languageName($0) < languageName($1) }
         }
-        .onAppear { sourceSnapshot = liveTargets }
-        .onChange(of: editor.selectedClipIds) { _, _ in
-            let targets = liveTargets
-            if !targets.isEmpty || editor.focusedPanel != .media { sourceSnapshot = targets }
-        }
+        .onAppear { rememberSelectedClipTargets() }
+        .onChange(of: editor.selectedClipIds) { _, _ in rememberSelectedClipTargets() }
     }
 
     private var sourceSection: some View {
         InspectorSection("Source") {
             InspectorRow(
                 icon: "waveform",
-                label: "Audio",
-                labelHelp: "Uses all audio and video clips by default. Select clips on the timeline to transcribe only those."
-            ) { valueText(sourceSummary) }
+                label: "Source",
+                labelHelp: "Uses selected clips when available, otherwise all captionable audio. Choose a track to limit captions."
+            ) { sourceMenu }
             InspectorRow(icon: "globe", label: "Language") {
                 Menu {
                     Button("Auto") { locale = nil }
@@ -88,18 +98,54 @@ struct CaptionTab: View {
                             Button(languageName(loc)) { locale = loc }
                         }
                     }
-                } label: {
-                    HStack(spacing: AppTheme.Spacing.xxs) {
-                        Text(locale.map(languageName) ?? "Auto")
-                        Image(systemName: "chevron.up.chevron.down").font(.system(size: AppTheme.FontSize.xxs))
-                    }
-                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .lineLimit(1)
-                }
+                } label: { menuValueLabel(locale.map(languageName) ?? "Auto") }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
             }
         }
+    }
+
+    private var sourceMenu: some View {
+        Menu {
+            Button {
+                selectedTrackId = nil
+            } label: {
+                Label(automaticSourceSummary, systemImage: selectedTrackId == nil ? "checkmark" : "")
+            }
+
+            Divider()
+
+            if captionTrackIndices.isEmpty {
+                Text("No Tracks")
+            } else {
+                ForEach(captionTrackIndices, id: \.self) { index in
+                    let track = editor.timeline.tracks[index]
+                    let count = editor.captionTargets(trackIds: [track.id]).count
+                    Button {
+                        selectedTrackId = track.id
+                    } label: {
+                        Label(
+                            "\(trackTitle(index)) · \(count) \(count == 1 ? "clip" : "clips")",
+                            systemImage: selectedTrackId == track.id ? "checkmark" : ""
+                        )
+                    }
+                }
+            }
+        } label: {
+            menuValueLabel(sourceSummary)
+        }
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+    }
+
+    private func rememberSelectedClipTargets() {
+        let targets = liveTargets
+        guard !targets.isEmpty || editor.focusedPanel != .media else { return }
+        selectedClipTargets = targets
+    }
+
+    private func trackTitle(_ index: Int) -> String {
+        let display = editor.timelineTrackDisplayLabel(at: index)
+        let label = editor.timeline.tracks[index].label
+        return label == display ? display : "\(display) · \(label)"
     }
 
     private func languageName(_ loc: Locale) -> String {
@@ -220,11 +266,14 @@ struct CaptionTab: View {
         editor.agentPanelVisible = true
     }
 
-    private func valueText(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
-            .foregroundStyle(AppTheme.Text.tertiaryColor)
-            .lineLimit(1)
+    private func menuValueLabel(_ text: String) -> some View {
+        HStack(spacing: AppTheme.Spacing.xxs) {
+            Text(text)
+            Image(systemName: "chevron.up.chevron.down").font(.system(size: AppTheme.FontSize.xxs))
+        }
+        .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+        .foregroundStyle(AppTheme.Text.tertiaryColor)
+        .lineLimit(1)
     }
 
     private var previewBox: some View {
@@ -337,8 +386,13 @@ struct CaptionTab: View {
 
     private func generate() {
         note = nil
+        let sourceIds = sourceClipIds
+        if selectedTrackId != nil && sourceIds.isEmpty {
+            note = "No audio selected."
+            return
+        }
         let request = EditorViewModel.CaptionRequest(
-            sourceClipIds: sourceSnapshot, style: style, center: center,
+            sourceClipIds: sourceIds, style: style, center: center,
             textCase: textCase, censorProfanity: censorProfanity, locale: locale
         )
         Task {
@@ -353,4 +407,3 @@ struct CaptionTab: View {
         }
     }
 }
-

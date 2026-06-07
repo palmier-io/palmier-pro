@@ -18,6 +18,13 @@ private func textSpec(start: Int, duration: Int, content: String) -> EditorViewM
 }
 
 @MainActor
+private func mediaAsset(_ id: String, hasAudio: Bool = true) -> MediaAsset {
+    let asset = MediaAsset(id: id, url: URL(fileURLWithPath: "/tmp/\(id).mov"), type: .video, name: id, duration: 3)
+    asset.hasAudio = hasAudio
+    return asset
+}
+
+@MainActor
 @Suite struct CaptionPlacementTests {
     @Test func textClipsStayOnInsertedTrackWhenAClipIsOverwritten() {
         let e = editor([Fixtures.videoTrack(label: "Video", clips: [Fixtures.clip(start: 0, duration: 300)])])
@@ -50,6 +57,45 @@ private func textSpec(start: Int, duration: Int, content: String) -> EditorViewM
         _ = e.placeTextClips([textSpec(start: 0, duration: 50, content: "hi")])
         #expect(e.timeline.tracks.count == 2)
         #expect(e.timeline.tracks[0].clips.count == 1)
+    }
+}
+
+@MainActor
+@Suite struct CaptionTargetTests {
+    @Test func linkedAndTrackTargetsChooseAudioSide() {
+        let groupId = "linked-1"
+        var video = Fixtures.clip(id: "video", mediaRef: "media-1", mediaType: .video, start: 0, duration: 100)
+        var audio = Fixtures.clip(id: "audio", mediaRef: "media-1", mediaType: .audio, start: 0, duration: 100)
+        let voice = Fixtures.clip(id: "voice", mediaRef: "voice-media", mediaType: .audio, start: 120, duration: 100)
+        let music = Fixtures.clip(id: "music", mediaRef: "music-media", mediaType: .audio, start: 240, duration: 100)
+        video.linkGroupId = groupId
+        audio.linkGroupId = groupId
+        let e = editor([
+            Fixtures.videoTrack(id: "video-track", clips: [video]),
+            Fixtures.audioTrack(id: "audio-track", clips: [audio]),
+            Fixtures.audioTrack(id: "voice-track", label: "Voiceover", clips: [voice]),
+            Fixtures.audioTrack(id: "music-track", label: "Music", clips: [music]),
+        ])
+
+        #expect(e.captionTargets(ids: []).map(\.id) == ["audio", "voice", "music"])
+        #expect(e.captionTargets(ids: ["video"]).map(\.id) == ["video"])
+        #expect(e.captionTargets(trackIds: ["voice-track"]).map(\.id) == ["voice"])
+        #expect(e.captionTargets(trackIds: ["video-track", "audio-track"]).map(\.id) == ["audio"])
+        #expect(e.captionTargets(trackIds: ["video-track"]).isEmpty)
+        #expect(e.captionTargets(trackIds: ["audio-track"]).map(\.id) == ["audio"])
+    }
+
+    @Test func mediaMetadataFiltersCaptionSources() {
+        let silent = Fixtures.clip(id: "silent", mediaRef: "silent-media", mediaType: .video, start: 0, duration: 100)
+        let linkedAudio = Fixtures.clip(id: "audio", mediaRef: "video-media", mediaType: .audio, start: 120, duration: 100)
+        let e = editor([
+            Fixtures.videoTrack(clips: [silent]),
+            Fixtures.audioTrack(clips: [linkedAudio]),
+        ])
+        e.mediaAssets.append(contentsOf: [mediaAsset("silent-media", hasAudio: false), mediaAsset("video-media")])
+
+        #expect(e.captionTargets(ids: []).map(\.id) == ["audio"])
+        #expect(e.captionUsesVideoAudioExtraction(for: linkedAudio))
     }
 }
 
