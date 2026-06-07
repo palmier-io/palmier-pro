@@ -102,6 +102,44 @@ final class TimelineView: NSView {
         lastAppliedZoomScale = editor.zoomScale
     }
 
+    @discardableResult
+    func autoScrollHorizontallyForTimelineDrag(windowPoint: NSPoint) -> Bool {
+        guard let scrollView = enclosingScrollView else { return false }
+        let visibleRect = scrollView.contentView.bounds
+        guard visibleRect.width > 0 else { return false }
+
+        let delta = horizontalAutoScrollDelta(windowPoint: windowPoint, visibleRect: visibleRect)
+        guard delta != 0 else { return false }
+
+        let maxX = max(0, bounds.width - visibleRect.width)
+        let nextX = min(maxX, max(0, visibleRect.origin.x + delta))
+        guard nextX != visibleRect.origin.x else { return false }
+
+        scrollView.contentView.setBoundsOrigin(NSPoint(x: nextX, y: visibleRect.origin.y))
+        return true
+    }
+
+    private func horizontalAutoScrollDelta(windowPoint: NSPoint, visibleRect: NSRect) -> CGFloat {
+        let point = convert(windowPoint, from: nil)
+        let zone = min(TimelineAutoScroll.edgeZoneWidth, visibleRect.width * TimelineAutoScroll.maxZoneFraction)
+        guard zone > 0 else { return 0 }
+
+        if point.x < visibleRect.minX + zone {
+            let distance = visibleRect.minX + zone - point.x
+            return -horizontalAutoScrollStep(distance: distance, zone: zone)
+        }
+        if point.x > visibleRect.maxX - zone {
+            let distance = point.x - (visibleRect.maxX - zone)
+            return horizontalAutoScrollStep(distance: distance, zone: zone)
+        }
+        return 0
+    }
+
+    private func horizontalAutoScrollStep(distance: CGFloat, zone: CGFloat) -> CGFloat {
+        let progress = min(1, max(0, distance / zone))
+        return TimelineAutoScroll.minStep + (TimelineAutoScroll.maxStep - TimelineAutoScroll.minStep) * progress
+    }
+
     private func applyPlayheadAnchoredScroll(previousZoom: Double, scrollView: NSScrollView) {
         let origin = scrollView.contentView.bounds.origin
         let visibleWidth = scrollView.contentView.bounds.size.width

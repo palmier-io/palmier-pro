@@ -12,6 +12,8 @@ final class TimelineInputController {
     private var snapState = SnapEngine.SnapState()
     private var razorSnapState = SnapEngine.SnapState()
     private var scrubWasPlaying = false
+    private var playheadAutoScrollTimer: Timer?
+    private var playheadAutoScrollWindowPoint: NSPoint?
 
     private enum TimelineRangeEdge {
         case start
@@ -183,14 +185,17 @@ final class TimelineInputController {
     // MARK: - Mouse dragged
 
     func mouseDragged(with event: NSEvent, geometry: TimelineGeometry) {
+        if case .scrubPlayhead = dragState {
+            continuePlayheadScrub(windowPoint: event.locationInWindow)
+            return
+        }
+        stopPlayheadAutoScroll()
+
         let point = view.convert(event.locationInWindow, from: nil)
         let frame = geometry.frameAt(x: point.x)
 
         switch dragState {
         case .scrubPlayhead:
-            snapIndicatorX = nil
-            scrubToFrame(frame)
-            view.updatePlayheadLayer()
             return
 
         case .timelineRange(let drag):
@@ -364,6 +369,8 @@ final class TimelineInputController {
     // MARK: - Mouse up
 
     func mouseUp(with event: NSEvent, geometry: TimelineGeometry) {
+        stopPlayheadAutoScroll()
+
         switch dragState {
         case .moveClip(let drag):
             if case .existingTrack(let idx) = drag.dropTarget,
@@ -724,6 +731,7 @@ final class TimelineInputController {
     // MARK: - Helpers
 
     private func beginPlayheadScrub(at frame: Int) {
+        stopPlayheadAutoScroll()
         dragState = .scrubPlayhead
         scrubWasPlaying = editor.isPlaying
         if scrubWasPlaying { editor.pause() }
@@ -733,12 +741,64 @@ final class TimelineInputController {
     }
 
     private func finishPlayheadScrub() {
+        stopPlayheadAutoScroll()
         let shouldResume = scrubWasPlaying
         let frame = editor.activeFrame
         scrubWasPlaying = false
         editor.isScrubbing = false
         editor.seekToFrame(frame, mode: .exact)
         if shouldResume { editor.resumePlayback() }
+    }
+
+    private func continuePlayheadScrub(windowPoint: NSPoint) {
+        playheadAutoScrollWindowPoint = windowPoint
+        snapIndicatorX = nil
+
+        let didScroll = view.autoScrollHorizontallyForTimelineDrag(windowPoint: windowPoint)
+        let point = view.convert(windowPoint, from: nil)
+        let frame = view.geometry.frameAt(x: point.x)
+        if frame != editor.playheadState.timelineFrame {
+            scrubToFrame(frame)
+        }
+        view.updatePlayheadLayer()
+        view.needsDisplay = true
+
+        if didScroll {
+            startPlayheadAutoScroll()
+        } else {
+            stopPlayheadAutoScroll()
+        }
+    }
+
+    private func startPlayheadAutoScroll() {
+        guard playheadAutoScrollTimer == nil else { return }
+        let timer = Timer(timeInterval: TimelineAutoScroll.interval, repeats: true) { [weak self] timer in
+            guard let self else {
+                timer.invalidate()
+                return
+            }
+            MainActor.assumeIsolated {
+                self.tickPlayheadAutoScroll()
+            }
+        }
+        playheadAutoScrollTimer = timer
+        RunLoop.main.add(timer, forMode: .default)
+        RunLoop.main.add(timer, forMode: .eventTracking)
+    }
+
+    private func stopPlayheadAutoScroll() {
+        playheadAutoScrollTimer?.invalidate()
+        playheadAutoScrollTimer = nil
+        playheadAutoScrollWindowPoint = nil
+    }
+
+    private func tickPlayheadAutoScroll() {
+        guard case .scrubPlayhead = dragState,
+              let windowPoint = playheadAutoScrollWindowPoint else {
+            stopPlayheadAutoScroll()
+            return
+        }
+        continuePlayheadScrub(windowPoint: windowPoint)
     }
 
     private func beginTimelineRangeEdgeDrag(_ edge: TimelineRangeEdge) {

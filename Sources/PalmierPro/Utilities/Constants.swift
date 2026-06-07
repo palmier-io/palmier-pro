@@ -87,6 +87,14 @@ enum Zoom {
     static let fitAllBuffer: Double = 3.0
 }
 
+enum TimelineAutoScroll {
+    static let edgeZoneWidth: CGFloat = 56
+    static let maxZoneFraction: CGFloat = 0.5
+    static let minStep: CGFloat = 4
+    static let maxStep: CGFloat = 28
+    static let interval: TimeInterval = 1.0 / 60.0
+}
+
 enum Trim {
     static let handleWidth: CGFloat = 4.0
     static let clipCornerRadius: CGFloat = 3.0
