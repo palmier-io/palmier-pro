@@ -10,11 +10,20 @@ struct TranscriptionWord: Sendable {
     let speakerId: String?
 }
 
+/// One natural utterance the transcriber endpointed on its own (pause/sentence
+/// boundary). `text` carries the model's punctuation and casing.
+struct TranscriptionSegment: Sendable {
+    let text: String
+    let start: Double
+    let end: Double
+}
+
 struct TranscriptionResult: Sendable {
     let text: String
     let language: String?
     let languageProbability: Double?
     let words: [TranscriptionWord]
+    let segments: [TranscriptionSegment]
 }
 
 enum TranscriptionError: LocalizedError {
@@ -201,18 +210,28 @@ enum Transcription {
         return outURL
     }
 
-    /// Walks each result's AttributedString runs and emits one
-    /// TranscriptionWord per non-whitespace token.
+    /// Each `Result` is one endpointed segment; emit it as a TranscriptionSegment
+    /// (text + time range) and walk its runs into per-token TranscriptionWords.
     private static func decodeResults(
         _ results: [SpeechTranscriber.Result],
         locale: Locale,
     ) -> TranscriptionResult {
         var words: [TranscriptionWord] = []
+        var segments: [TranscriptionSegment] = []
         var fullText = ""
 
         for result in results {
             let attributed = result.text
             fullText += String(attributed.characters)
+
+            let segmentText = String(attributed.characters).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !segmentText.isEmpty {
+                segments.append(TranscriptionSegment(
+                    text: segmentText,
+                    start: result.range.start.seconds,
+                    end: result.range.end.seconds
+                ))
+            }
 
             for run in attributed.runs {
                 let runText = String(attributed[run.range].characters)
@@ -222,13 +241,7 @@ enum Transcription {
                 let start = range.map(\.start.seconds)
                 let end = range.map { ($0.start + $0.duration).seconds }
                 words.append(
-                    TranscriptionWord(
-                        text: trimmed,
-                        start: start,
-                        end: end,
-                        type: "word",
-                        speakerId: nil,
-                    ),
+                    TranscriptionWord(text: trimmed, start: start, end: end, type: "word", speakerId: nil)
                 )
             }
         }
@@ -238,6 +251,7 @@ enum Transcription {
             language: locale.identifier(.bcp47),
             languageProbability: nil,
             words: words,
+            segments: segments,
         )
     }
 }

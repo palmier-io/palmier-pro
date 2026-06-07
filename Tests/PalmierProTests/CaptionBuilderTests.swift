@@ -4,39 +4,53 @@ import Testing
 
 @Suite("CaptionBuilder")
 struct CaptionBuilderTests {
-    private func word(_ text: String, _ start: Double, _ end: Double) -> TranscriptionWord {
-        TranscriptionWord(text: text, start: start, end: end, type: "word", speakerId: nil)
+    private func segment(_ text: String, _ start: Double, _ end: Double) -> TranscriptionSegment {
+        TranscriptionSegment(text: text, start: start, end: end)
     }
 
-    @Test func breaksWhenLineOverflowsWidth() {
-        let words = [word("a", 0, 0.3), word("b", 0.3, 0.6), word("c", 0.6, 0.9), word("dd", 0.9, 1.2)]
-        let phrases = CaptionBuilder.group(words, fits: { $0.count <= 7 }, hardWordCap: 100, splitGap: 100)
-        #expect(phrases.map(\.text) == ["a b c", "dd"])
+    @Test func keepsSegmentWholeWhenItFits() {
+        let phrases = CaptionBuilder.phrases(for: segment("Hello there", 1.0, 2.0), fits: { _ in true }, minDuration: 0)
+        #expect(phrases == [CaptionBuilder.Phrase(text: "Hello there", start: 1.0, end: 2.0)])
     }
 
-    @Test func capsAtHardWordCap() {
-        let words = (0..<6).map { word("w\($0)", Double($0) * 0.1, Double($0) * 0.1 + 0.05) }
-        let phrases = CaptionBuilder.group(words, fits: { _ in true }, hardWordCap: 3, splitGap: 100)
-        #expect(phrases.map(\.text) == ["w0 w1 w2", "w3 w4 w5"])
+    @Test func splitsAtSentenceBoundary() {
+        let phrases = CaptionBuilder.phrases(for: segment("One. Two.", 0, 8), fits: { $0.count <= 5 }, minDuration: 0)
+        #expect(phrases.map(\.text) == ["One.", "Two."])
+        #expect(phrases.map(\.start) == [0.0, 4.0])
+        #expect(phrases.map(\.end) == [4.0, 8.0])
     }
 
-    @Test func sentencePunctuationBreaks() {
-        let words = [word("Hello", 0, 0.4), word("there.", 0.4, 0.8), word("Next", 1.0, 1.4)]
-        let phrases = CaptionBuilder.group(words, fits: { _ in true }, hardWordCap: 100, splitGap: 100)
-        #expect(phrases.map(\.text) == ["Hello there.", "Next"])
+    @Test func splitsAtClauseWhenNoSentence() {
+        let phrases = CaptionBuilder.phrases(for: segment("alpha, beta", 0, 2), fits: { $0.count <= 6 }, minDuration: 0)
+        #expect(phrases.map(\.text) == ["alpha,", "beta"])
     }
 
-    @Test func silenceGapBreaks() {
-        let words = [word("a", 0, 0.3), word("b", 0.4, 0.7), word("c", 2.0, 2.3)]
-        let phrases = CaptionBuilder.group(words, fits: { _ in true }, hardWordCap: 100, splitGap: 0.8)
-        #expect(phrases.map(\.text) == ["a b", "c"])
+    @Test func splitsAtMidWordWhenNoPunctuation() {
+        let phrases = CaptionBuilder.phrases(for: segment("a b c d", 0, 4), fits: { $0.count <= 3 }, minDuration: 0)
+        #expect(phrases.map(\.text) == ["a b", "c d"])
     }
 
-    @Test func phraseCarriesStartAndEnd() {
-        let phrases = CaptionBuilder.group([word("a", 0.5, 0.9), word("b", 0.9, 1.4)], fits: { _ in true })
-        #expect(phrases.count == 1)
-        #expect(phrases[0].start == 0.5)
-        #expect(phrases[0].end == 1.4)
+    @Test func keepsPunctuatedTokensIntact() {
+        let phrases = CaptionBuilder.phrases(for: segment("U.S. army here", 0, 6), fits: { $0.count <= 6 }, minDuration: 0)
+        #expect(phrases.map(\.text) == ["U.S.", "army", "here"])
+    }
+
+    @Test func distributesTimeByCharacterCount() {
+        let phrases = CaptionBuilder.phrases(for: segment("aaaa bb", 0, 6), fits: { $0.count <= 4 }, minDuration: 0)
+        #expect(phrases.map(\.text) == ["aaaa", "bb"])
+        #expect(phrases.map(\.start) == [0.0, 4.0])
+        #expect(phrases.map(\.end) == [4.0, 6.0])
+    }
+
+    @Test func enforcesMinimumDurationAndShifts() {
+        let phrases = CaptionBuilder.phrases(for: segment("aa bbbb", 0, 6), fits: { $0.count <= 4 }, minDuration: 3)
+        #expect(phrases.map(\.start) == [0.0, 3.0])
+        #expect(phrases.map(\.end) == [3.0, 7.0])
+    }
+
+    @Test func keepsOverlongSingleWord() {
+        let phrases = CaptionBuilder.phrases(for: segment("supercalifragilistic", 0, 1), fits: { _ in false }, minDuration: 0)
+        #expect(phrases.map(\.text) == ["supercalifragilistic"])
     }
 
     private let clip = Clip(mediaRef: "m", startFrame: 30, durationFrames: 120)

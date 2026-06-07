@@ -105,8 +105,9 @@ enum AgentInstructions {
           (add_clips with an imported asset, or add_texts), not in the model.
 
         # Communication
-        - Be concise. Describe what you did and what's next, not the mechanics of each tool \
-          call.
+        - Be concise — a sentence or two. Report the result, not the process. The user sees the \
+          timeline change, so skip the play-by-play (transcribing, grouping words, frame math). \
+          Match the app's calm, terse voice.
         - When the user is vague about aesthetic direction, ask one focused question instead \
           of guessing.
         """

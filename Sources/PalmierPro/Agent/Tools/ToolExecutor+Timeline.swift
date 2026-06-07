@@ -129,10 +129,8 @@ extension ToolExecutor {
             "clipId": clip.id,
             "clipStartFrame": clip.startFrame,
             "clipEndFrame": clip.endFrame,
-            "trimStartFrame": clip.trimStartFrame,
-            "speed": clip.speed,
             "fps": fps,
-            "note": "To convert a word's source-seconds t to a project frame: frame = round(clipStartFrame + (t*fps - trimStartFrame) / speed). Clamp to [clipStartFrame, clipEndFrame). Drop words that fall outside that range. For add_texts of a phrase: startFrame = frame(first word's start); durationFrames = frame(last word's end) - startFrame.",
+            "note": "transcription.words are project frames for this clip; out-of-range words are dropped.",
         ]
     }
 
@@ -228,16 +226,35 @@ extension ToolExecutor {
 
     private static func transcriptionMeta(
         from transcript: TranscriptionResult,
-        mapping _: (clip: Clip, fps: Int)? = nil
+        mapping: (clip: Clip, fps: Int)? = nil
     ) -> [String: Any] {
+        let words: [[Any]]
+        if let mapping {
+            words = transcript.words.compactMap { w in
+                guard let f = wordFrames(w, clip: mapping.clip, fps: mapping.fps) else { return nil }
+                return [w.text, f.start, f.end]
+            }
+        } else {
+            words = transcript.words.map { [$0.text, Self.round2OrNull($0.start), Self.round2OrNull($0.end)] }
+        }
         var out: [String: Any] = [
             "text": transcript.text,
-            "words": transcript.words.map { w -> [Any] in
-                [w.text, Self.round2OrNull(w.start), Self.round2OrNull(w.end)]
-            },
+            "wordTiming": mapping == nil ? "sourceSeconds" : "projectFrames",
+            "words": words,
         ]
         if let lang = transcript.language { out["language"] = lang }
         return out
+    }
+
+    /// Maps a word's source-seconds span to the project frames it occupies on the clip
+    private static func wordFrames(_ w: TranscriptionWord, clip: Clip, fps: Int) -> (start: Int, end: Int)? {
+        guard let start = w.start, let end = w.end else { return nil }
+        let visStart = Double(clip.trimStartFrame)
+        let visEnd = visStart + Double(clip.durationFrames) * max(clip.speed, 0.0001)
+        guard end * Double(fps) > visStart, start * Double(fps) < visEnd else { return nil }
+        let s = clip.timelineFrame(sourceSeconds: start, fps: fps) ?? clip.startFrame
+        let e = clip.timelineFrame(sourceSeconds: end, fps: fps) ?? clip.endFrame
+        return (s, max(s, e))
     }
 
     private static func round2OrNull(_ x: Double?) -> Any {

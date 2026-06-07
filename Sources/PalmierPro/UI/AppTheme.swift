@@ -228,6 +228,7 @@ enum AppTheme {
         static let centerSnapThreshold: Double = 0.02
         static let defaultCenterY: CGFloat = 0.9
         static let defaultCenter = CGPoint(x: centerSnapValue, y: defaultCenterY)
+        static let minDisplayDuration: Double = 0.7
     }
 
     enum GenerationPanel {

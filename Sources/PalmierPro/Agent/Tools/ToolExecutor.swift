@@ -34,6 +34,7 @@ final class ToolExecutor {
             case .setKeyframes:     return try setKeyframes(editor, args)
             case .splitClip:        return try splitClip(editor, args)
             case .addTexts:      return try addTexts(editor, args)
+            case .addCaptions:   return try await addCaptions(editor, args)
             case .generateVideo: return try generate(editor, args, type: .video)
             case .generateImage: return try generate(editor, args, type: .image)
             case .generateAudio: return try generate(editor, args, type: .audio)

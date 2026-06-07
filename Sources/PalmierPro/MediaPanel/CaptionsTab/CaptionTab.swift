@@ -23,17 +23,18 @@ struct CaptionTab: View {
         guard !sel.isEmpty else { return [] }
         return editor.captionTargets(ids: Array(sel)).map(\.id)
     }
-    private var allTargetCount: Int { editor.captionTargets(ids: []).count }
+    private var isAutoSource: Bool { selectedTrackId == nil && selectedClipTargets.isEmpty }
     private var sourceClipIds: [String] {
-        guard let selectedTrackId else { return selectedClipTargets }
-        return editor.captionTargets(trackIds: [selectedTrackId]).map(\.id)
+        if let selectedTrackId { return editor.captionTargets(trackIds: [selectedTrackId]).map(\.id) }
+        return selectedClipTargets   // Auto resolves its source during generation
     }
     private var automaticSourceSummary: String {
-        selectedClipTargets.isEmpty
-            ? (allTargetCount == 0 ? "No audio" : "All Audio · \(allTargetCount)")
-            : "Selected Clips · \(selectedClipTargets.count)"
+        if !selectedClipTargets.isEmpty { return "Selected Clips · \(selectedClipTargets.count)" }
+        return editor.captionTargets(ids: []).isEmpty ? "No audio" : "Auto"
     }
-    private var effectiveCount: Int { selectedTrackId == nil && selectedClipTargets.isEmpty ? allTargetCount : sourceClipIds.count }
+    private var effectiveCount: Int {
+        isAutoSource ? editor.captionTargets(ids: []).count : sourceClipIds.count
+    }
     private var captionTrackIndices: [Int] {
         editor.timeline.tracks.indices.filter { !editor.captionTargets(trackIds: [editor.timeline.tracks[$0].id]).isEmpty }
     }
@@ -392,7 +393,7 @@ struct CaptionTab: View {
             return
         }
         let request = EditorViewModel.CaptionRequest(
-            sourceClipIds: sourceIds, style: style, center: center,
+            sourceClipIds: sourceIds, autoDetect: isAutoSource, style: style, center: center,
             textCase: textCase, censorProfanity: censorProfanity, locale: locale
         )
         Task {
