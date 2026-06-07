@@ -141,6 +141,54 @@ struct ApplyTimelineSettingsTests {
         #expect(updated.fadeInFrames == 60)
         #expect(updated.fadeOutFrames == 60)
     }
+
+    @Test func rescalesAllKeyframeTracksByFpsRatio() {
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        clip.opacityTrack = KeyframeTrack(keyframes: [Keyframe(frame: 15, value: 0.5)])
+        clip.positionTrack = KeyframeTrack(keyframes: [Keyframe(frame: 15, value: AnimPair(a: 0.1, b: 0.2))])
+        clip.scaleTrack = KeyframeTrack(keyframes: [Keyframe(frame: 15, value: AnimPair(a: 0.5, b: 0.5))])
+        clip.rotationTrack = KeyframeTrack(keyframes: [Keyframe(frame: 15, value: 45)])
+        clip.cropTrack = KeyframeTrack(keyframes: [Keyframe(frame: 15, value: Crop(left: 0.1, top: 0, right: 0, bottom: 0))])
+        clip.volumeTrack = KeyframeTrack(keyframes: [Keyframe(frame: 15, value: -6)])
+
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        e.applyTimelineSettings(fps: 60, width: 1920, height: 1080)
+        let updated = e.timeline.tracks[0].clips[0]
+
+        #expect(updated.durationFrames == 120)
+        #expect(updated.opacityTrack?.keyframes.map(\.frame) == [30])
+        #expect(updated.positionTrack?.keyframes.map(\.frame) == [30])
+        #expect(updated.scaleTrack?.keyframes.map(\.frame) == [30])
+        #expect(updated.rotationTrack?.keyframes.map(\.frame) == [30])
+        #expect(updated.cropTrack?.keyframes.map(\.frame) == [30])
+        #expect(updated.volumeTrack?.keyframes.map(\.frame) == [30])
+    }
+
+    @Test func fpsRetimeDedupesRoundedKeyframesLastValueWins() {
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 20)
+        clip.opacityTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 1, value: 0.2),
+            Keyframe(frame: 2, value: 0.8),
+        ])
+
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        e.applyTimelineSettings(fps: 15, width: 1920, height: 1080)
+        let kfs = e.timeline.tracks[0].clips[0].opacityTrack?.keyframes ?? []
+
+        #expect(kfs.map(\.frame) == [1])
+        #expect(kfs.first?.value == 0.8)
+    }
+
+    @Test func fpsRetimeKeepsSameTrackClipsNonOverlappingAfterRounding() {
+        let first = Fixtures.clip(id: "c1", start: 2, duration: 1)
+        let second = Fixtures.clip(id: "c2", start: 3, duration: 1)
+        let e = editor([Fixtures.videoTrack(clips: [first, second])])
+
+        e.applyTimelineSettings(fps: 12, width: 1920, height: 1080)
+        let clips = e.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+
+        #expect(clips[0].endFrame <= clips[1].startFrame)
+    }
 }
 
 @Suite("EditorViewModel — stampKeyframe")

@@ -153,6 +153,24 @@ struct TrackOpsLinearTests {
         #expect(range.end == cm(180))
     }
 
+    @Test func duplicateFramesAreDedupedBeforeLinearRangesAreBuilt() {
+        let kfTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 0.2, interpolationOut: .linear),
+            Keyframe(frame: 0, value: 0.4, interpolationOut: .linear),
+            Keyframe(frame: 80, value: 1.0, interpolationOut: .linear),
+        ])
+        let ops = runOps(track: kfTrack)
+
+        #expect(ops.count == 1)
+        guard case let .ramp(a, b, range) = ops[0] else {
+            Issue.record("expected .ramp")
+            return
+        }
+        #expect(a == 0.4)
+        #expect(b == 1.0)
+        #expect(range.duration > .zero)
+    }
+
     @Test func interiorLinearKeyframesGetLeadingAndTrailingStatics() {
         // kfs at 20 and 60: leading static at clipStart, one ramp, trailing static at kf2.
         let ops = runOps(track: track([(20, 0.2, .linear), (60, 0.8, .linear)]))

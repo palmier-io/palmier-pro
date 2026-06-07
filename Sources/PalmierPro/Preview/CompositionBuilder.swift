@@ -139,7 +139,10 @@ enum CompositionBuilder {
 
             var cursor = CMTime.zero
             var insertedCount = 0
+            var insertedClipIds = Set<String>()
+            var previousEndFrame = Int.min
             for clip in sortedClips {
+                guard clip.durationFrames > 0, clip.startFrame >= previousEndFrame else { continue }
                 guard let source = try await loadSource(
                     clip: clip,
                     mediaType: mediaType,
@@ -168,6 +171,8 @@ enum CompositionBuilder {
                     timescale: timescale
                 ) {
                     insertedCount += 1
+                    insertedClipIds.insert(clip.id)
+                    previousEndFrame = clip.endFrame
                 }
             }
 
@@ -178,7 +183,7 @@ enum CompositionBuilder {
             let naturalSize = (try? await compTrack.load(.naturalSize)).flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil } ?? renderSize
             trackMappings.append(TrackMapping(
                 compositionTrack: compTrack,
-                kind: .timeline(trackIndex: trackIdx, clipIds: nil),
+                kind: .timeline(trackIndex: trackIdx, clipIds: insertedClipIds),
                 naturalSize: naturalSize,
                 endTime: cursor,
                 isVideo: true
@@ -365,38 +370,41 @@ enum CompositionBuilder {
 
         let layerInstructions: [AVVideoCompositionLayerInstruction] = trackMappings.filter { $0.isVideo }.map { mapping in
             var liConfig = AVVideoCompositionLayerInstruction.Configuration(trackID: mapping.compositionTrack.trackID)
-            liConfig.setOpacity(0, at: .zero)
+            emitOpacitySet(config: &liConfig, value: 0, at: .zero)
 
             switch mapping.kind {
             case .blackBackground(let range):
-                liConfig.setOpacity(1, at: range.start)
+                emitOpacitySet(config: &liConfig, value: 1, at: range.start)
                 if range.end < compositionDuration {
-                    liConfig.setOpacity(0, at: range.end)
+                    emitOpacitySet(config: &liConfig, value: 0, at: range.end)
                 }
                 return AVVideoCompositionLayerInstruction(configuration: liConfig)
             case .timeline(let trackIndex, let clipIds):
                 let track = timeline.tracks.indices.contains(trackIndex)
                     ? timeline.tracks[trackIndex] : nil
                 if let track, !track.hidden {
+                    var prevEndFrame = Int.min
                     for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame })
                         where clip.mediaType != .text {
                         if let clipIds, !clipIds.contains(clip.id) { continue }
+                        guard clip.durationFrames > 0, clip.startFrame >= prevEndFrame else { continue }
                         let start = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
                         let end = CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale)
                         let natSize = clipNaturalSizes[clip.id] ?? mapping.naturalSize
                         let preferredTransform = clipTransforms[clip.id] ?? .identity
 
                         emitOpacity(config: &liConfig, clip: clip, start: start, end: end, timescale: timescale)
-                        liConfig.setOpacity(0, at: end)
+                        emitOpacitySet(config: &liConfig, value: 0, at: end)
                         emitTransform(config: &liConfig, clip: clip, start: start, end: end,
                                       natSize: natSize, preferredTransform: preferredTransform,
                                       renderSize: renderSize, timescale: timescale)
                         emitCrop(config: &liConfig, clip: clip, start: start, end: end,
                                  natSize: natSize, preferredTransform: preferredTransform, timescale: timescale)
+                        prevEndFrame = clip.endFrame
                     }
                 }
                 if mapping.endTime < compositionDuration {
-                    liConfig.setOpacity(0, at: mapping.endTime)
+                    emitOpacitySet(config: &liConfig, value: 0, at: mapping.endTime)
                 }
                 return AVVideoCompositionLayerInstruction(configuration: liConfig)
             }
@@ -435,7 +443,7 @@ enum CompositionBuilder {
         clip: Clip,
         timescale: CMTimeScale
     ) {
-        let kfs = (clip.volumeTrack?.keyframes ?? []).filter { $0.frame >= 0 && $0.frame <= clip.durationFrames }
+        let kfs = normalizedKeyframes(clip.volumeTrack?.keyframes ?? [], duration: clip.durationFrames)
         let hasFade = clip.fadeInFrames > 0 || clip.fadeOutFrames > 0
         if kfs.isEmpty && !hasFade && Float(clip.volume) == 1.0 { return }
 
@@ -460,6 +468,7 @@ enum CompositionBuilder {
     ) {
         let dur = clip.durationFrames
         guard dur > 0 else { return }
+        let kfs = normalizedKeyframes(kfs, duration: dur)
 
         var offsetSet: Set<Int> = [0, dur]
         for kf in kfs { offsetSet.insert(kf.frame) }
@@ -495,6 +504,49 @@ enum CompositionBuilder {
             guard bT > aT else { continue }
             emit(sampleAt(aOff), sampleAt(bOff), CMTimeRange(start: aT, end: bT))
         }
+    }
+
+    private static func normalizedKeyframes<V: Codable & Sendable & Equatable>(
+        _ keyframes: [Keyframe<V>],
+        duration: Int
+    ) -> [Keyframe<V>] {
+        var keyed: [Int: Keyframe<V>] = [:]
+        for kf in keyframes where kf.frame >= 0 && kf.frame <= duration {
+            keyed[kf.frame] = kf
+        }
+        return keyed.values.sorted { $0.frame < $1.frame }
+    }
+
+    private static func emitOpacitySet(
+        config: inout AVVideoCompositionLayerInstruction.Configuration,
+        value: Float,
+        at time: CMTime
+    ) {
+        guard let value = normalizedOpacity(value), isUsableInstructionTime(time) else { return }
+        config.setOpacity(value, at: time)
+    }
+
+    private static func emitOpacityRamp(
+        config: inout AVVideoCompositionLayerInstruction.Configuration,
+        start: Float,
+        end: Float,
+        timeRange: CMTimeRange
+    ) {
+        guard let start = normalizedOpacity(start),
+              let end = normalizedOpacity(end),
+              isUsableInstructionTime(timeRange.start),
+              isUsableInstructionTime(timeRange.end),
+              timeRange.duration > .zero else { return }
+        config.addOpacityRamp(.init(timeRange: timeRange, start: start, end: end))
+    }
+
+    private static func normalizedOpacity(_ value: Float) -> Float? {
+        guard value.isFinite else { return nil }
+        return min(1, max(0, value))
+    }
+
+    private static func isUsableInstructionTime(_ time: CMTime) -> Bool {
+        time.isNumeric && time >= .zero
     }
 
     /// Maps a clip's Transform (in normalized 0–1 canvas coordinates) to the
@@ -646,26 +698,26 @@ enum CompositionBuilder {
             for op in ops {
                 switch op {
                 case .setStatic(let v, let t):
-                    config.setOpacity(Float(v), at: t)
+                    emitOpacitySet(config: &config, value: Float(v), at: t)
                 case .ramp(let a, let b, let range):
-                    config.addOpacityRamp(.init(timeRange: range, start: Float(a), end: Float(b)))
+                    emitOpacityRamp(config: &config, start: Float(a), end: Float(b), timeRange: range)
                 }
             }
             return
         }
 
         let kfs = (clip.opacityTrack?.isActive == true)
-            ? (clip.opacityTrack?.keyframes ?? []).filter { $0.frame >= 0 && $0.frame <= clip.durationFrames }
+            ? normalizedKeyframes(clip.opacityTrack?.keyframes ?? [], duration: clip.durationFrames)
             : []
 
-        config.setOpacity(Float(clip.opacityAt(frame: clip.startFrame)), at: start)
+        emitOpacitySet(config: &config, value: Float(clip.opacityAt(frame: clip.startFrame)), at: start)
         emitEnvelopeRamps(
             clip: clip,
             kfs: kfs,
             timescale: timescale,
             sampleAt: { Float(clip.opacityAt(frame: clip.startFrame + $0)) },
             emit: { aVal, bVal, range in
-                config.addOpacityRamp(.init(timeRange: range, start: aVal, end: bVal))
+                emitOpacityRamp(config: &config, start: aVal, end: bVal, timeRange: range)
             }
         )
     }
@@ -690,7 +742,7 @@ enum CompositionBuilder {
             return [.setStatic(fallback, clipStart)]
         }
         // Defensive: drop kfs whose offsets fall outside the clip's visible range.
-        let kfs = track.keyframes.filter { $0.frame >= 0 && $0.frame <= clip.durationFrames }
+        let kfs = normalizedKeyframes(track.keyframes, duration: clip.durationFrames)
         guard !kfs.isEmpty else {
             return [.setStatic(fallback, clipStart)]
         }
@@ -713,7 +765,10 @@ enum CompositionBuilder {
             case .hold:
                 ops.append(.setStatic(a.value, aT))
             case .linear:
-                ops.append(.ramp(a.value, b.value, CMTimeRange(start: aT, end: bT)))
+                let range = CMTimeRange(start: aT, end: bT)
+                if range.duration > .zero {
+                    ops.append(.ramp(a.value, b.value, range))
+                }
             case .smooth:
                 let span = bT - aT
                 guard span > .zero else { continue }

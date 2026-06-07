@@ -241,11 +241,55 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
 enum FadeEdge { case left, right }
 
 extension Clip {
-    /// Drops kfs past `durationFrames`. Call after any mutation that shrinks the clip.
+    /// Drops volume keyframes outside `durationFrames`. Kept for callers that only touch volume.
     mutating func clampVolumeKfsToDuration() {
-        guard var track = volumeTrack else { return }
-        track.keyframes.removeAll { $0.frame < 0 || $0.frame > durationFrames }
-        volumeTrack = track.keyframes.isEmpty ? nil : track
+        volumeTrack = clampedKeyframeTrack(volumeTrack)
+    }
+
+    /// Drops kfs past `durationFrames`. Call after any mutation that shrinks the clip.
+    mutating func clampKeyframesToDuration() {
+        opacityTrack = clampedKeyframeTrack(opacityTrack)
+        positionTrack = clampedKeyframeTrack(positionTrack)
+        scaleTrack = clampedKeyframeTrack(scaleTrack)
+        rotationTrack = clampedKeyframeTrack(rotationTrack)
+        cropTrack = clampedKeyframeTrack(cropTrack)
+        volumeTrack = clampedKeyframeTrack(volumeTrack)
+    }
+
+    mutating func rescaleKeyframes(by scale: Double) {
+        opacityTrack = rescaledKeyframeTrack(opacityTrack, by: scale)
+        positionTrack = rescaledKeyframeTrack(positionTrack, by: scale)
+        scaleTrack = rescaledKeyframeTrack(scaleTrack, by: scale)
+        rotationTrack = rescaledKeyframeTrack(rotationTrack, by: scale)
+        cropTrack = rescaledKeyframeTrack(cropTrack, by: scale)
+        volumeTrack = rescaledKeyframeTrack(volumeTrack, by: scale)
+    }
+
+    private func clampedKeyframeTrack<V: Codable & Sendable & Equatable>(
+        _ track: KeyframeTrack<V>?
+    ) -> KeyframeTrack<V>? {
+        guard var track else { return nil }
+        var normalized = KeyframeTrack<V>()
+        for kf in track.keyframes where kf.frame >= 0 && kf.frame <= durationFrames {
+            normalized.upsert(kf)
+        }
+        track.keyframes = normalized.keyframes
+        return track.keyframes.isEmpty ? nil : track
+    }
+
+    private func rescaledKeyframeTrack<V: Codable & Sendable & Equatable>(
+        _ track: KeyframeTrack<V>?,
+        by scale: Double
+    ) -> KeyframeTrack<V>? {
+        guard let existing = track else { return nil }
+        guard scale.isFinite, scale > 0 else { return existing }
+        var normalized = KeyframeTrack<V>()
+        for kf in existing.keyframes {
+            var next = kf
+            next.frame = Int((Double(kf.frame) * scale).rounded())
+            normalized.upsert(next)
+        }
+        return normalized.keyframes.isEmpty ? nil : normalized
     }
 
     /// Clamp fade ramps so head + tail can't exceed the clip's duration.
@@ -281,7 +325,7 @@ extension Clip {
 
     mutating func setDuration(_ newDuration: Int) {
         durationFrames = newDuration
-        clampVolumeKfsToDuration()
+        clampKeyframesToDuration()
         clampFadesToDuration()
     }
 

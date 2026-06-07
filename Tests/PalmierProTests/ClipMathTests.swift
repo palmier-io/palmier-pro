@@ -206,6 +206,25 @@ struct ClipMathTests {
         #expect(clip.fadeInFrames == 25)
         #expect(clip.fadeOutFrames == 30)
     }
+
+    @Test func setDurationClampsAllKeyframeTracks() {
+        var clip = Fixtures.clip(start: 0, duration: 100)
+        clip.opacityTrack = KeyframeTrack(keyframes: [Keyframe(frame: 90, value: 0.5)])
+        clip.positionTrack = KeyframeTrack(keyframes: [Keyframe(frame: 90, value: AnimPair(a: 0.1, b: 0.2))])
+        clip.scaleTrack = KeyframeTrack(keyframes: [Keyframe(frame: 90, value: AnimPair(a: 0.5, b: 0.5))])
+        clip.rotationTrack = KeyframeTrack(keyframes: [Keyframe(frame: 90, value: 15)])
+        clip.cropTrack = KeyframeTrack(keyframes: [Keyframe(frame: 90, value: Crop(left: 0.1, top: 0, right: 0, bottom: 0))])
+        clip.volumeTrack = KeyframeTrack(keyframes: [Keyframe(frame: 90, value: -6)])
+
+        clip.setDuration(30)
+
+        #expect(clip.opacityTrack == nil)
+        #expect(clip.positionTrack == nil)
+        #expect(clip.scaleTrack == nil)
+        #expect(clip.rotationTrack == nil)
+        #expect(clip.cropTrack == nil)
+        #expect(clip.volumeTrack == nil)
+    }
 }
 
 // MARK: - Adversarial

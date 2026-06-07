@@ -246,7 +246,7 @@ extension EditorViewModel {
 
         timeline.tracks[ti].clips[loc.clipIndex].speed = newSpeed
         timeline.tracks[ti].clips[loc.clipIndex].durationFrames = newDuration
-        timeline.tracks[ti].clips[loc.clipIndex].clampVolumeKfsToDuration()
+        timeline.tracks[ti].clips[loc.clipIndex].clampKeyframesToDuration()
         timeline.tracks[ti].clips[loc.clipIndex].clampFadesToDuration()
 
         let rippleDelta = (clip.startFrame + newDuration) - oldEnd

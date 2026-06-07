@@ -442,7 +442,7 @@ extension ToolExecutor {
         editor.commitClipProperty(clipId: clipId) { clip in
             if let v = durationFrames {
                 clip.durationFrames = v
-                clip.clampVolumeKfsToDuration()
+                clip.clampKeyframesToDuration()
                 clip.clampFadesToDuration()
                 changed.append("durationFrames")
             }
