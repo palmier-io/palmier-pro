@@ -23,7 +23,7 @@ extension ToolExecutor {
         case .image:
             return try generateImage(editor, args, prompt: prompt)
         case .audio:
-            return try generateAudio(editor, args, prompt: prompt)
+            throw ToolError("internal: audio generation is dispatched via the async path")
         case .text:
             throw ToolError("Text generation is not wired through the generate tool.")
         }
@@ -192,9 +192,13 @@ extension ToolExecutor {
         return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), aspect: \(aspectRatio)")
     }
 
-    private func generateAudio(
-        _ editor: EditorViewModel, _ args: [String: Any], prompt: String
-    ) throws -> ToolResult {
+    func generateAudio(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
+        guard AccountService.shared.isSignedIn else {
+            throw ToolError("Generation requires signing in to Palmier. Tell the user to sign in.")
+        }
+        guard AccountService.shared.hasCredits else {
+            throw ToolError("Out of credits. Tell the user to add credits or subscribe to keep generating.")
+        }
         guard let modelId = args.string("model") ?? AudioModelConfig.allModels.first?.id else {
             throw ToolError("Model catalog not loaded yet. Try again in a moment.")
         }
@@ -202,25 +206,66 @@ extension ToolExecutor {
             throw ToolError("Unknown model '\(modelId)'. Available: \(AudioModelConfig.allModels.map(\.id).joined(separator: ", "))")
         }
 
-        let trimmed = prompt.trimmingCharacters(in: .whitespaces)
+        let prompt = (args.string("prompt") ?? "").trimmingCharacters(in: .whitespaces)
+        let acceptsVideo = model.inputs.contains(.video)
+        var videoURL: String?
+        var spanSeconds: Double?
+        var placementStartFrame: Int?   // set when a timeline span is given -> auto-place on the timeline
+        if let ref = args.string("videoSourceMediaRef") {
+            guard acceptsVideo else {
+                throw ToolError("Model '\(model.id)' does not accept a video input (see list_models 'inputs').")
+            }
+            let videoAsset = try asset(ref, editor: editor, label: "Video source")
+            guard videoAsset.type == .video else {
+                throw ToolError("videoSourceMediaRef must be a video asset (got \(videoAsset.type.rawValue)).")
+            }
+            guard let fileURL = editor.mediaResolver.resolveURL(for: videoAsset.id) else {
+                throw ToolError("Could not read the video source file.")
+            }
+            videoURL = try await GenerationBackend.uploadReference(fileURL: fileURL, contentType: "video/mp4")
+            spanSeconds = videoAsset.duration
+        } else if let start = args.int("videoSourceStartFrame"), let end = args.int("videoSourceEndFrame") {
+            guard acceptsVideo else {
+                throw ToolError("Model '\(model.id)' does not accept a video input (see list_models 'inputs').")
+            }
+            guard start >= 0, end > start else {
+                throw ToolError("videoSourceEndFrame must be greater than videoSourceStartFrame (>= 0).")
+            }
+            let mp4 = try await TimelineRenderer.render(
+                timeline: editor.timeline, resolver: editor.mediaResolver,
+                startFrame: start, frameCount: end - start,
+                shortSide: 360, includeAudio: false
+            )
+            defer { try? FileManager.default.removeItem(at: mp4) }
+            videoURL = try await GenerationBackend.uploadReference(fileURL: mp4, contentType: "video/mp4")
+            spanSeconds = Double(end - start) / Double(max(1, editor.timeline.fps))
+            placementStartFrame = start
+        }
+
+        // A video-only model (no text input, e.g. Mirelo) needs a source.
+        if acceptsVideo && !model.inputs.contains(.text) && videoURL == nil {
+            throw ToolError("Model '\(model.id)' generates audio from video. Provide videoSourceStartFrame + videoSourceEndFrame (a timeline span) or videoSourceMediaRef.")
+        }
+
         let instrumental = args.bool("instrumental") ?? false
-        let duration = args.int("duration")
+        let durationSeconds = args.int("duration") ?? spanSeconds.map { max(1, Int($0.rounded())) }
         let params = AudioGenerationParams(
-            prompt: trimmed,
+            prompt: prompt,
             voice: model.voices != nil ? (args.string("voice") ?? model.defaultVoice) : nil,
             lyrics: model.supportsLyrics ? args.string("lyrics") : nil,
             styleInstructions: model.supportsStyleInstructions ? args.string("styleInstructions") : nil,
             instrumental: model.supportsInstrumental ? instrumental : false,
-            durationSeconds: model.durations != nil ? duration : nil
+            durationSeconds: durationSeconds,
+            videoURL: videoURL
         )
         if let err = model.validate(params: params) {
             throw ToolError(err)
         }
 
         let genInput = GenerationInput(
-            prompt: trimmed,
+            prompt: prompt,
             model: model.id,
-            duration: model.durations != nil ? (duration ?? 0) : 0,
+            duration: durationSeconds ?? 0,
             aspectRatio: "",
             resolution: nil,
             voice: params.voice,
@@ -230,18 +275,37 @@ extension ToolExecutor {
         )
 
         let folderId = try resolveFolderId(args, editor: editor)
-        let placeholderId = AudioGenerationSubmission.make(
+        let submission = AudioGenerationSubmission.make(
             genInput: genInput,
             model: model,
             params: params,
             name: args.string("name"),
             folderId: folderId
-        ).submit(
+        )
+
+        if let startFrame = placementStartFrame, let span = spanSeconds {
+            let placeholderId = submission.submit(
+                service: editor.generationService,
+                projectURL: editor.projectURL,
+                editor: editor,
+                onComplete: { asset in
+                    editor.finalizeGeneratingClip(placeholderId: asset.id, asset: asset)
+                }
+            )
+            editor.placeGeneratingAudioClip(
+                placeholderId: placeholderId, startFrame: startFrame,
+                spanSeconds: span, actionName: "Add \(model.category.label)"
+            )
+            return .ok("Generation started and placed on the timeline at frame \(startFrame). Placeholder asset ID: \(placeholderId). Model: \(model.displayName), \(model.category.label) (scored from video).")
+        }
+
+        let placeholderId = submission.submit(
             service: editor.generationService,
             projectURL: editor.projectURL,
             editor: editor
         )
-        return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), category: \(model.category == .music ? "music" : "tts")")
+        let scored = videoURL != nil ? " (scored from video)" : ""
+        return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), \(model.category.label)\(scored). Place it with add_clips.")
     }
 
     func upscaleMedia(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
@@ -366,7 +430,8 @@ extension ToolExecutor {
         var info: [String: Any] = [
             "id": m.id, "displayName": m.displayName,
             "type": "audio",
-            "category": m.category == .music ? "music" : "tts",
+            "category": m.category == .music ? "music" : (m.category == .sfx ? "sfx" : "tts"),
+            "inputs": m.inputs.map(\.rawValue),
             "minPromptLength": m.minPromptLength,
             "supportsLyrics": m.supportsLyrics,
             "supportsInstrumental": m.supportsInstrumental,

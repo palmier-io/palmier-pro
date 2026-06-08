@@ -7,9 +7,10 @@ struct AudioGenerationParams: Encodable, Sendable {
     let styleInstructions: String?
     let instrumental: Bool
     let durationSeconds: Int?
+    var videoURL: String? = nil
 
     enum CodingKeys: String, CodingKey {
-        case kind, prompt, voice, lyrics, styleInstructions, instrumental, durationSeconds
+        case kind, prompt, voice, lyrics, styleInstructions, instrumental, durationSeconds, videoURL
     }
 
     func encode(to encoder: Encoder) throws {
@@ -21,13 +22,28 @@ struct AudioGenerationParams: Encodable, Sendable {
         try c.encodeIfPresent(styleInstructions, forKey: .styleInstructions)
         try c.encode(instrumental, forKey: .instrumental)
         try c.encodeIfPresent(durationSeconds, forKey: .durationSeconds)
+        try c.encodeIfPresent(videoURL, forKey: .videoURL)
     }
 }
 
 struct AudioModelConfig: Identifiable, Sendable {
-    enum Category: Sendable {
+    enum Category: Sendable, Hashable, CaseIterable {
         case tts
         case music
+        case sfx
+
+        var label: String {
+            switch self {
+            case .tts: "Speech"
+            case .music: "Music"
+            case .sfx: "Sound Effects"
+            }
+        }
+    }
+
+    enum Input: String, Sendable, Hashable {
+        case text
+        case video
     }
 
     enum Pricing: Sendable {
@@ -46,7 +62,13 @@ struct AudioModelConfig: Identifiable, Sendable {
     var id: String { entry.id }
     var displayName: String { entry.displayName }
 
-    var category: Category { caps.category == "music" ? .music : .tts }
+    var category: Category {
+        switch caps.category {
+        case "music": .music
+        case "sfx": .sfx
+        default: .tts
+        }
+    }
     var voices: [String]? { caps.voices }
     var defaultVoice: String? { caps.defaultVoice }
     var supportsLyrics: Bool { caps.supportsLyrics }
@@ -54,6 +76,22 @@ struct AudioModelConfig: Identifiable, Sendable {
     var supportsStyleInstructions: Bool { caps.supportsStyleInstructions }
     var durations: [Int]? { caps.durations }
     var minPromptLength: Int { caps.minPromptLength }
+
+    var inputs: [Input] { (caps.inputs ?? ["text"]).compactMap(Input.init(rawValue:)) }
+    var promptLabel: String { caps.promptLabel ?? "Describe the sound" }
+    var minSeconds: Int { caps.minSeconds ?? 1 }
+    var maxSeconds: Int { caps.maxSeconds ?? 900 }
+
+    func validate(spanSeconds: Double) -> String? {
+        let s = Int(spanSeconds.rounded())
+        if s < minSeconds {
+            return "\(displayName) needs at least \(minSeconds)s of video (selection is \(s)s)."
+        }
+        if s > maxSeconds {
+            return "\(displayName) accepts at most \(maxSeconds)s of video (selection is \(s)s)."
+        }
+        return nil
+    }
 
     var pricing: Pricing {
         switch entry.audioPricing {

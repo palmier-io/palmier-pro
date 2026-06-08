@@ -63,6 +63,8 @@ final class MediaVisualCache {
                 if let result {
                     self.waveformSamples[key] = result
                     self.timelineView?.needsDisplay = true
+                } else {
+                    Log.preview.error("waveform gen FAILED key=\(key.prefix(8)) url=\(url.lastPathComponent)")
                 }
             }
         }

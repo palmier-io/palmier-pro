@@ -49,6 +49,11 @@ struct GenerationView: View {
     @State private var sourceVideoTargeted = false
     @State private var motionReferenceTargeted = false
 
+    // Source video for video-to-audio models (Sonilo, Mirelo)
+    @State private var audioVideoSource: MediaAsset?
+    @State private var audioVideoTargeted = false
+    @State private var audioUploadInFlight = false
+
     @State private var isPopulatingPanel = false
     @State private var editFolderId: String?
 
@@ -175,6 +180,9 @@ struct GenerationView: View {
             return false
         }
         if selectedType == .audio {
+            if audioModel.inputs.contains(.video) {
+                return audioVideoSource != nil && !audioUploadInFlight
+            }
             return trimmedPrompt.count >= audioModel.minPromptLength
         }
         return !isPromptEmpty
@@ -277,6 +285,7 @@ struct GenerationView: View {
             switch audioModel.category {
             case .tts: "Text to speak\(audioPromptHint)"
             case .music: "Describe the music style or mood\(audioPromptHint)"
+            case .sfx: "Describe the sound\(audioPromptHint)"
             }
         }
     }
@@ -310,7 +319,9 @@ struct GenerationView: View {
                 numImages: selectedNumImages
             )
         case .audio:
-            let duration = audioModel.durations != nil ? selectedAudioDuration : nil
+            let duration: Int? = audioModel.inputs.contains(.video)
+                ? Int((audioVideoSource?.duration ?? 0).rounded())
+                : (audioModel.durations != nil ? selectedAudioDuration : nil)
             return CostEstimator.audioCost(
                 model: audioModel, prompt: trimmedPrompt, durationSeconds: duration
             )
@@ -562,7 +573,21 @@ struct GenerationView: View {
             }
         } else if selectedType == .image && imageModel.supportsImageReference {
             imageReferenceStrip
+        } else if selectedType == .audio && audioModel.inputs.contains(.video) {
+            audioVideoStrip
         }
+    }
+
+    private var audioVideoStrip: some View {
+        frameSlot(
+            label: "Source Video",
+            asset: audioVideoSource,
+            isTargeted: $audioVideoTargeted,
+            accepting: [.video],
+            iconName: "video.badge.plus",
+            onDrop: { audioVideoSource = $0 },
+            onClear: { audioVideoSource = nil }
+        )
     }
 
     // MARK: - Resize handle
@@ -1293,8 +1318,15 @@ struct GenerationView: View {
                     Button(item.model.displayName) { selectedImageModelIndex = item.index }
                 }
             case .audio:
-                ForEach(enabledAudioModels, id: \.index) { item in
-                    Button(item.model.displayName) { selectedAudioModelIndex = item.index }
+                let grouped = Dictionary(grouping: enabledAudioModels, by: { $0.model.category })
+                ForEach(AudioModelConfig.Category.allCases, id: \.self) { category in
+                    if let items = grouped[category], !items.isEmpty {
+                        Section(category.label) {
+                            ForEach(items, id: \.index) { item in
+                                Button(item.model.displayName) { selectedAudioModelIndex = item.index }
+                            }
+                        }
+                    }
                 }
             }
             Divider()
@@ -1477,11 +1509,15 @@ struct GenerationView: View {
                 numImages: imageCount
             )
         case .audio:
+            if audioModel.inputs.contains(.video) {
+                guard let asset = audioVideoSource else { return "Drop a video to score." }
+                return audioModel.validate(spanSeconds: asset.duration)
+            }
             return audioModel.validate(params: audioParams(audioDuration: audioDuration))
         }
     }
 
-    private func audioParams(audioDuration: Int) -> AudioGenerationParams {
+    private func audioParams(audioDuration: Int, videoURL: String? = nil) -> AudioGenerationParams {
         AudioGenerationParams(
             prompt: prompt,
             voice: audioModel.voices != nil && !selectedVoice.isEmpty ? selectedVoice : nil,
@@ -1489,13 +1525,15 @@ struct GenerationView: View {
             styleInstructions: audioModel.supportsStyleInstructions && !styleInstructions.isEmpty
                 ? styleInstructions : nil,
             instrumental: audioModel.supportsInstrumental ? instrumental : false,
-            durationSeconds: audioModel.durations != nil ? audioDuration : nil
+            durationSeconds: (audioModel.durations != nil || audioModel.inputs.contains(.video)) ? audioDuration : nil,
+            videoURL: videoURL
         )
     }
 
     private func submitGeneration() {
         let audioDuration: Int = {
             guard selectedType == .audio else { return 0 }
+            if audioModel.inputs.contains(.video) { return max(1, Int((audioVideoSource?.duration ?? 0).rounded())) }
             return audioModel.durations != nil ? selectedAudioDuration : 0
         }()
         if let err = preflightValidation(audioDuration: audioDuration) {
@@ -1615,19 +1653,51 @@ struct GenerationView: View {
             autoOpenPreview(imageAssetId)
         case .audio:
             let model = audioModel
-            let params = audioParams(audioDuration: audioDuration)
-            AudioGenerationSubmission.make(
-                genInput: genInput,
-                model: model,
-                params: params,
-                folderId: editFolderId ?? editor.mediaPanelCurrentFolderId
-            ).submit(
-                service: editor.generationService,
-                projectURL: editor.projectURL,
-                editor: editor,
-                onComplete: makeOnComplete(false),
-                onFailure: onFailure
-            )
+            let onCompleteAudio = makeOnComplete(false)
+            if model.inputs.contains(.video), let asset = audioVideoSource {
+                let folderId = editFolderId ?? asset.folderId ?? editor.mediaPanelCurrentFolderId
+                var params = audioParams(audioDuration: audioDuration)
+                let capturedGenInput = genInput
+                audioUploadInFlight = true
+                Task {
+                    defer { audioUploadInFlight = false }
+                    do {
+                        guard let fileURL = editor.mediaResolver.resolveURL(for: asset.id) else {
+                            flashDropError("Could not read the source video.")
+                            return
+                        }
+                        let hostedURL = try await GenerationBackend.uploadReference(
+                            fileURL: fileURL, contentType: "video/mp4"
+                        )
+                        params.videoURL = hostedURL
+                        AudioGenerationSubmission.make(
+                            genInput: capturedGenInput, model: model, params: params, folderId: folderId
+                        ).submit(
+                            service: editor.generationService,
+                            projectURL: editor.projectURL,
+                            editor: editor,
+                            onComplete: onCompleteAudio,
+                            onFailure: onFailure
+                        )
+                    } catch {
+                        flashDropError(error.localizedDescription)
+                    }
+                }
+            } else {
+                let params = audioParams(audioDuration: audioDuration)
+                AudioGenerationSubmission.make(
+                    genInput: genInput,
+                    model: model,
+                    params: params,
+                    folderId: editFolderId ?? editor.mediaPanelCurrentFolderId
+                ).submit(
+                    service: editor.generationService,
+                    projectURL: editor.projectURL,
+                    editor: editor,
+                    onComplete: onCompleteAudio,
+                    onFailure: onFailure
+                )
+            }
         }
         lyrics = ""
         styleInstructions = ""
@@ -1642,6 +1712,7 @@ struct GenerationView: View {
         imageReferences.removeAll()
         resetRefPools()
         sourceVideo = nil
+        audioVideoSource = nil
     }
 
     private func consumePendingPanelSeed() {

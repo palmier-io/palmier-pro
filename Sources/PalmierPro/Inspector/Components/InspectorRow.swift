@@ -20,6 +20,8 @@ struct InspectorRow<Trailing: View>: View {
                 Image(systemName: "info.circle")
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
+                    .contentShape(Rectangle())
                     .help(labelHelp)
             }
             Spacer()

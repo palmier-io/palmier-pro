@@ -194,6 +194,11 @@ final class GenerationService {
         asset.generationStatus = .downloading
         do {
             let (tempURL, _) = try await URLSession.shared.download(from: remoteURL)
+            let realExt = remoteURL.pathExtension.lowercased()
+            if !realExt.isEmpty, realExt != asset.url.pathExtension.lowercased(),
+               ClipType(fileExtension: realExt) != nil {
+                asset.url = asset.url.deletingPathExtension().appendingPathExtension(realExt)
+            }
             try? FileManager.default.removeItem(at: asset.url)
             try FileManager.default.moveItem(at: tempURL, to: asset.url)
 
