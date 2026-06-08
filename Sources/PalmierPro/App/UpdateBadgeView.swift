@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct UpdateBadgeView: View {
-    @State private var updater = Updater.shared
+    @Bindable private var updater = Updater.shared
 
     var body: some View {
         if updater.updateAvailable {
@@ -11,7 +11,7 @@ struct UpdateBadgeView: View {
                 } label: {
                     Text(badgeLabel)
                         .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.95))
+                        .foregroundStyle(AppTheme.Text.primaryColor)
                         .padding(.leading, AppTheme.Spacing.sm)
                         .padding(.trailing, AppTheme.Spacing.xxs)
                         .padding(.vertical, AppTheme.Spacing.xxs)
@@ -25,7 +25,7 @@ struct UpdateBadgeView: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: AppTheme.FontSize.micro, weight: .bold))
-                        .foregroundStyle(.white.opacity(AppTheme.Opacity.strong))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .padding(.leading, AppTheme.Spacing.xxs)
                         .padding(.trailing, AppTheme.Spacing.xs)
                         .padding(.vertical, AppTheme.Spacing.xxs)

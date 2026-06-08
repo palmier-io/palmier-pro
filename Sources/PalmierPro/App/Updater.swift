@@ -15,11 +15,13 @@ final class Updater: NSObject {
         guard Bundle.main.bundleURL.pathExtension == "app",
               Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil
         else { return }
-        controller = SPUStandardUpdaterController(
+        let controller = SPUStandardUpdaterController(
             startingUpdater: true,
             updaterDelegate: self,
             userDriverDelegate: nil
         )
+        self.controller = controller
+        controller.updater.checkForUpdateInformation()
     }
 
     @objc func checkForUpdates(_ sender: Any?) {
@@ -27,18 +29,26 @@ final class Updater: NSObject {
     }
 
     func dismissUpdate() {
+        clearUpdateAvailability()
+    }
+
+    private func markUpdateAvailable(_ item: SUAppcastItem) {
+        updateAvailable = true
+        updateVersion = item.displayVersionString
+    }
+
+    private func clearUpdateAvailability() {
         updateAvailable = false
+        updateVersion = nil
     }
 }
 
 extension Updater: SPUUpdaterDelegate {
     @objc func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
-        updateAvailable = true
-        updateVersion = item.displayVersionString
+        markUpdateAvailable(item)
     }
 
     @objc func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
-        updateAvailable = false
-        updateVersion = nil
+        clearUpdateAvailability()
     }
 }
