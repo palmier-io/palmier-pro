@@ -69,6 +69,8 @@ struct AssetThumbnailView: View {
             handleTap()
         }
         .contextMenu { contextMenuItems }
+        .opacity(isSwapDimmed ? AppTheme.Opacity.muted : 1)
+        .allowsHitTesting(!isSwapDimmed)
     }
 
     @ViewBuilder
@@ -181,7 +183,7 @@ struct AssetThumbnailView: View {
 
     @ViewBuilder
     private var hoverActions: some View {
-        if isHovering && !asset.isGenerating {
+        if isHovering && !asset.isGenerating && !isSwapPickMode {
             Button { editor.agentService.attachMention(for: asset) } label: {
                 Image(systemName: "bubble.left")
                     .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
@@ -258,6 +260,22 @@ struct AssetThumbnailView: View {
         editor.selectedMediaAssetIds.contains(asset.id)
     }
 
+    private var isSwapPickMode: Bool {
+        editor.pendingSwapClipId != nil
+    }
+
+    private var isSwapCompatible: Bool {
+        editor.isAssetCompatibleWithPendingSwap(asset)
+    }
+
+    private var isSwapDimmed: Bool {
+        isSwapPickMode && !isSwapCompatible
+    }
+
+    private var isSwapPickHighlighted: Bool {
+        isSwapPickMode && isSwapCompatible && isHovering
+    }
+
     private var isMissing: Bool {
         // Generating/downloading/failed assets have their own states — not "missing".
         guard case .none = asset.generationStatus else { return false }
@@ -266,11 +284,13 @@ struct AssetThumbnailView: View {
 
     private var borderColor: Color {
         if isMissing { return AppTheme.Status.errorColor }
+        if isSwapPickMode { return isSwapPickHighlighted ? AppTheme.Accent.primary : .clear }
         return isSelected ? AppTheme.Accent.primary : .clear
     }
 
     private var borderWidth: CGFloat {
-        (isMissing || isSelected) ? AppTheme.BorderWidth.thick : 0
+        if isSwapPickMode { return isSwapPickHighlighted ? AppTheme.BorderWidth.thick : 0 }
+        return (isMissing || isSelected) ? AppTheme.BorderWidth.thick : 0
     }
 
     private var showsDurationBadge: Bool {
@@ -299,6 +319,11 @@ struct AssetThumbnailView: View {
     }
 
     private func handleTap() {
+        if isSwapPickMode {
+            editor.completeMediaSwap(with: asset)
+            return
+        }
+
         let shiftHeld = NSEvent.modifierFlags.contains(.shift)
 
         if shiftHeld {

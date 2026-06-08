@@ -329,11 +329,13 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
 
     private func makeHosting<V: View>(_ content: V, panel: EditorViewModel.FocusedPanel) -> NSHostingController<some View> {
         let inset = Layout.panelGap / 2
+        let panelShell = RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
         let hc = NSHostingController(
             rootView: content
                 .environment(editor)
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                 .background(AppTheme.Background.surfaceColor)
+                .clipShape(panelShell)
                 .padding(inset)
                 .background(AppTheme.Background.baseColor)
                 .overlay {
@@ -384,7 +386,7 @@ private struct PanelFocusRing: View {
     private var isFocused: Bool { editor.focusedPanel == panel }
 
     var body: some View {
-        Rectangle()
+        RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
             .strokeBorder(AppTheme.Accent.primary, lineWidth: AppTheme.BorderWidth.medium)
             .opacity(isFocused ? 0.6 : 0)
             .animation(.easeOut(duration: AppTheme.Anim.transition), value: isFocused)

@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Left-dock panel that hosts the Media and Captions tabs.
 struct MediaPanelView: View {
+    @Environment(EditorViewModel.self) private var editor
     @State private var panelTab: PanelTab = .media
     @State private var hoveredTab: PanelTab?
 
@@ -33,7 +34,10 @@ struct MediaPanelView: View {
             .zIndex(0)
         }
         .overlay(alignment: .trailing) {
-            Rectangle().fill(AppTheme.Border.subtleColor).frame(width: AppTheme.BorderWidth.hairline)
+            Rectangle().fill(AppTheme.Border.primaryColor).frame(width: AppTheme.BorderWidth.hairline)
+        }
+        .onChange(of: editor.mediaPanelShowMediaTabTick) { _, _ in
+            withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) { panelTab = .media }
         }
         .overlay(alignment: .topLeading) {
             if let hoveredTab {
@@ -65,10 +69,10 @@ struct MediaPanelView: View {
         )
         .frame(maxHeight: .infinity, alignment: .top)
         .fixedSize(horizontal: true, vertical: false)
-        .background(AppTheme.Background.surfaceColor)
+        .background(AppTheme.Background.raisedColor)
         .overlay(alignment: .trailing) {
             Rectangle()
-                .fill(AppTheme.Border.subtleColor)
+                .fill(AppTheme.Border.primaryColor)
                 .frame(width: AppTheme.BorderWidth.hairline)
         }
     }
@@ -88,7 +92,7 @@ struct MediaPanelView: View {
                 .overlay(alignment: .leading) {
                     if selected {
                         Capsule()
-                            .fill(AppTheme.Text.primaryColor)
+                            .fill(AppTheme.Border.primaryColor)
                             .frame(width: AppTheme.BorderWidth.thick, height: AppTheme.IconSize.sm)
                     }
                 }

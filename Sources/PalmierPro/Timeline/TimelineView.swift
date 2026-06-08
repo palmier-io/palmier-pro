@@ -668,6 +668,14 @@ final class TimelineView: NSView {
             menu.addItem(pasteItem)
         }
 
+        if clip.mediaType != .text, editor.selectedClipIds == editor.expandToLinkGroup([clip.id]) {
+            menu.addItem(.separator())
+            let swapItem = NSMenuItem(title: "Swap Media", action: #selector(performSwapMedia(_:)), keyEquivalent: "")
+            swapItem.target = self
+            swapItem.representedObject = clip.id
+            menu.addItem(swapItem)
+        }
+
         if clip.mediaType == .video || clip.mediaType == .audio {
             menu.addItem(.separator())
             let item = NSMenuItem(
@@ -777,6 +785,12 @@ final class TimelineView: NSView {
         guard let item = sender as? NSMenuItem,
               let clipId = item.representedObject as? String else { return }
         editor.saveClipAsMedia(clipId: clipId)
+    }
+
+    @objc private func performSwapMedia(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let clipId = item.representedObject as? String else { return }
+        editor.beginMediaSwap(clipId: clipId)
     }
 
     @objc private func performSetVolumeKfInterpolation(_ sender: Any?) {

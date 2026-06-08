@@ -81,6 +81,10 @@ struct MediaTab: View {
         VStack(spacing: 0) {
             toolbar
 
+            if editor.pendingSwapClipId != nil {
+                swapBanner
+            }
+
             ZStack(alignment: .top) {
                 MediaPanelDropArea(
                     isTargeted: $isDropTargeted,
@@ -124,6 +128,7 @@ struct MediaTab: View {
         } action: { newValue in
             mediaPanelHeight = newValue
         }
+        .onExitCommand { if editor.pendingSwapClipId != nil { editor.cancelMediaSwap() } }
         .background(KeyCommandSink(onNewFolder: createNewFolderInCurrent, onNavigateUp: navigateUp))
         .onChange(of: editor.folders.map(\.id)) { _, _ in pruneStaleFolderState() }
         .onChange(of: editor.mediaPanelRevealAssetId) { _, target in
@@ -141,6 +146,33 @@ struct MediaTab: View {
         }
         .onChange(of: currentFolderId, initial: true) { _, folderId in
             editor.mediaPanelCurrentFolderId = folderId
+        }
+    }
+
+    private var swapBanner: some View {
+        let tint = Color(nsColor: (editor.pendingSwapClip?.mediaType ?? .video).themeColor)
+        return HStack(spacing: AppTheme.Spacing.sm) {
+            Image(systemName: "arrow.left.arrow.right")
+                .font(.system(size: AppTheme.FontSize.smMd, weight: .semibold))
+                .foregroundStyle(tint)
+            Text("Pick a replacement for \"\(editor.pendingSwapClipName ?? "clip")\"")
+                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: AppTheme.Spacing.sm)
+            Button("Cancel") { editor.cancelMediaSwap() }
+                .buttonStyle(.plain)
+                .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+        }
+        .padding(.horizontal, AppTheme.Spacing.mdLg)
+        .padding(.vertical, AppTheme.Spacing.sm)
+        .background(tint.opacity(AppTheme.Opacity.faint))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(tint.opacity(AppTheme.Opacity.muted))
+                .frame(height: AppTheme.BorderWidth.hairline)
         }
     }
 

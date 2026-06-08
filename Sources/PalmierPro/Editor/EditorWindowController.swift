@@ -141,6 +141,10 @@ final class EditorWindowController: NSWindowController {
             return false
 
         case 53: // Escape
+            if editorViewModel.pendingSwapClipId != nil {
+                editorViewModel.cancelMediaSwap()
+                return true
+            }
             if editorViewModel.cropEditingActive {
                 editorViewModel.cropEditingActive = false
                 return true

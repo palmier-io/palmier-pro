@@ -52,6 +52,7 @@ final class EditorViewModel {
     var selectedTimelineRange: TimelineRangeSelection?
     var selectedMediaAssetIds: Set<String> = []
     var selectedFolderIds: Set<String> = []
+    var pendingSwapClipId: String?
     var clipClipboard: [ClipClipboardEntry] = []
     var zoomScale: Double = Defaults.pixelsPerFrame
     var canvasZoom: CGFloat = 1.0 {
@@ -65,7 +66,9 @@ final class EditorViewModel {
     var isScrubbing: Bool = false
     var toolMode: ToolMode = .pointer
     var showExportDialog: Bool = false
-    var showGenerationPanel: Bool = false
+    var showGenerationPanel: Bool = false {
+        didSet { if showGenerationPanel && !oldValue { showMediaPanelMediaTab() } }
+    }
     /// AIEditTab input consumed by GenerationView.
     var pendingPanelSeed: PendingPanelSeed?
     var pendingEditReplacementClipId: String?
@@ -147,7 +150,10 @@ final class EditorViewModel {
     var mediaPanelOpenFolderId: String?
     var mediaPanelCurrentFolderId: String?
     var mediaPanelPasteRequestTick: Int = 0
+    var mediaPanelShowMediaTabTick: Int = 0
     var mediaPanelToast: String?
+
+    func showMediaPanelMediaTab() { mediaPanelShowMediaTabTick += 1 }
 
     init() {
         mediaResolver = MediaResolver(

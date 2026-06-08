@@ -418,7 +418,9 @@ struct GenerationView: View {
                 .allowsHitTesting(false)
         }
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.lg))
-        .padding(AppTheme.Spacing.sm)
+        .shadow(AppTheme.Shadow.sm)
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.bottom, AppTheme.Spacing.sm)
     }
 
     private var bodyContent: some View {
@@ -517,7 +519,9 @@ struct GenerationView: View {
                 .allowsHitTesting(false)
         }
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.lg))
-        .padding(AppTheme.Spacing.sm)
+        .shadow(AppTheme.Shadow.sm)
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.bottom, AppTheme.Spacing.sm)
         .frame(maxHeight: max(0, CGFloat(maxPanelHeight)), alignment: .top)
         .onAppear {
             let hadSeed = editor.pendingPanelSeed != nil

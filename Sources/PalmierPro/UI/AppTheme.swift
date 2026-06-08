@@ -119,10 +119,10 @@ enum AppTheme {
     // MARK: - Track type colors
 
     enum TrackColor {
-        static let video = NSColor(red: 0x00/255.0, green: 0x6D/255.0, blue: 0x94/255.0, alpha: 1)
-        static let audio = NSColor(red: 0x3D/255.0, green: 0x7A/255.0, blue: 0x0A/255.0, alpha: 1)
-        static let image = NSColor(red: 0x96/255.0, green: 0x15/255.0, blue: 0xAD/255.0, alpha: 1)
-        static let text = NSColor(red: 0x96/255.0, green: 0x15/255.0, blue: 0xAD/255.0, alpha: 1)
+        static let video = NSColor(red: 0x00/255.0, green: 0x91/255.0, blue: 0xC2/255.0, alpha: 1)
+        static let audio = NSColor(red: 0x58/255.0, green: 0xA8/255.0, blue: 0x22/255.0, alpha: 1)
+        static let image = NSColor(red: 0xB7/255.0, green: 0x2D/255.0, blue: 0xD2/255.0, alpha: 1)
+        static let text = NSColor(red: 0xB7/255.0, green: 0x2D/255.0, blue: 0xD2/255.0, alpha: 1)
     }
 
     // MARK: - Corner radii

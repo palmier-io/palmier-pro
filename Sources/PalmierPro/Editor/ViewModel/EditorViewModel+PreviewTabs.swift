@@ -31,6 +31,7 @@ extension EditorViewModel {
     func selectMediaAsset(_ asset: MediaAsset) {
         openPreviewTab(for: asset)
         syncSelectionToActiveTab()
+        showMediaPanelMediaTab()
     }
 
     func openPreviewTab(for asset: MediaAsset) {
