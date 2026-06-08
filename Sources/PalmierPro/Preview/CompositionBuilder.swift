@@ -247,6 +247,8 @@ enum CompositionBuilder {
                 Log.preview.error("stillVideo failed mediaRef=\(clip.mediaRef) size=\(Int(imageSize.width))x\(Int(imageSize.height)): \(error.localizedDescription)")
                 return nil
             }
+        } else if mediaType == .video {
+            mediaURL = (try? await AlphaVideoNormalizer.premultipliedVideo(for: resolved, mediaRef: clip.mediaRef)) ?? resolved
         } else {
             mediaURL = resolved
         }
