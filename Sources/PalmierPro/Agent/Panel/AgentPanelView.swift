@@ -30,6 +30,11 @@ struct AgentPanelView: View {
             prompt: "Create a voiceover for my timeline. Draft concise narration for the current edit, generate the voiceover, and add it to an audio track aligned with the timeline."
         ),
         AgentStarterPrompt(
+            title: "Generate music and sync to my timeline",
+            systemImage: "music.note",
+            prompt: "Score my timeline with music. Inspect the edit's mood and pacing, generate music for the full timeline, and place it on an audio track aligned to the edit."
+        ),
+        AgentStarterPrompt(
             title: "Organize my media into structured folders",
             systemImage: "folder",
             prompt: "Organize my media into structured folders. Review all assets, create clearly named folders by role, scene, or type, move assets into them, and rename generic files when useful. Don't delete anything or change the timeline."
