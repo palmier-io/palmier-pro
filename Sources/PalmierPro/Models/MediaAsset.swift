@@ -5,7 +5,7 @@ import AVFoundation
 @MainActor
 final class MediaAsset: Identifiable {
     let id: String
-    let url: URL
+    var url: URL
     let type: ClipType
     var name: String
     var duration: Double
