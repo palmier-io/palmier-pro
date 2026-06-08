@@ -67,9 +67,9 @@ struct ToolbarView: View {
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .frame(width: 24, height: 24)
                 .hoverHighlight()
-                .help(help)
         }
         .buttonStyle(.plain)
+        .help(help)
     }
 
     private func undo() {
@@ -88,9 +88,9 @@ struct ToolbarView: View {
                 .foregroundStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
                 .frame(width: 24, height: 24)
                 .hoverHighlight(isActive: isActive)
-                .help(help)
         }
         .buttonStyle(.plain)
+        .help(help)
     }
 
     private func textGlyphButton(_ glyph: String, help: String, action: @escaping () -> Void) -> some View {
@@ -100,9 +100,9 @@ struct ToolbarView: View {
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .frame(width: 24, height: 24)
                 .hoverHighlight()
-                .help(help)
         }
         .buttonStyle(.plain)
+        .help(help)
     }
 
     private func bracketButton(_ bracket: String, help: String, action: @escaping () -> Void) -> some View {
@@ -112,9 +112,9 @@ struct ToolbarView: View {
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .frame(width: 24, height: 24)
                 .hoverHighlight()
-                .help(help)
         }
         .buttonStyle(.plain)
+        .help(help)
     }
 
 }
