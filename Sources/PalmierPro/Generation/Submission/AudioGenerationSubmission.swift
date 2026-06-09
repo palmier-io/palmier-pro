@@ -7,6 +7,8 @@ struct AudioGenerationSubmission {
     let placeholderDuration: Double
     let name: String?
     let folderId: String?
+    let references: [MediaAsset]
+    let trimmedSourceOverride: TrimmedSource?
 
     @MainActor
     @discardableResult
@@ -21,9 +23,17 @@ struct AudioGenerationSubmission {
             genInput: genInput,
             assetType: .audio,
             placeholderDuration: placeholderDuration,
+            references: references,
+            trimmedSourceOverride: trimmedSourceOverride,
             name: name,
             folderId: folderId,
-            buildParams: { [params] _ in .audio(params) },
+            buildParams: { [params] uploaded in
+                var resolvedParams = params
+                if resolvedParams.videoURL == nil {
+                    resolvedParams.videoURL = uploaded.first
+                }
+                return .audio(resolvedParams)
+            },
             fileExtension: "mp3",
             projectURL: projectURL,
             editor: editor,
@@ -44,7 +54,9 @@ struct AudioGenerationSubmission {
         model: AudioModelConfig,
         params: AudioGenerationParams,
         name: String? = nil,
-        folderId: String? = nil
+        folderId: String? = nil,
+        references: [MediaAsset] = [],
+        trimmedSourceOverride: TrimmedSource? = nil
     ) -> AudioGenerationSubmission {
         AudioGenerationSubmission(
             genInput: genInput,
@@ -52,7 +64,9 @@ struct AudioGenerationSubmission {
             params: params,
             placeholderDuration: placeholderDuration(model: model, params: params),
             name: name,
-            folderId: folderId
+            folderId: folderId,
+            references: references,
+            trimmedSourceOverride: trimmedSourceOverride
         )
     }
 }

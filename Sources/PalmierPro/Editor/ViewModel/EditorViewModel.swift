@@ -12,6 +12,12 @@ struct PendingPanelSeed {
     let stored: GenerationInput
 }
 
+struct PendingAudioPlacement {
+    let startFrame: Int
+    let spanSeconds: Double
+    let actionName: String
+}
+
 @Observable
 @MainActor
 final class EditorViewModel {
@@ -73,6 +79,7 @@ final class EditorViewModel {
     var pendingPanelSeed: PendingPanelSeed?
     var pendingEditReplacementClipId: String?
     var pendingEditTrimmedSource: TrimmedSource?
+    var pendingEditAudioPlacement: PendingAudioPlacement?
     /// Clip ids currently awaiting an AI-generated replacement.
     var pendingReplacements: Set<String> = []
     var cropEditingActive: Bool = false

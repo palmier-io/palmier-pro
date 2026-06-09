@@ -52,7 +52,6 @@ struct GenerationView: View {
     // Source video for video-to-audio models (Sonilo, Mirelo)
     @State private var audioVideoSource: MediaAsset?
     @State private var audioVideoTargeted = false
-    @State private var audioUploadInFlight = false
 
     @State private var isPopulatingPanel = false
     @State private var editFolderId: String?
@@ -181,7 +180,7 @@ struct GenerationView: View {
         }
         if selectedType == .audio {
             if audioModel.inputs.contains(.video) {
-                return audioVideoSource != nil && !audioUploadInFlight
+                return audioVideoSource != nil
             }
             return trimmedPrompt.count >= audioModel.minPromptLength
         }
@@ -300,6 +299,23 @@ struct GenerationView: View {
         return max(0, Int((sourceVideo?.duration ?? 0).rounded()))
     }
 
+    private var effectiveAudioVideoSpanSeconds: Double {
+        guard let source = audioVideoSource else { return 0 }
+        if let trim = audioVideoTrimmedSource(for: source), trim.hasTrim {
+            return trim.durationSeconds
+        }
+        return source.duration
+    }
+
+    private var effectiveAudioVideoSeconds: Int {
+        max(1, Int(effectiveAudioVideoSpanSeconds.rounded()))
+    }
+
+    private func audioVideoTrimmedSource(for source: MediaAsset) -> TrimmedSource? {
+        guard let trim = editor.pendingEditTrimmedSource, trim.sourceURL == source.url else { return nil }
+        return trim
+    }
+
     /// Live credit estimate for the current form state.
     private var estimatedCost: Int? {
         switch selectedType {
@@ -320,7 +336,7 @@ struct GenerationView: View {
             )
         case .audio:
             let duration: Int? = audioModel.inputs.contains(.video)
-                ? Int((audioVideoSource?.duration ?? 0).rounded())
+                ? (audioVideoSource == nil ? nil : effectiveAudioVideoSeconds)
                 : (audioModel.durations != nil ? selectedAudioDuration : nil)
             return CostEstimator.audioCost(
                 model: audioModel, prompt: trimmedPrompt, durationSeconds: duration
@@ -435,6 +451,7 @@ struct GenerationView: View {
                 Button {
                     editor.pendingEditReplacementClipId = nil
                     editor.pendingEditTrimmedSource = nil
+                    editor.pendingEditAudioPlacement = nil
                     editor.pendingPanelSeed = nil
                     editFolderId = nil
                     editor.showGenerationPanel = false
@@ -542,6 +559,7 @@ struct GenerationView: View {
             if newValue == .audio { resetAudioState() }
             editFolderId = nil
             editor.pendingEditTrimmedSource = nil
+            editor.pendingEditAudioPlacement = nil
         }
         .onChange(of: selectedVideoModelIndex) { _, _ in
             guard !isPopulatingPanel else { return }
@@ -1514,8 +1532,8 @@ struct GenerationView: View {
             )
         case .audio:
             if audioModel.inputs.contains(.video) {
-                guard let asset = audioVideoSource else { return "Drop a video to score." }
-                return audioModel.validate(spanSeconds: asset.duration)
+                guard audioVideoSource != nil else { return "Drop a video to score." }
+                return audioModel.validate(spanSeconds: effectiveAudioVideoSpanSeconds)
             }
             return audioModel.validate(params: audioParams(audioDuration: audioDuration))
         }
@@ -1537,7 +1555,7 @@ struct GenerationView: View {
     private func submitGeneration() {
         let audioDuration: Int = {
             guard selectedType == .audio else { return 0 }
-            if audioModel.inputs.contains(.video) { return max(1, Int((audioVideoSource?.duration ?? 0).rounded())) }
+            if audioModel.inputs.contains(.video) { return effectiveAudioVideoSeconds }
             return audioModel.durations != nil ? selectedAudioDuration : 0
         }()
         if let err = preflightValidation(audioDuration: audioDuration) {
@@ -1571,6 +1589,8 @@ struct GenerationView: View {
 
         let replacementClipId = editor.pendingEditReplacementClipId
         editor.pendingEditReplacementClipId = nil
+        let pendingAudioPlacement = selectedType == .audio ? editor.pendingEditAudioPlacement : nil
+        editor.pendingEditAudioPlacement = nil
         let editorRef = editor
         if let clipId = replacementClipId {
             editor.markPendingReplacement(clipId: clipId)
@@ -1660,32 +1680,37 @@ struct GenerationView: View {
             let onCompleteAudio = makeOnComplete(false)
             if model.inputs.contains(.video), let asset = audioVideoSource {
                 let folderId = editFolderId ?? asset.folderId ?? editor.mediaPanelCurrentFolderId
-                var params = audioParams(audioDuration: audioDuration)
-                let capturedGenInput = genInput
-                audioUploadInFlight = true
-                Task {
-                    defer { audioUploadInFlight = false }
-                    do {
-                        guard let fileURL = editor.mediaResolver.resolveURL(for: asset.id) else {
-                            flashDropError("Could not read the source video.")
-                            return
-                        }
-                        let hostedURL = try await GenerationBackend.uploadReference(
-                            fileURL: fileURL, contentType: "video/mp4"
-                        )
-                        params.videoURL = hostedURL
-                        AudioGenerationSubmission.make(
-                            genInput: capturedGenInput, model: model, params: params, folderId: folderId
-                        ).submit(
-                            service: editor.generationService,
-                            projectURL: editor.projectURL,
-                            editor: editor,
-                            onComplete: onCompleteAudio,
-                            onFailure: onFailure
-                        )
-                    } catch {
-                        flashDropError(error.localizedDescription)
+                let trimmedSource = audioVideoTrimmedSource(for: asset)
+                let params = audioParams(audioDuration: audioDuration)
+                genInput.referenceVideoAssetIds = [asset.id]
+                let audioOnComplete: (@MainActor (MediaAsset) -> Void)? = {
+                    guard pendingAudioPlacement != nil else { return onCompleteAudio }
+                    return { [weak editorRef] asset in
+                        editorRef?.finalizeGeneratingClip(placeholderId: asset.id, asset: asset)
+                        onCompleteAudio?(asset)
                     }
+                }()
+                let audioAssetId = AudioGenerationSubmission.make(
+                    genInput: genInput,
+                    model: model,
+                    params: params,
+                    folderId: folderId,
+                    references: [asset],
+                    trimmedSourceOverride: trimmedSource
+                ).submit(
+                    service: editor.generationService,
+                    projectURL: editor.projectURL,
+                    editor: editor,
+                    onComplete: audioOnComplete,
+                    onFailure: onFailure
+                )
+                if let placement = pendingAudioPlacement {
+                    editor.placeGeneratingAudioClip(
+                        placeholderId: audioAssetId,
+                        startFrame: placement.startFrame,
+                        spanSeconds: placement.spanSeconds,
+                        actionName: placement.actionName
+                    )
                 }
             } else {
                 let params = audioParams(audioDuration: audioDuration)
@@ -1703,6 +1728,7 @@ struct GenerationView: View {
                 )
             }
         }
+        editor.pendingEditTrimmedSource = nil
         lyrics = ""
         styleInstructions = ""
         prompt = ""
@@ -1795,7 +1821,7 @@ struct GenerationView: View {
         case .image:
             imageReferences = primary
         case .audio:
-            break
+            audioVideoSource = (stored.referenceVideoAssetIds ?? []).compactMap(lookup).first
         }
 
         editFolderId = asset.folderId

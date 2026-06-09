@@ -212,6 +212,14 @@ enum EditSubmitter {
         }
 
         if let audioModel = AudioModelConfig.allModels.first(where: { $0.id == modelId }) {
+            let sourceVideoURL = audioModel.inputs.contains(.video) ? preUploaded?.first : nil
+            let expectsVideoSource = audioModel.inputs.contains(.video)
+                && (!audioModel.inputs.contains(.text)
+                    || (gen.referenceVideoAssetIds?.isEmpty == false)
+                    || sourceVideoURL != nil)
+            if expectsVideoSource, sourceVideoURL == nil {
+                throw RerunError.missingSource
+            }
             let placeholderDuration: Double = asset.duration > 0
                 ? asset.duration
                 : (audioModel.category == .music
@@ -223,7 +231,8 @@ enum EditSubmitter {
                 lyrics: gen.lyrics,
                 styleInstructions: gen.styleInstructions,
                 instrumental: gen.instrumental ?? false,
-                durationSeconds: audioModel.durations != nil && gen.duration > 0 ? gen.duration : nil
+                durationSeconds: (audioModel.durations != nil || expectsVideoSource) && gen.duration > 0 ? gen.duration : nil,
+                videoURL: sourceVideoURL
             )
             if let err = audioModel.validate(params: params) {
                 throw RerunError.invalid(err)
@@ -302,6 +311,19 @@ enum EditSubmitter {
         }) else { return nil }
         var stored = GenerationInput(prompt: "", model: model.id, duration: 0, aspectRatio: "", resolution: nil)
         if asReference { stored.referenceImageAssetIds = [asset.id] } else { stored.imageURLAssetIds = [asset.id] }
+        return stored
+    }
+
+    static func videoAudioSeed(for asset: MediaAsset, kind: VideoToAudioEditKind) -> GenerationInput? {
+        guard asset.type == .video, let model = kind.model else { return nil }
+        var stored = GenerationInput(
+            prompt: "",
+            model: model.id,
+            duration: max(0, Int(asset.duration.rounded())),
+            aspectRatio: "",
+            resolution: nil
+        )
+        stored.referenceVideoAssetIds = [asset.id]
         return stored
     }
 

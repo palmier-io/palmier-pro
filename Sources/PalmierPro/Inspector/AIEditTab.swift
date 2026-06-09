@@ -8,6 +8,9 @@ struct AIEditTab: View {
     @State private var rerunError: String?
     @State private var replaceClipSource: Bool = false
     @State private var useTrimmedClip: Bool = true
+    @State private var placeAudioOnTimeline: Bool = true
+    @State private var aiEnhanceExpanded: Bool = true
+    @State private var aiAudioExpanded: Bool = true
 
     init(asset: MediaAsset, clipId: String? = nil) {
         self.asset = asset
@@ -24,7 +27,7 @@ struct AIEditTab: View {
                     }
                 }
 
-                aiSection(title: "Actions") {
+                collapsibleAISection(title: "AI Enhance", isExpanded: $aiEnhanceExpanded) {
                     actionRow(
                         action: .upscale,
                         icon: "sparkles.rectangle.stack",
@@ -52,6 +55,16 @@ struct AIEditTab: View {
                         )
                     }
                 }
+
+                if asset.type == .video {
+                    collapsibleAISection(title: "AI Audio", isExpanded: $aiAudioExpanded) {
+                        if showsAudioOutputOptions {
+                            audioPlacementToggle
+                        }
+                        videoAudioActionRow(kind: .music)
+                        videoAudioActionRow(kind: .sfx)
+                    }
+                }
             }
             .padding(.horizontal, AppTheme.Spacing.lg)
             .padding(.vertical, AppTheme.Spacing.md)
@@ -72,6 +85,10 @@ struct AIEditTab: View {
         clipId != nil || trimmedClipAvailable
     }
 
+    private var showsAudioOutputOptions: Bool {
+        asset.type == .video && clipId != nil
+    }
+
     private var rerunDescription: String {
         guard let gen = asset.generationInput,
               let cost = CostEstimator.cost(for: gen) else {
@@ -86,11 +103,45 @@ struct AIEditTab: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
             Text(title.uppercased())
-                .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
+                .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
                 .tracking(AppTheme.Tracking.wide)
                 .foregroundStyle(AppTheme.Text.mutedColor)
             VStack(spacing: AppTheme.Spacing.smMd) {
                 content()
+            }
+        }
+    }
+
+    private func collapsibleAISection<Content: View>(
+        title: String,
+        isExpanded: Binding<Bool>,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            Button {
+                withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
+                    isExpanded.wrappedValue.toggle()
+                }
+            } label: {
+                HStack(spacing: AppTheme.Spacing.xs) {
+                    Image(systemName: isExpanded.wrappedValue ? "chevron.down" : "chevron.right")
+                        .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
+                        .foregroundStyle(AppTheme.Text.mutedColor)
+                        .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
+                    Text(title.uppercased())
+                        .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
+                        .tracking(AppTheme.Tracking.wide)
+                        .foregroundStyle(AppTheme.Text.mutedColor)
+                    Spacer(minLength: AppTheme.Spacing.xs)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded.wrappedValue {
+                VStack(spacing: AppTheme.Spacing.smMd) {
+                    content()
+                }
             }
         }
     }
@@ -114,6 +165,15 @@ struct AIEditTab: View {
             label: "Use trimmed portion only",
             help: "Send only the visible clip range to the model, not the full source.",
             isOn: $useTrimmedClip
+        )
+    }
+
+    private var audioPlacementToggle: some View {
+        scopeToggleRow(
+            icon: "plus.rectangle.on.rectangle",
+            label: "Place on timeline",
+            help: "Add generated audio to an audio track at this clip's start.",
+            isOn: $placeAudioOnTimeline
         )
     }
 
@@ -172,7 +232,8 @@ struct AIEditTab: View {
         action: EditAction,
         icon: String,
         title: String,
-        description: String
+        description: String,
+        triggerTitle: String? = nil
     ) -> some View {
         let availability = action.availability(
             for: asset,
@@ -196,10 +257,20 @@ struct AIEditTab: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: AppTheme.Spacing.sm)
-            actionTrigger(action: action, title: title, isEnabled: isEnabled)
+            actionTrigger(action: action, title: triggerTitle ?? title, isEnabled: isEnabled)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .help(disabledReason ?? "")
+    }
+
+    private func videoAudioActionRow(kind: VideoToAudioEditKind) -> some View {
+        actionRow(
+            action: kind.action,
+            icon: kind.iconName,
+            title: kind.title,
+            description: kind.description,
+            triggerTitle: "Generate"
+        )
     }
 
     @ViewBuilder
@@ -228,7 +299,7 @@ struct AIEditTab: View {
             .fixedSize()
             .controlSize(.small)
             .disabled(!isEnabled)
-        case .edit, .rerun:
+        case .edit, .generateMusic, .generateSFX, .rerun:
             Button(title) {
                 present(action)
             }
@@ -249,6 +320,10 @@ struct AIEditTab: View {
         case .edit:
             guard let stored = EditSubmitter.editSeed(for: asset) else { return }
             seedPanel(stored: stored, trimmed: trimmedSourceIfEnabled())
+        case .generateMusic:
+            presentVideoAudio(kind: .music)
+        case .generateSFX:
+            presentVideoAudio(kind: .sfx)
         case .rerun:
             let modelId = asset.generationInput?.model ?? ""
             if UpscaleModelConfig.allIds.contains(modelId) {
@@ -269,11 +344,40 @@ struct AIEditTab: View {
         }
     }
 
-    private func seedPanel(stored: GenerationInput, trimmed: TrimmedSource?) {
-        editor.pendingEditReplacementClipId = (shouldReplace ? clipId : nil)
+    private func presentVideoAudio(kind: VideoToAudioEditKind) {
+        guard let stored = EditSubmitter.videoAudioSeed(for: asset, kind: kind) else { return }
+        seedPanel(
+            stored: stored,
+            trimmed: trimmedSourceIfEnabled(),
+            allowsReplacement: false,
+            audioPlacement: pendingAudioPlacement(actionName: kind.timelineActionName)
+        )
+    }
+
+    private func seedPanel(
+        stored: GenerationInput,
+        trimmed: TrimmedSource?,
+        allowsReplacement: Bool = true,
+        audioPlacement: PendingAudioPlacement? = nil
+    ) {
+        editor.pendingEditReplacementClipId = (allowsReplacement && shouldReplace ? clipId : nil)
         editor.pendingEditTrimmedSource = trimmed
+        editor.pendingEditAudioPlacement = audioPlacement
         editor.pendingPanelSeed = PendingPanelSeed(asset: asset, stored: stored)
         editor.showGenerationPanel = true
+    }
+
+    private func pendingAudioPlacement(actionName: String) -> PendingAudioPlacement? {
+        guard placeAudioOnTimeline, let clip = timelineClip else { return nil }
+        let spanSeconds = trimmedSourceIfEnabled()?.durationSeconds
+            ?? (asset.duration > 0
+                ? asset.duration
+                : Double(clip.durationFrames) / Double(max(1, editor.timeline.fps)))
+        return PendingAudioPlacement(
+            startFrame: clip.startFrame,
+            spanSeconds: max(spanSeconds, 1 / Double(max(1, editor.timeline.fps))),
+            actionName: actionName
+        )
     }
 
     private func upscaleLabel(for model: UpscaleModelConfig) -> String {

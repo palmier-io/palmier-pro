@@ -3,6 +3,8 @@ import Foundation
 enum EditAction {
     case upscale
     case edit
+    case generateMusic
+    case generateSFX
     case rerun
     case createVideo
 
@@ -53,6 +55,20 @@ enum EditAction {
             }
             return .available
 
+        case .generateMusic:
+            return Self.videoAudioAvailability(
+                for: asset,
+                kind: .music,
+                effectiveDurationOverride: effectiveDurationOverride
+            )
+
+        case .generateSFX:
+            return Self.videoAudioAvailability(
+                for: asset,
+                kind: .sfx,
+                effectiveDurationOverride: effectiveDurationOverride
+            )
+
         case .createVideo:
             guard asset.type == .image else {
                 return .disabled(reason: "Create Video only works on images")
@@ -88,6 +104,31 @@ enum EditAction {
         if asset.duration > 0 { return asset.duration }
         if let gd = asset.generationInput?.duration, gd > 0 { return Double(gd) }
         return 0
+    }
+
+    @MainActor
+    private static func videoAudioAvailability(
+        for asset: MediaAsset,
+        kind: VideoToAudioEditKind,
+        effectiveDurationOverride: Double?
+    ) -> EditActionAvailability {
+        guard asset.type == .video else {
+            return .disabled(reason: "\(kind.title) only works on video")
+        }
+        if asset.isGenerating {
+            return .disabled(reason: "Generation in progress")
+        }
+        let duration = effectiveDurationOverride ?? effectiveDuration(of: asset)
+        guard duration > 0 else {
+            return .disabled(reason: "Loading video metadata…")
+        }
+        guard let model = kind.model else {
+            return .disabled(reason: "\(kind.providerName) model not available")
+        }
+        if let err = model.validate(spanSeconds: duration) {
+            return .disabled(reason: err)
+        }
+        return .available
     }
 }
 

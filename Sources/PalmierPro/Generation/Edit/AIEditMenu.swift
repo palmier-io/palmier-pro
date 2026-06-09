@@ -22,6 +22,12 @@ struct AIEditMenu: View {
                 if availableActions.contains(.edit) {
                     Button("Edit…") { edit() }
                 }
+                if availableActions.contains(.generateMusic) {
+                    Button("\(VideoToAudioEditKind.music.title)…") { videoAudio(kind: .music) }
+                }
+                if availableActions.contains(.generateSFX) {
+                    Button("\(VideoToAudioEditKind.sfx.title)…") { videoAudio(kind: .sfx) }
+                }
                 if availableActions.contains(.rerun) {
                     Button("Rerun") { rerun() }
                 }
@@ -41,9 +47,15 @@ struct AIEditMenu: View {
     }
 
     private var availableActions: [EditAction] {
-        let candidates: [EditAction] = asset.type == .image
-            ? [.upscale, .edit, .rerun, .createVideo]
-            : [.upscale, .edit, .rerun]
+        let candidates: [EditAction]
+        switch asset.type {
+        case .image:
+            candidates = [.upscale, .edit, .rerun, .createVideo]
+        case .video:
+            candidates = [.upscale, .edit, .generateMusic, .generateSFX, .rerun]
+        case .audio, .text:
+            candidates = [.upscale, .edit, .rerun]
+        }
         return candidates.filter { $0.availability(for: asset).isAvailable }
     }
 
@@ -53,6 +65,11 @@ struct AIEditMenu: View {
 
     private func edit() {
         guard let stored = EditSubmitter.editSeed(for: asset) else { return }
+        seedPanel(stored: stored)
+    }
+
+    private func videoAudio(kind: VideoToAudioEditKind) {
+        guard let stored = EditSubmitter.videoAudioSeed(for: asset, kind: kind) else { return }
         seedPanel(stored: stored)
     }
 
@@ -73,6 +90,7 @@ struct AIEditMenu: View {
     private func seedPanel(stored: GenerationInput) {
         editor.pendingEditReplacementClipId = nil
         editor.pendingEditTrimmedSource = nil
+        editor.pendingEditAudioPlacement = nil
         editor.pendingPanelSeed = PendingPanelSeed(asset: asset, stored: stored)
         editor.showGenerationPanel = true
     }

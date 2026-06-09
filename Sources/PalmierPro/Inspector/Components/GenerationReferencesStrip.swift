@@ -24,10 +24,11 @@ struct GenerationReferencesStrip: View {
     static func slots(for gen: GenerationInput, in assets: [MediaAsset]) -> [(String, MediaAsset)] {
         let byId = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
         let primary = primaryLabels(for: gen)
+        let videoBase = videoReferenceBaseLabel(for: gen)
         let groups: [(ids: [String]?, base: String, primary: [String])] = [
             (gen.imageURLAssetIds,       "Reference", primary),
             (gen.referenceImageAssetIds, "Image Ref", []),
-            (gen.referenceVideoAssetIds, "Video Ref", []),
+            (gen.referenceVideoAssetIds, videoBase, []),
             (gen.referenceAudioAssetIds, "Audio Ref", []),
         ]
         return groups.flatMap { ids, base, primary -> [(String, MediaAsset)] in
@@ -38,6 +39,14 @@ struct GenerationReferencesStrip: View {
                 return (ids.count > 1 ? "\(base) \(i + 1)" : base, asset)
             }
         }
+    }
+
+    private static func videoReferenceBaseLabel(for gen: GenerationInput) -> String {
+        if case .audio(let model) = ModelRegistry.byId[gen.model],
+           model.inputs.contains(.video) {
+            return "Source Video"
+        }
+        return "Video Ref"
     }
 
     private static func primaryLabels(for gen: GenerationInput) -> [String] {
