@@ -87,8 +87,9 @@ enum AgentInstructions {
           • TTS: the prompt is the exact text to speak. Pass a `voice` the model supports; \
             some models accept `styleInstructions` for delivery (e.g. "warm and slow").
           • Music: the prompt describes style, mood, and genre. Some music models accept \
-            `lyrics` with [Verse]/[Chorus] section tags; set `instrumental` true to suppress \
-            vocals.
+            `lyrics` with [Verse]/[Chorus] section tags. For Lyria 3 Pro, include lyrics, \
+            tempo, language, and vocal style directly in the prompt. Set `instrumental` true \
+            only when the selected model supports it.
         - Generated audio lands on an audio track. add_clips with trackIndex omitted \
           auto-creates one when none exists yet.
 
