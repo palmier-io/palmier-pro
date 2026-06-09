@@ -26,7 +26,9 @@ extension ToolExecutor {
         }
         dict["currentFrame"] = editor.currentFrame
         dict["canGenerate"] = AccountService.shared.isSignedIn && AccountService.shared.hasCredits
-        guard let json = Self.jsonString(dict) else { throw ToolError("Failed to encode timeline") }
+        guard let json = Self.jsonString(roundJSONFloatingPointNumbers(dict, toPlaces: 3)) else {
+            throw ToolError("Failed to encode timeline")
+        }
         return .ok(json)
     }
 
@@ -77,8 +79,8 @@ extension ToolExecutor {
     }
 
     func getMedia(_ editor: EditorViewModel) throws -> ToolResult {
-        guard let data = try? JSONEncoder().encode(editor.mediaManifest),
-              let json = String(data: data, encoding: .utf8) else {
+        guard let obj = Self.encodeAsJSONObject(editor.mediaManifest),
+              let json = Self.jsonString(roundJSONFloatingPointNumbers(obj, toPlaces: 3)) else {
             throw ToolError("Failed to encode media manifest")
         }
         return .ok(json)
@@ -153,7 +155,9 @@ extension ToolExecutor {
             meta["imageProperties"] = props
         }
 
-        guard let metaJSON = Self.jsonString(meta) else { throw ToolError("Failed to encode metadata") }
+        guard let metaJSON = Self.jsonString(roundJSONFloatingPointNumbers(meta, toPlaces: 3)) else {
+            throw ToolError("Failed to encode metadata")
+        }
         return ToolResult(
             content: [.image(base64: encoded.data.base64EncodedString(), mediaType: encoded.mime), .text(metaJSON)],
             isError: false
@@ -200,7 +204,9 @@ extension ToolExecutor {
         }
         if let mapping { meta["timelineMapping"] = Self.timelineMappingMeta(clip: mapping.clip, fps: mapping.fps) }
 
-        guard let metaJSON = Self.jsonString(meta) else { throw ToolError("Failed to encode metadata") }
+        guard let metaJSON = Self.jsonString(roundJSONFloatingPointNumbers(meta, toPlaces: 3)) else {
+            throw ToolError("Failed to encode metadata")
+        }
 
         var blocks: [ToolResult.Block] = frames.map {
             .image(base64: $0.data.base64EncodedString(), mediaType: "image/jpeg")
@@ -220,7 +226,9 @@ extension ToolExecutor {
         var meta = Self.baseMeta(for: asset)
         for (k, v) in Self.transcriptionMeta(from: transcript, mapping: mapping) { meta[k] = v }
         if let mapping { meta["timelineMapping"] = Self.timelineMappingMeta(clip: mapping.clip, fps: mapping.fps) }
-        guard let metaJSON = Self.jsonString(meta) else { throw ToolError("Failed to encode metadata") }
+        guard let metaJSON = Self.jsonString(roundJSONFloatingPointNumbers(meta, toPlaces: 3)) else {
+            throw ToolError("Failed to encode metadata")
+        }
         return .ok(metaJSON)
     }
 

@@ -387,7 +387,9 @@ extension ToolExecutor {
             "models": out,
             "loaded": ModelCatalog.shared.isLoaded,
         ]
-        guard let json = Self.jsonString(body) else { return .error("Failed to encode model list") }
+        guard let json = Self.jsonString(roundJSONFloatingPointNumbers(body, toPlaces: 3)) else {
+            return .error("Failed to encode model list")
+        }
         return .ok(json)
     }
 

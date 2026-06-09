@@ -31,11 +31,4 @@ extension Double {
         let factor = pow(10.0, Double(places))
         return (self * factor).rounded() / factor
     }
-
-    func jsonRounded(toPlaces places: Int) -> NSDecimalNumber {
-        NSDecimalNumber(value: self).rounding(accordingToBehavior:
-            NSDecimalNumberHandler(roundingMode: .plain, scale: Int16(places),
-                raiseOnExactness: false, raiseOnOverflow: false,
-                raiseOnUnderflow: false, raiseOnDivideByZero: false))
-    }
 }

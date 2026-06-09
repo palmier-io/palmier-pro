@@ -110,6 +110,52 @@ struct ToolExecutorReadOnlyTests {
         #expect(json?["canGenerate"] is Bool)
     }
 
+    @Test func getTimelineRoundsFloatingPointNumbersToThreeDecimalPlaces() async throws {
+        var clip = Fixtures.clip(
+            mediaType: .video,
+            start: 0,
+            duration: 90,
+            speed: 1.23456789,
+            volume: 0.987654321
+        )
+        clip.opacity = 0.123456789
+        clip.transform = Transform(
+            centerX: 0.123456789,
+            centerY: 0.987654321,
+            width: 0.3333333333,
+            height: 0.6666666666
+        )
+        clip.crop = Crop(
+            left: 0.1111111111,
+            top: 0.2222222222,
+            right: 0.3333333333,
+            bottom: 0.4444444444
+        )
+        clip.opacityTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 0.123456789),
+            Keyframe(frame: 30, value: 0.987654321),
+        ])
+        let timeline = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(label: "V1", clips: [clip]),
+        ])
+        let h = ToolHarness(timeline: timeline)
+
+        let result = await h.runRaw("get_timeline")
+        guard case let .text(raw) = result.content.first else {
+            Issue.record("expected text content for get_timeline")
+            return
+        }
+        #expect(raw.range(of: #"-?\d+\.\d{4,}"#, options: .regularExpression) == nil)
+
+        let json = try JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any]
+        let tracks = json?["tracks"] as? [[String: Any]]
+        let outClip = (tracks?.first?["clips"] as? [[String: Any]])?.first
+        #expect(outClip?["speed"] as? Double == 1.235)
+        #expect(outClip?["volume"] as? Double == 0.988)
+        #expect(outClip?["opacity"] as? Double == 0.123)
+        #expect(tracks?.first?["syncLocked"] as? Bool == true)
+    }
+
     // MARK: - get_media
 
     @Test func getMediaOnEmptyManifestReturnsEmptyEntries() async throws {
@@ -117,6 +163,47 @@ struct ToolExecutorReadOnlyTests {
         let json = try await h.runOK("get_media") as? [String: Any]
         let entries = json?["entries"] as? [Any]
         #expect(entries?.isEmpty == true)
+    }
+
+    @Test func getMediaRoundsFloatingPointNumbersToThreeDecimalPlaces() async throws {
+        let h = ToolHarness()
+        var input = GenerationInput(
+            prompt: "Generate",
+            model: "model-1",
+            duration: 5,
+            aspectRatio: "16:9"
+        )
+        input.createdAt = Date(timeIntervalSinceReferenceDate: 123.123456)
+        h.editor.mediaManifest.entries = [
+            MediaManifestEntry(
+                id: "asset-1",
+                name: "Clip",
+                type: .video,
+                source: .external(absolutePath: "/tmp/media.mov"),
+                duration: 12.3456789,
+                generationInput: input,
+                sourceWidth: 1920,
+                sourceHeight: 1080,
+                sourceFPS: 29.97002997,
+                hasAudio: true,
+                folderId: nil,
+                cachedRemoteURL: nil,
+                cachedRemoteURLExpiresAt: nil
+            ),
+        ]
+
+        let result = await h.runRaw("get_media")
+        guard case let .text(raw) = result.content.first else {
+            Issue.record("expected text content for get_media")
+            return
+        }
+        #expect(raw.range(of: #"-?\d+\.\d{4,}"#, options: .regularExpression) == nil)
+
+        let json = try JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any]
+        let entries = json?["entries"] as? [[String: Any]]
+        let entry = entries?.first
+        #expect(entry?["duration"] as? Double == 12.346)
+        #expect(entry?["sourceFPS"] as? Double == 29.97)
     }
 
     // MARK: - list_folders
