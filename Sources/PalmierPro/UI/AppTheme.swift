@@ -216,6 +216,7 @@ enum AppTheme {
         static let homeMin = NSSize(width: 760, height: 480)
         static let projectDefault = NSSize(width: 1600, height: 1000)
         static let projectMin = NSSize(width: 960, height: 600)
+        static let projectTitlebarTrailingWidth: CGFloat = 280
     }
 
     enum Caption {

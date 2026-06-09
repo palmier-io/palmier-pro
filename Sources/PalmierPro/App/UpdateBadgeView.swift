@@ -12,6 +12,8 @@ struct UpdateBadgeView: View {
                     Text(badgeLabel)
                         .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                         .foregroundStyle(AppTheme.Text.primaryColor)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                         .padding(.leading, AppTheme.Spacing.sm)
                         .padding(.trailing, AppTheme.Spacing.xxs)
                         .padding(.vertical, AppTheme.Spacing.xxs)
@@ -35,6 +37,7 @@ struct UpdateBadgeView: View {
                 .help("Dismiss")
             }
             .glassEffect(.regular, in: .capsule)
+            .fixedSize(horizontal: true, vertical: false)
             .transition(.opacity.combined(with: .scale))
         }
     }
