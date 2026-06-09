@@ -339,18 +339,29 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .createFolder,
-            description: "Creates a folder in the media panel and returns its id. Use to organize related generations (e.g. 'Hero shot variations'). Don't create folders for unrelated concepts.",
+            description: "Creates folders in the media panel. Pass either name/parentFolderId for one folder or entries for multiple folders, not both. Direct form returns one folder; entries returns { folders }. Undoable. Use to organize related generations (e.g. 'Hero shot variations'). Don't create folders for unrelated concepts.",
             inputSchema: objectSchema(
                 properties: [
                     "name": ["type": "string", "description": "Folder name."],
                     "parentFolderId": ["type": "string", "description": "Optional parent folder id; omit for top level."],
-                ],
-                required: ["name"]
+                    "entries": [
+                        "type": "array",
+                        "description": "Folders to create in one undoable action.",
+                        "items": [
+                            "type": "object",
+                            "properties": [
+                                "name": ["type": "string", "description": "Folder name."],
+                                "parentFolderId": ["type": "string", "description": "Optional parent folder id; omit for top level."],
+                            ],
+                            "required": ["name"],
+                        ],
+                    ],
+                ]
             )
         ),
         AgentTool(
             name: .moveToFolder,
-            description: "Moves one or more existing media assets into a folder (or to the root if folderId is omitted). Undoable.",
+            description: "Moves media assets to folders. Pass either assetIds/folderId for one destination or entries for multiple destinations, not both. Omit folderId to move to root. Undoable.",
             inputSchema: objectSchema(
                 properties: [
                     "assetIds": [
@@ -359,30 +370,67 @@ enum ToolDefinitions {
                         "description": "Media asset ids to move.",
                     ],
                     "folderId": ["type": "string", "description": "Destination folder id. Omit to move to the project root."],
-                ],
-                required: ["assetIds"]
+                    "entries": [
+                        "type": "array",
+                        "description": "Move operations to apply in one undoable action. Each entry can target a different folder.",
+                        "items": [
+                            "type": "object",
+                            "properties": [
+                                "assetIds": [
+                                    "type": "array",
+                                    "items": ["type": "string"],
+                                    "description": "Media asset ids to move.",
+                                ],
+                                "folderId": ["type": "string", "description": "Destination folder id. Omit to move to the project root."],
+                            ],
+                            "required": ["assetIds"],
+                        ],
+                    ],
+                ]
             )
         ),
         AgentTool(
             name: .renameMedia,
-            description: "Renames a media asset in the library. Undoable.",
+            description: "Renames media assets in the library. Pass either mediaRef/name for one asset or entries for multiple assets, not both. Undoable.",
             inputSchema: objectSchema(
                 properties: [
                     "mediaRef": ["type": "string", "description": "Media asset id from get_media."],
                     "name": ["type": "string", "description": "New display name."],
-                ],
-                required: ["mediaRef", "name"]
+                    "entries": [
+                        "type": "array",
+                        "description": "Media assets to rename in one undoable action.",
+                        "items": [
+                            "type": "object",
+                            "properties": [
+                                "mediaRef": ["type": "string", "description": "Media asset id from get_media."],
+                                "name": ["type": "string", "description": "New display name."],
+                            ],
+                            "required": ["mediaRef", "name"],
+                        ],
+                    ],
+                ]
             )
         ),
         AgentTool(
             name: .renameFolder,
-            description: "Renames a folder in the media panel. Undoable.",
+            description: "Renames folders in the media panel. Pass either folderId/name for one folder or entries for multiple folders, not both. Undoable.",
             inputSchema: objectSchema(
                 properties: [
                     "folderId": ["type": "string", "description": "Folder id from list_folders."],
                     "name": ["type": "string", "description": "New folder name."],
-                ],
-                required: ["folderId", "name"]
+                    "entries": [
+                        "type": "array",
+                        "description": "Folders to rename in one undoable action.",
+                        "items": [
+                            "type": "object",
+                            "properties": [
+                                "folderId": ["type": "string", "description": "Folder id from list_folders."],
+                                "name": ["type": "string", "description": "New folder name."],
+                            ],
+                            "required": ["folderId", "name"],
+                        ],
+                    ],
+                ]
             )
         ),
         AgentTool(

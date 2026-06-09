@@ -1068,6 +1068,36 @@ struct ToolExecutorTextFolderTests {
         #expect(ToolHarness.textOf(result).contains("not found"))
     }
 
+    @Test func createFolderAcceptsBatchEntries() async throws {
+        let h = ToolHarness()
+        let parentId = h.editor.createFolder(name: "Parent", in: nil)
+        let json = try await h.runOK("create_folder", args: [
+            "entries": [
+                ["name": "A"],
+                ["name": "B", "parentFolderId": parentId],
+            ],
+        ]) as? [String: Any]
+        let folders = json?["folders"] as? [[String: Any]]
+        let createdIds = Set(folders?.compactMap { $0["id"] as? String } ?? [])
+
+        #expect(folders?.count == 2)
+        #expect(h.editor.folders.contains { createdIds.contains($0.id) && $0.name == "A" && $0.parentFolderId == nil })
+        #expect(h.editor.folders.contains { createdIds.contains($0.id) && $0.name == "B" && $0.parentFolderId == parentId })
+    }
+
+    @Test func createFolderBatchRejectsMissingParentBeforeMutation() async throws {
+        let h = ToolHarness()
+        let result = await h.runRaw("create_folder", args: [
+            "entries": [
+                ["name": "Valid"],
+                ["name": "Orphan", "parentFolderId": "no-such-folder"],
+            ],
+        ])
+
+        #expect(result.isError)
+        #expect(h.editor.folders.isEmpty)
+    }
+
     @Test func moveToFolderRelocatesAssets() async throws {
         let h = ToolHarness()
         let asset = h.addAsset(type: .video)
@@ -1098,5 +1128,129 @@ struct ToolExecutorTextFolderTests {
         let h = ToolHarness()
         let result = await h.runRaw("move_to_folder", args: ["assetIds": []])
         #expect(result.isError)
+    }
+
+    @Test func moveToFolderAcceptsBatchEntriesWithDifferentDestinations() async throws {
+        let h = ToolHarness()
+        let a = h.addAsset(type: .video)
+        let b = h.addAsset(type: .image)
+        let folderA = h.editor.createFolder(name: "A", in: nil)
+        let folderB = h.editor.createFolder(name: "B", in: nil)
+
+        let result = await h.runRaw("move_to_folder", args: [
+            "entries": [
+                ["assetIds": [a.id], "folderId": folderA],
+                ["assetIds": [b.id], "folderId": folderB],
+            ],
+        ])
+
+        #expect(result.isError == false)
+        #expect(h.editor.mediaAssets.first { $0.id == a.id }?.folderId == folderA)
+        #expect(h.editor.mediaAssets.first { $0.id == b.id }?.folderId == folderB)
+    }
+
+    @Test func moveToFolderBatchRejectsUnknownAssetBeforeMutation() async throws {
+        let h = ToolHarness()
+        let asset = h.addAsset(type: .video)
+        let folderId = h.editor.createFolder(name: "Refs", in: nil)
+
+        let result = await h.runRaw("move_to_folder", args: [
+            "entries": [
+                ["assetIds": [asset.id], "folderId": folderId],
+                ["assetIds": ["ghost"], "folderId": folderId],
+            ],
+        ])
+
+        #expect(result.isError)
+        #expect(h.editor.mediaAssets.first { $0.id == asset.id }?.folderId == nil)
+    }
+
+    @Test func renameMediaAcceptsBatchEntries() async throws {
+        let h = ToolHarness()
+        let a = h.addAsset(type: .video)
+        let b = h.addAsset(type: .image)
+
+        let result = await h.runRaw("rename_media", args: [
+            "entries": [
+                ["mediaRef": a.id, "name": "A Cut"],
+                ["mediaRef": b.id, "name": "B Still"],
+            ],
+        ])
+
+        #expect(result.isError == false)
+        #expect(h.editor.mediaAssets.first { $0.id == a.id }?.name == "A Cut")
+        #expect(h.editor.mediaAssets.first { $0.id == b.id }?.name == "B Still")
+    }
+
+    @Test func renameMediaBatchRejectsUnknownAssetBeforeMutation() async throws {
+        let h = ToolHarness()
+        let asset = h.addAsset(type: .video)
+        let oldName = asset.name
+
+        let result = await h.runRaw("rename_media", args: [
+            "entries": [
+                ["mediaRef": asset.id, "name": "New"],
+                ["mediaRef": "ghost", "name": "Ghost"],
+            ],
+        ])
+
+        #expect(result.isError)
+        #expect(h.editor.mediaAssets.first { $0.id == asset.id }?.name == oldName)
+    }
+
+    @Test func renameFolderAcceptsBatchEntries() async throws {
+        let h = ToolHarness()
+        let a = h.editor.createFolder(name: "A", in: nil)
+        let b = h.editor.createFolder(name: "B", in: nil)
+
+        let result = await h.runRaw("rename_folder", args: [
+            "entries": [
+                ["folderId": a, "name": "Alpha"],
+                ["folderId": b, "name": "Beta"],
+            ],
+        ])
+
+        #expect(result.isError == false)
+        #expect(h.editor.folder(id: a)?.name == "Alpha")
+        #expect(h.editor.folder(id: b)?.name == "Beta")
+    }
+
+    @Test func renameFolderBatchRejectsUnknownFolderBeforeMutation() async throws {
+        let h = ToolHarness()
+        let folder = h.editor.createFolder(name: "Original", in: nil)
+
+        let result = await h.runRaw("rename_folder", args: [
+            "entries": [
+                ["folderId": folder, "name": "Changed"],
+                ["folderId": "ghost", "name": "Ghost"],
+            ],
+        ])
+
+        #expect(result.isError)
+        #expect(h.editor.folder(id: folder)?.name == "Original")
+    }
+
+    @Test func deleteMediaDeletesMultipleAssets() async throws {
+        let h = ToolHarness()
+        let a = h.addAsset(type: .video)
+        let b = h.addAsset(type: .image)
+
+        let result = await h.runRaw("delete_media", args: ["assetIds": [a.id, b.id]])
+
+        #expect(result.isError == false)
+        #expect(h.editor.mediaAssets.contains { $0.id == a.id } == false)
+        #expect(h.editor.mediaAssets.contains { $0.id == b.id } == false)
+    }
+
+    @Test func deleteFolderDeletesMultipleFolders() async throws {
+        let h = ToolHarness()
+        let a = h.editor.createFolder(name: "A", in: nil)
+        let b = h.editor.createFolder(name: "B", in: nil)
+
+        let result = await h.runRaw("delete_folder", args: ["folderIds": [a, b]])
+
+        #expect(result.isError == false)
+        #expect(h.editor.folder(id: a) == nil)
+        #expect(h.editor.folder(id: b) == nil)
     }
 }
