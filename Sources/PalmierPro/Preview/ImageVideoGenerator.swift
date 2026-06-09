@@ -182,17 +182,19 @@ enum ImageVideoGenerator {
         defer { try? fm.removeItem(at: tempURL) }
 
         let writer = try AVAssetWriter(outputURL: tempURL, fileType: .mov)
-        let colorProperties: [String: String] = [
-            AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
-            AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
-            AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
-        ]
-        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+        var outputSettings: [String: Any] = [
             AVVideoCodecKey: hasAlpha ? AVVideoCodecType.proRes4444 : AVVideoCodecType.h264,
             AVVideoWidthKey: Int(size.width),
             AVVideoHeightKey: Int(size.height),
-            AVVideoColorPropertiesKey: colorProperties,
-        ])
+        ]
+        if !hasAlpha {
+            outputSettings[AVVideoColorPropertiesKey] = [
+                AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+                AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+                AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
+            ]
+        }
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: outputSettings)
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: nil)
         writer.add(input)
         guard writer.startWriting() else { throw writer.error ?? ImageVideoError.writeFailed }

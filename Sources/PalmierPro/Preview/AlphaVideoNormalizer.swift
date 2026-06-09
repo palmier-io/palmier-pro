@@ -68,16 +68,10 @@ enum AlphaVideoNormalizer {
         defer { try? fm.removeItem(at: tempURL) }
 
         let writer = try AVAssetWriter(outputURL: tempURL, fileType: .mov)
-        let colorProperties: [String: String] = [
-            AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
-            AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
-            AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
-        ]
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.proRes4444,
             AVVideoWidthKey: Int(size.width),
             AVVideoHeightKey: Int(size.height),
-            AVVideoColorPropertiesKey: colorProperties,
         ])
         input.expectsMediaDataInRealTime = false
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(
