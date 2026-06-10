@@ -15,49 +15,58 @@ final class TextLayerController {
     }()
 
     private var clips: [Clip] = []
+    private var videoRect: CGRect = .zero
+    private var layersByID: [String: CATextLayer] = [:]
+    private var currentFrame = 0
+
+    // Materialize layers slightly early so playback never hitches on typesetting.
+    private static let prerollFrames = 30
 
     func sync(timeline: Timeline, videoRect: CGRect) {
         textRoot.frame = videoRect
-        let visible = TextLayerController.visibleTextClips(in: timeline)
-
-        let existing = textRoot.sublayers ?? []
-        let needed = visible.count
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-
-        if existing.count > needed {
-            for layer in existing.suffix(existing.count - needed) {
-                layer.removeFromSuperlayer()
-            }
-        } else if existing.count < needed {
-            for _ in 0..<(needed - existing.count) {
-                textRoot.addSublayer(TextLayerController.makeTextLayer())
-            }
-        }
-
-        let updated = textRoot.sublayers ?? []
-        for (clip, sublayer) in zip(visible, updated) {
-            guard let layer = sublayer as? CATextLayer else { continue }
-            TextLayerController.applyStyle(to: layer, clip: clip, containerSize: videoRect.size)
-        }
-
-        CATransaction.commit()
-
-        clips = visible
+        self.videoRect = videoRect
+        clips = TextLayerController.visibleTextClips(in: timeline)
+        reconcile(restyle: true)
     }
 
     func tick(_ frame: Int) {
-        let sublayers = textRoot.sublayers ?? []
-        guard sublayers.count == clips.count else { return }
+        currentFrame = frame
+        reconcile(restyle: false)
+    }
 
+    // Only clips within the preroll window own a CATextLayer; everything else stays unmaterialized.
+    private func reconcile(restyle: Bool) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        for (clip, layer) in zip(clips, sublayers) {
-            let visible = frame >= clip.startFrame && frame < clip.endFrame
-            let target: Float = visible ? Float(clip.opacityAt(frame: frame)) : 0
+
+        var needed = Set<String>()
+        for (index, clip) in clips.enumerated() {
+            guard currentFrame >= clip.startFrame - Self.prerollFrames,
+                  currentFrame < clip.endFrame else { continue }
+            needed.insert(clip.id)
+
+            let layer: CATextLayer
+            if let existing = layersByID[clip.id] {
+                layer = existing
+                if restyle { Self.applyStyle(to: layer, clip: clip, containerSize: videoRect.size) }
+            } else {
+                layer = Self.makeTextLayer()
+                Self.applyStyle(to: layer, clip: clip, containerSize: videoRect.size)
+                layersByID[clip.id] = layer
+                textRoot.addSublayer(layer)
+            }
+            layer.zPosition = CGFloat(index)
+
+            let visible = currentFrame >= clip.startFrame
+            let target: Float = visible ? Float(clip.opacityAt(frame: currentFrame)) : 0
             if layer.opacity != target { layer.opacity = target }
         }
+
+        for (id, layer) in layersByID where !needed.contains(id) {
+            layer.removeFromSuperlayer()
+            layersByID[id] = nil
+        }
+
         CATransaction.commit()
     }
 
