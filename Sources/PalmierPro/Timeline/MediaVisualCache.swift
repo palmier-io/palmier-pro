@@ -1,7 +1,9 @@
 import AppKit
 import AVFoundation
+import CryptoKit
 import DSWaveformImage
 import ImageIO
+import UniformTypeIdentifiers
 
 @MainActor
 final class MediaVisualCache {
@@ -51,12 +53,20 @@ final class MediaVisualCache {
 
         let url = asset.url
         Task.detached(priority: .utility) { [weak self] in
-            await Self.waveformGate.wait()
-            defer { Task { await Self.waveformGate.signal() } }
-            let analyzer = WaveformAnalyzer()
-            let duration = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
-            let count = Self.waveformSampleCount(duration: duration)
-            let result = try? await analyzer.samples(fromAudioAt: url, count: count)
+            let cacheKey = Self.diskCacheKey(for: url)
+            var result = cacheKey.flatMap(Self.loadWaveform(key:))
+            if result == nil {
+                // Gate only the analysis; cached reads shouldn't queue behind extractions.
+                await Self.waveformGate.wait()
+                defer { Task { await Self.waveformGate.signal() } }
+                let analyzer = WaveformAnalyzer()
+                let duration = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
+                let count = Self.waveformSampleCount(duration: duration)
+                result = try? await analyzer.samples(fromAudioAt: url, count: count)
+                if let result, let cacheKey {
+                    Self.saveWaveform(result, key: cacheKey)
+                }
+            }
             guard let self else { return }
             await MainActor.run { [self] in
                 self.waveformInFlight.remove(key)
@@ -99,24 +109,40 @@ final class MediaVisualCache {
 
         let url = asset.url
         Task.detached(priority: .userInitiated) { [weak self] in
-            var results: [(time: Double, image: CGImage)] = []
-            let avAsset = AVURLAsset(url: url)
-            let duration = (try? await avAsset.load(.duration).seconds) ?? 0
-            let times = Self.videoThumbnailTimes(duration: duration)
+            let cacheKey = Self.diskCacheKey(for: url)
+            var results = cacheKey.flatMap(Self.loadThumbnails(key:)) ?? []
 
-            if !times.isEmpty {
-                let generator = AVAssetImageGenerator(asset: avAsset)
-                generator.maximumSize = CGSize(width: 120, height: 68)
-                generator.appliesPreferredTrackTransform = true
-                generator.requestedTimeToleranceBefore = CMTime(seconds: 1.0, preferredTimescale: 600)
-                generator.requestedTimeToleranceAfter = CMTime(seconds: 1.0, preferredTimescale: 600)
+            if results.isEmpty {
+                let avAsset = AVURLAsset(url: url)
+                let duration = (try? await avAsset.load(.duration).seconds) ?? 0
+                let times = Self.videoThumbnailTimes(duration: duration)
 
-                for await result in generator.images(for: times) {
-                    if case .success(requestedTime: let requestedTime, image: let image, actualTime: _) = result {
-                        results.append((time: requestedTime.seconds, image: image))
+                if !times.isEmpty {
+                    let generator = AVAssetImageGenerator(asset: avAsset)
+                    generator.maximumSize = CGSize(width: 120, height: 68)
+                    generator.appliesPreferredTrackTransform = true
+                    generator.requestedTimeToleranceBefore = CMTime(seconds: 1.0, preferredTimescale: 600)
+                    generator.requestedTimeToleranceAfter = CMTime(seconds: 1.0, preferredTimescale: 600)
+
+                    for await result in generator.images(for: times) {
+                        if case .success(requestedTime: let requestedTime, image: let image, actualTime: _) = result {
+                            results.append((time: requestedTime.seconds, image: image))
+                            // Publish progressively so long videos fill in instead of appearing at the end.
+                            if results.count % 50 == 0, let self {
+                                let partial = results
+                                await MainActor.run { [self] in
+                                    self.videoThumbnails[key] = partial
+                                    self.timelineView?.needsDisplay = true
+                                }
+                            }
+                        }
                     }
+                    results.sort { $0.time < $1.time }
                 }
-                results.sort { $0.time < $1.time }
+
+                if !results.isEmpty, let cacheKey {
+                    Self.saveThumbnails(results, key: cacheKey)
+                }
             }
 
             guard let self else { return }
@@ -159,5 +185,96 @@ final class MediaVisualCache {
             time += interval
         }
         return times
+    }
+
+    // MARK: - Disk cache
+
+    nonisolated static let diskCache = DiskCache(named: "MediaVisualCache")
+
+    /// Keyed on path + size + mtime so source edits invalidate the entry.
+    private nonisolated static func diskCacheKey(for url: URL) -> String? {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attrs[.size] as? Int64,
+              let mtime = attrs[.modificationDate] as? Date else { return nil }
+        let seed = "\(url.path)|\(size)|\(mtime.timeIntervalSince1970)"
+        let digest = SHA256.hash(data: Data(seed.utf8))
+        return digest.prefix(16).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private nonisolated static func loadWaveform(key: String) -> [Float]? {
+        let url = diskCache.directory.appendingPathComponent(key + ".waveform")
+        guard let data = try? Data(contentsOf: url), !data.isEmpty, data.count % 4 == 0 else { return nil }
+        return data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+    }
+
+    private nonisolated static func saveWaveform(_ samples: [Float], key: String) {
+        let url = diskCache.directory.appendingPathComponent(key + ".waveform")
+        samples.withUnsafeBytes { try? Data($0).write(to: url) }
+    }
+
+    private struct ThumbnailCacheMeta: Codable {
+        let tileWidth: Int
+        let tileHeight: Int
+        let columns: Int
+        let times: [Double]
+    }
+
+    /// Thumbnails persist as one JPEG sprite grid + JSON sidecar; the sidecar is written
+    /// last and treated as the marker of a complete entry.
+    private nonisolated static func loadThumbnails(key: String) -> [(time: Double, image: CGImage)]? {
+        let metaURL = diskCache.directory.appendingPathComponent(key + ".thumbs.json")
+        let imageURL = diskCache.directory.appendingPathComponent(key + ".thumbs.jpg")
+        guard let metaData = try? Data(contentsOf: metaURL),
+              let meta = try? JSONDecoder().decode(ThumbnailCacheMeta.self, from: metaData),
+              meta.tileWidth > 0, meta.tileHeight > 0, meta.columns > 0, !meta.times.isEmpty,
+              let source = CGImageSourceCreateWithURL(imageURL as CFURL, nil),
+              // Decode here on the background task, not lazily at first main-thread draw.
+              let sprite = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
+        else { return nil }
+        let rows = (meta.times.count + meta.columns - 1) / meta.columns
+        guard sprite.width >= meta.tileWidth * min(meta.columns, meta.times.count),
+              sprite.height >= meta.tileHeight * rows else { return nil }
+        var out: [(time: Double, image: CGImage)] = []
+        out.reserveCapacity(meta.times.count)
+        for (i, t) in meta.times.enumerated() {
+            let col = i % meta.columns
+            let row = i / meta.columns
+            let rect = CGRect(x: col * meta.tileWidth, y: row * meta.tileHeight,
+                              width: meta.tileWidth, height: meta.tileHeight)
+            guard let tile = sprite.cropping(to: rect) else { return nil }
+            out.append((time: t, image: tile))
+        }
+        return out
+    }
+
+    private nonisolated static func saveThumbnails(_ thumbs: [(time: Double, image: CGImage)], key: String) {
+        guard let first = thumbs.first?.image, first.width > 0, first.height > 0 else { return }
+        let tileW = first.width
+        let tileH = first.height
+        let columns = min(50, thumbs.count)
+        let rows = (thumbs.count + columns - 1) / columns
+        guard let ctx = CGContext(data: nil, width: tileW * columns, height: tileH * rows,
+                                  bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue) else { return }
+        for (i, thumb) in thumbs.enumerated() {
+            let col = i % columns
+            let row = i / columns
+            // CGContext origin is bottom-left; sprite row 0 sits at the top to match cropping space.
+            let y = (rows - 1 - row) * tileH
+            ctx.draw(thumb.image, in: CGRect(x: col * tileW, y: y, width: tileW, height: tileH))
+        }
+        guard let sprite = ctx.makeImage() else { return }
+
+        let imageURL = diskCache.directory.appendingPathComponent(key + ".thumbs.jpg")
+        let metaURL = diskCache.directory.appendingPathComponent(key + ".thumbs.json")
+        guard let dest = CGImageDestinationCreateWithURL(imageURL as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else { return }
+        CGImageDestinationAddImage(dest, sprite, [kCGImageDestinationLossyCompressionQuality: 0.75] as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else { return }
+
+        let meta = ThumbnailCacheMeta(tileWidth: tileW, tileHeight: tileH, columns: columns, times: thumbs.map(\.time))
+        if let data = try? JSONEncoder().encode(meta) {
+            try? data.write(to: metaURL)
+        }
     }
 }

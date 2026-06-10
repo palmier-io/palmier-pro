@@ -11,7 +11,7 @@ struct StoragePane: View {
                     Text("Cache")
                         .font(.system(size: AppTheme.FontSize.md))
                         .foregroundStyle(AppTheme.Text.primaryColor)
-                    Text("Saved image previews used during playback. Safe to clear; they'll rebuild as needed.")
+                    Text("Saved playback previews, waveforms, and filmstrip thumbnails. Safe to clear; they'll rebuild as needed.")
                         .font(.system(size: AppTheme.FontSize.sm))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .fixedSize(horizontal: false, vertical: true)
@@ -44,9 +44,10 @@ struct StoragePane: View {
         .task { await refresh() }
     }
 
+    private nonisolated static let caches = [ImageVideoGenerator.cache, MediaVisualCache.diskCache]
+
     private var displayPath: String {
-        let path = ImageVideoGenerator.cacheDirectory.path
-        return path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+        DiskCache.rootDirectory.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
     }
 
     private var formattedSize: String {
@@ -57,14 +58,16 @@ struct StoragePane: View {
     private func clear() {
         isClearing = true
         Task.detached {
-            try? ImageVideoGenerator.clearCache()
+            for cache in Self.caches { cache.clear() }
             await MainActor.run { isClearing = false }
             await refresh()
         }
     }
 
     private func refresh() async {
-        let bytes = await Task.detached { ImageVideoGenerator.cacheSize() }.value
+        let bytes = await Task.detached {
+            Self.caches.reduce(0) { $0 + $1.size() }
+        }.value
         cacheBytes = bytes
     }
 }

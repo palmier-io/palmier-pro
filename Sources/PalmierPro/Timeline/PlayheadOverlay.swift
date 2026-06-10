@@ -46,19 +46,19 @@ final class PlayheadOverlay {
     func update() {
         guard let view, let editor else { return }
         let geo = view.geometry
-        let scrollOffset = view.enclosingScrollView?.contentView.bounds.origin ?? .zero
-        let visibleHeight = view.enclosingScrollView?.contentView.bounds.height ?? view.bounds.height
-        let x = Double(editor.playheadState.timelineFrame) * geo.pixelsPerFrame
-        let top = scrollOffset.y + Double(geo.rulerHeight)
-        let bottom = scrollOffset.y + Double(visibleHeight)
+        let viewport = view.visibleRect
+        guard !viewport.isEmpty else { return }
+        let x = Double(editor.playheadState.timelineFrame) * geo.pixelsPerFrame - viewport.minX
+        let top = Double(geo.rulerHeight)
+        let bottom = Double(viewport.height)
 
         let path = CGMutablePath()
         Playhead.appendPath(path, x: x, top: top, bottom: bottom, triangle: true)
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        if layer.frame != view.bounds {
-            layer.frame = view.bounds
+        if layer.frame != viewport {
+            layer.frame = viewport
         }
         layer.path = path
         CATransaction.commit()

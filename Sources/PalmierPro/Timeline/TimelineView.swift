@@ -9,6 +9,7 @@ final class TimelineView: NSView {
     private(set) var snapOverlay: SnapIndicatorOverlay!
     private var generatingClipOverlays: [String: NSHostingView<ClipGeneratingOverlay>] = [:]
     private var clipDisplayRects: [String: NSRect] = [:]
+    private let canvas = TimelineCanvasView()
 
     // MARK: - Init
 
@@ -18,8 +19,10 @@ final class TimelineView: NSView {
         self.inputController = TimelineInputController(editor: editor, view: self)
         editor.mediaVisualCache.timelineView = self
         wantsLayer = true
-        layerContentsRedrawPolicy = .onSetNeedsDisplay
         layer?.backgroundColor = AppTheme.Background.surface.cgColor
+        canvas.wantsLayer = true
+        canvas.layerContentsRedrawPolicy = .onSetNeedsDisplay
+        addSubview(canvas)
         registerForDraggedTypes([.string, .fileURL])
         playheadOverlay = PlayheadOverlay(view: self, editor: editor)
         snapOverlay = SnapIndicatorOverlay(view: self)
@@ -29,6 +32,38 @@ final class TimelineView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override var isFlipped: Bool { true }
+
+    // MARK: - Viewport canvas
+
+    // Invalidation routes to the canvas; the document view itself stays clean.
+    override var needsDisplay: Bool {
+        get { super.needsDisplay }
+        set {
+            if newValue {
+                setNeedsDisplay(bounds)
+            } else {
+                super.needsDisplay = newValue
+            }
+        }
+    }
+
+    override func setNeedsDisplay(_ invalidRect: NSRect) {
+        layoutCanvas()
+        canvas.setNeedsDisplay(convert(invalidRect, to: canvas))
+    }
+
+    // Safety net for any scroll path that moves the viewport without invalidating.
+    override func viewWillDraw() {
+        layoutCanvas()
+        super.viewWillDraw()
+    }
+
+    private func layoutCanvas() {
+        let target = visibleRect
+        guard !target.isEmpty, canvas.frame != target else { return }
+        canvas.frame = target
+        canvas.needsDisplay = true
+    }
 
     // Cached for draw performance — avoid per-frame allocations.
     private static let trackBg = AppTheme.Background.surface.cgColor
@@ -96,6 +131,7 @@ final class TimelineView: NSView {
             applyPlayheadAnchoredScroll(previousZoom: previousZoom, scrollView: scrollView)
         }
         lastAppliedZoomScale = editor.zoomScale
+        layoutCanvas()
     }
 
     func markZoomApplied() {
@@ -160,8 +196,8 @@ final class TimelineView: NSView {
 
     // MARK: - Drawing
 
-    override func draw(_ dirtyRect: NSRect) {
-        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+    /// Draws in document coordinates; the canvas translates its context before calling.
+    fileprivate func drawContent(in dirtyRect: NSRect, context ctx: CGContext) {
         let geo = geometry
         let scrollOffset = enclosingScrollView?.contentView.bounds.origin ?? .zero
         let visibleWidth = enclosingScrollView?.contentView.bounds.width ?? bounds.width
@@ -948,5 +984,20 @@ final class TimelineView: NSView {
 
         needsDisplay = true
         return true
+    }
+}
+
+/// Viewport-sized drawing surface; transparent to hit testing so all input
+/// reaches the TimelineView document view in document coordinates.
+private final class TimelineCanvasView: NSView {
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let ctx = NSGraphicsContext.current?.cgContext,
+              let timeline = superview as? TimelineView else { return }
+        let origin = frame.origin
+        ctx.translateBy(x: -origin.x, y: -origin.y)
+        timeline.drawContent(in: dirtyRect.offsetBy(dx: origin.x, dy: origin.y), context: ctx)
     }
 }

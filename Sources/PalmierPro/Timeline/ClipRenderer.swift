@@ -212,36 +212,54 @@ enum ClipRenderer {
         let sampleEnd = max(sampleStart, min(samples.count, Int(endFrac * Double(samples.count))))
         guard sampleEnd > sampleStart else { return }
 
-        let visibleSamples = Array(samples[sampleStart..<sampleEnd])
         let barCount = Int(drawWidth)
         guard barCount > 0 else { return }
+
+        // Only emit bars inside the context's clip region (the dirty rect).
+        let visible = context.boundingBoxOfClipPath.intersection(drawRect)
+        guard !visible.isEmpty else { return }
+        let firstBar = max(0, Int(visible.minX - drawRect.minX))
+        let lastBar = min(barCount, Int(ceil(visible.maxX - drawRect.minX)))
+        guard firstBar < lastBar else { return }
 
         let color = (type.themeColor.blended(withFraction: 0.3, of: .white) ?? type.themeColor).withAlphaComponent(0.85).cgColor
         context.setFillColor(color)
 
         let dur = CGFloat(max(1, clip.durationFrames))
         let frameStep = dur / CGFloat(barCount)
-        let visCount = visibleSamples.count
+        let visCount = sampleEnd - sampleStart
 
-        for i in 0..<barCount {
+        // Samples are dB-normalized over this range, so volume shifts the dB axis (not multiplies).
+        let dbRange: CGFloat = 50
+        // Volume is constant across the clip unless keyframed or faded.
+        let needsPerBarVolume = (clip.volumeTrack?.isActive ?? false) || clip.fadeInFrames > 0 || clip.fadeOutFrames > 0
+        let staticShift = CGFloat(VolumeScale.dbFromLinear(clip.volume)) / dbRange
+
+        var bars: [CGRect] = []
+        bars.reserveCapacity(lastBar - firstBar)
+        for i in firstBar..<lastBar {
             // Peak-detect (min, since 0=loud) over the bar's range so zero crossings don't flatten loud audio.
-            let sStart = i * visCount / barCount
-            let sEnd = max(sStart + 1, (i + 1) * visCount / barCount)
+            let sStart = sampleStart + i * visCount / barCount
+            let sEnd = max(sStart + 1, sampleStart + (i + 1) * visCount / barCount)
             var loudest: Float = 1
-            for j in sStart..<min(sEnd, visCount) {
-                let s = visibleSamples[j]
+            for j in sStart..<min(sEnd, sampleEnd) {
+                let s = samples[j]
                 if s < loudest { loudest = s }
             }
-            let posFrames = CGFloat(i) * frameStep
-            let level = clip.volumeAt(frame: clip.startFrame + Int(posFrames))
-            // Samples are dB-normalized over 50 dB, so volume shifts the dB axis (not multiplies).
-            let dbShift = CGFloat(VolumeScale.dbFromLinear(level)) / 50
+            let dbShift: CGFloat
+            if needsPerBarVolume {
+                let posFrames = CGFloat(i) * frameStep
+                dbShift = CGFloat(VolumeScale.dbFromLinear(clip.volumeAt(frame: clip.startFrame + Int(posFrames)))) / dbRange
+            } else {
+                dbShift = staticShift
+            }
             let dbAmp = max(0, CGFloat(1 - loudest) + dbShift)
             let amplitude = min(1, dbAmp)
             let barHeight = max(1, amplitude * (drawHeight - 2))
             let barY = drawRect.maxY - barHeight - 1
-            context.fill(CGRect(x: drawRect.minX + CGFloat(i), y: barY, width: 1, height: barHeight))
+            bars.append(CGRect(x: drawRect.minX + CGFloat(i), y: barY, width: 1, height: barHeight))
         }
+        context.fill(bars)
     }
 
     // MARK: - Volume rubber band
@@ -501,32 +519,17 @@ enum ClipRenderer {
         context.clip()
         context.clip(to: drawRect)
 
-        // Tile thumbnails across the drawable area, selecting the nearest frame per tile
-        let maxTiles = 200
-        var x = drawRect.minX
-        var tileCount = 0
-        while x < drawRect.maxX, tileCount < maxTiles {
-            let frac = (x - drawRect.minX) / drawRect.width
+        // Tile available thumbnails across the strip; unfilled tiles remain empty until loaded.
+        let startTime = thumbnails[0].time
+        let spacing = thumbnails.count > 1 ? max(0.5, thumbnails[1].time - startTime) : 2.0
+        let maxCoveredSec = thumbnails.last!.time + spacing
+        tileImage(width: thumbDisplayWidth, in: drawRect, context: context) { tileRect in
+            let frac = (tileRect.minX - drawRect.minX) / drawRect.width
             let timeSec = visibleStartSec + frac * visibleDurationSec
-
-            var best = thumbnails[0]
-            var bestDist = abs(best.time - timeSec)
-            for thumb in thumbnails {
-                let dist = abs(thumb.time - timeSec)
-                if dist < bestDist {
-                    best = thumb
-                    bestDist = dist
-                }
-            }
-
-            let tileRect = CGRect(x: x, y: drawRect.minY, width: thumbDisplayWidth, height: drawRect.height)
-            context.saveGState()
-            context.translateBy(x: 0, y: tileRect.midY * 2)
-            context.scaleBy(x: 1, y: -1)
-            context.draw(best.image, in: tileRect)
-            context.restoreGState()
-            x += thumbDisplayWidth
-            tileCount += 1
+            guard timeSec <= maxCoveredSec else { return nil }
+            // Times are uniformly spaced, so the nearest thumbnail is an index away.
+            let index = Int(((timeSec - startTime) / spacing).rounded())
+            return thumbnails[max(0, min(thumbnails.count - 1, index))].image
         }
 
         context.restoreGState()
@@ -551,24 +554,31 @@ enum ClipRenderer {
         context.clip()
         context.clip(to: drawRect)
 
-        tileImage(image, width: thumbDisplayWidth, in: drawRect, context: context)
+        tileImage(width: thumbDisplayWidth, in: drawRect, context: context) { _ in image }
 
         context.restoreGState()
     }
 
     // MARK: - Shared tiling
 
+    /// Tiles the visible portion of `drawRect`; `image` returns nil to stop tiling.
     private static func tileImage(
-        _ image: CGImage,
         width thumbDisplayWidth: CGFloat,
         in drawRect: NSRect,
-        context: CGContext
+        context: CGContext,
+        image: (NSRect) -> CGImage?
     ) {
+        let visible = context.boundingBoxOfClipPath
+        guard !visible.isEmpty else { return }
         let maxTiles = 200
         var x = drawRect.minX
+        if visible.minX > x {
+            x += floor((visible.minX - x) / thumbDisplayWidth) * thumbDisplayWidth
+        }
         var tileCount = 0
-        while x < drawRect.maxX, tileCount < maxTiles {
+        while x < min(drawRect.maxX, visible.maxX), tileCount < maxTiles {
             let tileRect = CGRect(x: x, y: drawRect.minY, width: thumbDisplayWidth, height: drawRect.height)
+            guard let image = image(tileRect) else { break }
             context.saveGState()
             context.translateBy(x: 0, y: tileRect.midY * 2)
             context.scaleBy(x: 1, y: -1)

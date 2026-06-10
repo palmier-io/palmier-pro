@@ -36,14 +36,15 @@ final class SnapIndicatorOverlay {
         guard let view else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        if let x = localX ?? externalX {
+        let viewport = view.visibleRect
+        if let x = localX ?? externalX, !viewport.isEmpty {
             let geo = view.geometry
             let path = CGMutablePath()
-            path.move(to: CGPoint(x: x, y: Double(geo.rulerHeight)))
-            path.addLine(to: CGPoint(x: x, y: Double(view.bounds.height)))
+            path.move(to: CGPoint(x: x - viewport.minX, y: Double(geo.rulerHeight) - viewport.minY))
+            path.addLine(to: CGPoint(x: x - viewport.minX, y: Double(view.bounds.height) - viewport.minY))
             layer.path = path
-            if layer.frame != view.bounds {
-                layer.frame = view.bounds
+            if layer.frame != viewport {
+                layer.frame = viewport
             }
             layer.isHidden = false
         } else {
