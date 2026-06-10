@@ -6,8 +6,6 @@ struct TranscriptionWord: Sendable {
     let text: String
     let start: Double?
     let end: Double?
-    let type: String
-    let speakerId: String?
 }
 
 /// One natural utterance the transcriber endpointed on its own (pause/sentence
@@ -21,9 +19,23 @@ struct TranscriptionSegment: Sendable {
 struct TranscriptionResult: Sendable {
     let text: String
     let language: String?
-    let languageProbability: Double?
     let words: [TranscriptionWord]
     let segments: [TranscriptionSegment]
+
+    /// Shifts all timestamps back into source time after transcribing an extracted range
+    func offsetting(by offset: Double) -> TranscriptionResult {
+        guard offset != 0 else { return self }
+        return TranscriptionResult(
+            text: text,
+            language: language,
+            words: words.map {
+                TranscriptionWord(text: $0.text, start: $0.start.map { $0 + offset }, end: $0.end.map { $0 + offset })
+            },
+            segments: segments.map {
+                TranscriptionSegment(text: $0.text, start: $0.start + offset, end: $0.end + offset)
+            }
+        )
+    }
 }
 
 enum TranscriptionError: LocalizedError {
@@ -50,10 +62,11 @@ enum TranscriptionError: LocalizedError {
 }
 
 enum Transcription {
-    static func transcribeVideoAudio(videoURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil) async throws -> TranscriptionResult {
-        let tempAudioURL = try await extractAudioTrack(from: videoURL)
+    static func transcribeVideoAudio(videoURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil, sourceRange: ClosedRange<Double>? = nil) async throws -> TranscriptionResult {
+        let tempAudioURL = try await extractAudioTrack(from: videoURL, range: sourceRange)
         defer { try? FileManager.default.removeItem(at: tempAudioURL) }
-        return try await transcribe(fileURL: tempAudioURL, censorProfanity: censorProfanity, preferredLocale: preferredLocale)
+        let result = try await transcribe(fileURL: tempAudioURL, censorProfanity: censorProfanity, preferredLocale: preferredLocale)
+        return result.offsetting(by: sourceRange?.lowerBound ?? 0)
     }
 
     static func supportedLocales() async -> [Locale] {
@@ -76,7 +89,14 @@ enum Transcription {
         return nil
     }
 
-    static func transcribe(fileURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil) async throws -> TranscriptionResult {
+    static func transcribe(fileURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil, sourceRange: ClosedRange<Double>? = nil) async throws -> TranscriptionResult {
+        if let sourceRange {
+            let tempURL = try await extractAudioTrack(from: fileURL, range: sourceRange)
+            defer { try? FileManager.default.removeItem(at: tempURL) }
+            let result = try await transcribe(fileURL: tempURL, censorProfanity: censorProfanity, preferredLocale: preferredLocale)
+            return result.offsetting(by: sourceRange.lowerBound)
+        }
+
         let supported = await SpeechTranscriber.supportedLocales
         let locale: Locale
         if let preferredLocale, let match = matchLocale(candidates: [preferredLocale], supported: supported) {
@@ -147,7 +167,7 @@ enum Transcription {
     }
 
     /// Decode the asset's audio track to a PCM file with AVAssetReader
-    private static func extractAudioTrack(from videoURL: URL) async throws -> URL {
+    private static func extractAudioTrack(from videoURL: URL, range: ClosedRange<Double>? = nil) async throws -> URL {
         let asset = AVURLAsset(url: videoURL)
         guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
             throw TranscriptionError.audioExtractionFailed("No audio track in \(videoURL.lastPathComponent)")
@@ -168,6 +188,12 @@ enum Transcription {
             throw TranscriptionError.audioExtractionFailed("Cannot read audio from \(videoURL.lastPathComponent)")
         }
         reader.add(output)
+        if let range {
+            reader.timeRange = CMTimeRange(
+                start: CMTime(seconds: range.lowerBound, preferredTimescale: 600),
+                end: CMTime(seconds: range.upperBound, preferredTimescale: 600)
+            )
+        }
 
         let outURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("palmier-stt-\(UUID().uuidString).caf")
@@ -240,16 +266,13 @@ enum Transcription {
                 let range = run.audioTimeRange
                 let start = range.map(\.start.seconds)
                 let end = range.map { ($0.start + $0.duration).seconds }
-                words.append(
-                    TranscriptionWord(text: trimmed, start: start, end: end, type: "word", speakerId: nil)
-                )
+                words.append(TranscriptionWord(text: trimmed, start: start, end: end))
             }
         }
 
         return TranscriptionResult(
             text: fullText.trimmingCharacters(in: .whitespacesAndNewlines),
             language: locale.identifier(.bcp47),
-            languageProbability: nil,
             words: words,
             segments: segments,
         )

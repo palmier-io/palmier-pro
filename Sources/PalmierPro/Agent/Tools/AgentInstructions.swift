@@ -32,9 +32,12 @@ enum AgentInstructions {
         - Before describing any user-supplied asset (referenceMediaRefs, startFrameMediaRef, \
           endFrameMediaRef, etc.), call inspect_media and describe what you actually see — \
           never paraphrase the filename. inspect_media handles images (frame + EXIF), video \
-          (sample frames + audio transcript), and audio (transcript with per-word timestamps \
-          and event tags). Use those timestamps to plan splits, trims, and captions on word \
-          boundaries.
+          (sample frames + audio transcript), and audio (transcript with sentence-level \
+          segment timestamps). For long media, inspect once for an overview, then drill into \
+          regions with startSeconds/endSeconds — windowed calls are fast. Plan splits, trims, \
+          and captions from segment timestamps; pass wordTimestamps=true on a narrow window \
+          only when you need exact word boundaries. Let the transcript drive visual \
+          sampling: transcribe first, then pull frames from the windows that matter.
 
         # Editing
         - Placements must match track type: video on video tracks, audio on audio tracks.

@@ -8,6 +8,8 @@ extension ToolExecutor {
     private static let readVideoMaxFrames = 12
     private static let readVideoFrameMaxDimension: CGFloat = 512
     private static let readVideoJPEGQuality: CGFloat = 0.7
+    private static let inspectMaxSegments = 250
+    private static let inspectMaxWords = 500
 
     func getTimeline(_ editor: EditorViewModel) throws -> ToolResult {
         guard var dict = try? JSONSerialization.jsonObject(
@@ -86,7 +88,9 @@ extension ToolExecutor {
         return .ok(json)
     }
 
-    private static let inspectMediaAllowedKeys: Set<String> = ["mediaRef", "clipId", "maxImageBytes", "maxFrames"]
+    private static let inspectMediaAllowedKeys: Set<String> = [
+        "mediaRef", "clipId", "maxImageBytes", "maxFrames", "startSeconds", "endSeconds", "wordTimestamps",
+    ]
 
     func inspectMedia(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.inspectMediaAllowedKeys, path: "inspect_media")
@@ -121,9 +125,21 @@ extension ToolExecutor {
         switch asset.type {
         case .image: return try readImage(asset: asset, args: args)
         case .video: return try await readVideo(editor: editor, asset: asset, args: args, mapping: mapping)
-        case .audio: return try await readAudio(editor: editor, asset: asset, mapping: mapping)
+        case .audio: return try await readAudio(editor: editor, asset: asset, args: args, mapping: mapping)
         case .text: throw ToolError("Text clips are not stored as media assets.")
         }
+    }
+
+    private static func sourceRange(_ args: [String: Any], duration: Double) throws -> ClosedRange<Double>? {
+        let start = args.double("startSeconds")
+        let end = args.double("endSeconds")
+        guard start != nil || end != nil else { return nil }
+        let s = max(start ?? 0, 0)
+        let e = min(end ?? duration, duration)
+        guard s < e else {
+            throw ToolError("Invalid time range [\(s), \(e)] for media of duration \(duration)s")
+        }
+        return s...e
     }
 
     static func timelineMappingMeta(clip: Clip, fps: Int) -> [String: Any] {
@@ -132,7 +148,7 @@ extension ToolExecutor {
             "clipStartFrame": clip.startFrame,
             "clipEndFrame": clip.endFrame,
             "fps": fps,
-            "note": "transcription.words are project frames for this clip; out-of-range words are dropped.",
+            "note": "transcription segments/words are project frames for this clip; out-of-range entries are dropped.",
         ]
     }
 
@@ -167,6 +183,9 @@ extension ToolExecutor {
     private func readVideo(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil) async throws -> ToolResult {
         guard asset.duration > 0 else { throw ToolError("Video has zero duration: \(asset.name)") }
 
+        let range = try Self.sourceRange(args, duration: asset.duration)
+        let windowStart = range?.lowerBound ?? 0
+        let windowEnd = range?.upperBound ?? asset.duration
         let requested = args.int("maxFrames") ?? Self.defaultReadVideoFrames
         let frameCount = max(1, min(requested, Self.readVideoMaxFrames))
 
@@ -181,7 +200,7 @@ extension ToolExecutor {
 
         var frames: [(timestamp: Double, data: Data)] = []
         for i in 0..<frameCount {
-            let t = asset.duration * (Double(i) + 0.5) / Double(frameCount)
+            let t = windowStart + (windowEnd - windowStart) * (Double(i) + 0.5) / Double(frameCount)
             let cmTime = CMTime(seconds: t, preferredTimescale: 600)
             guard let cgImage = try? await generator.image(at: cmTime).image else { continue }
             guard let jpeg = ImageEncoder.encodeJPEG(cgImage, quality: Self.readVideoJPEGQuality) else { continue }
@@ -192,11 +211,14 @@ extension ToolExecutor {
         var meta = Self.baseMeta(for: asset)
         meta["hasAudio"] = asset.hasAudio
         meta["frameTimestamps"] = frames.map { $0.timestamp.jsonRounded(toPlaces: 3) }
+        if let range { meta["timeRange"] = [range.lowerBound, range.upperBound] }
 
         if asset.hasAudio {
             do {
-                let transcript = try await Transcription.transcribeVideoAudio(videoURL: asset.url)
-                meta["transcription"] = Self.transcriptionMeta(from: transcript, mapping: mapping)
+                let transcript = try await Transcription.transcribeVideoAudio(videoURL: asset.url, sourceRange: range)
+                meta["transcription"] = Self.transcriptionMeta(
+                    from: transcript, mapping: mapping, includeWords: args.bool("wordTimestamps") ?? false
+                )
             } catch {
                 Log.transcription.error("video transcription failed: \(error.localizedDescription)")
                 meta["transcriptionError"] = error.localizedDescription
@@ -215,16 +237,21 @@ extension ToolExecutor {
         return ToolResult(content: blocks, isError: false)
     }
 
-    private func readAudio(editor: EditorViewModel, asset: MediaAsset, mapping: (clip: Clip, fps: Int)? = nil) async throws -> ToolResult {
+    private func readAudio(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil) async throws -> ToolResult {
+        let range = try Self.sourceRange(args, duration: asset.duration)
         let transcript: TranscriptionResult
         do {
-            transcript = try await Transcription.transcribe(fileURL: asset.url)
+            transcript = try await Transcription.transcribe(fileURL: asset.url, sourceRange: range)
         } catch {
             throw ToolError("Transcription failed: \(error.localizedDescription)")
         }
 
         var meta = Self.baseMeta(for: asset)
-        for (k, v) in Self.transcriptionMeta(from: transcript, mapping: mapping) { meta[k] = v }
+        if let range { meta["timeRange"] = [range.lowerBound, range.upperBound] }
+        let transcription = Self.transcriptionMeta(
+            from: transcript, mapping: mapping, includeWords: args.bool("wordTimestamps") ?? false
+        )
+        for (k, v) in transcription { meta[k] = v }
         if let mapping { meta["timelineMapping"] = Self.timelineMappingMeta(clip: mapping.clip, fps: mapping.fps) }
         guard let metaJSON = Self.jsonString(roundJSONFloatingPointNumbers(meta, toPlaces: 3)) else {
             throw ToolError("Failed to encode metadata")
@@ -234,29 +261,51 @@ extension ToolExecutor {
 
     private static func transcriptionMeta(
         from transcript: TranscriptionResult,
-        mapping: (clip: Clip, fps: Int)? = nil
+        mapping: (clip: Clip, fps: Int)? = nil,
+        includeWords: Bool = false
     ) -> [String: Any] {
-        let words: [[Any]]
-        if let mapping {
-            words = transcript.words.compactMap { w in
-                guard let f = wordFrames(w, clip: mapping.clip, fps: mapping.fps) else { return nil }
-                return [w.text, f.start, f.end]
-            }
-        } else {
-            words = transcript.words.map { [$0.text, Self.round2OrNull($0.start), Self.round2OrNull($0.end)] }
-        }
         var out: [String: Any] = [
-            "text": transcript.text,
-            "wordTiming": mapping == nil ? "sourceSeconds" : "projectFrames",
-            "words": words,
+            "timing": mapping == nil ? "sourceSeconds" : "projectFrames",
         ]
         if let lang = transcript.language { out["language"] = lang }
+
+        let segments: [[Any]]
+        if let mapping {
+            segments = transcript.segments.compactMap { s in
+                guard let f = spanFrames(start: s.start, end: s.end, clip: mapping.clip, fps: mapping.fps) else { return nil }
+                return [s.text, f.start, f.end]
+            }
+        } else {
+            segments = transcript.segments.map { [$0.text, round2OrNull($0.start), round2OrNull($0.end)] }
+        }
+        out["segments"] = Array(segments.prefix(inspectMaxSegments))
+        if segments.count > inspectMaxSegments {
+            out["totalSegments"] = segments.count
+            out["segmentsNote"] = "First \(inspectMaxSegments) of \(segments.count) segments. Page through the rest with startSeconds/endSeconds."
+        }
+
+        if includeWords {
+            let words: [[Any]]
+            if let mapping {
+                words = transcript.words.compactMap { w in
+                    guard let start = w.start, let end = w.end,
+                          let f = spanFrames(start: start, end: end, clip: mapping.clip, fps: mapping.fps) else { return nil }
+                    return [w.text, f.start, f.end]
+                }
+            } else {
+                words = transcript.words.map { [$0.text, round2OrNull($0.start), round2OrNull($0.end)] }
+            }
+            out["words"] = Array(words.prefix(inspectMaxWords))
+            if words.count > inspectMaxWords {
+                out["totalWords"] = words.count
+                out["wordsNote"] = "First \(inspectMaxWords) of \(words.count) words. Narrow with startSeconds/endSeconds."
+            }
+        }
         return out
     }
 
-    /// Maps a word's source-seconds span to the project frames it occupies on the clip
-    private static func wordFrames(_ w: TranscriptionWord, clip: Clip, fps: Int) -> (start: Int, end: Int)? {
-        guard let start = w.start, let end = w.end else { return nil }
+    /// Maps a source-seconds span to the project frames it occupies on the clip
+    private static func spanFrames(start: Double, end: Double, clip: Clip, fps: Int) -> (start: Int, end: Int)? {
         let visStart = Double(clip.trimStartFrame)
         let visEnd = visStart + Double(clip.durationFrames) * max(clip.speed, 0.0001)
         guard end * Double(fps) > visStart, start * Double(fps) < visEnd else { return nil }

@@ -48,13 +48,16 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .inspectMedia,
-            description: "Inspect a media asset. Images: returns the image plus dimensions, file size, and EXIF subset (raise maxImageBytes past 20MB if the user needs a larger source). Videos: returns evenly-spaced sample frames with timestamps (default 6, cap 12 via maxFrames), and a transcription of the audio track when available. Audio: returns a transcription with full text, language, and per-word timestamps. Call before referencing an asset so your description matches reality, or to plan splits/trims on dialogue boundaries.\n\nTranscription: text is the full transcript; words is [text, start, end] tuples. wordTiming names the units — source seconds, or project frames when clipId is passed (pass clipId for captioning; out-of-range words are dropped).",
+            description: "Inspect a media asset. Images: returns the image plus dimensions, file size, and EXIF subset (raise maxImageBytes past 20MB if the user needs a larger source). Videos: returns sample frames with timestamps (default 6, cap 12 via maxFrames) evenly spaced across the asset — or across the startSeconds/endSeconds window — plus a transcription of the audio track when available. Audio: returns a transcription. Call before referencing an asset so your description matches reality, or to plan splits/trims on dialogue boundaries.\n\nTranscription: segments is sentence-level [text, start, end] tuples covering the inspected window (capped at 250 — totalSegments signals truncation; page with startSeconds/endSeconds). Pass wordTimestamps=true only when you need word-boundary precision (splits, captions) — combine with a narrow window. timing names the units: source seconds, or project frames when clipId is passed (out-of-range entries are dropped).\n\nLong media: inspect once without a window for an overview, then drill into regions with startSeconds/endSeconds. Windowed calls only transcribe the requested span, so they are much faster. Use segment timestamps to decide where to look — e.g. transcribe first, then pull frames from the windows that matter.",
             inputSchema: objectSchema(
                 properties: [
                     "mediaRef": ["type": "string", "description": "ID of the media asset from get_media"],
-                    "clipId": ["type": "string", "description": "Optional. Must reference the given mediaRef. Word timings then come back as project frames for this clip ([text, startFrame, endFrame]) instead of source seconds."],
+                    "clipId": ["type": "string", "description": "Optional. Must reference the given mediaRef. Segment/word timings then come back as project frames for this clip ([text, startFrame, endFrame]) instead of source seconds."],
                     "maxImageBytes": ["type": "integer", "description": "Image only. Maximum file size in bytes (default 20971520)."],
                     "maxFrames": ["type": "integer", "description": "Video only. Number of sample frames to return (default 6, cap 12)."],
+                    "startSeconds": ["type": "number", "description": "Video/audio only. Start of the source-time window to inspect, in seconds (default 0). Frames and transcription are limited to the window."],
+                    "endSeconds": ["type": "number", "description": "Video/audio only. End of the window in seconds (default: asset duration)."],
+                    "wordTimestamps": ["type": "boolean", "description": "Video/audio only. Include word-level [text, start, end] tuples (capped at 500). Default false — segments are usually enough; use with a narrow window when planning word-boundary edits."],
                 ],
                 required: ["mediaRef"]
             )
