@@ -3,11 +3,10 @@ import Foundation
 import ImageIO
 
 extension ToolExecutor {
-    private static let defaultReadImageMaxBytes = 20 * 1024 * 1024
     private static let defaultReadVideoFrames = 6
     private static let readVideoMaxFrames = 12
-    private static let readVideoFrameMaxDimension: CGFloat = 512
-    private static let readVideoJPEGQuality: CGFloat = 0.7
+    private nonisolated static let readVideoFrameMaxDimension: CGFloat = 512
+    private nonisolated static let readVideoJPEGQuality: CGFloat = 0.7
     private static let inspectMaxSegments = 250
     private static let inspectMaxWords = 500
 
@@ -89,7 +88,7 @@ extension ToolExecutor {
     }
 
     private static let inspectMediaAllowedKeys: Set<String> = [
-        "mediaRef", "clipId", "maxImageBytes", "maxFrames", "startSeconds", "endSeconds", "wordTimestamps",
+        "mediaRef", "clipId", "maxFrames", "startSeconds", "endSeconds", "wordTimestamps", "overview",
     ]
 
     func inspectMedia(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -154,11 +153,7 @@ extension ToolExecutor {
 
     private func readImage(asset: MediaAsset, args: [String: Any]) throws -> ToolResult {
         let url = asset.url
-        let maxBytes = args.int("maxImageBytes") ?? Self.defaultReadImageMaxBytes
         let fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.uint64Value ?? 0
-        guard fileSize <= UInt64(maxBytes) else {
-            throw ToolError("Image file (\(fileSize) bytes) exceeds maxImageBytes (\(maxBytes))")
-        }
         guard let encoded = ImageEncoder.encode(url: url) else {
             throw ToolError("Failed to read or decode image file")
         }
@@ -186,55 +181,92 @@ extension ToolExecutor {
         let range = try Self.sourceRange(args, duration: asset.duration)
         let windowStart = range?.lowerBound ?? 0
         let windowEnd = range?.upperBound ?? asset.duration
-        let requested = args.int("maxFrames") ?? Self.defaultReadVideoFrames
-        let frameCount = max(1, min(requested, Self.readVideoMaxFrames))
-
-        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: asset.url))
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(
-            width: Self.readVideoFrameMaxDimension,
-            height: Self.readVideoFrameMaxDimension
-        )
-        generator.requestedTimeToleranceBefore = CMTime(seconds: 0.25, preferredTimescale: 600)
-        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.25, preferredTimescale: 600)
-
-        var frames: [(timestamp: Double, data: Data)] = []
-        for i in 0..<frameCount {
-            let t = windowStart + (windowEnd - windowStart) * (Double(i) + 0.5) / Double(frameCount)
-            let cmTime = CMTime(seconds: t, preferredTimescale: 600)
-            guard let cgImage = try? await generator.image(at: cmTime).image else { continue }
-            guard let jpeg = ImageEncoder.encodeJPEG(cgImage, quality: Self.readVideoJPEGQuality) else { continue }
-            frames.append((timestamp: t, data: jpeg))
-        }
-        guard !frames.isEmpty else { throw ToolError("Failed to extract frames from \(asset.name)") }
 
         var meta = Self.baseMeta(for: asset)
         meta["hasAudio"] = asset.hasAudio
-        meta["frameTimestamps"] = frames.map { $0.timestamp.jsonRounded(toPlaces: 3) }
         if let range { meta["timeRange"] = [range.lowerBound, range.upperBound] }
 
-        if asset.hasAudio {
-            do {
-                let transcript = try await Transcription.transcribeVideoAudio(videoURL: asset.url, sourceRange: range)
-                meta["transcription"] = Self.transcriptionMeta(
-                    from: transcript, mapping: mapping, includeWords: args.bool("wordTimestamps") ?? false
-                )
-            } catch {
-                Log.transcription.error("video transcription failed: \(error.localizedDescription)")
-                meta["transcriptionError"] = error.localizedDescription
-            }
+        // Frames/overview and transcription touch independent subsystems — run them concurrently
+        let url = asset.url
+        let hasAudio = asset.hasAudio
+        let wantsOverview = args.bool("overview") == true
+        let requested = args.int("maxFrames") ?? Self.defaultReadVideoFrames
+        let frameCount = max(1, min(requested, Self.readVideoMaxFrames))
+        async let visualTask = Self.extractVisual(
+            url: url, name: asset.name, overview: wantsOverview,
+            frameCount: frameCount, start: windowStart, end: windowEnd
+        )
+        async let transcriptTask: Result<TranscriptionResult, Error>? = {
+            guard hasAudio else { return nil }
+            do { return .success(try await Transcription.transcribeVideoAudio(videoURL: url, sourceRange: range)) }
+            catch { return .failure(error) }
+        }()
+
+        var imageBlocks: [ToolResult.Block] = []
+        switch try await visualTask {
+        case .overview(let jpeg, let timestamps):
+            meta["overview"] = ["tileTimestamps": timestamps.map { $0.jsonRounded(toPlaces: 3) }]
+            imageBlocks = [.image(base64: jpeg.base64EncodedString(), mediaType: "image/jpeg")]
+        case .frames(let frames):
+            meta["frameTimestamps"] = frames.map { $0.timestamp.jsonRounded(toPlaces: 3) }
+            imageBlocks = frames.map { .image(base64: $0.jpeg.base64EncodedString(), mediaType: "image/jpeg") }
+        }
+
+        switch await transcriptTask {
+        case .success(let transcript):
+            meta["transcription"] = Self.transcriptionMeta(
+                from: transcript, mapping: mapping, includeWords: args.bool("wordTimestamps") ?? false
+            )
+        case .failure(let error):
+            Log.transcription.error("video transcription failed: \(error.localizedDescription)")
+            meta["transcriptionError"] = error.localizedDescription
+        case nil:
+            break
         }
         if let mapping { meta["timelineMapping"] = Self.timelineMappingMeta(clip: mapping.clip, fps: mapping.fps) }
 
         guard let metaJSON = Self.jsonString(roundJSONFloatingPointNumbers(meta, toPlaces: 3)) else {
             throw ToolError("Failed to encode metadata")
         }
+        return ToolResult(content: imageBlocks + [.text(metaJSON)], isError: false)
+    }
 
-        var blocks: [ToolResult.Block] = frames.map {
-            .image(base64: $0.data.base64EncodedString(), mediaType: "image/jpeg")
+    private enum Visual: Sendable {
+        case frames([(timestamp: Double, jpeg: Data)])
+        case overview(jpeg: Data, timestamps: [Double])
+    }
+
+    private nonisolated static func extractVisual(
+        url: URL, name: String, overview: Bool, frameCount: Int, start: Double, end: Double
+    ) async throws -> Visual {
+        if overview {
+            do {
+                let sheet = try await OverviewRenderer.make(url: url, start: start, end: end)
+                return .overview(jpeg: sheet.jpeg, timestamps: sheet.timestamps)
+            } catch {
+                throw ToolError("Overview failed: \(error.localizedDescription)")
+            }
         }
-        blocks.append(.text(metaJSON))
-        return ToolResult(content: blocks, isError: false)
+
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(
+            width: readVideoFrameMaxDimension,
+            height: readVideoFrameMaxDimension
+        )
+        generator.requestedTimeToleranceBefore = CMTime(seconds: 0.25, preferredTimescale: 600)
+        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.25, preferredTimescale: 600)
+
+        var frames: [(timestamp: Double, jpeg: Data)] = []
+        for i in 0..<frameCount {
+            let t = start + (end - start) * (Double(i) + 0.5) / Double(frameCount)
+            let cmTime = CMTime(seconds: t, preferredTimescale: 600)
+            guard let cgImage = try? await generator.image(at: cmTime).image else { continue }
+            guard let jpeg = ImageEncoder.encodeJPEG(cgImage, quality: readVideoJPEGQuality) else { continue }
+            frames.append((timestamp: t, jpeg: jpeg))
+        }
+        guard !frames.isEmpty else { throw ToolError("Failed to extract frames from \(name)") }
+        return .frames(frames)
     }
 
     private func readAudio(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil) async throws -> ToolResult {

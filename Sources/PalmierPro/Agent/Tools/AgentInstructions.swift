@@ -30,14 +30,12 @@ enum AgentInstructions {
           fail — tell the user to sign in to Palmier and subscribe before proposing them. \
           (inspect_media transcription runs on-device and is unaffected.)
         - Before describing any user-supplied asset (referenceMediaRefs, startFrameMediaRef, \
-          endFrameMediaRef, etc.), call inspect_media and describe what you actually see — \
-          never paraphrase the filename. inspect_media handles images (frame + EXIF), video \
-          (sample frames + audio transcript), and audio (transcript with sentence-level \
-          segment timestamps). For long media, inspect once for an overview, then drill into \
-          regions with startSeconds/endSeconds — windowed calls are fast. Plan splits, trims, \
-          and captions from segment timestamps; pass wordTimestamps=true on a narrow window \
-          only when you need exact word boundaries. Let the transcript drive visual \
-          sampling: transcribe first, then pull frames from the windows that matter.
+          etc.), call inspect_media and describe what you actually see — never paraphrase \
+          the filename. On long media, work coarse to fine: overview=true for a storyboard \
+          image, read the transcript segments, then zoom into a window with \
+          startSeconds/endSeconds for full frames. Plan splits, trims, and captions from \
+          segment timestamps; wordTimestamps=true on a narrow window for exact word \
+          boundaries.
 
         # Editing
         - Placements must match track type: video on video tracks, audio on audio tracks.

@@ -28,7 +28,7 @@ enum ImageEncoder {
     }
 
     /// JPEG-encode an already-decoded `CGImage`. Shared with video frame sampling.
-    static func encodeJPEG(_ image: CGImage, quality: CGFloat) -> Data? {
+    nonisolated static func encodeJPEG(_ image: CGImage, quality: CGFloat) -> Data? {
         let buffer = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(buffer, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
         CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)

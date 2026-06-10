@@ -48,16 +48,16 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .inspectMedia,
-            description: "Inspect a media asset. Images: returns the image plus dimensions, file size, and EXIF subset (raise maxImageBytes past 20MB if the user needs a larger source). Videos: returns sample frames with timestamps (default 6, cap 12 via maxFrames) evenly spaced across the asset — or across the startSeconds/endSeconds window — plus a transcription of the audio track when available. Audio: returns a transcription. Call before referencing an asset so your description matches reality, or to plan splits/trims on dialogue boundaries.\n\nTranscription: segments is sentence-level [text, start, end] tuples covering the inspected window (capped at 250 — totalSegments signals truncation; page with startSeconds/endSeconds). Pass wordTimestamps=true only when you need word-boundary precision (splits, captions) — combine with a narrow window. timing names the units: source seconds, or project frames when clipId is passed (out-of-range entries are dropped).\n\nLong media: inspect once without a window for an overview, then drill into regions with startSeconds/endSeconds. Windowed calls only transcribe the requested span, so they are much faster. Use segment timestamps to decide where to look — e.g. transcribe first, then pull frames from the windows that matter.",
+            description: "Look at a media asset before referencing or editing it. Images: the image plus dimensions and EXIF. Video: sample frames plus a transcription of the audio track. Audio: transcription. Transcription is sentence-level segments — [text, start, end] tuples, capped at 250 (totalSegments signals truncation) — in source seconds, or project frames when clipId is set.\n\nLong media: pass overview=true for a one-image storyboard, read the segments, then re-call with startSeconds/endSeconds to zoom — windowed calls only transcribe that span, so they are fast.",
             inputSchema: objectSchema(
                 properties: [
-                    "mediaRef": ["type": "string", "description": "ID of the media asset from get_media"],
-                    "clipId": ["type": "string", "description": "Optional. Must reference the given mediaRef. Segment/word timings then come back as project frames for this clip ([text, startFrame, endFrame]) instead of source seconds."],
-                    "maxImageBytes": ["type": "integer", "description": "Image only. Maximum file size in bytes (default 20971520)."],
-                    "maxFrames": ["type": "integer", "description": "Video only. Number of sample frames to return (default 6, cap 12)."],
-                    "startSeconds": ["type": "number", "description": "Video/audio only. Start of the source-time window to inspect, in seconds (default 0). Frames and transcription are limited to the window."],
-                    "endSeconds": ["type": "number", "description": "Video/audio only. End of the window in seconds (default: asset duration)."],
-                    "wordTimestamps": ["type": "boolean", "description": "Video/audio only. Include word-level [text, start, end] tuples (capped at 500). Default false — segments are usually enough; use with a narrow window when planning word-boundary edits."],
+                    "mediaRef": ["type": "string", "description": "Asset ID from get_media."],
+                    "clipId": ["type": "string", "description": "Optional. A clip referencing this mediaRef; transcript times come back as project frames for that clip (out-of-range entries dropped)."],
+                    "maxFrames": ["type": "integer", "description": "Video only. Sample frame count (default 6, max 12)."],
+                    "startSeconds": ["type": "number", "description": "Video/audio. Source-time window start; scopes frames and transcription."],
+                    "endSeconds": ["type": "number", "description": "Video/audio. Window end (default: asset duration)."],
+                    "wordTimestamps": ["type": "boolean", "description": "Video/audio. Add word-level [text, start, end] tuples (capped at 500). Use on a narrow window for word-boundary edits."],
+                    "overview": ["type": "boolean", "description": "Video only. One storyboard grid of visually distinct, timestamped moments instead of frames — far more coverage per token; few tiles means static footage. maxFrames ignored."],
                 ],
                 required: ["mediaRef"]
             )
