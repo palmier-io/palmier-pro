@@ -88,8 +88,8 @@ enum TimelineRuler {
         let targetPixels = 80.0
         let rawFrames = targetPixels / pixelsPerFrame
 
-        // Round to "nice" intervals: 1s, 2s, 5s, 10s, 30s, 1m, 5m, 10m
-        let candidates = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600].map { $0 * fps }
+        // Round to "nice" intervals: 1s, 2s, 5s, 10s, 30s, 1m, 5m, 10m, 20m, 30m, 1h
+        let candidates = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1200, 1800, 3600].map { $0 * fps }
         return candidates.first { Double($0) >= rawFrames } ?? candidates.last!
     }
 

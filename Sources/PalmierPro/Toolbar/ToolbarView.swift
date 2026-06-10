@@ -46,8 +46,12 @@ struct ToolbarView: View {
                 Image(systemName: "minus.magnifyingglass")
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .font(.system(size: AppTheme.FontSize.sm))
-                @Bindable var ed = editor
-                Slider(value: $ed.zoomScale, in: editor.minZoomScale...Zoom.max)
+                // Log-mapped so slider travel is uniform per zoom factor
+                let zoomBinding = Binding(
+                    get: { log(editor.zoomScale) },
+                    set: { editor.zoomScale = exp($0) }
+                )
+                Slider(value: zoomBinding, in: log(editor.minZoomScale)...log(Zoom.max))
                     .controlSize(.mini)
                     .tint(AppTheme.Accent.primary)
                     .frame(width: 100)

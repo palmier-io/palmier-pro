@@ -15,7 +15,8 @@ extension EditorViewModel {
         let headerWidth = Double(Layout.trackHeaderWidth)
         let availableWidth = timelineVisibleWidth - headerWidth
         guard availableWidth > 0 else { return Zoom.min }
-        return max(Zoom.min, availableWidth / (Double(totalFrames) * Zoom.fitAllBuffer))
+        let fitAll = availableWidth / (Double(totalFrames) * Zoom.fitAllBuffer)
+        return min(Zoom.max, max(Zoom.floor, fitAll))
     }
 
     var activePreviewDurationFrames: Int {
