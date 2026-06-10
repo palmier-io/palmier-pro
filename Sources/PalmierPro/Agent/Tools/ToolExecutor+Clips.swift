@@ -621,4 +621,37 @@ extension ToolExecutor {
         }
         return i
     }
+
+    private static let removeTracksAllowedKeys: Set<String> = ["trackIndexes"]
+
+    func removeTracks(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        try validateUnknownKeys(args, allowed: Self.removeTracksAllowedKeys, path: "remove_tracks")
+        guard let raw = args["trackIndexes"] as? [Any], !raw.isEmpty else {
+            throw ToolError("remove_tracks: trackIndexes must be a non-empty array of integers")
+        }
+        var removed: [[String: Any]] = []
+        var ids: [String] = []
+        var seen = Set<Int>()
+        for entry in raw {
+            guard let i = (entry as? Int) ?? (entry as? NSNumber)?.intValue else {
+                throw ToolError("remove_tracks: trackIndexes must be integers (got \(entry))")
+            }
+            guard seen.insert(i).inserted else { continue }
+            guard editor.timeline.tracks.indices.contains(i) else {
+                throw ToolError("remove_tracks: track index \(i) out of range (timeline has \(editor.timeline.tracks.count) tracks)")
+            }
+            let track = editor.timeline.tracks[i]
+            ids.append(track.id)
+            removed.append([
+                "trackIndex": i,
+                "label": editor.timelineTrackDisplayLabel(at: i),
+                "clipCount": track.clips.count,
+            ])
+        }
+        editor.removeTracks(ids: ids)
+        guard let json = Self.jsonString(["removedTracks": removed]) else {
+            throw ToolError("Failed to encode result")
+        }
+        return .ok(json)
+    }
 }

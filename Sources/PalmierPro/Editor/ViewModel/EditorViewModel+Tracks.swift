@@ -41,9 +41,14 @@ extension EditorViewModel {
     }
 
     func removeTrack(id: String) {
-        guard timeline.tracks.contains(where: { $0.id == id }) else { return }
-        withTimelineSwap(actionName: "Remove Track") {
-            timeline.tracks.removeAll { $0.id == id }
+        removeTracks(ids: [id])
+    }
+
+    func removeTracks(ids: [String]) {
+        let set = Set(ids)
+        guard timeline.tracks.contains(where: { set.contains($0.id) }) else { return }
+        withTimelineSwap(actionName: set.count == 1 ? "Remove Track" : "Remove Tracks") {
+            timeline.tracks.removeAll { set.contains($0.id) }
         }
     }
 

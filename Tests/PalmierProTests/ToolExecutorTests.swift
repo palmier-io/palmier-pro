@@ -153,7 +153,181 @@ struct ToolExecutorReadOnlyTests {
         #expect(outClip?["speed"] as? Double == 1.235)
         #expect(outClip?["volume"] as? Double == 0.988)
         #expect(outClip?["opacity"] as? Double == 0.123)
-        #expect(tracks?.first?["syncLocked"] as? Bool == true)
+    }
+
+    @Test func getTimelineOmitsDefaultValuedFields() async throws {
+        let timeline = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(label: "V1", clips: [Fixtures.clip(id: "c1", start: 0, duration: 50)]),
+        ])
+        let h = ToolHarness(timeline: timeline)
+
+        let json = try await h.runOK("get_timeline") as? [String: Any]
+        let track = Self.firstTrack(json)
+        #expect(track?["muted"] == nil)
+        #expect(track?["hidden"] == nil)
+        #expect(track?["syncLocked"] == nil)
+        #expect(track?["label"] as? String == "V1")
+
+        let clip = (track?["clips"] as? [[String: Any]])?.first
+        #expect(clip?["id"] as? String == "c1")
+        #expect(clip?["mediaRef"] as? String == "media-1")
+        #expect(clip?["startFrame"] as? Int == 0)
+        #expect(clip?["durationFrames"] as? Int == 50)
+        for defaulted in [
+            "mediaType", "sourceClipType", "speed", "volume", "opacity",
+            "trimStartFrame", "trimEndFrame", "fadeInFrames", "fadeOutFrames",
+            "fadeInInterpolation", "fadeOutInterpolation", "transform", "crop",
+        ] {
+            #expect(clip?[defaulted] == nil, "expected default field '\(defaulted)' to be omitted")
+        }
+        #expect(json?["totalFrames"] as? Int == 50)
+        #expect(json?["window"] == nil)
+    }
+
+    @Test func getTimelineCollapsesCaptionGroups() async throws {
+        let texts = ["one", "two", "three"]
+        let clips = texts.enumerated().map { i, text in
+            Self.captionClip(id: "cap-\(i)", gid: "g1", start: i * 30, duration: 30, text: text, width: 0.2 + Double(i) * 0.1)
+        }
+        let video = Fixtures.clip(id: "v1", start: 0, duration: 90)
+        let timeline = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(label: "V1", clips: [video] + clips),
+        ])
+        let h = ToolHarness(timeline: timeline)
+
+        let json = try await h.runOK("get_timeline") as? [String: Any]
+        let loose = Self.firstTrack(json)?["clips"] as? [[String: Any]]
+        #expect(loose?.count == 1)
+        #expect(loose?.first?["id"] as? String == "v1")
+
+        let group = Self.firstCaptionGroup(json)
+        #expect(group?["captionGroupId"] as? String == "g1")
+        #expect(group?["clipCount"] as? Int == 3)
+        #expect(group?["frameRange"] as? [Int] == [0, 90])
+
+        let shared = group?["shared"] as? [String: Any]
+        #expect(shared?["mediaType"] as? String == "text")
+        #expect((shared?["textStyle"] as? [String: Any])?["fontName"] as? String == "Avenir")
+        let sharedTransform = shared?["transform"] as? [String: Any]
+        #expect(sharedTransform?["centerY"] as? Double == 0.85)
+        #expect(sharedTransform?["width"] == nil)
+        #expect(sharedTransform?["height"] == nil)
+
+        let rows = group?["clips"] as? [[Any]]
+        #expect(rows?.count == 3)
+        #expect(rows?.first?[0] as? String == "cap-0")
+        #expect(rows?.first?[1] as? Int == 0)
+        #expect(rows?.first?[2] as? Int == 30)
+        #expect(rows?.first?[3] as? String == "one")
+    }
+
+    @Test func getTimelineListsDeviantCaptionClipsIndividually() async throws {
+        var clips = (0..<3).map { i in
+            Self.captionClip(id: "cap-\(i)", gid: "g1", start: i * 30, duration: 30, text: "t\(i)")
+        }
+        clips[1].textStyle?.color = TextStyle.RGBA(r: 1, g: 0, b: 0, a: 1)
+        let timeline = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(label: "V1", clips: clips),
+        ])
+        let h = ToolHarness(timeline: timeline)
+
+        let json = try await h.runOK("get_timeline") as? [String: Any]
+        let group = Self.firstCaptionGroup(json)
+        #expect(group?["clipCount"] as? Int == 2)
+        #expect((group?["clips"] as? [[Any]])?.count == 2)
+
+        let loose = Self.firstTrack(json)?["clips"] as? [[String: Any]]
+        #expect(loose?.count == 1)
+        #expect(loose?.first?["id"] as? String == "cap-1")
+        #expect(loose?.first?["captionGroupId"] as? String == "g1")
+    }
+
+    @Test func getTimelineWindowsClipsToRequestedRange() async throws {
+        let timeline = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(label: "V1", clips: [
+                Fixtures.clip(id: "a", start: 0, duration: 50),
+                Fixtures.clip(id: "b", start: 100, duration: 50),
+                Fixtures.clip(id: "c", start: 200, duration: 50),
+            ]),
+        ])
+        let h = ToolHarness(timeline: timeline)
+
+        let json = try await h.runOK("get_timeline", args: ["startFrame": 90, "endFrame": 160]) as? [String: Any]
+        let track = Self.firstTrack(json)
+        let clips = track?["clips"] as? [[String: Any]]
+        #expect(clips?.count == 1)
+        #expect(clips?.first?["id"] as? String == "b")
+        #expect(track?["totalClips"] as? Int == 3)
+        #expect(json?["window"] as? [Int] == [90, 160])
+        #expect(json?["totalFrames"] as? Int == 250)
+    }
+
+    @Test func getTimelineCapsCaptionRowsAndNotesPaging() async throws {
+        let clips = (0..<250).map { i in
+            Self.captionClip(id: "cap-\(i)", gid: "g1", start: i * 30, duration: 30, text: "t\(i)")
+        }
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(label: "V1", clips: clips),
+        ]))
+
+        let json = try await h.runOK("get_timeline") as? [String: Any]
+        let group = Self.firstCaptionGroup(json)
+        #expect(group?["clipCount"] as? Int == 250)
+        #expect((group?["clips"] as? [[Any]])?.count == 200)
+        #expect((group?["clipsNote"] as? String)?.contains("250") == true)
+
+        // Windowing pages past the cap.
+        let paged = try await h.runOK("get_timeline", args: ["startFrame": 6000, "endFrame": 7500]) as? [String: Any]
+        let pagedRows = Self.firstCaptionGroup(paged)?["clips"] as? [[Any]]
+        #expect(pagedRows?.count == 50)
+        #expect(pagedRows?.first?[0] as? String == "cap-200")
+    }
+
+    @Test func getTimelineIgnoresTrimsOnTextClipsWhenGrouping() async throws {
+        var clips = (0..<3).map { i in
+            Self.captionClip(id: "cap-\(i)", gid: "g1", start: i * 30, duration: 30, text: "t\(i)")
+        }
+        clips[0].trimEndFrame = 3
+        clips[1].trimStartFrame = 5
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(label: "V1", clips: clips),
+        ]))
+
+        let json = try await h.runOK("get_timeline") as? [String: Any]
+        #expect(Self.firstCaptionGroup(json)?["clipCount"] as? Int == 3)
+        #expect((Self.firstTrack(json)?["clips"] as? [[String: Any]])?.isEmpty == true)
+    }
+
+    @Test func getTimelineRejectsInvalidWindow() async {
+        let h = ToolHarness()
+        let result = await h.runRaw("get_timeline", args: ["startFrame": 100, "endFrame": 50])
+        #expect(result.isError)
+    }
+
+    private static func firstTrack(_ json: [String: Any]?) -> [String: Any]? {
+        (json?["tracks"] as? [[String: Any]])?.first
+    }
+
+    private static func firstCaptionGroup(_ json: [String: Any]?) -> [String: Any]? {
+        (firstTrack(json)?["captionGroups"] as? [[String: Any]])?.first
+    }
+
+    private static func captionClip(id: String, gid: String, start: Int, duration: Int, text: String, width: Double = 0.2) -> Clip {
+        var c = Clip(
+            mediaRef: "",
+            mediaType: .text,
+            sourceClipType: .text,
+            startFrame: start,
+            durationFrames: duration,
+            transform: Transform(center: (0.5, 0.85), width: width, height: 0.1)
+        )
+        c.id = id
+        c.textContent = text
+        c.captionGroupId = gid
+        var style = TextStyle()
+        style.fontName = "Avenir"
+        c.textStyle = style
+        return c
     }
 
     // MARK: - get_media

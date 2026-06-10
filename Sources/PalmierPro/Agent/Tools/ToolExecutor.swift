@@ -24,11 +24,12 @@ final class ToolExecutor {
         guard let editor else { return .error("Editor not available") }
         do {
             switch tool {
-            case .getTimeline:   return try getTimeline(editor)
+            case .getTimeline:   return try getTimeline(editor, args)
             case .getMedia:      return try getMedia(editor)
             case .inspectMedia:  return try await inspectMedia(editor, args)
             case .addClips:         return try addClips(editor, args)
             case .removeClips:      return try removeClips(editor, args)
+            case .removeTracks:     return try removeTracks(editor, args)
             case .moveClips:        return try moveClips(editor, args)
             case .setClipProperties: return try setClipProperties(editor, args)
             case .setKeyframes:     return try setKeyframes(editor, args)
