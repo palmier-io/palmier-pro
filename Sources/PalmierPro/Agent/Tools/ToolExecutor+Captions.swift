@@ -3,7 +3,7 @@ import Foundation
 
 extension ToolExecutor {
     private static let addCaptionsAllowedKeys: Set<String> = [
-        "clipIds", "fontSize", "color", "centerX", "centerY", "textCase", "censorProfanity",
+        "clipIds", "fontName", "fontSize", "color", "centerX", "centerY", "textCase", "censorProfanity", "language",
     ]
 
     func addCaptions(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -12,8 +12,18 @@ extension ToolExecutor {
         let clipIds = (args["clipIds"] as? [Any])?.compactMap { $0 as? String } ?? []
 
         var style = TextStyle(fontSize: AppTheme.Caption.defaultFontSize)
+        if let f = args.string("fontName") { style.fontName = f }
         if let s = args.double("fontSize") { style.fontSize = s }
         if let c = try parseColorHex(args.string("color"), path: "add_captions") { style.color = c }
+
+        var locale: Locale?
+        if let lang = args.string("language") {
+            let candidate = Locale(identifier: lang)
+            guard let match = Transcription.matchLocale(candidates: [candidate], supported: await Transcription.supportedLocales()) else {
+                throw ToolError("add_captions: on-device transcription does not support language '\(lang)'.")
+            }
+            locale = match
+        }
 
         var center = AppTheme.Caption.defaultCenter
         if let x = args.double("centerX") { center.x = CGFloat(x) }
@@ -33,7 +43,8 @@ extension ToolExecutor {
             style: style,
             center: center,
             textCase: textCase,
-            censorProfanity: args.bool("censorProfanity") ?? false
+            censorProfanity: args.bool("censorProfanity") ?? false,
+            locale: locale
         )
 
         let ids = try await editor.generateCaptions(for: request)

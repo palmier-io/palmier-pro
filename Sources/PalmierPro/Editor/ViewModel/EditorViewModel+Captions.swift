@@ -122,15 +122,24 @@ extension EditorViewModel {
         for t in targets where results[t.clip.mediaRef] == nil {
             do {
                 guard let url = mediaResolver.resolveURL(for: t.clip.mediaRef) else { continue }
+                let range = visibleSourceUnion(for: t.clip.mediaRef, in: targets)
                 results[t.clip.mediaRef] = captionUsesVideoAudioExtraction(for: t.clip)
-                    ? try await Transcription.transcribeVideoAudio(videoURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale)
-                    : try await Transcription.transcribe(fileURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale)
+                    ? try await Transcription.transcribeVideoAudio(videoURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale, sourceRange: range)
+                    : try await Transcription.transcribe(fileURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale, sourceRange: range)
             } catch {
                 firstError = firstError ?? error
             }
         }
         if results.isEmpty, let firstError { throw firstError }
         return results
+    }
+
+    private func visibleSourceUnion(for mediaRef: String, in targets: [CaptionTarget]) -> ClosedRange<Double>? {
+        let fps = Double(timeline.fps)
+        let spans = targets.filter { $0.clip.mediaRef == mediaRef }.map { visibleSource($0.clip) }
+        guard fps > 0, let lo = spans.map(\.start).min(), let hi = spans.map(\.end).max(), hi > lo else { return nil }
+        let pad = 1.0
+        return max(lo / fps - pad, 0)...(hi / fps + pad)
     }
 
     private func dominantSpeechTrack(_ targets: [CaptionTarget], _ results: [String: TranscriptionResult]) -> String? {
