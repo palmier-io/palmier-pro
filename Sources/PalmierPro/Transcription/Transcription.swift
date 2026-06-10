@@ -2,7 +2,7 @@ import AVFoundation
 import Foundation
 import Speech
 
-struct TranscriptionWord: Sendable {
+struct TranscriptionWord: Sendable, Codable {
     let text: String
     let start: Double?
     let end: Double?
@@ -10,13 +10,13 @@ struct TranscriptionWord: Sendable {
 
 /// One natural utterance the transcriber endpointed on its own (pause/sentence
 /// boundary). `text` carries the model's punctuation and casing.
-struct TranscriptionSegment: Sendable {
+struct TranscriptionSegment: Sendable, Codable {
     let text: String
     let start: Double
     let end: Double
 }
 
-struct TranscriptionResult: Sendable {
+struct TranscriptionResult: Sendable, Codable {
     let text: String
     let language: String?
     let words: [TranscriptionWord]

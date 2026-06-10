@@ -123,9 +123,15 @@ extension EditorViewModel {
             do {
                 guard let url = mediaResolver.resolveURL(for: t.clip.mediaRef) else { continue }
                 let range = visibleSourceUnion(for: t.clip.mediaRef, in: targets)
-                results[t.clip.mediaRef] = captionUsesVideoAudioExtraction(for: t.clip)
-                    ? try await Transcription.transcribeVideoAudio(videoURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale, sourceRange: range)
-                    : try await Transcription.transcribe(fileURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale, sourceRange: range)
+                let isVideo = captionUsesVideoAudioExtraction(for: t.clip)
+                if request.censorProfanity || request.locale != nil {
+                    // option variants produce different transcripts — bypass the cache
+                    results[t.clip.mediaRef] = isVideo
+                        ? try await Transcription.transcribeVideoAudio(videoURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale, sourceRange: range)
+                        : try await Transcription.transcribe(fileURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale, sourceRange: range)
+                } else {
+                    results[t.clip.mediaRef] = try await TranscriptCache.shared.transcript(for: url, isVideo: isVideo, range: range)
+                }
             } catch {
                 firstError = firstError ?? error
             }

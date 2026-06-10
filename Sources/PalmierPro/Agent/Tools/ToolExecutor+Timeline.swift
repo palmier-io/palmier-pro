@@ -198,7 +198,7 @@ extension ToolExecutor {
         )
         async let transcriptTask: Result<TranscriptionResult, Error>? = {
             guard hasAudio else { return nil }
-            do { return .success(try await Transcription.transcribeVideoAudio(videoURL: url, sourceRange: range)) }
+            do { return .success(try await TranscriptCache.shared.transcript(for: url, isVideo: true, range: range)) }
             catch { return .failure(error) }
         }()
 
@@ -273,7 +273,7 @@ extension ToolExecutor {
         let range = try Self.sourceRange(args, duration: asset.duration)
         let transcript: TranscriptionResult
         do {
-            transcript = try await Transcription.transcribe(fileURL: asset.url, sourceRange: range)
+            transcript = try await TranscriptCache.shared.transcript(for: asset.url, isVideo: false, range: range)
         } catch {
             throw ToolError("Transcription failed: \(error.localizedDescription)")
         }
