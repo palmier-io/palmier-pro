@@ -93,6 +93,7 @@ final class TextLayerController {
             let layer = makeTextLayer()
             applyStyle(to: layer, clip: clip, containerSize: renderSize)
             applyOpacityAnimation(to: layer, clip: clip, fps: fps, totalSeconds: totalSeconds)
+            layer.displayIfNeeded()
             parent.addSublayer(layer)
         }
         return (parent, videoLayer)
