@@ -67,6 +67,27 @@ actor TranscriptCache {
         directory.appendingPathComponent("\(key).json")
     }
 
+    nonisolated static func hasCachedOnDisk(for url: URL) -> Bool {
+        guard let key = key(for: url) else { return false }
+        return FileManager.default.fileExists(atPath: diskURL(key).path)
+    }
+
+    /// Cheap identity of the cached transcript (size + mtime); nil when absent.
+    nonisolated static func diskStamp(for url: URL) -> String? {
+        guard let key = key(for: url),
+              let attrs = try? FileManager.default.attributesOfItem(atPath: diskURL(key).path),
+              let size = (attrs[.size] as? NSNumber)?.int64Value,
+              let mtime = attrs[.modificationDate] as? Date else { return nil }
+        return "\(size)-\(mtime.timeIntervalSince1970)"
+    }
+
+    /// Disk-only read
+    nonisolated static func cachedOnDisk(for url: URL) -> TranscriptionResult? {
+        guard let key = key(for: url),
+              let data = try? Data(contentsOf: diskURL(key)) else { return nil }
+        return try? JSONDecoder().decode(TranscriptionResult.self, from: data)
+    }
+
     private static func key(for url: URL) -> String? {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
               let size = (attrs[.size] as? NSNumber)?.int64Value,

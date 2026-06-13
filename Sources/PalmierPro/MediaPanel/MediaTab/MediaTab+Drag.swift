@@ -20,8 +20,23 @@ extension MediaTab {
         assetDragScheme + id
     }
 
+    /// A search "moment": `palmier-asset://<id>#<start>-<end>` in source seconds
+    static func assetDragString(forAssetId id: String, segment: ClosedRange<Double>) -> String {
+        assetDragScheme + id + String(format: "#%.3f-%.3f", segment.lowerBound, segment.upperBound)
+    }
+
     static func assetId(fromDragString line: String) -> String? {
-        line.hasPrefix(assetDragScheme) ? String(line.dropFirst(assetDragScheme.count)) : nil
+        guard line.hasPrefix(assetDragScheme) else { return nil }
+        return String(line.dropFirst(assetDragScheme.count).prefix(while: { $0 != "#" }))
+    }
+
+    static func assetSegment(fromDragString line: String) -> ClosedRange<Double>? {
+        guard line.hasPrefix(assetDragScheme), let hash = line.firstIndex(of: "#") else { return nil }
+        let parts = line[line.index(after: hash)...].split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count == 2,
+              let start = Double(parts[0]), let end = Double(parts[1]),
+              start >= 0, end > start else { return nil }
+        return start...end
     }
 }
 

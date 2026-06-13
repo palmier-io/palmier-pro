@@ -948,6 +948,7 @@ final class TimelineView: NSView {
 
         let editor = self.editor
         let assets = editor.assetsFromDragPayload(urlString)
+        let segments = editor.segmentsFromDragPayload(urlString)
         guard !assets.isEmpty else { return false }
 
         let mods = NSEvent.modifierFlags
@@ -961,9 +962,9 @@ final class TimelineView: NSView {
 
             let insert: ([MediaAsset], Int, Int?) -> Void = { assets, trackIdx, linkedAudio in
                 if ripple {
-                    editor.rippleInsertClips(assets: assets, trackIndex: trackIdx, atFrame: targetFrame)
+                    editor.rippleInsertClips(assets: assets, trackIndex: trackIdx, atFrame: targetFrame, segments: segments)
                 } else {
-                    editor.addClips(assets: assets, trackIndex: trackIdx, startFrame: targetFrame, linkedAudioTrackIndex: linkedAudio)
+                    editor.addClips(assets: assets, trackIndex: trackIdx, startFrame: targetFrame, linkedAudioTrackIndex: linkedAudio, segments: segments)
                 }
             }
 

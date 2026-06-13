@@ -17,6 +17,7 @@ struct HomeView: View {
         .frame(minWidth: 760, minHeight: 480)
         .background(.ultraThinMaterial)
         .focusEffectDisabled()
+        .task { await VisualModelLoader.shared.prepare() }
     }
 
     private var content: some View {

@@ -218,6 +218,7 @@ final class VideoProject: NSDocument {
         } else {
             editorViewModel.seedGenerationLogFromAssets()
         }
+        editorViewModel.searchIndex.projectOpened()
     }
 
     // MARK: - Thumbnail

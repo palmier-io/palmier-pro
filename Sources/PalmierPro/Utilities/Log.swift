@@ -16,6 +16,7 @@ enum Log {
     static let generation = CategoryLog("generation")
     static let project    = CategoryLog("project")
     static let transcription = CategoryLog("transcription")
+    static let search     = CategoryLog("search")
 
     static let crashLogURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Logs/PalmierPro/crash.log")

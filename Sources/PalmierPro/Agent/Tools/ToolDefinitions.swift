@@ -20,6 +20,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case importMedia = "import_media"
     case listModels = "list_models"
     case inspectMedia = "inspect_media"
+    case searchMedia = "search_media"
     case listFolders = "list_folders"
     case createFolder = "create_folder"
     case moveToFolder = "move_to_folder"
@@ -66,6 +67,19 @@ enum ToolDefinitions {
                     "overview": ["type": "boolean", "description": "Video only. One storyboard grid of visually distinct, timestamped moments instead of frames — far more coverage per token; few tiles means static footage. maxFrames ignored."],
                 ],
                 required: ["mediaRef"]
+            )
+        ),
+        AgentTool(
+            name: .searchMedia,
+            description: "Search the media library by content: what's on screen (visual) and what's said (spoken). Visual matching is semantic and on-device — phrase the query like an image caption ('a wide shot of a harbor at sunset'), not keywords; covers videos and stills. Spoken matching layers exact keywords over on-device semantic matching of transcript segments — quote the words said, or paraphrase them; transcripts are created automatically while indexing (and by inspect_media and add_captions), so coverage grows as indexing completes. The two groups rank independently and are never blended. Scores are uncalibrated — use them for ordering only.\n\nHits are source-second ranges. To place exactly that moment, multiply by fps and pass as trimStartFrame/trimEndFrame with a matching durationFrames to add_clips or set_clip_properties. Image hits have no time range.\n\nstatus reports the visual index: ready | indexing | modelNotInstalled | downloadingModel | preparing | disabled | failed. When not ready, moments may be empty or incomplete (compare indexedAssets to indexableAssets) — report that instead of concluding the footage doesn't exist, and don't poll in a loop. Spoken results work regardless of status.",
+            inputSchema: objectSchema(
+                properties: [
+                    "query": ["type": "string", "description": "What to find. Visual: a caption-style scene description. Spoken: the words to match."],
+                    "scope": ["type": "string", "enum": ["visual", "spoken", "both"], "description": "Optional. Default both."],
+                    "mediaRef": ["type": "string", "description": "Optional. Restrict the search to one asset from get_media."],
+                    "limit": ["type": "integer", "description": "Optional. Max hits per group (default 10, max 50)."],
+                ],
+                required: ["query"]
             )
         ),
         AgentTool(

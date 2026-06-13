@@ -54,6 +54,7 @@ final class EditorViewModel {
     var activeFrame: Int { playheadState.timelineFrame }
     var isPlaying: Bool = false
     var selectedClipIds: Set<String> = []
+    var isMarqueeSelecting: Bool = false
     var selectedGap: GapSelection?
     var selectedTimelineRange: TimelineRangeSelection?
     var selectedMediaAssetIds: Set<String> = []
@@ -104,6 +105,7 @@ final class EditorViewModel {
 
     var mediaAssets: [MediaAsset] = []
     let mediaVisualCache = MediaVisualCache()
+    let searchIndex = SearchIndexCoordinator()
     var projectURL: URL? {
         didSet {
             guard projectURL != oldValue else { return }
@@ -168,6 +170,7 @@ final class EditorViewModel {
             projectURL: { [weak self] in self?.projectURL }
         )
         agentService.editor = self
+        searchIndex.assetsProvider = { [weak self] in self?.mediaAssets ?? [] }
     }
 
     // MARK: - Document bridge
@@ -297,15 +300,21 @@ final class EditorViewModel {
         startFrame: Int,
         durationFrames: Int,
         addLinkedAudio: Bool = true,
-        linkedAudioTrackIndex: Int? = nil
+        linkedAudioTrackIndex: Int? = nil,
+        sourceSegment: ClosedRange<Double>? = nil
     ) -> [String] {
         guard timeline.tracks.indices.contains(trackIndex) else { return [] }
         let targetIsVideo = timeline.tracks[trackIndex].type == .video
         let shouldLink = addLinkedAudio && targetIsVideo && asset.type == .video && asset.hasAudio
         let linkGroupId: String? = shouldLink ? UUID().uuidString : nil
+        let trimStart = sourceSegment.map { secondsToFrame(seconds: $0.lowerBound, fps: timeline.fps) } ?? 0
 
         var clip = Clip(mediaRef: asset.id, mediaType: asset.type, sourceClipType: asset.type, startFrame: startFrame, durationFrames: durationFrames, transform: fitTransform(for: asset))
         clip.linkGroupId = linkGroupId
+        if sourceSegment != nil {
+            clip.trimStartFrame = trimStart
+            clip.trimEndFrame = trimStart + durationFrames
+        }
         timeline.tracks[trackIndex].clips.append(clip)
         sortClips(trackIndex: trackIndex)
         var ids = [clip.id]
@@ -316,6 +325,10 @@ final class EditorViewModel {
             guard timeline.tracks.indices.contains(audioTrackIdx) else { return ids }
             var audioClip = Clip(mediaRef: asset.id, mediaType: .audio, sourceClipType: asset.type, startFrame: startFrame, durationFrames: durationFrames)
             audioClip.linkGroupId = gid
+            if sourceSegment != nil {
+                audioClip.trimStartFrame = trimStart
+                audioClip.trimEndFrame = trimStart + durationFrames
+            }
             timeline.tracks[audioTrackIdx].clips.append(audioClip)
             sortClips(trackIndex: audioTrackIdx)
             ids.append(audioClip.id)
@@ -330,23 +343,31 @@ final class EditorViewModel {
         trackIndex: Int,
         startFrame: Int,
         addLinkedAudio: Bool = true,
-        linkedAudioTrackIndex: Int? = nil
+        linkedAudioTrackIndex: Int? = nil,
+        segments: [String: ClosedRange<Double>] = [:]
     ) -> [String] {
         var cursor = startFrame
         var clipIds: [String] = []
         for asset in assets {
-            let durationFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
+            let segment = segments[asset.id]
+            let durationFrames = clipDurationFrames(for: asset, segment: segment)
             clipIds.append(contentsOf: placeClip(
                 asset: asset,
                 trackIndex: trackIndex,
                 startFrame: cursor,
                 durationFrames: durationFrames,
                 addLinkedAudio: addLinkedAudio,
-                linkedAudioTrackIndex: linkedAudioTrackIndex
+                linkedAudioTrackIndex: linkedAudioTrackIndex,
+                sourceSegment: segment
             ))
             cursor += durationFrames
         }
         return clipIds
+    }
+
+    func clipDurationFrames(for asset: MediaAsset, segment: ClosedRange<Double>?) -> Int {
+        let seconds = segment.map { $0.upperBound - $0.lowerBound } ?? asset.duration
+        return max(1, secondsToFrame(seconds: seconds, fps: timeline.fps))
     }
 
     func findClip(id: String) -> ClipLocation? {

@@ -175,6 +175,7 @@ final class TimelineInputController {
                 editor.selectedClipIds.removeAll()
             }
             editor.selectedGap = hitTestGap(at: point, trackIndex: trackIndex, geometry: geometry)
+            editor.isMarqueeSelecting = true
             dragState = .marquee(DragState.MarqueeDrag(origin: point, baseSelection: editor.selectedClipIds))
         }
 
@@ -336,13 +337,15 @@ final class TimelineInputController {
             dragState = .fadeKnee(applyFadeKneeDrag(drag, cursorFrame: frame))
 
         case .marquee(var marq):
+            let previousRect = marq.current
             marq.current = NSRect(
                 x: min(marq.origin.x, point.x),
                 y: min(marq.origin.y, point.y),
                 width: abs(point.x - marq.origin.x),
                 height: abs(point.y - marq.origin.y)
             )
-            if marq.current.width > Layout.dragThreshold || marq.current.height > Layout.dragThreshold {
+            if marq.current.width > Layout.dragThreshold || marq.current.height > Layout.dragThreshold,
+               editor.selectedGap != nil {
                 editor.selectedGap = nil
             }
             var selected = marq.baseSelection
@@ -356,8 +359,19 @@ final class TimelineInputController {
             if !event.modifierFlags.contains(.option) {
                 selected = editor.expandToLinkGroup(selected)
             }
-            editor.selectedClipIds = selected
             dragState = .marquee(marq)
+            // Touch only what changed.
+            view.setNeedsDisplay(previousRect.union(marq.current).insetBy(dx: -2, dy: -2))
+            if selected != editor.selectedClipIds {
+                let flipped = selected.symmetricDifference(editor.selectedClipIds)
+                editor.selectedClipIds = selected
+                for (ti, track) in editor.timeline.tracks.enumerated() {
+                    for clip in track.clips where flipped.contains(clip.id) {
+                        view.setNeedsDisplay(geometry.clipRect(for: clip, trackIndex: ti).insetBy(dx: -2, dy: -2))
+                    }
+                }
+            }
+            return
 
         case .idle:
             break
@@ -442,7 +456,7 @@ final class TimelineInputController {
             }
 
         case .marquee:
-            break
+            editor.isMarqueeSelecting = false
 
         case .scrubPlayhead:
             finishPlayheadScrub()

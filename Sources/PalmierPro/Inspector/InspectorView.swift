@@ -35,10 +35,10 @@ struct InspectorView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Plain header
             HStack(spacing: AppTheme.Spacing.xs) {
-                Image(systemName: headerIcon)
+                Image(systemName: editor.isMarqueeSelecting ? "slider.horizontal.3" : headerIcon)
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
-                Text(headerTitle)
+                Text(editor.isMarqueeSelecting ? "Inspector" : headerTitle)
                     .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                 Spacer()
@@ -46,8 +46,9 @@ struct InspectorView: View {
             .padding(.horizontal, AppTheme.Spacing.lg)
             .panelHeaderBar()
 
-            // Content layer
-            if selectedVisualClip != nil || selectedAudioClip != nil {
+            if editor.isMarqueeSelecting {
+                marqueeSelectionSummary
+            } else if selectedVisualClip != nil || selectedAudioClip != nil {
                 clipInspectorContent()
             } else if let asset = selectedMediaAsset {
                 mediaAssetInspectorContent(asset)
@@ -57,18 +58,36 @@ struct InspectorView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: editor.selectedClipIds) { _, _ in
-            let isSingleText = selectedVisualClips.count + selectedAudioClips.count == 1
-                && selectedVisualClip?.mediaType == .text
-            if isSingleText {
-                preferredTab = .text
-            } else if preferredTab == .text {
-                preferredTab = .video
-            }
-            editor.cropEditingActive = false
+            if !editor.isMarqueeSelecting { resolvePreferredTab() }
+        }
+        .onChange(of: editor.isMarqueeSelecting) { _, selecting in
+            if !selecting { resolvePreferredTab() }
         }
         .onChange(of: preferredTab) { _, newTab in
             if newTab != .video { editor.cropEditingActive = false }
         }
+    }
+
+    private var marqueeSelectionSummary: some View {
+        VStack {
+            Spacer()
+            Text("\(editor.selectedClipIds.count) selected")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func resolvePreferredTab() {
+        let isSingleText = selectedVisualClips.count + selectedAudioClips.count == 1
+            && selectedVisualClip?.mediaType == .text
+        if isSingleText {
+            preferredTab = .text
+        } else if preferredTab == .text {
+            preferredTab = .video
+        }
+        editor.cropEditingActive = false
     }
 
     // MARK: - Project Metadata

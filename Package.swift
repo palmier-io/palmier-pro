@@ -16,6 +16,7 @@ let package = Package(
         .package(url: "https://github.com/clerk/clerk-convex-swift", from: "0.1.0"),
         .package(url: "https://github.com/clerk/clerk-ios", from: "1.0.0"),
         .package(url: "https://github.com/get-convex/convex-swift", from: "0.8.0"),
+        .package(url: "https://github.com/huggingface/swift-transformers", from: "1.3.3"),
     ],
     targets: [
         .executableTarget(
@@ -28,6 +29,7 @@ let package = Package(
                 .product(name: "ClerkConvex", package: "clerk-convex-swift"),
                 .product(name: "ClerkKit", package: "clerk-ios"),
                 .product(name: "ConvexMobile", package: "convex-swift"),
+                .product(name: "Tokenizers", package: "swift-transformers"),
             ],
             path: "Sources/PalmierPro",
             exclude: [

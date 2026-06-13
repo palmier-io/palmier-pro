@@ -99,10 +99,10 @@ extension EditorViewModel {
 
     /// Ripple insert: add clips at `atFrame` and push everything past it right by the
     /// insertion's duration on the target track and every sync-locked track.
-    func rippleInsertClips(assets: [MediaAsset], trackIndex: Int, atFrame: Int) {
+    func rippleInsertClips(assets: [MediaAsset], trackIndex: Int, atFrame: Int, segments: [String: ClosedRange<Double>] = [:]) {
         guard timeline.tracks.indices.contains(trackIndex) else { return }
         withTimelineSwap(actionName: "Ripple Insert Clips") {
-            let totalPush = assets.reduce(0) { $0 + secondsToFrame(seconds: $1.duration, fps: timeline.fps) }
+            let totalPush = assets.reduce(0) { $0 + clipDurationFrames(for: $1, segment: segments[$1.id]) }
 
             for ti in timeline.tracks.indices where ti == trackIndex || timeline.tracks[ti].syncLocked {
                 let shifts = RippleEngine.computeRipplePush(
@@ -116,7 +116,7 @@ extension EditorViewModel {
                     }
                 }
             }
-            createClips(from: assets, trackIndex: trackIndex, startFrame: atFrame)
+            createClips(from: assets, trackIndex: trackIndex, startFrame: atFrame, segments: segments)
             sortClips(trackIndex: trackIndex)
         }
     }
