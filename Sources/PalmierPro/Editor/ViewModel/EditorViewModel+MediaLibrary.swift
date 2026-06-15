@@ -295,6 +295,7 @@ extension EditorViewModel {
                 if let idx = self.mediaManifest.entries.firstIndex(where: { $0.id == mediaAsset.id }) {
                     self.mediaManifest.entries[idx].name = mediaAsset.name
                 }
+                self.moveAssetsToFolder(assetIds: [mediaAsset.id], folderId: self.mediaPanelCurrentFolderId)
             }
         }
     }
