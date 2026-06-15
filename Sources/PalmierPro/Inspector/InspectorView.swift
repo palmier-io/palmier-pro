@@ -613,7 +613,7 @@ struct InspectorView: View {
     private func scaleScrubField(clips: [Clip]) -> some View {
         ScrubbableNumberField(
             value: sharedClipValue(clips) { $0.sizeAt(frame: editor.activeFrame).width },
-            range: 0.01...5.0,
+            range: 0.01...(.infinity),
             displayMultiplier: 100,
             format: "%.0f",
             valueSuffix: "%",
