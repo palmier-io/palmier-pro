@@ -168,7 +168,7 @@ enum ImageVideoGenerator {
         if !hasAlpha {
             outputSettings[AVVideoColorPropertiesKey] = [
                 AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
-                AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+                AVVideoTransferFunctionKey: AVVideoTransferFunction_IEC_sRGB,
                 AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
             ]
         }

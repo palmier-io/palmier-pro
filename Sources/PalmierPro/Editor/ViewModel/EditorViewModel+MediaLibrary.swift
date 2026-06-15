@@ -303,14 +303,17 @@ extension EditorViewModel {
     static func compositeCapture(video: CGImage, textRoot: CALayer, canvas: CGSize) -> CGImage? {
         let width = Int(canvas.width)
         let height = Int(canvas.height)
+        let colorSpace = video.colorSpace?.model == .rgb
+            ? video.colorSpace!
+            : (CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB())
         guard let context = CGContext(
             data: nil,
             width: width,
             height: height,
             bitsPerComponent: 8,
             bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
         ) else {
             return nil
         }
