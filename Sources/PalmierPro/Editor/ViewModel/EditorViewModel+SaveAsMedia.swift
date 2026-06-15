@@ -56,6 +56,50 @@ extension EditorViewModel {
         }
     }
 
+    /// Save the selected timeline range (all tracks composited) as a new video
+    func saveTimelineRangeAsMedia() {
+        guard let range = validSelectedTimelineRange else { return }
+        let startFrame = range.startFrame
+        let frameCount = range.endFrame - range.startFrame
+        guard frameCount > 0 else { return }
+
+        let mediaDir: URL
+        if let projectURL {
+            mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
+            try? FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
+        } else {
+            mediaDir = FileManager.default.temporaryDirectory
+        }
+        let destURL = mediaDir.appendingPathComponent(Self.uniqueClipFilename(for: .video))
+
+        let placeholder = MediaAsset(url: destURL, type: .video, name: "Timeline range")
+        placeholder.generationStatus = .rendering
+        importMediaAsset(placeholder)
+
+        let timeline = self.timeline
+        let resolver = mediaResolver
+
+        Task { @MainActor [weak self] in
+            do {
+                let tempURL = try await TimelineRenderer.render(
+                    timeline: timeline,
+                    resolver: resolver,
+                    startFrame: startFrame,
+                    frameCount: frameCount,
+                    preset: AVAssetExportPresetHighestQuality
+                )
+                try? FileManager.default.removeItem(at: destURL)
+                try FileManager.default.moveItem(at: tempURL, to: destURL)
+                placeholder.generationStatus = .none
+                await self?.finalizeImportedAsset(placeholder)
+                Log.project.notice("saveTimelineRangeAsMedia ok frames=\(startFrame)..<\(startFrame + frameCount) out=\(destURL.lastPathComponent)")
+            } catch {
+                placeholder.generationStatus = .failed(error.localizedDescription)
+                Log.project.error("saveTimelineRangeAsMedia failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
     private static func uniqueClipFilename(for type: ClipType) -> String {
         let ext = type == .video ? "mp4" : "m4a"
         return "clip-\(UUID().uuidString.prefix(8)).\(ext)"

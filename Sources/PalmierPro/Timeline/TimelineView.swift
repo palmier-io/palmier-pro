@@ -763,6 +763,11 @@ final class TimelineView: NSView {
         let addItem = NSMenuItem(title: "Add Range to Chat", action: #selector(performAddTimelineRangeToChat(_:)), keyEquivalent: "")
         addItem.target = self
         menu.addItem(addItem)
+
+        let saveItem = NSMenuItem(title: "Save Range as Media", action: #selector(performSaveTimelineRangeAsMedia(_:)), keyEquivalent: "")
+        saveItem.target = self
+        menu.addItem(saveItem)
+
         addClearRangeItem(to: menu)
     }
 
@@ -787,6 +792,10 @@ final class TimelineView: NSView {
 
     @objc private func performAddTimelineRangeToChat(_ sender: Any?) {
         editor.agentService.attachSelectedTimelineRangeMention()
+    }
+
+    @objc private func performSaveTimelineRangeAsMedia(_ sender: Any?) {
+        editor.saveTimelineRangeAsMedia()
     }
 
     @objc private func performClearTimelineRange(_ sender: Any?) {

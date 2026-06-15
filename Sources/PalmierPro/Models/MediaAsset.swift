@@ -34,15 +34,20 @@ final class MediaAsset: Identifiable {
         case none
         case generating
         case downloading
+        case rendering
         case failed(String)
     }
 
     var isGenerated: Bool { generationInput != nil }
     var isGenerating: Bool {
-        generationStatus == .generating || generationStatus == .downloading
+        generationStatus == .generating || generationStatus == .downloading || generationStatus == .rendering
     }
     var generatingLabel: String {
-        generationStatus == .downloading ? "Downloading..." : "Generating..."
+        switch generationStatus {
+        case .downloading: "Downloading..."
+        case .rendering: "Rendering..."
+        default: "Generating..."
+        }
     }
 
     init(id: String = UUID().uuidString, url: URL, type: ClipType, name: String, duration: Double = 0, thumbnail: NSImage? = nil, generationInput: GenerationInput? = nil) {
