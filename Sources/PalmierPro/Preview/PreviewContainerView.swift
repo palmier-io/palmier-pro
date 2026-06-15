@@ -15,7 +15,7 @@ struct PreviewContainerView: View {
                 .panelHeaderBar()
 
             GeometryReader { geo in
-                let aspect = CGFloat(editor.timeline.width) / CGFloat(editor.timeline.height)
+                let aspect = generatingAspect ?? CGFloat(editor.timeline.width) / CGFloat(editor.timeline.height)
                 let fitSize = fitSize(in: geo.size, aspect: aspect)
                 let scaledWidth = fitSize.width * editor.canvasZoom
                 let scaledHeight = fitSize.height * editor.canvasZoom
@@ -306,6 +306,13 @@ struct PreviewContainerView: View {
     private var activeMediaAsset: MediaAsset? {
         guard case .mediaAsset(let id, _, _) = editor.activePreviewTab else { return nil }
         return editor.mediaAssets.first { $0.id == id }
+    }
+
+    private var generatingAspect: CGFloat? {
+        guard let asset = activeMediaAsset, asset.isGenerating else { return nil }
+        let parts = (asset.generationInput?.aspectRatio ?? "").split(separator: ":").compactMap { Double($0) }
+        guard parts.count == 2, parts[0] > 0, parts[1] > 0 else { return nil }
+        return CGFloat(parts[0] / parts[1])
     }
 
     private var activeFailedError: String? {
