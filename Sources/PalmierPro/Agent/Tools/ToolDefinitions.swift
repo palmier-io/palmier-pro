@@ -20,6 +20,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case importMedia = "import_media"
     case listModels = "list_models"
     case inspectMedia = "inspect_media"
+    case inspectTimeline = "inspect_timeline"
     case searchMedia = "search_media"
     case listFolders = "list_folders"
     case createFolder = "create_folder"
@@ -67,6 +68,17 @@ enum ToolDefinitions {
                     "overview": ["type": "boolean", "description": "Video only. One storyboard grid of visually distinct, timestamped moments instead of frames — far more coverage per token; few tiles means static footage. maxFrames ignored."],
                 ],
                 required: ["mediaRef"]
+            )
+        ),
+        AgentTool(
+            name: .inspectTimeline,
+            description: "See the composited timeline — what the user actually sees in the preview at a given frame: all video tracks stacked with their transforms, opacity, crop, and keyframes applied, plus text and caption overlays baked in. Use this to verify your edits landed (a PIP's position, a title's placement, layer order) — inspect_media shows the raw source asset, not the cut.\n\nFrames are project frames (from get_timeline). Pass a single startFrame for one composited frame; add endFrame to sample maxFrames evenly across [startFrame, endFrame) for a transition or sequence. Frames past content render black. Returns frames downscaled for token efficiency, with the frameNumbers sampled.",
+            inputSchema: objectSchema(
+                properties: [
+                    "startFrame": ["type": "integer", "description": "Project frame to render (default 0). With no endFrame, a single frame is returned."],
+                    "endFrame": ["type": "integer", "description": "Optional. Sample maxFrames evenly across [startFrame, endFrame) instead of one frame."],
+                    "maxFrames": ["type": "integer", "description": "Frames to sample when endFrame is set (default 6, max 12)."],
+                ]
             )
         ),
         AgentTool(

@@ -300,7 +300,7 @@ extension EditorViewModel {
         }
     }
 
-    private static func compositeCapture(video: CGImage, textRoot: CALayer, canvas: CGSize) -> CGImage? {
+    static func compositeCapture(video: CGImage, textRoot: CALayer, canvas: CGSize) -> CGImage? {
         let width = Int(canvas.width)
         let height = Int(canvas.height)
         guard let context = CGContext(
