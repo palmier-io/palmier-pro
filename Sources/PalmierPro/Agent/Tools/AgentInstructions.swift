@@ -38,6 +38,10 @@ enum AgentInstructions {
           startSeconds/endSeconds for full frames. Plan splits, trims, and captions from \
           segment timestamps; wordTimestamps=true on a narrow window for exact word \
           boundaries.
+        - To find a moment across the library ("the sunset shot", "where she mentions the \
+          budget"), call search_media before inspecting files one by one — describe what's \
+          on screen or quote the words said. Hits are source-second ranges ready to convert \
+          into add_clips trims.
 
         # Editing
         - Placements must match track type: video on video tracks, audio on audio tracks.

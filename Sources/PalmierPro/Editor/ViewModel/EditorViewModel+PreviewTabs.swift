@@ -29,19 +29,19 @@ extension EditorViewModel {
         }
     }
 
-    func selectMediaAsset(_ asset: MediaAsset) {
-        openPreviewTab(for: asset)
+    func selectMediaAsset(_ asset: MediaAsset, atSourceFrame frame: Int = 0) {
+        openPreviewTab(for: asset, atSourceFrame: frame)
         syncSelectionToActiveTab()
         showMediaPanelMediaTab()
     }
 
-    func openPreviewTab(for asset: MediaAsset) {
+    func openPreviewTab(for asset: MediaAsset, atSourceFrame frame: Int = 0) {
         let tab = PreviewTab.mediaAsset(id: asset.id, name: asset.name, type: asset.type)
         if !previewTabs.contains(where: { $0.id == tab.id }) {
             previewTabs.append(tab)
         }
         activePreviewTabId = tab.id
-        sourcePlayheadFrame = 0
+        sourcePlayheadFrame = frame
         videoEngine?.activateTab(tab)
         pushPreviewHistory(tab.id)
     }

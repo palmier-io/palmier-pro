@@ -21,7 +21,6 @@ enum OverviewRenderer {
     private static let columns = 6
     private static let maxTiles = 36
     private static let candidateTarget = 120.0
-    private static let gridCells = 8
     private static let promoteDiff: Float = 12
     private static let labelHeight = 14
     private static let jpegQuality: CGFloat = 0.7
@@ -46,11 +45,9 @@ enum OverviewRenderer {
             guard case .success(_, let image, let actualTime) = result else { continue }
             let t = actualTime.seconds
             if let last = tiles.last, t <= last.t { continue }
-            guard let grid = lumaGrid(image) else { continue }
+            guard let grid = LumaGrid.compute(image) else { continue }
             if let last = lastGrid {
-                var diff: Float = 0
-                for i in 0..<grid.count { diff += abs(grid[i] - last[i]) }
-                guard diff / Float(grid.count) > promoteDiff else { continue }
+                guard LumaGrid.meanDiff(grid, last) > promoteDiff else { continue }
             }
             lastGrid = grid
             tiles.append((t, image))
@@ -65,22 +62,6 @@ enum OverviewRenderer {
             throw RenderError(message: "Failed to compose overview")
         }
         return Sheet(jpeg: jpeg, timestamps: tiles.map(\.t))
-    }
-
-    /// Mean luma per grid cell via a downsampling draw — cheap near-duplicate fingerprint
-    private static func lumaGrid(_ image: CGImage) -> [Float]? {
-        let n = gridCells
-        var pixels = [UInt8](repeating: 0, count: n * n * 4)
-        guard let ctx = CGContext(
-            data: &pixels, width: n, height: n, bitsPerComponent: 8, bytesPerRow: n * 4,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return nil }
-        ctx.interpolationQuality = .high
-        ctx.draw(image, in: CGRect(x: 0, y: 0, width: n, height: n))
-        return (0..<n * n).map { i in
-            Float(pixels[i * 4]) * 0.299 + Float(pixels[i * 4 + 1]) * 0.587 + Float(pixels[i * 4 + 2]) * 0.114
-        }
     }
 
     private static func render(_ tiles: [(t: Double, image: CGImage)]) -> CGImage? {

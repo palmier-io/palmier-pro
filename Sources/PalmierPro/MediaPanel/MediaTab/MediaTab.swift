@@ -25,6 +25,10 @@ struct MediaTab: View {
 
     // Drop + marquee
     @State var isDropTargeted = false
+    @State var visualHits: [VisualSearch.Hit] = []
+    @State var spokenHits: [TranscriptSearch.Hit] = []
+    @State var collapsedSearchSections: Set<String> = []
+    @State var momentSearchTask: Task<Void, Never>?
     @State var assetFrames: [String: CGRect] = [:]
     @State var marqueeSelection = MarqueeSelection()
 
@@ -93,13 +97,13 @@ struct MediaTab: View {
                     VStack(spacing: 0) {
                         if showsEmptyState {
                             emptyStateView
+                        } else if !trimmedSearchQuery.isEmpty {
+                            searchResults
                         } else {
-                            VStack(spacing: 0) {
-                                switch viewMode {
-                                case .folder: mediaGridView
-                                case .flat: flatGridView
-                                case .grouped: groupedGridView
-                                }
+                            switch viewMode {
+                            case .folder: mediaGridView
+                            case .flat: flatGridView
+                            case .grouped: groupedGridView
                             }
                         }
                     }
@@ -116,6 +120,7 @@ struct MediaTab: View {
                 .animation(.easeInOut(duration: AppTheme.Anim.transition), value: editor.mediaPanelToast)
             }
             .layoutPriority(1)
+            .onChange(of: searchQuery) { _, _ in scheduleMomentSearch() }
 
             if editor.showGenerationPanel && !mediaAreaCollapsed {
                 GenerationView(maxPanelHeight: generationPanelMaxHeight)
@@ -268,6 +273,8 @@ struct MediaTab: View {
             overflowMenu
 
             Spacer(minLength: 0)
+
+            searchIndexStatus
         }
         .frame(height: Layout.panelHeaderHeight)
     }

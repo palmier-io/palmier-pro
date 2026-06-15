@@ -1,0 +1,10 @@
+torch==2.7.0
+transformers>=4.49,<5
+coremltools>=9.0,<10
+pillow
+# numpy 2.x raises TypeError on size-1 array→scalar casts inside coremltools' aten::Int handler
+numpy<2
+# k-means palettization
+scikit-learn
+sentencepiece
+protobuf

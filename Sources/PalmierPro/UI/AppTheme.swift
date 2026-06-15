@@ -195,6 +195,7 @@ enum AppTheme {
     // MARK: - Icon sizes (square frame dimensions)
 
     enum IconSize {
+        static let xxs: CGFloat = 12
         static let xs: CGFloat = 14
         static let sm: CGFloat = 18
         static let smMd: CGFloat = 20

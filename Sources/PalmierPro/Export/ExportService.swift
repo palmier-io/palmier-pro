@@ -62,7 +62,12 @@ enum ExportError: LocalizedError {
 @MainActor
 final class ExportService {
     var progress: Double = 0
-    var isExporting = false
+    var isExporting = false {
+        didSet {
+            guard isExporting != oldValue else { return }
+            isExporting ? SearchIndexCoordinator.exportDidBegin() : SearchIndexCoordinator.exportDidEnd()
+        }
+    }
     var error: String?
 
     func export(

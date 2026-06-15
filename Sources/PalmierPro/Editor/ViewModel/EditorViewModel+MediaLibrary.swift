@@ -34,6 +34,17 @@ extension EditorViewModel {
         }
     }
 
+    /// Source-second ranges carried by search-moment drags, keyed by asset id.
+    func segmentsFromDragPayload(_ payload: String) -> [String: ClosedRange<Double>] {
+        var segments: [String: ClosedRange<Double>] = [:]
+        for line in payload.split(separator: "\n") {
+            guard let id = MediaTab.assetId(fromDragString: String(line)),
+                  let segment = MediaTab.assetSegment(fromDragString: String(line)) else { continue }
+            segments[id] = segment
+        }
+        return segments
+    }
+
     func dismissMediaPanelToast() {
         mediaPanelToast = nil
     }
@@ -315,6 +326,7 @@ extension EditorViewModel {
     func finalizeImportedAsset(_ asset: MediaAsset) async {
         await asset.loadMetadata()
         updateManifestMetadata(for: asset)
+        searchIndex.schedule(asset)
         switch asset.type {
         case .video:
             mediaVisualCache.generateWaveform(for: asset)
