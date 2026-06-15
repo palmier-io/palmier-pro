@@ -11,6 +11,19 @@ enum EditAction {
     static let editMaxDurationSeconds: Double = 10.0
 
     @MainActor
+    static func available(for asset: MediaAsset, effectiveDurationOverride: Double? = nil) -> [EditAction] {
+        let candidates: [EditAction]
+        switch asset.type {
+        case .image: candidates = [.upscale, .edit, .rerun, .createVideo]
+        case .video: candidates = [.upscale, .edit, .generateMusic, .generateSFX, .rerun]
+        case .audio, .text: candidates = [.upscale, .edit, .rerun]
+        }
+        return candidates.filter {
+            $0.availability(for: asset, effectiveDurationOverride: effectiveDurationOverride).isAvailable
+        }
+    }
+
+    @MainActor
     func availability(for asset: MediaAsset, effectiveDurationOverride: Double? = nil) -> EditActionAvailability {
         switch self {
         case .upscale:

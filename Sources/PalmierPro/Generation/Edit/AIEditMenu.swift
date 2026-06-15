@@ -47,16 +47,7 @@ struct AIEditMenu: View {
     }
 
     private var availableActions: [EditAction] {
-        let candidates: [EditAction]
-        switch asset.type {
-        case .image:
-            candidates = [.upscale, .edit, .rerun, .createVideo]
-        case .video:
-            candidates = [.upscale, .edit, .generateMusic, .generateSFX, .rerun]
-        case .audio, .text:
-            candidates = [.upscale, .edit, .rerun]
-        }
-        return candidates.filter { $0.availability(for: asset).isAvailable }
+        EditAction.available(for: asset)
     }
 
     private func runUpscale(_ model: UpscaleModelConfig) {
@@ -65,12 +56,12 @@ struct AIEditMenu: View {
 
     private func edit() {
         guard let stored = EditSubmitter.editSeed(for: asset) else { return }
-        seedPanel(stored: stored)
+        editor.seedGenerationPanel(asset: asset, stored: stored)
     }
 
     private func videoAudio(kind: VideoToAudioEditKind) {
         guard let stored = EditSubmitter.videoAudioSeed(for: asset, kind: kind) else { return }
-        seedPanel(stored: stored)
+        editor.seedGenerationPanel(asset: asset, stored: stored)
     }
 
     private func rerun() {
@@ -78,20 +69,12 @@ struct AIEditMenu: View {
         if UpscaleModelConfig.allIds.contains(modelId) {
             _ = try? EditSubmitter.rerun(asset: asset, editor: editor)
         } else if let stored = asset.generationInput {
-            seedPanel(stored: stored)
+            editor.seedGenerationPanel(asset: asset, stored: stored)
         }
     }
 
     private func createVideo(asReference: Bool) {
         guard let stored = EditSubmitter.createVideoSeed(for: asset, asReference: asReference) else { return }
-        seedPanel(stored: stored)
-    }
-
-    private func seedPanel(stored: GenerationInput) {
-        editor.pendingEditReplacementClipId = nil
-        editor.pendingEditTrimmedSource = nil
-        editor.pendingEditAudioPlacement = nil
-        editor.pendingPanelSeed = PendingPanelSeed(asset: asset, stored: stored)
-        editor.showGenerationPanel = true
+        editor.seedGenerationPanel(asset: asset, stored: stored)
     }
 }

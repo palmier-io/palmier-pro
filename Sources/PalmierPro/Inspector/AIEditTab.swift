@@ -360,11 +360,13 @@ struct AIEditTab: View {
         allowsReplacement: Bool = true,
         audioPlacement: PendingAudioPlacement? = nil
     ) {
-        editor.pendingEditReplacementClipId = (allowsReplacement && shouldReplace ? clipId : nil)
-        editor.pendingEditTrimmedSource = trimmed
-        editor.pendingEditAudioPlacement = audioPlacement
-        editor.pendingPanelSeed = PendingPanelSeed(asset: asset, stored: stored)
-        editor.showGenerationPanel = true
+        editor.seedGenerationPanel(
+            asset: asset,
+            stored: stored,
+            replacementClipId: allowsReplacement && shouldReplace ? clipId : nil,
+            trimmedSource: trimmed,
+            audioPlacement: audioPlacement
+        )
     }
 
     private func pendingAudioPlacement(actionName: String) -> PendingAudioPlacement? {

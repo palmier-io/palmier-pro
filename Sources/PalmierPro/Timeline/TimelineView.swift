@@ -685,56 +685,65 @@ final class TimelineView: NSView {
         }
 
         let menu = NSMenu()
+        menu.autoenablesItems = false
         let targetClipIds = selectedClipIdsInTimelineOrder()
 
-        let addToChatItem = NSMenuItem(title: "Add to Chat", action: #selector(performAddClipsToChat(_:)), keyEquivalent: "")
-        addToChatItem.target = self
-        addToChatItem.representedObject = targetClipIds
-        menu.addItem(addToChatItem)
-        menu.addItem(.separator())
+        let singleLinkGroup = editor.selectedClipIds == editor.expandToLinkGroup([clip.id])
 
+        // Timeline actions
+        var timelineItems: [NSMenuItem] = []
         let copyItem = NSMenuItem(title: "Copy", action: #selector(performCopyClips(_:)), keyEquivalent: "")
         copyItem.target = self
-        menu.addItem(copyItem)
-
+        timelineItems.append(copyItem)
         if editor.canPasteClips {
             let pasteItem = NSMenuItem(title: "Paste", action: #selector(performPasteClips(_:)), keyEquivalent: "")
             pasteItem.target = self
             pasteItem.representedObject = ["trackIndex": hit.trackIndex, "frame": clickFrame] as [String: Any]
-            menu.addItem(pasteItem)
+            timelineItems.append(pasteItem)
+        }
+        if editor.canLinkSelected {
+            let item = NSMenuItem(title: "Link", action: #selector(performLink(_:)), keyEquivalent: "")
+            item.target = self
+            timelineItems.append(item)
+        }
+        if editor.canUnlinkSelected {
+            let item = NSMenuItem(title: "Unlink", action: #selector(performUnlink(_:)), keyEquivalent: "")
+            item.target = self
+            timelineItems.append(item)
         }
 
-        if clip.mediaType != .text, editor.selectedClipIds == editor.expandToLinkGroup([clip.id]) {
-            menu.addItem(.separator())
+        // AI
+        var aiItems: [NSMenuItem] = []
+        let addToChatItem = NSMenuItem(title: "Add to Chat", action: #selector(performAddClipsToChat(_:)), keyEquivalent: "")
+        addToChatItem.target = self
+        addToChatItem.representedObject = targetClipIds
+        aiItems.append(addToChatItem)
+        if let aiEditSubmenu = aiEditSubmenu(for: clip.id) {
+            let aiEditItem = NSMenuItem(title: "AI Edit", action: nil, keyEquivalent: "")
+            aiEditItem.submenu = aiEditSubmenu
+            aiItems.append(aiEditItem)
+        }
+
+        // Media
+        var mediaItems: [NSMenuItem] = []
+        if clip.mediaType != .text, singleLinkGroup {
             let swapItem = NSMenuItem(title: "Swap Media", action: #selector(performSwapMedia(_:)), keyEquivalent: "")
             swapItem.target = self
             swapItem.representedObject = clip.id
-            menu.addItem(swapItem)
+            mediaItems.append(swapItem)
         }
-
         if clip.mediaType == .video || clip.mediaType == .audio {
-            menu.addItem(.separator())
-            let item = NSMenuItem(
-                title: "Save as Media",
-                action: #selector(performSaveAsMedia(_:)),
-                keyEquivalent: ""
-            )
+            let item = NSMenuItem(title: "Save as Media", action: #selector(performSaveAsMedia(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = clip.id
-            menu.addItem(item)
+            mediaItems.append(item)
         }
-        if editor.canLinkSelected {
-            menu.addItem(.separator())
-            let item = NSMenuItem(title: "Link", action: #selector(performLink(_:)), keyEquivalent: "")
-            item.target = self
-            menu.addItem(item)
+
+        for group in [timelineItems, aiItems, mediaItems] where !group.isEmpty {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            group.forEach { menu.addItem($0) }
         }
-        if editor.canUnlinkSelected {
-            if !editor.canLinkSelected { menu.addItem(.separator()) }
-            let item = NSMenuItem(title: "Unlink", action: #selector(performUnlink(_:)), keyEquivalent: "")
-            item.target = self
-            menu.addItem(item)
-        }
+
         if clickedRange {
             menu.addItem(.separator())
             addTimelineRangeItems(to: menu)
