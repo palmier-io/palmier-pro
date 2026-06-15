@@ -228,7 +228,7 @@ extension EditorViewModel {
         defer { undoManager?.endUndoGrouping() }
         let before = timeline
         undoManager?.disableUndoRegistration()
-        timeline.tracks.insert(Track(type: .video, label: "Captions"), at: 0)
+        timeline.tracks.insert(Track(type: .video), at: 0)
         let ids = placeTextClips(specs)
         undoManager?.enableUndoRegistration()
         guard !ids.isEmpty else {

@@ -144,9 +144,7 @@ struct CaptionTab: View {
     }
 
     private func trackTitle(_ index: Int) -> String {
-        let display = editor.timelineTrackDisplayLabel(at: index)
-        let label = editor.timeline.tracks[index].label
-        return label == display ? display : "\(display) · \(label)"
+        editor.timelineTrackDisplayLabel(at: index)
     }
 
     private func languageName(_ loc: Locale) -> String {

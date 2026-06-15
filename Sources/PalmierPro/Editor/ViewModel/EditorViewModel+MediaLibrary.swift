@@ -410,7 +410,7 @@ extension EditorViewModel {
         let durationFrames = max(1, secondsToFrame(seconds: Defaults.textDurationSeconds, fps: timeline.fps))
 
         // Index 0 is the topmost slot in the timeline UI.
-        let trackIdx = insertTrack(at: 0, type: .video, label: "T\(zones.videoTrackCount + 1)")
+        let trackIdx = insertTrack(at: 0, type: .video)
 
         let canvasW = Double(timeline.width)
         let canvasH = Double(timeline.height)

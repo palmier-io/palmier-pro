@@ -6,9 +6,9 @@ extension EditorViewModel {
     // MARK: - Add / remove
 
     @discardableResult
-    func insertTrack(at index: Int, type: ClipType, label: String) -> Int {
+    func insertTrack(at index: Int, type: ClipType) -> Int {
         let clamped = partitionedInsertionIndex(for: type, requested: index)
-        let track = Track(type: type, label: label)
+        let track = Track(type: type)
         withTimelineSwap(actionName: "Add Track") {
             timeline.tracks.insert(track, at: clamped)
         }
@@ -20,8 +20,14 @@ extension EditorViewModel {
         guard timeline.tracks.indices.contains(trackIndex) else { return "" }
         let type = timeline.tracks[trackIndex].type
         var n = 0
-        for i in 0...trackIndex where timeline.tracks[i].type == type {
-            n += 1
+        if type == .audio {
+            for i in 0...trackIndex where timeline.tracks[i].type == type {
+                n += 1
+            }
+        } else {
+            for i in trackIndex..<zones.firstAudioIndex where timeline.tracks[i].type == type {
+                n += 1
+            }
         }
         return "\(type.trackLabelPrefix)\(n)"
     }

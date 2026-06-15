@@ -32,6 +32,8 @@ extension ToolExecutor {
         if var tracks = dict["tracks"] as? [[String: Any]] {
             for i in tracks.indices {
                 tracks[i] = Self.compactTrack(tracks[i], window: window)
+                // Report the displayed label (mirrored video numbering), not the stored seed.
+                tracks[i]["label"] = editor.timelineTrackDisplayLabel(at: i)
             }
             dict["tracks"] = tracks
         }
@@ -264,6 +266,8 @@ extension ToolExecutor {
                 throw ToolError("Asset \(asset.id) is still downloading. Poll get_media and retry once generationStatus becomes 'none'.")
             case .generating:
                 throw ToolError("Asset \(asset.id) is still generating. Poll get_media and retry once generationStatus becomes 'none'.")
+            case .rendering:
+                throw ToolError("Asset \(asset.id) is still rendering. Poll get_media and retry once generationStatus becomes 'none'.")
             case .failed(let msg):
                 throw ToolError("Asset \(asset.id) failed: \(msg)")
             case .none:
@@ -542,6 +546,7 @@ extension ToolExecutor {
         case .none: "none"
         case .generating: "generating"
         case .downloading: "downloading"
+        case .rendering: "rendering"
         case .failed(let message): "failed: \(message)"
         }
     }

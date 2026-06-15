@@ -162,18 +162,19 @@ extension EditorViewModel {
     fileprivate func validateShifts(trackIndex: Int, shifts: [ClipShift]) -> String? {
         guard !shifts.isEmpty, timeline.tracks.indices.contains(trackIndex) else { return nil }
         let track = timeline.tracks[trackIndex]
+        let label = timelineTrackDisplayLabel(at: trackIndex)
         let shiftMap = Dictionary(uniqueKeysWithValues: shifts.map { ($0.clipId, $0.newStartFrame) })
         var intervals: [FrameRange] = []
         for clip in track.clips {
             let start = shiftMap[clip.id] ?? clip.startFrame
             if start < 0 {
-                return "Sync-locked track \"\(track.label)\" would move past the timeline start."
+                return "Sync-locked track \"\(label)\" would move past the timeline start."
             }
             intervals.append(FrameRange(start: start, end: start + clip.durationFrames))
         }
         intervals.sort { $0.start < $1.start }
         for i in 1..<intervals.count where intervals[i].start < intervals[i-1].end {
-            return "Sync-locked track \"\(track.label)\" doesn't have room to ripple."
+            return "Sync-locked track \"\(label)\" doesn't have room to ripple."
         }
         return nil
     }

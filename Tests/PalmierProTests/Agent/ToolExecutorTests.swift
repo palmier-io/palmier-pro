@@ -88,8 +88,8 @@ struct ToolExecutorReadOnlyTests {
 
     @Test func getTimelineReflectsCurrentTracksAndFrame() async throws {
         let timeline = Fixtures.timeline(tracks: [
-            Fixtures.videoTrack(label: "V1", clips: [Fixtures.clip(start: 0, duration: 50)]),
-            Fixtures.audioTrack(label: "A1", clips: [Fixtures.clip(start: 0, duration: 100)]),
+            Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 50)]),
+            Fixtures.audioTrack(clips: [Fixtures.clip(start: 0, duration: 100)]),
         ])
         let h = ToolHarness(timeline: timeline)
         h.editor.currentFrame = 42
@@ -136,7 +136,7 @@ struct ToolExecutorReadOnlyTests {
             Keyframe(frame: 30, value: 0.987654321),
         ])
         let timeline = Fixtures.timeline(tracks: [
-            Fixtures.videoTrack(label: "V1", clips: [clip]),
+            Fixtures.videoTrack(clips: [clip]),
         ])
         let h = ToolHarness(timeline: timeline)
 
@@ -157,7 +157,7 @@ struct ToolExecutorReadOnlyTests {
 
     @Test func getTimelineOmitsDefaultValuedFields() async throws {
         let timeline = Fixtures.timeline(tracks: [
-            Fixtures.videoTrack(label: "V1", clips: [Fixtures.clip(id: "c1", start: 0, duration: 50)]),
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 50)]),
         ])
         let h = ToolHarness(timeline: timeline)
 
@@ -191,7 +191,7 @@ struct ToolExecutorReadOnlyTests {
         }
         let video = Fixtures.clip(id: "v1", start: 0, duration: 90)
         let timeline = Fixtures.timeline(tracks: [
-            Fixtures.videoTrack(label: "V1", clips: [video] + clips),
+            Fixtures.videoTrack(clips: [video] + clips),
         ])
         let h = ToolHarness(timeline: timeline)
 
@@ -227,7 +227,7 @@ struct ToolExecutorReadOnlyTests {
         }
         clips[1].textStyle?.color = TextStyle.RGBA(r: 1, g: 0, b: 0, a: 1)
         let timeline = Fixtures.timeline(tracks: [
-            Fixtures.videoTrack(label: "V1", clips: clips),
+            Fixtures.videoTrack(clips: clips),
         ])
         let h = ToolHarness(timeline: timeline)
 
@@ -244,7 +244,7 @@ struct ToolExecutorReadOnlyTests {
 
     @Test func getTimelineWindowsClipsToRequestedRange() async throws {
         let timeline = Fixtures.timeline(tracks: [
-            Fixtures.videoTrack(label: "V1", clips: [
+            Fixtures.videoTrack(clips: [
                 Fixtures.clip(id: "a", start: 0, duration: 50),
                 Fixtures.clip(id: "b", start: 100, duration: 50),
                 Fixtures.clip(id: "c", start: 200, duration: 50),
@@ -267,7 +267,7 @@ struct ToolExecutorReadOnlyTests {
             Self.captionClip(id: "cap-\(i)", gid: "g1", start: i * 30, duration: 30, text: "t\(i)")
         }
         let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
-            Fixtures.videoTrack(label: "V1", clips: clips),
+            Fixtures.videoTrack(clips: clips),
         ]))
 
         let json = try await h.runOK("get_timeline") as? [String: Any]
@@ -290,7 +290,7 @@ struct ToolExecutorReadOnlyTests {
         clips[0].trimEndFrame = 3
         clips[1].trimStartFrame = 5
         let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
-            Fixtures.videoTrack(label: "V1", clips: clips),
+            Fixtures.videoTrack(clips: clips),
         ]))
 
         let json = try await h.runOK("get_timeline") as? [String: Any]
@@ -443,7 +443,7 @@ struct ToolExecutorClipTests {
     /// Build a harness with one video track and one video asset ready to place.
     private func setupWithVideoTrack() async -> (ToolHarness, MediaAsset) {
         let h = ToolHarness()
-        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video")
+        _ = h.editor.insertTrack(at: 0, type: .video)
         let asset = h.addAsset(type: .video)
         return (h, asset)
     }
@@ -499,7 +499,7 @@ struct ToolExecutorClipTests {
     @Test func addClipsRejectsIncompatibleAssetForTrack() async throws {
         // Audio asset onto a video track.
         let h = ToolHarness()
-        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video")
+        _ = h.editor.insertTrack(at: 0, type: .video)
         let audio = h.addAsset(type: .audio)
         let result = await h.runRaw("add_clips", args: [
             "entries": [[
@@ -623,7 +623,7 @@ struct ToolExecutorClipTests {
 
     @Test func addClipsRejectsMixedTrackIndexUsage() async throws {
         let h = ToolHarness()
-        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video")
+        _ = h.editor.insertTrack(at: 0, type: .video)
         let a = h.addAsset(type: .video)
         let b = h.addAsset(type: .video)
         let result = await h.runRaw("add_clips", args: [
@@ -761,7 +761,7 @@ struct ToolExecutorClipTests {
 
     @Test func moveClipsChangesTrackAndFrame() async throws {
         let (h, asset) = await setupWithVideoTrack()
-        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video")
+        _ = h.editor.insertTrack(at: 0, type: .video)
         let destTrackId = h.editor.timeline.tracks[1].id
         let clipId = await addedClip(in: h, asset: asset)
 
@@ -790,7 +790,7 @@ struct ToolExecutorClipTests {
 
     @Test func moveClipsRejectsIncompatibleTrack() async throws {
         let (h, asset) = await setupWithVideoTrack()
-        _ = h.editor.insertTrack(at: 0, type: .audio, label: "Audio")
+        _ = h.editor.insertTrack(at: 0, type: .audio)
         let clipId = await addedClip(in: h, asset: asset)
         let audioIdx = h.editor.timeline.tracks.firstIndex(where: { $0.type == .audio })!
         let result = await h.runRaw("move_clips", args: [
@@ -821,7 +821,7 @@ struct ToolExecutorClipTests {
     /// then return the resulting (videoClipId, audioClipId).
     private func setupLinkedPair() async -> (ToolHarness, videoId: String, audioId: String) {
         let h = ToolHarness()
-        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video")
+        _ = h.editor.insertTrack(at: 0, type: .video)
         let asset = h.addAsset(type: .video, duration: 5, hasAudio: true)
         let ids = h.editor.placeClip(asset: asset, trackIndex: 0, startFrame: 0, durationFrames: 60)
         return (h, ids[0], ids[1])
@@ -847,7 +847,7 @@ struct ToolExecutorClipTests {
     @Test func moveClipsTrackChangeDoesNotMoveLinkedPartner() async throws {
         let (h, videoId, audioId) = await setupLinkedPair()
         // Add a second video track so the video has somewhere to move to.
-        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video2")
+        _ = h.editor.insertTrack(at: 0, type: .video)
         guard let audioLoc = h.editor.findClip(id: audioId) else { Issue.record("setup failed"); return }
         let audioTrackId = h.editor.timeline.tracks[audioLoc.trackIndex].id
 
@@ -994,7 +994,7 @@ struct ToolExecutorClipTests {
     /// Place a video clip (no linked audio) and return (harness, clipId).
     private func setupClipForKeyframes() async -> (ToolHarness, String) {
         let h = ToolHarness()
-        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video")
+        _ = h.editor.insertTrack(at: 0, type: .video)
         let asset = h.addAsset(type: .video)
         let ids = h.editor.placeClip(asset: asset, trackIndex: 0, startFrame: 0, durationFrames: 60)
         return (h, ids[0])
@@ -1152,7 +1152,7 @@ struct ToolExecutorTextFolderTests {
 
     @Test func addTextsPlacesOnExplicitTrack() async throws {
         let h = ToolHarness()
-        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video")
+        _ = h.editor.insertTrack(at: 0, type: .video)
         let result = await h.runRaw("add_texts", args: [
             "entries": [[
                 "trackIndex": 0,
@@ -1170,7 +1170,7 @@ struct ToolExecutorTextFolderTests {
 
     @Test func addTextsRejectsAudioTargetTrack() async throws {
         let h = ToolHarness()
-        _ = h.editor.insertTrack(at: 0, type: .audio, label: "Audio")
+        _ = h.editor.insertTrack(at: 0, type: .audio)
         let result = await h.runRaw("add_texts", args: [
             "entries": [[
                 "trackIndex": 0,
@@ -1185,7 +1185,7 @@ struct ToolExecutorTextFolderTests {
 
     @Test func addTextsRejectsMixedTrackIndexUsage() async throws {
         let h = ToolHarness()
-        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video")
+        _ = h.editor.insertTrack(at: 0, type: .video)
         let result = await h.runRaw("add_texts", args: [
             "entries": [
                 ["trackIndex": 0, "startFrame": 0, "durationFrames": 30, "content": "A"],
@@ -1198,7 +1198,7 @@ struct ToolExecutorTextFolderTests {
 
     @Test func addTextsRejectsZeroDuration() async throws {
         let h = ToolHarness()
-        _ = h.editor.insertTrack(at: 0, type: .video, label: "Video")
+        _ = h.editor.insertTrack(at: 0, type: .video)
         let result = await h.runRaw("add_texts", args: [
             "entries": [[
                 "trackIndex": 0,

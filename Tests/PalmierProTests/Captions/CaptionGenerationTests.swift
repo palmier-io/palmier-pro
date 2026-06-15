@@ -27,8 +27,8 @@ private func mediaAsset(_ id: String, hasAudio: Bool = true) -> MediaAsset {
 @MainActor
 @Suite struct CaptionPlacementTests {
     @Test func textClipsStayOnInsertedTrackWhenAClipIsOverwritten() {
-        let e = editor([Fixtures.videoTrack(label: "Video", clips: [Fixtures.clip(start: 0, duration: 300)])])
-        e.timeline.tracks.insert(Track(type: .video, label: "Captions"), at: 0)
+        let e = editor([Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 300)])])
+        e.timeline.tracks.insert(Track(type: .video), at: 0)
 
         // spec b (same start, longer) fully covers spec a -> a is removed mid-placement.
         let ids = e.placeTextClips([
@@ -40,19 +40,17 @@ private func mediaAsset(_ id: String, hasAudio: Bool = true) -> MediaAsset {
         #expect(!ids.isEmpty)
         #expect(e.timeline.tracks.count == 2)
         // Captions track survived and holds only text clips.
-        #expect(e.timeline.tracks[0].label == "Captions")
         #expect(e.timeline.tracks[0].clips.allSatisfy { $0.mediaType == .text })
         #expect(!e.timeline.tracks[0].clips.isEmpty)
         // Video track is untouched.
-        #expect(e.timeline.tracks[1].label == "Video")
         #expect(e.timeline.tracks[1].clips.count == 1)
         #expect(e.timeline.tracks[1].clips[0].mediaType == .video)
     }
 
     @Test func textClipPlacementNeverPrunesOtherEmptyTracks() {
         let e = editor([
-            Fixtures.videoTrack(label: "Captions"),                       // empty target
-            Fixtures.videoTrack(label: "Video", clips: [Fixtures.clip(start: 0, duration: 100)]),
+            Fixtures.videoTrack(),                       // empty target
+            Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 100)]),
         ])
         _ = e.placeTextClips([textSpec(start: 0, duration: 50, content: "hi")])
         #expect(e.timeline.tracks.count == 2)
@@ -73,8 +71,8 @@ private func mediaAsset(_ id: String, hasAudio: Bool = true) -> MediaAsset {
         let e = editor([
             Fixtures.videoTrack(id: "video-track", clips: [video]),
             Fixtures.audioTrack(id: "audio-track", clips: [audio]),
-            Fixtures.audioTrack(id: "voice-track", label: "Voiceover", clips: [voice]),
-            Fixtures.audioTrack(id: "music-track", label: "Music", clips: [music]),
+            Fixtures.audioTrack(id: "voice-track", clips: [voice]),
+            Fixtures.audioTrack(id: "music-track", clips: [music]),
         ])
 
         #expect(e.captionTargets(ids: []).map(\.id) == ["audio", "voice", "music"])

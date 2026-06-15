@@ -54,8 +54,8 @@ struct TextExportGlyphTests {
         text.textStyle = style
 
         var timeline = Fixtures.timeline(fps: fps, tracks: [
-            Fixtures.videoTrack(label: "T2", clips: [text]),
-            Fixtures.videoTrack(label: "Video", clips: [video]),
+            Fixtures.videoTrack(clips: [text]),
+            Fixtures.videoTrack(clips: [video]),
         ])
         timeline.width = Int(canvas.width)
         timeline.height = Int(canvas.height)

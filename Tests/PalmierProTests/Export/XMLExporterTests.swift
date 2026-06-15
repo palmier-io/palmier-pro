@@ -548,8 +548,8 @@ struct XMLExporterTests {
         let topClip = Fixtures.clip(id: "top-clip", mediaRef: "media-v", start: 0, duration: 30)
         let bottomClip = Fixtures.clip(id: "bottom-clip", mediaRef: "media-v", start: 0, duration: 30)
         let timeline = Fixtures.timeline(tracks: [
-            Fixtures.videoTrack(label: "V1 (top)", clips: [topClip]),
-            Fixtures.videoTrack(label: "V2 (bottom)", clips: [bottomClip]),
+            Fixtures.videoTrack(clips: [topClip]),
+            Fixtures.videoTrack(clips: [bottomClip]),
         ])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")

@@ -112,9 +112,8 @@ extension ToolExecutor {
             var createdTrackId: String? = nil
             let resolvedTrackId: String?
             if omittedCount == partials.count {
-                let label = "T\(editor.zones.videoTrackCount + 1)"
-                let newIdx = editor.insertTrack(at: 0, type: .video, label: label)
-                createdTrackInfo = "track \(newIdx) ('\(label)')"
+                let newIdx = editor.insertTrack(at: 0, type: .video)
+                createdTrackInfo = "track \(newIdx) ('\(editor.timelineTrackDisplayLabel(at: newIdx))')"
                 createdTrackId = editor.timeline.tracks.indices.contains(newIdx) ? editor.timeline.tracks[newIdx].id : nil
                 resolvedTrackId = createdTrackId
             } else {

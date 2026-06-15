@@ -24,14 +24,14 @@ enum Fixtures {
         return c
     }
 
-    static func videoTrack(id: String = UUID().uuidString, label: String = "V1", clips: [Clip] = []) -> Track {
-        var t = Track(type: .video, label: label, clips: clips)
+    static func videoTrack(id: String = UUID().uuidString, clips: [Clip] = []) -> Track {
+        var t = Track(type: .video, clips: clips)
         t.id = id
         return t
     }
 
-    static func audioTrack(id: String = UUID().uuidString, label: String = "A1", clips: [Clip] = []) -> Track {
-        var t = Track(type: .audio, label: label, clips: clips)
+    static func audioTrack(id: String = UUID().uuidString, clips: [Clip] = []) -> Track {
+        var t = Track(type: .audio, clips: clips)
         t.id = id
         return t
     }

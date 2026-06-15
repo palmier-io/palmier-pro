@@ -8,7 +8,7 @@ import Testing
 struct SegmentTrimTests {
     private func editor(fps: Int = 30) -> EditorViewModel {
         let e = EditorViewModel()
-        e.timeline = Fixtures.timeline(fps: fps, tracks: [Fixtures.videoTrack(label: "V1")])
+        e.timeline = Fixtures.timeline(fps: fps, tracks: [Fixtures.videoTrack()])
         return e
     }
 

@@ -149,7 +149,7 @@ extension ToolExecutor {
             var reportedTrackIds: Set<String> = []
             let reportTrack: (Int) -> Void = { idx in
                 let t = editor.timeline.tracks[idx]
-                createdTracks.append("track \(idx) ('\(t.label)', \(t.type.rawValue))")
+                createdTracks.append("track \(idx) ('\(editor.timelineTrackDisplayLabel(at: idx))', \(t.type.rawValue))")
                 reportedTrackIds.insert(t.id)
             }
             if omittedCount == specs.count {
@@ -158,16 +158,12 @@ extension ToolExecutor {
                 var videoTrackId: String? = nil
                 var audioTrackId: String? = nil
                 if needsVideo {
-                    let n = editor.timeline.tracks.filter { $0.type == .video }.count + 1
-                    let label = "\(ClipType.video.trackLabelPrefix)\(n)"
-                    let idx = editor.insertTrack(at: 0, type: .video, label: label)
+                    let idx = editor.insertTrack(at: 0, type: .video)
                     videoTrackId = editor.timeline.tracks[idx].id
                     reportTrack(idx)
                 }
                 if needsAudio {
-                    let n = editor.timeline.tracks.filter { $0.type == .audio }.count + 1
-                    let label = "\(ClipType.audio.trackLabelPrefix)\(n)"
-                    let idx = editor.insertTrack(at: 0, type: .audio, label: label)
+                    let idx = editor.insertTrack(at: 0, type: .audio)
                     audioTrackId = editor.timeline.tracks[idx].id
                     reportTrack(idx)
                 }

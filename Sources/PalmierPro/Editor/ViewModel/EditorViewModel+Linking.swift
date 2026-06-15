@@ -320,7 +320,7 @@ extension EditorViewModel {
         case .existingTrack(let idx):
             return idx
         case .newTrackAt(let idx):
-            return insertTrack(at: idx, type: type, label: type.trackLabel)
+            return insertTrack(at: idx, type: type)
         }
     }
 
@@ -328,7 +328,7 @@ extension EditorViewModel {
         if let i = availableAudioTrackIndex(startFrame: startFrame, duration: duration) {
             return i
         }
-        return insertTrack(at: timeline.tracks.count, type: .audio, label: ClipType.audio.trackLabel)
+        return insertTrack(at: timeline.tracks.count, type: .audio)
     }
 
     // MARK: - Context-menu enablement

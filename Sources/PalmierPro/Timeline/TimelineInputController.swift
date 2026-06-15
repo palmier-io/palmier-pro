@@ -410,7 +410,7 @@ final class TimelineInputController {
             case .newTrackAt(let insertIndex):
                 editor.undoManager?.beginUndoGrouping()
                 let trackType = editor.timeline.tracks[leadTrack].type
-                let newIdx = editor.insertTrack(at: insertIndex, type: trackType, label: trackType.trackLabel)
+                let newIdx = editor.insertTrack(at: insertIndex, type: trackType)
                 let moves = drag.all.map { p in
                     let hops = !pinned.contains(p.clipId) && p.originalTrack == leadTrack
                     let shifted = p.originalTrack >= newIdx ? p.originalTrack + 1 : p.originalTrack
