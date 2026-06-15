@@ -70,6 +70,7 @@ final class TimelineView: NSView {
 
     var externalDropTarget: TrackDropTarget?
     var externalDragAssets: [MediaAsset]?
+    var externalDragSegments: [String: ClosedRange<Double>] = [:]
     var externalDragFrame: Int = 0
 
     private var externalSnapState = SnapEngine.SnapState()
@@ -209,7 +210,7 @@ final class TimelineView: NSView {
         syncGeneratingClipOverlays(geometry: geo)
 
         if let assets = externalDragAssets, !assets.isEmpty, let target = externalDropTarget {
-            drawExternalDragGhosts(assets: assets, target: target, frame: externalDragFrame, geometry: geo, dirtyRect: bounds, context: ctx)
+            drawExternalDragGhosts(assets: assets, segments: externalDragSegments, target: target, frame: externalDragFrame, geometry: geo, dirtyRect: bounds, context: ctx)
             if externalDragIsRippleInsert {
                 drawRippleInsertIndicator(atFrame: externalDragFrame, geometry: geo, context: ctx)
             }
@@ -484,6 +485,7 @@ final class TimelineView: NSView {
 
     private func drawExternalDragGhosts(
         assets: [MediaAsset],
+        segments: [String: ClosedRange<Double>],
         target: TrackDropTarget,
         frame: Int,
         geometry geo: TimelineGeometry,
@@ -491,7 +493,8 @@ final class TimelineView: NSView {
         context ctx: CGContext
     ) {
         let h = Layout.trackHeight
-        let plan = editor.resolveDropPlan(cursor: target, assets: assets, atFrame: frame)
+        let fps = editor.timeline.fps
+        let plan = editor.resolveDropPlan(cursor: target, assets: assets, atFrame: frame, segments: segments)
 
         struct Ghost {
             let clip: Clip
@@ -499,16 +502,25 @@ final class TimelineView: NSView {
         }
         var ghosts: [Ghost] = []
 
+        func trim(_ clip: inout Clip, segment: ClosedRange<Double>?) {
+            guard let segment else { return }
+            let start = secondsToFrame(seconds: segment.lowerBound, fps: fps)
+            clip.trimStartFrame = start
+            clip.trimEndFrame = start + clip.durationFrames
+        }
+
         for p in plan.placements {
             if p.hasVisual, let vt = plan.visualTarget {
-                let probe = Clip(mediaRef: p.asset.id, mediaType: p.asset.type, sourceClipType: p.asset.type, startFrame: p.startFrame, durationFrames: p.durationFrames)
+                var probe = Clip(mediaRef: p.asset.id, mediaType: p.asset.type, sourceClipType: p.asset.type, startFrame: p.startFrame, durationFrames: p.durationFrames)
+                trim(&probe, segment: segments[p.asset.id])
                 ghosts.append(Ghost(
                     clip: probe,
                     rect: ghostRect(target: vt, probe: probe, height: h, geo: geo)
                 ))
             }
             if p.hasAudio, let at = plan.audioTarget {
-                let probe = Clip(mediaRef: p.asset.id, mediaType: .audio, sourceClipType: p.asset.type, startFrame: p.startFrame, durationFrames: p.durationFrames)
+                var probe = Clip(mediaRef: p.asset.id, mediaType: .audio, sourceClipType: p.asset.type, startFrame: p.startFrame, durationFrames: p.durationFrames)
+                trim(&probe, segment: segments[p.asset.id])
                 ghosts.append(Ghost(
                     clip: probe,
                     rect: ghostRect(target: at, probe: probe, height: h, geo: geo)
@@ -896,6 +908,7 @@ final class TimelineView: NSView {
         let geo = geometry
         if externalDragAssets == nil, let urlString = sender.draggingPasteboard.string(forType: .string) {
             externalDragAssets = editor.assetsFromDragPayload(urlString)
+            externalDragSegments = editor.segmentsFromDragPayload(urlString)
         }
         externalDropTarget = geo.dropTargetAt(y: point.y)
         externalSnapState = SnapEngine.SnapState()
@@ -918,6 +931,7 @@ final class TimelineView: NSView {
     override func draggingExited(_ sender: (any NSDraggingInfo)?) {
         externalDropTarget = nil
         externalDragAssets = nil
+        externalDragSegments = [:]
         snapOverlay.setExternalX(nil)
         externalSnapState = SnapEngine.SnapState()
         externalDragIsRippleInsert = false
@@ -930,8 +944,7 @@ final class TimelineView: NSView {
             snapOverlay.setExternalX(nil)
             return candidate
         }
-        let fps = editor.timeline.fps
-        let totalDur = assets.reduce(0) { $0 + max(1, secondsToFrame(seconds: $1.duration, fps: fps)) }
+        let totalDur = assets.reduce(0) { $0 + editor.clipDurationFrames(for: $1, segment: externalDragSegments[$1.id]) }
         let targets = SnapEngine.collectTargets(
             tracks: editor.timeline.tracks
         )
@@ -958,6 +971,7 @@ final class TimelineView: NSView {
 
         externalDropTarget = nil
         externalDragAssets = nil
+        externalDragSegments = [:]
         snapOverlay.setExternalX(nil)
         externalSnapState = SnapEngine.SnapState()
         externalDragIsRippleInsert = false
@@ -974,7 +988,7 @@ final class TimelineView: NSView {
         let operation: @MainActor () -> Void = {
             editor.undoManager?.beginUndoGrouping()
 
-            let plan = editor.resolveDropPlan(cursor: cursorTarget, assets: assets, atFrame: targetFrame)
+            let plan = editor.resolveDropPlan(cursor: cursorTarget, assets: assets, atFrame: targetFrame, segments: segments)
             let (visualIdx, audioIdx) = editor.materialize(plan: plan)
             let ripple = mods.contains(.command)
 

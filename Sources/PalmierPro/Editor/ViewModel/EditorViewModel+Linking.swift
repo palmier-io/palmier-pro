@@ -284,12 +284,11 @@ extension EditorViewModel {
     }
 
     /// Compute the ghost+commit plan for dropping `assets` at `atFrame` with the cursor over `cursor`.
-    func resolveDropPlan(cursor: TrackDropTarget, assets: [MediaAsset], atFrame: Int) -> DropPlan {
-        let fps = timeline.fps
+    func resolveDropPlan(cursor: TrackDropTarget, assets: [MediaAsset], atFrame: Int, segments: [String: ClosedRange<Double>] = [:]) -> DropPlan {
         var placements: [DropPlan.Placement] = []
         var c = atFrame
         for asset in assets {
-            let dur = max(1, secondsToFrame(seconds: asset.duration, fps: fps))
+            let dur = clipDurationFrames(for: asset, segment: segments[asset.id])
             let hasVisual = asset.type.isVisual
             let hasAudio = asset.type == .audio || (asset.type == .video && asset.hasAudio)
             placements.append(.init(
