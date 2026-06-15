@@ -422,6 +422,51 @@ struct CompositionBuildAudioTrackTests {
         #expect(audioMappings.first.flatMap(clipIds) == ["a1", "a2"])
     }
 
+    @Test func unityAudioClipResetsVolumeAfterMutedClipOnSharedCompositionTrack() async throws {
+        let audioURL = try makeSilentWav(durationSeconds: 3)
+        defer { try? FileManager.default.removeItem(at: audioURL) }
+
+        let muted = Fixtures.clip(
+            id: "a1",
+            mediaRef: "audio",
+            mediaType: .audio,
+            start: 0,
+            duration: 24,
+            volume: 0
+        )
+        let next = Fixtures.clip(id: "a2", mediaRef: "audio", mediaType: .audio, start: 24, duration: 24)
+        let timeline = Fixtures.timeline(fps: 24, tracks: [
+            Fixtures.audioTrack(clips: [muted, next]),
+        ])
+
+        let result = try await CompositionBuilder.build(
+            timeline: timeline,
+            resolveURL: { _ in audioURL },
+            renderSize: CGSize(width: 320, height: 180)
+        )
+
+        let params = try #require(result.audioMix.inputParameters.first)
+        let mutedRamp = try #require(volumeRamp(params, atFrame: muted.startFrame, fps: timeline.fps))
+        #expect(mutedRamp.start == 0)
+        #expect(mutedRamp.end == 0)
+        #expect(
+            mutedRamp.range == CMTimeRange(
+                start: CMTime(value: CMTimeValue(muted.startFrame), timescale: CMTimeScale(timeline.fps)),
+                end: CMTime(value: CMTimeValue(muted.endFrame), timescale: CMTimeScale(timeline.fps))
+            )
+        )
+
+        let nextRamp = try #require(volumeRamp(params, atFrame: next.startFrame, fps: timeline.fps))
+        #expect(nextRamp.start == 1)
+        #expect(nextRamp.end == 1)
+        #expect(
+            nextRamp.range == CMTimeRange(
+                start: CMTime(value: CMTimeValue(next.startFrame), timescale: CMTimeScale(timeline.fps)),
+                end: CMTime(value: CMTimeValue(next.endFrame), timescale: CMTimeScale(timeline.fps))
+            )
+        )
+    }
+
     @Test func speedChangedAudioClipsUseDedicatedCompositionTracks() async throws {
         let audioURL = try makeSilentWav(durationSeconds: 4)
         defer { try? FileManager.default.removeItem(at: audioURL) }
@@ -478,6 +523,23 @@ struct CompositionBuildAudioTrackTests {
     private func clipIds(_ mapping: TrackMapping) -> Set<String>? {
         guard case .timeline(_, let ids) = mapping.kind else { return nil }
         return ids
+    }
+
+    private func volumeRamp(
+        _ params: AVAudioMixInputParameters,
+        atFrame frame: Int,
+        fps: Int
+    ) -> (start: Float, end: Float, range: CMTimeRange)? {
+        var start: Float = -1
+        var end: Float = -1
+        var range = CMTimeRange()
+        let found = params.getVolumeRamp(
+            for: CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(fps)),
+            startVolume: &start,
+            endVolume: &end,
+            timeRange: &range
+        )
+        return found ? (start, end, range) : nil
     }
 
     private func makeSilentWav(durationSeconds: Double) throws -> URL {

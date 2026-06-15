@@ -447,7 +447,18 @@ enum CompositionBuilder {
     ) {
         let kfs = normalizedKeyframes(clip.volumeTrack?.keyframes ?? [], duration: clip.durationFrames)
         let hasFade = clip.fadeInFrames > 0 || clip.fadeOutFrames > 0
-        if kfs.isEmpty && !hasFade && Float(clip.volume) == 1.0 { return }
+        if kfs.isEmpty && !hasFade {
+            let volume = Float(clip.volumeAt(frame: clip.startFrame))
+            let start = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
+            let end = CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale)
+            guard volume.isFinite, end > start else { return }
+            params.setVolumeRamp(
+                fromStartVolume: volume,
+                toEndVolume: volume,
+                timeRange: CMTimeRange(start: start, end: end)
+            )
+            return
+        }
 
         emitEnvelopeRamps(
             clip: clip,
