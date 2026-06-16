@@ -108,6 +108,27 @@ enum LottieVideoGenerator {
         return context.makeImage()
     }
 
+    /// Renders `count` frames evenly spaced across the animation
+    @MainActor
+    static func sampleFrames(fileAt url: URL, count: Int, maxDimension: CGFloat = 512) async throws -> (meta: Metadata, frames: [(frameIndex: Int, image: CGImage)]) {
+        let view = try await loadView(forFileAt: url, target: CGSize(width: maxDimension, height: maxDimension))
+        guard let animation = view.animation else { throw LottieVideoError.invalidAnimation }
+        let meta = metadata(for: animation)
+        let target = clampedForEncoder(fit(meta.size, longestSide: maxDimension))
+        relayout(view, target: target)
+
+        let n = max(1, min(count, meta.frameCount))
+        var frames: [(frameIndex: Int, image: CGImage)] = []
+        for i in 0..<n {
+            let frac = n == 1 ? 0 : Double(i) / Double(n - 1)
+            let index = Int((Double(meta.frameCount - 1) * frac).rounded())
+            if let image = renderFrame(view: view, frame: animation.startFrame + AnimationFrameTime(index), target: target) {
+                frames.append((index, image))
+            }
+        }
+        return (meta, frames)
+    }
+
     // MARK: - Private
 
     @MainActor

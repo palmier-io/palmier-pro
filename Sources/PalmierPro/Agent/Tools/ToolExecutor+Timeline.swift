@@ -291,8 +291,8 @@ extension ToolExecutor {
         case .image: return try readImage(asset: asset, args: args)
         case .video: return try await readVideo(editor: editor, asset: asset, args: args, mapping: mapping)
         case .audio: return try await readAudio(editor: editor, asset: asset, args: args, mapping: mapping)
+        case .lottie: return try await readLottie(asset: asset, args: args)
         case .text: throw ToolError("Text clips are not stored as media assets.")
-        case .lottie: throw ToolError("Lottie inspection isn't supported yet.")
         }
     }
 
@@ -434,6 +434,43 @@ extension ToolExecutor {
         }
         guard !frames.isEmpty else { throw ToolError("Failed to extract frames from \(name)") }
         return .frames(frames)
+    }
+
+    private func readLottie(asset: MediaAsset, args: [String: Any]) async throws -> ToolResult {
+        let count = max(1, min(args.int("maxFrames") ?? Self.defaultReadVideoFrames, Self.readVideoMaxFrames))
+        let (lottieMeta, frames) = try await LottieVideoGenerator.sampleFrames(fileAt: asset.url, count: count)
+        guard !frames.isEmpty else { throw ToolError("Failed to render Lottie frames from \(asset.name)") }
+
+        var meta = Self.baseMeta(for: asset)
+        meta["framerate"] = lottieMeta.framerate
+        meta["frameCount"] = lottieMeta.frameCount
+        meta["durationSeconds"] = lottieMeta.duration
+        meta["sampledFrameIndices"] = frames.map(\.frameIndex)
+        meta["note"] = "Lottie frames sampled evenly across the animation; transparent areas composited over gray."
+
+        let imageBlocks: [ToolResult.Block] = frames.compactMap { frame in
+            Self.compositeJPEG(frame.image).map { .image(base64: $0.base64EncodedString(), mediaType: "image/jpeg") }
+        }
+        guard !imageBlocks.isEmpty else { throw ToolError("Failed to encode Lottie frames") }
+        guard let metaJSON = Self.jsonString(roundJSONFloatingPointNumbers(meta, toPlaces: 3)) else {
+            throw ToolError("Failed to encode metadata")
+        }
+        return ToolResult(content: imageBlocks + [.text(metaJSON)], isError: false)
+    }
+
+    /// Composites an alpha frame over mid-gray so transparent regions read clearly to the model.
+    private static func compositeJPEG(_ image: CGImage, quality: CGFloat = 0.7) -> Data? {
+        guard let context = CGContext(
+            data: nil, width: image.width, height: image.height,
+            bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        ) else { return nil }
+        let rect = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        context.setFillColor(gray: 0.5, alpha: 1)
+        context.fill(rect)
+        context.draw(image, in: rect)
+        return context.makeImage().flatMap { ImageEncoder.encodeJPEG($0, quality: quality) }
     }
 
     private func readAudio(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil) async throws -> ToolResult {

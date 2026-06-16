@@ -54,4 +54,28 @@ struct LottieDotLottieTests {
         #expect(left.blueComponent > left.redComponent)
         #expect(right.blueComponent < 0.3)
     }
+
+    /// inspect_media's frame sampling: evenly spaced indices, and motion is captured — the dot
+    /// is on the left at frame 0 and on the right at the middle frame.
+    @Test @MainActor func samplesFramesForInspection() async throws {
+        let url = try Self.writeSample()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let (meta, frames) = try await LottieVideoGenerator.sampleFrames(fileAt: url, count: 5)
+        #expect(meta.frameCount == 60)
+        #expect(frames.map(\.frameIndex) == [0, 15, 30, 44, 59])
+
+        let first = frames[0].image
+        let mid = frames[2].image
+        func alpha(_ image: CGImage, x: Int, y: Int) throws -> CGFloat {
+            try #require(NSBitmapImageRep(cgImage: image).colorAt(x: x, y: y)).alphaComponent
+        }
+        let w = first.width, h = first.height
+        // Frame 0: dot left, right empty.
+        #expect(try alpha(first, x: w / 4, y: h / 2) > 0.5)
+        #expect(try alpha(first, x: w * 3 / 4, y: h / 2) < 0.2)
+        // Middle frame: dot right, left empty.
+        #expect(try alpha(mid, x: w * 3 / 4, y: h / 2) > 0.5)
+        #expect(try alpha(mid, x: w / 4, y: h / 2) < 0.2)
+    }
 }
