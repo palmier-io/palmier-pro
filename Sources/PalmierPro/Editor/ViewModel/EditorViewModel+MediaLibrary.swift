@@ -55,6 +55,10 @@ extension EditorViewModel {
             mediaPanelToast = "Can't import \"\(url.lastPathComponent)\" — unsupported file type."
             return nil
         }
+        if type == .lottie, !LottieVideoGenerator.isLottie(at: url) {
+            mediaPanelToast = "Can't import \"\(url.lastPathComponent)\" — not a Lottie animation."
+            return nil
+        }
         let name = url.deletingPathExtension().lastPathComponent
         let asset = MediaAsset(url: url, type: type, name: name)
         importMediaAsset(asset)
@@ -339,7 +343,7 @@ extension EditorViewModel {
             mediaVisualCache.generateWaveform(for: asset)
         case .image:
             mediaVisualCache.generateImageThumbnail(for: asset)
-        case .text:
+        case .text, .lottie:
             break
         }
     }

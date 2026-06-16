@@ -759,7 +759,9 @@ struct MediaTab: View {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
-        panel.allowedContentTypes = [.movie, .image, .audio]
+        var types: [UTType] = [.movie, .image, .audio, .json]
+        if let lottie = UTType(filenameExtension: "lottie") { types.append(lottie) }
+        panel.allowedContentTypes = types
         panel.begin { response in
             guard response == .OK else { return }
             let folderId = currentFolderId

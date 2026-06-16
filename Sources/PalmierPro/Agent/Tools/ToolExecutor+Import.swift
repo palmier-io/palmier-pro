@@ -50,7 +50,7 @@ extension ToolExecutor {
         }
         let ext = fileURL.pathExtension.lowercased()
         guard ClipType(fileExtension: ext) != nil else {
-            throw ToolError("Unsupported file extension '.\(ext)'. Supported: mov/mp4/m4v, mp3/wav/aac/m4a, png/jpg/jpeg/tiff/heic.")
+            throw ToolError("Unsupported file extension '.\(ext)'. Supported: mov/mp4/m4v, mp3/wav/aac/m4a, png/jpg/jpeg/tiff/heic, json (Lottie).")
         }
         guard let asset = editor.addMediaAsset(from: fileURL) else {
             throw ToolError("Failed to import file: \(path)")
@@ -215,6 +215,7 @@ extension ToolExecutor {
         case "image/jpeg", "image/jpg": return "jpg"
         case "image/tiff": return "tiff"
         case "image/heic", "image/heif": return "heic"
+        case "application/json", "application/vnd.lottie+json": return "json"
         default: return nil
         }
     }

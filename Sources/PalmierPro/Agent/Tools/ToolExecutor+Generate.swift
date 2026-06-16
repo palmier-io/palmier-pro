@@ -26,6 +26,8 @@ extension ToolExecutor {
             throw ToolError("internal: audio generation is dispatched via the async path")
         case .text:
             throw ToolError("Text generation is not wired through the generate tool.")
+        case .lottie:
+            throw ToolError("Lottie animations aren't generated through this tool.")
         }
     }
 

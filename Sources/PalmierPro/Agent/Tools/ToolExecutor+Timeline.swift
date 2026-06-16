@@ -292,6 +292,7 @@ extension ToolExecutor {
         case .video: return try await readVideo(editor: editor, asset: asset, args: args, mapping: mapping)
         case .audio: return try await readAudio(editor: editor, asset: asset, args: args, mapping: mapping)
         case .text: throw ToolError("Text clips are not stored as media assets.")
+        case .lottie: throw ToolError("Lottie inspection isn't supported yet.")
         }
     }
 

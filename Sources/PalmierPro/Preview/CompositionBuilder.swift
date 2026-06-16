@@ -247,6 +247,18 @@ enum CompositionBuilder {
                 Log.preview.error("stillVideo failed mediaRef=\(clip.mediaRef) size=\(Int(imageSize.width))x\(Int(imageSize.height)): \(error.localizedDescription)")
                 return nil
             }
+        } else if clip.mediaType == .lottie {
+            let lottieSize = resolveSourceSize(clip.mediaRef) ?? renderSize
+            do {
+                mediaURL = try await LottieVideoGenerator.lottieVideo(
+                    for: resolved,
+                    mediaRef: clip.mediaRef,
+                    size: lottieSize
+                )
+            } catch {
+                Log.preview.error("lottieVideo failed mediaRef=\(clip.mediaRef) size=\(Int(lottieSize.width))x\(Int(lottieSize.height)): \(error.localizedDescription)")
+                return nil
+            }
         } else if mediaType == .video {
             mediaURL = (try? await AlphaVideoNormalizer.premultipliedVideo(for: resolved, mediaRef: clip.mediaRef)) ?? resolved
         } else {

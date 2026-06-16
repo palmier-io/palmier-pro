@@ -105,6 +105,18 @@ final class MediaAsset: Identifiable {
             return
         }
 
+        if type == .lottie {
+            guard let info = try? await LottieVideoGenerator.inspect(fileAt: url) else { return }
+            duration = info.meta.duration
+            sourceWidth = Int(info.meta.size.width)
+            sourceHeight = Int(info.meta.size.height)
+            sourceFPS = info.meta.framerate
+            if let cg = info.thumbnail {
+                thumbnail = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+            }
+            return
+        }
+
         let avAsset = AVURLAsset(url: url)
         if type != .video, let d = try? await avAsset.load(.duration) {
             duration = d.seconds
