@@ -330,8 +330,9 @@ final class AgentService {
         loop: while !Task.isCancelled {
             resolveOrphanToolUses()
             let apiMsgs = apiMessages()
-            messages.append(AgentMessage(role: .assistant, blocks: []))
-            let assistantIndex = messages.count - 1
+            let assistant = AgentMessage(role: .assistant, blocks: [])
+            messages.append(assistant)
+            let assistantID = assistant.id
 
             do {
                 let stream = client.stream(
@@ -346,45 +347,46 @@ final class AgentService {
                     try Task.checkCancellation()
                     switch event {
                     case .textDelta(let chunk):
-                        appendTextDelta(chunk, toAssistantAt: assistantIndex)
+                        appendTextDelta(chunk, toAssistant: assistantID)
                     case .toolUseComplete(let id, let name, let inputJSON):
-                        messages[assistantIndex].blocks.append(
-                            .toolUse(id: id, name: name, inputJSON: inputJSON)
-                        )
+                        appendToolUse(id: id, name: name, inputJSON: inputJSON, toAssistant: assistantID)
                     case .messageStop(let reason):
                         stopReason = reason
                     }
                 }
 
                 if stopReason == .toolUse {
-                    await runPendingToolUses(assistantIndex: assistantIndex)
+                    await runPendingToolUses(assistantID: assistantID)
                     continue loop
                 }
                 break loop
             } catch is CancellationError {
-                dropEmptyAssistantTurn(at: assistantIndex)
+                dropEmptyAssistantTurn(id: assistantID)
                 break loop
             } catch let err as PalmierClientError {
-                dropEmptyAssistantTurn(at: assistantIndex)
+                dropEmptyAssistantTurn(id: assistantID)
                 streamError = err
                 break loop
             } catch {
-                dropEmptyAssistantTurn(at: assistantIndex)
+                dropEmptyAssistantTurn(id: assistantID)
                 streamError = .upstream(error.localizedDescription)
                 break loop
             }
         }
     }
 
-    private func dropEmptyAssistantTurn(at index: Int) {
-        guard messages.indices.contains(index),
-              messages[index].role == .assistant,
+    private func assistantMessageIndex(id: UUID) -> Int? {
+        messages.firstIndex { $0.id == id && $0.role == .assistant }
+    }
+
+    private func dropEmptyAssistantTurn(id: UUID) {
+        guard let index = assistantMessageIndex(id: id),
               messages[index].blocks.isEmpty else { return }
         messages.remove(at: index)
     }
 
-    private func appendTextDelta(_ chunk: String, toAssistantAt index: Int) {
-        guard messages.indices.contains(index) else { return }
+    private func appendTextDelta(_ chunk: String, toAssistant id: UUID) {
+        guard let index = assistantMessageIndex(id: id) else { return }
         if case .text(let existing)? = messages[index].blocks.last {
             messages[index].blocks[messages[index].blocks.count - 1] = .text(existing + chunk)
         } else {
@@ -392,8 +394,13 @@ final class AgentService {
         }
     }
 
-    private func runPendingToolUses(assistantIndex: Int) async {
-        guard messages.indices.contains(assistantIndex) else { return }
+    private func appendToolUse(id toolUseID: String, name: String, inputJSON: String, toAssistant assistantID: UUID) {
+        guard let index = assistantMessageIndex(id: assistantID) else { return }
+        messages[index].blocks.append(.toolUse(id: toolUseID, name: name, inputJSON: inputJSON))
+    }
+
+    private func runPendingToolUses(assistantID: UUID) async {
+        guard let assistantIndex = assistantMessageIndex(id: assistantID) else { return }
         guard let executor = toolExecutor else {
             messages.append(AgentMessage(role: .user, blocks: [.text("Tool executor unavailable.")]))
             return
