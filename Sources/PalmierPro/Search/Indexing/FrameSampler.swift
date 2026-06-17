@@ -45,8 +45,8 @@ enum FrameSampler {
     ) async throws {
         let asset = AVURLAsset(url: url)
         var interval = options.candidateInterval
-        if let track = try? await asset.loadTracks(withMediaType: .video).first,
-           let size = try? await track.load(.naturalSize),
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first else { return }
+        if let size = try? await track.load(.naturalSize),
            max(abs(size.width), abs(size.height)) >= options.highResEdge {
             interval *= 2
         }

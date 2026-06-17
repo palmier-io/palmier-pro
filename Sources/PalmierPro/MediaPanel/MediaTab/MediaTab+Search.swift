@@ -249,7 +249,9 @@ private struct MomentThumbnail: View {
     }
 
     private static func thumbnail(url: URL, time: Double) async -> CGImage? {
-        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        let asset = AVURLAsset(url: url)
+        guard (try? await asset.loadTracks(withMediaType: .video).first) != nil else { return nil }
+        let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 240, height: 240)
         let tolerance = CMTime(seconds: 1, preferredTimescale: 600)

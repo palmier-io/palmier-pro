@@ -236,7 +236,9 @@ final class VideoProject: NSDocument {
         for track in editorViewModel.timeline.tracks where track.type == .video {
             for clip in track.clips {
                 guard let url = editorViewModel.mediaResolver.resolveURL(for: clip.mediaRef) else { continue }
-                let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+                let asset = AVURLAsset(url: url)
+                guard !asset.tracks(withMediaType: .video).isEmpty else { continue }
+                let generator = AVAssetImageGenerator(asset: asset)
                 generator.maximumSize = CGSize(width: 320, height: 180)
                 generator.appliesPreferredTrackTransform = true
                 let time = CMTime(value: CMTimeValue(clip.trimStartFrame), timescale: CMTimeScale(editorViewModel.timeline.fps))

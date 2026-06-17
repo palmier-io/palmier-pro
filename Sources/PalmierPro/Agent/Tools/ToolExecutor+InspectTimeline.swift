@@ -45,6 +45,9 @@ extension ToolExecutor {
             renderSize: canvas
         )
 
+        guard (try? await composition.composition.loadTracks(withMediaType: .video).first) != nil else {
+            throw ToolError("No video track available in timeline.")
+        }
         let generator = AVAssetImageGenerator(asset: composition.composition)
         generator.videoComposition = composition.videoComposition
         generator.appliesPreferredTrackTransform = true

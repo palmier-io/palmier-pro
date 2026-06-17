@@ -114,30 +114,32 @@ final class MediaVisualCache {
 
             if results.isEmpty {
                 let avAsset = AVURLAsset(url: url)
-                let duration = (try? await avAsset.load(.duration).seconds) ?? 0
-                let times = Self.videoThumbnailTimes(duration: duration)
+                if (try? await avAsset.loadTracks(withMediaType: .video).first) != nil {
+                    let duration = (try? await avAsset.load(.duration).seconds) ?? 0
+                    let times = Self.videoThumbnailTimes(duration: duration)
 
-                if !times.isEmpty {
-                    let generator = AVAssetImageGenerator(asset: avAsset)
-                    generator.maximumSize = CGSize(width: 120, height: 68)
-                    generator.appliesPreferredTrackTransform = true
-                    generator.requestedTimeToleranceBefore = CMTime(seconds: 1.0, preferredTimescale: 600)
-                    generator.requestedTimeToleranceAfter = CMTime(seconds: 1.0, preferredTimescale: 600)
+                    if !times.isEmpty {
+                        let generator = AVAssetImageGenerator(asset: avAsset)
+                        generator.maximumSize = CGSize(width: 120, height: 68)
+                        generator.appliesPreferredTrackTransform = true
+                        generator.requestedTimeToleranceBefore = CMTime(seconds: 1.0, preferredTimescale: 600)
+                        generator.requestedTimeToleranceAfter = CMTime(seconds: 1.0, preferredTimescale: 600)
 
-                    for await result in generator.images(for: times) {
-                        if case .success(requestedTime: let requestedTime, image: let image, actualTime: _) = result {
-                            results.append((time: requestedTime.seconds, image: image))
-                            // Publish progressively so long videos fill in instead of appearing at the end.
-                            if results.count % 50 == 0, let self {
-                                let partial = results
-                                await MainActor.run { [self] in
-                                    self.videoThumbnails[key] = partial
-                                    self.timelineView?.needsDisplay = true
+                        for await result in generator.images(for: times) {
+                            if case .success(requestedTime: let requestedTime, image: let image, actualTime: _) = result {
+                                results.append((time: requestedTime.seconds, image: image))
+                                // Publish progressively so long videos fill in instead of appearing at the end.
+                                if results.count % 50 == 0, let self {
+                                    let partial = results
+                                    await MainActor.run { [self] in
+                                        self.videoThumbnails[key] = partial
+                                        self.timelineView?.needsDisplay = true
+                                    }
                                 }
                             }
                         }
+                        results.sort { $0.time < $1.time }
                     }
-                    results.sort { $0.time < $1.time }
                 }
 
                 if !results.isEmpty, let cacheKey {

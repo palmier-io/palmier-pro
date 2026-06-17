@@ -123,7 +123,9 @@ final class MediaAsset: Identifiable {
         }
         if type == .video {
             var videoDuration: Double?
+            var hasVideoTrack = false
             if let videoTrack = try? await avAsset.loadTracks(withMediaType: .video).first {
+                hasVideoTrack = true
                 if let size = try? await videoTrack.load(.naturalSize),
                    let transform = try? await videoTrack.load(.preferredTransform) {
                     let corrected = size.applying(transform)
@@ -143,13 +145,15 @@ final class MediaAsset: Identifiable {
             if let audioTracks = try? await avAsset.loadTracks(withMediaType: .audio) {
                 hasAudio = !audioTracks.isEmpty
             }
-            let gen = AVAssetImageGenerator(asset: avAsset)
-            gen.maximumSize = CGSize(width: 320, height: 320)   // square budget — portrait gets full res too
-            gen.appliesPreferredTrackTransform = true
-            if let cgImage = try? await gen.image(at: .zero).image {
-                // Use the generated frame's true pixel size — a hardcoded 16:9 size makes
-                // SwiftUI's aspectRatio squeeze non-16:9 (e.g. vertical) thumbnails.
-                thumbnail = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+            if hasVideoTrack {
+                let gen = AVAssetImageGenerator(asset: avAsset)
+                gen.maximumSize = CGSize(width: 320, height: 320)   // square budget — portrait gets full res too
+                gen.appliesPreferredTrackTransform = true
+                if let cgImage = try? await gen.image(at: .zero).image {
+                    // Use the generated frame's true pixel size — a hardcoded 16:9 size makes
+                    // SwiftUI's aspectRatio squeeze non-16:9 (e.g. vertical) thumbnails.
+                    thumbnail = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+                }
             }
         }
     }
