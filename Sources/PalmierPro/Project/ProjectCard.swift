@@ -112,7 +112,7 @@ struct ProjectCard: View {
         .alert("Delete \"\(entry.name)\"?", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) {
-                try? ProjectRegistry.shared.delete(entry.url)
+                ProjectRegistry.shared.delete(entry.url)
             }
         } message: {
             Text("The project will be moved to the Trash.")

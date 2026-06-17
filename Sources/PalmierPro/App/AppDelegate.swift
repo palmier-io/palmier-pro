@@ -9,9 +9,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Start Sparkle updater
         _ = Updater.shared
 
-        // Seed registry from default directory on first launch
-        ProjectRegistry.shared.migrateDefaultDirectoryIfNeeded()
-
         HomeWindowController.shared.showWindow(nil)
 
         AppNotifications.configure()
