@@ -4,6 +4,7 @@ struct GenerationView: View {
     let maxPanelHeight: Double
 
     @Environment(EditorViewModel.self) var editor
+    @Bindable private var account = AccountService.shared
     @State private var prompt = ""
     @State private var selectedType: GenerationType = .video
     @State private var selectedVideoModelIndex = 0
@@ -416,8 +417,9 @@ struct GenerationView: View {
                 catalogLoadingView
             }
         }
-        .aiAccessGate()
     }
+
+    private var aiAllowed: Bool { account.aiAllowed }
 
     private var catalogLoadingView: some View {
         VStack(spacing: AppTheme.Spacing.md) {
@@ -1276,8 +1278,11 @@ struct GenerationView: View {
     // MARK: - Submit button
 
     private var submitButton: some View {
-        Button { submitGeneration() } label: {
-            Image(systemName: "arrow.up")
+        Button {
+            if aiAllowed { submitGeneration() }
+            else if !account.isMisconfigured { Task { await account.signInWithGoogle() } }
+        } label: {
+            Image(systemName: aiAllowed ? "arrow.up" : "person.crop.circle")
                 .font(.system(size: AppTheme.FontSize.sm, weight: .bold))
                 .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
         }
@@ -1285,8 +1290,9 @@ struct GenerationView: View {
         .buttonBorderShape(.circle)
         .controlSize(.regular)
         .tint(AppTheme.Accent.primary)
-        .disabled(!canSubmit)
-        .opacity(canSubmit ? 1 : AppTheme.Opacity.strong)
+        .disabled(aiAllowed ? !canSubmit : account.isMisconfigured)
+        .opacity((aiAllowed ? canSubmit : !account.isMisconfigured) ? 1 : AppTheme.Opacity.strong)
+        .help(aiAllowed ? "" : (account.isMisconfigured ? "AI is unavailable" : "Sign in to generate"))
     }
 
     // MARK: - Type picker

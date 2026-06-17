@@ -14,6 +14,7 @@ struct EditorView: NSViewControllerRepresentable {
         controller.applyMediaVisibility(editor.mediaPanelVisible)
         controller.applyInspectorVisibility(editor.inspectorPanelVisible)
         controller.applyMaximize(editor.maximizedPanel)
+        controller.updateTourFrame(stepIndex: editor.tour.stepIndex, anchorRevision: editor.tour.anchorRevision)
     }
 }
 
@@ -35,7 +36,7 @@ class PaddedDividerSplitViewController: NSSplitViewController {
 }
 
 final class EditorSplitViewController: PaddedDividerSplitViewController {
-    private let editor: EditorViewModel
+    let editor: EditorViewModel
     private var currentPreset: LayoutPreset?
     private var currentMaximized: EditorViewModel.FocusedPanel?
     private var pendingPositioning: (() -> Void)?
@@ -100,7 +101,7 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
         }
     }
 
-    private func leafItem(for panel: EditorViewModel.FocusedPanel) -> NSSplitViewItem? {
+    func leafItem(for panel: EditorViewModel.FocusedPanel) -> NSSplitViewItem? {
         switch panel {
         case .agent:     return agentSplitItem
         case .media:     return mediaSplitItem
@@ -351,6 +352,7 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
     override func viewDidLayout() {
         super.viewDidLayout()
         runPendingPositioning()
+        updateTourFrame()   // see EditorSplitViewController+Tour.swift
     }
 
     private func applyAfterLayout(_ apply: @escaping () -> Void) {

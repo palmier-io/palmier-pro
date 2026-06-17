@@ -36,13 +36,16 @@ struct TopOffField<Trailing: View>: View {
                     Text(buttonLabel)
                         .frame(maxWidth: fillWidth ? .infinity : nil)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(controlSize)
+                .buttonStyle(.capsule(.secondary, size: capsuleSize))
                 .disabled(account.isBuyingCredits || !isValid)
 
                 trailing()
             }
         }
+    }
+
+    private var capsuleSize: CapsuleButtonStyle.Size {
+        (controlSize == .small || controlSize == .mini) ? .small : .regular
     }
 
     private var credits: Int { max(0, dollars) * 100 }

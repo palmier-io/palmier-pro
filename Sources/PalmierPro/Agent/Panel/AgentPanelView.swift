@@ -265,7 +265,7 @@ struct AgentPanelView: View {
                         Text(cta.title)
                             .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.capsule(.secondary))
                     .controlSize(.small)
                 }
             }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MusicTab: View {
     @Environment(EditorViewModel.self) var editor
+    @Bindable private var account = AccountService.shared
 
     @State private var selectedModelId: String?
     @State private var mode: MusicGenerationSubmission.Mode = .videoToMusic
@@ -110,7 +111,6 @@ struct MusicTab: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AppTheme.Background.surfaceColor)
-        .aiAccessGate()
     }
 
     private var sourceSection: some View {
@@ -223,10 +223,11 @@ struct MusicTab: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, AppTheme.Spacing.smMd)
                         .background(RoundedRectangle(cornerRadius: AppTheme.Radius.sm).fill(AppTheme.Accent.primary))
-                        .opacity(canGenerate ? AppTheme.Opacity.opaque : AppTheme.Opacity.medium)
+                        .opacity((canGenerate && account.aiAllowed) ? AppTheme.Opacity.opaque : AppTheme.Opacity.medium)
                 }
                 .buttonStyle(.plain).focusable(false)
-                .disabled(!canGenerate)
+                .disabled(!canGenerate || !account.aiAllowed)
+                .help(account.aiAllowed ? "" : "Sign in to generate")
 
                 agentMenu
             }

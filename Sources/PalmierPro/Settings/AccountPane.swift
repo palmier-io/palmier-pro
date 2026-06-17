@@ -36,7 +36,7 @@ struct AccountPane: View {
         Button("Sign out") {
             Task { await account.signOut() }
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.capsule(.secondary, size: .regular))
     }
 
     @ViewBuilder
@@ -52,12 +52,12 @@ struct AccountPane: View {
                     Button("Upgrade to Pro") {
                         Task { await account.subscribe(tier: .pro) }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.capsule(.prominent, size: .regular))
 
                     Button("Upgrade to Max") {
                         Task { await account.subscribe(tier: .max) }
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.capsule(.secondary, size: .regular))
                 }
             } else {
                 HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
@@ -122,14 +122,14 @@ struct AccountPane: View {
             } label: {
                 Text(label).frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.capsule(.prominent, size: .regular))
         } else {
             Button {
                 Task { await account.subscribe(tier: plan.tier) }
             } label: {
                 Text(label).frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.capsule(.secondary, size: .regular))
         }
     }
 
@@ -150,7 +150,7 @@ struct AccountPane: View {
             Button("Manage subscription") {
                 Task { await account.manageSubscription() }
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.capsule(.secondary, size: .regular))
         }
     }
 
@@ -252,7 +252,7 @@ struct AccountPane: View {
         Button("Sign in with Google") {
             Task { await account.signInWithGoogle() }
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.capsule(.secondary, size: .regular))
         .padding(.top, AppTheme.Spacing.xs)
     }
 }

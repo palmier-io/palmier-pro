@@ -182,7 +182,7 @@ struct FeedbackView: View {
         HStack(spacing: AppTheme.Spacing.smMd) {
             Spacer()
             Button("Cancel") { dismiss() }
-                .buttonStyle(.bordered)
+                .buttonStyle(.capsule(.secondary, size: .regular))
                 .controlSize(.large)
                 .disabled(isSending)
                 .keyboardShortcut(.cancelAction)
@@ -196,7 +196,7 @@ struct FeedbackView: View {
                     Text(isSending ? "Sending…" : "Send")
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.capsule(.prominent, size: .regular))
             .controlSize(.large)
             .disabled(!canSubmit)
             .keyboardShortcut(.return, modifiers: [.command])
@@ -221,7 +221,7 @@ struct FeedbackView: View {
             HStack {
                 Spacer()
                 Button("Done") { dismiss() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.capsule(.prominent, size: .regular))
                     .controlSize(.large)
                     .keyboardShortcut(.defaultAction)
             }

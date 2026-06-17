@@ -110,6 +110,7 @@ final class AccountService {
         guard !isMisconfigured, case .authenticated = authState else { return false }
         return true
     }
+    var aiAllowed: Bool { isSignedIn && !isMisconfigured }
     var tier: AccountTier { account?.user.tier ?? .none }
     var isPaid: Bool { tier.isPaid }
 

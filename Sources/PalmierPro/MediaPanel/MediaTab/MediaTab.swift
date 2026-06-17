@@ -125,6 +125,7 @@ struct MediaTab: View {
             if editor.showGenerationPanel && !mediaAreaCollapsed {
                 GenerationView(maxPanelHeight: generationPanelMaxHeight)
                     .frame(maxHeight: CGFloat(generationPanelMaxHeight), alignment: .bottom)
+                    .tourAnchor(.generation)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -266,8 +267,10 @@ struct MediaTab: View {
         let showGenerate = !AccountService.shared.isMisconfigured
         return HStack(spacing: AppTheme.Spacing.xs) {
             toolbarButton(title: "Import", systemImage: "plus", action: importMedia)
+                .tourAnchor(.importButton)
             if showGenerate {
                 toolbarButton(title: "Generate", systemImage: "sparkles", filled: true, accentStyle: AnyShapeStyle(AppTheme.aiGradient), action: toggleGenerationPanel)
+                    .tourAnchor(.generateButton)
             }
 
             overflowMenu
@@ -275,6 +278,7 @@ struct MediaTab: View {
             Spacer(minLength: 0)
 
             searchIndexStatus
+                .tourAnchor(.smartSearch)
         }
         .frame(height: Layout.panelHeaderHeight)
     }
@@ -552,23 +556,10 @@ struct MediaTab: View {
                 Image(systemName: systemImage)
                 Text(title)
             }
-            .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-            .foregroundStyle(filled ? AnyShapeStyle(AppTheme.Background.baseColor) : (accentStyle ?? AnyShapeStyle(AppTheme.Text.secondaryColor)))
-            .padding(.horizontal, AppTheme.Spacing.smMd)
-            .padding(.vertical, AppTheme.Spacing.xs)
-            .hoverHighlight(cornerRadius: AppTheme.Radius.xl)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(
-                        filled
-                            ? (accentStyle ?? AnyShapeStyle(AppTheme.Accent.primary))
-                            : AnyShapeStyle(AppTheme.Background.prominentColor)
-                    )
-            )
-            .help(title)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.capsule(filled ? .prominent : .secondary, fill: accentStyle))
         .focusable(false)
+        .help(title)
     }
 
     private var mediaAreaCollapsed: Bool {

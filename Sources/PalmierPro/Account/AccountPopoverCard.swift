@@ -135,14 +135,14 @@ struct AccountPopoverCard: View {
                 Task { await account.subscribe(tier: tier) }
                 dismiss()
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.capsule(.prominent))
             .controlSize(.small)
         } else {
             Button("Upgrade") {
                 Task { await account.subscribe(tier: tier) }
                 dismiss()
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.capsule(.secondary))
             .controlSize(.small)
         }
     }

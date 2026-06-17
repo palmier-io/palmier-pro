@@ -46,6 +46,10 @@ final class EditorViewModel {
     var focusedPanel: FocusedPanel?
     var maximizedPanel: FocusedPanel?
 
+    // MARK: - Tutorial tour
+
+    let tour = TourController()
+
     // MARK: - Transient UI state
 
     var currentFrame: Int = 0 {

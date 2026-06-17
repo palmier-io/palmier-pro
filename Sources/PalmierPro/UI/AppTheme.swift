@@ -50,6 +50,18 @@ enum AppTheme {
 
         /// Warm off-white
         static let primary = Color(red: 0.961, green: 0.937, blue: 0.894)
+
+        /// Vibrant highlight used by the onboarding tour spotlight.
+        static let spotlight = Color(red: 1.0, green: 0.27, blue: 0.27)
+        static let spotlightGradient = LinearGradient(
+            colors: [
+                Color(red: 1.0, green: 0.34, blue: 0.30),
+                Color(red: 0.95, green: 0.15, blue: 0.28),
+                Color(red: 1.0, green: 0.48, blue: 0.22),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 
     /// Monochrome silver shimmer

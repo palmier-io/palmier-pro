@@ -43,6 +43,7 @@ let package = Package(
             resources: [
                 .copy("Resources/Fonts"),
                 .copy("Resources/MCPB/palmier-pro.mcpb"),
+                .copy("Resources/Images"),
             ]
         ),
         .testTarget(

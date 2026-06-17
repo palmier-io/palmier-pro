@@ -5,6 +5,7 @@ struct AIEditTab: View {
     /// Clip id from the timeline.
     let clipId: String?
     @Environment(EditorViewModel.self) private var editor
+    @Bindable private var account = AccountService.shared
     @State private var rerunError: String?
     @State private var replaceClipSource: Bool = false
     @State private var useTrimmedClip: Bool = true
@@ -78,7 +79,6 @@ struct AIEditTab: View {
         } message: {
             Text(rerunError ?? "")
         }
-        .aiAccessGate()
     }
 
     private var hasScopeToggles: Bool {
@@ -289,7 +289,8 @@ struct AIEditTab: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
             .controlSize(.small)
-            .disabled(!isEnabled)
+            .disabled(!isEnabled || !account.aiAllowed)
+            .help(account.aiAllowed ? "" : "Sign in to upscale")
         case .createVideo:
             Menu(title) {
                 Button("Set as first frame") { sendToVideo(asReference: false) }
@@ -303,7 +304,7 @@ struct AIEditTab: View {
             Button(title) {
                 present(action)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.capsule(.secondary))
             .controlSize(.small)
             .disabled(!isEnabled)
         }

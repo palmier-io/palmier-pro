@@ -92,7 +92,7 @@ struct AgentPane: View {
         let trimmed = draft.trimmingCharacters(in: .whitespaces)
         if !trimmed.isEmpty {
             Button("Save", action: save)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.capsule(.prominent, size: .regular))
                 .controlSize(.large)
         } else if hasKey {
             Button(action: remove) {
@@ -101,7 +101,7 @@ struct AgentPane: View {
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.capsule(.secondary, size: .regular))
             .controlSize(.large)
             .help("Remove API key")
         }

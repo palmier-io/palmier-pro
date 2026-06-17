@@ -53,7 +53,7 @@ struct ProjectSettingsMismatchView: View {
                 Button("Keep Current") {
                     dismiss()
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.capsule(.secondary, size: .regular))
                 .controlSize(.regular)
 
                 Button("Change to Match") {
@@ -64,7 +64,7 @@ struct ProjectSettingsMismatchView: View {
                     )
                     dismiss()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.capsule(.prominent, size: .regular))
                 .controlSize(.regular)
             }
         }

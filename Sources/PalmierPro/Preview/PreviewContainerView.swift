@@ -122,6 +122,7 @@ struct PreviewContainerView: View {
                 .help("Capture Frame to Media")
         }
         .buttonStyle(.plain)
+        .tourAnchor(.screenshotButton)
     }
 
     // MARK: - Project settings

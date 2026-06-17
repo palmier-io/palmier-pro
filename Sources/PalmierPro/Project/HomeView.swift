@@ -5,6 +5,8 @@ struct HomeView: View {
         GridItem(.adaptive(minimum: 140, maximum: 170), spacing: AppTheme.Spacing.xl)
     ]
 
+    @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
+
     var body: some View {
         HStack(spacing: 0) {
             HomeSidebar()
@@ -18,11 +20,22 @@ struct HomeView: View {
         .background(.ultraThinMaterial)
         .focusEffectDisabled()
         .task { await VisualModelLoader.shared.prepare() }
+        .overlay {
+            if !hasSeenWelcome {
+                WelcomeOverlay { withAnimation { hasSeenWelcome = true } }
+            }
+        }
     }
 
     private var content: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+            SampleProjectsStrip()
+            Text("My Projects")
+                .font(.system(size: AppTheme.FontSize.md, weight: .semibold))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .padding(.horizontal, AppTheme.Spacing.xlXxl)
+                .padding(.bottom, AppTheme.Spacing.sm)
             projectGrid
         }
     }

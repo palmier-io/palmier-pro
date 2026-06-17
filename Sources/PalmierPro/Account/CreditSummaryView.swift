@@ -112,7 +112,7 @@ private struct CreditActionsPopover: View {
         Button { openAccountSettings() } label: {
             Text("Account settings").frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.capsule(.prominent))
         .controlSize(.small)
     }
 
@@ -128,7 +128,7 @@ private struct CreditActionsPopover: View {
             Button { openAccountSettings() } label: {
                 Text("Account settings")
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.capsule(.secondary))
             .controlSize(.small)
         }
     }

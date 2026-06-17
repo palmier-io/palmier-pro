@@ -183,6 +183,10 @@ final class VideoProject: NSDocument {
                 ProjectSettingsMismatchView(mismatch: mismatch)
                     .environment(editorViewModel)
             }
+            .overlay {
+                TourOverlay()
+                    .environment(editorViewModel)
+            }
         let hostingController = NSHostingController(rootView: editorView.tint(AppTheme.Accent.primary))
 
         let window = NSWindow(contentViewController: hostingController)
