@@ -96,11 +96,14 @@ final class MediaAsset: Identifiable {
     func loadMetadata() async {
         if type == .image {
             duration = Defaults.imageDurationSeconds
-            thumbnail = NSImage(contentsOf: url)
-            if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
-                sourceWidth = props[kCGImagePropertyPixelWidth] as? Int
-                sourceHeight = props[kCGImagePropertyPixelHeight] as? Int
+            let imageURL = url
+            let metadata = await Task.detached(priority: .utility) {
+                ImageEncoder.metadata(url: imageURL, thumbnailMaxPixelSize: 1568)
+            }.value
+            if let width = metadata.width { sourceWidth = width }
+            if let height = metadata.height { sourceHeight = height }
+            if let image = metadata.thumbnail {
+                thumbnail = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
             }
             return
         }

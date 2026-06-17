@@ -236,6 +236,14 @@ final class VideoProject: NSDocument {
         for track in editorViewModel.timeline.tracks where track.type == .video {
             for clip in track.clips {
                 guard let url = editorViewModel.mediaResolver.resolveURL(for: clip.mediaRef) else { continue }
+                if clip.mediaType == .image,
+                   let image = ImageEncoder.thumbnail(url: url, maxPixelSize: 640),
+                   let data = ImageEncoder.encodeJPEG(image, quality: 0.7) {
+                    cachedThumbnail = data
+                    return data
+                }
+                guard clip.mediaType == .video else { continue }
+
                 let asset = AVURLAsset(url: url)
                 guard !asset.tracks(withMediaType: .video).isEmpty else { continue }
                 let generator = AVAssetImageGenerator(asset: asset)
@@ -248,7 +256,10 @@ final class VideoProject: NSDocument {
                     result = image
                     semaphore.signal()
                 }
-                semaphore.wait()
+                guard semaphore.wait(timeout: .now() + .seconds(5)) == .success else {
+                    generator.cancelAllCGImageGeneration()
+                    continue
+                }
                 if let cgImage = result {
                     let rep = NSBitmapImageRep(cgImage: cgImage)
                     cachedThumbnail = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.7])
