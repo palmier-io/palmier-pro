@@ -16,13 +16,15 @@ actor MCPHTTPServer {
 
     func start() throws {
         Log.mcp.info("listener start port=\(self.port)")
-        let params = NWParameters.tcp
-        params.allowLocalEndpointReuse = true
         guard let endpointPort = NWEndpoint.Port(rawValue: port) else {
             Log.mcp.fault("invalid port \(self.port)")
             throw NSError(domain: "MCPHTTPServer", code: 1, userInfo: [NSLocalizedDescriptionKey: "invalid port \(port)"])
         }
-        listener = try NWListener(using: params, on: endpointPort)
+        let params = NWParameters.tcp
+        params.allowLocalEndpointReuse = true
+        // Bind to IPv4 loopback only so the server is never reachable from the LAN.
+        params.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: endpointPort)
+        listener = try NWListener(using: params)
 
         listener?.newConnectionHandler = { [weak self] connection in
             guard let self else { return }
@@ -42,7 +44,7 @@ actor MCPHTTPServer {
 
     private func handleConnection(_ connection: NWConnection) async {
         let pipeline = StandardValidationPipeline(validators: [
-            OriginValidator.disabled,
+            OriginValidator.localhost(port: Int(port)),
             ContentTypeValidator(),
             ProtocolVersionValidator(),
         ])
