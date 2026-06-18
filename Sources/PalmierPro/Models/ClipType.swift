@@ -39,7 +39,7 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
         switch ext {
         case "mov", "mp4", "m4v": self = .video
         case "mp3", "wav", "aac", "m4a": self = .audio
-        case "png", "jpg", "jpeg", "tiff", "heic": self = .image
+        case "png", "jpg", "jpeg", "tiff", "heic", "webp": self = .image
         case "json", "lottie": self = .lottie
         default: return nil
         }

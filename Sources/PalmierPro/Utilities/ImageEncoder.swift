@@ -68,7 +68,7 @@ enum ImageEncoder {
 
     private static func passthrough(url: URL, stamp: FileStamp?) -> Output? {
         let imageMetadata = metadata(url: url)
-        guard let mime = passthroughMime(url.pathExtension.lowercased()),
+        guard let mime = sniffedMime(url: url),
               let size = stamp?.size, size <= maxBytes,
               let width = imageMetadata.width,
               let height = imageMetadata.height,
@@ -110,13 +110,17 @@ enum ImageEncoder {
 
     // MARK: - Misc
 
-    private static func passthroughMime(_ ext: String) -> String? {
-        switch ext {
-        case "png": "image/png"
-        case "jpg", "jpeg": "image/jpeg"
-        case "gif": "image/gif"
-        case "webp": "image/webp"
-        default: nil
+    /// MIME from the file's real container type (UTI)
+    private static func sniffedMime(url: URL) -> String? {
+        guard let source = imageSource(url: url),
+              let uti = CGImageSourceGetType(source) as String?
+        else { return nil }
+        switch uti {
+        case UTType.png.identifier: return "image/png"
+        case UTType.jpeg.identifier: return "image/jpeg"
+        case UTType.gif.identifier: return "image/gif"
+        case UTType.webP.identifier: return "image/webp"
+        default: return nil
         }
     }
 

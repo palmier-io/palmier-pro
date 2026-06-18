@@ -8,6 +8,7 @@ struct LottieImportTests {
     @Test func classifiesExtensions() {
         #expect(ClipType(fileExtension: "json") == .lottie)
         #expect(ClipType(fileExtension: "lottie") == .lottie)
+        #expect(ClipType(fileExtension: "webp") == .image)
         #expect(ClipType.lottie.isVisual)
         #expect(ClipType.lottie.isCompatible(with: .video))
         #expect(ClipType.lottie.isCompatible(with: .image))
