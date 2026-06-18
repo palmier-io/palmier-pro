@@ -38,7 +38,7 @@ struct AgentPane: View {
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Button(action: { NSWorkspace.shared.open(consoleURL) }) {
+                Button(action: { NSWorkspace.shared.open(consoleURL, configuration: .init(), completionHandler: nil) }) {
                     HStack(spacing: 2) {
                         Text("Get Anthropic API key")
                         Image(systemName: "arrow.up.right")

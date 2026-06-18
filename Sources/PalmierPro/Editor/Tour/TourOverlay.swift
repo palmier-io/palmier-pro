@@ -157,7 +157,7 @@ struct TourOverlay: View {
             VStack(spacing: 0) {
                 linkRow("MCP Setup", "puzzlepiece.extension.fill") { HelpWindowController.shared.show(tab: .mcp) }
                 linkRow("Keyboard Shortcuts", "keyboard") { HelpWindowController.shared.show(tab: .shortcuts) }
-                linkRow("Documentation", "book.fill") { NSWorkspace.shared.open(Self.docsURL) }
+                linkRow("Documentation", "book.fill") { NSWorkspace.shared.open(Self.docsURL, configuration: .init(), completionHandler: nil) }
                 linkRow("Settings", "gearshape.fill") { SettingsWindowController.shared.show() }
             }
             HStack {

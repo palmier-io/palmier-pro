@@ -117,7 +117,7 @@ struct MCPInstructionsPane: View {
             sectionHeading("Connect from Cursor", prominent: true)
             installButton(label: "Install in Cursor", systemImage: "arrow.down.circle") {
                 if let url = cursorDeepLink {
-                    NSWorkspace.shared.open(url)
+                    NSWorkspace.shared.open(url, configuration: .init(), completionHandler: nil)
                 }
             }
             manualFallback(
@@ -144,7 +144,7 @@ struct MCPInstructionsPane: View {
         guard let resourceURL = Bundle.main.resourceURL else { return }
         let url = resourceURL.appendingPathComponent("palmier-pro.mcpb")
         guard FileManager.default.fileExists(atPath: url.path) else { return }
-        NSWorkspace.shared.open(url)
+        NSWorkspace.shared.open(url, configuration: .init(), completionHandler: nil)
     }
 
     private var claudeCodeSection: some View {

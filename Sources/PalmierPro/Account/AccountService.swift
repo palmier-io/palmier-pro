@@ -364,7 +364,7 @@ final class AccountService {
             lastError = "Refused to open untrusted URL."
             return
         }
-        NSWorkspace.shared.open(url)
+        NSWorkspace.shared.open(url, configuration: .init(), completionHandler: nil)
     }
 }
 
