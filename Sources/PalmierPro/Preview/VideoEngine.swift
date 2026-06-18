@@ -170,6 +170,7 @@ final class VideoEngine {
             clipNaturalSizes = result.clipNaturalSizes
             clipTransforms = result.clipTransforms
             compositionDuration = result.composition.duration
+            editor.offlineMediaRefs = result.offlineMediaRefs
 
             let item = AVPlayerItem(asset: result.composition)
             item.audioMix = result.audioMix

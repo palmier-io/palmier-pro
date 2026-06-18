@@ -30,8 +30,8 @@ struct PreviewContainerView: View {
                     if let asset = activeMediaAsset, asset.isGenerating {
                         generatingPreview(label: asset.generatingLabel)
                     }
-                    if activeMediaMissing {
-                        missingPreview
+                    if let overlay = offlineOverlay {
+                        offlinePreview(path: overlay.path)
                     }
                     if editor.cropEditingActive {
                         CropOverlayView()
@@ -324,7 +324,36 @@ struct PreviewContainerView: View {
 
     private var activeMediaMissing: Bool {
         guard let asset = activeMediaAsset, case .none = asset.generationStatus else { return false }
-        return editor.mediaResolver.isMissing(for: asset.id)
+        return editor.isMediaOffline(asset.id)
+    }
+
+    /// The offline clip blacking out the current timeline frame, or nil when an online clip covers it.
+    private var timelineOfflineClip: Clip? {
+        guard isTimeline else { return nil }
+        let frame = editor.currentFrame
+        var offline: Clip?
+        for track in editor.timeline.tracks where track.type != .audio && !track.hidden {
+            for clip in track.clips where clip.mediaType != .text {
+                guard clip.contains(timelineFrame: frame) else { continue }
+                if editor.isMediaOffline(clip.mediaRef) {
+                    offline = offline ?? clip
+                } else {
+                    return nil
+                }
+            }
+        }
+        return offline
+    }
+
+    private struct OfflineOverlay { let path: String? }
+
+    /// Resolved once per render so the timeline scan runs at most once.
+    private var offlineOverlay: OfflineOverlay? {
+        if activeMediaMissing { return OfflineOverlay(path: activeMediaAsset?.url.path) }
+        if let clip = timelineOfflineClip {
+            return OfflineOverlay(path: editor.mediaResolver.expectedURL(for: clip.mediaRef)?.path)
+        }
+        return nil
     }
 
     private func generatingPreview(label: String) -> some View {
@@ -354,18 +383,24 @@ struct PreviewContainerView: View {
         return nil
     }
 
-    private var missingPreview: some View {
+    private func offlinePreview(path: String?) -> some View {
         ZStack {
             Color.black.opacity(AppTheme.Opacity.strong)
             VStack(spacing: AppTheme.Spacing.md) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: AppTheme.FontSize.display))
                     .foregroundStyle(AppTheme.Status.errorColor)
-                Text("Media Missing")
+                Text("Media Offline")
                     .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.primaryColor)
-                if let asset = activeMediaAsset {
-                    Text(asset.url.path)
+                Text("Palmier couldn't load this clip's source file. It may be missing, on an ejected drive, or unreadable.")
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, AppTheme.Spacing.lg)
+                if let path {
+                    Text(path)
                         .font(.system(size: AppTheme.FontSize.sm))
                         .foregroundStyle(AppTheme.Text.secondaryColor)
                         .multilineTextAlignment(.center)

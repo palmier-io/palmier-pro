@@ -108,6 +108,7 @@ final class EditorViewModel {
     // MARK: - Media library (in-memory, rebuilt on project open)
 
     var mediaAssets: [MediaAsset] = []
+    var offlineMediaRefs: Set<String> = []
     let mediaVisualCache = MediaVisualCache()
     let searchIndex = SearchIndexCoordinator()
     var projectURL: URL? {

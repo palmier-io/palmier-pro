@@ -135,8 +135,13 @@ extension EditorViewModel {
         return mediaResolver.displayName(for: clip.mediaRef)
     }
 
-    func isClipMediaMissing(_ clip: Clip) -> Bool {
-        clip.mediaType != .text && mediaResolver.isMissing(for: clip.mediaRef)
+    /// missing on disk or present-but-unloadable (no permission, ejected volume)
+    func isMediaOffline(_ mediaRef: String) -> Bool {
+        offlineMediaRefs.contains(mediaRef) || mediaResolver.isMissing(for: mediaRef)
+    }
+
+    func isClipMediaOffline(_ clip: Clip) -> Bool {
+        clip.mediaType != .text && isMediaOffline(clip.mediaRef)
     }
 
     func isClipMediaGenerating(_ clip: Clip) -> Bool {
