@@ -249,7 +249,7 @@ enum CompositionBuilder {
                     size: imageSize
                 )
             } catch {
-                Log.preview.error("stillVideo failed mediaRef=\(clip.mediaRef) size=\(Int(imageSize.width))x\(Int(imageSize.height)): \(error.localizedDescription)")
+                Log.preview.error("stillVideo failed mediaRef=\(clip.mediaRef) size=\(Int(imageSize.width))x\(Int(imageSize.height)): \(Log.detail(error))")
                 return nil
             }
         } else if clip.mediaType == .lottie {

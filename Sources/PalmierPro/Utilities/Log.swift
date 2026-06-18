@@ -21,6 +21,22 @@ enum Log {
     static let crashLogURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Logs/PalmierPro/crash.log")
 
+    /// Full NSError chain
+    static func detail(_ error: Error) -> String {
+        let ns = error as NSError
+        var message = ns.localizedDescription
+        if let reason = ns.localizedFailureReason, !message.contains(reason) {
+            message += " — \(reason)"
+        }
+        var codes: [String] = []
+        var current: NSError? = ns
+        while let e = current {
+            codes.append("\(e.domain) \(e.code)")
+            current = e.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return "\(message) (\(codes.joined(separator: " → ")))"
+    }
+
     /// Call once at launch, before `NSApplication.run()`.
     static func bootstrap() {
         CrashHandler.install()

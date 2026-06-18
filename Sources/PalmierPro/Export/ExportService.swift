@@ -116,15 +116,15 @@ final class ExportService {
                     self.error = "Export was cancelled"
                     Log.export.notice("export cancelled")
                 } else {
-                    self.error = Self.detailedMessage(for: error)
-                    Log.export.error("export failed: \(Self.detailedMessage(for: error))")
+                    self.error = Log.detail(error)
+                    Log.export.error("export failed: \(Log.detail(error))")
                 }
             }
 
             progressTask.cancel()
         } catch {
-            self.error = Self.detailedMessage(for: error)
-            Log.export.error("export setup failed: \(Self.detailedMessage(for: error))")
+            self.error = Log.detail(error)
+            Log.export.error("export setup failed: \(Log.detail(error))")
         }
 
         isExporting = false
@@ -157,8 +157,8 @@ final class ExportService {
             Log.export.notice("palmier export ok collected=\(report.collected.count) missing=\(report.missing.count)")
             return report
         } catch {
-            self.error = Self.detailedMessage(for: error)
-            Log.export.error("palmier export failed: \(Self.detailedMessage(for: error))")
+            self.error = Log.detail(error)
+            Log.export.error("palmier export failed: \(Log.detail(error))")
             return nil
         }
     }
@@ -197,21 +197,6 @@ final class ExportService {
         )
         session.videoComposition = mutableVC
         return session
-    }
-
-    private static func detailedMessage(for error: Error) -> String {
-        let ns = error as NSError
-        var message = ns.localizedDescription
-        if let reason = ns.localizedFailureReason, !message.contains(reason) {
-            message += " — \(reason)"
-        }
-        var codes: [String] = []
-        var current: NSError? = ns
-        while let e = current {
-            codes.append("\(e.domain) \(e.code)")
-            current = e.userInfo[NSUnderlyingErrorKey] as? NSError
-        }
-        return "\(message) (\(codes.joined(separator: " → ")))"
     }
 
     // MARK: - Export preset mapping
