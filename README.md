@@ -93,6 +93,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 - **Discord:** Join the community on **[Discord](https://discord.com/invite/SMVW6pKYmg)**.
 - **Twitter / X:** Follow **[@Palmier_io](https://x.com/Palmier_io)** for updates and announcements.
+- **Instagram:** Follow [@palmier.io](https://www.instagram.com/palmier.io) 
 - **Feedback &amp; Support:** Create a [Github Issue](https://github.com/palmier-io/palmier-pro/issues) or email us at founders@palmier.io
 
 ## License
