@@ -37,7 +37,7 @@ final class VideoProject: NSDocument {
         do {
             loadedTimeline = try JSONDecoder().decode(Timeline.self, from: data)
         } catch {
-            Log.project.error("read: timeline decode failed: \(error.localizedDescription)")
+            Log.project.error("read: timeline decode failed: \(String(describing: error))")
             throw error
         }
         if let manifestData = fileWrapper.fileWrappers?[Project.manifestFilename]?.regularFileContents {
