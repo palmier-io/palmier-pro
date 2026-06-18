@@ -16,6 +16,18 @@ enum AnthropicModel: String, CaseIterable, Sendable {
     }
 }
 
+enum AgentBackend: String, CaseIterable, Sendable {
+    case anthropic
+    case codexCLI
+
+    var displayName: String {
+        switch self {
+        case .anthropic: "Anthropic"
+        case .codexCLI: "Codex CLI"
+        }
+    }
+}
+
 enum AnthropicStopReason: String, Sendable {
     case endTurn = "end_turn"
     case toolUse = "tool_use"

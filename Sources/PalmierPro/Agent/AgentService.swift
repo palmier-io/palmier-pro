@@ -38,10 +38,17 @@ final class AgentService {
 
     var hasApiKey: Bool { !apiKey.isEmpty }
 
+    var hasCodexCLI: Bool { CodexCLIClient.isAvailable }
+
     var canStream: Bool {
-        if hasApiKey { return true }
-        let account = AccountService.shared
-        return account.isSignedIn && account.hasCredits
+        switch backend {
+        case .anthropic:
+            if hasApiKey { return true }
+            let account = AccountService.shared
+            return account.isSignedIn && account.hasCredits
+        case .codexCLI:
+            return hasCodexCLI
+        }
     }
 
     var availableModels: [AnthropicModel] {
@@ -50,12 +57,17 @@ final class AgentService {
     }
 
     private func selectClient() -> (any AgentClient)? {
-        let chosen = effectiveModel
-        if hasApiKey { return AnthropicClient(apiKey: apiKey, model: chosen) }
-        if AccountService.shared.isSignedIn {
-            return PalmierClient(model: chosen)
+        switch backend {
+        case .anthropic:
+            let chosen = effectiveModel
+            if hasApiKey { return AnthropicClient(apiKey: apiKey, model: chosen) }
+            if AccountService.shared.isSignedIn {
+                return PalmierClient(model: chosen)
+            }
+            return nil
+        case .codexCLI:
+            return hasCodexCLI ? CodexCLIClient() : nil
         }
-        return nil
     }
 
     var effectiveModel: AnthropicModel {
@@ -72,6 +84,16 @@ final class AgentService {
         return .sonnet46
     }() {
         didSet { UserDefaults.standard.set(model.rawValue, forKey: "agentModel") }
+    }
+
+    var backend: AgentBackend = {
+        if let raw = UserDefaults.standard.string(forKey: "agentBackend"),
+           let backend = AgentBackend(rawValue: raw) {
+            return backend
+        }
+        return .anthropic
+    }() {
+        didSet { UserDefaults.standard.set(backend.rawValue, forKey: "agentBackend") }
     }
 
     var sessions: [ChatSession] = []
@@ -296,7 +318,9 @@ final class AgentService {
 
     func send(text: String, mentions: [AgentMention]) {
         guard canStream else {
-            streamError = .upstream("Sign in to a paid plan or add an Anthropic API key to start.")
+            streamError = .upstream(backend == .codexCLI
+                ? "Codex CLI not found. Install Codex or open Codex.app."
+                : "Sign in to a paid plan or add an Anthropic API key to start.")
             return
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
