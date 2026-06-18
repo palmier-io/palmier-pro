@@ -150,7 +150,7 @@ final class TourController {
             TourStep(kind: .spotlight(.panel(.timeline)), title: "Timeline",
                      instruction: "Your timeline: the top half is video, the bottom half is audio. This is where you edit. Right-click a clip for some cool AI features such as upscale, edit, or generate music."),
             TourStep(kind: .spotlight(.element(.timelineRuler)), title: "Select a range",
-                     instruction: "This is the timeline ruler. Cmd-drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range."),
+                     instruction: "This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range."),
             TourStep(kind: .spotlight(.panel(.agent)), title: "AI agent",
                      instruction: "Chat with your agent! It can generate content, edit clips, organize your assets, and much more. Start by signing in, or bring your own Anthropic API key."),
             TourStep(kind: .outro, title: "You're all set",
