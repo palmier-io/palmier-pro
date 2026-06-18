@@ -302,9 +302,19 @@ final class AgentService {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let referencedMentions = AgentMentionContext.referencedMentions(mentions, in: trimmed)
+        // Snapshot the mention/timeline context
+        let contextHint = referencedMentions.isEmpty
+            ? nil
+            : AgentMentionContext.hint(
+                referencedMentions, editor: editor,
+                inlined: inlineImageBlocks(for: referencedMentions)
+            )
 
         resolveOrphanToolUses()
-        messages.append(AgentMessage(role: .user, blocks: [.text(trimmed)], mentions: referencedMentions))
+        messages.append(AgentMessage(
+            role: .user, blocks: [.text(trimmed)],
+            mentions: referencedMentions, contextHint: contextHint
+        ))
         streamError = nil
         kickOffStream()
     }
@@ -506,7 +516,8 @@ final class AgentService {
             var content = msg.blocks.compactMap(Self.contentBlockJSON)
             if msg.role == .user, !msg.mentions.isEmpty {
                 let inlined = inlineImageBlocks(for: msg.mentions)
-                let hint = AgentMentionContext.hint(msg.mentions, editor: editor, inlined: inlined)
+                let hint = msg.contextHint
+                    ?? AgentMentionContext.hint(msg.mentions, editor: editor, inlined: inlined)
                 content.insert(contentsOf: inlined.blocks, at: 0)
                 content.insert(["type": "text", "text": hint], at: 0)
             }
@@ -584,12 +595,14 @@ struct AgentMessage: Identifiable, Codable {
     let role: Role
     var blocks: [AgentContentBlock]
     var mentions: [AgentMention]
+    var contextHint: String?
 
-    init(id: UUID = UUID(), role: Role, blocks: [AgentContentBlock], mentions: [AgentMention] = []) {
+    init(id: UUID = UUID(), role: Role, blocks: [AgentContentBlock], mentions: [AgentMention] = [], contextHint: String? = nil) {
         self.id = id
         self.role = role
         self.blocks = blocks
         self.mentions = mentions
+        self.contextHint = contextHint
     }
 }
 

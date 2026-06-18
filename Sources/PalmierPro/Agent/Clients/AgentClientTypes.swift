@@ -68,6 +68,21 @@ protocol AgentClient: Sendable {
     ) -> AsyncThrowingStream<AnthropicStreamEvent, Error>
 }
 
+// MARK: - Usage logging
+
+enum AgentUsageLog {
+    static func record(_ usage: [String: Any]) {
+        #if DEBUG
+        let input = usage["input_tokens"] as? Int ?? 0
+        let cacheWrite = usage["cache_creation_input_tokens"] as? Int ?? 0
+        let cacheRead = usage["cache_read_input_tokens"] as? Int ?? 0
+        let billed = input + cacheWrite + cacheRead
+        let readPct = billed > 0 ? Int((Double(cacheRead) / Double(billed)) * 100) : 0
+        print("[agent cache] input=\(input) cacheWrite=\(cacheWrite) cacheRead=\(cacheRead) (\(readPct)% read)")
+        #endif
+    }
+}
+
 // MARK: - Shared SSE parser
 
 enum AnthropicSSE {
@@ -84,6 +99,12 @@ enum AnthropicSSE {
                   let type = event["type"] as? String else { continue }
 
             switch type {
+            case "message_start":
+                if let message = event["message"] as? [String: Any],
+                   let usage = message["usage"] as? [String: Any] {
+                    AgentUsageLog.record(usage)
+                }
+
             case "content_block_start":
                 if let index = event["index"] as? Int,
                    let block = event["content_block"] as? [String: Any],
@@ -148,12 +169,24 @@ enum AnthropicRequestBody {
             last["cache_control"] = ["type": "ephemeral"]
             toolBlocks.append(last)
         }
+        // Prompt-cache the conversation prefix
+        var messageBlocks: [[String: Any]] = messages.map {
+            ["role": $0.role.rawValue, "content": $0.content]
+        }
+        if var lastMsg = messageBlocks.popLast(),
+           var content = lastMsg["content"] as? [[String: Any]],
+           var lastBlock = content.popLast() {
+            lastBlock["cache_control"] = ["type": "ephemeral"]
+            content.append(lastBlock)
+            lastMsg["content"] = content
+            messageBlocks.append(lastMsg)
+        }
         var body: [String: Any] = [
             "model": model.rawValue,
             "max_tokens": maxTokens,
             "stream": true,
             "system": [["type": "text", "text": system, "cache_control": ["type": "ephemeral"]]],
-            "messages": messages.map { ["role": $0.role.rawValue, "content": $0.content] },
+            "messages": messageBlocks,
         ]
         if !toolBlocks.isEmpty { body["tools"] = toolBlocks }
         return body

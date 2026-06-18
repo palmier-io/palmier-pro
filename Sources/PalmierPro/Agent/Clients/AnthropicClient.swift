@@ -68,9 +68,12 @@ struct AnthropicClient: AgentClient {
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         request.setValue("application/json", forHTTPHeaderField: "content-type")
         request.setValue("text/event-stream", forHTTPHeaderField: "accept")
-        request.httpBody = try JSONSerialization.data(withJSONObject: AnthropicRequestBody.build(
-            model: model, maxTokens: maxTokens, system: system, tools: tools, messages: messages
-        ))
+        request.httpBody = try JSONSerialization.data(
+            withJSONObject: AnthropicRequestBody.build(
+                model: model, maxTokens: maxTokens, system: system, tools: tools, messages: messages
+            ),
+            options: [.sortedKeys]
+        )
 
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode >= 400 {

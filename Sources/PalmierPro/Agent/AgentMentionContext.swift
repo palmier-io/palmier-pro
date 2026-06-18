@@ -18,7 +18,7 @@ enum AgentMentionContext {
         inlined: InlinedMentions = InlinedMentions()
     ) -> String {
         let entries = mentionEntries(mentions, editor: editor, inlined: inlined)
-        let data = (try? JSONSerialization.data(withJSONObject: entries)) ?? Data()
+        let data = (try? JSONSerialization.data(withJSONObject: entries, options: [.sortedKeys])) ?? Data()
         let json = String(data: data, encoding: .utf8) ?? "[]"
         let notes = mentionNotes(mentions, inlined: inlined)
         let suffix = notes.isEmpty ? "" : " " + notes.joined(separator: " ")
