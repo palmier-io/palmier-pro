@@ -18,6 +18,8 @@ enum ToolName: String, CaseIterable, Sendable {
     case generateAudio = "generate_audio"
     case upscaleMedia = "upscale_media"
     case importMedia = "import_media"
+    case importImageSequence = "import_image_sequence"
+    case exportVideo = "export_video"
     case listModels = "list_models"
     case inspectMedia = "inspect_media"
     case inspectTimeline = "inspect_timeline"
@@ -381,6 +383,36 @@ enum ToolDefinitions {
                     "folderId": ["type": "string", "description": "Optional. Folder id (from list_folders or create_folder) to place the result in. Omit for the project root."],
                 ],
                 required: ["source"]
+            )
+        ),
+        AgentTool(
+            name: .importImageSequence,
+            description: "Assemble an ordered set of still images into a single video clip and add it to the media library — the bridge for image sequences (rendered frames, storyboard panels, slideshows) that import_media can't take (it accepts one file at a time and has no frames-to-video step). Provide exactly one of 'directory' (every supported image in it, ordered by natural filename sort so frame_2 comes before frame_10) or 'paths' (an explicit ordered list). Each image is held for framesPerImage frames at fps; images are aspect-fit and letterboxed onto the project canvas (the timeline's width×height). The result is one H.264 video asset registered in get_media — place it on the timeline with add_clips using the returned durationFrames. Encoding runs locally and the call returns once the asset is ready (long sequences take a while). Costs nothing. Supported image types: png, jpg, jpeg, tiff, heic. Requires an open project.",
+            inputSchema: objectSchema(
+                properties: [
+                    "directory": ["type": "string", "description": "Absolute path to a folder; every supported image inside is used, ordered by natural filename sort. Mutually exclusive with 'paths'."],
+                    "paths": [
+                        "type": "array",
+                        "items": ["type": "string"],
+                        "description": "Explicit, ordered list of absolute image file paths. Mutually exclusive with 'directory'. Order is preserved as given.",
+                    ],
+                    "framesPerImage": ["type": "integer", "description": "How many frames each image is held (>= 1). Default: the project fps (≈ 1 second per image)."],
+                    "fps": ["type": "integer", "description": "Frame rate of the assembled video. Default: the project's timeline fps (recommended, so it places cleanly)."],
+                    "name": ["type": "string", "description": "Display name for the asset in the media library. Defaults to the generated filename."],
+                    "folderId": ["type": "string", "description": "Optional. Folder id (from list_folders or create_folder) to place the result in. Omit for the project root."],
+                ]
+            )
+        ),
+        AgentTool(
+            name: .exportVideo,
+            description: "Render the current timeline to a video file on disk — the same composite the editor's File ▸ Export dialog produces, exposed to the agent so a render can finish end-to-end without a human. Writes the timeline with every layer baked in (video/image clips, transforms, crops, keyframes, text and caption overlays, and the full audio mix) to 'path'. Runs locally, costs nothing, and the call returns only once the file is fully written (long timelines take a while). format: 'h264' (default, .mp4), 'h265' (.mp4), 'prores' (.mov), or 'xml' (FCPXML-style timeline interchange for Premiere/DaVinci/Final Cut — the edit only, media is NOT rendered). resolution: '720p', '1080p' (default), or '4k', scaled from the timeline canvas with aspect preserved. The output file extension is normalized to match the format. Call get_timeline first to confirm the timeline has content.",
+            inputSchema: objectSchema(
+                properties: [
+                    "path": ["type": "string", "description": "Absolute output file path. Parent directories are created if missing; the extension is normalized to the chosen format (.mp4/.mov/.xml). An existing file at this path is overwritten."],
+                    "format": ["type": "string", "enum": ["h264", "h265", "prores", "xml"], "description": "Output format. Default 'h264' (H.264 .mp4). 'xml' writes a timeline-interchange file, not a rendered video."],
+                    "resolution": ["type": "string", "enum": ["720p", "1080p", "4k"], "description": "Render resolution, scaled from the timeline canvas (aspect preserved). Default '1080p'. Ignored for 'xml'."],
+                ],
+                required: ["path"]
             )
         ),
         AgentTool(
