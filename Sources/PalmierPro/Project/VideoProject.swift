@@ -16,12 +16,13 @@ final class VideoProject: NSDocument {
 
     private nonisolated(unsafe) var packageWrapper = FileWrapper(directoryWithFileWrappers: [:])
 
-    /// Captured on main thread in save(to:) before fileWrapper runs (possibly off-main).
+    /// Captured on main thread before fileWrapper runs (possibly off-main).
     private nonisolated(unsafe) var snapshotTimeline: Data?
     private nonisolated(unsafe) var snapshotManifest: Data?
     private nonisolated(unsafe) var snapshotGenerationLog: Data?
     private nonisolated(unsafe) var snapshotThumbnail: Data?
     private nonisolated(unsafe) var snapshotChatSessionFiles: [(name: String, data: Data)] = []
+    private nonisolated(unsafe) var snapshotPreparedForFileWrapper = false
 
     // MARK: - Persistence
 
@@ -58,19 +59,19 @@ final class VideoProject: NSDocument {
             fileModificationDate = date
         }
 
-        snapshotTimeline = try? JSONEncoder().encode(editorViewModel.timeline)
-        snapshotManifest = try? JSONEncoder().encode(editorViewModel.mediaManifest)
-        snapshotGenerationLog = try? JSONEncoder().encode(editorViewModel.generationLog)
-        snapshotThumbnail = captureThumbnail()
-        snapshotChatSessionFiles = editorViewModel.agentService.sessions
-            .filter { !$0.messages.isEmpty }
-            .compactMap { session in
-                ChatSessionStore.encodeSession(session).map { (name: "\(session.id.uuidString).json", data: $0) }
-            }
+        captureSaveSnapshot()
         super.save(to: url, ofType: typeName, for: saveOperation, completionHandler: completionHandler)
     }
 
     override func fileWrapper(ofType typeName: String) throws -> FileWrapper {
+        if !snapshotPreparedForFileWrapper {
+            guard Thread.isMainThread else {
+                Log.project.error("save: snapshot not prepared for off-main fileWrapper()")
+                throw CocoaError(.fileWriteUnknown)
+            }
+            captureSaveSnapshot()
+        }
+        defer { snapshotPreparedForFileWrapper = false }
         guard let data = snapshotTimeline else {
             Log.project.error("save: snapshotTimeline missing at fileWrapper()")
             throw CocoaError(.fileWriteUnknown)
@@ -84,6 +85,19 @@ final class VideoProject: NSDocument {
         if let mediaDir = mediaDirWrapper() { replaceChild(Project.mediaDirectoryName, with: mediaDir) }
 
         return packageWrapper
+    }
+
+    private func captureSaveSnapshot() {
+        snapshotTimeline = try? JSONEncoder().encode(editorViewModel.timeline)
+        snapshotManifest = try? JSONEncoder().encode(editorViewModel.mediaManifest)
+        snapshotGenerationLog = try? JSONEncoder().encode(editorViewModel.generationLog)
+        snapshotThumbnail = captureThumbnail()
+        snapshotChatSessionFiles = editorViewModel.agentService.sessions
+            .filter { !$0.messages.isEmpty }
+            .compactMap { session in
+                ChatSessionStore.encodeSession(session).map { (name: "\(session.id.uuidString).json", data: $0) }
+            }
+        snapshotPreparedForFileWrapper = true
     }
 
     private func mediaDirWrapper() -> FileWrapper? {
