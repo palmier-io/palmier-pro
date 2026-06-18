@@ -37,7 +37,7 @@ struct ModelsPane: View {
             searchBar
 
             if sections.isEmpty {
-                Text(catalog.isLoaded ? "No models match \"\(query)\"." : "Loading models…")
+                Text(emptyStateText)
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .padding(.top, AppTheme.Spacing.lg)
@@ -47,6 +47,13 @@ struct ModelsPane: View {
                 }
             }
         }
+    }
+
+    private var emptyStateText: String {
+        if let error = catalog.lastError {
+            return error
+        }
+        return catalog.isLoaded ? "No models match \"\(query)\"." : "Loading models…"
     }
 
     private var searchBar: some View {

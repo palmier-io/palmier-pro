@@ -17,13 +17,13 @@ struct AccountPopoverCard: View {
             }
 
             Divider().overlay(AppTheme.Border.subtleColor)
-            footerRow
+        footerRow
 
-            if let error = account.lastError {
-                Text(error)
-                    .font(.system(size: AppTheme.FontSize.xs))
-                    .foregroundStyle(.red)
-            }
+        if let error = account.lastError {
+            Text(UserFacingError.message(error))
+                .font(.system(size: AppTheme.FontSize.xs))
+                .foregroundStyle(.red)
+        }
         }
         .padding(AppTheme.Spacing.md)
         .frame(width: Self.cardWidth)

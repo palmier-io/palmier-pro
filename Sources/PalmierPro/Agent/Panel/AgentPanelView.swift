@@ -137,30 +137,68 @@ struct AgentPanelView: View {
 
     @ViewBuilder
     private var modelPicker: some View {
-        if service.hasApiKey {
-            Menu {
-                ForEach(service.availableModels, id: \.self) { m in
-                    Button(m.displayName) { service.model = m }
-                }
-            } label: {
-                HStack(spacing: AppTheme.Spacing.xs) {
-                    Text(service.effectiveModel.displayName)
-                        .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
-                        .foregroundStyle(AppTheme.Text.secondaryColor)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+        Menu {
+            Section("Provider") {
+                ForEach(AgentBackend.allCases, id: \.self) { backend in
+                    Button(backend.displayName) { service.backend = backend }
                 }
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
+
+            if service.backend == .anthropic {
+                Section("Model") {
+                    ForEach(service.availableModels, id: \.self) { m in
+                        Button(m.displayName) { service.model = m }
+                    }
+                }
+        } else {
+            Section("Reasoning") {
+                if service.availableCodexReasoningLevels.isEmpty {
+                    Text(service.codexCatalogError ?? "Loading models...")
+                } else {
+                    ForEach(service.availableCodexReasoningLevels) { level in
+                        Button(level.displayName) { service.selectCodexReasoning(level) }
+                    }
+                }
+            }
+            Section("Model") {
+                if service.codexModels.isEmpty {
+                    Text(service.codexCatalogError ?? "Loading models...")
+                } else {
+                    ForEach(service.codexModels) { m in
+                        Button(m.displayName) { service.selectCodexModel(m) }
+                    }
+                }
+            }
         }
+        } label: {
+            HStack(spacing: AppTheme.Spacing.xs) {
+                Text(modelPickerTitle)
+                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+    }
+
+    private var modelPickerTitle: String {
+        service.backend == .codexCLI
+            ? service.codexPickerTitle
+            : service.effectiveModel.displayName
     }
 
     @ViewBuilder
     private var byokIndicator: some View {
-        if service.hasApiKey {
+        if service.backend == .codexCLI {
+            Text("using Codex CLI")
+                .font(.system(size: AppTheme.FontSize.xs).italic())
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .help("Streaming through local Codex CLI")
+        } else if service.hasApiKey {
             Text("using API key")
                 .font(.system(size: AppTheme.FontSize.xs).italic())
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -316,26 +354,32 @@ struct AgentPanelView: View {
 
     @ViewBuilder
     private var missingKeyState: some View {
-        let account = AccountService.shared
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Button(action: { SettingsWindowController.shared.show(tab: .account) }) {
-                Text(missingKeyPrimaryAction(account: account))
-                    .underline()
-                    .foregroundStyle(AppTheme.Accent.primary)
-            }
-            .buttonStyle(.plain)
-
-            Text("or use")
+        if service.backend == .codexCLI {
+            Text("Install Codex CLI or open Codex.app to use this provider.")
+                .font(.system(size: AppTheme.FontSize.md, weight: .medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
+        } else {
+            let account = AccountService.shared
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Button(action: { SettingsWindowController.shared.show(tab: .account) }) {
+                    Text(missingKeyPrimaryAction(account: account))
+                        .underline()
+                        .foregroundStyle(AppTheme.Accent.primary)
+                }
+                .buttonStyle(.plain)
 
-            Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
-                Text("your own Anthropic key")
-                    .underline()
-                    .foregroundStyle(AppTheme.Accent.primary)
+                Text("or use")
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+
+                Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
+                    Text("your own Anthropic key")
+                        .underline()
+                        .foregroundStyle(AppTheme.Accent.primary)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+            .font(.system(size: AppTheme.FontSize.md, weight: .medium))
         }
-        .font(.system(size: AppTheme.FontSize.md, weight: .medium))
     }
 
     private func missingKeyPrimaryAction(account: AccountService) -> String {

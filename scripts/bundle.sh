@@ -36,6 +36,7 @@ fi
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-Developer ID Application: Palmier, Inc. (MMFLRC7562)}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-palmier-notary}"
 SENTRY_DSN="${SENTRY_DSN:-}"
+# Set PALMIER_BUNDLE_ID for isolated local builds, e.g. io.palmier.pro.dev.
 RESOURCES="$ROOT/Sources/PalmierPro/Resources"
 APP="$ROOT/.build/PalmierPro.app"
 ZIP="$ROOT/.build/PalmierPro.zip"
@@ -74,6 +75,10 @@ echo "==> Injecting backend config into Info.plist"
 inject_plist PalmierClerkPublishableKey "${CLERK_PUBLISHABLE_KEY:-}"
 inject_plist PalmierConvexDeploymentURL "${CONVEX_DEPLOYMENT_URL:-}"
 inject_plist PalmierConvexHttpURL "${CONVEX_HTTP_URL:-}"
+if [ -n "${PALMIER_BUNDLE_ID:-}" ]; then
+    echo "==> Using bundle id $PALMIER_BUNDLE_ID"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $PALMIER_BUNDLE_ID" "$APP/Contents/Info.plist"
+fi
 cp "$RESOURCES/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp -R "$SPARKLE_FW" "$APP/Contents/Frameworks/Sparkle.framework"
 

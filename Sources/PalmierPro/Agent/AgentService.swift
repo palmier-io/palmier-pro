@@ -10,6 +10,7 @@ final class AgentService {
 
     init() {
         reloadAPIKey()
+        refreshCodexModels()
         apiKeyObserver = NotificationCenter.default.addObserver(
             forName: .anthropicAPIKeyChanged,
             object: nil,
@@ -38,10 +39,17 @@ final class AgentService {
 
     var hasApiKey: Bool { !apiKey.isEmpty }
 
+    var hasCodexCLI: Bool { CodexCLIClient.isAvailable }
+
     var canStream: Bool {
-        if hasApiKey { return true }
-        let account = AccountService.shared
-        return account.isSignedIn && account.hasCredits
+        switch backend {
+        case .anthropic:
+            if hasApiKey { return true }
+            let account = AccountService.shared
+            return account.isSignedIn && account.hasCredits
+        case .codexCLI:
+            return hasCodexCLI
+        }
     }
 
     var availableModels: [AnthropicModel] {
@@ -50,12 +58,20 @@ final class AgentService {
     }
 
     private func selectClient() -> (any AgentClient)? {
-        let chosen = effectiveModel
-        if hasApiKey { return AnthropicClient(apiKey: apiKey, model: chosen) }
-        if AccountService.shared.isSignedIn {
-            return PalmierClient(model: chosen)
+        switch backend {
+        case .anthropic:
+            let chosen = effectiveModel
+            if hasApiKey { return AnthropicClient(apiKey: apiKey, model: chosen) }
+            if AccountService.shared.isSignedIn {
+                return PalmierClient(model: chosen)
+            }
+            return nil
+        case .codexCLI:
+            return hasCodexCLI ? CodexCLIClient(
+                modelSlug: selectedCodexModel?.slug ?? (codexModelSlug.isEmpty ? nil : codexModelSlug),
+                reasoningEffort: selectedCodexReasoningLevel?.effort ?? (codexReasoningEffort.isEmpty ? nil : codexReasoningEffort)
+            ) : nil
         }
-        return nil
     }
 
     var effectiveModel: AnthropicModel {
@@ -72,6 +88,108 @@ final class AgentService {
         return .sonnet46
     }() {
         didSet { UserDefaults.standard.set(model.rawValue, forKey: "agentModel") }
+    }
+
+    var codexModels: [CodexModel] = []
+    var codexCatalogError: String?
+
+    var codexModelSlug: String = {
+        let raw = UserDefaults.standard.string(forKey: "agentCodexModel") ?? ""
+        return raw == "configured-default" ? "" : raw
+    }() {
+        didSet { UserDefaults.standard.set(codexModelSlug, forKey: "agentCodexModel") }
+    }
+
+    var codexReasoningEffort: String = {
+        UserDefaults.standard.string(forKey: "agentCodexReasoningEffort") ?? ""
+    }() {
+        didSet { UserDefaults.standard.set(codexReasoningEffort, forKey: "agentCodexReasoningEffort") }
+    }
+
+    var selectedCodexModel: CodexModel? {
+        codexModels.first { $0.slug == codexModelSlug } ?? codexModels.first
+    }
+
+    var availableCodexReasoningLevels: [CodexReasoningLevel] {
+        selectedCodexModel?.supportedReasoningLevels ?? []
+    }
+
+    var selectedCodexReasoningLevel: CodexReasoningLevel? {
+        let levels = availableCodexReasoningLevels
+        if let match = levels.first(where: { $0.effort == codexReasoningEffort }) {
+            return match
+        }
+        if let defaultLevel = selectedCodexModel?.defaultReasoningLevel,
+           let match = levels.first(where: { $0.effort == defaultLevel }) {
+            return match
+        }
+        return levels.first
+    }
+
+    var codexPickerTitle: String {
+        guard let model = selectedCodexModel else {
+            return codexModelSlug.isEmpty ? "Codex CLI" : codexModelSlug
+        }
+        if let reasoning = selectedCodexReasoningLevel {
+            return "\(model.displayName) \(reasoning.displayName)"
+        }
+        return model.displayName
+    }
+
+    func selectCodexModel(_ model: CodexModel) {
+        codexModelSlug = model.slug
+        normalizeCodexReasoning(for: model)
+    }
+
+    func selectCodexReasoning(_ level: CodexReasoningLevel) {
+        codexReasoningEffort = level.effort
+    }
+
+    private func refreshCodexModels() {
+        guard hasCodexCLI else { return }
+        Task { [weak self] in
+            do {
+                let models = try await Task.detached(priority: .utility) {
+                    try CodexCLIClient.loadModelCatalog()
+                }.value
+                self?.codexCatalogError = nil
+                self?.codexModels = models
+                self?.normalizeCodexSelection()
+            } catch {
+                self?.codexCatalogError = UserFacingError.message(error.localizedDescription)
+            }
+        }
+    }
+
+    private func normalizeCodexSelection() {
+        guard let model = selectedCodexModel else { return }
+        if codexModelSlug.isEmpty || !codexModels.contains(where: { $0.slug == codexModelSlug }) {
+            codexModelSlug = model.slug
+        }
+        normalizeCodexReasoning(for: model)
+    }
+
+    private func normalizeCodexReasoning(for model: CodexModel) {
+        guard !model.supportedReasoningLevels.isEmpty else {
+            codexReasoningEffort = ""
+            return
+        }
+        if model.supportedReasoningLevels.contains(where: { $0.effort == codexReasoningEffort }) {
+            return
+        }
+        codexReasoningEffort = model.defaultReasoningLevel
+            ?? model.supportedReasoningLevels.first?.effort
+            ?? ""
+    }
+
+    var backend: AgentBackend = {
+        if let raw = UserDefaults.standard.string(forKey: "agentBackend"),
+           let backend = AgentBackend(rawValue: raw) {
+            return backend
+        }
+        return .anthropic
+    }() {
+        didSet { UserDefaults.standard.set(backend.rawValue, forKey: "agentBackend") }
     }
 
     var sessions: [ChatSession] = []
@@ -296,7 +414,9 @@ final class AgentService {
 
     func send(text: String, mentions: [AgentMention]) {
         guard canStream else {
-            streamError = .upstream("Sign in to a paid plan or add an Anthropic API key to start.")
+            streamError = .upstream(backend == .codexCLI
+                ? "Codex CLI not found. Install Codex or open Codex.app."
+                : "Sign in to a paid plan or add an Anthropic API key to start.")
             return
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

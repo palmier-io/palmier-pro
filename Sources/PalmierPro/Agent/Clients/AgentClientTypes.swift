@@ -16,6 +16,57 @@ enum AnthropicModel: String, CaseIterable, Sendable {
     }
 }
 
+enum AgentBackend: String, CaseIterable, Sendable {
+    case anthropic
+    case codexCLI
+
+    var displayName: String {
+        switch self {
+        case .anthropic: "Anthropic"
+        case .codexCLI: "Codex CLI"
+        }
+    }
+}
+
+struct CodexModelCatalog: Decodable, Sendable {
+    let models: [CodexModel]
+}
+
+struct CodexModel: Decodable, Hashable, Identifiable, Sendable {
+    let slug: String
+    let displayName: String
+    let defaultReasoningLevel: String?
+    let supportedReasoningLevels: [CodexReasoningLevel]
+    let visibility: String?
+
+    var id: String { slug }
+
+    enum CodingKeys: String, CodingKey {
+        case slug
+        case displayName = "display_name"
+        case defaultReasoningLevel = "default_reasoning_level"
+        case supportedReasoningLevels = "supported_reasoning_levels"
+        case visibility
+    }
+}
+
+struct CodexReasoningLevel: Decodable, Hashable, Identifiable, Sendable {
+    let effort: String
+    let description: String?
+
+    var id: String { effort }
+
+    var displayName: String {
+        switch effort {
+        case "low": "Low"
+        case "medium": "Medium"
+        case "high": "High"
+        case "xhigh": "Extra High"
+        default: effort.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+}
+
 enum AnthropicStopReason: String, Sendable {
     case endTurn = "end_turn"
     case toolUse = "tool_use"

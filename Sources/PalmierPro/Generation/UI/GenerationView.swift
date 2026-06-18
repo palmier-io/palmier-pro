@@ -422,8 +422,12 @@ struct GenerationView: View {
 
     private var catalogReady: Bool {
         !videoModels.isEmpty
-            && !imageModels.isEmpty
-            && !audioModels.isEmpty
+        && !imageModels.isEmpty
+        && !audioModels.isEmpty
+    }
+
+    private var catalogError: String? {
+        ModelCatalog.shared.lastError
     }
 
     var body: some View {
@@ -440,10 +444,14 @@ struct GenerationView: View {
 
     private var catalogLoadingView: some View {
         VStack(spacing: AppTheme.Spacing.md) {
-            ProgressView()
-            Text("Loading models…")
+            if catalogError == nil {
+                ProgressView()
+            }
+            Text(catalogError ?? "Loading models…")
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, AppTheme.Spacing.lg)
         }
         .frame(maxWidth: .infinity)
         .frame(height: AppTheme.GenerationPanel.loadingHeight)

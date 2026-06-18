@@ -14,13 +14,13 @@ struct AccountPane: View {
                 signedInBody
             } else {
                 signedOutBody
-            }
+        }
 
-            if let error = account.lastError {
-                Text(error)
-                    .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(.red)
-            }
+        if let error = account.lastError {
+            Text(UserFacingError.message(error))
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(.red)
+        }
         }
     }
 

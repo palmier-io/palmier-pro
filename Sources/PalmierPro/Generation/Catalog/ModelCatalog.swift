@@ -40,6 +40,7 @@ final class ModelCatalog {
     private(set) var lastError: String?
 
     @ObservationIgnored private var subscription: AnyCancellable?
+    @ObservationIgnored private var timeoutTask: Task<Void, Never>?
     @ObservationIgnored private var didConfigure = false
 
     private init() {}
@@ -48,7 +49,19 @@ final class ModelCatalog {
         guard !didConfigure else { return }
         didConfigure = true
 
-        guard let client = AccountService.shared.convex else { return }
+        guard let client = AccountService.shared.convex else {
+            markUnavailable("Model catalog is unavailable. Check backend configuration.")
+            return
+        }
+
+        timeoutTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            await MainActor.run {
+                guard let self, !self.isLoaded else { return }
+                Log.generation.error("ModelCatalog subscription timed out")
+                self.markUnavailable("Palmier backend unavailable. Check backend configuration or try again.")
+            }
+        }
 
         subscription = client
             .subscribe(to: "models:list", yielding: [CatalogEntry].self)
@@ -57,7 +70,7 @@ final class ModelCatalog {
                 receiveCompletion: { [weak self] completion in
                     if case .failure(let err) = completion {
                         Log.generation.error("ModelCatalog subscription failed: \(err.localizedDescription)")
-                        self?.lastError = err.localizedDescription
+                        self?.markUnavailable(err.localizedDescription)
                     }
                 },
                 receiveValue: { [weak self] entries in
@@ -66,7 +79,21 @@ final class ModelCatalog {
             )
     }
 
+    private func markUnavailable(_ message: String) {
+        timeoutTask?.cancel()
+        timeoutTask = nil
+        self.video = []
+        self.image = []
+        self.audio = []
+        self.upscale = []
+        self.byId = [:]
+        self.isLoaded = true
+        self.lastError = UserFacingError.message(message)
+    }
+
     private func apply(_ entries: [CatalogEntry]) {
+        timeoutTask?.cancel()
+        timeoutTask = nil
         var newVideo: [VideoModelConfig] = []
         var newImage: [ImageModelConfig] = []
         var newAudio: [AudioModelConfig] = []
