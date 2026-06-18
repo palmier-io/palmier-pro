@@ -87,7 +87,7 @@ private struct SampleCard: View {
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             poster
-                .frame(width: 150, height: 120)
+                .frame(width: AppTheme.ComponentSize.projectCardWidth, height: AppTheme.ComponentSize.projectCardHeight)
                 .blur(radius: download == nil ? 0 : downloadBlur)
                 .clipped()
 
@@ -113,7 +113,7 @@ private struct SampleCard: View {
                 downloadOverlay(download)
             }
         }
-        .frame(width: 150, height: 120)
+        .frame(width: AppTheme.ComponentSize.projectCardWidth, height: AppTheme.ComponentSize.projectCardHeight)
         .contentShape(Rectangle())
         .onTapGesture {
             if download == nil || download?.failed == true { action() }
@@ -152,7 +152,7 @@ private struct SampleCard: View {
                     .padding(.horizontal, AppTheme.Spacing.lg)
             }
         }
-        .frame(width: 150, height: 120)
+        .frame(width: AppTheme.ComponentSize.projectCardWidth, height: AppTheme.ComponentSize.projectCardHeight)
     }
 
     @ViewBuilder

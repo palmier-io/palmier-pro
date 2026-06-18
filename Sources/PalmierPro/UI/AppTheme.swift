@@ -223,6 +223,8 @@ enum AppTheme {
         static let captionPreviewMaxHeight: CGFloat = 150
         static let captionPreviewMaxTextWidthRatio: CGFloat = 0.9
         static let toolImagePreviewMaxHeight: CGFloat = 50
+        static let projectCardWidth: CGFloat = 150
+        static let projectCardHeight: CGFloat = 120
     }
 
     enum Window {
