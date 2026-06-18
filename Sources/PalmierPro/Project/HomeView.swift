@@ -2,7 +2,14 @@ import SwiftUI
 
 struct HomeView: View {
     private let columns = [
-        GridItem(.adaptive(minimum: 140, maximum: 170), spacing: AppTheme.Spacing.xl)
+        GridItem(
+            .adaptive(
+                minimum: AppTheme.ComponentSize.projectCardWidth,
+                maximum: AppTheme.ComponentSize.projectCardWidth
+            ),
+            spacing: AppTheme.Spacing.md,
+            alignment: .leading
+        )
     ]
 
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
@@ -56,7 +63,7 @@ struct HomeView: View {
     private var projectGrid: some View {
         let entries = ProjectRegistry.shared.sortedEntries
         return ScrollView {
-            LazyVGrid(columns: columns, spacing: AppTheme.Spacing.xl) {
+            LazyVGrid(columns: columns, alignment: .leading, spacing: AppTheme.Spacing.xl) {
                 if entries.isEmpty {
                     NewProjectCard(action: { AppState.shared.createNewProject() })
                 } else {
