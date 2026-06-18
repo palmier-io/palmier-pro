@@ -81,6 +81,10 @@ struct AssetThumbnailView: View {
             Divider()
         }
         if ids.count == 1, ids.first == asset.id {
+            if isMissing {
+                Button("Relink…") { relinkFile() }
+                Divider()
+            }
             Button("Rename") { beginRename() }
             AIEditMenu(asset: asset)
             Divider()
@@ -98,6 +102,18 @@ struct AssetThumbnailView: View {
                 .map(\.id)
         }
         return [asset.id]
+    }
+
+    private func relinkFile() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose the source file for \"\(asset.name)\""
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            editor.relinkAsset(id: asset.id, to: url)
+        }
     }
 
     private func revealInFinder(ids: [String]) {

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct PreviewContainerView: View {
@@ -31,7 +32,7 @@ struct PreviewContainerView: View {
                         generatingPreview(label: asset.generatingLabel)
                     }
                     if let overlay = offlineOverlay {
-                        offlinePreview(path: overlay.path)
+                        offlinePreview(assetId: overlay.assetId, path: overlay.path)
                     }
                     if editor.cropEditingActive {
                         CropOverlayView()
@@ -345,15 +346,42 @@ struct PreviewContainerView: View {
         return offline
     }
 
-    private struct OfflineOverlay { let path: String? }
+    private struct OfflineOverlay { let assetId: String?; let path: String? }
 
     /// Resolved once per render so the timeline scan runs at most once.
     private var offlineOverlay: OfflineOverlay? {
-        if activeMediaMissing { return OfflineOverlay(path: activeMediaAsset?.url.path) }
+        if activeMediaMissing {
+            return OfflineOverlay(assetId: activeMediaAsset?.id, path: activeMediaAsset?.url.path)
+        }
         if let clip = timelineOfflineClip {
-            return OfflineOverlay(path: editor.mediaResolver.expectedURL(for: clip.mediaRef)?.path)
+            return OfflineOverlay(assetId: clip.mediaRef, path: editor.mediaResolver.expectedURL(for: clip.mediaRef)?.path)
         }
         return nil
+    }
+
+    private func relinkFile(assetId: String) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose the source file for this clip"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            editor.relinkAsset(id: assetId, to: url)
+        }
+    }
+
+    private func relinkFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose the folder that holds your media"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            let result = editor.relinkOfflineAssets(fromFolder: url)
+            editor.mediaPanelToast = "Relinked \(result.relinked) of \(result.total) offline clips."
+        }
     }
 
     private func generatingPreview(label: String) -> some View {
@@ -383,7 +411,7 @@ struct PreviewContainerView: View {
         return nil
     }
 
-    private func offlinePreview(path: String?) -> some View {
+    private func offlinePreview(assetId: String?, path: String?) -> some View {
         ZStack {
             Color.black.opacity(AppTheme.Opacity.strong)
             VStack(spacing: AppTheme.Spacing.md) {
@@ -409,6 +437,15 @@ struct PreviewContainerView: View {
                         .truncationMode(.middle)
                         .padding(.horizontal, AppTheme.Spacing.lg)
                 }
+                HStack(spacing: AppTheme.Spacing.sm) {
+                    if let assetId {
+                        Button("Relink…") { relinkFile(assetId: assetId) }
+                            .buttonStyle(.capsule(.prominent, size: .regular))
+                    }
+                    Button("Relink Folder…") { relinkFolder() }
+                        .buttonStyle(.capsule(.secondary, size: .regular))
+                }
+                .padding(.top, AppTheme.Spacing.xs)
             }
             .padding(AppTheme.Spacing.xl)
             .fixedSize(horizontal: false, vertical: true)
