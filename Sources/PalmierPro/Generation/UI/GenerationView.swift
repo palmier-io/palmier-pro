@@ -128,31 +128,48 @@ struct GenerationView: View {
 
     // MARK: - Computed state
 
-    private var videoModel: VideoModelConfig { VideoModelConfig.allModels[selectedVideoModelIndex] }
-    private var imageModel: ImageModelConfig { ImageModelConfig.allModels[selectedImageModelIndex] }
-    private var audioModel: AudioModelConfig { AudioModelConfig.allModels[selectedAudioModelIndex] }
+    private var videoModels: [VideoModelConfig] { ModelCatalog.shared.video }
+    private var imageModels: [ImageModelConfig] { ModelCatalog.shared.image }
+    private var audioModels: [AudioModelConfig] { ModelCatalog.shared.audio }
+
+    private var videoModel: VideoModelConfig { selectedModel(videoModels, at: selectedVideoModelIndex) }
+    private var imageModel: ImageModelConfig { selectedModel(imageModels, at: selectedImageModelIndex) }
+    private var audioModel: AudioModelConfig { selectedModel(audioModels, at: selectedAudioModelIndex) }
+
+    private func selectedModel<T>(_ models: [T], at index: Int) -> T {
+        let safeIndex = models.indices.contains(index) ? index : models.startIndex
+        return models[safeIndex]
+    }
 
     private var enabledVideoModels: [(index: Int, model: VideoModelConfig)] {
-        VideoModelConfig.allModels.enumerated()
+        videoModels.enumerated()
             .filter { ModelPreferences.shared.isEnabled($0.element.id) }
             .map { (index: $0.offset, model: $0.element) }
     }
     private var enabledImageModels: [(index: Int, model: ImageModelConfig)] {
-        ImageModelConfig.allModels.enumerated()
+        imageModels.enumerated()
             .filter { ModelPreferences.shared.isEnabled($0.element.id) }
             .map { (index: $0.offset, model: $0.element) }
     }
     private var enabledAudioModels: [(index: Int, model: AudioModelConfig)] {
-        AudioModelConfig.allModels.enumerated()
+        audioModels.enumerated()
             .filter { ModelPreferences.shared.isEnabled($0.element.id) }
             .map { (index: $0.offset, model: $0.element) }
+    }
+    private var enabledAudioModelsByCategory: [AudioModelConfig.Category: [(index: Int, model: AudioModelConfig)]] {
+        var grouped: [AudioModelConfig.Category: [(index: Int, model: AudioModelConfig)]] = [:]
+        grouped.reserveCapacity(AudioModelConfig.Category.allCases.count)
+        for item in enabledAudioModels {
+            grouped[item.model.category, default: []].append(item)
+        }
+        return grouped
     }
 
     private func normalizeModelSelection() {
         switch selectedType {
-        case .video: selectedVideoModelIndex = enabledIndex(selectedVideoModelIndex, in: VideoModelConfig.allModels.map(\.id))
-        case .image: selectedImageModelIndex = enabledIndex(selectedImageModelIndex, in: ImageModelConfig.allModels.map(\.id))
-        case .audio: selectedAudioModelIndex = enabledIndex(selectedAudioModelIndex, in: AudioModelConfig.allModels.map(\.id))
+        case .video: selectedVideoModelIndex = enabledIndex(selectedVideoModelIndex, in: videoModels.map(\.id))
+        case .image: selectedImageModelIndex = enabledIndex(selectedImageModelIndex, in: imageModels.map(\.id))
+        case .audio: selectedAudioModelIndex = enabledIndex(selectedAudioModelIndex, in: audioModels.map(\.id))
         }
     }
 
@@ -160,7 +177,7 @@ struct GenerationView: View {
     private func enabledIndex(_ current: Int, in ids: [String]) -> Int {
         let prefs = ModelPreferences.shared
         if ids.indices.contains(current), prefs.isEnabled(ids[current]) { return current }
-        return ids.firstIndex { prefs.isEnabled($0) } ?? current
+        return ids.firstIndex { prefs.isEnabled($0) } ?? (ids.indices.contains(current) ? current : 0)
     }
 
     private var trimmedPrompt: String { prompt.trimmingCharacters(in: .whitespaces) }
@@ -404,9 +421,9 @@ struct GenerationView: View {
     }
 
     private var catalogReady: Bool {
-        !VideoModelConfig.allModels.isEmpty
-            && !ImageModelConfig.allModels.isEmpty
-            && !AudioModelConfig.allModels.isEmpty
+        !videoModels.isEmpty
+            && !imageModels.isEmpty
+            && !audioModels.isEmpty
     }
 
     var body: some View {
@@ -1347,9 +1364,8 @@ struct GenerationView: View {
                     Button(item.model.displayName) { selectedImageModelIndex = item.index }
                 }
             case .audio:
-                let grouped = Dictionary(grouping: enabledAudioModels, by: { $0.model.category })
                 ForEach(AudioModelConfig.Category.allCases, id: \.self) { category in
-                    if let items = grouped[category], !items.isEmpty {
+                    if let items = enabledAudioModelsByCategory[category], !items.isEmpty {
                         Section(category.label) {
                             ForEach(items, id: \.index) { item in
                                 Button(item.model.displayName) { selectedAudioModelIndex = item.index }
@@ -1761,17 +1777,17 @@ struct GenerationView: View {
     private func populatePanel(asset: MediaAsset, stored: GenerationInput) {
         switch ModelRegistry.byId[stored.model] {
         case .video:
-            guard let idx = VideoModelConfig.allModels.firstIndex(where: { $0.id == stored.model }) else { return }
+            guard let idx = videoModels.firstIndex(where: { $0.id == stored.model }) else { return }
             isPopulatingPanel = true
             selectedType = .video
             selectedVideoModelIndex = idx
         case .image:
-            guard let idx = ImageModelConfig.allModels.firstIndex(where: { $0.id == stored.model }) else { return }
+            guard let idx = imageModels.firstIndex(where: { $0.id == stored.model }) else { return }
             isPopulatingPanel = true
             selectedType = .image
             selectedImageModelIndex = idx
         case .audio:
-            guard let idx = AudioModelConfig.allModels.firstIndex(where: { $0.id == stored.model }) else { return }
+            guard let idx = audioModels.firstIndex(where: { $0.id == stored.model }) else { return }
             isPopulatingPanel = true
             selectedType = .audio
             selectedAudioModelIndex = idx
