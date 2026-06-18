@@ -96,6 +96,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Instagram:** Follow [@palmier.io](https://www.instagram.com/palmier.io) 
 - **Feedback &amp; Support:** Create a [Github Issue](https://github.com/palmier-io/palmier-pro/issues) or email us at founders@palmier.io
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=palmier-io/palmier-pro&type=Date)](https://star-history.com/#palmier-io/palmier-pro&Date)
+
 ## License
 
 Copyright (C) 2026 Palmier, Inc.
