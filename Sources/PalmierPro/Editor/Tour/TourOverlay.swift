@@ -192,24 +192,35 @@ struct TourOverlay: View {
         .buttonStyle(.plain)
     }
 
-    /// Place the spotlight card adjacent to the highlighted region, on whichever side has room.
+    /// Place the spotlight card adjacent to the highlighted region
     private func calloutPosition(for frame: CGRect?, in size: CGSize) -> CGPoint {
         guard let frame else { return CGPoint(x: size.width / 2, y: size.height / 2) }
-        let needed = cardWidth + margin * 2
-        let midY = min(max(frame.midY, size.height * 0.3), size.height * 0.7)
-        if size.width - frame.maxX > needed {
-            return CGPoint(x: frame.maxX + margin + cardWidth / 2, y: midY)
-        } else if frame.minX > needed {
-            return CGPoint(x: frame.minX - margin - cardWidth / 2, y: midY)
-        } else if frame.minY > size.height * 0.4 {
-            return CGPoint(x: clampedX(frame.midX, in: size), y: frame.minY - margin - 70)
-        } else {
-            return CGPoint(x: clampedX(frame.midX, in: size), y: frame.maxY + margin + 70)
+        let neededX = cardWidth + margin * 2
+        let cardHalf = estimatedCardHeight / 2
+
+        if size.width - frame.maxX > neededX {            // room to the right
+            return CGPoint(x: frame.maxX + margin + cardWidth / 2, y: clampY(frame.midY, in: size))
         }
+        if frame.minX > neededX {                         // room to the left
+            return CGPoint(x: frame.minX - margin - cardWidth / 2, y: clampY(frame.midY, in: size))
+        }
+        let x = clampX(frame.midX, in: size)
+        if frame.minY > estimatedCardHeight + margin * 2 { // room above (sit just above the frame)
+            return CGPoint(x: x, y: clampY(frame.minY - margin - cardHalf, in: size))
+        }
+        return CGPoint(x: x, y: clampY(frame.maxY + margin + cardHalf, in: size)) // else below
     }
 
-    private func clampedX(_ x: CGFloat, in size: CGSize) -> CGFloat {
+    /// Generous height estimate so the card's full extent stays on-screen after clamping.
+    private var estimatedCardHeight: CGFloat { 220 }
+
+    private func clampX(_ x: CGFloat, in size: CGSize) -> CGFloat {
         min(max(x, cardWidth / 2 + margin), size.width - cardWidth / 2 - margin)
+    }
+
+    private func clampY(_ y: CGFloat, in size: CGSize) -> CGFloat {
+        let half = estimatedCardHeight / 2
+        return min(max(y, half + margin), size.height - half - margin)
     }
 }
 
