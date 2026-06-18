@@ -112,12 +112,12 @@ struct ProjectCard: View {
         .alert("Delete \"\(entry.name)\"?", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) {
-                try? ProjectRegistry.shared.delete(entry.url)
+                ProjectRegistry.shared.delete(entry.url)
             }
         } message: {
             Text("The project will be moved to the Trash.")
         }
-        .task { loadThumbnail() }
+        .task(id: entry.lastOpenedDate) { await loadThumbnail(for: entry.url) }
     }
 
     private static let relativeDateFormatter: RelativeDateTimeFormatter = {
@@ -130,11 +130,13 @@ struct ProjectCard: View {
         relativeDateFormatter.localizedString(for: date, relativeTo: Date())
     }
 
-    private func loadThumbnail() {
-        let thumbURL = entry.url.appendingPathComponent(Project.thumbnailFilename)
-        if let data = try? Data(contentsOf: thumbURL),
-           let image = NSImage(data: data) {
-            thumbnail = image
-        }
+    private func loadThumbnail(for projectURL: URL) async {
+        thumbnail = nil
+        let image = await Task.detached(priority: .utility) {
+            let thumbURL = projectURL.appendingPathComponent(Project.thumbnailFilename, isDirectory: false)
+            return ImageEncoder.thumbnail(url: thumbURL, maxPixelSize: 640)
+        }.value
+        guard let image, !Task.isCancelled else { return }
+        thumbnail = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
     }
 }

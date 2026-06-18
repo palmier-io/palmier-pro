@@ -46,18 +46,24 @@ final class AppState {
             HomeWindowController.shared.showWindow(nil)
             return
         }
+        let presentHome = {
+            if let url = project.fileURL {
+                ProjectRegistry.shared.register(url)
+            }
+            project.windowControllers.forEach { $0.window?.orderOut(nil) }
+            if self.activeProject === project {
+                self.activeProject = nil
+            }
+            HomeWindowController.shared.showWindow(nil)
+        }
         if project.isDocumentEdited {
-            project.autosave(withImplicitCancellability: false) { [weak self] _ in
+            project.autosave(withImplicitCancellability: false) { _ in
                 DispatchQueue.main.async {
-                    self?.activeProject?.windowControllers.forEach { $0.window?.orderOut(nil) }
-                    self?.activeProject = nil
-                    HomeWindowController.shared.showWindow(nil)
+                    presentHome()
                 }
             }
         } else {
-            activeProject?.windowControllers.forEach { $0.window?.orderOut(nil) }
-            activeProject = nil
-            HomeWindowController.shared.showWindow(nil)
+            presentHome()
         }
     }
 

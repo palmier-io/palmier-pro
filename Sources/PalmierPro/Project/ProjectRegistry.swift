@@ -1,6 +1,6 @@
 import Foundation
 
-struct ProjectEntry: Codable, Identifiable {
+struct ProjectEntry: Codable, Identifiable, Sendable {
     let id: UUID
     var url: URL
     var createdDate: Date
@@ -22,6 +22,9 @@ final class ProjectRegistry {
     }
 
     private let fileURL: URL
+    private let disk = ProjectRegistryDisk()
+    private var isLoading = false
+    private var pendingMutations: [(inout [ProjectEntry]) -> Void] = []
 
     private init() {
         fileURL = Project.storageDirectory.appendingPathComponent(Project.registryFilename)
@@ -30,77 +33,108 @@ final class ProjectRegistry {
 
     init(fileURL: URL) {
         self.fileURL = fileURL
-        load()
+        entries = Self.loadEntries(from: fileURL)
     }
 
     // MARK: - Mutations
 
     func register(_ url: URL) {
         let resolved = url.standardizedFileURL
-        if let index = entries.firstIndex(where: { $0.url.standardizedFileURL == resolved }) {
-            entries[index].lastOpenedDate = Date()
-        } else {
-            entries.append(ProjectEntry(id: UUID(), url: resolved, createdDate: Date(), lastOpenedDate: Date()))
+        mutate { entries in
+            if let index = entries.firstIndex(where: { $0.url.standardizedFileURL == resolved }) {
+                entries[index].lastOpenedDate = Date()
+            } else {
+                entries.append(ProjectEntry(id: UUID(), url: resolved, createdDate: Date(), lastOpenedDate: Date()))
+            }
         }
-        save()
     }
 
     func remove(_ url: URL) {
         let resolved = url.standardizedFileURL
-        entries.removeAll { $0.url.standardizedFileURL == resolved }
-        save()
+        mutate { entries in
+            entries.removeAll { $0.url.standardizedFileURL == resolved }
+        }
     }
 
-    /// Moves the project file to Trash and removes it from the registry.
-    /// If the file is already gone, just removes the registry entry.
-    func delete(_ url: URL) throws {
-        if FileManager.default.fileExists(atPath: url.path) {
-            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+    func delete(_ url: URL) {
+        Task { [weak self] in
+            guard let self, await self.disk.trashIfPresent(url) else { return }
+            self.remove(url)
         }
-        remove(url)
     }
 
     func updateURL(from oldURL: URL, to newURL: URL) {
         let resolvedOld = oldURL.standardizedFileURL
-        if let index = entries.firstIndex(where: { $0.url.standardizedFileURL == resolvedOld }) {
-            entries[index].url = newURL.standardizedFileURL
-            entries[index].lastOpenedDate = Date()
-            save()
+        let resolvedNew = newURL.standardizedFileURL
+        mutate { entries in
+            if let index = entries.firstIndex(where: { $0.url.standardizedFileURL == resolvedOld }) {
+                entries[index].url = resolvedNew
+                entries[index].lastOpenedDate = Date()
+            }
         }
-    }
-
-    // MARK: - Migration
-
-    func migrateDefaultDirectoryIfNeeded() {
-        let key = "ProjectRegistryMigrated"
-        guard !UserDefaults.standard.bool(forKey: key) else { return }
-        defer { UserDefaults.standard.set(true, forKey: key) }
-
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: Project.storageDirectory,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        ) else { return }
-
-        for fileURL in contents where fileURL.pathExtension == Project.fileExtension {
-            let resolved = fileURL.standardizedFileURL
-            guard !entries.contains(where: { $0.url.standardizedFileURL == resolved }) else { continue }
-            let modDate = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()
-            entries.append(ProjectEntry(id: UUID(), url: resolved, createdDate: modDate, lastOpenedDate: modDate))
-        }
-        save()
     }
 
     // MARK: - Persistence
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode([ProjectEntry].self, from: data) else { return }
-        entries = decoded
+        isLoading = true
+        Task { [weak self] in
+            guard let self else { return }
+            let loaded = await self.disk.load(from: self.fileURL)
+            self.finishLoading(loaded)
+        }
     }
 
     private func save() {
+        Self.saveEntries(entries, to: fileURL)
+    }
+
+    private func mutate(_ apply: @escaping (inout [ProjectEntry]) -> Void) {
+        guard !isLoading else {
+            pendingMutations.append(apply)
+            return
+        }
+        apply(&entries)
+        save()
+    }
+
+    private func finishLoading(_ loaded: [ProjectEntry]) {
+        entries = loaded
+        isLoading = false
+        guard !pendingMutations.isEmpty else { return }
+
+        let mutations = pendingMutations
+        pendingMutations.removeAll()
+        for mutation in mutations {
+            mutation(&entries)
+        }
+        save()
+    }
+
+    fileprivate nonisolated static func loadEntries(from fileURL: URL) -> [ProjectEntry] {
+        guard let data = try? Data(contentsOf: fileURL),
+              let decoded = try? JSONDecoder().decode([ProjectEntry].self, from: data) else { return [] }
+        return decoded
+    }
+
+    fileprivate nonisolated static func saveEntries(_ entries: [ProjectEntry], to fileURL: URL) {
         guard let data = try? JSONEncoder().encode(entries) else { return }
         try? data.write(to: fileURL, options: .atomic)
+    }
+}
+
+private actor ProjectRegistryDisk {
+    func load(from fileURL: URL) -> [ProjectEntry] {
+        ProjectRegistry.loadEntries(from: fileURL)
+    }
+
+    func trashIfPresent(_ url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return true }
+        do {
+            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            return true
+        } catch {
+            return false
+        }
     }
 }

@@ -16,6 +16,12 @@ enum ImageEncoder {
         let mime: String
     }
 
+    struct ImageMetadata: Sendable {
+        let width: Int?
+        let height: Int?
+        let thumbnail: CGImage?
+    }
+
     static func encode(url: URL) -> Output? {
         let stamp = fileStamp(url: url)
         if let stamp, let hit = cache[stamp] { return hit }
@@ -35,27 +41,45 @@ enum ImageEncoder {
         return CGImageDestinationFinalize(dest) ? buffer as Data : nil
     }
 
+    nonisolated static func metadata(url: URL, thumbnailMaxPixelSize: Int? = nil) -> ImageMetadata {
+        guard let source = imageSource(url: url) else {
+            return ImageMetadata(width: nil, height: nil, thumbnail: nil)
+        }
+        let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        let thumbnailImage: CGImage?
+        if let thumbnailMaxPixelSize {
+            thumbnailImage = makeThumbnail(source: source, maxPixelSize: thumbnailMaxPixelSize)
+        } else {
+            thumbnailImage = nil
+        }
+        return ImageMetadata(
+            width: props?[kCGImagePropertyPixelWidth] as? Int,
+            height: props?[kCGImagePropertyPixelHeight] as? Int,
+            thumbnail: thumbnailImage
+        )
+    }
+
+    nonisolated static func thumbnail(url: URL, maxPixelSize: Int) -> CGImage? {
+        guard let source = imageSource(url: url) else { return nil }
+        return makeThumbnail(source: source, maxPixelSize: maxPixelSize)
+    }
+
     // MARK: - Paths
 
     private static func passthrough(url: URL, stamp: FileStamp?) -> Output? {
+        let imageMetadata = metadata(url: url)
         guard let mime = passthroughMime(url.pathExtension.lowercased()),
               let size = stamp?.size, size <= maxBytes,
-              let (w, h) = dimensions(url: url), max(w, h) <= maxLongestEdge,
+              let width = imageMetadata.width,
+              let height = imageMetadata.height,
+              max(width, height) <= maxLongestEdge,
               let data = try? Data(contentsOf: url, options: [.mappedIfSafe])
         else { return nil }
         return Output(data: data, mime: mime)
     }
 
     private static func downscaled(url: URL) -> Output? {
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxLongestEdge,
-            kCGImageSourceShouldCache: false,
-        ]
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
-        else { return nil }
+        guard let image = thumbnail(url: url, maxPixelSize: maxLongestEdge) else { return nil }
         for quality in [0.85, 0.7, 0.55, 0.4] as [CGFloat] {
             if let data = encodeJPEG(image, quality: quality), data.count <= maxBytes {
                 return Output(data: data, mime: "image/jpeg")
@@ -96,12 +120,17 @@ enum ImageEncoder {
         }
     }
 
-    private static func dimensions(url: URL) -> (Int, Int)? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let w = props[kCGImagePropertyPixelWidth] as? Int,
-              let h = props[kCGImagePropertyPixelHeight] as? Int
-        else { return nil }
-        return (w, h)
+    private nonisolated static func imageSource(url: URL) -> CGImageSource? {
+        CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary)
+    }
+
+    private nonisolated static func makeThumbnail(source: CGImageSource, maxPixelSize: Int) -> CGImage? {
+        let options = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+        ] as CFDictionary
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options)
     }
 }

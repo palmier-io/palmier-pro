@@ -96,11 +96,14 @@ final class MediaAsset: Identifiable {
     func loadMetadata() async {
         if type == .image {
             duration = Defaults.imageDurationSeconds
-            thumbnail = NSImage(contentsOf: url)
-            if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
-                sourceWidth = props[kCGImagePropertyPixelWidth] as? Int
-                sourceHeight = props[kCGImagePropertyPixelHeight] as? Int
+            let imageURL = url
+            let metadata = await Task.detached(priority: .utility) {
+                ImageEncoder.metadata(url: imageURL, thumbnailMaxPixelSize: 1568)
+            }.value
+            if let width = metadata.width { sourceWidth = width }
+            if let height = metadata.height { sourceHeight = height }
+            if let image = metadata.thumbnail {
+                thumbnail = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
             }
             return
         }
@@ -123,7 +126,9 @@ final class MediaAsset: Identifiable {
         }
         if type == .video {
             var videoDuration: Double?
+            var hasVideoTrack = false
             if let videoTrack = try? await avAsset.loadTracks(withMediaType: .video).first {
+                hasVideoTrack = true
                 if let size = try? await videoTrack.load(.naturalSize),
                    let transform = try? await videoTrack.load(.preferredTransform) {
                     let corrected = size.applying(transform)
@@ -143,13 +148,15 @@ final class MediaAsset: Identifiable {
             if let audioTracks = try? await avAsset.loadTracks(withMediaType: .audio) {
                 hasAudio = !audioTracks.isEmpty
             }
-            let gen = AVAssetImageGenerator(asset: avAsset)
-            gen.maximumSize = CGSize(width: 320, height: 320)   // square budget — portrait gets full res too
-            gen.appliesPreferredTrackTransform = true
-            if let cgImage = try? await gen.image(at: .zero).image {
-                // Use the generated frame's true pixel size — a hardcoded 16:9 size makes
-                // SwiftUI's aspectRatio squeeze non-16:9 (e.g. vertical) thumbnails.
-                thumbnail = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+            if hasVideoTrack {
+                let gen = AVAssetImageGenerator(asset: avAsset)
+                gen.maximumSize = CGSize(width: 320, height: 320)   // square budget — portrait gets full res too
+                gen.appliesPreferredTrackTransform = true
+                if let cgImage = try? await gen.image(at: .zero).image {
+                    // Use the generated frame's true pixel size — a hardcoded 16:9 size makes
+                    // SwiftUI's aspectRatio squeeze non-16:9 (e.g. vertical) thumbnails.
+                    thumbnail = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+                }
             }
         }
     }

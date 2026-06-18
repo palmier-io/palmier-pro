@@ -26,7 +26,11 @@ enum OverviewRenderer {
     private static let jpegQuality: CGFloat = 0.7
 
     static func make(url: URL, start: Double, end: Double) async throws -> Sheet {
-        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        let asset = AVURLAsset(url: url)
+        guard (try? await asset.loadTracks(withMediaType: .video).first) != nil else {
+            throw RenderError(message: "No video track available")
+        }
+        let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: tileWidth * 2, height: tileHeight * 2)
         let span = max(end - start, 0.001)

@@ -553,6 +553,7 @@ extension AgentTool {
         case let arr as [Any]: return .array(arr.map(valueFromJSON))
         case let dict as [String: Any]:
             var out: [String: Value] = [:]
+            out.reserveCapacity(dict.count)
             for (k, v) in dict { out[k] = valueFromJSON(v) }
             return .object(out)
         default: return .null
@@ -563,6 +564,7 @@ extension AgentTool {
 enum ToolArgsBridge {
     static func argsFromMCP(_ args: [String: Value]) -> [String: Any] {
         var out: [String: Any] = [:]
+        out.reserveCapacity(args.count)
         for (k, v) in args { out[k] = anyFromValue(v) }
         return out
     }
@@ -578,6 +580,7 @@ enum ToolArgsBridge {
         case .array(let arr): return arr.map(anyFromValue)
         case .object(let obj):
             var out: [String: Any] = [:]
+            out.reserveCapacity(obj.count)
             for (k, v) in obj { out[k] = anyFromValue(v) }
             return out
         }

@@ -923,8 +923,8 @@ struct InspectorView: View {
     private func fileSection(_ asset: MediaAsset) -> some View {
         metadataSection(title: "File") {
             plainMetadataRow(label: "Type", value: asset.type.trackLabel)
-            if asset.type != .audio, let size = imageDimensions(for: asset.url) {
-                plainMetadataRow(label: "Dimensions", value: "\(size.width) × \(size.height)")
+            if asset.type != .audio, let width = asset.sourceWidth, let height = asset.sourceHeight {
+                plainMetadataRow(label: "Dimensions", value: "\(width) × \(height)")
             }
             if asset.duration > 0 && asset.type != .image {
                 plainMetadataRow(label: "Duration", value: formatDuration(asset.duration))
@@ -1044,14 +1044,6 @@ struct InspectorView: View {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: bytes)
-    }
-
-    private func imageDimensions(for url: URL) -> (width: Int, height: Int)? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let w = props[kCGImagePropertyPixelWidth] as? Int,
-              let h = props[kCGImagePropertyPixelHeight] as? Int else { return nil }
-        return (w, h)
     }
 
     private func formatDuration(_ seconds: Double) -> String {

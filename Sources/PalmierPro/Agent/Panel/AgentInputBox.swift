@@ -36,6 +36,7 @@ struct AgentInputBox<LeadingTools: View>: View {
     @State private var mentionTab: MentionTab = .all
     @State private var mentionScrollTick: Int = 0
     @State private var isDropTargeted = false
+    @State private var textEditorID = UUID()
     @Namespace private var sendStopNamespace
 
     private var showMentionPicker: Bool { mentionQuery != nil }
@@ -86,6 +87,7 @@ struct AgentInputBox<LeadingTools: View>: View {
     private var textField: some View {
         ZStack(alignment: .topLeading) {
             TextEditor(text: $draft)
+                .id(textEditorID)
                 .font(.body)
                 .scrollContentBackground(.hidden)
                 .scrollIndicators(.never)
@@ -94,7 +96,12 @@ struct AgentInputBox<LeadingTools: View>: View {
                 .padding(.bottom, AppTheme.Spacing.xs)
                 .focused($focused)
                 .frame(minHeight: 32, maxHeight: 64)
-                .onChange(of: draft) { _, new in updateMentionQuery(from: new) }
+                .onChange(of: draft) { old, new in
+                    updateMentionQuery(from: new)
+                    if !old.isEmpty && new.isEmpty {
+                        textEditorID = UUID()
+                    }
+                }
                 .onPasteCommand(of: [.fileURL, .image, .png, .jpeg, .tiff], perform: handlePaste)
                 .onKeyPress(phases: [.down, .repeat]) { press in handleKey(press) }
                 // NSTextView eats Tab before the general onKeyPress fires.

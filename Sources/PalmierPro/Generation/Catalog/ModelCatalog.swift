@@ -72,6 +72,11 @@ final class ModelCatalog {
         var newAudio: [AudioModelConfig] = []
         var newUpscale: [UpscaleModelConfig] = []
         var newById: [String: ModelKind] = [:]
+        newVideo.reserveCapacity(entries.count)
+        newImage.reserveCapacity(entries.count)
+        newAudio.reserveCapacity(entries.count)
+        newUpscale.reserveCapacity(entries.count)
+        newById.reserveCapacity(entries.count)
 
         for entry in entries {
             switch entry.uiCapabilities {

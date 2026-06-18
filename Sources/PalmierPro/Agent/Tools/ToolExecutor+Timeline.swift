@@ -415,7 +415,11 @@ extension ToolExecutor {
             }
         }
 
-        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        let asset = AVURLAsset(url: url)
+        guard (try? await asset.loadTracks(withMediaType: .video).first) != nil else {
+            throw ToolError("No video track available in \(name)")
+        }
+        let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(
             width: readVideoFrameMaxDimension,

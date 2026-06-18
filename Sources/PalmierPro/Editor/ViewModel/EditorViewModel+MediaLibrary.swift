@@ -253,6 +253,10 @@ extension EditorViewModel {
         let videoComposition = isTimelineTab ? currentItem.videoComposition : nil
 
         Task.detached {
+            guard (try? await asset.loadTracks(withMediaType: .video).first) != nil else {
+                Log.project.error("captureCurrentFrameToMedia: no video track")
+                return
+            }
             let generator = AVAssetImageGenerator(asset: asset)
             generator.appliesPreferredTrackTransform = true
             generator.requestedTimeToleranceBefore = .zero
