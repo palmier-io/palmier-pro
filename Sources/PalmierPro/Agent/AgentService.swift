@@ -5,18 +5,28 @@ import Observation
 @MainActor
 final class AgentService {
 
-    private var apiKey: String = AnthropicKeychain.load() ?? ""
+    private var apiKey: String = ""
     private var apiKeyObserver: NSObjectProtocol?
 
     init() {
+        reloadAPIKey()
         apiKeyObserver = NotificationCenter.default.addObserver(
             forName: .anthropicAPIKeyChanged,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.apiKey = AnthropicKeychain.load() ?? ""
+                self?.reloadAPIKey()
             }
+        }
+    }
+
+    private func reloadAPIKey() {
+        Task { [weak self] in
+            let key = await Task.detached(priority: .utility) {
+                AnthropicKeychain.load() ?? ""
+            }.value
+            self?.apiKey = key
         }
     }
 
