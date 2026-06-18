@@ -159,11 +159,21 @@ final class TimelineInputController {
                 var companions: [DragState.Participant] = []
                 for (ti, track) in editor.timeline.tracks.enumerated() {
                     for c in track.clips where c.id != clip.id && editor.selectedClipIds.contains(c.id) {
-                        companions.append(.init(clipId: c.id, originalTrack: ti, originalFrame: c.startFrame))
+                        companions.append(.init(
+                            clipId: c.id,
+                            originalTrackId: track.id,
+                            originalTrack: ti,
+                            originalFrame: c.startFrame
+                        ))
                     }
                 }
                 dragState = .moveClip(DragState.MoveClipDrag(
-                    lead: .init(clipId: clip.id, originalTrack: hit.trackIndex, originalFrame: clip.startFrame),
+                    lead: .init(
+                        clipId: clip.id,
+                        originalTrackId: editor.timeline.tracks[hit.trackIndex].id,
+                        originalTrack: hit.trackIndex,
+                        originalFrame: clip.startFrame
+                    ),
                     companions: companions,
                     grabOffsetFrames: grabFrame - clip.startFrame,
                     dropTarget: .existingTrack(hit.trackIndex),
@@ -392,29 +402,35 @@ final class TimelineInputController {
                 break
             }
 
-            let minOrigFrame = drag.all.map(\.originalFrame).min()!
+            let resolved = resolvedMoveParticipants(for: drag)
+            guard let resolvedLead = resolved.first(where: { $0.participant.clipId == drag.lead.clipId }) else {
+                break
+            }
+            let minOrigFrame = resolved.map { $0.frame }.min()!
             let frameDelta = max(-minOrigFrame, drag.deltaFrames)
             let pinned = pinnedCompanionIds(for: drag)
-            let leadTrack = drag.lead.originalTrack
+            let leadTrack = resolvedLead.trackIndex
 
             switch drag.dropTarget {
             case .existingTrack:
                 // Rigid translation: non-pinned shift by trackDelta; pinned hold their row.
-                let delta = drag.trackDelta
-                let moves = drag.all.map { p in
-                    let toTrack = pinned.contains(p.clipId) ? p.originalTrack : p.originalTrack + delta
-                    return (clipId: p.clipId, toTrack: toTrack, toFrame: p.originalFrame + frameDelta)
+                let delta = drag.dropTargetTrackIndex.map { $0 - leadTrack } ?? 0
+                let moves = resolved.map { item in
+                    let p = item.participant
+                    let toTrack = pinned.contains(p.clipId) ? item.trackIndex : item.trackIndex + delta
+                    return (clipId: p.clipId, toTrack: toTrack, toFrame: item.frame + frameDelta)
                 }
                 commitMoves(moves, isDuplicate: drag.isDuplicate)
 
             case .newTrackAt(let insertIndex):
+                guard let leadTrackType = resolvedLeadTrackType(for: drag) else { break }
                 editor.undoManager?.beginUndoGrouping()
-                let trackType = editor.timeline.tracks[leadTrack].type
-                let newIdx = editor.insertTrack(at: insertIndex, type: trackType)
-                let moves = drag.all.map { p in
-                    let hops = !pinned.contains(p.clipId) && p.originalTrack == leadTrack
-                    let shifted = p.originalTrack >= newIdx ? p.originalTrack + 1 : p.originalTrack
-                    return (clipId: p.clipId, toTrack: hops ? newIdx : shifted, toFrame: p.originalFrame + frameDelta)
+                let newIdx = editor.insertTrack(at: insertIndex, type: leadTrackType)
+                let moves = resolved.map { item in
+                    let p = item.participant
+                    let hops = !pinned.contains(p.clipId) && item.trackIndex == leadTrack
+                    let shifted = item.trackIndex >= newIdx ? item.trackIndex + 1 : item.trackIndex
+                    return (clipId: p.clipId, toTrack: hops ? newIdx : shifted, toFrame: item.frame + frameDelta)
                 }
                 commitMoves(moves, isDuplicate: drag.isDuplicate)
                 editor.undoManager?.setActionName(newTrackActionName(count: moves.count, isDuplicate: drag.isDuplicate))
@@ -851,6 +867,29 @@ final class TimelineInputController {
         }
     }
 
+    private func resolvedMoveParticipants(
+        for drag: DragState.MoveClipDrag
+    ) -> [(participant: DragState.Participant, trackIndex: Int, frame: Int)] {
+        drag.all.compactMap { p in
+            guard let loc = editor.findClip(id: p.clipId),
+                  editor.timeline.tracks.indices.contains(loc.trackIndex) else { return nil }
+            let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            return (participant: p, trackIndex: loc.trackIndex, frame: clip.startFrame)
+        }
+    }
+
+    private func resolvedLeadTrackType(for drag: DragState.MoveClipDrag) -> ClipType? {
+        if let loc = editor.findClip(id: drag.lead.clipId),
+           editor.timeline.tracks.indices.contains(loc.trackIndex) {
+            return editor.timeline.tracks[loc.trackIndex].type
+        }
+        if let idx = editor.timeline.tracks.firstIndex(where: { $0.id == drag.lead.originalTrackId }) {
+            return editor.timeline.tracks[idx].type
+        }
+        guard editor.timeline.tracks.indices.contains(drag.lead.originalTrack) else { return nil }
+        return editor.timeline.tracks[drag.lead.originalTrack].type
+    }
+
     private func newTrackActionName(count: Int, isDuplicate: Bool) -> String {
         switch (isDuplicate, count) {
         case (true, 1): return "Duplicate Clip to New Track"
@@ -861,8 +900,7 @@ final class TimelineInputController {
 
     func pinnedCompanionIds(for drag: DragState.MoveClipDrag) -> Set<String> {
         let tracks = editor.timeline.tracks
-        guard tracks.indices.contains(drag.lead.originalTrack) else { return [] }
-        let leadTrackType = tracks[drag.lead.originalTrack].type
+        guard let leadTrackType = resolvedLeadTrackType(for: drag) else { return [] }
         let clips = tracks.flatMap(\.clips)
         let leadLink = clips.first(where: { $0.id == drag.lead.clipId })?.linkGroupId
         var pinned: Set<String> = []

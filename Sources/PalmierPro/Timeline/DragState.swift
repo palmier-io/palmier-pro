@@ -55,10 +55,16 @@ enum DragState {
             }
             return 0
         }
+
+        var dropTargetTrackIndex: Int? {
+            if case .existingTrack(let idx) = dropTarget { return idx }
+            return nil
+        }
     }
 
     struct Participant {
         let clipId: String
+        let originalTrackId: String
         let originalTrack: Int
         let originalFrame: Int
     }
