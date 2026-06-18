@@ -5,9 +5,12 @@ AI-native macOS video editor. Swift 6.2, SwiftUI + AppKit, AVFoundation. macOS 2
 ## Build
 
 ```bash
-swift build
-swift run
+SWIFT_PLUGIN_PATHS="-Xswiftc -plugin-path -Xswiftc /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins -Xswiftc -plugin-path -Xswiftc /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins"
+swift build $SWIFT_PLUGIN_PATHS
+swift run $SWIFT_PLUGIN_PATHS
 ```
+
+(CLT toolchain is missing `PreviewsMacros` and `SwiftUIMacros` plugins used by `#Preview` / `@Entry`. The flags above point to the Xcode toolchain's plugin libraries.)
 
 ## Code style
 

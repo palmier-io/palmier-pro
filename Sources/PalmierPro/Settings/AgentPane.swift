@@ -3,30 +3,91 @@ import SwiftUI
 
 struct AgentPane: View {
     @Bindable private var appState = AppState.shared
-    @State private var hasKey: Bool = false
-    @State private var maskedKey: String = ""
-    @State private var draft: String = ""
-    @FocusState private var isFocused: Bool
+    @State private var hasAnthropicKey: Bool = false
+    @State private var anthropicMaskedKey: String = ""
+    @State private var anthropicDraft: String = ""
+    @FocusState private var isAnthropicFocused: Bool
+    @State private var hasOpenRouterKey: Bool = false
+    @State private var openRouterMaskedKey: String = ""
+    @State private var openRouterDraft: String = ""
+    @FocusState private var isOpenRouterFocused: Bool
+    @State private var openRouterModelDraft: String = ""
 
-    private let consoleURL = URL(string: "https://console.anthropic.com/settings/keys")!
+    private let anthropicConsoleURL = URL(string: "https://console.anthropic.com/settings/keys")!
+    private let openRouterConsoleURL = URL(string: "https://openrouter.ai/keys")!
+
+    @AppStorage("agentProvider") private var providerRaw: String = AgentProvider.palmier.rawValue
+    @AppStorage("openRouterModel") private var openRouterModel: String = "openai/gpt-4o"
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
-            apiKeySection
+            providerSection
             Divider().overlay(AppTheme.Border.subtleColor)
             mcpSection
         }
         .onAppear(perform: refresh)
     }
 
-    private var apiKeySection: some View {
+    private var providerSection: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
-            header
-            keyField
+            providerPicker
+            providerFields
         }
     }
 
-    private var header: some View {
+    private var providerPicker: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            Text("AI Provider")
+                .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+
+            Picker("Provider", selection: Binding(
+                get: { AgentProvider(rawValue: providerRaw) ?? .palmier },
+                set: { providerRaw = $0.rawValue }
+            )) {
+                ForEach(AgentProvider.allCases, id: \.self) { p in
+                    Text(p.displayName).tag(p)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
+    private var currentProvider: AgentProvider {
+        AgentProvider(rawValue: providerRaw) ?? .palmier
+    }
+
+    @ViewBuilder
+    private var providerFields: some View {
+        switch currentProvider {
+        case .palmier:
+            palmierInfo
+        case .anthropic:
+            anthropicSection
+        case .openRouter:
+            openRouterSection
+        }
+    }
+
+    private var palmierInfo: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            Text("Using Palmier's backend for AI chat. Model access depends on your subscription tier.")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+        }
+        .padding(.vertical, AppTheme.Spacing.xs)
+    }
+
+    // MARK: - Anthropic section
+
+    private var anthropicSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            anthropicHeader
+            anthropicKeyField
+        }
+    }
+
+    private var anthropicHeader: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             Text("Anthropic API Key")
                 .font(.system(size: AppTheme.FontSize.md, weight: .medium))
@@ -38,7 +99,7 @@ struct AgentPane: View {
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Button(action: { NSWorkspace.shared.open(consoleURL, configuration: .init(), completionHandler: nil) }) {
+                Button(action: { NSWorkspace.shared.open(anthropicConsoleURL, configuration: .init(), completionHandler: nil) }) {
                     HStack(spacing: 2) {
                         Text("Get Anthropic API key")
                         Image(systemName: "arrow.up.right")
@@ -53,49 +114,46 @@ struct AgentPane: View {
         }
     }
 
-    private var keyField: some View {
+    private var anthropicKeyField: some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            fieldBox
-            trailingControl
+            SecureField(anthropicPlaceholder, text: $anthropicDraft)
+                .textFieldStyle(.plain)
+                .focused($isAnthropicFocused)
+                .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+                .onSubmit(saveAnthropic)
+                .padding(.horizontal, AppTheme.Spacing.md)
+                .padding(.vertical, AppTheme.Spacing.smMd)
+                .background(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                        .fill(Color.black.opacity(AppTheme.Opacity.muted))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                        .strokeBorder(
+                            isAnthropicFocused ? AppTheme.Border.primaryColor : AppTheme.Border.subtleColor,
+                            lineWidth: AppTheme.BorderWidth.thin
+                        )
+                )
+                .animation(.easeOut(duration: AppTheme.Anim.hover), value: isAnthropicFocused)
+
+            anthropicTrailingControl
         }
     }
 
-    private var fieldBox: some View {
-        SecureField(placeholder, text: $draft)
-            .textFieldStyle(.plain)
-            .focused($isFocused)
-            .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
-            .foregroundStyle(AppTheme.Text.primaryColor)
-            .onSubmit(save)
-            .padding(.horizontal, AppTheme.Spacing.md)
-            .padding(.vertical, AppTheme.Spacing.smMd)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(Color.black.opacity(AppTheme.Opacity.muted))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .strokeBorder(
-                        isFocused ? AppTheme.Border.primaryColor : AppTheme.Border.subtleColor,
-                        lineWidth: AppTheme.BorderWidth.thin
-                    )
-            )
-            .animation(.easeOut(duration: AppTheme.Anim.hover), value: isFocused)
-    }
-
-    private var placeholder: String {
-        hasKey ? maskedKey : "sk-ant-..."
+    private var anthropicPlaceholder: String {
+        hasAnthropicKey ? anthropicMaskedKey : "sk-ant-..."
     }
 
     @ViewBuilder
-    private var trailingControl: some View {
-        let trimmed = draft.trimmingCharacters(in: .whitespaces)
+    private var anthropicTrailingControl: some View {
+        let trimmed = anthropicDraft.trimmingCharacters(in: .whitespaces)
         if !trimmed.isEmpty {
-            Button("Save", action: save)
+            Button("Save", action: saveAnthropic)
                 .buttonStyle(.capsule(.prominent, size: .regular))
                 .controlSize(.large)
-        } else if hasKey {
-            Button(action: remove) {
+        } else if hasAnthropicKey {
+            Button(action: removeAnthropic) {
                 Image(systemName: "trash")
                     .font(.system(size: AppTheme.FontSize.md))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
@@ -107,24 +165,180 @@ struct AgentPane: View {
         }
     }
 
-    private func refresh() {
-        let key = AnthropicKeychain.load() ?? ""
-        hasKey = !key.isEmpty
-        maskedKey = mask(key)
+    // MARK: - OpenRouter section
+
+    private var openRouterSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            openRouterHeader
+            openRouterKeyField
+            openRouterModelField
+        }
     }
 
-    private func save() {
-        let key = draft.trimmingCharacters(in: .whitespaces)
+    private var openRouterHeader: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            Text("OpenRouter API Key")
+                .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+
+            HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
+                Text("Use any LLM via OpenRouter. Key stored in your macOS Keychain.")
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button(action: { NSWorkspace.shared.open(openRouterConsoleURL, configuration: .init(), completionHandler: nil) }) {
+                    HStack(spacing: 2) {
+                        Text("Get OpenRouter API key")
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
+                    }
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Accent.primary)
+                }
+                .buttonStyle(.plain)
+                .fixedSize()
+            }
+        }
+    }
+
+    private var openRouterKeyField: some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            SecureField(openRouterPlaceholder, text: $openRouterDraft)
+                .textFieldStyle(.plain)
+                .focused($isOpenRouterFocused)
+                .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+                .onSubmit(saveOpenRouter)
+                .padding(.horizontal, AppTheme.Spacing.md)
+                .padding(.vertical, AppTheme.Spacing.smMd)
+                .background(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                        .fill(Color.black.opacity(AppTheme.Opacity.muted))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                        .strokeBorder(
+                            isOpenRouterFocused ? AppTheme.Border.primaryColor : AppTheme.Border.subtleColor,
+                            lineWidth: AppTheme.BorderWidth.thin
+                        )
+                )
+                .animation(.easeOut(duration: AppTheme.Anim.hover), value: isOpenRouterFocused)
+
+            openRouterTrailingControl
+        }
+    }
+
+    private var openRouterPlaceholder: String {
+        hasOpenRouterKey ? openRouterMaskedKey : "sk-or-..."
+    }
+
+    @ViewBuilder
+    private var openRouterTrailingControl: some View {
+        let trimmed = openRouterDraft.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty {
+            Button("Save", action: saveOpenRouter)
+                .buttonStyle(.capsule(.prominent, size: .regular))
+                .controlSize(.large)
+        } else if hasOpenRouterKey {
+            Button(action: removeOpenRouter) {
+                Image(systemName: "trash")
+                    .font(.system(size: AppTheme.FontSize.md))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
+            }
+            .buttonStyle(.capsule(.secondary, size: .regular))
+            .controlSize(.large)
+            .help("Remove OpenRouter API key")
+        }
+    }
+
+    private var openRouterModelField: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            Text("Model")
+                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+
+            HStack(spacing: AppTheme.Spacing.sm) {
+                TextField("openai/gpt-4o", text: $openRouterModelDraft)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                    .onSubmit(saveOpenRouterModel)
+                    .padding(.horizontal, AppTheme.Spacing.md)
+                    .padding(.vertical, AppTheme.Spacing.smMd)
+                    .background(
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                            .fill(Color.black.opacity(AppTheme.Opacity.muted))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                            .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
+                    )
+
+                let trimmedModel = openRouterModelDraft.trimmingCharacters(in: .whitespaces)
+                if !trimmedModel.isEmpty, trimmedModel != openRouterModel {
+                    Button("Save", action: saveOpenRouterModel)
+                        .buttonStyle(.capsule(.prominent, size: .regular))
+                        .controlSize(.large)
+                }
+            }
+
+            Text("Use any model slug from OpenRouter (e.g. openai/gpt-4o, google/gemini-2.5-pro, anthropic/claude-sonnet-4-6)")
+                .font(.system(size: AppTheme.FontSize.xs))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - Actions
+
+    private func refresh() {
+        let aKey = AnthropicKeychain.load() ?? ""
+        hasAnthropicKey = !aKey.isEmpty
+        anthropicMaskedKey = mask(aKey)
+
+        let oKey = OpenRouterKeychain.load() ?? ""
+        hasOpenRouterKey = !oKey.isEmpty
+        openRouterMaskedKey = mask(oKey)
+
+        openRouterModelDraft = openRouterModel
+    }
+
+    private func saveAnthropic() {
+        let key = anthropicDraft.trimmingCharacters(in: .whitespaces)
         guard !key.isEmpty else { return }
         AnthropicKeychain.save(key)
-        draft = ""
-        isFocused = false
+        anthropicDraft = ""
+        isAnthropicFocused = false
         refresh()
     }
 
-    private func remove() {
+    private func removeAnthropic() {
         AnthropicKeychain.delete()
-        draft = ""
+        anthropicDraft = ""
+        refresh()
+    }
+
+    private func saveOpenRouter() {
+        let key = openRouterDraft.trimmingCharacters(in: .whitespaces)
+        guard !key.isEmpty else { return }
+        OpenRouterKeychain.save(key)
+        openRouterDraft = ""
+        isOpenRouterFocused = false
+        refresh()
+    }
+
+    private func removeOpenRouter() {
+        OpenRouterKeychain.delete()
+        openRouterDraft = ""
+        refresh()
+    }
+
+    private func saveOpenRouterModel() {
+        let m = openRouterModelDraft.trimmingCharacters(in: .whitespaces)
+        guard !m.isEmpty else { return }
+        openRouterModel = m
         refresh()
     }
 
