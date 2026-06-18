@@ -81,6 +81,10 @@ struct AssetThumbnailView: View {
             Divider()
         }
         if ids.count == 1, ids.first == asset.id {
+            if isMissing {
+                Button("Relink…") { relinkFile() }
+                Divider()
+            }
             Button("Rename") { beginRename() }
             AIEditMenu(asset: asset)
             Divider()
@@ -98,6 +102,18 @@ struct AssetThumbnailView: View {
                 .map(\.id)
         }
         return [asset.id]
+    }
+
+    private func relinkFile() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose the source file for \"\(asset.name)\""
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            editor.relinkAsset(id: asset.id, to: url)
+        }
     }
 
     private func revealInFinder(ids: [String]) {
@@ -242,11 +258,11 @@ struct AssetThumbnailView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: AppTheme.FontSize.mdLg))
                 .foregroundStyle(AppTheme.Status.errorColor)
-            Text("Media Missing")
+            Text("Media Offline")
                 .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
         }
-        .help("The source file for this media could not be found.")
+        .help("Palmier couldn't load this source file. It may be missing, on an ejected drive, or unreadable.")
     }
 
     private func formatDuration(_ seconds: Double) -> String {
@@ -277,9 +293,9 @@ struct AssetThumbnailView: View {
     }
 
     private var isMissing: Bool {
-        // Generating/downloading/failed assets have their own states — not "missing".
+        // Generating/downloading/failed assets have their own states — not "offline".
         guard case .none = asset.generationStatus else { return false }
-        return editor.mediaResolver.isMissing(for: asset.id)
+        return editor.isMediaOffline(asset.id)
     }
 
     private var borderColor: Color {

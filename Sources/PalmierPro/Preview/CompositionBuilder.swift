@@ -19,6 +19,7 @@ struct CompositionResult {
     let trackMappings: [TrackMapping]
     let clipNaturalSizes: [String: CGSize]
     let clipTransforms: [String: CGAffineTransform]
+    let offlineMediaRefs: Set<String>
 }
 
 /// Builds an AVFoundation composition from a Timeline.
@@ -45,6 +46,7 @@ enum CompositionBuilder {
         var trackMappings: [TrackMapping] = []
         var clipNaturalSizes: [String: CGSize] = [:]
         var clipTransforms: [String: CGAffineTransform] = [:]
+        var offlineMediaRefs: Set<String> = []
 
         for (trackIdx, track) in timeline.tracks.enumerated() {
             // Text renders via CATextLayer overlay (preview) + animation tool (export) — never as composition tracks.
@@ -68,6 +70,7 @@ enum CompositionBuilder {
                         resolveSourceSize: resolveSourceSize,
                         renderSize: renderSize
                     ) else {
+                        offlineMediaRefs.insert(clip.mediaRef)
                         continue
                     }
 
@@ -150,6 +153,7 @@ enum CompositionBuilder {
                     resolveSourceSize: resolveSourceSize,
                     renderSize: renderSize
                 ) else {
+                    offlineMediaRefs.insert(clip.mediaRef)
                     continue
                 }
 
@@ -220,7 +224,8 @@ enum CompositionBuilder {
             videoComposition: videoComposition,
             trackMappings: trackMappings,
             clipNaturalSizes: clipNaturalSizes,
-            clipTransforms: clipTransforms
+            clipTransforms: clipTransforms,
+            offlineMediaRefs: offlineMediaRefs
         )
     }
 

@@ -301,7 +301,7 @@ final class TimelineView: NSView {
         for (ti, track) in editor.timeline.tracks.enumerated() {
             for clip in track.clips {
                 let isSelected = editor.selectedClipIds.contains(clip.id)
-                let clipMissing = editor.isClipMediaMissing(clip)
+                let clipMissing = editor.isClipMediaOffline(clip)
                 let clipGenerating = editor.isClipMediaGenerating(clip)
 
                 if let drag = moveDrag, allDraggedIds.contains(clip.id) {
@@ -533,7 +533,7 @@ final class TimelineView: NSView {
                               isSelected: true, opacity: 0.5, context: ctx,
                               cache: editor.mediaVisualCache,
                               fps: editor.timeline.fps,
-                              isMissing: editor.isClipMediaMissing(ghost.clip),
+                              isMissing: editor.isClipMediaOffline(ghost.clip),
                               isGenerating: editor.isClipMediaGenerating(ghost.clip))
         }
     }
