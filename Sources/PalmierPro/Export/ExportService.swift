@@ -240,12 +240,12 @@ final class ExportService {
             fps: timeline.fps,
             renderSize: renderSize
         )
-        let mutableVC = result.videoComposition.mutableCopy() as! AVMutableVideoComposition
-        mutableVC.animationTool = AVVideoCompositionCoreAnimationTool(
+        var config = result.videoCompositionConfiguration
+        config.animationTool = AVVideoCompositionCoreAnimationTool(
             postProcessingAsVideoLayer: videoLayer,
             in: parent
         )
-        session.videoComposition = mutableVC
+        session.videoComposition = AVVideoComposition(configuration: config)
         return session
     }
 

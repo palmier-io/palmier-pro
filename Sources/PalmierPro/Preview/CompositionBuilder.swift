@@ -16,6 +16,7 @@ struct CompositionResult {
     let composition: AVMutableComposition
     let audioMix: AVMutableAudioMix
     let videoComposition: AVVideoComposition
+    let videoCompositionConfiguration: AVVideoComposition.Configuration
     let trackMappings: [TrackMapping]
     let clipNaturalSizes: [String: CGSize]
     let clipTransforms: [String: CGAffineTransform]
@@ -220,7 +221,7 @@ enum CompositionBuilder {
 
         let luts = prebakeLUTs(timeline: timeline, resolveURL: resolveURL)
 
-        let (audioMix, videoComposition) = buildVisuals(
+        let (audioMix, vcConfiguration) = visualConfiguration(
             timeline: timeline,
             trackMappings: trackMappings,
             clipNaturalSizes: clipNaturalSizes,
@@ -229,11 +230,13 @@ enum CompositionBuilder {
             renderSize: renderSize,
             luts: luts
         )
+        let videoComposition = AVVideoComposition(configuration: vcConfiguration)
 
         return CompositionResult(
             composition: composition,
             audioMix: audioMix,
             videoComposition: videoComposition,
+            videoCompositionConfiguration: vcConfiguration,
             trackMappings: trackMappings,
             clipNaturalSizes: clipNaturalSizes,
             clipTransforms: clipTransforms,
@@ -402,7 +405,7 @@ enum CompositionBuilder {
         )
     }
 
-    /// Rebuild only visual properties (transforms, opacity, volume)
+    /// Rebuild only visual properties (transforms, opacity, volume).
     static func buildVisuals(
         timeline: Timeline,
         trackMappings: [TrackMapping],
@@ -412,6 +415,31 @@ enum CompositionBuilder {
         renderSize: CGSize,
         luts: [String: CubeLUT] = [:]
     ) -> (audioMix: AVMutableAudioMix, videoComposition: AVVideoComposition) {
+        let (audioMix, config) = visualConfiguration(
+            timeline: timeline,
+            trackMappings: trackMappings,
+            clipNaturalSizes: clipNaturalSizes,
+            clipTransforms: clipTransforms,
+            compositionDuration: compositionDuration,
+            renderSize: renderSize,
+            luts: luts
+        )
+        return (audioMix, AVVideoComposition(configuration: config))
+    }
+
+    /// Build the audio mix and the video-composition **configuration**. Returning
+    /// the configuration (instead of a built `AVVideoComposition`) lets render
+    /// paths attach an `animationTool` and rebuild without the deprecated
+    /// `AVMutableVideoComposition`.
+    static func visualConfiguration(
+        timeline: Timeline,
+        trackMappings: [TrackMapping],
+        clipNaturalSizes: [String: CGSize] = [:],
+        clipTransforms: [String: CGAffineTransform] = [:],
+        compositionDuration: CMTime,
+        renderSize: CGSize,
+        luts: [String: CubeLUT] = [:]
+    ) -> (audioMix: AVMutableAudioMix, configuration: AVVideoComposition.Configuration) {
         let timescale = CMTimeScale(timeline.fps)
 
         let audioMix = AVMutableAudioMix()
@@ -456,7 +484,7 @@ enum CompositionBuilder {
         ) {
             vcConfig.customVideoCompositorClass = ColorVideoCompositor.self
             vcConfig.instructions = [colorInstruction]
-            return (audioMix, AVVideoComposition(configuration: vcConfig))
+            return (audioMix, vcConfig)
         }
 
         let layerInstructions: [AVVideoCompositionLayerInstruction] = trackMappings.filter { $0.isVideo }.map { mapping in
@@ -506,7 +534,7 @@ enum CompositionBuilder {
         instrConfig.layerInstructions = layerInstructions
         vcConfig.instructions = [AVVideoCompositionInstruction(configuration: instrConfig)]
 
-        return (audioMix, AVVideoComposition(configuration: vcConfig))
+        return (audioMix, vcConfig)
     }
 
     /// Build the custom-compositor instruction when any clip carries a colour grade

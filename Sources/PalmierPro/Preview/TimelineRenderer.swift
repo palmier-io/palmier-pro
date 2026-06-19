@@ -49,12 +49,12 @@ enum TimelineRenderer {
             fps: timeline.fps,
             renderSize: renderSize
         )
-        let mutableVC = result.videoComposition.mutableCopy() as! AVMutableVideoComposition
-        mutableVC.animationTool = AVVideoCompositionCoreAnimationTool(
+        var config = result.videoCompositionConfiguration
+        config.animationTool = AVVideoCompositionCoreAnimationTool(
             postProcessingAsVideoLayer: videoLayer,
             in: parent
         )
-        session.videoComposition = mutableVC
+        session.videoComposition = AVVideoComposition(configuration: config)
 
         let timescale = CMTimeScale(timeline.fps)
         session.timeRange = CMTimeRange(
