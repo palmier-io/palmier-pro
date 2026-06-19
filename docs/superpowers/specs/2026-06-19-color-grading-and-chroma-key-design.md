@@ -200,4 +200,28 @@ error/return conventions. Color grading is **not** exposed over MCP.
 5. **Color UI**: adjustment-layer creation + Lumetri panel (Layout A) + LUT import.
 6. **Polish**: undo, edge cases, perf check on preview; docs.
 
-PR target: fork `takefy-dev/palmier-pro`, feature branch off the current work.
+PR target: fork `takefy-dev/palmier-pro`, branch `feat/color-grading-chroma-key` off `main`.
+
+## Deviations from plan (as built)
+
+1. **Chroma key uses a generated `CIColorCube`, not a Metal `CIKernel`.** SwiftPM
+   can't compile `.ci.metal` without custom build flags; the cube bakes both the
+   matte and spill suppression (Apple's documented keying approach). Pure-Swift,
+   unit-tested, no toolchain risk. Edge feather is a `CIGaussianBlur` on the matte.
+2. **LUT files are referenced by absolute path, not copied into the project.** The
+   media resolver is manifest/asset-id based; wiring LUT copies through it was out
+   of proportion for v1. `prebakeLUTs` resolves a manifest id *or* an absolute
+   path, falling back gracefully (basic grade still applies) if the file moves.
+   Follow-up: copy `.cube` into the project package for full portability.
+3. **Geometry parity** for the custom compositor is verified by build + the
+   identity/full-frame maths (the common case: full-frame video, full-frame grade,
+   full-frame key). Arbitrary transform/crop on graded/keyed clips uses the
+   flip-conjugated `affineTransform` and should be visually confirmed; non-rotated
+   sources are correct by construction.
+
+## Bonus (same render path)
+
+Export gained **2K** and **Match Timeline** resolutions (`ExportResolution.r1440p`
+/ `.native`) using HighestQuality presets that honour the composition render size.
+Colour grades and chroma keys export because `ExportService` uses the same
+`videoComposition`.
