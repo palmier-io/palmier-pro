@@ -387,7 +387,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .importImageSequence,
-            description: "Assemble an ordered set of still images into a single video clip and add it to the media library — the bridge for image sequences (rendered frames, storyboard panels, slideshows) that import_media can't take (it accepts one file at a time and has no frames-to-video step). Provide exactly one of 'directory' (every supported image in it, ordered by natural filename sort so frame_2 comes before frame_10) or 'paths' (an explicit ordered list). Each image is held for framesPerImage frames at fps; images are aspect-fit and letterboxed onto the project canvas (the timeline's width×height). The result is one H.264 video asset registered in get_media — place it on the timeline with add_clips using the returned durationFrames. Encoding runs locally and the call returns once the asset is ready (long sequences take a while). Costs nothing. Supported image types: png, jpg, jpeg, tiff, heic. Requires an open project.",
+            description: "Assemble an ordered set of still images into a single video clip and add it to the media library — the bridge for image sequences (rendered frames, storyboard panels, slideshows) that import_media can't take (it accepts one file at a time and has no frames-to-video step). Provide exactly one of 'directory' (every supported image in it, ordered by natural filename sort so frame_2 comes before frame_10) or 'paths' (an explicit ordered list). Each image is held for framesPerImage frames at fps; images are aspect-fit and letterboxed onto the project canvas (the timeline's width×height). The result is one H.264 video asset registered in get_media. By default it just lands in the library (place it later with add_clips using the returned durationFrames); set addToTimeline true to drop it straight onto the timeline in the same call. Encoding runs locally and the call returns once the asset is ready (long sequences take a while). Costs nothing. Supported image types: png, jpg, jpeg, tiff, heic. Requires an open project.",
             inputSchema: objectSchema(
                 properties: [
                     "directory": ["type": "string", "description": "Absolute path to a folder; every supported image inside is used, ordered by natural filename sort. Mutually exclusive with 'paths'."],
@@ -400,6 +400,9 @@ enum ToolDefinitions {
                     "fps": ["type": "integer", "description": "Frame rate of the assembled video. Default: the project's timeline fps (recommended, so it places cleanly)."],
                     "name": ["type": "string", "description": "Display name for the asset in the media library. Defaults to the generated filename."],
                     "folderId": ["type": "string", "description": "Optional. Folder id (from list_folders or create_folder) to place the result in. Omit for the project root."],
+                    "addToTimeline": ["type": "boolean", "description": "Optional (default false). When true, the assembled clip is also placed on the timeline via the same path as add_clips (track auto-creation + overlap handling apply)."],
+                    "startFrame": ["type": "integer", "description": "Only used when addToTimeline is true. Timeline frame to place the clip at (default 0)."],
+                    "trackIndex": ["type": "integer", "description": "Only used when addToTimeline is true. Target track index (0-based); omit to auto-create a new track."],
                 ]
             )
         ),

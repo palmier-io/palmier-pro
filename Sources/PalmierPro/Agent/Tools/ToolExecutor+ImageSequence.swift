@@ -5,7 +5,8 @@ import ImageIO
 
 extension ToolExecutor {
     private static let importImageSequenceAllowedKeys: Set<String> =
-        ["directory", "paths", "framesPerImage", "fps", "name", "folderId"]
+        ["directory", "paths", "framesPerImage", "fps", "name", "folderId",
+         "addToTimeline", "startFrame", "trackIndex"]
     private static let imageSequenceExtensions: Set<String> = ["png", "jpg", "jpeg", "tiff", "heic"]
     static let imageSequenceMaxImages = 5000
     static let imageSequenceMaxTotalFrames = 216_000   // 1 hour at 60 fps — runaway guard
@@ -80,10 +81,29 @@ extension ToolExecutor {
         }
 
         let seconds = Double(totalFrames) / Double(fps)
-        return .ok(String(
-            format: "Assembled %d image(s) into video '%@' (id: %@, %d×%d, %d fps, %d frame(s)/image, %d frames ≈ %.2fs). Place it with add_clips using durationFrames: %d.",
-            imageURLs.count, asset.name, asset.id, width, height, fps, framesPerImage, totalFrames, seconds, totalFrames
-        ))
+        let base = String(
+            format: "Assembled %d image(s) into video '%@' (id: %@, %d×%d, %d fps, %d frame(s)/image, %d frames ≈ %.2fs).",
+            imageURLs.count, asset.name, asset.id, width, height, fps, framesPerImage, totalFrames, seconds
+        )
+
+        // Optionally drop the assembled clip straight onto the timeline, reusing add_clips so
+        // track auto-creation and overlap handling stay identical to a normal placement.
+        guard args.bool("addToTimeline") == true else {
+            return .ok(base + " It's in the media library — place it with add_clips using durationFrames: \(totalFrames).")
+        }
+
+        let startFrame = max(0, args.int("startFrame") ?? 0)
+        let trackIndex = args.int("trackIndex")
+        var entry: [String: Any] = [
+            "mediaRef": asset.id,
+            "startFrame": startFrame,
+            "durationFrames": totalFrames,
+        ]
+        if let trackIndex { entry["trackIndex"] = trackIndex }
+        _ = try addClips(editor, ["entries": [entry]])
+
+        let trackNote = trackIndex.map { " on track \($0)" } ?? " on a new track"
+        return .ok(base + " Placed at frame \(startFrame)\(trackNote) for \(totalFrames) frames.")
     }
 
     private static func resolveImageURLs(directory: String?, paths: [String]) throws -> [URL] {
