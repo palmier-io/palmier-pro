@@ -14,6 +14,8 @@ enum ToolName: String, CaseIterable, Sendable {
     case rippleDeleteRanges = "ripple_delete_ranges"
     case addTexts = "add_texts"
     case addCaptions = "add_captions"
+    case addShapes = "add_shapes"
+    case applyAnimation = "apply_animation"
     case generateVideo = "generate_video"
     case generateImage = "generate_image"
     case generateAudio = "generate_audio"
@@ -315,6 +317,83 @@ enum ToolDefinitions {
                     "textCase": ["type": "string", "enum": ["auto", "upper", "lower"], "description": "Optional letter case (default auto)."],
                     "censorProfanity": ["type": "boolean", "description": "Optional. Mask profanity (default false)."],
                 ]
+            )
+        ),
+        AgentTool(
+            name: .addShapes,
+            description: "Adds one or more vector shape clips (rect, oval, circle, arrow, line) as overlays on top of the video — the right tool for tutorial annotations like a red circle around a button, an arrow pointing at a feature, or a callout rectangle. Single undoable action. Each shape gets its own clip and reuses every existing keyframe track for animation.\n\nPosition uses 0–1 normalized canvas coords (matches add_texts and set_clip_properties). For rect/oval/circle, pass `transform` with centerX/centerY/width/height — omit for a default 20%×20% box at canvas center. For arrow/line, pass `endpoints` with fromX/fromY/toX/toY (optional controlX/controlY for a curved arrow); the bounding box is derived automatically and `transform` is ignored.\n\nStyle defaults to a red 6pt stroke with no fill — overrideable per entry. Colors are hex '#RRGGBB' or '#RRGGBBAA'.\n\nAnimations: pass enterAnim / exitAnim / loopAnim by NAME and the tool expands them to keyframes on the clip. Enter presets: 'fade-in', 'pop-in', 'draw-on', 'slide-in-up'/'down'/'left'/'right'. Exit: 'fade-out', 'pop-out', 'un-draw', 'slide-out-{dir}'. Loop: 'shake-subtle', 'shake-strong', 'spin'. enterDurationFrames / exitDurationFrames default to 15. 'draw-on' on an arrow is the iconic 'arrow draws itself' tutorial effect.\n\ntrackIndex is optional. Omit it on all entries and the tool auto-creates one new video track at the top. To target an existing track, set trackIndex on every entry (audio tracks rejected). Mixing is rejected — split into two calls.",
+            inputSchema: objectSchema(
+                properties: [
+                    "entries": [
+                        "type": "array",
+                        "description": "Shape clips to add.",
+                        "items": [
+                            "type": "object",
+                            "properties": [
+                                "kind": ["type": "string", "enum": ["rect", "oval", "circle", "arrow", "line"], "description": "Shape primitive."],
+                                "trackIndex": ["type": "integer", "description": "Optional. 0-based track index for an existing non-audio track."],
+                                "startFrame": ["type": "integer", "description": "Frame position to place the clip."],
+                                "durationFrames": ["type": "integer", "description": "Duration in frames (>= 1)."],
+                                "transform": [
+                                    "type": "object",
+                                    "description": "Position/size for rect/oval/circle. Normalized 0–1 canvas coords. Ignored for arrow/line (their box is derived from endpoints).",
+                                    "properties": [
+                                        "centerX": ["type": "number"],
+                                        "centerY": ["type": "number"],
+                                        "width": ["type": "number"],
+                                        "height": ["type": "number"],
+                                    ],
+                                ],
+                                "endpoints": [
+                                    "type": "object",
+                                    "description": "Required for arrow/line. Normalized 0–1 canvas coords.",
+                                    "properties": [
+                                        "fromX": ["type": "number"],
+                                        "fromY": ["type": "number"],
+                                        "toX": ["type": "number"],
+                                        "toY": ["type": "number"],
+                                        "controlX": ["type": "number", "description": "Optional. Quadratic bezier control point for a curved arrow."],
+                                        "controlY": ["type": "number"],
+                                    ],
+                                    "required": ["fromX", "fromY", "toX", "toY"],
+                                ],
+                                "style": [
+                                    "type": "object",
+                                    "description": "Visual style overrides.",
+                                    "properties": [
+                                        "strokeColor": ["type": "string", "description": "Hex '#RRGGBB' or '#RRGGBBAA' (default red)."],
+                                        "strokeWidth": ["type": "number", "description": "Canvas points at 1080p (default 6)."],
+                                        "fillColor": ["type": "string", "description": "Optional fill. Hex. Omit for stroke-only."],
+                                        "cornerRadius": ["type": "number", "description": "Rect only. 0..0.5 of the shorter side."],
+                                        "arrowheadStyle": ["type": "string", "enum": ["triangle", "open", "none"], "description": "Arrow only (default triangle)."],
+                                        "arrowheadSize": ["type": "number", "description": "Arrow only. Canvas points at 1080p (default 24)."],
+                                        "dash": ["type": "array", "items": ["type": "number"], "description": "Optional dash pattern in canvas points (e.g. [12, 6]). Empty/omitted = solid."],
+                                    ],
+                                ],
+                                "enterAnim": ["type": "string", "enum": ["fade-in", "pop-in", "draw-on", "slide-in-up", "slide-in-down", "slide-in-left", "slide-in-right"], "description": "Optional enter animation preset."],
+                                "enterDurationFrames": ["type": "integer", "description": "Default 15."],
+                                "exitAnim": ["type": "string", "enum": ["fade-out", "pop-out", "un-draw", "slide-out-up", "slide-out-down", "slide-out-left", "slide-out-right"], "description": "Optional exit animation preset."],
+                                "exitDurationFrames": ["type": "integer", "description": "Default 15."],
+                                "loopAnim": ["type": "string", "enum": ["shake-subtle", "shake-strong", "spin"], "description": "Optional looping animation that runs while the shape is visible."],
+                            ],
+                            "required": ["kind", "startFrame", "durationFrames"],
+                        ],
+                    ],
+                ],
+                required: ["entries"]
+            )
+        ),
+        AgentTool(
+            name: .applyAnimation,
+            description: "Apply a named animation preset to one existing clip — works on any clip type (shape, text, video, image). Replaces existing keyframes on the properties the preset drives (e.g. fade-in clears opacityTrack and writes a new one). Use this to animate a clip you already placed.\n\nPresets: 'fade-in', 'fade-out', 'pop-in', 'pop-out', 'draw-on' (shape stroke), 'un-draw', 'shake-subtle', 'shake-strong', 'spin', and 'slide-{in,out}-{up,down,left,right}'.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipId": ["type": "string", "description": "The clip to animate."],
+                    "preset": ["type": "string", "description": "Preset name. See tool description for the full list."],
+                    "windowFrames": ["type": "integer", "description": "Optional. Length of the enter/exit window (default 15). Ignored for loop presets."],
+                    "intensity": ["type": "string", "enum": ["subtle", "medium", "strong"], "description": "Optional. Default 'medium'. Used by shake-* and spin."],
+                ],
+                required: ["clipId", "preset"]
             )
         ),
         AgentTool(

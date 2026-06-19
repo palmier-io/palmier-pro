@@ -11,6 +11,7 @@ final class VideoEngine {
     private(set) var player = AVPlayer()
 
     let textController = TextLayerController()
+    let shapeController = ShapeLayerController()
 
     weak var previewView: PreviewNSView?
 
@@ -69,6 +70,7 @@ final class VideoEngine {
     func seek(to frame: Int, mode: PreviewSeekMode = .exact) {
         guard let editor else { return }
         textController.tick(frame)
+        shapeController.tick(frame)
 
         let time = CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(editor.timeline.fps))
         let tolerance: CMTime = mode == .interactiveScrub
@@ -113,9 +115,11 @@ final class VideoEngine {
         switch tab {
         case .timeline:
             textController.textRoot.isHidden = false
+            shapeController.shapeRoot.isHidden = false
             rebuild()
         case .mediaAsset(let id, _, let type):
             textController.textRoot.isHidden = true
+            shapeController.shapeRoot.isHidden = true
             guard let asset = editor.mediaAssets.first(where: { $0.id == id }) else { return }
             if type == .image {
                 replacePlayerItem(nil, reason: "imagePreview")
@@ -178,6 +182,7 @@ final class VideoEngine {
             item.videoComposition = result.videoComposition
             replacePlayerItem(item, reason: "rebuild")
             syncTextLayers()
+            syncShapeLayers()
 
             seek(to: editor.currentFrame, mode: .exact)
             if editor.isPlaying { player.play() }
@@ -218,6 +223,22 @@ final class VideoEngine {
         let resolvedRect = videoRect.isEmpty ? previewView.bounds : videoRect
         textController.sync(timeline: editor.timeline, videoRect: resolvedRect)
         textController.tick(editor.currentFrame)
+    }
+
+    // MARK: - Shape Layers
+
+    func syncShapeLayers() {
+        guard let editor, let previewView else { return }
+        guard editor.activePreviewTab == .timeline else {
+            shapeController.shapeRoot.isHidden = true
+            return
+        }
+
+        shapeController.shapeRoot.isHidden = false
+        let videoRect = previewView.playerLayer.videoRect
+        let resolvedRect = videoRect.isEmpty ? previewView.bounds : videoRect
+        shapeController.sync(timeline: editor.timeline, videoRect: resolvedRect)
+        shapeController.tick(editor.currentFrame)
     }
 
     // MARK: - Seek Coordinator
@@ -297,6 +318,7 @@ final class VideoEngine {
                 if editor.activePreviewTab == .timeline {
                     editor.currentFrame = frame
                     self.textController.tick(frame)
+                    self.shapeController.tick(frame)
                 } else {
                     editor.sourcePlayheadFrame = frame
                 }

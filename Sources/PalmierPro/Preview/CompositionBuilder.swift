@@ -51,10 +51,12 @@ enum CompositionBuilder {
         var unprocessableMediaRefs: Set<String> = []
 
         for (trackIdx, track) in timeline.tracks.enumerated() {
-            // Text renders via CATextLayer overlay (preview) + animation tool (export) — never as composition tracks.
+            // Text + shape clips render via CALayer overlays (preview) + animation tool (export) —
+            // never as composition tracks. Skipping them here also dodges an AVAsset.loadTracks
+            // call against the blackBackground fallback for tracks that are pure overlay.
             let sortedClips = track.clips
                 .sorted { $0.startFrame < $1.startFrame }
-                .filter { $0.mediaType != .text }
+                .filter { $0.mediaType != .text && $0.mediaType != .shape }
             guard !sortedClips.isEmpty else { continue }
             let isAudio = track.type == .audio
             let mediaType: AVMediaType = isAudio ? .audio : .video

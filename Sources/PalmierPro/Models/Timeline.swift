@@ -98,6 +98,9 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var textContent: String?
     var textStyle: TextStyle?
 
+    // Shape clips only.
+    var shapeStyle: ShapeStyle?
+
     // Keyframe tracks for each animatable property. Nil when no animation exists.
     var opacityTrack: KeyframeTrack<Double>?
     var positionTrack: KeyframeTrack<AnimPair>?
@@ -105,14 +108,17 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var rotationTrack: KeyframeTrack<Double>?
     var cropTrack: KeyframeTrack<Crop>?
     var volumeTrack: KeyframeTrack<Double>?
+    /// Shape clips: 0..1 fraction of the stroke drawn. Drives draw-on / un-draw presets.
+    var strokeProgressTrack: KeyframeTrack<Double>?
 
     private enum CodingKeys: String, CodingKey {
         case id, mediaRef, mediaType, sourceClipType, startFrame, durationFrames
         case trimStartFrame, trimEndFrame, speed, volume
         case fadeInFrames, fadeOutFrames, fadeInInterpolation, fadeOutInterpolation
         case opacity, transform, crop
-        case linkGroupId, captionGroupId, textContent, textStyle
+        case linkGroupId, captionGroupId, textContent, textStyle, shapeStyle
         case opacityTrack, positionTrack, scaleTrack, rotationTrack, cropTrack, volumeTrack
+        case strokeProgressTrack
     }
 
     /// Frame where this clip ends on the timeline
@@ -252,6 +258,7 @@ extension Clip {
         rotationTrack = clampedKeyframeTrack(rotationTrack)
         cropTrack = clampedKeyframeTrack(cropTrack)
         volumeTrack = clampedKeyframeTrack(volumeTrack)
+        strokeProgressTrack = clampedKeyframeTrack(strokeProgressTrack)
     }
 
     mutating func rescaleKeyframes(by scale: Double) {
@@ -261,6 +268,7 @@ extension Clip {
         rotationTrack = rescaledKeyframeTrack(rotationTrack, by: scale)
         cropTrack = rescaledKeyframeTrack(cropTrack, by: scale)
         volumeTrack = rescaledKeyframeTrack(volumeTrack, by: scale)
+        strokeProgressTrack = rescaledKeyframeTrack(strokeProgressTrack, by: scale)
     }
 
     private func clampedKeyframeTrack<V: Codable & Sendable & Equatable>(
@@ -351,12 +359,14 @@ extension Clip {
             captionGroupId: try? c.decode(String.self, forKey: .captionGroupId),
             textContent: try? c.decode(String.self, forKey: .textContent),
             textStyle: try? c.decode(TextStyle.self, forKey: .textStyle),
+            shapeStyle: try? c.decode(ShapeStyle.self, forKey: .shapeStyle),
             opacityTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .opacityTrack),
             positionTrack: try? c.decode(KeyframeTrack<AnimPair>.self, forKey: .positionTrack),
             scaleTrack: try? c.decode(KeyframeTrack<AnimPair>.self, forKey: .scaleTrack),
             rotationTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .rotationTrack),
             cropTrack: try? c.decode(KeyframeTrack<Crop>.self, forKey: .cropTrack),
-            volumeTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .volumeTrack)
+            volumeTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .volumeTrack),
+            strokeProgressTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .strokeProgressTrack)
         )
     }
 }

@@ -9,8 +9,12 @@ struct PreviewView: NSViewRepresentable {
         let engine = VideoEngine(editor: editor)
         view.playerLayer.player = engine.player
         engine.previewView = view
+        view.setShapeRoot(engine.shapeController.shapeRoot)
         view.setTextRoot(engine.textController.textRoot)
-        view.onVideoRectChange = { [weak engine] _ in engine?.syncTextLayers() }
+        view.onVideoRectChange = { [weak engine] _ in
+            engine?.syncTextLayers()
+            engine?.syncShapeLayers()
+        }
         view.onCmdScroll = { [weak editor] deltaY, pointTopDown, viewSize in
             guard let editor = editor else { return }
             let oldZoom = editor.canvasZoom
@@ -59,12 +63,13 @@ struct PreviewView: NSViewRepresentable {
     }
 }
 
-/// Hosts AVPlayerLayer + a direct CALayer tree for text overlays.
+/// Hosts AVPlayerLayer + CALayer trees for shape (under) and text (over) overlays.
 final class PreviewNSView: NSView {
     let playerLayer = AVPlayerLayer()
     private(set) var textRoot: CALayer?
+    private(set) var shapeRoot: CALayer?
 
-    /// Fires when `playerLayer.videoRect` changes so text layers can re-scale.
+    /// Fires when `playerLayer.videoRect` changes so overlay layers can re-scale.
     var onVideoRectChange: ((CGRect) -> Void)?
 
     /// Fires on cmd+scroll. (deltaY, pointInTopDownViewCoords, viewSize)
@@ -83,7 +88,17 @@ final class PreviewNSView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    /// Attach the text layer tree above `playerLayer` — persists across item swaps.
+    /// Attach the shape layer tree above `playerLayer` — persists across item swaps.
+    func setShapeRoot(_ new: CALayer?) {
+        shapeRoot?.removeFromSuperlayer()
+        shapeRoot = new
+        if let new, let host = layer {
+            host.addSublayer(new)
+            new.frame = resolvedVideoRect
+        }
+    }
+
+    /// Attach the text layer tree above the shape tree — persists across item swaps.
     func setTextRoot(_ new: CALayer?) {
         textRoot?.removeFromSuperlayer()
         textRoot = new
@@ -99,6 +114,7 @@ final class PreviewNSView: NSView {
         CATransaction.setDisableActions(true)
         playerLayer.frame = bounds
         let videoRect = resolvedVideoRect
+        shapeRoot?.frame = videoRect
         textRoot?.frame = videoRect
         CATransaction.commit()
         if videoRect != lastVideoRect {

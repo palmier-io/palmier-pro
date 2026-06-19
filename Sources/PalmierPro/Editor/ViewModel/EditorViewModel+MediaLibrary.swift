@@ -359,7 +359,7 @@ extension EditorViewModel {
             mediaVisualCache.generateWaveform(for: asset)
         case .image:
             mediaVisualCache.generateImageThumbnail(for: asset)
-        case .text, .lottie:
+        case .text, .lottie, .shape:
             break
         }
     }
@@ -425,6 +425,64 @@ extension EditorViewModel {
             sortClips(trackIndex: i)
         }
         videoEngine?.syncTextLayers()
+        return createdIds.compactMap { $0 }
+    }
+
+    struct ShapeClipSpec {
+        let trackIndex: Int
+        let startFrame: Int
+        let durationFrames: Int
+        let style: ShapeStyle
+        /// When nil the shape sits at a sensible default in the center of the canvas.
+        let transform: Transform?
+    }
+
+    /// Batch placement for the agent (and future UI) flows.
+    /// Caller owns undo + track creation.
+    @discardableResult
+    func placeShapeClips(_ specs: [ShapeClipSpec]) -> [String] {
+        guard !specs.isEmpty else { return [] }
+        var createdIds = [String?](repeating: nil, count: specs.count)
+
+        let indicesByTrack = Dictionary(grouping: specs.indices, by: { specs[$0].trackIndex })
+        for (_, indices) in indicesByTrack {
+            let ordered = indices.sorted { specs[$0].startFrame < specs[$1].startFrame }
+            for i in ordered {
+                let spec = specs[i]
+                guard timeline.tracks.indices.contains(spec.trackIndex) else { continue }
+                let start = max(0, spec.startFrame)
+                let duration = max(1, spec.durationFrames)
+                clearRegion(trackIndex: spec.trackIndex, start: start, end: start + duration, prune: false)
+
+                let resolved: Transform
+                if let t = spec.transform {
+                    resolved = t
+                } else if let endpoints = spec.style.endpoints {
+                    let bb = endpoints.boundingBox
+                    resolved = Transform(center: (bb.centerX, bb.centerY), width: bb.width, height: bb.height)
+                } else {
+                    // Default: 20% × 20% box at canvas center.
+                    resolved = Transform(center: (0.5, 0.5), width: 0.2, height: 0.2)
+                }
+
+                var clip = Clip(
+                    mediaRef: "",
+                    mediaType: .shape,
+                    sourceClipType: .shape,
+                    startFrame: start,
+                    durationFrames: duration,
+                    transform: resolved
+                )
+                clip.shapeStyle = spec.style
+                timeline.tracks[spec.trackIndex].clips.append(clip)
+                createdIds[i] = clip.id
+            }
+        }
+
+        for i in Set(specs.map(\.trackIndex)) where timeline.tracks.indices.contains(i) {
+            sortClips(trackIndex: i)
+        }
+        videoEngine?.syncShapeLayers()
         return createdIds.compactMap { $0 }
     }
 

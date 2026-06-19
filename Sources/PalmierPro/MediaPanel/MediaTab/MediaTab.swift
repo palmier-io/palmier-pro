@@ -601,7 +601,7 @@ struct MediaTab: View {
 
     private func toolbarMenuIcon<Content: View>(
         systemName: String,
-        foregroundStyle: some ShapeStyle = AppTheme.Text.tertiaryColor,
+        foregroundStyle: some SwiftUI.ShapeStyle = AppTheme.Text.tertiaryColor,
         @ViewBuilder content: () -> Content
     ) -> some View {
         Menu(content: content) {

@@ -75,16 +75,17 @@ extension Crop: KeyframeInterpolatable {
 
 /// Identifies which clip property an inspector lane / stamp button drives.
 enum AnimatableProperty: String, CaseIterable, Sendable {
-    case opacity, position, scale, rotation, crop, volume
+    case opacity, position, scale, rotation, crop, volume, strokeProgress
 
     var displayName: String {
         switch self {
-        case .opacity:  "Opacity"
-        case .position: "Position"
-        case .scale:    "Scale"
-        case .rotation: "Rotation"
-        case .crop:     "Crop"
-        case .volume:   "Volume"
+        case .opacity:        "Opacity"
+        case .position:       "Position"
+        case .scale:          "Scale"
+        case .rotation:       "Rotation"
+        case .crop:           "Crop"
+        case .volume:         "Volume"
+        case .strokeProgress: "Stroke Draw"
         }
     }
 }
@@ -104,12 +105,13 @@ extension Clip {
     func keyframeFrames(for property: AnimatableProperty) -> [Int] {
         let offsets: [Int]
         switch property {
-        case .opacity:  offsets = opacityTrack?.keyframes.map(\.frame) ?? []
-        case .position: offsets = positionTrack?.keyframes.map(\.frame) ?? []
-        case .scale:    offsets = scaleTrack?.keyframes.map(\.frame) ?? []
-        case .rotation: offsets = rotationTrack?.keyframes.map(\.frame) ?? []
-        case .crop:     offsets = cropTrack?.keyframes.map(\.frame) ?? []
-        case .volume:   offsets = volumeTrack?.keyframes.map(\.frame) ?? []
+        case .opacity:        offsets = opacityTrack?.keyframes.map(\.frame) ?? []
+        case .position:       offsets = positionTrack?.keyframes.map(\.frame) ?? []
+        case .scale:          offsets = scaleTrack?.keyframes.map(\.frame) ?? []
+        case .rotation:       offsets = rotationTrack?.keyframes.map(\.frame) ?? []
+        case .crop:           offsets = cropTrack?.keyframes.map(\.frame) ?? []
+        case .volume:         offsets = volumeTrack?.keyframes.map(\.frame) ?? []
+        case .strokeProgress: offsets = strokeProgressTrack?.keyframes.map(\.frame) ?? []
         }
         return offsets.map(toAbs)
     }
@@ -117,12 +119,13 @@ extension Clip {
     func interpolation(for property: AnimatableProperty, atFrame frame: Int) -> Interpolation? {
         let o = toOffset(frame)
         switch property {
-        case .opacity:  return opacityTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
-        case .position: return positionTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
-        case .scale:    return scaleTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
-        case .rotation: return rotationTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
-        case .crop:     return cropTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
-        case .volume:   return volumeTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
+        case .opacity:        return opacityTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
+        case .position:       return positionTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
+        case .scale:          return scaleTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
+        case .rotation:       return rotationTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
+        case .crop:           return cropTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
+        case .volume:         return volumeTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
+        case .strokeProgress: return strokeProgressTrack?.keyframes.first(where: { $0.frame == o })?.interpolationOut
         }
     }
 
@@ -136,6 +139,7 @@ extension Clip {
         for kf in rotationTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
         for kf in cropTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
         for kf in volumeTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
+        for kf in strokeProgressTrack?.keyframes ?? [] { s.insert(kf.frame + absStart) }
         return s.sorted()
     }
 
@@ -171,17 +175,21 @@ extension Clip {
         case .volume:
             volumeTrack?.remove(at: o)
             if volumeTrack?.keyframes.isEmpty == true { volumeTrack = nil }
+        case .strokeProgress:
+            strokeProgressTrack?.remove(at: o)
+            if strokeProgressTrack?.keyframes.isEmpty == true { strokeProgressTrack = nil }
         }
     }
 
     mutating func clearKeyframes(for property: AnimatableProperty) {
         switch property {
-        case .opacity:  opacityTrack = nil
-        case .position: positionTrack = nil
-        case .scale:    scaleTrack = nil
-        case .rotation: rotationTrack = nil
-        case .crop:     cropTrack = nil
-        case .volume:   volumeTrack = nil
+        case .opacity:        opacityTrack = nil
+        case .position:       positionTrack = nil
+        case .scale:          scaleTrack = nil
+        case .rotation:       rotationTrack = nil
+        case .crop:           cropTrack = nil
+        case .volume:         volumeTrack = nil
+        case .strokeProgress: strokeProgressTrack = nil
         }
     }
 
@@ -212,18 +220,23 @@ extension Clip {
             if let i = volumeTrack?.keyframes.firstIndex(where: { $0.frame == o }) {
                 volumeTrack?.keyframes[i].interpolationOut = interpolation
             }
+        case .strokeProgress:
+            if let i = strokeProgressTrack?.keyframes.firstIndex(where: { $0.frame == o }) {
+                strokeProgressTrack?.keyframes[i].interpolationOut = interpolation
+            }
         }
     }
 
     mutating func moveKeyframe(for property: AnimatableProperty, from: Int, to: Int) {
         let fromO = toOffset(from), toO = toOffset(to)
         switch property {
-        case .opacity:  opacityTrack?.move(from: fromO, to: toO)
-        case .position: positionTrack?.move(from: fromO, to: toO)
-        case .scale:    scaleTrack?.move(from: fromO, to: toO)
-        case .rotation: rotationTrack?.move(from: fromO, to: toO)
-        case .crop:     cropTrack?.move(from: fromO, to: toO)
-        case .volume:   volumeTrack?.move(from: fromO, to: toO)
+        case .opacity:        opacityTrack?.move(from: fromO, to: toO)
+        case .position:       positionTrack?.move(from: fromO, to: toO)
+        case .scale:          scaleTrack?.move(from: fromO, to: toO)
+        case .rotation:       rotationTrack?.move(from: fromO, to: toO)
+        case .crop:           cropTrack?.move(from: fromO, to: toO)
+        case .volume:         volumeTrack?.move(from: fromO, to: toO)
+        case .strokeProgress: strokeProgressTrack?.move(from: fromO, to: toO)
         }
     }
 }

@@ -43,6 +43,17 @@ enum AgentInstructions {
           on screen or quote the words said. Hits are source-second ranges ready to convert \
           into add_clips trims.
 
+        # Annotations & motion graphics
+        - For tutorial-style annotations (circle a button, arrow to a feature, callout \
+          rectangle), use add_shapes — vector overlays that compose with every existing \
+          keyframe track. Bake enter/exit/loop animations into the same call by name: \
+          'fade-in', 'pop-in', 'draw-on' for arrows/circles, 'shake-subtle' for \
+          attention, 'fade-out'/'pop-out' to clear. add_shapes is the right tool any \
+          time the user says "highlight", "circle", "point to", "draw a box around".
+        - For animating an existing clip (any type), call apply_animation with a preset \
+          name. It replaces the keyframe tracks the preset drives — so applying \
+          'fade-in' again overwrites any earlier opacity keyframes on the clip.
+
         # Editing
         - Placements must match track type: video on video tracks, audio on audio tracks.
         - The clip-editing surface mirrors human gestures — one tool per gesture, applied to a \
