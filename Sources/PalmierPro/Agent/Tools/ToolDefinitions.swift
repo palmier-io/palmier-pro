@@ -10,6 +10,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case removeTracks = "remove_tracks"
     case moveClips = "move_clips"
     case setClipProperties = "set_clip_properties"
+    case setChromaKey = "set_chroma_key"
     case setKeyframes = "set_keyframes"
     case splitClip = "split_clip"
     case rippleDeleteRanges = "ripple_delete_ranges"
@@ -244,6 +245,22 @@ enum ToolDefinitions {
                     "alignment": ["type": "string", "enum": ["left", "center", "right"], "description": "Text clips only."],
                 ],
                 required: ["clipIds"]
+            )
+        ),
+        AgentTool(
+            name: .setChromaKey,
+            description: "Apply or remove an Ultra Key chroma key (green-screen removal) on a visual clip. The keyed colour becomes transparent so clips on tracks below show through. Defaults to green. Set enabled=false to remove the key.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipId": ["type": "string", "description": "The visual clip to key."],
+                    "enabled": ["type": "boolean", "description": "Default true. Pass false to remove the chroma key."],
+                    "keyColorHex": ["type": "string", "description": "Key colour as '#RRGGBB' (default green '#00FF00')."],
+                    "tolerance": ["type": "number", "description": "0-100. How wide a hue range around the key colour is removed (default 40)."],
+                    "softness": ["type": "number", "description": "0-100. Softens the matte edge between kept and removed colours (default 20)."],
+                    "spill": ["type": "number", "description": "0-100. Suppresses residual key-colour cast on the subject's edges (default 50)."],
+                    "edgeFeather": ["type": "number", "description": "Blur radius in points applied to the matte edge (default 0)."],
+                ],
+                required: ["clipId"]
             )
         ),
         AgentTool(
