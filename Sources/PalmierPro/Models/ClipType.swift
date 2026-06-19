@@ -4,6 +4,7 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
     case image
     case text
     case lottie
+    case adjustment
 
     var sfSymbolName: String {
         switch self {
@@ -12,6 +13,7 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
         case .image: "photo"
         case .text: "textformat"
         case .lottie: "sparkles"
+        case .adjustment: "circle.lefthalf.filled"
         }
     }
 
@@ -22,6 +24,7 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
         case .image: "Image"
         case .text: "Text"
         case .lottie: "Lottie"
+        case .adjustment: "Color"
         }
     }
 
@@ -30,6 +33,9 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
     var isVisual: Bool {
         self == .video || self == .image || self == .text || self == .lottie
     }
+
+    /// An adjustment layer occupies a visual track position but produces no source frame.
+    var isAdjustment: Bool { self == .adjustment }
 
     func isCompatible(with other: ClipType) -> Bool {
         self == other || (self.isVisual && other.isVisual)
