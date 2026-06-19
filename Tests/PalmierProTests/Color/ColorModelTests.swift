@@ -52,6 +52,15 @@ struct ColorModelTests {
         #expect(clip.opacity == 1.0)
     }
 
+    @Test func blendModeRoundTripsAndMapsToFilter() throws {
+        var clip = Clip(mediaRef: "m", startFrame: 0, durationFrames: 30)
+        clip.blendMode = .multiply
+        let decoded = try JSONDecoder().decode(Clip.self, from: JSONEncoder().encode(clip))
+        #expect(decoded.blendMode == .multiply)
+        #expect(BlendMode.normal.ciFilterName == nil)
+        #expect(BlendMode.screen.ciFilterName == "CIScreenBlendMode")
+    }
+
     @Test func adjustmentClipTypeIsNotVisualSource() {
         #expect(ClipType.adjustment.isAdjustment)
         #expect(ClipType.adjustment.isVisual == false)

@@ -17,6 +17,13 @@ extension EditorViewModel {
         }
     }
 
+    /// Set the blend mode on a visual clip (nil/normal = source-over). Undoable.
+    func setBlendMode(clipId: String, _ mode: BlendMode) {
+        mutateClips(ids: [clipId], actionName: "Blend Mode") { clip in
+            clip.blendMode = mode == .normal ? nil : mode
+        }
+    }
+
     /// Create a topmost adjustment layer spanning the current timeline and select it.
     @discardableResult
     func addAdjustmentLayer() -> String {

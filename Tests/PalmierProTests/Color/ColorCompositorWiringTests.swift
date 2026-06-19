@@ -50,6 +50,24 @@ struct ColorCompositorWiringTests {
         #expect(videoComposition(for: timeline).customVideoCompositorClass == nil)
     }
 
+    @Test func blendModeEnablesCustomCompositor() {
+        var clip = Clip(mediaRef: "v", startFrame: 0, durationFrames: 30)
+        clip.mediaType = .video
+        clip.blendMode = .multiply
+        let timeline = Timeline(tracks: [Track(type: .video, clips: [clip])])
+        #expect(videoComposition(for: timeline, trackMappings: [videoMapping(trackIndex: 0)])
+            .customVideoCompositorClass == ColorVideoCompositor.self)
+    }
+
+    @Test func normalBlendKeepsBuiltInCompositor() {
+        var clip = Clip(mediaRef: "v", startFrame: 0, durationFrames: 30)
+        clip.mediaType = .video
+        clip.blendMode = .normal
+        let timeline = Timeline(tracks: [Track(type: .video, clips: [clip])])
+        #expect(videoComposition(for: timeline, trackMappings: [videoMapping(trackIndex: 0)])
+            .customVideoCompositorClass == nil)
+    }
+
     @Test func chromaKeyEnablesCustomCompositor() {
         var clip = Clip(mediaRef: "v", startFrame: 0, durationFrames: 30)
         clip.mediaType = .video
