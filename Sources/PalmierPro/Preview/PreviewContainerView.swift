@@ -32,7 +32,7 @@ struct PreviewContainerView: View {
                         generatingPreview(label: asset.generatingLabel)
                     }
                     if let overlay = offlineOverlay {
-                        offlinePreview(assetId: overlay.assetId, path: overlay.path)
+                        offlinePreview(assetId: overlay.assetId, path: overlay.path, isUnprocessable: overlay.isUnprocessable)
                     }
                     if editor.cropEditingActive {
                         CropOverlayView()
@@ -331,7 +331,8 @@ struct PreviewContainerView: View {
     /// The offline clip blacking out the current timeline frame, or nil when an online clip covers it.
     private var timelineOfflineClip: Clip? {
         guard isTimeline else { return nil }
-        let frame = editor.currentFrame
+        guard !editor.offlineMediaRefs.isEmpty || !editor.unprocessableMediaRefs.isEmpty else { return nil }
+        let frame = editor.playheadState.timelineFrame
         var offline: Clip?
         for track in editor.timeline.tracks where track.type != .audio && !track.hidden {
             for clip in track.clips where clip.mediaType != .text {
@@ -346,15 +347,19 @@ struct PreviewContainerView: View {
         return offline
     }
 
-    private struct OfflineOverlay { let assetId: String?; let path: String? }
+    private struct OfflineOverlay { let assetId: String?; let path: String?; let isUnprocessable: Bool }
 
     /// Resolved once per render so the timeline scan runs at most once.
     private var offlineOverlay: OfflineOverlay? {
-        if activeMediaMissing {
-            return OfflineOverlay(assetId: activeMediaAsset?.id, path: activeMediaAsset?.url.path)
+        if activeMediaMissing, let id = activeMediaAsset?.id {
+            return OfflineOverlay(assetId: id, path: activeMediaAsset?.url.path, isUnprocessable: editor.isMediaUnprocessable(id))
         }
         if let clip = timelineOfflineClip {
-            return OfflineOverlay(assetId: clip.mediaRef, path: editor.mediaResolver.expectedURL(for: clip.mediaRef)?.path)
+            return OfflineOverlay(
+                assetId: clip.mediaRef,
+                path: editor.mediaResolver.expectedURL(for: clip.mediaRef)?.path,
+                isUnprocessable: editor.isMediaUnprocessable(clip.mediaRef)
+            )
         }
         return nil
     }
@@ -411,17 +416,30 @@ struct PreviewContainerView: View {
         return nil
     }
 
-    private func offlinePreview(assetId: String?, path: String?) -> some View {
+    private static func unprocessablePrefill(path: String?) -> String {
+        let file = path.map { ($0 as NSString).lastPathComponent } ?? "(unknown)"
+        return """
+        A clip's media couldn't be prepared for playback.
+
+        File: \(file)
+
+        What were you doing when this happened?
+        """
+    }
+
+    private func offlinePreview(assetId: String?, path: String?, isUnprocessable: Bool) -> some View {
         ZStack {
             Color.black.opacity(AppTheme.Opacity.strong)
             VStack(spacing: AppTheme.Spacing.md) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: AppTheme.FontSize.display))
                     .foregroundStyle(AppTheme.Status.errorColor)
-                Text("Media Offline")
+                Text(isUnprocessable ? "Couldn't Prepare Media" : "Media Offline")
                     .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.primaryColor)
-                Text("Palmier couldn't load this clip's source file. It may be missing, on an ejected drive, or unreadable.")
+                Text(isUnprocessable
+                    ? "Palmier loaded this clip's source file but couldn't prepare it for playback. The file may be corrupt or in an unsupported format."
+                    : "Palmier couldn't load this clip's source file. It may be missing, on an ejected drive, or unreadable.")
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .multilineTextAlignment(.center)
@@ -437,15 +455,23 @@ struct PreviewContainerView: View {
                         .truncationMode(.middle)
                         .padding(.horizontal, AppTheme.Spacing.lg)
                 }
-                HStack(spacing: AppTheme.Spacing.sm) {
-                    if let assetId {
-                        Button("Relink…") { relinkFile(assetId: assetId) }
-                            .buttonStyle(.capsule(.prominent, size: .regular))
+                if isUnprocessable {
+                    Button("Report a Problem") {
+                        FeedbackWindowController.shared.show(prefill: Self.unprocessablePrefill(path: path))
                     }
-                    Button("Relink Folder…") { relinkFolder() }
-                        .buttonStyle(.capsule(.secondary, size: .regular))
+                    .buttonStyle(.capsule(.prominent, size: .regular))
+                    .padding(.top, AppTheme.Spacing.xs)
+                } else {
+                    HStack(spacing: AppTheme.Spacing.sm) {
+                        if let assetId {
+                            Button("Relink…") { relinkFile(assetId: assetId) }
+                                .buttonStyle(.capsule(.prominent, size: .regular))
+                        }
+                        Button("Relink Folder…") { relinkFolder() }
+                            .buttonStyle(.capsule(.secondary, size: .regular))
+                    }
+                    .padding(.top, AppTheme.Spacing.xs)
                 }
-                .padding(.top, AppTheme.Spacing.xs)
             }
             .padding(AppTheme.Spacing.xl)
             .fixedSize(horizontal: false, vertical: true)

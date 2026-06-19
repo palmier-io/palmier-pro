@@ -15,6 +15,11 @@ struct FeedbackView: View {
 
     let screenshot: Data?
 
+    init(screenshot: Data?, prefill: String = "") {
+        self.screenshot = screenshot
+        _message = State(initialValue: prefill)
+    }
+
     private static let maxMessageLen = 10_000
 
     private var trimmedMessage: String {
@@ -314,11 +319,11 @@ final class FeedbackWindowController: NSWindowController {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    func show() {
+    func show(prefill: String = "") {
         // Capture BEFORE the feedback window becomes key so it isn't in the shot.
         let screenshot = FeedbackScreenshot.captureMainWindow()
         hosting?.rootView = AnyView(
-            FeedbackView(screenshot: screenshot)
+            FeedbackView(screenshot: screenshot, prefill: prefill)
                 .id(UUID())
                 .tint(AppTheme.Accent.primary)
         )

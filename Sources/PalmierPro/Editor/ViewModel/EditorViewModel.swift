@@ -109,6 +109,7 @@ final class EditorViewModel {
 
     var mediaAssets: [MediaAsset] = []
     var offlineMediaRefs: Set<String> = []
+    var unprocessableMediaRefs: Set<String> = []
     let mediaVisualCache = MediaVisualCache()
     let searchIndex = SearchIndexCoordinator()
     var projectURL: URL? {
