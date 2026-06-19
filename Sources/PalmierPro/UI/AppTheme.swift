@@ -311,6 +311,7 @@ extension ClipType {
         case .image: AppTheme.TrackColor.image
         case .text: AppTheme.TrackColor.text
         case .lottie: AppTheme.TrackColor.lottie
+        case .adjustment: AppTheme.TrackColor.lottie
         }
     }
 }

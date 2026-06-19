@@ -106,6 +106,10 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var cropTrack: KeyframeTrack<Crop>?
     var volumeTrack: KeyframeTrack<Double>?
 
+    // Chroma key (any visual clip) and colour grade (adjustment clips only).
+    var chromaKey: ChromaKey?
+    var colorGrade: ColorGrade?
+
     private enum CodingKeys: String, CodingKey {
         case id, mediaRef, mediaType, sourceClipType, startFrame, durationFrames
         case trimStartFrame, trimEndFrame, speed, volume
@@ -113,6 +117,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         case opacity, transform, crop
         case linkGroupId, captionGroupId, textContent, textStyle
         case opacityTrack, positionTrack, scaleTrack, rotationTrack, cropTrack, volumeTrack
+        case chromaKey, colorGrade
     }
 
     /// Frame where this clip ends on the timeline
@@ -356,7 +361,9 @@ extension Clip {
             scaleTrack: try? c.decode(KeyframeTrack<AnimPair>.self, forKey: .scaleTrack),
             rotationTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .rotationTrack),
             cropTrack: try? c.decode(KeyframeTrack<Crop>.self, forKey: .cropTrack),
-            volumeTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .volumeTrack)
+            volumeTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .volumeTrack),
+            chromaKey: try? c.decode(ChromaKey.self, forKey: .chromaKey),
+            colorGrade: try? c.decode(ColorGrade.self, forKey: .colorGrade)
         )
     }
 }

@@ -293,6 +293,7 @@ extension ToolExecutor {
         case .audio: return try await readAudio(editor: editor, asset: asset, args: args, mapping: mapping)
         case .lottie: return try await readLottie(asset: asset, args: args)
         case .text: throw ToolError("Text clips are not stored as media assets.")
+        case .adjustment: throw ToolError("Adjustment layers are not stored as media assets.")
         }
     }
 
