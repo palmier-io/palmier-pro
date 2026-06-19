@@ -47,6 +47,9 @@ extension EditorViewModel {
             case .volume:
                 let currentDb = clip.volumeTrack?.sample(at: f - clip.startFrame, fallback: 0) ?? 0
                 clip.upsertKeyframe(in: \.volumeTrack, frame: f, value: currentDb)
+            case .strokeProgress:
+                let current = clip.strokeProgressTrack?.sample(at: f - clip.startFrame, fallback: 1.0) ?? 1.0
+                clip.upsertKeyframe(in: \.strokeProgressTrack, frame: f, value: current)
             }
         }
         undoManager?.setActionName("Add Keyframe")

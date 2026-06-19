@@ -40,6 +40,8 @@ final class ToolExecutor {
             case .rippleDeleteRanges: return try rippleDeleteRanges(editor, args)
             case .addTexts:      return try addTexts(editor, args)
             case .addCaptions:   return try await addCaptions(editor, args)
+            case .addShapes:     return try addShapes(editor, args)
+            case .applyAnimation: return try applyAnimation(editor, args)
             case .generateVideo: return try generate(editor, args, type: .video)
             case .generateImage: return try generate(editor, args, type: .image)
             case .generateAudio: return try await generateAudio(editor, args)

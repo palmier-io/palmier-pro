@@ -28,6 +28,8 @@ extension ToolExecutor {
             throw ToolError("Text generation is not wired through the generate tool.")
         case .lottie:
             throw ToolError("Lottie animations aren't generated through this tool.")
+        case .shape:
+            throw ToolError("Shape clips are created with the add_shapes tool, not generate.")
         }
     }
 

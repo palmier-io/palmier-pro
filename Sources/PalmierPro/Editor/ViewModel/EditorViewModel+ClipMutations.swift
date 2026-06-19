@@ -310,9 +310,13 @@ extension EditorViewModel {
         }
         modify(&clip)
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
-        // Text renders via CATextLayer overlay — skip the composition path.
+        // Text & shape clips render via direct CALayer overlays — skip the composition path.
         if clip.mediaType == .text {
             videoEngine?.syncTextLayers()
+            return
+        }
+        if clip.mediaType == .shape {
+            videoEngine?.syncShapeLayers()
             return
         }
         if rebuild {
@@ -328,6 +332,8 @@ extension EditorViewModel {
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = original
         if original.mediaType == .text {
             videoEngine?.syncTextLayers()
+        } else if original.mediaType == .shape {
+            videoEngine?.syncShapeLayers()
         } else {
             notifyTimelineChanged()
         }
@@ -391,6 +397,8 @@ extension EditorViewModel {
         registerClipPropertySwap(clipId: clipId, undoTarget: before, redoTarget: clip)
         if clip.mediaType == .text {
             videoEngine?.syncTextLayers()
+        } else if clip.mediaType == .shape {
+            videoEngine?.syncShapeLayers()
         } else {
             notifyTimelineChanged()
         }
@@ -405,6 +413,8 @@ extension EditorViewModel {
             vm.registerClipPropertySwap(clipId: clipId, undoTarget: redoTarget, redoTarget: undoTarget)
             if undoTarget.mediaType == .text {
                 vm.videoEngine?.syncTextLayers()
+            } else if undoTarget.mediaType == .shape {
+                vm.videoEngine?.syncShapeLayers()
             } else {
                 vm.notifyTimelineChanged()
             }

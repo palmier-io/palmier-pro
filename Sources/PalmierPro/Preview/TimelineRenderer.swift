@@ -43,12 +43,19 @@ enum TimelineRenderer {
             }
         }
 
-        // Bake text clips in via the animation tool, same as ExportService.
+        // Bake text + shape clips in via the animation tool, same as ExportService.
         let (parent, videoLayer) = TextLayerController.buildForExport(
             timeline: timeline,
             fps: timeline.fps,
             renderSize: renderSize
         )
+        // Shapes sit between video and text: insert right after videoLayer (index 0).
+        let shapeHost = ShapeLayerController.buildForExport(
+            timeline: timeline,
+            fps: timeline.fps,
+            renderSize: renderSize
+        )
+        parent.insertSublayer(shapeHost, at: 1)
         let mutableVC = result.videoComposition.mutableCopy() as! AVMutableVideoComposition
         mutableVC.animationTool = AVVideoCompositionCoreAnimationTool(
             postProcessingAsVideoLayer: videoLayer,
