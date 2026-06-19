@@ -252,7 +252,7 @@ enum CompositionBuilder {
         resolveURL: @Sendable (String) -> URL?
     ) -> [String: CubeLUT] {
         var luts: [String: CubeLUT] = [:]
-        for track in timeline.tracks where track.type == .adjustment {
+        for track in timeline.tracks {
             for clip in track.clips {
                 guard let grade = clip.colorGrade, grade.hasLUTEffect,
                       let ref = grade.lutRef, luts[ref] == nil else { continue }
@@ -549,9 +549,8 @@ enum CompositionBuilder {
         luts: [String: CubeLUT]
     ) -> ColorCompositionInstruction? {
         let hasChroma = timeline.tracks.contains { $0.clips.contains { $0.chromaKey?.isActive == true } }
-        let hasGrade = timeline.tracks.contains { track in
-            track.type == .adjustment && track.clips.contains { $0.colorGrade?.hasEffect == true }
-        }
+        // Grades apply on adjustment layers (over everything below) and per-clip.
+        let hasGrade = timeline.tracks.contains { $0.clips.contains { $0.colorGrade?.hasEffect == true } }
         guard hasChroma || hasGrade else { return nil }
 
         var videoMappingByIndex: [Int: TrackMapping] = [:]

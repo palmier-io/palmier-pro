@@ -79,6 +79,9 @@ final class ColorCompositionInstruction: NSObject, AVVideoCompositionInstruction
                       let buffer = request.sourceFrame(byTrackID: trackID) else { continue }
                 var img = CIImage(cvPixelBuffer: buffer)
                 img = applyChromaKey(img, clip: rc.clip)
+                if let grade = rc.clip.colorGrade, grade.hasEffect {
+                    img = applyGrade(img, grade) // per-clip grade
+                }
                 img = applyCrop(img, clip: rc.clip, natSize: rc.natSize,
                                 preferredTransform: rc.preferredTransform, frame: frame)
                 img = img.transformed(by: ciTransform(rc, frame: frame))
