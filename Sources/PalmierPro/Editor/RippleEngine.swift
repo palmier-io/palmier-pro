@@ -69,7 +69,7 @@ enum RippleEngine {
 
     // MARK: - Helpers
 
-    private static func mergeRanges(_ ranges: [FrameRange]) -> [FrameRange] {
+    static func mergeRanges(_ ranges: [FrameRange]) -> [FrameRange] {
         let sorted = ranges.sorted { $0.start < $1.start }
         var merged: [FrameRange] = []
         for range in sorted {

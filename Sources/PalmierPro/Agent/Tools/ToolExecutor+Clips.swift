@@ -59,6 +59,13 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     }
 }
 
+fileprivate struct RippleDeleteRangesInput: DecodableToolArgs {
+    let clipId: String
+    let ranges: [[Double]]
+    let units: String?
+    static let allowedKeys: Set<String> = ["clipId", "ranges", "units"]
+}
+
 fileprivate struct SetKeyframesInput: DecodableToolArgs {
     let clipId: String
     let property: String
@@ -536,6 +543,66 @@ extension ToolExecutor {
             .joined(separator: ", ")
         let rightNote = rightIds.isEmpty ? "" : " → new right clip(s): \(rightList)"
         return .ok("Split clip \(clipId) at frame \(atFrame). Left: \(leftSummary)\(rightNote)")
+    }
+
+    // MARK: ripple_delete_ranges
+
+    func rippleDeleteRanges(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        let input: RippleDeleteRangesInput = try decodeToolArgs(args, path: "ripple_delete_ranges")
+        guard !input.ranges.isEmpty else { throw ToolError("Missing or empty 'ranges' array") }
+        let units = input.units ?? "frames"
+        guard units == "seconds" || units == "frames" else {
+            throw ToolError("units must be 'seconds' or 'frames' (got '\(units)')")
+        }
+        guard let loc = editor.findClip(id: input.clipId) else {
+            throw ToolError("Clip not found: \(input.clipId)")
+        }
+        let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        let fps = editor.timeline.fps
+
+        // 'frames' are already project frames (inspect_media with a clipId emits these).
+        // 'seconds' are source-media seconds → map through the clip's placement, trim, speed.
+        func toFrame(_ v: Double) -> Double {
+            units == "frames"
+                ? v
+                : Double(clip.startFrame) + (v * Double(fps) - Double(clip.trimStartFrame)) / max(clip.speed, 0.0001)
+        }
+
+        var frameRanges: [FrameRange] = []
+        var dropped = 0
+        for (i, r) in input.ranges.enumerated() {
+            guard r.count == 2 else {
+                throw ToolError("ranges[\(i)]: expected [start, end] (got \(r.count) element\(r.count == 1 ? "" : "s"))")
+            }
+            guard r[1] > r[0] else {
+                throw ToolError("ranges[\(i)]: end (\(r[1])) must be greater than start (\(r[0]))")
+            }
+            let s = max(clip.startFrame, min(clip.endFrame, Int(toFrame(r[0]).rounded())))
+            let e = max(clip.startFrame, min(clip.endFrame, Int(toFrame(r[1]).rounded())))
+            if e > s { frameRanges.append(FrameRange(start: s, end: e)) } else { dropped += 1 }
+        }
+        guard !frameRanges.isEmpty else {
+            throw ToolError("No ranges fall within clip \(input.clipId) (frames \(clip.startFrame)..\(clip.endFrame)). In '\(units)' units, ranges must overlap the clip's visible span.")
+        }
+
+        switch editor.rippleDeleteRanges(anchorClipId: input.clipId, ranges: frameRanges) {
+        case .refused(let reason):
+            throw ToolError(reason)
+        case .ok(let report):
+            var payload: [String: Any] = [
+                "removedFrames": report.removedFrames,
+                "clearedTracks": report.clearedTracks,
+                "shiftedClips": report.shiftedClips,
+                "anchorTrackIndex": report.anchorTrackIndex,
+                "resultingClips": report.resultingFragments.map {
+                    ["clipId": $0.clipId, "startFrame": $0.startFrame, "durationFrames": $0.durationFrames]
+                },
+            ]
+            if !report.removedClipIds.isEmpty { payload["removedClipIds"] = report.removedClipIds }
+            if dropped > 0 { payload["rangesIgnored"] = dropped }
+            guard let json = Self.jsonString(payload) else { throw ToolError("Failed to encode result") }
+            return .ok(json)
+        }
     }
 
     // MARK: - Keyframe row parsing (shared by set_keyframes)

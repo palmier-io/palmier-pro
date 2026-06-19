@@ -8,7 +8,7 @@ extension ToolExecutor {
     private nonisolated static let readVideoFrameMaxDimension: CGFloat = 512
     private nonisolated static let readVideoJPEGQuality: CGFloat = 0.7
     private static let inspectMaxSegments = 400
-    private static let inspectMaxWords = 500
+    private static let inspectMaxWords = 10000
 
     private static let getTimelineAllowedKeys: Set<String> = ["startFrame", "endFrame"]
     private static let captionRowLimit = 200
@@ -528,11 +528,7 @@ extension ToolExecutor {
         if includeWords {
             let words: [[Any]]
             if let mapping {
-                words = transcript.words.compactMap { w in
-                    guard let start = w.start, let end = w.end,
-                          let f = spanFrames(start: start, end: end, clip: mapping.clip, fps: mapping.fps) else { return nil }
-                    return [w.text, f.start, f.end]
-                }
+                words = wordFrames(transcript, clip: mapping.clip, fps: mapping.fps).map { [$0.text, $0.start, $0.end] }
             } else {
                 words = transcript.words.map { [$0.text, round2OrNull($0.start), round2OrNull($0.end)] }
             }
@@ -543,6 +539,84 @@ extension ToolExecutor {
             }
         }
         return out
+    }
+
+    private static let getTranscriptAllowedKeys: Set<String> = ["startFrame", "endFrame"]
+
+    /// The live timeline transcript: every audio/video clip's words mapped to project
+    /// frames and concatenated in timeline order
+    func getTranscript(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
+        try validateUnknownKeys(args, allowed: Self.getTranscriptAllowedKeys, path: "get_transcript")
+        let fps = editor.timeline.fps
+        let windowStart = args.int("startFrame")
+        let windowEnd = args.int("endFrame")
+        if let s = windowStart, let e = windowEnd, s >= e {
+            throw ToolError("startFrame (\(s)) must be less than endFrame (\(e))")
+        }
+
+        let assetsById = Dictionary(editor.mediaAssets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        struct Frag { let clipId: String; let trackIndex: Int; let clip: Clip; let url: URL; let isVideo: Bool }
+        var frags: [Frag] = []
+        var isVideoByURL: [URL: Bool] = [:]
+        for clip in editor.captionTargets(ids: []) {
+            guard let loc = editor.findClip(id: clip.id), let asset = assetsById[clip.mediaRef] else { continue }
+            let isVideo = asset.type == .video
+            frags.append(Frag(clipId: clip.id, trackIndex: loc.trackIndex, clip: clip, url: asset.url, isVideo: isVideo))
+            isVideoByURL[asset.url] = isVideo
+        }
+
+        // Transcribe each unique source once (cached); skip — don't fail — on per-asset errors.
+        var transcripts: [URL: TranscriptionResult] = [:]
+        var skipped: [[String: Any]] = []
+        for url in Set(frags.map(\.url)) {
+            do { transcripts[url] = try await TranscriptCache.shared.transcript(for: url, isVideo: isVideoByURL[url] ?? true, range: nil) }
+            catch { skipped.append(["file": url.lastPathComponent, "reason": error.localizedDescription]) }
+        }
+
+        var words: [(text: String, start: Int, end: Int)] = []
+        var clipsOut: [[String: Any]] = []
+        for frag in frags.sorted(by: { $0.clip.startFrame < $1.clip.startFrame }) {
+            guard let transcript = transcripts[frag.url] else { continue }
+            var clipWords = 0
+            for w in Self.wordFrames(transcript, clip: frag.clip, fps: fps) {
+                if let s = windowStart, w.end <= s { continue }
+                if let e = windowEnd, w.start >= e { continue }
+                words.append(w)
+                clipWords += 1
+            }
+            if clipWords > 0 {
+                clipsOut.append(["clipId": frag.clipId, "trackIndex": frag.trackIndex,
+                                 "startFrame": frag.clip.startFrame, "endFrame": frag.clip.endFrame])
+            }
+        }
+
+        words.sort { ($0.start, $0.end) < ($1.start, $1.end) }
+
+        var out: [String: Any] = ["fps": fps, "timing": "projectFrames", "clips": clipsOut]
+        if words.count > Self.inspectMaxWords {
+            let capped = words.prefix(Self.inspectMaxWords)
+            out["words"] = capped.map { [$0.text, $0.start, $0.end] }
+            out["totalWords"] = words.count
+            if let lastEnd = capped.last?.end {
+                out["nextStartFrame"] = lastEnd
+                out["wordsNote"] = "First \(Self.inspectMaxWords) of \(words.count) words. Continue with startFrame = nextStartFrame."
+            }
+        } else {
+            out["words"] = words.map { [$0.text, $0.start, $0.end] }
+        }
+        if !skipped.isEmpty { out["skipped"] = skipped }
+
+        guard let json = Self.jsonString(out) else { throw ToolError("Failed to encode transcript") }
+        return .ok(json)
+    }
+
+    /// Maps a clip's transcript words to (text, startFrame, endFrame) in project frames,
+    /// dropping words that fall outside the clip's visible span.
+    private static func wordFrames(_ transcript: TranscriptionResult, clip: Clip, fps: Int) -> [(text: String, start: Int, end: Int)] {
+        transcript.words.compactMap { w in
+            guard let s = w.start, let e = w.end, let f = spanFrames(start: s, end: e, clip: clip, fps: fps) else { return nil }
+            return (w.text, f.start, f.end)
+        }
     }
 
     /// Maps a source-seconds span to the project frames it occupies on the clip

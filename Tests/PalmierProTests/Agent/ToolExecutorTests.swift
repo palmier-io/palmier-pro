@@ -1427,4 +1427,119 @@ struct ToolExecutorTextFolderTests {
         #expect(h.editor.folder(id: a) == nil)
         #expect(h.editor.folder(id: b) == nil)
     }
+
+    // MARK: - ripple_delete_ranges
+
+    /// Seconds are the default unit and convert through fps/trim/speed — the inspect_media path.
+    @Test func rippleDeleteRangesConvertsSecondsThroughTrimAndSpeed() async throws {
+        // 30fps, clip starts at frame 30, trimmed 60 source frames in. Source second 4.0 →
+        // frame 30 + (120 - 60) = 90; second 5.0 → 30 + (150 - 60) = 120. Removing [90,120)
+        // (30 frames) leaves the head [30,90) and slides the tail left to meet it.
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 30, duration: 300, trimStart: 60)]),
+        ]))
+        let result = await h.runRaw("ripple_delete_ranges", args: [
+            "clipId": "c1",
+            "ranges": [[4.0, 5.0]],
+            "units": "seconds",
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let spans = h.editor.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+            .map { [$0.startFrame, $0.endFrame] }
+        #expect(spans == [[30, 90], [90, 300]])
+    }
+
+    @Test func rippleDeleteRangesDefaultsToFrames() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 100)]),
+        ]))
+        // No units → frames. These are project frames, the unit inspect_media(clipId) emits.
+        let result = await h.runRaw("ripple_delete_ranges", args: [
+            "clipId": "c1",
+            "ranges": [[40, 50]],
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let spans = h.editor.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+            .map { [$0.startFrame, $0.endFrame] }
+        #expect(spans == [[0, 40], [40, 90]])
+    }
+
+    @Test func rippleDeleteRangesRejectsUnknownClip() async {
+        let h = ToolHarness()
+        let result = await h.runRaw("ripple_delete_ranges", args: [
+            "clipId": "missing", "ranges": [[1.0, 2.0]],
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("Clip not found"))
+    }
+
+    @Test func rippleDeleteRangesRejectsRangesOutsideClip() async {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 30)]),
+        ]))
+        // Clip is 1s long at 30fps; a [10s, 11s] range can't overlap it.
+        let result = await h.runRaw("ripple_delete_ranges", args: [
+            "clipId": "c1", "ranges": [[10.0, 11.0]], "units": "seconds",
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("within clip"))
+    }
+
+    @Test func rippleDeleteRangesRejectsBadUnits() async {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 30)]),
+        ]))
+        let result = await h.runRaw("ripple_delete_ranges", args: [
+            "clipId": "c1", "ranges": [[0.0, 0.5]], "units": "minutes",
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("units"))
+    }
+
+    @Test func rippleDeleteRangesReturnsResultingFragments() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 100)]),
+        ]))
+        let json = try await h.runOK("ripple_delete_ranges", args: [
+            "clipId": "c1", "ranges": [[40, 50]],
+        ]) as? [String: Any]
+        #expect(json?["removedFrames"] as? Int == 10)
+        let clips = (json?["resultingClips"] as? [[String: Any]] ?? [])
+            .sorted { ($0["startFrame"] as! Int) < ($1["startFrame"] as! Int) }
+        #expect(clips.count == 2)
+        // Head keeps c1 at [0,40); tail is a new id at [40,90).
+        #expect(clips.first?["clipId"] as? String == "c1")
+        #expect(clips.first?["durationFrames"] as? Int == 40)
+        #expect(clips.last?["startFrame"] as? Int == 40)
+        #expect(clips.last?["durationFrames"] as? Int == 50)
+        #expect(clips.last?["clipId"] as? String != "c1")
+    }
+
+    // MARK: - get_transcript
+
+    @Test func getTranscriptEmptyTimelineReturnsNoWords() async throws {
+        let h = ToolHarness()
+        let json = try await h.runOK("get_transcript") as? [String: Any]
+        #expect((json?["words"] as? [Any])?.isEmpty == true)
+        #expect(json?["timing"] as? String == "projectFrames")
+    }
+
+    @Test func getTranscriptSkipsClipsWithoutAudio() async throws {
+        // A video clip whose asset has no audio contributes no words and isn't even transcribed.
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", mediaRef: "v", start: 0, duration: 100)]),
+        ]))
+        h.addAsset(id: "v", type: .video, hasAudio: false)
+        let json = try await h.runOK("get_transcript") as? [String: Any]
+        #expect((json?["words"] as? [Any])?.isEmpty == true)
+        #expect((json?["clips"] as? [Any])?.isEmpty == true)
+        #expect(json?["skipped"] == nil)
+    }
+
+    @Test func getTranscriptRejectsInvertedWindow() async {
+        let h = ToolHarness()
+        let result = await h.runRaw("get_transcript", args: ["startFrame": 100, "endFrame": 50])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("less than"))
+    }
 }
