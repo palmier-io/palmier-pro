@@ -80,11 +80,10 @@ extension ToolExecutor {
             editor.moveAssetsToFolder(assetIds: [asset.id], folderId: folderId)
         }
 
-        let seconds = Double(totalFrames) / Double(fps)
-        let base = String(
-            format: "Assembled %d image(s) into video '%@' (id: %@, %d×%d, %d fps, %d frame(s)/image, %d frames ≈ %.2fs).",
-            imageURLs.count, asset.name, asset.id, width, height, fps, framesPerImage, totalFrames, seconds
-        )
+        let seconds = String(format: "%.2f", Double(totalFrames) / Double(fps))
+        let base = "Assembled \(imageURLs.count) image(s) into video '\(asset.name)' "
+            + "(id: \(asset.id), \(width)×\(height), \(fps) fps, \(framesPerImage) frame(s)/image, "
+            + "\(totalFrames) frames ≈ \(seconds)s)."
 
         // Optionally drop the assembled clip straight onto the timeline, reusing add_clips so
         // track auto-creation and overlap handling stay identical to a normal placement.

@@ -53,15 +53,12 @@ extension ToolExecutor {
 
         let bytes = (try? outputURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         let sizeStr = ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
-        let seconds = Double(editor.timeline.totalFrames) / Double(max(1, editor.timeline.fps))
+        let seconds = String(format: "%.2f", Double(editor.timeline.totalFrames) / Double(max(1, editor.timeline.fps)))
 
         if format == .xml {
             return .ok("Wrote timeline interchange XML to \(outputURL.path) (\(sizeStr)). This is the edit only — media is not rendered; open it in Premiere/DaVinci/Final Cut.")
         }
-        return .ok(String(
-            format: "Exported timeline to %@ (%@, %@, %@, ≈%.2fs).",
-            outputURL.path, Self.formatLabel(format), resolution.rawValue, sizeStr, seconds
-        ))
+        return .ok("Exported timeline to \(outputURL.path) (\(Self.formatLabel(format)), \(resolution.rawValue), \(sizeStr), ≈\(seconds)s).")
     }
 
     private static func exportFormat(from raw: String?) throws -> ExportFormat {
