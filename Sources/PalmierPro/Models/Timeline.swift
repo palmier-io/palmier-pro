@@ -11,6 +11,9 @@ struct Timeline: Codable, Sendable, Equatable {
     var width: Int = 1920
     var height: Int = 1080
     var settingsConfigured: Bool = false
+    /// BCP-47 language for on-device transcription (captions, get_transcript, inspect_media).
+    /// nil = auto-detect from the system language.
+    var transcriptionLanguage: String?
     var tracks: [Track] = []
 
     var totalFrames: Int {

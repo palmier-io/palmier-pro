@@ -76,6 +76,20 @@ extension EditorViewModel {
         notifyTimelineChanged()
     }
 
+    /// Project-level spoken language for on-device transcription. A nil value (or "Auto")
+    /// falls back to system-language detection. Persists with the project and is the default
+    /// for captions, get_transcript, and inspect_media.
+    func setTranscriptionLanguage(_ bcp47: String?) {
+        let previous = timeline.transcriptionLanguage
+        guard previous != bcp47 else { return }
+        timeline.transcriptionLanguage = bcp47
+        undoManager?.registerUndo(withTarget: self) { vm in
+            vm.setTranscriptionLanguage(previous)
+        }
+        undoManager?.setActionName("Change Transcription Language")
+        notifyTimelineChanged()
+    }
+
     func checkProjectSettings(for assets: [MediaAsset]) -> ProjectSettingsAction {
         guard let firstVideo = assets.first(where: { $0.type == .video }) else {
             return .proceed
