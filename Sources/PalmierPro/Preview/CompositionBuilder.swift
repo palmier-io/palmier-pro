@@ -165,11 +165,11 @@ enum CompositionBuilder {
 
                 if let natSize = try? await source.track.load(.naturalSize),
                    natSize.width > 0, natSize.height > 0 {
-                    // Store display size and transform for layer orientation.
+                    // Store clip display size and transform with origin at (0,0)
                     let pt = (try? await source.track.load(.preferredTransform)) ?? .identity
-                    let display = natSize.applying(pt)
-                    clipNaturalSizes[clip.id] = CGSize(width: abs(display.width), height: abs(display.height))
-                    clipTransforms[clip.id] = pt
+                    let box = CGRect(origin: .zero, size: natSize).applying(pt)
+                    clipNaturalSizes[clip.id] = CGSize(width: abs(box.width), height: abs(box.height))
+                    clipTransforms[clip.id] = pt.concatenating(CGAffineTransform(translationX: -box.minX, y: -box.minY))
                 }
 
                 if await insertClip(
