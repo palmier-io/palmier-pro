@@ -2,14 +2,16 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-/// Lumetri-style colour panel. Adapts to the selection: grade an adjustment
-/// layer, key a video clip, or offer to add an adjustment layer.
+/// Lumetri-style colour panel. Grades the selected clip (per-clip) or adjustment
+/// layer, and keys video clips. The target clip is cached so clicking a control
+/// in this dock — which clears the timeline selection — doesn't drop the panel.
 struct ColorTab: View {
     @Environment(EditorViewModel.self) var editor
+    @State private var targetClipId: String?
     @State private var lutError: String?
 
-    private var selection: (id: String, clip: Clip)? {
-        guard let id = editor.selectedClipIds.first, let loc = editor.findClip(id: id) else { return nil }
+    private var target: (id: String, clip: Clip)? {
+        guard let id = targetClipId, let loc = editor.findClip(id: id) else { return nil }
         return (id, editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex])
     }
 
@@ -17,10 +19,13 @@ struct ColorTab: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.mdLg) {
-                    if let sel = selection, sel.clip.mediaType == .adjustment {
-                        gradeSections(clipId: sel.id, grade: sel.clip.colorGrade ?? ColorGrade())
-                    } else if let sel = selection, sel.clip.mediaType.isVisual {
-                        chromaSection(clipId: sel.id, key: sel.clip.chromaKey ?? ChromaKey())
+                    if let t = target, t.clip.mediaType == .adjustment {
+                        targetHeader("Adjustment Layer", icon: "circle.lefthalf.filled")
+                        gradeSections(clipId: t.id, grade: t.clip.colorGrade ?? ColorGrade())
+                    } else if let t = target, t.clip.mediaType.isVisual {
+                        targetHeader(editor.mediaResolver.displayName(for: t.clip.mediaRef), icon: t.clip.mediaType.sfSymbolName)
+                        gradeSections(clipId: t.id, grade: t.clip.colorGrade ?? ColorGrade())
+                        chromaSection(clipId: t.id, key: t.clip.chromaKey ?? ChromaKey())
                     } else {
                         emptyState
                     }
@@ -33,15 +38,35 @@ struct ColorTab: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AppTheme.Background.surfaceColor)
+        .onAppear { rememberTarget() }
+        .onChange(of: editor.selectedClipIds) { _, _ in rememberTarget() }
     }
 
-    // MARK: - Grade (adjustment layer)
+    /// Mirror CaptionTab: keep the cached target when the selection is cleared by a
+    /// click into this (media) dock; only clear it on a genuine timeline deselect.
+    private func rememberTarget() {
+        let sel = editor.selectedClipIds.first
+        guard sel != nil || editor.focusedPanel != .media else { return }
+        targetClipId = sel
+    }
+
+    private func targetHeader(_ name: String, icon: String) -> some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Image(systemName: icon).font(.system(size: AppTheme.FontSize.sm))
+            Text(name).lineLimit(1).truncationMode(.middle)
+        }
+        .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.semibold))
+        .foregroundStyle(AppTheme.Text.primaryColor)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Grade
 
     private func gradeSections(clipId: String, grade: ColorGrade) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.mdLg) {
             InspectorSection("Basic Correction") {
                 enableRow(isOn: grade.basicEnabled) { v in updateGrade(clipId) { $0.basicEnabled = v } }
-                slider("thermomet.medium", "Temperature", grade.temperature, -100...100) { v in updateGrade(clipId) { $0.temperature = v } }
+                slider("thermometer.medium", "Temperature", grade.temperature, -100...100) { v in updateGrade(clipId) { $0.temperature = v } }
                 slider("dial.medium", "Tint", grade.tint, -100...100) { v in updateGrade(clipId) { $0.tint = v } }
                 slider("sun.max", "Exposure", grade.exposure, -100...100) { v in updateGrade(clipId) { $0.exposure = v } }
                 slider("circle.lefthalf.filled", "Contrast", grade.contrast, -100...100) { v in updateGrade(clipId) { $0.contrast = v } }
@@ -82,7 +107,7 @@ struct ColorTab: View {
         }
     }
 
-    // MARK: - Chroma key (video clip)
+    // MARK: - Chroma key
 
     private func chromaSection(clipId: String, key: ChromaKey) -> some View {
         InspectorSection("Chroma Key (Ultra Key)") {
@@ -121,7 +146,7 @@ struct ColorTab: View {
             Text("Color")
                 .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.semibold))
                 .foregroundStyle(AppTheme.Text.primaryColor)
-            Text("Select an adjustment layer to grade, or a video clip to key out a green screen. Add an adjustment layer to apply a LUT and colour to everything below it.")
+            Text("Select a clip to grade it (LUT + colour) and key out a green screen, or add an adjustment layer to grade everything below it.")
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .fixedSize(horizontal: false, vertical: true)
@@ -131,7 +156,7 @@ struct ColorTab: View {
     }
 
     private var newLayerBar: some View {
-        Button(action: { editor.addAdjustmentLayer() }) {
+        Button(action: { targetClipId = editor.addAdjustmentLayer() }) {
             HStack(spacing: AppTheme.Spacing.sm) {
                 Image(systemName: "plus")
                 Text("New Adjustment Layer")
