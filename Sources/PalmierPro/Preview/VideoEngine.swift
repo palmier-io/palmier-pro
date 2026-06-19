@@ -23,6 +23,7 @@ final class VideoEngine {
     private var clipNaturalSizes: [String: CGSize] = [:]
     private var clipTransforms: [String: CGAffineTransform] = [:]
     private var compositionDuration: CMTime = .zero
+    private var luts: [String: CubeLUT] = [:]
 
     private var pendingInteractiveSeek: (time: CMTime, tolerance: CMTime)?
     private var interactiveThrottleTask: Task<Void, Never>?
@@ -170,6 +171,7 @@ final class VideoEngine {
             clipNaturalSizes = result.clipNaturalSizes
             clipTransforms = result.clipTransforms
             compositionDuration = result.composition.duration
+            luts = result.luts
             editor.offlineMediaRefs = result.offlineMediaRefs
             editor.unprocessableMediaRefs = result.unprocessableMediaRefs
 
@@ -198,7 +200,8 @@ final class VideoEngine {
             clipNaturalSizes: clipNaturalSizes,
             clipTransforms: clipTransforms,
             compositionDuration: compositionDuration,
-            renderSize: CGSize(width: editor.timeline.width, height: editor.timeline.height)
+            renderSize: CGSize(width: editor.timeline.width, height: editor.timeline.height),
+            luts: luts
         )
         currentItem.audioMix = audioMix
         currentItem.videoComposition = videoComposition
