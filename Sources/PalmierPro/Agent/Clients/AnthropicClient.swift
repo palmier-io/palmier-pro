@@ -34,7 +34,10 @@ struct AnthropicClient: AgentClient {
     let model: AnthropicModel
     var maxTokens: Int = 8192
 
-    private static let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
+    /// Messages API endpoint. Defaults to the user-configured base URL
+    /// (see ``AnthropicEndpoint``) so requests can be routed through an
+    /// Anthropic-compatible proxy. Re-evaluated each time a client is built.
+    var endpoint: URL = AnthropicEndpoint.resolvedMessagesURL()
 
     func stream(
         system: String,
@@ -62,7 +65,7 @@ struct AnthropicClient: AgentClient {
     ) async throws {
         guard !apiKey.isEmpty else { throw AnthropicClientError.missingAPIKey }
 
-        var request = URLRequest(url: Self.endpoint)
+        var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
