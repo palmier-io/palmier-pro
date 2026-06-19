@@ -86,7 +86,7 @@ final class ColorCompositionInstruction: NSObject, AVVideoCompositionInstruction
                                 preferredTransform: rc.preferredTransform, frame: frame)
                 img = img.transformed(by: ciTransform(rc, frame: frame))
                 img = applyOpacity(img, value: rc.clip.opacityAt(frame: frame))
-                acc = compose(img, over: acc)
+                acc = compose(img, over: acc, mode: rc.clip.blendMode ?? .normal)
 
             case .adjustment(let clips):
                 guard let base = acc,
@@ -102,9 +102,14 @@ final class ColorCompositionInstruction: NSObject, AVVideoCompositionInstruction
         clips.first { $0.clip.startFrame <= frame && frame < $0.clip.endFrame }
     }
 
-    private func compose(_ image: CIImage, over background: CIImage?) -> CIImage {
+    private func compose(_ image: CIImage, over background: CIImage?, mode: BlendMode = .normal) -> CIImage {
         guard let background else { return image }
-        return image.composited(over: background)
+        guard let name = mode.ciFilterName, let filter = CIFilter(name: name) else {
+            return image.composited(over: background)
+        }
+        filter.setValue(image, forKey: kCIInputImageKey)
+        filter.setValue(background, forKey: kCIInputBackgroundImageKey)
+        return filter.outputImage ?? image.composited(over: background)
     }
 
     /// Convert the AVFoundation (top-left, y-down) clip transform into Core Image's

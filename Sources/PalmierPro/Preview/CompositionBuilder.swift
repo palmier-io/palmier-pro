@@ -551,7 +551,8 @@ enum CompositionBuilder {
         let hasChroma = timeline.tracks.contains { $0.clips.contains { $0.chromaKey?.isActive == true } }
         // Grades apply on adjustment layers (over everything below) and per-clip.
         let hasGrade = timeline.tracks.contains { $0.clips.contains { $0.colorGrade?.hasEffect == true } }
-        guard hasChroma || hasGrade else { return nil }
+        let hasBlend = timeline.tracks.contains { $0.clips.contains { ($0.blendMode ?? .normal) != .normal } }
+        guard hasChroma || hasGrade || hasBlend else { return nil }
 
         var videoMappingByIndex: [Int: TrackMapping] = [:]
         for mapping in trackMappings where mapping.isVideo {

@@ -24,6 +24,7 @@ struct ColorTab: View {
                         gradeSections(clipId: t.id, grade: t.clip.colorGrade ?? ColorGrade())
                     } else if let t = target, t.clip.mediaType.isVisual {
                         targetHeader(editor.mediaResolver.displayName(for: t.clip.mediaRef), icon: t.clip.mediaType.sfSymbolName)
+                        blendSection(clipId: t.id, mode: t.clip.blendMode ?? .normal)
                         gradeSections(clipId: t.id, grade: t.clip.colorGrade ?? ColorGrade())
                         chromaSection(clipId: t.id, key: t.clip.chromaKey ?? ChromaKey())
                     } else {
@@ -58,6 +59,31 @@ struct ColorTab: View {
         .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.semibold))
         .foregroundStyle(AppTheme.Text.primaryColor)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Compositing
+
+    private func blendSection(clipId: String, mode: BlendMode) -> some View {
+        InspectorSection("Compositing") {
+            InspectorRow(icon: "square.2.layers.3d.bottom.filled", label: "Blend Mode") {
+                Menu {
+                    ForEach(BlendMode.allCases, id: \.self) { m in
+                        Button(m.displayName) { editor.setBlendMode(clipId: clipId, m) }
+                    }
+                } label: { menuValueLabel(mode.displayName) }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+            }
+        }
+    }
+
+    private func menuValueLabel(_ text: String) -> some View {
+        HStack(spacing: AppTheme.Spacing.xxs) {
+            Text(text)
+            Image(systemName: "chevron.up.chevron.down").font(.system(size: AppTheme.FontSize.xxs))
+        }
+        .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+        .foregroundStyle(AppTheme.Text.tertiaryColor)
+        .lineLimit(1)
     }
 
     // MARK: - Grade
