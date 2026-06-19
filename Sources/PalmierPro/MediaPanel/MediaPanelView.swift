@@ -7,12 +7,13 @@ struct MediaPanelView: View {
     @State private var hoveredTab: PanelTab?
 
     enum PanelTab: String, CaseIterable {
-        case media = "Media", captions = "Captions", music = "Music"
+        case media = "Media", captions = "Captions", music = "Music", color = "Color"
         var icon: String {
             switch self {
             case .media: "folder"
             case .captions: "captions.bubble"
             case .music: "music.note"
+            case .color: "camera.filters"
             }
         }
     }
@@ -27,6 +28,7 @@ struct MediaPanelView: View {
                 case .media: MediaTab()
                 case .captions: CaptionTab()
                 case .music: MusicTab()
+                case .color: ColorTab()
                 }
             }
             .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

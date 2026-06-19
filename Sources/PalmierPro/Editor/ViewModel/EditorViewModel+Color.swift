@@ -16,4 +16,21 @@ extension EditorViewModel {
             clip.colorGrade = grade
         }
     }
+
+    /// Create a topmost adjustment layer spanning the current timeline and select it.
+    @discardableResult
+    func addAdjustmentLayer() -> String {
+        let span = max(1, timeline.totalFrames)
+        var clip = Clip(mediaRef: "", startFrame: 0, durationFrames: span)
+        clip.mediaType = .adjustment
+        clip.sourceClipType = .adjustment
+        clip.colorGrade = ColorGrade()
+        let clipId = clip.id
+        let track = Track(type: .adjustment, clips: [clip])
+        withTimelineSwap(actionName: "Add Adjustment Layer") {
+            timeline.tracks.insert(track, at: 0)
+        }
+        selectedClipIds = [clipId]
+        return clipId
+    }
 }
