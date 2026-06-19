@@ -10,6 +10,8 @@ enum ToolName: String, CaseIterable, Sendable {
     case moveClips = "move_clips"
     case setClipProperties = "set_clip_properties"
     case setChromaKey = "set_chroma_key"
+    case setBlendMode = "set_blend_mode"
+    case setColorGrade = "set_color_grade"
     case setKeyframes = "set_keyframes"
     case splitClip = "split_clip"
     case rippleDeleteRanges = "ripple_delete_ranges"
@@ -229,6 +231,42 @@ enum ToolDefinitions {
                     "softness": ["type": "number", "description": "0-100. Softens the matte edge between kept and removed colours (default 20)."],
                     "spill": ["type": "number", "description": "0-100. Suppresses residual key-colour cast on the subject's edges (default 50)."],
                     "edgeFeather": ["type": "number", "description": "Blur radius in points applied to the matte edge (default 0)."],
+                ],
+                required: ["clipId"]
+            )
+        ),
+        AgentTool(
+            name: .setBlendMode,
+            description: "Set how a visual clip composites over the tracks below it. Use 'normal' for default source-over.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipId": ["type": "string", "description": "The visual clip."],
+                    "mode": [
+                        "type": "string",
+                        "enum": BlendMode.allCases.map(\.rawValue),
+                        "description": "Blend mode (e.g. multiply, screen, overlay, lighten, darken, softLight, luminosity).",
+                    ],
+                ],
+                required: ["clipId", "mode"]
+            )
+        ),
+        AgentTool(
+            name: .setColorGrade,
+            description: "Set a colour grade on a visual clip (per-clip) or an adjustment layer (grades everything below it). All fields optional except clipId; omitted fields keep their current value. Pass reset=true to clear the grade.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipId": ["type": "string", "description": "A visual clip or an adjustment-layer clip."],
+                    "temperature": ["type": "number", "description": "-100…100. Warmer as it rises."],
+                    "tint": ["type": "number", "description": "-100…100. Green↔magenta."],
+                    "exposure": ["type": "number", "description": "-100…100 (≈ ±2 EV)."],
+                    "contrast": ["type": "number", "description": "-100…100."],
+                    "saturation": ["type": "number", "description": "-100…100."],
+                    "lutPath": ["type": "string", "description": "Absolute path to a .cube LUT file to apply."],
+                    "lutIntensity": ["type": "number", "description": "0…1 LUT strength (default 1)."],
+                    "removeLut": ["type": "boolean", "description": "Remove the current LUT."],
+                    "basicEnabled": ["type": "boolean", "description": "Toggle the basic (temp/tint/exposure/contrast/saturation) section."],
+                    "creativeEnabled": ["type": "boolean", "description": "Toggle the LUT section."],
+                    "reset": ["type": "boolean", "description": "Clear the entire grade."],
                 ],
                 required: ["clipId"]
             )
