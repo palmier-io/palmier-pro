@@ -1,5 +1,19 @@
 import AppKit
 
+struct RippleRangesReport: Sendable {
+    let removedFrames: Int
+    let clearedTracks: Int
+    let shiftedClips: Int
+    let anchorTrackIndex: Int
+    let resultingFragments: [(clipId: String, startFrame: Int, durationFrames: Int)]
+    let removedClipIds: [String]
+}
+
+enum RippleRangesOutcome: Sendable {
+    case ok(RippleRangesReport)
+    case refused(String)
+}
+
 /// Ripple editing: trim, delete, insert, and the sync-lock machinery that keeps
 /// other tracks aligned with the edit. See `RippleEngine` for the pure math.
 extension EditorViewModel {
@@ -51,14 +65,91 @@ extension EditorViewModel {
 
         withTimelineSwap(actionName: "Ripple Delete") {
             removeClips(ids: ids)
-            shiftsByTrack.values.forEach { shifts in
-                shifts.forEach { shift in
-                    if let loc = findClip(id: shift.clipId) {
-                        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame = shift.newStartFrame
-                    }
-                }
+            for shifts in shiftsByTrack.values { applyShifts(shifts) }
+        }
+    }
+
+    @discardableResult
+    func applyShifts(_ shifts: [ClipShift]) -> Int {
+        var applied = 0
+        for shift in shifts {
+            guard let loc = findClip(id: shift.clipId) else { continue }
+            timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame = shift.newStartFrame
+            applied += 1
+        }
+        return applied
+    }
+
+    /// Ripple-delete timeline-frame `ranges` anchored to `anchorClipId`: clear the content
+    /// in each range on the anchor's track (and any track holding a linked partner, so A/V
+    /// stays in sync), then close the gaps. Sync-locked tracks shift along to preserve
+    /// alignment; refuses without mutating if any would collide.
+    func rippleDeleteRanges(anchorClipId: String, ranges: [FrameRange]) -> RippleRangesOutcome {
+        guard let anchorLoc = findClip(id: anchorClipId) else {
+            return .refused("Clip not found: \(anchorClipId)")
+        }
+        let merged = RippleEngine.mergeRanges(ranges.filter { $0.length > 0 })
+        guard !merged.isEmpty else { return .refused("No non-empty ranges to delete") }
+        let totalRemoved = merged.reduce(0) { $0 + $1.length }
+
+        let anchor = timeline.tracks[anchorLoc.trackIndex].clips[anchorLoc.clipIndex]
+        var clearTrackIds: Set<String> = [timeline.tracks[anchorLoc.trackIndex].id]
+        if anchor.linkGroupId != nil {
+            for pid in linkedPartnerIds(of: anchorClipId) {
+                if let l = findClip(id: pid) { clearTrackIds.insert(timeline.tracks[l.trackIndex].id) }
             }
         }
+
+        // Refuse up front if a sync-locked follower can't absorb the shift. These tracks
+        // aren't cleared, so their clips are unchanged when the shift is applied below.
+        for ti in timeline.tracks.indices {
+            let track = timeline.tracks[ti]
+            guard !clearTrackIds.contains(track.id), track.syncLocked else { continue }
+            let shifts = RippleEngine.computeRippleShiftsForRanges(clips: track.clips, removedRanges: merged)
+            if let reason = validateShifts(trackIndex: ti, shifts: shifts) {
+                return .refused(reason)
+            }
+        }
+
+        let anchorTrackId = timeline.tracks[anchorLoc.trackIndex].id
+        let anchorBeforeIds = Set(timeline.tracks[anchorLoc.trackIndex].clips.map(\.id))
+
+        var shiftedClips = 0
+        withTimelineSwap(actionName: "Ripple Delete") {
+            for tid in clearTrackIds {
+                guard let ti = timeline.tracks.firstIndex(where: { $0.id == tid }) else { continue }
+                for r in merged {
+                    clearRegion(trackIndex: ti, start: r.start, end: r.end, prune: false)
+                }
+            }
+            for ti in timeline.tracks.indices {
+                let track = timeline.tracks[ti]
+                guard clearTrackIds.contains(track.id) || track.syncLocked else { continue }
+                let shifts = RippleEngine.computeRippleShiftsForRanges(clips: track.clips, removedRanges: merged)
+                shiftedClips += applyShifts(shifts)
+                sortClips(trackIndex: ti)
+            }
+        }
+
+        // The anchor clip became these fragments (head keeps its id, tails are new) — report
+        // them so the caller has the post-cut layout without a re-read. Ranges are clamped to
+        // the anchor clip, so any new/removed ids on its track came from this cut.
+        let anchorTi = timeline.tracks.firstIndex { $0.id == anchorTrackId } ?? anchorLoc.trackIndex
+        let afterClips = timeline.tracks[anchorTi].clips
+        let afterIds = Set(afterClips.map(\.id))
+        let createdIds = afterIds.subtracting(anchorBeforeIds)
+        let fragments = afterClips
+            .filter { createdIds.contains($0.id) || $0.id == anchorClipId }
+            .sorted { $0.startFrame < $1.startFrame }
+            .map { (clipId: $0.id, startFrame: $0.startFrame, durationFrames: $0.durationFrames) }
+        return .ok(RippleRangesReport(
+            removedFrames: totalRemoved,
+            clearedTracks: clearTrackIds.count,
+            shiftedClips: shiftedClips,
+            anchorTrackIndex: anchorTi,
+            resultingFragments: fragments,
+            removedClipIds: Array(anchorBeforeIds.subtracting(afterIds))
+        ))
     }
 
     func rippleDeleteSelectedGap() {
@@ -86,13 +177,7 @@ extension EditorViewModel {
         }
 
         withTimelineSwap(actionName: "Ripple Delete") {
-            shiftsByTrack.values.forEach { shifts in
-                shifts.forEach { shift in
-                    if let loc = findClip(id: shift.clipId) {
-                        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame = shift.newStartFrame
-                    }
-                }
-            }
+            for shifts in shiftsByTrack.values { applyShifts(shifts) }
         }
         selectedGap = nil
     }
@@ -105,16 +190,11 @@ extension EditorViewModel {
             let totalPush = assets.reduce(0) { $0 + clipDurationFrames(for: $1, segment: segments[$1.id]) }
 
             for ti in timeline.tracks.indices where ti == trackIndex || timeline.tracks[ti].syncLocked {
-                let shifts = RippleEngine.computeRipplePush(
+                applyShifts(RippleEngine.computeRipplePush(
                     clips: timeline.tracks[ti].clips,
                     insertFrame: atFrame,
                     pushAmount: totalPush
-                )
-                for shift in shifts {
-                    if let loc = findClip(id: shift.clipId) {
-                        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame = shift.newStartFrame
-                    }
-                }
+                ))
             }
             createClips(from: assets, trackIndex: trackIndex, startFrame: atFrame, segments: segments)
             sortClips(trackIndex: trackIndex)

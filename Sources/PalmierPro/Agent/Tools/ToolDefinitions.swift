@@ -11,6 +11,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case setClipProperties = "set_clip_properties"
     case setKeyframes = "set_keyframes"
     case splitClip = "split_clip"
+    case rippleDeleteRanges = "ripple_delete_ranges"
     case addTexts = "add_texts"
     case addCaptions = "add_captions"
     case generateVideo = "generate_video"
@@ -20,6 +21,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case importMedia = "import_media"
     case listModels = "list_models"
     case inspectMedia = "inspect_media"
+    case getTranscript = "get_transcript"
     case inspectTimeline = "inspect_timeline"
     case searchMedia = "search_media"
     case listFolders = "list_folders"
@@ -64,10 +66,20 @@ enum ToolDefinitions {
                     "maxFrames": ["type": "integer", "description": "Video and Lottie. Sample frame count (default 6, max 12)."],
                     "startSeconds": ["type": "number", "description": "Video/audio. Source-time window start; scopes frames and transcription."],
                     "endSeconds": ["type": "number", "description": "Video/audio. Window end (default: asset duration)."],
-                    "wordTimestamps": ["type": "boolean", "description": "Video/audio. Add word-level [text, start, end] tuples (capped at 500). Use on a narrow window for word-boundary edits."],
+                    "wordTimestamps": ["type": "boolean", "description": "Video/audio. Add word-level [text, start, end] tuples (capped at 10000 — most clips return all words at once; narrow with startSeconds/endSeconds only for very long media). Use for word-boundary edits like filler-word removal."],
                     "overview": ["type": "boolean", "description": "Video only. One storyboard grid of visually distinct, timestamped moments instead of frames — far more coverage per token; few tiles means static footage. maxFrames ignored."],
                 ],
                 required: ["mediaRef"]
+            )
+        ),
+        AgentTool(
+            name: .getTranscript,
+            description: "Returns the spoken transcript of the CURRENT timeline as a flat, time-ordered word list in project frames — the post-edit caption track in one call. Unlike inspect_media (which transcribes one source asset in isolation, in source seconds), this walks every audio/video clip on the timeline, maps each word through that clip's trim/speed/position, and concatenates in timeline order. Deleted ranges are gone by construction, so after cuts this always reflects what's actually audible — no stale results, no per-clip frame math.\n\nReturns words as [text, startFrame, endFrame] tuples (project frames) plus a clips array [{clipId, trackIndex, startFrame, endFrame}] so you can map any word back to the clip it lives in — pass that clipId and the frames straight to ripple_delete_ranges. Capped at 10000 words; on a long timeline page with startFrame/endFrame using the returned nextStartFrame. Transcription runs on-device.\n\nUse for transcript-driven edits (filler-word / dead-air removal, locating a quote) and to verify what remains after cutting.",
+            inputSchema: objectSchema(
+                properties: [
+                    "startFrame": ["type": "integer", "description": "Optional. Only return words ending after this project frame. Use with the returned nextStartFrame to page a long timeline."],
+                    "endFrame": ["type": "integer", "description": "Optional. Only return words starting before this project frame."],
+                ]
             )
         ),
         AgentTool(
@@ -180,7 +192,7 @@ enum ToolDefinitions {
                     "durationFrames": ["type": "integer", "description": "New duration in frames."],
                     "trimStartFrame": ["type": "integer", "description": "Frames to trim from the start of the source media."],
                     "trimEndFrame": ["type": "integer", "description": "Frames to trim from the end of the source media."],
-                    "speed": ["type": "number", "description": "Playback speed multiplier (default 1.0)."],
+                    "speed": ["type": "number", "description": "Playback speed multiplier (default 1.0). >1 speeds up, <1 slows down. The clip's timeline length is rescaled to keep the same source content (2x speed → half the frames), unless you also pass durationFrames to set the length explicitly."],
                     "volume": ["type": "number", "description": "Volume 0.0-1.0. Clears any existing volume keyframes."],
                     "opacity": ["type": "number", "description": "Opacity 0.0-1.0. Clears any existing opacity keyframes."],
                     "transform": [
@@ -233,6 +245,22 @@ enum ToolDefinitions {
                     "atFrame": ["type": "integer", "description": "Frame position to split at (must be between clip start and end)"],
                 ],
                 required: ["clipId", "atFrame"]
+            )
+        ),
+        AgentTool(
+            name: .rippleDeleteRanges,
+            description: "Cuts one or more ranges out of a single clip and closes the gaps in one undoable action — the fast path for filler-word/dead-air removal. Replaces hand-cranked split_clip → split_clip → remove_clips → move_clips loops: pass every range at once.\n\nunits default to 'frames' (project/timeline frames). The intended flow: call inspect_media WITH this clipId to get per-word [text, startFrame, endFrame] timestamps, then pass those frame pairs straight in — same coordinate space, no conversion. Use units 'seconds' only for source-media seconds (inspect_media WITHOUT a clipId, or search_media hits). Ranges are clamped to the clip's visible span; any range fully outside it is ignored, and overlapping ranges merge.\n\nThe clip's linked audio/video partner is cut on the same span so A/V stays in sync. Remaining clips shift left to close every gap; sync-locked tracks shift along to preserve alignment (their content isn't cut — like the timeline's ripple delete). Refuses without changing anything if a sync-locked track can't absorb the shift (e.g. it would move past frame 0).",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipId": ["type": "string", "description": "The clip to cut ranges out of. Ranges are interpreted in this clip's source timebase and clamped to its visible span."],
+                    "ranges": [
+                        "type": "array",
+                        "description": "Ranges to remove, each a [start, end] pair (end > start). In the unit given by 'units'.",
+                        "items": ["type": "array", "items": ["type": "number"], "minItems": 2, "maxItems": 2],
+                    ],
+                    "units": ["type": "string", "enum": ["seconds", "frames"], "description": "Interpretation of range values. 'frames' (default) = project/timeline frames, matching inspect_media's per-word timestamps when it's called WITH this clipId. 'seconds' = source-media seconds (inspect_media without a clipId, or search_media hits)."],
+                ],
+                required: ["clipId", "ranges"]
             )
         ),
         AgentTool(
