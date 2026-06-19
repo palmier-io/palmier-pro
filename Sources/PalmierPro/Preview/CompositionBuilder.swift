@@ -20,6 +20,7 @@ struct CompositionResult {
     let clipNaturalSizes: [String: CGSize]
     let clipTransforms: [String: CGAffineTransform]
     let offlineMediaRefs: Set<String>
+    let unprocessableMediaRefs: Set<String>
 }
 
 /// Builds an AVFoundation composition from a Timeline.
@@ -47,6 +48,7 @@ enum CompositionBuilder {
         var clipNaturalSizes: [String: CGSize] = [:]
         var clipTransforms: [String: CGAffineTransform] = [:]
         var offlineMediaRefs: Set<String> = []
+        var unprocessableMediaRefs: Set<String> = []
 
         for (trackIdx, track) in timeline.tracks.enumerated() {
             // Text renders via CATextLayer overlay (preview) + animation tool (export) — never as composition tracks.
@@ -63,15 +65,17 @@ enum CompositionBuilder {
                 var normalCursor = CMTime.zero
 
                 for clip in sortedClips {
-                    guard let source = try await loadSource(
+                    let source: (asset: AVURLAsset, track: AVAssetTrack)
+                    switch try await loadSource(
                         clip: clip,
                         mediaType: mediaType,
                         resolveURL: resolveURL,
                         resolveSourceSize: resolveSourceSize,
                         renderSize: renderSize
-                    ) else {
-                        offlineMediaRefs.insert(clip.mediaRef)
-                        continue
+                    ) {
+                    case .loaded(let asset, let track): source = (asset, track)
+                    case .offline: offlineMediaRefs.insert(clip.mediaRef); continue
+                    case .unprocessable: unprocessableMediaRefs.insert(clip.mediaRef); continue
                     }
 
                     if clip.speed != 1.0 {
@@ -146,15 +150,17 @@ enum CompositionBuilder {
             var previousEndFrame = Int.min
             for clip in sortedClips {
                 guard clip.durationFrames > 0, clip.startFrame >= previousEndFrame else { continue }
-                guard let source = try await loadSource(
+                let source: (asset: AVURLAsset, track: AVAssetTrack)
+                switch try await loadSource(
                     clip: clip,
                     mediaType: mediaType,
                     resolveURL: resolveURL,
                     resolveSourceSize: resolveSourceSize,
                     renderSize: renderSize
-                ) else {
-                    offlineMediaRefs.insert(clip.mediaRef)
-                    continue
+                ) {
+                case .loaded(let asset, let track): source = (asset, track)
+                case .offline: offlineMediaRefs.insert(clip.mediaRef); continue
+                case .unprocessable: unprocessableMediaRefs.insert(clip.mediaRef); continue
                 }
 
                 if let natSize = try? await source.track.load(.naturalSize),
@@ -225,8 +231,15 @@ enum CompositionBuilder {
             trackMappings: trackMappings,
             clipNaturalSizes: clipNaturalSizes,
             clipTransforms: clipTransforms,
-            offlineMediaRefs: offlineMediaRefs
+            offlineMediaRefs: offlineMediaRefs,
+            unprocessableMediaRefs: unprocessableMediaRefs
         )
+    }
+
+    private enum LoadOutcome {
+        case loaded(asset: AVURLAsset, track: AVAssetTrack)
+        case offline
+        case unprocessable
     }
 
     private static func loadSource(
@@ -235,9 +248,11 @@ enum CompositionBuilder {
         resolveURL: @Sendable (String) -> URL?,
         resolveSourceSize: @Sendable (String) -> CGSize?,
         renderSize: CGSize
-    ) async throws -> (asset: AVURLAsset, track: AVAssetTrack)? {
+    ) async throws -> LoadOutcome {
         let mediaURL: URL
-        guard let resolved = resolveURL(clip.mediaRef) else { return nil }
+        guard let resolved = resolveURL(clip.mediaRef) else { return .offline }
+        // A failed generation on a present file is unprocessable; on a missing file it's offline.
+        let sourceExists = FileManager.default.fileExists(atPath: resolved.path)
         if clip.mediaType == .image {
             let imageSize = resolveSourceSize(clip.mediaRef)
                 ?? ImageVideoGenerator.imageNativeSize(url: resolved)
@@ -250,7 +265,7 @@ enum CompositionBuilder {
                 )
             } catch {
                 Log.preview.error("stillVideo failed mediaRef=\(clip.mediaRef) size=\(Int(imageSize.width))x\(Int(imageSize.height)): \(Log.detail(error))")
-                return nil
+                return sourceExists ? .unprocessable : .offline
             }
         } else if clip.mediaType == .lottie {
             let lottieSize = resolveSourceSize(clip.mediaRef) ?? renderSize
@@ -261,8 +276,8 @@ enum CompositionBuilder {
                     size: lottieSize
                 )
             } catch {
-                Log.preview.error("lottieVideo failed mediaRef=\(clip.mediaRef) size=\(Int(lottieSize.width))x\(Int(lottieSize.height)): \(error.localizedDescription)")
-                return nil
+                Log.preview.error("lottieVideo failed mediaRef=\(clip.mediaRef) size=\(Int(lottieSize.width))x\(Int(lottieSize.height)): \(Log.detail(error))")
+                return sourceExists ? .unprocessable : .offline
             }
         } else if mediaType == .video {
             mediaURL = (try? await AlphaVideoNormalizer.premultipliedVideo(for: resolved, mediaRef: clip.mediaRef)) ?? resolved
@@ -274,12 +289,12 @@ enum CompositionBuilder {
         let sourceAsset = AVURLAsset(url: mediaURL)
         do {
             guard let sourceTrack = try await sourceAsset.loadTracks(withMediaType: mediaType).first else {
-                return nil
+                return .offline
             }
-            return (sourceAsset, sourceTrack)
+            return .loaded(asset: sourceAsset, track: sourceTrack)
         } catch {
             Log.preview.error("loadTracks failed — skipping clip. clipId=\(clip.id) mediaRef=\(clip.mediaRef): \(error.localizedDescription)")
-            return nil
+            return .offline
         }
     }
 

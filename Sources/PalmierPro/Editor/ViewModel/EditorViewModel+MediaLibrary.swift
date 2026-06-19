@@ -137,7 +137,14 @@ extension EditorViewModel {
 
     /// missing on disk or present-but-unloadable (no permission, ejected volume)
     func isMediaOffline(_ mediaRef: String) -> Bool {
-        offlineMediaRefs.contains(mediaRef) || mediaResolver.isMissing(for: mediaRef)
+        offlineMediaRefs.contains(mediaRef)
+            || unprocessableMediaRefs.contains(mediaRef)
+            || mediaResolver.isMissing(for: mediaRef)
+    }
+
+    /// Present-but-unpreparable (e.g. failed to encode)
+    func isMediaUnprocessable(_ mediaRef: String) -> Bool {
+        unprocessableMediaRefs.contains(mediaRef) && !mediaResolver.isMissing(for: mediaRef)
     }
 
     func isClipMediaOffline(_ clip: Clip) -> Bool {
