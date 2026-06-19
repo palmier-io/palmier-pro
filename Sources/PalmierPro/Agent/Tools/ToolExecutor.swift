@@ -35,6 +35,7 @@ final class ToolExecutor {
             case .removeTracks:     return try removeTracks(editor, args)
             case .moveClips:        return try moveClips(editor, args)
             case .setClipProperties: return try setClipProperties(editor, args)
+            case .setChromaKey:  return try setChromaKey(editor, args)
             case .setKeyframes:     return try setKeyframes(editor, args)
             case .splitClip:        return try splitClip(editor, args)
             case .rippleDeleteRanges: return try rippleDeleteRanges(editor, args)
