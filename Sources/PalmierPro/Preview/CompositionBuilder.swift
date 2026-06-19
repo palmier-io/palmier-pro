@@ -21,6 +21,7 @@ struct CompositionResult {
     let clipTransforms: [String: CGAffineTransform]
     let offlineMediaRefs: Set<String>
     let unprocessableMediaRefs: Set<String>
+    let luts: [String: CubeLUT]
 }
 
 /// Builds an AVFoundation composition from a Timeline.
@@ -51,6 +52,8 @@ enum CompositionBuilder {
         var unprocessableMediaRefs: Set<String> = []
 
         for (trackIdx, track) in timeline.tracks.enumerated() {
+            // Adjustment layers carry no media; the custom compositor applies them.
+            guard track.type != .adjustment else { continue }
             // Text renders via CATextLayer overlay (preview) + animation tool (export) — never as composition tracks.
             let sortedClips = track.clips
                 .sorted { $0.startFrame < $1.startFrame }
@@ -215,13 +218,16 @@ enum CompositionBuilder {
             }
         }
 
+        let luts = prebakeLUTs(timeline: timeline, resolveURL: resolveURL)
+
         let (audioMix, videoComposition) = buildVisuals(
             timeline: timeline,
             trackMappings: trackMappings,
             clipNaturalSizes: clipNaturalSizes,
             clipTransforms: clipTransforms,
             compositionDuration: composition.duration,
-            renderSize: renderSize
+            renderSize: renderSize,
+            luts: luts
         )
 
         return CompositionResult(
@@ -232,8 +238,30 @@ enum CompositionBuilder {
             clipNaturalSizes: clipNaturalSizes,
             clipTransforms: clipTransforms,
             offlineMediaRefs: offlineMediaRefs,
-            unprocessableMediaRefs: unprocessableMediaRefs
+            unprocessableMediaRefs: unprocessableMediaRefs,
+            luts: luts
         )
+    }
+
+    /// Resolve + parse every `.cube` referenced by an adjustment layer, once.
+    private static func prebakeLUTs(
+        timeline: Timeline,
+        resolveURL: @Sendable (String) -> URL?
+    ) -> [String: CubeLUT] {
+        var luts: [String: CubeLUT] = [:]
+        for track in timeline.tracks where track.type == .adjustment {
+            for clip in track.clips {
+                guard let grade = clip.colorGrade, grade.hasLUTEffect,
+                      let ref = grade.lutRef, luts[ref] == nil,
+                      let url = resolveURL(ref) else { continue }
+                if let cube = try? CubeLUT.parse(contentsOf: url) {
+                    luts[ref] = cube
+                } else {
+                    Log.preview.error("failed to parse LUT \(ref)")
+                }
+            }
+        }
+        return luts
     }
 
     private enum LoadOutcome {
@@ -378,7 +406,8 @@ enum CompositionBuilder {
         clipNaturalSizes: [String: CGSize] = [:],
         clipTransforms: [String: CGAffineTransform] = [:],
         compositionDuration: CMTime,
-        renderSize: CGSize
+        renderSize: CGSize,
+        luts: [String: CubeLUT] = [:]
     ) -> (audioMix: AVMutableAudioMix, videoComposition: AVVideoComposition) {
         let timescale = CMTimeScale(timeline.fps)
 
@@ -400,6 +429,31 @@ enum CompositionBuilder {
                 prevEndFrame = clip.startFrame + clip.durationFrames
             }
             return params
+        }
+
+        let timeRange = CMTimeRange(start: .zero, duration: compositionDuration)
+
+        var vcConfig = AVVideoComposition.Configuration()
+        vcConfig.renderSize = renderSize
+        vcConfig.frameDuration = CMTime(value: 1, timescale: timescale)
+        vcConfig.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
+        vcConfig.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
+        vcConfig.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
+
+        // Colour grades / chroma keys need per-source access during compositing →
+        // route through the custom compositor. Otherwise keep the built-in path.
+        if let colorInstruction = colorCompositionInstruction(
+            timeRange: timeRange,
+            timeline: timeline,
+            trackMappings: trackMappings,
+            clipNaturalSizes: clipNaturalSizes,
+            clipTransforms: clipTransforms,
+            renderSize: renderSize,
+            luts: luts
+        ) {
+            vcConfig.customVideoCompositorClass = ColorVideoCompositor.self
+            vcConfig.instructions = [colorInstruction]
+            return (audioMix, AVVideoComposition(configuration: vcConfig))
         }
 
         let layerInstructions: [AVVideoCompositionLayerInstruction] = trackMappings.filter { $0.isVideo }.map { mapping in
@@ -445,19 +499,77 @@ enum CompositionBuilder {
         }
 
         var instrConfig = AVVideoCompositionInstruction.Configuration()
-        instrConfig.timeRange = CMTimeRange(start: .zero, duration: compositionDuration)
+        instrConfig.timeRange = timeRange
         instrConfig.layerInstructions = layerInstructions
-        let instruction = AVVideoCompositionInstruction(configuration: instrConfig)
-
-        var vcConfig = AVVideoComposition.Configuration()
-        vcConfig.renderSize = renderSize
-        vcConfig.frameDuration = CMTime(value: 1, timescale: timescale)
-        vcConfig.instructions = [instruction]
-        vcConfig.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
-        vcConfig.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
-        vcConfig.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
+        vcConfig.instructions = [AVVideoCompositionInstruction(configuration: instrConfig)]
 
         return (audioMix, AVVideoComposition(configuration: vcConfig))
+    }
+
+    /// Build the custom-compositor instruction when any clip carries a colour grade
+    /// or an active chroma key; returns nil to keep the built-in compositor.
+    private static func colorCompositionInstruction(
+        timeRange: CMTimeRange,
+        timeline: Timeline,
+        trackMappings: [TrackMapping],
+        clipNaturalSizes: [String: CGSize],
+        clipTransforms: [String: CGAffineTransform],
+        renderSize: CGSize,
+        luts: [String: CubeLUT]
+    ) -> ColorCompositionInstruction? {
+        let hasChroma = timeline.tracks.contains { $0.clips.contains { $0.chromaKey?.isActive == true } }
+        let hasGrade = timeline.tracks.contains { track in
+            track.type == .adjustment && track.clips.contains { $0.colorGrade?.hasEffect == true }
+        }
+        guard hasChroma || hasGrade else { return nil }
+
+        var videoMappingByIndex: [Int: TrackMapping] = [:]
+        for mapping in trackMappings where mapping.isVideo {
+            if case .timeline(let idx, _) = mapping.kind { videoMappingByIndex[idx] = mapping }
+        }
+
+        var layers: [ColorCompositionInstruction.Layer] = []
+        for (idx, track) in timeline.tracks.enumerated() {
+            if track.type == .adjustment {
+                let clips = track.clips.filter { $0.colorGrade != nil }
+                if !clips.isEmpty { layers.append(.adjustment(clips: clips)) }
+                continue
+            }
+            guard track.type != .audio, !track.hidden,
+                  let mapping = videoMappingByIndex[idx],
+                  case .timeline(_, let clipIds) = mapping.kind else { continue }
+
+            var renderClips: [ColorCompositionInstruction.RenderClip] = []
+            var prevEndFrame = Int.min
+            for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) where clip.mediaType != .text {
+                if let clipIds, !clipIds.contains(clip.id) { continue }
+                guard clip.durationFrames > 0, clip.startFrame >= prevEndFrame else { continue }
+                renderClips.append(.init(
+                    clip: clip,
+                    natSize: clipNaturalSizes[clip.id] ?? mapping.naturalSize,
+                    preferredTransform: clipTransforms[clip.id] ?? .identity
+                ))
+                prevEndFrame = clip.endFrame
+            }
+            if !renderClips.isEmpty {
+                layers.append(.source(trackID: mapping.compositionTrack.trackID, clips: renderClips))
+            }
+        }
+
+        if let bg = trackMappings.first(where: {
+            if case .blackBackground = $0.kind { return true } else { return false }
+        }) {
+            layers.append(.background(trackID: bg.compositionTrack.trackID))
+        }
+
+        guard !layers.isEmpty else { return nil }
+        return ColorCompositionInstruction(
+            timeRange: timeRange,
+            fps: timeline.fps,
+            renderSize: renderSize,
+            layers: layers,
+            luts: luts
+        )
     }
 
     /// Smooth-curve subdivision count for non-linear keyframe segments.
