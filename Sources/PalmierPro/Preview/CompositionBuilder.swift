@@ -252,8 +252,11 @@ enum CompositionBuilder {
         for track in timeline.tracks where track.type == .adjustment {
             for clip in track.clips {
                 guard let grade = clip.colorGrade, grade.hasLUTEffect,
-                      let ref = grade.lutRef, luts[ref] == nil,
-                      let url = resolveURL(ref) else { continue }
+                      let ref = grade.lutRef, luts[ref] == nil else { continue }
+                // LUTs may be a manifest asset id or an absolute file path.
+                guard let url = resolveURL(ref)
+                    ?? (FileManager.default.fileExists(atPath: ref) ? URL(fileURLWithPath: ref) : nil)
+                else { continue }
                 if let cube = try? CubeLUT.parse(contentsOf: url) {
                     luts[ref] = cube
                 } else {
