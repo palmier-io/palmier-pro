@@ -185,12 +185,19 @@ struct CodexCLIClient: AgentClient {
     }
 
     static func events(from data: Data) throws -> [AnthropicStreamEvent] {
-        try events(from: JSONDecoder().decode(CodexResponse.self, from: data))
+        let response = try JSONDecoder().decode(CodexResponse.self, from: data)
+        if response.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           response.toolCalls.isEmpty {
+            throw PalmierClientError.upstream("Codex CLI returned an empty response.")
+        }
+        return events(from: response)
     }
 
     private static func events(from response: CodexResponse) -> [AnthropicStreamEvent] {
         var events: [AnthropicStreamEvent] = []
-        if !response.text.isEmpty { events.append(.textDelta(response.text)) }
+        if !response.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            events.append(.textDelta(response.text))
+        }
         events += response.toolCalls.map {
             .toolUseComplete(id: $0.id, name: $0.name, inputJSON: $0.inputJSON)
         }
@@ -235,6 +242,7 @@ struct CodexCLIClient: AgentClient {
 
         You are running inside Palmier Pro through Codex CLI.
         Reply as JSON matching the provided schema. To act on the timeline, choose tool calls from Available tools.
+        If you do not choose tool calls, text must be a non-empty user-visible response.
         Set stop_reason to tool_use when tool_calls is non-empty, otherwise end_turn.
         input_json must be a valid JSON object string.
 

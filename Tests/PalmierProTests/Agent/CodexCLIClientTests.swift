@@ -15,6 +15,7 @@ struct CodexCLIClientTests {
 
         #expect(prompt.contains("System instructions"))
         #expect(prompt.contains("Reply as JSON matching the provided schema"))
+        #expect(prompt.contains("text must be a non-empty user-visible response"))
         #expect(prompt.contains("USER: Trim first clip"))
         #expect(prompt.contains("ASSISTANT: Done"))
     }
@@ -129,6 +130,22 @@ struct CodexCLIClientTests {
         }
         if case .messageStop(.toolUse) = events[2] {} else {
             Issue.record("Expected tool_use stop")
+        }
+    }
+
+    @Test func emptyTextWithoutToolCallsThrows() {
+        let data = Data("""
+
+        {
+          "text": "   ",
+          "tool_calls": [],
+          "stop_reason": "end_turn"
+        }
+
+        """.utf8)
+
+        #expect(throws: PalmierClientError.self) {
+            try CodexCLIClient.events(from: data)
         }
     }
 
