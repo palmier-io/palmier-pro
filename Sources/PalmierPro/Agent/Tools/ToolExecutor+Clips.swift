@@ -451,7 +451,17 @@ extension ToolExecutor {
             }
             if let v = trimStartFrame { clip.trimStartFrame = v; changed.append("trimStartFrame") }
             if let v = trimEndFrame   { clip.trimEndFrame   = v; changed.append("trimEndFrame") }
-            if let v = speed          { clip.speed          = v; changed.append("speed") }
+            if let v = speed {
+                if durationFrames == nil, v > 0 {
+                    let sourceConsumed = Double(clip.durationFrames) * clip.speed
+                    clip.durationFrames = max(1, Int((sourceConsumed / v).rounded()))
+                    clip.clampKeyframesToDuration()
+                    clip.clampFadesToDuration()
+                    changed.append("durationFrames")
+                }
+                clip.speed = v
+                changed.append("speed")
+            }
             // Setting a scalar clears any existing keyframe track on the same property.
             if let v = volume         { clip.volume  = v; clip.volumeTrack  = nil; changed.append("volume") }
             if let v = opacity        { clip.opacity = v; clip.opacityTrack = nil; changed.append("opacity") }

@@ -192,7 +192,7 @@ enum ToolDefinitions {
                     "durationFrames": ["type": "integer", "description": "New duration in frames."],
                     "trimStartFrame": ["type": "integer", "description": "Frames to trim from the start of the source media."],
                     "trimEndFrame": ["type": "integer", "description": "Frames to trim from the end of the source media."],
-                    "speed": ["type": "number", "description": "Playback speed multiplier (default 1.0)."],
+                    "speed": ["type": "number", "description": "Playback speed multiplier (default 1.0). >1 speeds up, <1 slows down. The clip's timeline length is rescaled to keep the same source content (2x speed → half the frames), unless you also pass durationFrames to set the length explicitly."],
                     "volume": ["type": "number", "description": "Volume 0.0-1.0. Clears any existing volume keyframes."],
                     "opacity": ["type": "number", "description": "Opacity 0.0-1.0. Clears any existing opacity keyframes."],
                     "transform": [

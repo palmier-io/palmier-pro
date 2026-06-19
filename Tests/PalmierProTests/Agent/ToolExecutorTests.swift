@@ -448,6 +448,42 @@ struct ToolExecutorClipTests {
         return (h, asset)
     }
 
+    // MARK: - set_clip_properties speed
+
+    @Test func setSpeedRescalesDurationToPreserveSource() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 100)]),
+        ]))
+        let result = await h.runRaw("set_clip_properties", args: ["clipIds": ["c1"], "speed": 2.0])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let clip = h.editor.timeline.tracks[0].clips[0]
+        #expect(clip.speed == 2.0)
+        #expect(clip.durationFrames == 50)  // 100 source frames now play in half the time
+    }
+
+    @Test func setSpeedWithExplicitDurationKeepsThatDuration() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 100)]),
+        ]))
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": ["c1"], "speed": 2.0, "durationFrames": 80,
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let clip = h.editor.timeline.tracks[0].clips[0]
+        #expect(clip.speed == 2.0)
+        #expect(clip.durationFrames == 80)  // explicit duration wins over the speed rescale
+    }
+
+    @Test func setHalfSpeedDoublesDuration() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 100)]),
+        ]))
+        _ = await h.runRaw("set_clip_properties", args: ["clipIds": ["c1"], "speed": 0.5])
+        let clip = h.editor.timeline.tracks[0].clips[0]
+        #expect(clip.speed == 0.5)
+        #expect(clip.durationFrames == 200)
+    }
+
     // MARK: - add_clips
 
     @Test func addClipsPlacesClipOnTrack() async throws {
