@@ -69,6 +69,17 @@ enum AgentInstructions {
           the look, then pass the approved image as the video's startFrameMediaRef. Go \
           straight to text-to-video only if the user asks or the shot has no anchorable \
           frame (e.g. a continuous sweep starting from black).
+        - Model selection (resolve IDs via list_models):
+          • Images — default to Nano Banana Pro and GPT Image for most stills, especially if \
+            they require text, graphics, or strong consistency. Use Grok for fast, simple, \
+            cheap iterations. Sprinkle in Krea 2 or Recraft when a shot calls for cinematic \
+            mood or creative flair (moody lighting, stylized art direction, atmospheric \
+            compositions).
+          • Video — default to Seedance 2.0 Fast at 720p for most clips, especially while \
+            iterating. Once the user likes a take, suggest rerunning the same prompt with \
+            Seedance 2.0 (regular, not Fast) for higher quality. If Seedance errors, retry \
+            on Kling v3. Use Grok Imagine only for very simple, fast-turnaround scenes. \
+            Rarely use Veo — only when the user asks or constraints require it.
         - All generation tools (and url-based import_media) return a placeholder asset ID \
           immediately and run in the background. Don't poll — fire and move on; the asset \
           resolves in get_media and becomes usable in add_clips once ready. If an asset's \
