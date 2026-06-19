@@ -9,19 +9,19 @@ actor TranscriptCache {
     private var memory: [String: TranscriptionResult] = [:]
     private static let memoryMax = 4
 
-    func transcript(for url: URL, isVideo: Bool, range: ClosedRange<Double>?) async throws -> TranscriptionResult {
-        let key = Self.key(for: url)
+    func transcript(for url: URL, isVideo: Bool, range: ClosedRange<Double>?, preferredLocale: Locale? = nil) async throws -> TranscriptionResult {
+        let key = Self.key(for: url, locale: preferredLocale)
         if let key, let full = cached(key) {
             return range.map { Self.filter(full, to: $0) } ?? full
         }
         if let range {
             return isVideo
-                ? try await Transcription.transcribeVideoAudio(videoURL: url, sourceRange: range)
-                : try await Transcription.transcribe(fileURL: url, sourceRange: range)
+                ? try await Transcription.transcribeVideoAudio(videoURL: url, preferredLocale: preferredLocale, sourceRange: range)
+                : try await Transcription.transcribe(fileURL: url, preferredLocale: preferredLocale, sourceRange: range)
         }
         let full = isVideo
-            ? try await Transcription.transcribeVideoAudio(videoURL: url)
-            : try await Transcription.transcribe(fileURL: url)
+            ? try await Transcription.transcribeVideoAudio(videoURL: url, preferredLocale: preferredLocale)
+            : try await Transcription.transcribe(fileURL: url, preferredLocale: preferredLocale)
         if let key { store(full, key: key) }
         return full
     }
@@ -79,11 +79,12 @@ actor TranscriptCache {
         return try? JSONDecoder().decode(TranscriptionResult.self, from: data)
     }
 
-    private static func key(for url: URL) -> String? {
+    private static func key(for url: URL, locale: Locale? = nil) -> String? {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
               let size = (attrs[.size] as? NSNumber)?.int64Value,
               let mtime = attrs[.modificationDate] as? Date else { return nil }
-        let identity = "\(url.path)|\(mtime.timeIntervalSince1970)|\(size)"
+        let localeTag = locale.map { "|\($0.identifier(.bcp47))" } ?? ""
+        let identity = "\(url.path)|\(mtime.timeIntervalSince1970)|\(size)\(localeTag)"
         return SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined().prefix(32).description
     }
 }

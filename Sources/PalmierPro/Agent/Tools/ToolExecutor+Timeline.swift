@@ -252,11 +252,16 @@ extension ToolExecutor {
     }
 
     private static let inspectMediaAllowedKeys: Set<String> = [
-        "mediaRef", "clipId", "maxFrames", "startSeconds", "endSeconds", "wordTimestamps", "overview",
+        "mediaRef", "clipId", "maxFrames", "startSeconds", "endSeconds", "wordTimestamps", "overview", "language",
     ]
 
     func inspectMedia(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.inspectMediaAllowedKeys, path: "inspect_media")
+        let locale = try await resolveTranscriptionLocale(
+            explicit: args.string("language"),
+            projectDefault: editor.timeline.transcriptionLanguage,
+            path: "inspect_media"
+        )
         let mediaRef = try args.requireString("mediaRef")
         let asset = try asset(mediaRef, editor: editor)
         let url = asset.url
@@ -289,8 +294,8 @@ extension ToolExecutor {
 
         switch asset.type {
         case .image: return try readImage(asset: asset, args: args)
-        case .video: return try await readVideo(editor: editor, asset: asset, args: args, mapping: mapping)
-        case .audio: return try await readAudio(editor: editor, asset: asset, args: args, mapping: mapping)
+        case .video: return try await readVideo(editor: editor, asset: asset, args: args, mapping: mapping, preferredLocale: locale)
+        case .audio: return try await readAudio(editor: editor, asset: asset, args: args, mapping: mapping, preferredLocale: locale)
         case .lottie: return try await readLottie(asset: asset, args: args)
         case .text: throw ToolError("Text clips are not stored as media assets.")
         case .adjustment: throw ToolError("Adjustment layers are not stored as media assets.")
@@ -343,7 +348,7 @@ extension ToolExecutor {
         )
     }
 
-    private func readVideo(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil) async throws -> ToolResult {
+    private func readVideo(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil, preferredLocale: Locale? = nil) async throws -> ToolResult {
         guard asset.duration > 0 else { throw ToolError("Video has zero duration: \(asset.name)") }
 
         let range = try Self.sourceRange(args, duration: asset.duration)
@@ -366,7 +371,7 @@ extension ToolExecutor {
         )
         async let transcriptTask: Result<TranscriptionResult, Error>? = {
             guard hasAudio else { return nil }
-            do { return .success(try await TranscriptCache.shared.transcript(for: url, isVideo: true, range: range)) }
+            do { return .success(try await TranscriptCache.shared.transcript(for: url, isVideo: true, range: range, preferredLocale: preferredLocale)) }
             catch { return .failure(error) }
         }()
 
@@ -478,11 +483,11 @@ extension ToolExecutor {
         return context.makeImage().flatMap { ImageEncoder.encodeJPEG($0, quality: quality) }
     }
 
-    private func readAudio(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil) async throws -> ToolResult {
+    private func readAudio(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil, preferredLocale: Locale? = nil) async throws -> ToolResult {
         let range = try Self.sourceRange(args, duration: asset.duration)
         let transcript: TranscriptionResult
         do {
-            transcript = try await TranscriptCache.shared.transcript(for: asset.url, isVideo: false, range: range)
+            transcript = try await TranscriptCache.shared.transcript(for: asset.url, isVideo: false, range: range, preferredLocale: preferredLocale)
         } catch {
             throw ToolError("Transcription failed: \(error.localizedDescription)")
         }
@@ -542,12 +547,17 @@ extension ToolExecutor {
         return out
     }
 
-    private static let getTranscriptAllowedKeys: Set<String> = ["startFrame", "endFrame"]
+    private static let getTranscriptAllowedKeys: Set<String> = ["startFrame", "endFrame", "language"]
 
     /// The live timeline transcript: every audio/video clip's words mapped to project
     /// frames and concatenated in timeline order
     func getTranscript(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.getTranscriptAllowedKeys, path: "get_transcript")
+        let locale = try await resolveTranscriptionLocale(
+            explicit: args.string("language"),
+            projectDefault: editor.timeline.transcriptionLanguage,
+            path: "get_transcript"
+        )
         let fps = editor.timeline.fps
         let windowStart = args.int("startFrame")
         let windowEnd = args.int("endFrame")
@@ -570,7 +580,7 @@ extension ToolExecutor {
         var transcripts: [URL: TranscriptionResult] = [:]
         var skipped: [[String: Any]] = []
         for url in Set(frags.map(\.url)) {
-            do { transcripts[url] = try await TranscriptCache.shared.transcript(for: url, isVideo: isVideoByURL[url] ?? true, range: nil) }
+            do { transcripts[url] = try await TranscriptCache.shared.transcript(for: url, isVideo: isVideoByURL[url] ?? true, range: nil, preferredLocale: locale) }
             catch { skipped.append(["file": url.lastPathComponent, "reason": error.localizedDescription]) }
         }
 

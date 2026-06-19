@@ -182,6 +182,35 @@ func parseAlignment(_ raw: String?, path: String) throws -> TextStyle.Alignment?
     return a
 }
 
+/// Resolves a BCP-47 language tag (e.g. "fr", "fr-FR") to a supported on-device locale.
+/// Returns nil when no language is given, so callers fall back to system-language auto-detection.
+func parseLanguageLocale(_ lang: String?, path: String) async throws -> Locale? {
+    guard let lang else { return nil }
+    let candidate = Locale(identifier: lang)
+    guard let match = Transcription.matchLocale(
+        candidates: [candidate],
+        supported: await Transcription.supportedLocales()
+    ) else {
+        throw ToolError("\(path): on-device transcription does not support language '\(lang)'.")
+    }
+    return match
+}
+
+/// The locale a transcription tool should use, in precedence order:
+/// 1. an explicit per-call `language` argument (strict — throws if unsupported),
+/// 2. the project's spoken-language setting (tolerant — a stale/unsupported value is ignored),
+/// 3. nil → the engine auto-detects from the system language.
+func resolveTranscriptionLocale(explicit: String?, projectDefault: String?, path: String) async throws -> Locale? {
+    if let explicit {
+        return try await parseLanguageLocale(explicit, path: path)
+    }
+    guard let projectDefault else { return nil }
+    return Transcription.matchLocale(
+        candidates: [Locale(identifier: projectDefault)],
+        supported: await Transcription.supportedLocales()
+    )
+}
+
 extension Dictionary where Key == String, Value == Any {
     func string(_ key: String) -> String? {
         if let v = self[key] as? String, !v.isEmpty { return v }

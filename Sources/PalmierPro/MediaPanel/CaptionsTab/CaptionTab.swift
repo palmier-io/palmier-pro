@@ -9,7 +9,6 @@ struct CaptionTab: View {
     @State private var selectedClipTargets: [String] = []
     @State private var textCase: EditorViewModel.CaptionCase = .auto
     @State private var censorProfanity = false
-    @State private var locale: Locale?
     @State private var supportedLocales: [Locale] = []
     @State private var isGenerating = false
     @State private var note: String?
@@ -17,6 +16,11 @@ struct CaptionTab: View {
     private static let previewText = "Captions will look like this"
 
     private var aspect: CGFloat { CGFloat(editor.timeline.width) / CGFloat(max(1, editor.timeline.height)) }
+
+    /// Project-level transcription language; nil = Auto (system language).
+    private var projectLocale: Locale? {
+        editor.timeline.transcriptionLanguage.map(Locale.init(identifier:))
+    }
 
     private var liveTargets: [String] {
         let sel = editor.selectedClipIds
@@ -90,16 +94,20 @@ struct CaptionTab: View {
                 label: "Source",
                 labelHelp: "Uses selected clips when available, otherwise all captionable audio. Choose a track to limit captions."
             ) { sourceMenu }
-            InspectorRow(icon: "globe", label: "Language") {
+            InspectorRow(
+                icon: "globe",
+                label: "Language",
+                labelHelp: "Spoken language for transcription. Saved with the project and used by captions, get_transcript, and inspect_media. Auto follows the system language."
+            ) {
                 Menu {
-                    Button("Auto") { locale = nil }
+                    Button("Auto") { editor.setTranscriptionLanguage(nil) }
                     if !supportedLocales.isEmpty {
                         Divider()
                         ForEach(supportedLocales, id: \.identifier) { loc in
-                            Button(languageName(loc)) { locale = loc }
+                            Button(languageName(loc)) { editor.setTranscriptionLanguage(loc.identifier(.bcp47)) }
                         }
                     }
-                } label: { menuValueLabel(locale.map(languageName) ?? "Auto") }
+                } label: { menuValueLabel(projectLocale.map(languageName) ?? "Auto") }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
             }
         }
@@ -392,7 +400,7 @@ struct CaptionTab: View {
         }
         let request = EditorViewModel.CaptionRequest(
             sourceClipIds: sourceIds, autoDetect: isAutoSource, style: style, center: center,
-            textCase: textCase, censorProfanity: censorProfanity, locale: locale
+            textCase: textCase, censorProfanity: censorProfanity, locale: projectLocale
         )
         Task {
             isGenerating = true
