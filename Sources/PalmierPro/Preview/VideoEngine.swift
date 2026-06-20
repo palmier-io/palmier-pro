@@ -47,7 +47,7 @@ final class VideoEngine {
         guard let editor else { return }
         editor.isPlaying = true
         guard rebuildTask == nil else { return }
-        let frame = editor.activePreviewTab == .timeline ? editor.currentFrame : editor.sourcePlayheadFrame
+        let frame = playbackStartFrame(for: editor)
         seek(to: frame, mode: .exact)
         player.play()
     }
@@ -294,14 +294,32 @@ final class VideoEngine {
                 guard editor.isPlaying, !editor.isScrubbing else { return }
 
                 let frame = secondsToFrame(seconds: time.seconds, fps: editor.timeline.fps)
+                let duration = editor.activePreviewDurationFrames
+                let clamped = duration > 0 ? min(frame, duration) : frame
                 if editor.activePreviewTab == .timeline {
-                    editor.currentFrame = frame
-                    self.textController.tick(frame)
+                    editor.currentFrame = clamped
+                    self.textController.tick(clamped)
                 } else {
-                    editor.sourcePlayheadFrame = frame
+                    editor.sourcePlayheadFrame = clamped
+                }
+                if duration > 0, frame >= duration {
+                    self.pause()
                 }
             }
         }
+    }
+
+    private func playbackStartFrame(for editor: EditorViewModel) -> Int {
+        let duration = editor.activePreviewDurationFrames
+        guard duration > 0 else { return 0 }
+        let current = editor.activePreviewTab == .timeline ? editor.currentFrame : editor.sourcePlayheadFrame
+        guard current >= duration else { return current }
+        if editor.activePreviewTab == .timeline {
+            editor.currentFrame = 0
+        } else {
+            editor.sourcePlayheadFrame = 0
+        }
+        return 0
     }
 
     private static let interactiveSeekInterval: TimeInterval = 1.0 / 30.0
