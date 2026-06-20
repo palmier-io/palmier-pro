@@ -541,13 +541,14 @@ extension ToolExecutor {
         return out
     }
 
-    private static let getTranscriptAllowedKeys: Set<String> = ["startFrame", "endFrame"]
+    private static let getTranscriptAllowedKeys: Set<String> = ["startFrame", "endFrame", "clipId", "wordTimestamps"]
 
     /// The live timeline transcript: every audio/video clip's words mapped to project
     /// frames and concatenated in timeline order
     func getTranscript(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.getTranscriptAllowedKeys, path: "get_transcript")
         let fps = editor.timeline.fps
+        let clipFilter = args.string("clipId")
         let windowStart = args.int("startFrame")
         let windowEnd = args.int("endFrame")
         if let s = windowStart, let e = windowEnd, s >= e {
@@ -559,10 +560,14 @@ extension ToolExecutor {
         var frags: [Frag] = []
         var isVideoByURL: [URL: Bool] = [:]
         for clip in editor.captionTargets(ids: []) {
+            if let clipFilter, clip.id != clipFilter { continue }
             guard let loc = editor.findClip(id: clip.id), let asset = assetsById[clip.mediaRef] else { continue }
             let isVideo = asset.type == .video
             frags.append(Frag(clipId: clip.id, trackIndex: loc.trackIndex, clip: clip, url: asset.url, isVideo: isVideo))
             isVideoByURL[asset.url] = isVideo
+        }
+        if let clipFilter, frags.isEmpty {
+            throw ToolError("Clip \(clipFilter) not found, or it has no audio/video to transcribe.")
         }
 
         // Transcribe each unique source once (cached); skip — don't fail — on per-asset errors.
@@ -573,36 +578,48 @@ extension ToolExecutor {
             catch { skipped.append(["file": url.lastPathComponent, "reason": error.localizedDescription]) }
         }
 
-        var words: [(text: String, start: Int, end: Int)] = []
+        // Words are grouped under each clip as [text, start, end]. Paging is based on timeline order.
         var clipsOut: [[String: Any]] = []
+        var totalWords = 0
+        var remaining = Self.inspectMaxWords
+        var lastEnd: Int?
         for frag in frags.sorted(by: { $0.clip.startFrame < $1.clip.startFrame }) {
             guard let transcript = transcripts[frag.url] else { continue }
-            var clipWords = 0
-            for w in Self.wordFrames(transcript, clip: frag.clip, fps: fps) {
-                if let s = windowStart, w.end <= s { continue }
-                if let e = windowEnd, w.start >= e { continue }
-                words.append(w)
-                clipWords += 1
+            let visStart = Double(frag.clip.trimStartFrame)
+            let visEnd = visStart + Double(frag.clip.durationFrames) * max(frag.clip.speed, 0.0001)
+            var rows: [(start: Int, end: Int, row: [Any])] = []
+            for w in transcript.words {
+                guard let s = w.start, let e = w.end else { continue }
+                // Assign a word to the clip whose visible range contains its midpoint.
+                let midFrame = (s + e) / 2 * Double(fps)
+                guard midFrame >= visStart, midFrame < visEnd,
+                      let f = Self.spanFrames(start: s, end: e, clip: frag.clip, fps: fps) else { continue }
+                if let ws = windowStart, f.end <= ws { continue }
+                if let we = windowEnd, f.start >= we { continue }
+                rows.append((f.start, f.end, [w.text, f.start, f.end]))
             }
-            if clipWords > 0 {
-                clipsOut.append(["clipId": frag.clipId, "trackIndex": frag.trackIndex,
-                                 "startFrame": frag.clip.startFrame, "endFrame": frag.clip.endFrame])
-            }
+            rows.sort { ($0.start, $0.end) < ($1.start, $1.end) }
+            guard !rows.isEmpty else { continue }
+            totalWords += rows.count
+            guard remaining > 0 else { continue }
+            let slice = rows.prefix(remaining)
+            remaining -= slice.count
+            lastEnd = slice.last?.end ?? lastEnd
+            clipsOut.append(["clipId": frag.clipId, "trackIndex": frag.trackIndex,
+                             "startFrame": frag.clip.startFrame, "endFrame": frag.clip.endFrame,
+                             "words": slice.map(\.row)])
         }
 
-        words.sort { ($0.start, $0.end) < ($1.start, $1.end) }
-
-        var out: [String: Any] = ["fps": fps, "timing": "projectFrames", "clips": clipsOut]
-        if words.count > Self.inspectMaxWords {
-            let capped = words.prefix(Self.inspectMaxWords)
-            out["words"] = capped.map { [$0.text, $0.start, $0.end] }
-            out["totalWords"] = words.count
-            if let lastEnd = capped.last?.end {
+        var out: [String: Any] = [
+            "fps": fps, "timing": "projectFrames",
+            "wordFormat": ["text", "start", "end"], "clips": clipsOut,
+        ]
+        if totalWords > Self.inspectMaxWords {
+            out["totalWords"] = totalWords
+            if let lastEnd {
                 out["nextStartFrame"] = lastEnd
-                out["wordsNote"] = "First \(Self.inspectMaxWords) of \(words.count) words. Continue with startFrame = nextStartFrame."
+                out["wordsNote"] = "First \(Self.inspectMaxWords) of \(totalWords) words. Continue with startFrame = nextStartFrame."
             }
-        } else {
-            out["words"] = words.map { [$0.text, $0.start, $0.end] }
         }
         if !skipped.isEmpty { out["skipped"] = skipped }
 
@@ -619,14 +636,19 @@ extension ToolExecutor {
         }
     }
 
-    /// Maps a source-seconds span to the project frames it occupies on the clip
+    /// Source-seconds span → project frames, clamped to the clip's visible window first so a boundary-straddler yields its real sliver, not a fabricated full-clip span. nil if not visible.
     private static func spanFrames(start: Double, end: Double, clip: Clip, fps: Int) -> (start: Int, end: Int)? {
+        let fpsD = Double(fps)
         let visStart = Double(clip.trimStartFrame)
         let visEnd = visStart + Double(clip.durationFrames) * max(clip.speed, 0.0001)
-        guard end * Double(fps) > visStart, start * Double(fps) < visEnd else { return nil }
-        let s = clip.timelineFrame(sourceSeconds: start, fps: fps) ?? clip.startFrame
-        let e = clip.timelineFrame(sourceSeconds: end, fps: fps) ?? clip.endFrame
-        return (s, max(s, e))
+        let s = max(start * fpsD, visStart)
+        let e = min(end * fpsD, visEnd)
+        guard e > s else { return nil }
+        func toTimeline(_ sourceFrame: Double) -> Int {
+            Int((Double(clip.startFrame) + (sourceFrame - visStart) / max(clip.speed, 0.0001)).rounded())
+        }
+        let a = toTimeline(s)
+        return (a, max(a, toTimeline(e)))
     }
 
     private static func round2OrNull(_ x: Double?) -> Any {

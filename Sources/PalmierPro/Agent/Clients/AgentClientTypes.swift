@@ -4,13 +4,13 @@ import Foundation
 
 enum AnthropicModel: String, CaseIterable, Sendable {
     case sonnet46 = "claude-sonnet-4-6"
-    case opus47 = "claude-opus-4-7"
+    case opus48 = "claude-opus-4-8"
     case haiku45 = "claude-haiku-4-5-20251001"
 
     var displayName: String {
         switch self {
         case .sonnet46: "Sonnet 4.6"
-        case .opus47: "Opus 4.7"
+        case .opus48: "Opus 4.8"
         case .haiku45: "Haiku 4.5"
         }
     }

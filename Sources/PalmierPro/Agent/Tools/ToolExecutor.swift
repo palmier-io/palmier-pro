@@ -17,48 +17,82 @@ final class ToolExecutor {
         self.editorProvider = editorProvider
     }
 
+    private var agentUndoStack: [String] = []
+
     func execute(name: String, args: [String: Any]) async -> ToolResult {
         guard let tool = ToolName(rawValue: name) else {
             return .error("Unknown tool: \(name)")
         }
         guard let editor else { return .error("Editor not available") }
+        let before = editor.timeline
+        let result: ToolResult
         do {
-            switch tool {
-            case .getTimeline:   return try getTimeline(editor, args)
-            case .getMedia:      return try getMedia(editor)
-            case .inspectMedia:  return try await inspectMedia(editor, args)
-            case .getTranscript: return try await getTranscript(editor, args)
-            case .inspectTimeline: return try await inspectTimeline(editor, args)
-            case .searchMedia:   return try await searchMedia(editor, args)
-            case .addClips:         return try addClips(editor, args)
-            case .removeClips:      return try removeClips(editor, args)
-            case .removeTracks:     return try removeTracks(editor, args)
-            case .moveClips:        return try moveClips(editor, args)
-            case .setClipProperties: return try setClipProperties(editor, args)
-            case .setKeyframes:     return try setKeyframes(editor, args)
-            case .splitClip:        return try splitClip(editor, args)
-            case .rippleDeleteRanges: return try rippleDeleteRanges(editor, args)
-            case .addTexts:      return try addTexts(editor, args)
-            case .addCaptions:   return try await addCaptions(editor, args)
-            case .generateVideo: return try generate(editor, args, type: .video)
-            case .generateImage: return try generate(editor, args, type: .image)
-            case .generateAudio: return try await generateAudio(editor, args)
-            case .upscaleMedia:  return try upscaleMedia(editor, args)
-            case .importMedia:   return try importMedia(editor, args)
-            case .listModels:    return listModels(args)
-            case .listFolders:   return listFolders(editor)
-            case .createFolder:  return try createFolder(editor, args)
-            case .moveToFolder:  return try moveToFolder(editor, args)
-            case .renameMedia:   return try renameMedia(editor, args)
-            case .renameFolder:  return try renameFolder(editor, args)
-            case .deleteMedia:   return try deleteMedia(editor, args)
-            case .deleteFolder:  return try deleteFolder(editor, args)
+            let resolved = try expandingIdPrefixes(in: args, editor: editor)
+            result = try await run(tool, editor, resolved)
+            // Record any edit that actually changed the timeline so `undo` can revert it.
+            if tool != .undo, !result.isError, editor.timeline != before,
+               let actionName = editor.undoManager?.undoActionName {
+                agentUndoStack.append(actionName)
             }
         } catch let err as ToolError {
-            return .error(err.message)
+            result = .error(err.message)
         } catch {
-            return .error(error.localizedDescription)
+            result = .error(error.localizedDescription)
         }
+        // Shorten on the post-run state so newly created ids in summaries are shortened too.
+        return shorteningIds(in: result, editor: editor)
+    }
+
+    private func run(_ tool: ToolName, _ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
+        switch tool {
+        case .getTimeline:   return try getTimeline(editor, args)
+        case .getMedia:      return try getMedia(editor)
+        case .inspectMedia:  return try await inspectMedia(editor, args)
+        case .getTranscript: return try await getTranscript(editor, args)
+        case .inspectTimeline: return try await inspectTimeline(editor, args)
+        case .searchMedia:   return try await searchMedia(editor, args)
+        case .addClips:         return try addClips(editor, args)
+        case .removeClips:      return try removeClips(editor, args)
+        case .removeTracks:     return try removeTracks(editor, args)
+        case .moveClips:        return try moveClips(editor, args)
+        case .setClipProperties: return try setClipProperties(editor, args)
+        case .setKeyframes:     return try setKeyframes(editor, args)
+        case .splitClip:        return try splitClip(editor, args)
+        case .rippleDeleteRanges: return try rippleDeleteRanges(editor, args)
+        case .undo:          return try undo(editor)
+        case .addTexts:      return try addTexts(editor, args)
+        case .addCaptions:   return try await addCaptions(editor, args)
+        case .generateVideo: return try generate(editor, args, type: .video)
+        case .generateImage: return try generate(editor, args, type: .image)
+        case .generateAudio: return try await generateAudio(editor, args)
+        case .upscaleMedia:  return try upscaleMedia(editor, args)
+        case .importMedia:   return try importMedia(editor, args)
+        case .listModels:    return listModels(args)
+        case .listFolders:   return listFolders(editor)
+        case .createFolder:  return try createFolder(editor, args)
+        case .moveToFolder:  return try moveToFolder(editor, args)
+        case .renameMedia:   return try renameMedia(editor, args)
+        case .renameFolder:  return try renameFolder(editor, args)
+        case .deleteMedia:   return try deleteMedia(editor, args)
+        case .deleteFolder:  return try deleteFolder(editor, args)
+        }
+    }
+
+    /// Reverts the assistant's most recent timeline edit. Refuses to undo the user's own edits.
+    func undo(_ editor: EditorViewModel) throws -> ToolResult {
+        guard let expected = agentUndoStack.last else {
+            throw ToolError("No assistant edit to undo this session. The user's own edits are theirs to undo.")
+        }
+        guard let undoManager = editor.undoManager, undoManager.canUndo else {
+            agentUndoStack.removeAll()
+            throw ToolError("Nothing to undo.")
+        }
+        guard undoManager.undoActionName == expected else {
+            throw ToolError("The most recent change ('\(undoManager.undoActionName)') wasn't made by the assistant — not undoing it.")
+        }
+        undoManager.undo()
+        agentUndoStack.removeLast()
+        return .ok("Undid: \(expected). The timeline is restored to its state before that edit; re-read with get_timeline or get_transcript before editing again.")
     }
 
     // Shared helpers used by tool extensions in other files.
