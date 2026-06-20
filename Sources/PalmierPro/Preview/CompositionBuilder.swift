@@ -755,7 +755,9 @@ enum CompositionBuilder {
             ? normalizedKeyframes(clip.opacityTrack?.keyframes ?? [], duration: clip.durationFrames)
             : []
 
-        emitOpacitySet(config: &config, value: Float(clip.opacityAt(frame: clip.startFrame)), at: start)
+        if clip.durationFrames <= 0 {
+            emitOpacitySet(config: &config, value: Float(clip.opacityAt(frame: clip.startFrame)), at: start)
+        }
         emitEnvelopeRamps(
             clip: clip,
             kfs: kfs,
