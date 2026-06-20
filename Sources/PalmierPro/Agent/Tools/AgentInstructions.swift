@@ -16,6 +16,8 @@ enum AgentInstructions {
           speed, volume, and opacity.
         - Media assets live in a project library and are referenced by ID. They may be \
           user-imported or AI-generated.
+        - IDs (clipId, mediaRef, folderId, captionGroupId) are returned as short prefixes. \
+          Pass them back exactly as given — never pad, complete, or guess a longer form.
 
         # Always do
         - Call get_timeline once per session (or after an out-of-band change) for fps, tracks, \

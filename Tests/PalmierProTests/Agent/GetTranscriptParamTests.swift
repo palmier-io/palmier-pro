@@ -19,4 +19,13 @@ struct GetTranscriptParamTests {
         let result = await h.runRaw("get_transcript", args: ["bogusKey": true])
         #expect(result.isError == true)
     }
+
+    @Test func usesNestedWordShape() async throws {
+        // Words nest under clips with a hoisted wordFormat; there is no top-level words array.
+        let h = ToolHarness(timeline: Fixtures.timeline())
+        let json = try await h.runOK("get_transcript") as? [String: Any]
+        #expect(json?["wordFormat"] as? [String] == ["text", "start", "end"])
+        #expect(json?["clips"] is [[String: Any]])
+        #expect(json?["words"] == nil)
+    }
 }

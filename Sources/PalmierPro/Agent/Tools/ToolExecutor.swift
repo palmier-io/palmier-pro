@@ -25,19 +25,22 @@ final class ToolExecutor {
         }
         guard let editor else { return .error("Editor not available") }
         let before = editor.timeline
+        let result: ToolResult
         do {
-            let result = try await run(tool, editor, args)
+            let resolved = try expandingIdPrefixes(in: args, editor: editor)
+            result = try await run(tool, editor, resolved)
             // Record any edit that actually changed the timeline so `undo` can revert it.
             if tool != .undo, !result.isError, editor.timeline != before,
                let actionName = editor.undoManager?.undoActionName {
                 agentUndoStack.append(actionName)
             }
-            return result
         } catch let err as ToolError {
-            return .error(err.message)
+            result = .error(err.message)
         } catch {
-            return .error(error.localizedDescription)
+            result = .error(error.localizedDescription)
         }
+        // Shorten on the post-run state so newly created ids in summaries are shortened too.
+        return shorteningIds(in: result, editor: editor)
     }
 
     private func run(_ tool: ToolName, _ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {

@@ -578,40 +578,47 @@ extension ToolExecutor {
             catch { skipped.append(["file": url.lastPathComponent, "reason": error.localizedDescription]) }
         }
 
-        var words: [(text: String, start: Int, end: Int, clipId: String)] = []
+        // Words are grouped under each clip as [text, start, end]. Paging is based on timeline order.
         var clipsOut: [[String: Any]] = []
+        var totalWords = 0
+        var remaining = Self.inspectMaxWords
+        var lastEnd: Int?
         for frag in frags.sorted(by: { $0.clip.startFrame < $1.clip.startFrame }) {
             guard let transcript = transcripts[frag.url] else { continue }
             let visStart = Double(frag.clip.trimStartFrame)
             let visEnd = visStart + Double(frag.clip.durationFrames) * max(frag.clip.speed, 0.0001)
-            var added = 0
+            var rows: [(start: Int, end: Int, row: [Any])] = []
             for w in transcript.words {
                 guard let s = w.start, let e = w.end else { continue }
-                // Each word belongs to the one clip whose visible window holds its midpoint, so a
-                // word straddling a seam is emitted once, not duplicated per clip.
+                // Assign a word to the clip whose visible range contains its midpoint.
                 let midFrame = (s + e) / 2 * Double(fps)
                 guard midFrame >= visStart, midFrame < visEnd,
                       let f = Self.spanFrames(start: s, end: e, clip: frag.clip, fps: fps) else { continue }
                 if let ws = windowStart, f.end <= ws { continue }
                 if let we = windowEnd, f.start >= we { continue }
-                words.append((w.text, f.start, f.end, frag.clipId))
-                added += 1
+                rows.append((f.start, f.end, [w.text, f.start, f.end]))
             }
-            if added > 0 {
-                clipsOut.append(["clipId": frag.clipId, "trackIndex": frag.trackIndex,
-                                 "startFrame": frag.clip.startFrame, "endFrame": frag.clip.endFrame])
-            }
+            rows.sort { ($0.start, $0.end) < ($1.start, $1.end) }
+            guard !rows.isEmpty else { continue }
+            totalWords += rows.count
+            guard remaining > 0 else { continue }
+            let slice = rows.prefix(remaining)
+            remaining -= slice.count
+            lastEnd = slice.last?.end ?? lastEnd
+            clipsOut.append(["clipId": frag.clipId, "trackIndex": frag.trackIndex,
+                             "startFrame": frag.clip.startFrame, "endFrame": frag.clip.endFrame,
+                             "words": slice.map(\.row)])
         }
-        words.sort { ($0.start, $0.end) < ($1.start, $1.end) }
 
-        var out: [String: Any] = ["fps": fps, "timing": "projectFrames", "clips": clipsOut]
-        let capped = words.prefix(Self.inspectMaxWords)
-        out["words"] = capped.map { ["text": $0.text, "start": $0.start, "end": $0.end, "clipId": $0.clipId] }
-        if words.count > Self.inspectMaxWords {
-            out["totalWords"] = words.count
-            if let lastEnd = capped.last?.end {
+        var out: [String: Any] = [
+            "fps": fps, "timing": "projectFrames",
+            "wordFormat": ["text", "start", "end"], "clips": clipsOut,
+        ]
+        if totalWords > Self.inspectMaxWords {
+            out["totalWords"] = totalWords
+            if let lastEnd {
                 out["nextStartFrame"] = lastEnd
-                out["wordsNote"] = "First \(Self.inspectMaxWords) of \(words.count) words. Continue with startFrame = nextStartFrame."
+                out["wordsNote"] = "First \(Self.inspectMaxWords) of \(totalWords) words. Continue with startFrame = nextStartFrame."
             }
         }
         if !skipped.isEmpty { out["skipped"] = skipped }
