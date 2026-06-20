@@ -225,6 +225,7 @@ enum AppTheme {
         static let toolImagePreviewMaxHeight: CGFloat = 50
         static let projectCardWidth: CGFloat = 150
         static let projectCardHeight: CGFloat = 120
+        static let updateOverlayWidth: CGFloat = 640
     }
 
     enum Window {
