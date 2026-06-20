@@ -126,6 +126,10 @@ final class ExportService {
 
             do {
                 try await session.export(to: outputURL, as: fileType)
+                try await applyLUTPassIfNeeded(
+                    timeline: timeline, format: format,
+                    resolution: resolution, fileType: fileType, outputURL: outputURL
+                )
                 progress = 1.0
                 Log.export.notice(
                     "export ok",
@@ -210,6 +214,31 @@ final class ExportService {
                 data: ["error": Log.detail(error)]
             )
             return nil
+        }
+    }
+
+    /// Grade the just-exported file in place when the timeline carries any grade.
+    private func applyLUTPassIfNeeded(
+        timeline: Timeline,
+        format: ExportFormat,
+        resolution: ExportResolution,
+        fileType: AVFileType,
+        outputURL: URL
+    ) async throws {
+        let filters = GradePipeline.filters(primaries: timeline.primaries, lut: timeline.lut)
+        guard !filters.isEmpty else { return }
+        do {
+            let gradedURL = try await LUTExportPass.apply(
+                processor: FilterChainProcessor(filters: filters),
+                to: outputURL, fileType: fileType,
+                preset: exportPresetName(format: format, resolution: resolution)
+            )
+            // Swap the graded file over the original export.
+            try? FileManager.default.removeItem(at: outputURL)
+            try FileManager.default.moveItem(at: gradedURL, to: outputURL)
+        } catch {
+            // Don't fail the whole export over a bad grade — keep the ungraded file.
+            Log.export.error("grade-pass skipped: \(Log.detail(error))")
         }
     }
 

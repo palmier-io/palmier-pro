@@ -37,6 +37,13 @@ extension ToolExecutor {
             }
             dict["tracks"] = tracks
         }
+        // Replace the full LUT encoding (which embeds a base64 cube blob) with a
+        // compact summary so the blob never reaches agent context.
+        if let lut = editor.timeline.lut {
+            dict["lut"] = lut.summary
+        } else {
+            dict.removeValue(forKey: "lut")
+        }
         dict["totalFrames"] = editor.timeline.totalFrames
         if let window {
             dict["window"] = [window.lowerBound, min(window.upperBound, editor.timeline.totalFrames)]

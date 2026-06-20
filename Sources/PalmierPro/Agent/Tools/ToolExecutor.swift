@@ -102,6 +102,11 @@ final class ToolExecutor {
         case .renameFolder:  return try renameFolder(editor, args)
         case .deleteMedia:   return try deleteMedia(editor, args)
         case .deleteFolder:  return try deleteFolder(editor, args)
+        case .applyColorGrade: return try applyColorGrade(editor, args)
+        case .clearColorGrade: return try clearColorGrade(editor)
+        case .listColorGrades: return listColorGrades()
+        case .adjustColor:     return try adjustColor(editor, args)
+        case .setColorCurve:   return try setColorCurve(editor, args)
         }
     }
 

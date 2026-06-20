@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import CoreImage
 
 enum PreviewSeekMode: String {
     case exact
@@ -27,6 +28,8 @@ final class VideoEngine {
     private var pendingInteractiveSeek: (time: CMTime, tolerance: CMTime)?
     private var interactiveThrottleTask: Task<Void, Never>?
     private var lastInteractiveDispatchTime: TimeInterval = 0
+
+    private let ciContext = CIContext(options: [.workingColorSpace: NSNull()])
 
     init(editor: EditorViewModel) {
         self.editor = editor
@@ -132,6 +135,43 @@ final class VideoEngine {
         Log.preview.debug("seek state invalidated reason=\(reason)")
     }
 
+    /// Normalized R/G/B histograms of the composited frame at the playhead (source,
+    /// pre-grade), scaled by a shared max. Nil if no frame can be generated.
+    func histogramRGB(count: Int = 256) async -> (r: [Float], g: [Float], b: [Float])? {
+        guard let item = player.currentItem else { return nil }
+        let generator = AVAssetImageGenerator(asset: item.asset)
+        generator.videoComposition = item.videoComposition
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        generator.maximumSize = CGSize(width: 320, height: 180)
+        guard let cg = try? await generator.image(at: player.currentTime()).image else { return nil }
+
+        let image = CIImage(cgImage: cg)
+        let extent = image.extent
+        guard extent.width > 0, extent.height > 0 else { return nil }
+
+        let hist = image.applyingFilter("CIAreaHistogram", parameters: [
+            kCIInputExtentKey: CIVector(cgRect: extent),
+            "inputScale": 1.0,
+            "inputCount": count,
+        ])
+        var raw = [Float](repeating: 0, count: count * 4)
+        ciContext.render(hist, toBitmap: &raw, rowBytes: count * 4 * MemoryLayout<Float>.size,
+                         bounds: CGRect(x: 0, y: 0, width: count, height: 1), format: .RGBAf, colorSpace: nil)
+
+        var r = [Float](repeating: 0, count: count)
+        var g = r, b = r
+        var maxV: Float = 0
+        for i in 0..<count {
+            r[i] = raw[i * 4]; g[i] = raw[i * 4 + 1]; b[i] = raw[i * 4 + 2]
+            maxV = max(maxV, max(r[i], max(g[i], b[i])))
+        }
+        if maxV > 0 {
+            for i in 0..<count { r[i] /= maxV; g[i] /= maxV; b[i] /= maxV }
+        }
+        return (r, g, b)
+    }
+
     // MARK: - Composition
 
     func rebuild() {
@@ -182,6 +222,12 @@ final class VideoEngine {
             seek(to: editor.currentFrame, mode: .exact)
             if editor.isPlaying { player.play() }
         }
+    }
+
+    /// Update the live color grade only — no composition rebuild, no item swap, no flash.
+    func refreshGrade() {
+        guard let editor, let previewView else { return }
+        previewView.applyGrade(primaries: editor.timeline.primaries, lut: editor.timeline.lut)
     }
 
     func refreshVisuals() {

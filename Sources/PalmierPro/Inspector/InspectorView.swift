@@ -115,6 +115,10 @@ struct InspectorView: View {
                     plainMetadataRow(label: "Aspect Ratio", value: formatAspectRatio(width: editor.timeline.width, height: editor.timeline.height))
                     plainMetadataRow(label: "Duration", value: formatDuration(Double(editor.timeline.totalFrames) / Double(editor.timeline.fps)))
                 }
+
+                metadataSection(title: "Color Grade") {
+                    ColorGradeInspector()
+                }
             }
             .padding(.horizontal, AppTheme.Spacing.lg)
             .padding(.vertical, AppTheme.Spacing.md)

@@ -33,6 +33,11 @@ enum ToolName: String, CaseIterable, Sendable {
     case renameFolder = "rename_folder"
     case deleteMedia = "delete_media"
     case deleteFolder = "delete_folder"
+    case applyColorGrade = "apply_color_grade"
+    case clearColorGrade = "clear_color_grade"
+    case listColorGrades = "list_color_grades"
+    case adjustColor = "adjust_color"
+    case setColorCurve = "set_color_curve"
 }
 
 struct AgentTool: @unchecked Sendable {
@@ -43,6 +48,55 @@ struct AgentTool: @unchecked Sendable {
 
 enum ToolDefinitions {
     static let all: [AgentTool] = [
+        AgentTool(
+            name: .listColorGrades,
+            description: "List the built-in color looks available to apply_color_grade. Returns each look's id, name, and a one-line summary of when to use it (e.g. 'moody-forest' for hikes/jungle, 'teal-orange' for travel/adventure). Call this before apply_color_grade when picking a look automatically, so you choose one that matches the footage. Built-in looks need no asset import.",
+            inputSchema: objectSchema()
+        ),
+        AgentTool(
+            name: .applyColorGrade,
+            description: "Apply a project-wide color grade (one look over the whole timeline), realized as a final color pass at export. Use a built-in look by id (see list_color_grades) — the zero-setup path for 'color grade this' / 'make it cinematic' — or a custom .cube LUT by file path via lutPath (the .cube is parsed and embedded in the project). Pick the look to match the footage (e.g. 'moody-forest' for jungle/hike, 'vibrant-travel' for bright social vlogs). intensity (0–1, default 1) blends the grade with the original; 0.6–0.8 reads as a tasteful default. Calling again replaces the current look/LUT. Shows live on the canvas and bakes into export. For primary corrections and curves, use adjust_color and set_color_curve.",
+            inputSchema: objectSchema(
+                properties: [
+                    "look": ["type": "string", "description": "Built-in look id from list_color_grades (e.g. 'warm-cinematic', 'teal-orange', 'moody-forest', 'vibrant-travel', 'vintage-film', 'clean-neutral'). Provide either look or lutPath."],
+                    "lutPath": ["type": "string", "description": "Filesystem path to a .cube LUT file (Adobe/Resolve 3D LUT). Parsed and embedded into the project. Use instead of look for a custom film LUT."],
+                    "intensity": ["type": "number", "description": "Grade strength 0–1 (default 1.0). Lower values blend toward the ungraded original."],
+                ]
+            )
+        ),
+        AgentTool(
+            name: .clearColorGrade,
+            description: "Remove the project-wide color grade set by apply_color_grade. The next export is ungraded. No-op if none is set.",
+            inputSchema: objectSchema()
+        ),
+        AgentTool(
+            name: .adjustColor,
+            description: "Adjust the project-wide primary color correction (shown live on the canvas and baked into export). Each control is −100…100, 0 = no change. Partial updates: only the fields you pass change; the rest keep their current value. Use to balance a shot — e.g. warm it with temperature, recover a hazy sky with contrast + highlights. Pass reset=true to zero all eight controls (curves are kept). Composes with apply_color_grade (looks/LUTs) and set_color_curve.",
+            inputSchema: objectSchema(
+                properties: [
+                    "temperature": ["type": "number", "description": "−100 (cooler) … 100 (warmer)."],
+                    "tint": ["type": "number", "description": "−100 (green) … 100 (magenta)."],
+                    "exposure": ["type": "number", "description": "−100 … 100 (maps to ±2 EV)."],
+                    "contrast": ["type": "number", "description": "−100 … 100."],
+                    "saturation": ["type": "number", "description": "−100 (grayscale) … 100."],
+                    "vibrance": ["type": "number", "description": "−100 … 100 (saturates muted colors more gently)."],
+                    "highlights": ["type": "number", "description": "−100 (recover/darken) … 100 (brighten)."],
+                    "shadows": ["type": "number", "description": "−100 (crush) … 100 (lift)."],
+                    "reset": ["type": "boolean", "description": "Zero all eight primary controls (keeps curves). Ignores other fields."],
+                ]
+            )
+        ),
+        AgentTool(
+            name: .setColorCurve,
+            description: "Set one tone curve of the project grade (shown live + baked into export). Curves map input→output brightness; the master curve affects all channels, red/green/blue shift individual channels (e.g. lift blue shadows for a cool look). Points are [x, y] pairs in 0…1, x = input, y = output, must include endpoints near x=0 and x=1. Pass an empty points array to reset that channel to linear. A gentle S-curve like [[0,0],[0.25,0.2],[0.75,0.8],[1,1]] adds contrast.",
+            inputSchema: objectSchema(
+                properties: [
+                    "channel": ["type": "string", "enum": ["master", "red", "green", "blue"], "description": "Which curve to set."],
+                    "points": ["type": "array", "items": ["type": "array", "items": ["type": "number"]], "description": "[x, y] pairs in 0…1, e.g. [[0,0],[0.5,0.62],[1,1]]. Empty array resets the channel to linear."],
+                ],
+                required: ["channel", "points"]
+            )
+        ),
         AgentTool(
             name: .getTimeline,
             description: "Always call at the start of a session. Returns project settings (fps, resolution, totalFrames), track list with types and order, all clips with their frames and properties, and canGenerate (if false, generation/upscale tools will fail — tell the user to sign in to Palmier and subscribe before attempting them). The clipId/trackId values here are what every other tool accepts.\n\nClip and track fields equal to their defaults are omitted: mediaType 'video', sourceClipType = mediaType, speed 1, volume 1, opacity 1, trims/fades 0, identity transform/crop, default textStyle, track muted/hidden false. Text clips never report trims (no source media).\n\nCaption clips (sharing a captionGroupId) come back per track as captionGroups instead of clips entries: properties common to the group are hoisted into 'shared' and each clip is a [clipId, startFrame, durationFrames, text] row (caption box width/height are auto-fit per text and omitted). Rows are capped at 200 per group — when clipCount exceeds the rows shown, page with startFrame/endFrame. Caption clips whose properties deviate from the group appear individually in clips.",
