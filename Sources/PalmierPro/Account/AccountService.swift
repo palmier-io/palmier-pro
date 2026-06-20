@@ -142,6 +142,14 @@ final class AccountService {
         else {
             isMisconfigured = true
             isLoading = false
+            Log.account.warning(
+                "account backend misconfigured",
+                telemetry: "Account backend misconfigured",
+                data: [
+                    "hasClerkKey": BackendConfig.clerkPublishableKey != nil,
+                    "hasConvexURL": BackendConfig.convexDeploymentURL != nil
+                ]
+            )
             return
         }
 
@@ -158,6 +166,7 @@ final class AccountService {
             deploymentUrl: deploymentURL.absoluteString,
             authProvider: ClerkConvexAuthProvider()
         )
+        Log.account.notice("account configured", telemetry: "Account configured")
         startPlansSubscription()
 
         startAuthObservation()
@@ -175,11 +184,14 @@ final class AccountService {
                 self.authState = state
                 switch state {
                 case .loading:
+                    Log.account.notice("auth state loading", telemetry: "Auth state changed", data: ["state": "loading"])
                     self.isLoading = true
                 case .authenticated:
+                    Log.account.notice("auth state authenticated", telemetry: "Auth state changed", data: ["state": "authenticated"])
                     await self.provisionAndSubscribe()
                     self.isLoading = false
                 case .unauthenticated:
+                    Log.account.notice("auth state unauthenticated", telemetry: "Auth state changed", data: ["state": "unauthenticated"])
                     self.clearAccount()
                     self.isLoading = Clerk.shared.session != nil
                 }
@@ -202,11 +214,26 @@ final class AccountService {
 
         for attempt in 0..<3 {
             do {
+                if attempt == 0 {
+                    Log.account.notice("account provision start", telemetry: "Account provision started")
+                }
                 try await convex.mutation("users:upsertFromAuth", with: args)
+                Log.account.notice(
+                    "account provision ok attempt=\(attempt + 1)",
+                    telemetry: "Account provision finished",
+                    data: ["attempt": attempt + 1]
+                )
                 break
             } catch {
                 lastError = error.localizedDescription
-                if attempt == 2 { return }
+                if attempt == 2 {
+                    Log.account.warning(
+                        "account provision failed error=\(error.localizedDescription)",
+                        telemetry: "Account provision failed",
+                        data: ["attempt": attempt + 1, "error": error.localizedDescription]
+                    )
+                    return
+                }
                 try? await Task.sleep(nanoseconds: 500_000_000)
             }
         }
@@ -221,6 +248,11 @@ final class AccountService {
             .sink(
                 receiveCompletion: { [weak self] completion in
                     if case .failure(let err) = completion {
+                        Log.account.warning(
+                            "plans subscription failed error=\(err.localizedDescription)",
+                            telemetry: "Account plans subscription failed",
+                            data: ["error": err.localizedDescription]
+                        )
                         self?.lastError = err.localizedDescription
                     }
                 },
@@ -238,6 +270,11 @@ final class AccountService {
             .sink(
                 receiveCompletion: { [weak self] completion in
                     if case .failure(let err) = completion {
+                        Log.account.warning(
+                            "account subscription failed error=\(err.localizedDescription)",
+                            telemetry: "Account subscription failed",
+                            data: ["error": err.localizedDescription]
+                        )
                         self?.lastError = err.localizedDescription
                     }
                 },
@@ -260,19 +297,31 @@ final class AccountService {
     func signInWithGoogle() async {
         guard !isMisconfigured else { return }
         lastError = nil
+        Log.account.notice("sign in requested provider=google", telemetry: "Sign in requested", data: ["provider": "google"])
         do {
             _ = try await Clerk.shared.auth.signInWithOAuth(provider: .google)
         } catch {
             lastError = error.localizedDescription
+            Log.account.warning(
+                "sign in failed provider=google error=\(error.localizedDescription)",
+                telemetry: "Sign in failed",
+                data: ["provider": "google", "error": error.localizedDescription]
+            )
         }
     }
 
     func signOut() async {
         guard !isMisconfigured else { return }
+        Log.account.notice("sign out requested", telemetry: "Sign out requested")
         do {
             try await Clerk.shared.auth.signOut()
         } catch {
             lastError = error.localizedDescription
+            Log.account.warning(
+                "sign out failed error=\(error.localizedDescription)",
+                telemetry: "Sign out failed",
+                data: ["error": error.localizedDescription]
+            )
         }
     }
 

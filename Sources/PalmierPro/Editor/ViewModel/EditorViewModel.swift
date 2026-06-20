@@ -184,6 +184,31 @@ final class EditorViewModel {
     weak var undoManager: UndoManager?
     var isDocumentEdited: Bool = false
 
+    func telemetrySnapshot() -> [String: Any] {
+        var mediaCounts: [String: Int] = [:]
+        for asset in mediaAssets {
+            mediaCounts[asset.type.rawValue, default: 0] += 1
+        }
+        let clipCount = timeline.tracks.reduce(0) { $0 + $1.clips.count }
+        return [
+            "projectId": projectId ?? "unknown",
+            "tracks": timeline.tracks.count,
+            "clips": clipCount,
+            "totalFrames": timeline.totalFrames,
+            "fps": timeline.fps,
+            "media": mediaAssets.count,
+            "mediaByType": mediaCounts,
+            "offlineMedia": offlineMediaRefs.count,
+            "unprocessableMedia": unprocessableMediaRefs.count,
+            "generationLogEntries": generationLog.entries.count,
+            "agentSessions": agentService.sessions.count
+        ]
+    }
+
+    func updateTelemetryContext() {
+        Telemetry.setExtra(value: telemetrySnapshot(), key: "project")
+    }
+
     /// Preview playback bridge.
     var videoEngine: VideoEngine?
 

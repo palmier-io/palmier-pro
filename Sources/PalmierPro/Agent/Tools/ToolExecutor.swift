@@ -26,6 +26,12 @@ final class ToolExecutor {
         guard let editor else { return .error("Editor not available") }
         let before = editor.timeline
         let result: ToolResult
+        let started = ContinuousClock.now
+        Log.agent.notice(
+            "tool start name=\(tool.rawValue)",
+            telemetry: "Agent tool started",
+            data: ["tool": tool.rawValue, "projectId": editor.projectId ?? "unknown"]
+        )
         do {
             let resolved = try expandingIdPrefixes(in: args, editor: editor)
             result = try await run(tool, editor, resolved)
@@ -38,6 +44,26 @@ final class ToolExecutor {
             result = .error(err.message)
         } catch {
             result = .error(error.localizedDescription)
+        }
+        let elapsed = started.duration(to: .now).seconds
+        let telemetry = result.isError ? "Agent tool failed" : "Agent tool finished"
+        let payload: Telemetry.Payload = [
+            "tool": tool.rawValue,
+            "durationSeconds": elapsed,
+            "timelineChanged": editor.timeline != before
+        ]
+        if result.isError {
+            Log.agent.warning(
+                "tool failed name=\(tool.rawValue) duration=\(elapsed)",
+                telemetry: telemetry,
+                data: payload
+            )
+        } else {
+            Log.agent.notice(
+                "tool ok name=\(tool.rawValue) duration=\(elapsed)",
+                telemetry: telemetry,
+                data: payload
+            )
         }
         // Shorten on the post-run state so newly created ids in summaries are shortened too.
         return shorteningIds(in: result, editor: editor)
@@ -129,6 +155,10 @@ final class ToolExecutor {
         }
         return try work()
     }
+}
+
+private extension Duration {
+    var seconds: Double { Double(components.seconds) + Double(components.attoseconds) / 1e18 }
 }
 
 /// Throws if `entry` carries any keys outside `allowed`. `path` prefixes the error (e.g. "entries[3]").

@@ -13,6 +13,8 @@ enum Log {
     static let export     = CategoryLog("export")
     static let preview    = CategoryLog("preview")
     static let mcp        = CategoryLog("mcp")
+    static let agent      = CategoryLog("agent")
+    static let account    = CategoryLog("account")
     static let generation = CategoryLog("generation")
     static let project    = CategoryLog("project")
     static let transcription = CategoryLog("transcription")
@@ -53,23 +55,29 @@ struct CategoryLog {
         self.category = category
     }
 
-    func debug(_ m: String)   { logger.debug("\(m, privacy: .public)") }
-    func info(_ m: String)    { logger.info("\(m, privacy: .public)") }
-    func notice(_ m: String)  { mirror("NOTICE", m); logger.notice("\(m, privacy: .public)") }
-    func warning(_ m: String) {
+    func debug(_ m: String) { logger.debug("\(m, privacy: .public)") }
+    func info(_ m: String) { logger.info("\(m, privacy: .public)") }
+    func notice(_ m: String, telemetry: String? = nil, data: Telemetry.Payload? = nil) {
+        mirror("NOTICE", m)
+        logger.notice("\(m, privacy: .public)")
+        if let telemetry {
+            Telemetry.breadcrumb(telemetry, category: category, data: data)
+        }
+    }
+    func warning(_ m: String, telemetry: String? = nil, data: Telemetry.Payload? = nil) {
         mirror("WARN", m)
         logger.warning("\(m, privacy: .public)")
-        Telemetry.logWarning(m, category: category)
+        Telemetry.logWarning(telemetry ?? m, category: category, data: data)
     }
-    func error(_ m: String) {
+    func error(_ m: String, telemetry: String? = nil, data: Telemetry.Payload? = nil) {
         mirror("ERROR", m)
         logger.error("\(m, privacy: .public)")
-        Telemetry.logError(m, category: category)
+        Telemetry.logError(telemetry ?? m, category: category, data: data)
     }
-    func fault(_ m: String) {
+    func fault(_ m: String, telemetry: String? = nil, data: Telemetry.Payload? = nil) {
         mirror("FAULT", m)
         logger.fault("\(m, privacy: .public)")
-        Telemetry.logFault(m, category: category)
+        Telemetry.logFault(telemetry ?? m, category: category, data: data)
     }
 
     private func mirror(_ level: String, _ msg: String) {
