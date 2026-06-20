@@ -73,6 +73,11 @@ final class SearchIndexCoordinator {
     // MARK: - Triggers
 
     func projectOpened() {
+        Log.search.notice(
+            "index project opened enabled=\(VisualModelLoader.shared.enabled)",
+            telemetry: "Search index project opened",
+            data: ["enabled": VisualModelLoader.shared.enabled]
+        )
         Task {
             await VisualModelLoader.shared.prepare()
             sweep()
@@ -84,7 +89,17 @@ final class SearchIndexCoordinator {
     func sweep() {
         guard VisualModelLoader.shared.enabled, VisualModelLoader.shared.isReady else { return }
         failedIds.removeAll()
-        for asset in assetsProvider() {
+        let assets = assetsProvider()
+        Log.search.notice(
+            "index sweep assets=\(assets.count) queuedBefore=\(queue.count)",
+            telemetry: "Search index sweep",
+            data: [
+                "assets": assets.count,
+                "ready": VisualModelLoader.shared.isReady,
+                "queuedBefore": queue.count
+            ]
+        )
+        for asset in assets {
             schedule(asset)
         }
     }
@@ -125,6 +140,11 @@ final class SearchIndexCoordinator {
         guard worker == nil else { return }
         workerGeneration += 1
         let generation = workerGeneration
+        Log.search.notice(
+            "index worker start generation=\(generation) depth=\(queue.count)",
+            telemetry: "Search index worker started",
+            data: ["generation": generation, "queueDepth": queue.count, "batchTotal": batchTotal]
+        )
         worker = Task(priority: .utility) { [weak self] in
             while let self, !Task.isCancelled, let asset = self.dequeue() {
                 while Self.exportActive, !Task.isCancelled {
@@ -193,6 +213,7 @@ final class SearchIndexCoordinator {
                 total=\(String(format: "%.1f", totalSeconds))s transcribed=\(transcribe)
                 """)
         } catch is CancellationError {
+            Log.search.notice("index cancelled asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)")
         } catch {
             failedIds.insert(asset.id)
             Log.search.warning("index failed asset=\(asset.id.prefix(8)): \(error.localizedDescription)")
