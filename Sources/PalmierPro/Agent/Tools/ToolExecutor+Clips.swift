@@ -11,7 +11,9 @@ fileprivate struct AddClipsInput: DecodableToolArgs {
         let trackIndex: Int?
         let startFrame: Int
         let durationFrames: Int
-        static let allowedKeys: Set<String> = ["mediaRef", "trackIndex", "startFrame", "durationFrames"]
+        let trimStartFrame: Int?
+        let trimEndFrame: Int?
+        static let allowedKeys: Set<String> = ["mediaRef", "trackIndex", "startFrame", "durationFrames", "trimStartFrame", "trimEndFrame"]
     }
 }
 
@@ -93,6 +95,8 @@ fileprivate struct AddClipSpec {
     var trackId: String?
     let startFrame: Int
     let durationFrames: Int
+    let trimStartFrame: Int?
+    let trimEndFrame: Int?
 }
 
 fileprivate struct ParsedMove {
@@ -140,7 +144,13 @@ extension ToolExecutor {
             guard entry.startFrame >= 0 else {
                 throw ToolError("entries[\(idx)]: startFrame must be >= 0 (got \(entry.startFrame))")
             }
-            specs.append(.init(asset: asset, trackId: trackId, startFrame: entry.startFrame, durationFrames: entry.durationFrames))
+            if let t = entry.trimStartFrame, t < 0 {
+                throw ToolError("entries[\(idx)]: trimStartFrame must be >= 0 (got \(t))")
+            }
+            if let t = entry.trimEndFrame, t < 0 {
+                throw ToolError("entries[\(idx)]: trimEndFrame must be >= 0 (got \(t))")
+            }
+            specs.append(.init(asset: asset, trackId: trackId, startFrame: entry.startFrame, durationFrames: entry.durationFrames, trimStartFrame: entry.trimStartFrame, trimEndFrame: entry.trimEndFrame))
         }
 
         // All-or-none for trackIndex: a new track at index 0 would shift any explicit indices.
@@ -200,14 +210,18 @@ extension ToolExecutor {
                 editor.clearRegion(trackIndex: trackIdx, start: spec.startFrame, end: spec.startFrame + spec.durationFrames, prune: false)
                 let ids = editor.placeClip(
                     asset: spec.asset, trackIndex: trackIdx,
-                    startFrame: spec.startFrame, durationFrames: spec.durationFrames
+                    startFrame: spec.startFrame, durationFrames: spec.durationFrames,
+                    trimStartFrame: spec.trimStartFrame, trimEndFrame: spec.trimEndFrame
                 )
                 guard let primary = ids.first else {
                     throw ToolError("entries[\(i)]: failed to place clip on track \(trackIdx) at frame \(spec.startFrame)")
                 }
                 allAdded.append(contentsOf: ids)
                 let pairedNote = ids.count > 1 ? " (+linked audio \(ids[1]))" : ""
-                summaries.append("\(primary) on track \(trackIdx) @ \(spec.startFrame) for \(spec.durationFrames)\(pairedNote)")
+                var trimNote = ""
+                if let t = spec.trimStartFrame, t != 0 { trimNote += " trimStart \(t)" }
+                if let t = spec.trimEndFrame, t != 0 { trimNote += " trimEnd \(t)" }
+                summaries.append("\(primary) on track \(trackIdx) @ \(spec.startFrame) for \(spec.durationFrames)\(trimNote)\(pairedNote)")
             }
 
             for track in editor.timeline.tracks where track.clips.isEmpty && nonEmptyBefore.contains(track.id) {

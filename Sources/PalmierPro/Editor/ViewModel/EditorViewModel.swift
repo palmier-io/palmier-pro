@@ -307,7 +307,9 @@ final class EditorViewModel {
         durationFrames: Int,
         addLinkedAudio: Bool = true,
         linkedAudioTrackIndex: Int? = nil,
-        sourceSegment: ClosedRange<Double>? = nil
+        sourceSegment: ClosedRange<Double>? = nil,
+        trimStartFrame: Int? = nil,
+        trimEndFrame: Int? = nil
     ) -> [String] {
         guard timeline.tracks.indices.contains(trackIndex) else { return [] }
         let targetIsVideo = timeline.tracks[trackIndex].type == .video
@@ -315,12 +317,20 @@ final class EditorViewModel {
         let linkGroupId: String? = shouldLink ? UUID().uuidString : nil
         let trimStart = sourceSegment.map { secondsToFrame(seconds: $0.lowerBound, fps: timeline.fps) } ?? 0
 
+        // sourceSegment (source seconds) and explicit trim frames are mutually exclusive; callers pass one.
+        let applyTrim: (inout Clip) -> Void = { clip in
+            if sourceSegment != nil {
+                clip.trimStartFrame = trimStart
+                clip.trimEndFrame = trimStart + durationFrames
+            } else {
+                if let t = trimStartFrame { clip.trimStartFrame = t }
+                if let t = trimEndFrame { clip.trimEndFrame = t }
+            }
+        }
+
         var clip = Clip(mediaRef: asset.id, mediaType: asset.type, sourceClipType: asset.type, startFrame: startFrame, durationFrames: durationFrames, transform: fitTransform(for: asset))
         clip.linkGroupId = linkGroupId
-        if sourceSegment != nil {
-            clip.trimStartFrame = trimStart
-            clip.trimEndFrame = trimStart + durationFrames
-        }
+        applyTrim(&clip)
         timeline.tracks[trackIndex].clips.append(clip)
         sortClips(trackIndex: trackIndex)
         var ids = [clip.id]
@@ -331,10 +341,7 @@ final class EditorViewModel {
             guard timeline.tracks.indices.contains(audioTrackIdx) else { return ids }
             var audioClip = Clip(mediaRef: asset.id, mediaType: .audio, sourceClipType: asset.type, startFrame: startFrame, durationFrames: durationFrames)
             audioClip.linkGroupId = gid
-            if sourceSegment != nil {
-                audioClip.trimStartFrame = trimStart
-                audioClip.trimEndFrame = trimStart + durationFrames
-            }
+            applyTrim(&audioClip)
             timeline.tracks[audioTrackIdx].clips.append(audioClip)
             sortClips(trackIndex: audioTrackIdx)
             ids.append(audioClip.id)
