@@ -119,15 +119,17 @@ struct CaptionTab: View {
                 Text("No Tracks")
             } else {
                 ForEach(captionTrackIndices, id: \.self) { index in
-                    let track = editor.timeline.tracks[index]
-                    let count = editor.captionTargets(trackIds: [track.id]).count
-                    Button {
-                        selectedTrackId = track.id
-                    } label: {
-                        Label(
-                            "\(trackTitle(index)) · \(count) \(count == 1 ? "clip" : "clips")",
-                            systemImage: selectedTrackId == track.id ? "checkmark" : ""
-                        )
+                    if editor.timeline.tracks.indices.contains(index) {
+                        let track = editor.timeline.tracks[index]
+                        let count = editor.captionTargets(trackIds: [track.id]).count
+                        Button {
+                            selectedTrackId = track.id
+                        } label: {
+                            Label(
+                                "\(trackTitle(index)) · \(count) \(count == 1 ? "clip" : "clips")",
+                                systemImage: selectedTrackId == track.id ? "checkmark" : ""
+                            )
+                        }
                     }
                 }
             }
