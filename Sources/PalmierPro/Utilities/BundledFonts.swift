@@ -83,17 +83,16 @@ enum BundledFonts {
         return result
     }
 
-    /// One path per environment — no cross-environment fallbacks.
+     /// Checks both possible layouts — `dev.sh`'s assembled `.app` flattens
+    /// Fonts/ into Contents/Resources/ even in debug builds, while a raw
+    /// `swift run` leaves it inside the SwiftPM-generated resource bundle.
     private static func findFontsRoot() -> URL? {
         guard let resourceURL = Bundle.main.resourceURL else { return nil }
-        #if DEBUG
-        // `swift run`: SwiftPM writes the resource bundle beside the binary.
-        let url = resourceURL.appendingPathComponent("PalmierPro_PalmierPro.bundle/Fonts")
-        #else
-        // .app release: bundle.sh flattens Fonts/ into Contents/Resources/.
-        let url = resourceURL.appendingPathComponent("Fonts")
-        #endif
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        let candidates = [
+            resourceURL.appendingPathComponent("Fonts"),
+            resourceURL.appendingPathComponent("PalmierPro_PalmierPro.bundle/Fonts"),
+        ]
+        return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
     }
 
     /// False for symbol/emoji/dingbat fonts — they'd render the family name
