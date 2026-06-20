@@ -60,10 +60,11 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
 }
 
 fileprivate struct RippleDeleteRangesInput: DecodableToolArgs {
-    let clipId: String
+    let clipId: String?
+    let trackIndex: Int?
     let ranges: [[Double]]
     let units: String?
-    static let allowedKeys: Set<String> = ["clipId", "ranges", "units"]
+    static let allowedKeys: Set<String> = ["clipId", "trackIndex", "ranges", "units"]
 }
 
 fileprivate struct SetKeyframesInput: DecodableToolArgs {
@@ -564,22 +565,11 @@ extension ToolExecutor {
         guard units == "seconds" || units == "frames" else {
             throw ToolError("units must be 'seconds' or 'frames' (got '\(units)')")
         }
-        guard let loc = editor.findClip(id: input.clipId) else {
-            throw ToolError("Clip not found: \(input.clipId)")
+        guard (input.clipId != nil) != (input.trackIndex != nil) else {
+            throw ToolError("Provide exactly one of 'clipId' (cut within a single clip; allows 'seconds') or 'trackIndex' (cut project-frame ranges spanning a whole track in one call).")
         }
-        let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
         let fps = editor.timeline.fps
 
-        // 'frames' are already project frames (inspect_media with a clipId emits these).
-        // 'seconds' are source-media seconds → map through the clip's placement, trim, speed.
-        func toFrame(_ v: Double) -> Double {
-            units == "frames"
-                ? v
-                : Double(clip.startFrame) + (v * Double(fps) - Double(clip.trimStartFrame)) / max(clip.speed, 0.0001)
-        }
-
-        var frameRanges: [FrameRange] = []
-        var dropped = 0
         for (i, r) in input.ranges.enumerated() {
             guard r.count == 2 else {
                 throw ToolError("ranges[\(i)]: expected [start, end] (got \(r.count) element\(r.count == 1 ? "" : "s"))")
@@ -587,15 +577,50 @@ extension ToolExecutor {
             guard r[1] > r[0] else {
                 throw ToolError("ranges[\(i)]: end (\(r[1])) must be greater than start (\(r[0]))")
             }
-            let s = max(clip.startFrame, min(clip.endFrame, Int(toFrame(r[0]).rounded())))
-            let e = max(clip.startFrame, min(clip.endFrame, Int(toFrame(r[1]).rounded())))
-            if e > s { frameRanges.append(FrameRange(start: s, end: e)) } else { dropped += 1 }
-        }
-        guard !frameRanges.isEmpty else {
-            throw ToolError("No ranges fall within clip \(input.clipId) (frames \(clip.startFrame)..\(clip.endFrame)). In '\(units)' units, ranges must overlap the clip's visible span.")
         }
 
-        switch editor.rippleDeleteRanges(anchorClipId: input.clipId, ranges: frameRanges) {
+        var frameRanges: [FrameRange] = []
+        var dropped = 0
+        let resolvedTrackIndex: Int
+
+        if let clipId = input.clipId {
+            guard let loc = editor.findClip(id: clipId) else { throw ToolError("Clip not found: \(clipId)") }
+            let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            // 'frames' are project frames as-is; 'seconds' are source seconds → map through trim/speed/position.
+            func toFrame(_ v: Double) -> Double {
+                units == "frames"
+                    ? v
+                    : Double(clip.startFrame) + (v * Double(fps) - Double(clip.trimStartFrame)) / max(clip.speed, 0.0001)
+            }
+            for r in input.ranges {
+                let s = max(clip.startFrame, min(clip.endFrame, Int(toFrame(r[0]).rounded())))
+                let e = max(clip.startFrame, min(clip.endFrame, Int(toFrame(r[1]).rounded())))
+                if e > s { frameRanges.append(FrameRange(start: s, end: e)) } else { dropped += 1 }
+            }
+            guard !frameRanges.isEmpty else {
+                throw ToolError("No ranges fall within clip \(clipId) (frames \(clip.startFrame)..\(clip.endFrame)). In '\(units)' units, ranges must overlap the clip's visible span.")
+            }
+            resolvedTrackIndex = loc.trackIndex
+        } else {
+            let trackIndex = input.trackIndex!
+            guard units == "frames" else {
+                throw ToolError("units 'seconds' requires a clipId for source-media mapping; with trackIndex, ranges are project frames.")
+            }
+            guard editor.timeline.tracks.indices.contains(trackIndex) else {
+                throw ToolError("Track index out of range: \(trackIndex)")
+            }
+            for r in input.ranges {
+                let s = max(0, Int(r[0].rounded()))
+                let e = Int(r[1].rounded())
+                if e > s { frameRanges.append(FrameRange(start: s, end: e)) } else { dropped += 1 }
+            }
+            guard !frameRanges.isEmpty else {
+                throw ToolError("No valid project-frame ranges to delete on track \(trackIndex).")
+            }
+            resolvedTrackIndex = trackIndex
+        }
+
+        switch editor.rippleDeleteRangesOnTrack(trackIndex: resolvedTrackIndex, ranges: frameRanges) {
         case .refused(let reason):
             throw ToolError(reason)
         case .ok(let report):
