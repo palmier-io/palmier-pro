@@ -3,6 +3,7 @@ import SwiftUI
 struct ProjectCard: View {
     let entry: ProjectEntry
     let onOpen: (URL) -> Void
+    let onDuplicate: (URL) -> Void
     let onRemove: (URL) -> Void
 
     @State private var isHovered = false
@@ -101,6 +102,7 @@ struct ProjectCard: View {
         .contextMenu {
             if entry.isAccessible {
                 Button("Open") { onOpen(entry.url) }
+                Button("Duplicate") { onDuplicate(entry.url) }
                 Button("Reveal in Finder") {
                     NSWorkspace.shared.selectFile(entry.url.path, inFileViewerRootedAtPath: entry.url.deletingLastPathComponent().path)
                 }
