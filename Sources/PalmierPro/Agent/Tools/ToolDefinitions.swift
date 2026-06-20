@@ -5,6 +5,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case getTimeline = "get_timeline"
     case getMedia = "get_media"
     case addClips = "add_clips"
+    case insertClips = "insert_clips"
     case removeClips = "remove_clips"
     case removeTracks = "remove_tracks"
     case moveClips = "move_clips"
@@ -121,14 +122,41 @@ enum ToolDefinitions {
                             "properties": [
                                 "mediaRef": ["type": "string", "description": "ID of the media asset from get_media"],
                                 "trackIndex": ["type": "integer", "description": "Optional. Track index (0-based). Omit on every entry to auto-create one shared track per asset zone (video/audio)."],
-                                "startFrame": ["type": "integer", "description": "Frame position to place the clip"],
-                                "durationFrames": ["type": "integer", "description": "Duration in frames"],
+                                "startFrame": ["type": "integer", "description": "Timeline frame position to place the clip (project frames)."],
+                                "durationFrames": ["type": "integer", "description": "Clip length on the timeline, in project frames."],
+                                "trimStartFrame": ["type": "integer", "description": "Optional. Frames skipped from the START of the source media before the clip begins — a SOURCE offset, NOT a timeline position, but measured in PROJECT frames (the timeline's fps, same units as startFrame/durationFrames — never the source's own fps). 0 (default) starts at the source's first frame. Set this to trim on placement instead of a follow-up set_clip_properties call; semantics are identical to set_clip_properties."],
+                                "trimEndFrame": ["type": "integer", "description": "Optional. Frames trimmed off the END of the source media, in PROJECT frames — same units as trimStartFrame. 0 (default) trims nothing off the end."],
                             ],
                             "required": ["mediaRef", "startFrame", "durationFrames"],
                         ],
                     ],
                 ],
                 required: ["entries"]
+            )
+        ),
+        AgentTool(
+            name: .insertClips,
+            description: "Inserts one or more media assets at a single point and RIPPLES: every clip at or after atFrame is pushed right to open a gap, so nothing is overwritten. This is the non-destructive counterpart to add_clips (which clears the landing region, trimming/splitting/removing whatever's there). Use insert_clips to splice footage in without losing existing clips; use add_clips to fill empty space or deliberately overwrite.\n\nEntries are laid end-to-end starting at atFrame on the target track (entry[0] at atFrame, entry[1] immediately after, ...). The push equals the sum of the entries' durations and is applied to the target track, every sync-locked track, AND the audio track any auto-created linked audio lands on — so a clip and its linked audio stay aligned. As in add_clips, a video asset with audio spawns a linked audio clip. One undoable action; one bad entry rejects the whole call with no partial state.\n\ntrackIndex is required — ripple needs an existing track to push. For placement into empty space, use add_clips.",
+            inputSchema: objectSchema(
+                properties: [
+                    "trackIndex": ["type": "integer", "description": "Track index (0-based, from get_timeline) to insert into and ripple."],
+                    "atFrame": ["type": "integer", "description": "Timeline frame (project frames) where insertion begins. Every clip at or after this frame on rippled tracks shifts right by the total inserted duration."],
+                    "entries": [
+                        "type": "array",
+                        "description": "Clips to insert, placed sequentially from atFrame. Validated up front; one bad entry rejects the whole call.",
+                        "items": [
+                            "type": "object",
+                            "properties": [
+                                "mediaRef": ["type": "string", "description": "ID of the media asset from get_media."],
+                                "durationFrames": ["type": "integer", "description": "Optional. Timeline length in project frames. Omit to use the asset's full source duration."],
+                                "trimStartFrame": ["type": "integer", "description": "Optional. Frames skipped from the START of the source media — a SOURCE offset in PROJECT frames (same units as atFrame/durationFrames, never the source's own fps). 0 (default) starts at the source's first frame."],
+                                "trimEndFrame": ["type": "integer", "description": "Optional. Frames trimmed off the END of the source media, in PROJECT frames. 0 (default) trims nothing."],
+                            ],
+                            "required": ["mediaRef"],
+                        ],
+                    ],
+                ],
+                required: ["trackIndex", "atFrame", "entries"]
             )
         ),
         AgentTool(
@@ -192,8 +220,8 @@ enum ToolDefinitions {
                         "items": ["type": "string"],
                     ],
                     "durationFrames": ["type": "integer", "description": "New duration in frames."],
-                    "trimStartFrame": ["type": "integer", "description": "SOURCE-media offset, NOT a timeline frame: frames trimmed off the start of the source. To turn a get_transcript project frame P into this clip's source offset, use trimStartFrame + (P − startFrame) × speed; setting trimStartFrame to that value makes the clip begin at P's source content."],
-                    "trimEndFrame": ["type": "integer", "description": "SOURCE-media offset, NOT a timeline frame: frames trimmed off the end of the source. Maps the same way as trimStartFrame via startFrame/speed."],
+                    "trimStartFrame": ["type": "integer", "description": "SOURCE-media offset, NOT a timeline frame: frames trimmed off the start of the source — measured in PROJECT frames (the timeline's fps, same units as startFrame/durationFrames; never the source's own fps). To turn a get_transcript project frame P into this clip's source offset, use trimStartFrame + (P − startFrame) × speed; setting trimStartFrame to that value makes the clip begin at P's source content."],
+                    "trimEndFrame": ["type": "integer", "description": "SOURCE-media offset, NOT a timeline frame: frames trimmed off the end of the source, in PROJECT frames. Maps the same way as trimStartFrame via startFrame/speed."],
                     "speed": ["type": "number", "description": "Playback speed multiplier (default 1.0). >1 speeds up, <1 slows down. The clip's timeline length is rescaled to keep the same source content (2x speed → half the frames), unless you also pass durationFrames to set the length explicitly."],
                     "volume": ["type": "number", "description": "Volume 0.0-1.0. Clears any existing volume keyframes."],
                     "opacity": ["type": "number", "description": "Opacity 0.0-1.0. Clears any existing opacity keyframes."],

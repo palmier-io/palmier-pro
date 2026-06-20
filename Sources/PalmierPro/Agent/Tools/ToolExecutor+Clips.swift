@@ -11,7 +11,24 @@ fileprivate struct AddClipsInput: DecodableToolArgs {
         let trackIndex: Int?
         let startFrame: Int
         let durationFrames: Int
-        static let allowedKeys: Set<String> = ["mediaRef", "trackIndex", "startFrame", "durationFrames"]
+        let trimStartFrame: Int?
+        let trimEndFrame: Int?
+        static let allowedKeys: Set<String> = ["mediaRef", "trackIndex", "startFrame", "durationFrames", "trimStartFrame", "trimEndFrame"]
+    }
+}
+
+fileprivate struct InsertClipsInput: DecodableToolArgs {
+    let trackIndex: Int
+    let atFrame: Int
+    let entries: [Entry]
+    static let allowedKeys: Set<String> = ["trackIndex", "atFrame", "entries"]
+
+    struct Entry: DecodableToolArgs {
+        let mediaRef: String
+        let durationFrames: Int?
+        let trimStartFrame: Int?
+        let trimEndFrame: Int?
+        static let allowedKeys: Set<String> = ["mediaRef", "durationFrames", "trimStartFrame", "trimEndFrame"]
     }
 }
 
@@ -93,6 +110,8 @@ fileprivate struct AddClipSpec {
     var trackId: String?
     let startFrame: Int
     let durationFrames: Int
+    let trimStartFrame: Int?
+    let trimEndFrame: Int?
 }
 
 fileprivate struct ParsedMove {
@@ -140,7 +159,13 @@ extension ToolExecutor {
             guard entry.startFrame >= 0 else {
                 throw ToolError("entries[\(idx)]: startFrame must be >= 0 (got \(entry.startFrame))")
             }
-            specs.append(.init(asset: asset, trackId: trackId, startFrame: entry.startFrame, durationFrames: entry.durationFrames))
+            if let t = entry.trimStartFrame, t < 0 {
+                throw ToolError("entries[\(idx)]: trimStartFrame must be >= 0 (got \(t))")
+            }
+            if let t = entry.trimEndFrame, t < 0 {
+                throw ToolError("entries[\(idx)]: trimEndFrame must be >= 0 (got \(t))")
+            }
+            specs.append(.init(asset: asset, trackId: trackId, startFrame: entry.startFrame, durationFrames: entry.durationFrames, trimStartFrame: entry.trimStartFrame, trimEndFrame: entry.trimEndFrame))
         }
 
         // All-or-none for trackIndex: a new track at index 0 would shift any explicit indices.
@@ -200,14 +225,18 @@ extension ToolExecutor {
                 editor.clearRegion(trackIndex: trackIdx, start: spec.startFrame, end: spec.startFrame + spec.durationFrames, prune: false)
                 let ids = editor.placeClip(
                     asset: spec.asset, trackIndex: trackIdx,
-                    startFrame: spec.startFrame, durationFrames: spec.durationFrames
+                    startFrame: spec.startFrame, durationFrames: spec.durationFrames,
+                    trimStartFrame: spec.trimStartFrame, trimEndFrame: spec.trimEndFrame
                 )
                 guard let primary = ids.first else {
                     throw ToolError("entries[\(i)]: failed to place clip on track \(trackIdx) at frame \(spec.startFrame)")
                 }
                 allAdded.append(contentsOf: ids)
                 let pairedNote = ids.count > 1 ? " (+linked audio \(ids[1]))" : ""
-                summaries.append("\(primary) on track \(trackIdx) @ \(spec.startFrame) for \(spec.durationFrames)\(pairedNote)")
+                var trimNote = ""
+                if let t = spec.trimStartFrame, t != 0 { trimNote += " trimStart \(t)" }
+                if let t = spec.trimEndFrame, t != 0 { trimNote += " trimEnd \(t)" }
+                summaries.append("\(primary) on track \(trackIdx) @ \(spec.startFrame) for \(spec.durationFrames)\(trimNote)\(pairedNote)")
             }
 
             for track in editor.timeline.tracks where track.clips.isEmpty && nonEmptyBefore.contains(track.id) {
@@ -228,6 +257,55 @@ extension ToolExecutor {
 
         let prefix = createdTracks.isEmpty ? "" : "Created \(createdTracks.joined(separator: ", ")). "
         return .ok("\(prefix)Added \(specs.count) clip\(specs.count == 1 ? "" : "s"): \(summaries.joined(separator: "; "))")
+    }
+
+    // MARK: insert_clips
+
+    func insertClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        let input: InsertClipsInput = try decodeToolArgs(args, path: "insert_clips")
+        guard !input.entries.isEmpty else { throw ToolError("Missing or empty 'entries' array") }
+        if let raws = args["entries"] as? [Any] {
+            for (idx, raw) in raws.enumerated() {
+                if let d = raw as? [String: Any] {
+                    try validateUnknownKeys(d, allowed: InsertClipsInput.Entry.allowedKeys, path: "entries[\(idx)]")
+                }
+            }
+        }
+        guard editor.timeline.tracks.indices.contains(input.trackIndex) else {
+            throw ToolError("trackIndex \(input.trackIndex) out of range (0..\(editor.timeline.tracks.count - 1))")
+        }
+        guard input.atFrame >= 0 else { throw ToolError("atFrame must be >= 0 (got \(input.atFrame))") }
+        let targetType = editor.timeline.tracks[input.trackIndex].type
+
+        var specs: [EditorViewModel.RippleInsertSpec] = []
+        specs.reserveCapacity(input.entries.count)
+        for (idx, entry) in input.entries.enumerated() {
+            let asset = try asset(entry.mediaRef, editor: editor)
+            guard asset.type.isCompatible(with: targetType) else {
+                throw ToolError("entries[\(idx)]: asset type \(asset.type.rawValue) is not compatible with \(targetType.rawValue) track at index \(input.trackIndex)")
+            }
+            let duration = entry.durationFrames ?? editor.clipDurationFrames(for: asset, segment: nil)
+            guard duration >= 1 else {
+                throw ToolError("entries[\(idx)]: durationFrames must be >= 1 (got \(duration))")
+            }
+            if let t = entry.trimStartFrame, t < 0 {
+                throw ToolError("entries[\(idx)]: trimStartFrame must be >= 0 (got \(t))")
+            }
+            if let t = entry.trimEndFrame, t < 0 {
+                throw ToolError("entries[\(idx)]: trimEndFrame must be >= 0 (got \(t))")
+            }
+            specs.append(.init(asset: asset, durationFrames: duration, trimStartFrame: entry.trimStartFrame, trimEndFrame: entry.trimEndFrame))
+        }
+
+        let totalPush = specs.reduce(0) { $0 + $1.durationFrames }
+        let tracksBefore = editor.timeline.tracks.count
+        let ids = editor.rippleInsertClips(specs: specs, trackIndex: input.trackIndex, atFrame: input.atFrame)
+        guard !ids.isEmpty else {
+            throw ToolError("Insert failed on track \(input.trackIndex) at frame \(input.atFrame)")
+        }
+        let audioNote = editor.timeline.tracks.count > tracksBefore
+            ? " Created an audio track (appended) for the linked audio." : ""
+        return .ok("Inserted \(specs.count) clip\(specs.count == 1 ? "" : "s") at frame \(input.atFrame) on track \(input.trackIndex), pushed later clips +\(totalPush)f: \(ids.joined(separator: ", ")).\(audioNote)")
     }
 
     // MARK: remove_clips

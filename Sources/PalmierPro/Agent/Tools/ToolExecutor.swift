@@ -52,6 +52,7 @@ final class ToolExecutor {
         case .inspectTimeline: return try await inspectTimeline(editor, args)
         case .searchMedia:   return try await searchMedia(editor, args)
         case .addClips:         return try addClips(editor, args)
+        case .insertClips:      return try insertClips(editor, args)
         case .removeClips:      return try removeClips(editor, args)
         case .removeTracks:     return try removeTracks(editor, args)
         case .moveClips:        return try moveClips(editor, args)

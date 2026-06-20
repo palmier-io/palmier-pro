@@ -139,23 +139,15 @@ extension EditorViewModel {
         right.fadeInFrames = 0
         right.clampFadesToDuration()
 
-        // Boundary kfs at the cut keep the volume curve continuous across the split.
-        if let track = clip.volumeTrack, track.isActive {
-            let boundaryDb = track.sample(at: splitOffset, fallback: 0)
-            var leftKfs = track.keyframes.filter { $0.frame <= splitOffset }
-            if leftKfs.last?.frame != splitOffset {
-                leftKfs.append(Keyframe(frame: splitOffset, value: boundaryDb))
-            }
-            left.volumeTrack = leftKfs.isEmpty ? nil : KeyframeTrack(keyframes: leftKfs)
-
-            var rightKfs = track.keyframes
-                .filter { $0.frame >= splitOffset }
-                .map { Keyframe(frame: $0.frame - splitOffset, value: $0.value, interpolationOut: $0.interpolationOut) }
-            if rightKfs.first?.frame != 0 {
-                rightKfs.insert(Keyframe(frame: 0, value: boundaryDb), at: 0)
-            }
-            right.volumeTrack = rightKfs.isEmpty ? nil : KeyframeTrack(keyframes: rightKfs)
-        }
+        // Split every animatable track at the cut, inserting a boundary keyframe so each
+        // curve stays continuous across the split (rather than copying the whole track to
+        // both halves, which leaves out-of-range/unrebased keyframes on each side).
+        (left.opacityTrack,  right.opacityTrack)  = splitKeyframeTrack(clip.opacityTrack,  at: splitOffset, fallback: clip.opacity)
+        (left.volumeTrack,   right.volumeTrack)   = splitKeyframeTrack(clip.volumeTrack,   at: splitOffset, fallback: clip.volume)
+        (left.positionTrack, right.positionTrack) = splitKeyframeTrack(clip.positionTrack, at: splitOffset, fallback: AnimPair(a: 0, b: 0))
+        (left.scaleTrack,    right.scaleTrack)    = splitKeyframeTrack(clip.scaleTrack,    at: splitOffset, fallback: AnimPair(a: 1, b: 1))
+        (left.rotationTrack, right.rotationTrack) = splitKeyframeTrack(clip.rotationTrack, at: splitOffset, fallback: 0)
+        (left.cropTrack,     right.cropTrack)     = splitKeyframeTrack(clip.cropTrack,     at: splitOffset, fallback: clip.crop)
 
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = left
         timeline.tracks[loc.trackIndex].clips.append(right)
@@ -169,6 +161,29 @@ extension EditorViewModel {
         }
         notifyTimelineChanged()
         return right.id
+    }
+
+    /// Splits a keyframe track at splitOffset, keeping both sides continuous. Returns (track, track) if empty.
+    private func splitKeyframeTrack<Value: KeyframeInterpolatable & Codable & Sendable & Equatable>(
+        _ track: KeyframeTrack<Value>?, at splitOffset: Int, fallback: Value
+    ) -> (left: KeyframeTrack<Value>?, right: KeyframeTrack<Value>?) {
+        guard let track, track.isActive else { return (track, track) }
+        let boundary = track.sample(at: splitOffset, fallback: fallback)
+
+        var leftKfs = track.keyframes.filter { $0.frame <= splitOffset }
+        if leftKfs.last?.frame != splitOffset {
+            leftKfs.append(Keyframe(frame: splitOffset, value: boundary))
+        }
+        var rightKfs = track.keyframes
+            .filter { $0.frame >= splitOffset }
+            .map { Keyframe(frame: $0.frame - splitOffset, value: $0.value, interpolationOut: $0.interpolationOut) }
+        if rightKfs.first?.frame != 0 {
+            rightKfs.insert(Keyframe(frame: 0, value: boundary), at: 0)
+        }
+        return (
+            leftKfs.isEmpty ? nil : KeyframeTrack(keyframes: leftKfs),
+            rightKfs.isEmpty ? nil : KeyframeTrack(keyframes: rightKfs)
+        )
     }
 
     func removeClips(ids: Set<String>, prune: Bool = true) {
