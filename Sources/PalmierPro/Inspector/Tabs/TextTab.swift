@@ -11,6 +11,7 @@ struct TextTab: View {
             contentField
             InspectorSection("Typography") {
                 fontRow
+                weightSlider
                 sizeSlider
             }
             InspectorSection("Appearance") {
@@ -55,7 +56,7 @@ struct TextTab: View {
     }
 
     private var fontRow: some View {
-        InspectorRow(icon: "character", label: "Font") {
+    return InspectorRow(icon: "character", label: "Font") {
             FontPickerField(
                 current: style.fontName,
                 onPreview: { name in
@@ -71,6 +72,25 @@ struct TextTab: View {
             )
         }
     }
+
+    private var weightSlider: some View {
+    InspectorRow(icon: "bold", label: "Weight") {
+        ScrubbableNumberField(
+            value: style.fontWeight,
+            range: 100...900,
+            format: "%.0f",
+            valueSuffix: "",
+            fieldWidth: 50,
+            onChanged: { newVal in
+                editor.applyTextStyle(clipId: clip.id) { $0.fontWeight = newVal }
+            }
+        ) { newVal in
+            editor.commitTextStyle(clipId: clip.id) { $0.fontWeight = newVal }
+        }
+        .disabled(!style.fontSupportsWeightAxis)
+        .opacity(style.fontSupportsWeightAxis ? 1.0 : 0.4)
+    }
+}
 
     private var sizeSlider: some View {
         InspectorRow(icon: "textformat.size", label: "Size") {
