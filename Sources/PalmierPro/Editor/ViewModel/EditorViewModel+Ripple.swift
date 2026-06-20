@@ -207,6 +207,66 @@ extension EditorViewModel {
         return created
     }
 
+    struct RippleInsertSpec {
+        let asset: MediaAsset
+        let durationFrames: Int
+        let trimStartFrame: Int?
+        let trimEndFrame: Int?
+    }
+
+    /// Ripple insert with explicit per-clip duration and trim. Opens a gap at `atFrame`
+    /// on the target track, every sync-locked track, and the audio track any linked
+    /// audio lands on, then places the clips sequentially into the gap.
+    @discardableResult
+    func rippleInsertClips(specs: [RippleInsertSpec], trackIndex: Int, atFrame: Int) -> [String] {
+        guard timeline.tracks.indices.contains(trackIndex), !specs.isEmpty else { return [] }
+        var created: [String] = []
+        withTimelineSwap(actionName: specs.count == 1 ? "Ripple Insert Clip (Agent)" : "Ripple Insert Clips (Agent)") {
+            let totalPush = specs.reduce(0) { $0 + $1.durationFrames }
+
+            // Pin the linked-audio destination before pushing so it ripples too; otherwise the
+            // auto-created audio partner would land on an un-pushed track and overlap.
+            let targetIsVideo = timeline.tracks[trackIndex].type == .video
+            let needsLinkedAudio = targetIsVideo && specs.contains { $0.asset.type == .video && $0.asset.hasAudio }
+            let linkedAudioTrackIndex: Int? = needsLinkedAudio
+                ? (timeline.tracks.firstIndex { $0.type == .audio } ?? insertTrack(at: timeline.tracks.count, type: .audio))
+                : nil
+
+            // Tracks the gap opens on. Splitting below doesn't add tracks, so these stay valid.
+            let pushTracks = timeline.tracks.indices.filter {
+                $0 == trackIndex || $0 == linkedAudioTrackIndex || timeline.tracks[$0].syncLocked
+            }
+
+            // Insert-edit: split any clip straddling atFrame on each pushed track so its right
+            // half rides the ripple instead of being overlapped. splitClip also splits linked
+            // partners and regroups them, so a clip already cut via its partner is no longer a
+            // straddler when its own track comes up.
+            for ti in pushTracks {
+                if let straddler = timeline.tracks[ti].clips.first(where: { $0.startFrame < atFrame && atFrame < $0.endFrame }) {
+                    _ = splitClip(clipId: straddler.id, atFrame: atFrame)
+                }
+            }
+
+            for ti in pushTracks {
+                applyShifts(RippleEngine.computeRipplePush(
+                    clips: timeline.tracks[ti].clips, insertFrame: atFrame, pushAmount: totalPush
+                ))
+            }
+
+            var cursor = atFrame
+            for spec in specs {
+                created.append(contentsOf: placeClip(
+                    asset: spec.asset, trackIndex: trackIndex,
+                    startFrame: cursor, durationFrames: spec.durationFrames,
+                    linkedAudioTrackIndex: linkedAudioTrackIndex,
+                    trimStartFrame: spec.trimStartFrame, trimEndFrame: spec.trimEndFrame
+                ))
+                cursor += spec.durationFrames
+            }
+        }
+        return created
+    }
+
     // MARK: - Internal
 
     fileprivate func trimClipInternal(clipId: String, trimStartFrame: Int, trimEndFrame: Int) {
