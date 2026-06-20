@@ -94,6 +94,12 @@ fi
 if [ -d "$RES_BUNDLE/Images" ]; then
   cp -R "$RES_BUNDLE/Images" "$APP/Contents/Resources/"
 fi
+if [ -d "$RES_BUNDLE/Changelog" ]; then
+  cp -R "$RES_BUNDLE/Changelog" "$APP/Contents/Resources/"
+else
+  echo "!! missing Changelog/ in SwiftPM resource bundle at $RES_BUNDLE" >&2
+  exit 1
+fi
 
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/PalmierPro"
 touch "$APP"
