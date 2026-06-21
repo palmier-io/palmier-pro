@@ -141,16 +141,44 @@ final class AppState {
     }
 
     func openProject(at url: URL, register: Bool = true, options: ProjectOpenOptions = .init()) {
-        do {
-            let doc = try VideoProject(contentsOf: url, ofType: VideoProject.typeIdentifier)
-            doc.makeWindowControllers()
-            doc.showWindows()
-            NSDocumentController.shared.addDocument(doc)
-            if register { ProjectRegistry.shared.register(url) }
-            apply(options, to: doc.editorViewModel)
-        } catch {
-            NSAlert(error: error).runModal()
+        Task {
+            do {
+                try await openProjectAsync(at: url, register: register, options: options)
+            } catch {
+                NSAlert(error: error).runModal()
+            }
         }
+    }
+
+    @discardableResult
+    private func openProjectAsync(at url: URL, register: Bool = true, options: ProjectOpenOptions = .init()) async throws -> VideoProject {
+        let resolved = url.standardizedFileURL
+        if let existing = showExistingProject(at: resolved, register: register, options: options) {
+            return existing
+        }
+        let doc = try await VideoProject.load(from: resolved)
+        if let existing = showExistingProject(at: resolved, register: register, options: options) {
+            return existing
+        }
+
+        doc.makeWindowControllers()
+        doc.showWindows()
+        NSDocumentController.shared.addDocument(doc)
+        if register { ProjectRegistry.shared.register(resolved) }
+        apply(options, to: doc.editorViewModel)
+        return doc
+    }
+
+    private func showExistingProject(at url: URL, register: Bool, options: ProjectOpenOptions) -> VideoProject? {
+        if let existing = NSDocumentController.shared.documents
+            .compactMap({ $0 as? VideoProject })
+            .first(where: { Self.sameFile($0.fileURL, url) }) {
+            showEditor(for: existing)
+            if register { ProjectRegistry.shared.register(url) }
+            apply(options, to: existing.editorViewModel)
+            return existing
+        }
+        return nil
     }
 
     private func apply(_ options: ProjectOpenOptions, to editor: EditorViewModel) {
@@ -162,11 +190,11 @@ final class AppState {
     func openSample(slug: String, startTutorial: Bool, onProgress: @escaping (Double) -> Void = { _ in }) async throws {
         let options = ProjectOpenOptions(startTutorial: startTutorial)
         if let cached = SampleProjectService.shared.cachedURL(slug: slug) {
-            openProject(at: cached, register: false, options: options)
+            try await openProjectAsync(at: cached, register: false, options: options)
             return
         }
         let url = try await SampleProjectService.shared.materialize(slug: slug, onProgress: onProgress)
-        openProject(at: url, register: false, options: options)
+        try await openProjectAsync(at: url, register: false, options: options)
     }
 
     func openProjectFromPanel() {

@@ -38,8 +38,10 @@ enum MainMenuBuilder {
     private static func fileMenu() -> NSMenuItem {
         let item = NSMenuItem()
         let menu = NSMenu(title: "File")
-        menu.addItem(withTitle: "New", action: #selector(NSDocumentController.newDocument(_:)), keyEquivalent: "n")
-        menu.addItem(withTitle: "Open…", action: #selector(NSDocumentController.openDocument(_:)), keyEquivalent: "o")
+        let newItem = menu.addItem(withTitle: "New", action: #selector(AppDelegate.newProject(_:)), keyEquivalent: "n")
+        newItem.target = NSApp.delegate
+        let openItem = menu.addItem(withTitle: "Open…", action: #selector(AppDelegate.openProject(_:)), keyEquivalent: "o")
+        openItem.target = NSApp.delegate
         menu.addItem(.separator())
         menu.addItem(withTitle: "Save", action: #selector(NSDocument.save(_:)), keyEquivalent: "s")
         menu.addItem(withTitle: "Save As…", action: #selector(NSDocument.saveAs(_:)), keyEquivalent: "S")

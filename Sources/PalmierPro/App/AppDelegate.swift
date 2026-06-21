@@ -28,6 +28,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor
+    @objc func newProject(_ sender: Any?) {
+        AppState.shared.createNewProject()
+    }
+
+    @MainActor
+    @objc func openProject(_ sender: Any?) {
+        AppState.shared.openProjectFromPanel()
+    }
+
+    @MainActor
     @objc func showSettings(_ sender: Any?) {
         SettingsWindowController.shared.show()
     }

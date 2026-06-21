@@ -3,6 +3,20 @@ import SwiftUI
 import AVFoundation
 import UniformTypeIdentifiers
 
+private struct ProjectPackageContents: Sendable {
+    var timeline: Timeline
+    var manifest: MediaManifest?
+    var generationLog: GenerationLog?
+}
+
+private struct ProjectPackageSnapshot: Sendable {
+    var timeline: Data
+    var manifest: Data?
+    var generationLog: Data?
+    var thumbnail: Data?
+    var chatSessionFiles: [(name: String, data: Data)]
+}
+
 final class VideoProject: NSDocument {
 
     static let typeIdentifier = Project.typeIdentifier
@@ -14,43 +28,39 @@ final class VideoProject: NSDocument {
     private nonisolated(unsafe) var loadedManifest: MediaManifest?
     private nonisolated(unsafe) var loadedGenerationLog: GenerationLog?
 
-    private nonisolated(unsafe) var packageWrapper = FileWrapper(directoryWithFileWrappers: [:])
-
-    /// Captured on main thread before fileWrapper runs (possibly off-main).
+    /// Captured on main thread before writes may continue off-main.
     private nonisolated(unsafe) var snapshotTimeline: Data?
     private nonisolated(unsafe) var snapshotManifest: Data?
     private nonisolated(unsafe) var snapshotGenerationLog: Data?
     private nonisolated(unsafe) var snapshotThumbnail: Data?
     private nonisolated(unsafe) var snapshotChatSessionFiles: [(name: String, data: Data)] = []
-    private nonisolated(unsafe) var snapshotPreparedForFileWrapper = false
+    private nonisolated(unsafe) var snapshotSourceProjectURL: URL?
+    private nonisolated(unsafe) var snapshotPreparedForWrite = false
 
     // MARK: - Persistence
 
     override class var autosavesInPlace: Bool { true }
 
-    override func read(from fileWrapper: FileWrapper, ofType typeName: String) throws {
-        guard let data = fileWrapper.fileWrappers?[Project.timelineFilename]?.regularFileContents else {
-            Log.project.error("read: missing \(Project.timelineFilename) in package")
-            throw CocoaError(.fileReadCorruptFile)
-        }
-        packageWrapper = fileWrapper
-        do {
-            loadedTimeline = try JSONDecoder().decode(Timeline.self, from: data)
-        } catch {
-            Log.project.error("read: timeline decode failed: \(String(describing: error))")
-            throw error
-        }
-        if let manifestData = fileWrapper.fileWrappers?[Project.manifestFilename]?.regularFileContents {
-            do {
-                loadedManifest = try JSONDecoder().decode(MediaManifest.self, from: manifestData)
-            } catch {
-                Log.project.error("read manifest decode failed bytes=\(manifestData.count) error=\(error)")
-                throw CocoaError(.fileReadCorruptFile)
-            }
-        }
-        if let logData = fileWrapper.fileWrappers?[Project.generationLogFilename]?.regularFileContents {
-            loadedGenerationLog = try? JSONDecoder().decode(GenerationLog.self, from: logData)
-        }
+    @MainActor
+    static func load(from url: URL) async throws -> VideoProject {
+        let contents = try await Task.detached(priority: .userInitiated) {
+            try readProjectPackage(at: url)
+        }.value
+        let doc = VideoProject()
+        doc.fileURL = url
+        doc.fileType = typeIdentifier
+        doc.applyLoadedContents(contents)
+        return doc
+    }
+
+    override func read(from url: URL, ofType typeName: String) throws {
+        applyLoadedContents(try Self.readProjectPackage(at: url))
+    }
+
+    private nonisolated func applyLoadedContents(_ contents: ProjectPackageContents) {
+        loadedTimeline = contents.timeline
+        loadedManifest = contents.manifest
+        loadedGenerationLog = contents.generationLog
         Log.project.notice(
             "read ok tracks=\(self.loadedTimeline?.tracks.count ?? 0)",
             telemetry: "Project read",
@@ -63,37 +73,79 @@ final class VideoProject: NSDocument {
         )
     }
 
+    private nonisolated static func readProjectPackage(at url: URL) throws -> ProjectPackageContents {
+        let data = try requiredData(Project.timelineFilename, in: url)
+        let timeline: Timeline
+        do {
+            timeline = try JSONDecoder().decode(Timeline.self, from: data)
+        } catch {
+            Log.project.error("read: timeline decode failed: \(String(describing: error))")
+            throw error
+        }
+
+        let manifest: MediaManifest?
+        if let manifestData = try optionalData(Project.manifestFilename, in: url) {
+            do {
+                manifest = try JSONDecoder().decode(MediaManifest.self, from: manifestData)
+            } catch {
+                Log.project.error("read manifest decode failed bytes=\(manifestData.count) error=\(error)")
+                throw CocoaError(.fileReadCorruptFile)
+            }
+        } else {
+            manifest = nil
+        }
+
+        let generationLog = try optionalData(Project.generationLogFilename, in: url)
+            .flatMap { try? JSONDecoder().decode(GenerationLog.self, from: $0) }
+
+        return ProjectPackageContents(
+            timeline: timeline,
+            manifest: manifest,
+            generationLog: generationLog
+        )
+    }
+
     override func save(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType, completionHandler: @escaping (Error?) -> Void) {
         if let date = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
             fileModificationDate = date
         }
 
         captureSaveSnapshot()
+        snapshotSourceProjectURL = fileURL
         super.save(to: url, ofType: typeName, for: saveOperation, completionHandler: completionHandler)
     }
 
-    override func fileWrapper(ofType typeName: String) throws -> FileWrapper {
-        if !snapshotPreparedForFileWrapper {
+    override func write(to url: URL, ofType typeName: String) throws {
+        if !snapshotPreparedForWrite {
             guard Thread.isMainThread else {
-                Log.project.error("save: snapshot not prepared for off-main fileWrapper()")
+                Log.project.error("save: snapshot not prepared for off-main write()")
                 throw CocoaError(.fileWriteUnknown)
             }
-            captureSaveSnapshot()
+            MainActor.assumeIsolated {
+                captureSaveSnapshot()
+                snapshotSourceProjectURL = fileURL
+            }
         }
-        defer { snapshotPreparedForFileWrapper = false }
+        defer {
+            snapshotPreparedForWrite = false
+            snapshotSourceProjectURL = nil
+        }
         guard let data = snapshotTimeline else {
-            Log.project.error("save: snapshotTimeline missing at fileWrapper()")
+            Log.project.error("save: snapshotTimeline missing at write()")
             throw CocoaError(.fileWriteUnknown)
         }
 
-        replaceChild(Project.timelineFilename, with: data)
-        if let manifest = snapshotManifest { replaceChild(Project.manifestFilename, with: manifest) }
-        if let log = snapshotGenerationLog { replaceChild(Project.generationLogFilename, with: log) }
-        if let thumb = snapshotThumbnail { replaceChild(Project.thumbnailFilename, with: thumb) }
-        replaceChild(ChatSessionStore.dirName, with: chatDirWrapper())
-        if let mediaDir = mediaDirWrapper() { replaceChild(Project.mediaDirectoryName, with: mediaDir) }
-
-        return packageWrapper
+        try Self.writeProjectPackage(
+            ProjectPackageSnapshot(
+                timeline: data,
+                manifest: snapshotManifest,
+                generationLog: snapshotGenerationLog,
+                thumbnail: snapshotThumbnail,
+                chatSessionFiles: snapshotChatSessionFiles
+            ),
+            to: url,
+            sourceURL: snapshotSourceProjectURL
+        )
     }
 
     private func captureSaveSnapshot() {
@@ -106,25 +158,87 @@ final class VideoProject: NSDocument {
             .compactMap { session in
                 ChatSessionStore.encodeSession(session).map { (name: "\(session.id.uuidString).json", data: $0) }
             }
-        snapshotPreparedForFileWrapper = true
+        snapshotPreparedForWrite = true
     }
 
-    private func mediaDirWrapper() -> FileWrapper? {
-        guard let projectURL = fileURL else { return nil }
-        let mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-        guard FileManager.default.fileExists(atPath: mediaDir.path) else { return nil }
-        return try? FileWrapper(url: mediaDir, options: .immediate)
-    }
-
-    private nonisolated func chatDirWrapper() -> FileWrapper {
-        let dir = FileWrapper(directoryWithFileWrappers: [:])
-        for file in snapshotChatSessionFiles {
-            let child = FileWrapper(regularFileWithContents: file.data)
-            child.preferredFilename = file.name
-            dir.addFileWrapper(child)
+    private nonisolated static func requiredData(_ name: String, in packageURL: URL) throws -> Data {
+        do {
+            return try Data(contentsOf: packageURL.appendingPathComponent(name, isDirectory: false), options: [.mappedIfSafe])
+        } catch {
+            Log.project.error("read: missing \(name) in package")
+            throw CocoaError(.fileReadCorruptFile)
         }
-        dir.preferredFilename = ChatSessionStore.dirName
-        return dir
+    }
+
+    private nonisolated static func optionalData(_ name: String, in packageURL: URL) throws -> Data? {
+        let url = packageURL.appendingPathComponent(name, isDirectory: false)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return try Data(contentsOf: url, options: [.mappedIfSafe])
+    }
+
+    private nonisolated static func writeProjectPackage(_ snapshot: ProjectPackageSnapshot, to packageURL: URL, sourceURL: URL?) throws {
+        let fm = FileManager.default
+        try createPackageDirectory(at: packageURL, fm: fm)
+        try snapshot.timeline.write(to: packageURL.appendingPathComponent(Project.timelineFilename), options: .atomic)
+        if let manifest = snapshot.manifest {
+            try manifest.write(to: packageURL.appendingPathComponent(Project.manifestFilename), options: .atomic)
+        }
+        if let log = snapshot.generationLog {
+            try log.write(to: packageURL.appendingPathComponent(Project.generationLogFilename), options: .atomic)
+        }
+        if let thumbnail = snapshot.thumbnail {
+            try thumbnail.write(to: packageURL.appendingPathComponent(Project.thumbnailFilename), options: .atomic)
+        } else {
+            try copyPreservedFile(Project.thumbnailFilename, from: sourceURL, to: packageURL, fm: fm)
+        }
+        try writeChatDirectory(snapshot.chatSessionFiles, to: packageURL, fm: fm)
+        try copyMediaDirectoryIfNeeded(from: sourceURL, to: packageURL, fm: fm)
+    }
+
+    private nonisolated static func createPackageDirectory(at url: URL, fm: FileManager) throws {
+        var isDirectory = ObjCBool(false)
+        if fm.fileExists(atPath: url.path, isDirectory: &isDirectory) {
+            if isDirectory.boolValue { return }
+            try fm.removeItem(at: url)
+        }
+        try fm.createDirectory(at: url, withIntermediateDirectories: true)
+    }
+
+    private nonisolated static func writeChatDirectory(_ files: [(name: String, data: Data)], to packageURL: URL, fm: FileManager) throws {
+        let chatURL = packageURL.appendingPathComponent(ChatSessionStore.dirName, isDirectory: true)
+        if fm.fileExists(atPath: chatURL.path) {
+            try fm.removeItem(at: chatURL)
+        }
+        try fm.createDirectory(at: chatURL, withIntermediateDirectories: true)
+        for file in files {
+            try file.data.write(to: chatURL.appendingPathComponent(file.name, isDirectory: false), options: .atomic)
+        }
+    }
+
+    private nonisolated static func copyPreservedFile(_ name: String, from sourceURL: URL?, to packageURL: URL, fm: FileManager) throws {
+        guard let sourceURL, !sameFile(sourceURL, packageURL) else { return }
+        let source = sourceURL.appendingPathComponent(name, isDirectory: false)
+        guard fm.fileExists(atPath: source.path) else { return }
+        let destination = packageURL.appendingPathComponent(name, isDirectory: false)
+        if fm.fileExists(atPath: destination.path) {
+            try fm.removeItem(at: destination)
+        }
+        try fm.copyItem(at: source, to: destination)
+    }
+
+    private nonisolated static func copyMediaDirectoryIfNeeded(from sourceURL: URL?, to packageURL: URL, fm: FileManager) throws {
+        guard let sourceURL, !sameFile(sourceURL, packageURL) else { return }
+        let source = sourceURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
+        let destination = packageURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
+        if fm.fileExists(atPath: destination.path) {
+            try fm.removeItem(at: destination)
+        }
+        guard fm.fileExists(atPath: source.path) else { return }
+        try fm.copyItem(at: source, to: destination)
+    }
+
+    private nonisolated static func sameFile(_ lhs: URL, _ rhs: URL) -> Bool {
+        lhs.standardizedFileURL.path == rhs.standardizedFileURL.path
     }
 
     override func updateChangeCount(_ change: NSDocument.ChangeType) {
@@ -154,20 +268,6 @@ final class VideoProject: NSDocument {
                 }
             }
         }
-    }
-
-    private nonisolated func replaceChild(_ name: String, with data: Data) {
-        let wrapper = FileWrapper(regularFileWithContents: data)
-        wrapper.preferredFilename = name
-        replaceChild(name, with: wrapper)
-    }
-
-    private nonisolated func replaceChild(_ name: String, with wrapper: FileWrapper) {
-        if let old = packageWrapper.fileWrappers?[name] {
-            packageWrapper.removeFileWrapper(old)
-        }
-        wrapper.preferredFilename = name
-        packageWrapper.addFileWrapper(wrapper)
     }
 
     // MARK: - Close
