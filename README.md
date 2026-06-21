@@ -108,6 +108,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## License
 
-Copyright (C) 2026 Palmier, Inc.
+.
 
 Palmier Pro is open source under [GPLv3](LICENSE).
