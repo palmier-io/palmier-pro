@@ -103,11 +103,7 @@ extension MediaTab {
 
     @MainActor
     static func handlePanelFinderDrop(urls: [URL], into destFolderId: String?, editor: EditorViewModel) {
-        for url in urls {
-            if let asset = editor.addMediaAsset(from: url), destFolderId != nil {
-                editor.moveAssetsToFolder(assetIds: [asset.id], folderId: destFolderId)
-            }
-        }
+        editor.importFinderItems(urls, into: destFolderId)
     }
 
     func handleProviderDrop(_ providers: [NSItemProvider], into destFolderId: String?) {
@@ -117,9 +113,7 @@ extension MediaTab {
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
                     guard let url else { return }
                     Task { @MainActor in
-                        if let asset = editor.addMediaAsset(from: url), destFolderId != nil {
-                            editor.moveAssetsToFolder(assetIds: [asset.id], folderId: destFolderId)
-                        }
+                        editor.importFinderItems([url], into: destFolderId)
                     }
                 }
                 continue

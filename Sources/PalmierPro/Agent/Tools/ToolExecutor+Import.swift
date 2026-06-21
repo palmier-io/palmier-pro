@@ -45,8 +45,16 @@ extension ToolExecutor {
 
     private func importFromPath(editor: EditorViewModel, path: String, name: String?, folderId: String?) throws -> ToolResult {
         let fileURL = URL(fileURLWithPath: path)
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: fileURL.path, isDirectory: &isDir) else {
             throw ToolError("File not found: \(path)")
+        }
+        if isDir.boolValue {
+            let summary = editor.importFinderItems([fileURL], into: folderId)
+            guard summary.assetCount > 0 else {
+                throw ToolError("No supported media found in folder: \(path)")
+            }
+            return .ok("Imported \(summary.assetCount) file(s) into \(summary.folderCount) folder(s) from '\(fileURL.lastPathComponent)', mirroring its structure. Available now in get_media / list_folders.")
         }
         let ext = fileURL.pathExtension.lowercased()
         guard ClipType(fileExtension: ext) != nil else {

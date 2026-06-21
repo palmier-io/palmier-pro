@@ -24,6 +24,17 @@ extension EditorViewModel {
         }
         let entry = asset.toManifestEntry(projectURL: projectURL)
         mediaManifest.entries.append(entry)
+        Log.project.notice(
+            "media imported asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)",
+            telemetry: "Media asset imported",
+            data: [
+                "assetId": Telemetry.shortId(asset.id),
+                "type": asset.type.rawValue,
+                "skipAppend": skipAppend,
+                "media": mediaAssets.count,
+                "manifestEntries": mediaManifest.entries.count
+            ]
+        )
     }
 
     /// Resolve a drag pasteboard payload (one `palmier-asset://<id>` per line).
@@ -50,7 +61,7 @@ extension EditorViewModel {
     }
 
     @discardableResult
-    func addMediaAsset(from url: URL) -> MediaAsset? {
+    func addMediaAsset(from url: URL, folderId: String? = nil) -> MediaAsset? {
         guard let type = ClipType(fileExtension: url.pathExtension.lowercased()) else {
             mediaPanelToast = "Can't import \"\(url.lastPathComponent)\" — unsupported file type."
             return nil
@@ -61,9 +72,67 @@ extension EditorViewModel {
         }
         let name = url.deletingPathExtension().lastPathComponent
         let asset = MediaAsset(url: url, type: type, name: name)
+        asset.folderId = folderId
         importMediaAsset(asset)
         Task { await finalizeImportedAsset(asset) }
         return asset
+    }
+
+    struct MediaImportSummary {
+        var assetCount: Int
+        var folderCount: Int
+    }
+
+    /// Import files and folders from the open panel or a Finder drop as one undo step
+    @discardableResult
+    func importFinderItems(_ urls: [URL], into folderId: String?) -> MediaImportSummary {
+        let before = mediaLibraryUndoSnapshot()
+        undoManager?.disableUndoRegistration()
+        for url in urls {
+            if isDirectory(url) {
+                importFolder(at: url, into: folderId)
+            } else {
+                addMediaAsset(from: url, folderId: folderId)
+            }
+        }
+        undoManager?.enableUndoRegistration()
+
+        let summary = MediaImportSummary(
+            assetCount: mediaAssets.count - before.mediaAssets.count,
+            folderCount: mediaManifest.folders.count - before.mediaManifest.folders.count
+        )
+        guard summary.assetCount != 0 || summary.folderCount != 0 else { return summary }
+        undoManager?.registerUndo(withTarget: self) { vm in
+            vm.restoreMediaLibraryUndoSnapshot(before, actionName: "Import Media")
+        }
+        undoManager?.setActionName("Import Media")
+        return summary
+    }
+
+    /// Mirror a directory tree into media folders
+    func importFolder(at url: URL, into parentFolderId: String?) {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(
+            at: url,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        let folderId = createFolder(name: url.lastPathComponent, in: parentFolderId)
+        let sorted = entries.sorted {
+            $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
+        }
+        for entry in sorted {
+            if isDirectory(entry) {
+                importFolder(at: entry, into: folderId)
+            } else if ClipType(fileExtension: entry.pathExtension.lowercased()) != nil {
+                addMediaAsset(from: entry, folderId: folderId)
+            }
+        }
+    }
+
+    private func isDirectory(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
     }
 
     @discardableResult
@@ -348,6 +417,11 @@ extension EditorViewModel {
     }
 
     func finalizeImportedAsset(_ asset: MediaAsset) async {
+        Log.project.notice(
+            "media finalize start asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)",
+            telemetry: "Media asset finalize started",
+            data: ["assetId": Telemetry.shortId(asset.id), "type": asset.type.rawValue]
+        )
         await asset.loadMetadata()
         updateManifestMetadata(for: asset)
         searchIndex.schedule(asset)
@@ -362,6 +436,19 @@ extension EditorViewModel {
         case .text, .lottie, .adjustment:
             break
         }
+        Log.project.notice(
+            "media finalize ok asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)",
+            telemetry: "Media asset finalize finished",
+            data: [
+                "assetId": Telemetry.shortId(asset.id),
+                "type": asset.type.rawValue,
+                "duration": asset.duration,
+                "width": asset.sourceWidth ?? 0,
+                "height": asset.sourceHeight ?? 0,
+                "fps": asset.sourceFPS ?? 0,
+                "hasAudio": asset.hasAudio
+            ]
+        )
     }
 
     struct TextClipSpec {

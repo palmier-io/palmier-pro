@@ -11,7 +11,24 @@ fileprivate struct AddClipsInput: DecodableToolArgs {
         let trackIndex: Int?
         let startFrame: Int
         let durationFrames: Int
-        static let allowedKeys: Set<String> = ["mediaRef", "trackIndex", "startFrame", "durationFrames"]
+        let trimStartFrame: Int?
+        let trimEndFrame: Int?
+        static let allowedKeys: Set<String> = ["mediaRef", "trackIndex", "startFrame", "durationFrames", "trimStartFrame", "trimEndFrame"]
+    }
+}
+
+fileprivate struct InsertClipsInput: DecodableToolArgs {
+    let trackIndex: Int
+    let atFrame: Int
+    let entries: [Entry]
+    static let allowedKeys: Set<String> = ["trackIndex", "atFrame", "entries"]
+
+    struct Entry: DecodableToolArgs {
+        let mediaRef: String
+        let durationFrames: Int?
+        let trimStartFrame: Int?
+        let trimEndFrame: Int?
+        static let allowedKeys: Set<String> = ["mediaRef", "durationFrames", "trimStartFrame", "trimEndFrame"]
     }
 }
 
@@ -60,10 +77,11 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
 }
 
 fileprivate struct RippleDeleteRangesInput: DecodableToolArgs {
-    let clipId: String
+    let clipId: String?
+    let trackIndex: Int?
     let ranges: [[Double]]
     let units: String?
-    static let allowedKeys: Set<String> = ["clipId", "ranges", "units"]
+    static let allowedKeys: Set<String> = ["clipId", "trackIndex", "ranges", "units"]
 }
 
 fileprivate struct SetKeyframesInput: DecodableToolArgs {
@@ -92,6 +110,8 @@ fileprivate struct AddClipSpec {
     var trackId: String?
     let startFrame: Int
     let durationFrames: Int
+    let trimStartFrame: Int?
+    let trimEndFrame: Int?
 }
 
 fileprivate struct ParsedMove {
@@ -139,7 +159,13 @@ extension ToolExecutor {
             guard entry.startFrame >= 0 else {
                 throw ToolError("entries[\(idx)]: startFrame must be >= 0 (got \(entry.startFrame))")
             }
-            specs.append(.init(asset: asset, trackId: trackId, startFrame: entry.startFrame, durationFrames: entry.durationFrames))
+            if let t = entry.trimStartFrame, t < 0 {
+                throw ToolError("entries[\(idx)]: trimStartFrame must be >= 0 (got \(t))")
+            }
+            if let t = entry.trimEndFrame, t < 0 {
+                throw ToolError("entries[\(idx)]: trimEndFrame must be >= 0 (got \(t))")
+            }
+            specs.append(.init(asset: asset, trackId: trackId, startFrame: entry.startFrame, durationFrames: entry.durationFrames, trimStartFrame: entry.trimStartFrame, trimEndFrame: entry.trimEndFrame))
         }
 
         // All-or-none for trackIndex: a new track at index 0 would shift any explicit indices.
@@ -199,14 +225,18 @@ extension ToolExecutor {
                 editor.clearRegion(trackIndex: trackIdx, start: spec.startFrame, end: spec.startFrame + spec.durationFrames, prune: false)
                 let ids = editor.placeClip(
                     asset: spec.asset, trackIndex: trackIdx,
-                    startFrame: spec.startFrame, durationFrames: spec.durationFrames
+                    startFrame: spec.startFrame, durationFrames: spec.durationFrames,
+                    trimStartFrame: spec.trimStartFrame, trimEndFrame: spec.trimEndFrame
                 )
                 guard let primary = ids.first else {
                     throw ToolError("entries[\(i)]: failed to place clip on track \(trackIdx) at frame \(spec.startFrame)")
                 }
                 allAdded.append(contentsOf: ids)
                 let pairedNote = ids.count > 1 ? " (+linked audio \(ids[1]))" : ""
-                summaries.append("\(primary) on track \(trackIdx) @ \(spec.startFrame) for \(spec.durationFrames)\(pairedNote)")
+                var trimNote = ""
+                if let t = spec.trimStartFrame, t != 0 { trimNote += " trimStart \(t)" }
+                if let t = spec.trimEndFrame, t != 0 { trimNote += " trimEnd \(t)" }
+                summaries.append("\(primary) on track \(trackIdx) @ \(spec.startFrame) for \(spec.durationFrames)\(trimNote)\(pairedNote)")
             }
 
             for track in editor.timeline.tracks where track.clips.isEmpty && nonEmptyBefore.contains(track.id) {
@@ -227,6 +257,55 @@ extension ToolExecutor {
 
         let prefix = createdTracks.isEmpty ? "" : "Created \(createdTracks.joined(separator: ", ")). "
         return .ok("\(prefix)Added \(specs.count) clip\(specs.count == 1 ? "" : "s"): \(summaries.joined(separator: "; "))")
+    }
+
+    // MARK: insert_clips
+
+    func insertClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        let input: InsertClipsInput = try decodeToolArgs(args, path: "insert_clips")
+        guard !input.entries.isEmpty else { throw ToolError("Missing or empty 'entries' array") }
+        if let raws = args["entries"] as? [Any] {
+            for (idx, raw) in raws.enumerated() {
+                if let d = raw as? [String: Any] {
+                    try validateUnknownKeys(d, allowed: InsertClipsInput.Entry.allowedKeys, path: "entries[\(idx)]")
+                }
+            }
+        }
+        guard editor.timeline.tracks.indices.contains(input.trackIndex) else {
+            throw ToolError("trackIndex \(input.trackIndex) out of range (0..\(editor.timeline.tracks.count - 1))")
+        }
+        guard input.atFrame >= 0 else { throw ToolError("atFrame must be >= 0 (got \(input.atFrame))") }
+        let targetType = editor.timeline.tracks[input.trackIndex].type
+
+        var specs: [EditorViewModel.RippleInsertSpec] = []
+        specs.reserveCapacity(input.entries.count)
+        for (idx, entry) in input.entries.enumerated() {
+            let asset = try asset(entry.mediaRef, editor: editor)
+            guard asset.type.isCompatible(with: targetType) else {
+                throw ToolError("entries[\(idx)]: asset type \(asset.type.rawValue) is not compatible with \(targetType.rawValue) track at index \(input.trackIndex)")
+            }
+            let duration = entry.durationFrames ?? editor.clipDurationFrames(for: asset, segment: nil)
+            guard duration >= 1 else {
+                throw ToolError("entries[\(idx)]: durationFrames must be >= 1 (got \(duration))")
+            }
+            if let t = entry.trimStartFrame, t < 0 {
+                throw ToolError("entries[\(idx)]: trimStartFrame must be >= 0 (got \(t))")
+            }
+            if let t = entry.trimEndFrame, t < 0 {
+                throw ToolError("entries[\(idx)]: trimEndFrame must be >= 0 (got \(t))")
+            }
+            specs.append(.init(asset: asset, durationFrames: duration, trimStartFrame: entry.trimStartFrame, trimEndFrame: entry.trimEndFrame))
+        }
+
+        let totalPush = specs.reduce(0) { $0 + $1.durationFrames }
+        let tracksBefore = editor.timeline.tracks.count
+        let ids = editor.rippleInsertClips(specs: specs, trackIndex: input.trackIndex, atFrame: input.atFrame)
+        guard !ids.isEmpty else {
+            throw ToolError("Insert failed on track \(input.trackIndex) at frame \(input.atFrame)")
+        }
+        let audioNote = editor.timeline.tracks.count > tracksBefore
+            ? " Created an audio track (appended) for the linked audio." : ""
+        return .ok("Inserted \(specs.count) clip\(specs.count == 1 ? "" : "s") at frame \(input.atFrame) on track \(input.trackIndex), pushed later clips +\(totalPush)f: \(ids.joined(separator: ", ")).\(audioNote)")
     }
 
     // MARK: remove_clips
@@ -564,22 +643,11 @@ extension ToolExecutor {
         guard units == "seconds" || units == "frames" else {
             throw ToolError("units must be 'seconds' or 'frames' (got '\(units)')")
         }
-        guard let loc = editor.findClip(id: input.clipId) else {
-            throw ToolError("Clip not found: \(input.clipId)")
+        guard (input.clipId != nil) != (input.trackIndex != nil) else {
+            throw ToolError("Provide exactly one of 'clipId' (cut within a single clip; allows 'seconds') or 'trackIndex' (cut project-frame ranges spanning a whole track in one call).")
         }
-        let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
         let fps = editor.timeline.fps
 
-        // 'frames' are already project frames (inspect_media with a clipId emits these).
-        // 'seconds' are source-media seconds → map through the clip's placement, trim, speed.
-        func toFrame(_ v: Double) -> Double {
-            units == "frames"
-                ? v
-                : Double(clip.startFrame) + (v * Double(fps) - Double(clip.trimStartFrame)) / max(clip.speed, 0.0001)
-        }
-
-        var frameRanges: [FrameRange] = []
-        var dropped = 0
         for (i, r) in input.ranges.enumerated() {
             guard r.count == 2 else {
                 throw ToolError("ranges[\(i)]: expected [start, end] (got \(r.count) element\(r.count == 1 ? "" : "s"))")
@@ -587,15 +655,50 @@ extension ToolExecutor {
             guard r[1] > r[0] else {
                 throw ToolError("ranges[\(i)]: end (\(r[1])) must be greater than start (\(r[0]))")
             }
-            let s = max(clip.startFrame, min(clip.endFrame, Int(toFrame(r[0]).rounded())))
-            let e = max(clip.startFrame, min(clip.endFrame, Int(toFrame(r[1]).rounded())))
-            if e > s { frameRanges.append(FrameRange(start: s, end: e)) } else { dropped += 1 }
-        }
-        guard !frameRanges.isEmpty else {
-            throw ToolError("No ranges fall within clip \(input.clipId) (frames \(clip.startFrame)..\(clip.endFrame)). In '\(units)' units, ranges must overlap the clip's visible span.")
         }
 
-        switch editor.rippleDeleteRanges(anchorClipId: input.clipId, ranges: frameRanges) {
+        var frameRanges: [FrameRange] = []
+        var dropped = 0
+        let resolvedTrackIndex: Int
+
+        if let clipId = input.clipId {
+            guard let loc = editor.findClip(id: clipId) else { throw ToolError("Clip not found: \(clipId)") }
+            let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            // 'frames' are project frames as-is; 'seconds' are source seconds → map through trim/speed/position.
+            func toFrame(_ v: Double) -> Double {
+                units == "frames"
+                    ? v
+                    : Double(clip.startFrame) + (v * Double(fps) - Double(clip.trimStartFrame)) / max(clip.speed, 0.0001)
+            }
+            for r in input.ranges {
+                let s = max(clip.startFrame, min(clip.endFrame, Int(toFrame(r[0]).rounded())))
+                let e = max(clip.startFrame, min(clip.endFrame, Int(toFrame(r[1]).rounded())))
+                if e > s { frameRanges.append(FrameRange(start: s, end: e)) } else { dropped += 1 }
+            }
+            guard !frameRanges.isEmpty else {
+                throw ToolError("No ranges fall within clip \(clipId) (frames \(clip.startFrame)..\(clip.endFrame)). In '\(units)' units, ranges must overlap the clip's visible span.")
+            }
+            resolvedTrackIndex = loc.trackIndex
+        } else {
+            let trackIndex = input.trackIndex!
+            guard units == "frames" else {
+                throw ToolError("units 'seconds' requires a clipId for source-media mapping; with trackIndex, ranges are project frames.")
+            }
+            guard editor.timeline.tracks.indices.contains(trackIndex) else {
+                throw ToolError("Track index out of range: \(trackIndex)")
+            }
+            for r in input.ranges {
+                let s = max(0, Int(r[0].rounded()))
+                let e = Int(r[1].rounded())
+                if e > s { frameRanges.append(FrameRange(start: s, end: e)) } else { dropped += 1 }
+            }
+            guard !frameRanges.isEmpty else {
+                throw ToolError("No valid project-frame ranges to delete on track \(trackIndex).")
+            }
+            resolvedTrackIndex = trackIndex
+        }
+
+        switch editor.rippleDeleteRangesOnTrack(trackIndex: resolvedTrackIndex, ranges: frameRanges) {
         case .refused(let reason):
             throw ToolError(reason)
         case .ok(let report):

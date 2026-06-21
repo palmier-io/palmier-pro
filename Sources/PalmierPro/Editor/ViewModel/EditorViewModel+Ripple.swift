@@ -80,22 +80,29 @@ extension EditorViewModel {
         return applied
     }
 
-    /// Ripple-delete timeline-frame `ranges` anchored to `anchorClipId`: clear the content
-    /// in each range on the anchor's track (and any track holding a linked partner, so A/V
-    /// stays in sync), then close the gaps. Sync-locked tracks shift along to preserve
-    /// alignment; refuses without mutating if any would collide.
+    /// Ripple-delete timeline-frame `ranges` anchored to `anchorClipId`
     func rippleDeleteRanges(anchorClipId: String, ranges: [FrameRange]) -> RippleRangesOutcome {
         guard let anchorLoc = findClip(id: anchorClipId) else {
             return .refused("Clip not found: \(anchorClipId)")
+        }
+        return rippleDeleteRangesOnTrack(trackIndex: anchorLoc.trackIndex, ranges: ranges)
+    }
+
+    /// Deletes project-frame ranges from one track (spanning any clips) and closes the gaps; cuts linked A/V partners, shifts sync-locked tracks, refuses if any can't absorb.
+    func rippleDeleteRangesOnTrack(trackIndex: Int, ranges: [FrameRange]) -> RippleRangesOutcome {
+        guard timeline.tracks.indices.contains(trackIndex) else {
+            return .refused("Track index out of range: \(trackIndex)")
         }
         let merged = RippleEngine.mergeRanges(ranges.filter { $0.length > 0 })
         guard !merged.isEmpty else { return .refused("No non-empty ranges to delete") }
         let totalRemoved = merged.reduce(0) { $0 + $1.length }
 
-        let anchor = timeline.tracks[anchorLoc.trackIndex].clips[anchorLoc.clipIndex]
-        var clearTrackIds: Set<String> = [timeline.tracks[anchorLoc.trackIndex].id]
-        if anchor.linkGroupId != nil {
-            for pid in linkedPartnerIds(of: anchorClipId) {
+        let anchorTrackId = timeline.tracks[trackIndex].id
+        var clearTrackIds: Set<String> = [anchorTrackId]
+        // Linked partners of every touched clip, so A/V stays in sync across multi-clip ranges.
+        for clip in timeline.tracks[trackIndex].clips
+        where clip.linkGroupId != nil && merged.contains(where: { $0.start < clip.endFrame && $0.end > clip.startFrame }) {
+            for pid in linkedPartnerIds(of: clip.id) {
                 if let l = findClip(id: pid) { clearTrackIds.insert(timeline.tracks[l.trackIndex].id) }
             }
         }
@@ -111,8 +118,7 @@ extension EditorViewModel {
             }
         }
 
-        let anchorTrackId = timeline.tracks[anchorLoc.trackIndex].id
-        let anchorBeforeIds = Set(timeline.tracks[anchorLoc.trackIndex].clips.map(\.id))
+        let anchorBeforeIds = Set(timeline.tracks[trackIndex].clips.map(\.id))
 
         var shiftedClips = 0
         withTimelineSwap(actionName: "Ripple Delete") {
@@ -131,15 +137,12 @@ extension EditorViewModel {
             }
         }
 
-        // The anchor clip became these fragments (head keeps its id, tails are new) — report
-        // them so the caller has the post-cut layout without a re-read. Ranges are clamped to
-        // the anchor clip, so any new/removed ids on its track came from this cut.
-        let anchorTi = timeline.tracks.firstIndex { $0.id == anchorTrackId } ?? anchorLoc.trackIndex
+        // Anchor track's post-cut layout (surviving + new fragments) so the caller needn't re-read.
+        let anchorTi = timeline.tracks.firstIndex { $0.id == anchorTrackId } ?? trackIndex
         let afterClips = timeline.tracks[anchorTi].clips
         let afterIds = Set(afterClips.map(\.id))
-        let createdIds = afterIds.subtracting(anchorBeforeIds)
         let fragments = afterClips
-            .filter { createdIds.contains($0.id) || $0.id == anchorClipId }
+            .filter { afterIds.subtracting(anchorBeforeIds).contains($0.id) || anchorBeforeIds.contains($0.id) }
             .sorted { $0.startFrame < $1.startFrame }
             .map { (clipId: $0.id, startFrame: $0.startFrame, durationFrames: $0.durationFrames) }
         return .ok(RippleRangesReport(
@@ -184,8 +187,10 @@ extension EditorViewModel {
 
     /// Ripple insert: add clips at `atFrame` and push everything past it right by the
     /// insertion's duration on the target track and every sync-locked track.
-    func rippleInsertClips(assets: [MediaAsset], trackIndex: Int, atFrame: Int, segments: [String: ClosedRange<Double>] = [:]) {
-        guard timeline.tracks.indices.contains(trackIndex) else { return }
+    @discardableResult
+    func rippleInsertClips(assets: [MediaAsset], trackIndex: Int, atFrame: Int, segments: [String: ClosedRange<Double>] = [:]) -> [String] {
+        guard timeline.tracks.indices.contains(trackIndex) else { return [] }
+        var created: [String] = []
         withTimelineSwap(actionName: "Ripple Insert Clips") {
             let totalPush = assets.reduce(0) { $0 + clipDurationFrames(for: $1, segment: segments[$1.id]) }
 
@@ -196,9 +201,70 @@ extension EditorViewModel {
                     pushAmount: totalPush
                 ))
             }
-            createClips(from: assets, trackIndex: trackIndex, startFrame: atFrame, segments: segments)
+            created = createClips(from: assets, trackIndex: trackIndex, startFrame: atFrame, segments: segments)
             sortClips(trackIndex: trackIndex)
         }
+        return created
+    }
+
+    struct RippleInsertSpec {
+        let asset: MediaAsset
+        let durationFrames: Int
+        let trimStartFrame: Int?
+        let trimEndFrame: Int?
+    }
+
+    /// Ripple insert with explicit per-clip duration and trim. Opens a gap at `atFrame`
+    /// on the target track, every sync-locked track, and the audio track any linked
+    /// audio lands on, then places the clips sequentially into the gap.
+    @discardableResult
+    func rippleInsertClips(specs: [RippleInsertSpec], trackIndex: Int, atFrame: Int) -> [String] {
+        guard timeline.tracks.indices.contains(trackIndex), !specs.isEmpty else { return [] }
+        var created: [String] = []
+        withTimelineSwap(actionName: specs.count == 1 ? "Ripple Insert Clip (Agent)" : "Ripple Insert Clips (Agent)") {
+            let totalPush = specs.reduce(0) { $0 + $1.durationFrames }
+
+            // Pin the linked-audio destination before pushing so it ripples too; otherwise the
+            // auto-created audio partner would land on an un-pushed track and overlap.
+            let targetIsVideo = timeline.tracks[trackIndex].type == .video
+            let needsLinkedAudio = targetIsVideo && specs.contains { $0.asset.type == .video && $0.asset.hasAudio }
+            let linkedAudioTrackIndex: Int? = needsLinkedAudio
+                ? (timeline.tracks.firstIndex { $0.type == .audio } ?? insertTrack(at: timeline.tracks.count, type: .audio))
+                : nil
+
+            // Tracks the gap opens on. Splitting below doesn't add tracks, so these stay valid.
+            let pushTracks = timeline.tracks.indices.filter {
+                $0 == trackIndex || $0 == linkedAudioTrackIndex || timeline.tracks[$0].syncLocked
+            }
+
+            // Insert-edit: split any clip straddling atFrame on each pushed track so its right
+            // half rides the ripple instead of being overlapped. splitClip also splits linked
+            // partners and regroups them, so a clip already cut via its partner is no longer a
+            // straddler when its own track comes up.
+            for ti in pushTracks {
+                if let straddler = timeline.tracks[ti].clips.first(where: { $0.startFrame < atFrame && atFrame < $0.endFrame }) {
+                    _ = splitClip(clipId: straddler.id, atFrame: atFrame)
+                }
+            }
+
+            for ti in pushTracks {
+                applyShifts(RippleEngine.computeRipplePush(
+                    clips: timeline.tracks[ti].clips, insertFrame: atFrame, pushAmount: totalPush
+                ))
+            }
+
+            var cursor = atFrame
+            for spec in specs {
+                created.append(contentsOf: placeClip(
+                    asset: spec.asset, trackIndex: trackIndex,
+                    startFrame: cursor, durationFrames: spec.durationFrames,
+                    linkedAudioTrackIndex: linkedAudioTrackIndex,
+                    trimStartFrame: spec.trimStartFrame, trimEndFrame: spec.trimEndFrame
+                ))
+                cursor += spec.durationFrames
+            }
+        }
+        return created
     }
 
     // MARK: - Internal

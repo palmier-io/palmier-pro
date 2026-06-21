@@ -51,7 +51,16 @@ final class VideoProject: NSDocument {
         if let logData = fileWrapper.fileWrappers?[Project.generationLogFilename]?.regularFileContents {
             loadedGenerationLog = try? JSONDecoder().decode(GenerationLog.self, from: logData)
         }
-        Log.project.notice("read ok tracks=\(self.loadedTimeline?.tracks.count ?? 0)")
+        Log.project.notice(
+            "read ok tracks=\(self.loadedTimeline?.tracks.count ?? 0)",
+            telemetry: "Project read",
+            data: [
+                "tracks": loadedTimeline?.tracks.count ?? 0,
+                "clips": loadedTimeline?.tracks.reduce(0) { $0 + $1.clips.count } ?? 0,
+                "media": loadedManifest?.entries.count ?? 0,
+                "hasGenerationLog": loadedGenerationLog != nil
+            ]
+        )
     }
 
     override func save(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType, completionHandler: @escaping (Error?) -> Void) {
@@ -237,6 +246,12 @@ final class VideoProject: NSDocument {
             editorViewModel.seedGenerationLogFromAssets()
         }
         editorViewModel.searchIndex.projectOpened()
+        editorViewModel.updateTelemetryContext()
+        Telemetry.breadcrumb(
+            "Project opened",
+            category: "project",
+            data: editorViewModel.telemetrySnapshot()
+        )
     }
 
     // MARK: - Thumbnail
@@ -289,17 +304,22 @@ final class VideoProject: NSDocument {
     private func restoreAssetsFromManifest() {
         let cache = editorViewModel.mediaVisualCache
         let resolver = editorViewModel.mediaResolver
+        var restored = 0
+        var missing = 0
         for entry in editorViewModel.mediaManifest.entries {
             guard let url = resolver.expectedURL(for: entry.id) else {
                 Log.project.warning("restore: could not resolve URL for entry id=\(entry.id) name=\(entry.name)")
+                missing += 1
                 continue
             }
             let asset = MediaAsset(entry: entry, resolvedURL: url)
             editorViewModel.mediaAssets.append(asset)
             guard FileManager.default.fileExists(atPath: url.path) else {
                 Log.project.warning("restore: media file missing id=\(entry.id) name=\(entry.name) path=\(url.path)")
+                missing += 1
                 continue
             }
+            restored += 1
             if asset.type == .audio || asset.type == .video {
                 cache.generateWaveform(for: asset)
             }
@@ -311,6 +331,11 @@ final class VideoProject: NSDocument {
             }
             Task { await asset.loadMetadata() }
         }
+        Log.project.notice(
+            "restore ok restored=\(restored) missing=\(missing)",
+            telemetry: "Media restored",
+            data: ["restored": restored, "missing": missing, "manifestEntries": editorViewModel.mediaManifest.entries.count]
+        )
     }
 }
 

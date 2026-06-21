@@ -25,7 +25,7 @@ extension EditorViewModel {
                 n += 1
             }
         } else {
-            for i in trackIndex..<zones.firstAudioIndex where timeline.tracks[i].type == type {
+            for i in trackIndex..<max(trackIndex + 1, zones.firstAudioIndex) where timeline.tracks[i].type == type {
                 n += 1
             }
         }

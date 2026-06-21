@@ -89,6 +89,56 @@ struct RippleDeleteRangesTests {
         #expect(starts(e.timeline.tracks[1]) == [110])
     }
 
+    @Test func trackWideCutSpansMultipleClips() {
+        // Two contiguous clips on one track; one call removes a range from each and closes both gaps.
+        let track = Fixtures.videoTrack(clips: [
+            Fixtures.clip(id: "c1", start: 0, duration: 100),
+            Fixtures.clip(id: "c2", start: 100, duration: 100),
+        ])
+        let e = editor([track])
+        let outcome = e.rippleDeleteRangesOnTrack(
+            trackIndex: 0,
+            ranges: [FrameRange(start: 40, end: 50), FrameRange(start: 150, end: 160)]
+        )
+        guard case .ok(let report) = outcome else { Issue.record("expected .ok"); return }
+        #expect(report.removedFrames == 20)
+        #expect(spans(e.timeline.tracks[0]) == [[0, 40], [40, 90], [90, 140], [140, 180]])
+    }
+
+    @Test func trackWideCutSyncsLinkedPartnersOfEachClip() {
+        // Each video clip has its own linked audio partner; a track-wide cut keeps both in sync.
+        var v1 = Fixtures.clip(id: "v1", start: 0, duration: 100); v1.linkGroupId = "G1"
+        var v2 = Fixtures.clip(id: "v2", start: 100, duration: 100); v2.linkGroupId = "G2"
+        var a1 = Fixtures.clip(id: "a1", mediaType: .audio, start: 0, duration: 100); a1.linkGroupId = "G1"
+        var a2 = Fixtures.clip(id: "a2", mediaType: .audio, start: 100, duration: 100); a2.linkGroupId = "G2"
+        let e = editor([Fixtures.videoTrack(clips: [v1, v2]), Fixtures.audioTrack(clips: [a1, a2])])
+        let outcome = e.rippleDeleteRangesOnTrack(
+            trackIndex: 0,
+            ranges: [FrameRange(start: 40, end: 50), FrameRange(start: 150, end: 160)]
+        )
+        guard case .ok(let report) = outcome else { Issue.record("expected .ok"); return }
+        #expect(report.clearedTracks == 2)
+        #expect(spans(e.timeline.tracks[0]) == spans(e.timeline.tracks[1]))
+    }
+
+    @Test func rippleInsertPushesDownstream() {
+        // c1 [0,50), c2 [50,100). Insert a 30-frame asset at 50 → c2 pushed to [80,130).
+        let track = Fixtures.videoTrack(clips: [
+            Fixtures.clip(id: "c1", start: 0, duration: 50),
+            Fixtures.clip(id: "c2", start: 50, duration: 50),
+        ])
+        let e = editor([track])
+        let asset = MediaAsset(id: "m1", url: URL(fileURLWithPath: "/tmp/m1.mov"), type: .video, name: "m1", duration: 1.0)
+        asset.hasAudio = false
+        e.mediaAssets.append(asset)
+        let created = e.rippleInsertClips(assets: [asset], trackIndex: 0, atFrame: 50)
+        #expect(created.count == 1)
+        let s = spans(e.timeline.tracks[0])
+        #expect(s.contains([0, 50]))
+        #expect(s.contains([50, 80]))
+        #expect(s.contains([80, 130]))
+    }
+
     @Test func refusesWhenSyncLockedFollowerWouldCollide() {
         // a2 would slide left onto a1 → whole edit refused, nothing moves.
         let v = Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 100)])

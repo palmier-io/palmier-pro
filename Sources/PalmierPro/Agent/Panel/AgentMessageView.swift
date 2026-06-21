@@ -4,12 +4,19 @@ import SwiftUI
 struct AgentMessageView: View {
     let message: AgentMessage
     let toolResults: [String: ToolRunResult]
+    @State private var isHovering = false
 
     var body: some View {
         switch message.role {
         case .user:   userBody
         case .assistant: assistantBody
         }
+    }
+
+    private var copyableText: String {
+        message.blocks
+            .compactMap { if case let .text(s) = $0 { return s } else { return nil } }
+            .joined(separator: "\n\n")
     }
 
     @ViewBuilder
@@ -51,7 +58,41 @@ struct AgentMessageView: View {
                     EmptyView()
                 }
             }
+            if !copyableText.isEmpty {
+                CopyMessageButton(text: copyableText)
+                    .opacity(isHovering ? 1 : 0)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
+        .animation(.easeOut(duration: AppTheme.Anim.hover), value: isHovering)
+    }
+}
+
+private struct CopyMessageButton: View {
+    let text: String
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            copied = true
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.5))
+                copied = false
+            }
+        } label: {
+            HStack(spacing: AppTheme.Spacing.xs) {
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                Text(copied ? "Copied" : "Copy")
+            }
+            .font(.system(size: AppTheme.FontSize.xs))
+            .foregroundStyle(AppTheme.Text.tertiaryColor)
+        }
+        .buttonStyle(.plain)
+        .help("Copy message")
     }
 }
 

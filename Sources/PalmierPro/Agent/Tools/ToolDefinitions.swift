@@ -5,6 +5,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case getTimeline = "get_timeline"
     case getMedia = "get_media"
     case addClips = "add_clips"
+    case insertClips = "insert_clips"
     case removeClips = "remove_clips"
     case removeTracks = "remove_tracks"
     case moveClips = "move_clips"
@@ -15,6 +16,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case setKeyframes = "set_keyframes"
     case splitClip = "split_clip"
     case rippleDeleteRanges = "ripple_delete_ranges"
+    case undo = "undo"
     case addTexts = "add_texts"
     case addCaptions = "add_captions"
     case generateVideo = "generate_video"
@@ -78,12 +80,13 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .getTranscript,
-            description: "Returns the spoken transcript of the CURRENT timeline as a flat, time-ordered word list in project frames — the post-edit caption track in one call. Unlike inspect_media (which transcribes one source asset in isolation, in source seconds), this walks every audio/video clip on the timeline, maps each word through that clip's trim/speed/position, and concatenates in timeline order. Deleted ranges are gone by construction, so after cuts this always reflects what's actually audible — no stale results, no per-clip frame math.\n\nReturns words as [text, startFrame, endFrame] tuples (project frames) plus a clips array [{clipId, trackIndex, startFrame, endFrame}] so you can map any word back to the clip it lives in — pass that clipId and the frames straight to ripple_delete_ranges. Capped at 10000 words; on a long timeline page with startFrame/endFrame using the returned nextStartFrame. Transcription runs on-device and defaults to the system language — pass language when the footage is in another tongue, or the transcript will be garbage.\n\nUse for transcript-driven edits (filler-word / dead-air removal, locating a quote) and to verify what remains after cutting.",
+            description: "Returns the spoken transcript of the CURRENT timeline in project frames — the post-edit caption track in one call. Unlike inspect_media (which transcribes one source asset in isolation, in source seconds), this walks every audio/video clip on the timeline, maps each word through that clip's trim/speed/position, and concatenates in timeline order. Deleted ranges are gone by construction, so after cuts this always reflects what's actually audible — no stale results, no per-clip frame math.\n\nReturns clips in timeline order, each with its words nested as compact [text, startFrame, endFrame] rows (the field order is given once in wordFormat) — clipId and trackIndex are stated once per clip, not repeated per word. Words are monotonic and non-overlapping; each is attributed to one clip, so a word split across a clip seam is emitted once, not re-emitted per clip. Pass a clip's clipId and a word's frames straight to ripple_delete_ranges. Capped at 10000 words total; page with startFrame/endFrame using nextStartFrame. Pass clipId to scope to a single clip (\"what does this clip say?\"). Transcription runs on-device and defaults to the system language — pass language when the footage is in another tongue, or the transcript will be garbage.\n\nUse for transcript-driven edits (filler-word / dead-air removal, locating a quote, take selection) and to verify what remains after cutting.",
             inputSchema: objectSchema(
                 properties: [
                     "startFrame": ["type": "integer", "description": "Optional. Only return words ending after this project frame. Use with the returned nextStartFrame to page a long timeline."],
                     "endFrame": ["type": "integer", "description": "Optional. Only return words starting before this project frame."],
                     "language": ["type": "string", "description": "Optional BCP-47 language of the speech (e.g. 'fr', 'ja', 'en-GB'). Overrides the project's transcriptionLanguage for this call; if neither is set, defaults to the system language. Set this when the footage is in another language, or transcription will be garbage."],
+                    "clipId": ["type": "string", "description": "Scope the transcript to a single clip — returns only what that clip says, in project frames. Answers \"what's in clip X?\" without scanning the whole timeline."],
                 ]
             )
         ),
@@ -124,14 +127,41 @@ enum ToolDefinitions {
                             "properties": [
                                 "mediaRef": ["type": "string", "description": "ID of the media asset from get_media"],
                                 "trackIndex": ["type": "integer", "description": "Optional. Track index (0-based). Omit on every entry to auto-create one shared track per asset zone (video/audio)."],
-                                "startFrame": ["type": "integer", "description": "Frame position to place the clip"],
-                                "durationFrames": ["type": "integer", "description": "Duration in frames"],
+                                "startFrame": ["type": "integer", "description": "Timeline frame position to place the clip (project frames)."],
+                                "durationFrames": ["type": "integer", "description": "Clip length on the timeline, in project frames."],
+                                "trimStartFrame": ["type": "integer", "description": "Optional. Frames skipped from the START of the source media before the clip begins — a SOURCE offset, NOT a timeline position, but measured in PROJECT frames (the timeline's fps, same units as startFrame/durationFrames — never the source's own fps). 0 (default) starts at the source's first frame. Set this to trim on placement instead of a follow-up set_clip_properties call; semantics are identical to set_clip_properties."],
+                                "trimEndFrame": ["type": "integer", "description": "Optional. Frames trimmed off the END of the source media, in PROJECT frames — same units as trimStartFrame. 0 (default) trims nothing off the end."],
                             ],
                             "required": ["mediaRef", "startFrame", "durationFrames"],
                         ],
                     ],
                 ],
                 required: ["entries"]
+            )
+        ),
+        AgentTool(
+            name: .insertClips,
+            description: "Inserts one or more media assets at a single point and RIPPLES: every clip at or after atFrame is pushed right to open a gap, so nothing is overwritten. This is the non-destructive counterpart to add_clips (which clears the landing region, trimming/splitting/removing whatever's there). Use insert_clips to splice footage in without losing existing clips; use add_clips to fill empty space or deliberately overwrite.\n\nEntries are laid end-to-end starting at atFrame on the target track (entry[0] at atFrame, entry[1] immediately after, ...). The push equals the sum of the entries' durations and is applied to the target track, every sync-locked track, AND the audio track any auto-created linked audio lands on — so a clip and its linked audio stay aligned. As in add_clips, a video asset with audio spawns a linked audio clip. One undoable action; one bad entry rejects the whole call with no partial state.\n\ntrackIndex is required — ripple needs an existing track to push. For placement into empty space, use add_clips.",
+            inputSchema: objectSchema(
+                properties: [
+                    "trackIndex": ["type": "integer", "description": "Track index (0-based, from get_timeline) to insert into and ripple."],
+                    "atFrame": ["type": "integer", "description": "Timeline frame (project frames) where insertion begins. Every clip at or after this frame on rippled tracks shifts right by the total inserted duration."],
+                    "entries": [
+                        "type": "array",
+                        "description": "Clips to insert, placed sequentially from atFrame. Validated up front; one bad entry rejects the whole call.",
+                        "items": [
+                            "type": "object",
+                            "properties": [
+                                "mediaRef": ["type": "string", "description": "ID of the media asset from get_media."],
+                                "durationFrames": ["type": "integer", "description": "Optional. Timeline length in project frames. Omit to use the asset's full source duration."],
+                                "trimStartFrame": ["type": "integer", "description": "Optional. Frames skipped from the START of the source media — a SOURCE offset in PROJECT frames (same units as atFrame/durationFrames, never the source's own fps). 0 (default) starts at the source's first frame."],
+                                "trimEndFrame": ["type": "integer", "description": "Optional. Frames trimmed off the END of the source media, in PROJECT frames. 0 (default) trims nothing."],
+                            ],
+                            "required": ["mediaRef"],
+                        ],
+                    ],
+                ],
+                required: ["trackIndex", "atFrame", "entries"]
             )
         ),
         AgentTool(
@@ -195,8 +225,8 @@ enum ToolDefinitions {
                         "items": ["type": "string"],
                     ],
                     "durationFrames": ["type": "integer", "description": "New duration in frames."],
-                    "trimStartFrame": ["type": "integer", "description": "Frames to trim from the start of the source media."],
-                    "trimEndFrame": ["type": "integer", "description": "Frames to trim from the end of the source media."],
+                    "trimStartFrame": ["type": "integer", "description": "SOURCE-media offset, NOT a timeline frame: frames trimmed off the start of the source — measured in PROJECT frames (the timeline's fps, same units as startFrame/durationFrames; never the source's own fps). To turn a get_transcript project frame P into this clip's source offset, use trimStartFrame + (P − startFrame) × speed; setting trimStartFrame to that value makes the clip begin at P's source content."],
+                    "trimEndFrame": ["type": "integer", "description": "SOURCE-media offset, NOT a timeline frame: frames trimmed off the end of the source, in PROJECT frames. Maps the same way as trimStartFrame via startFrame/speed."],
                     "speed": ["type": "number", "description": "Playback speed multiplier (default 1.0). >1 speeds up, <1 slows down. The clip's timeline length is rescaled to keep the same source content (2x speed → half the frames), unless you also pass durationFrames to set the length explicitly."],
                     "volume": ["type": "number", "description": "Volume 0.0-1.0. Clears any existing volume keyframes."],
                     "opacity": ["type": "number", "description": "Opacity 0.0-1.0. Clears any existing opacity keyframes."],
@@ -306,19 +336,25 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .rippleDeleteRanges,
-            description: "Cuts one or more ranges out of a single clip and closes the gaps in one undoable action — the fast path for filler-word/dead-air removal. Replaces hand-cranked split_clip → split_clip → remove_clips → move_clips loops: pass every range at once.\n\nunits default to 'frames' (project/timeline frames). The intended flow: call inspect_media WITH this clipId to get per-word [text, startFrame, endFrame] timestamps, then pass those frame pairs straight in — same coordinate space, no conversion. Use units 'seconds' only for source-media seconds (inspect_media WITHOUT a clipId, or search_media hits). Ranges are clamped to the clip's visible span; any range fully outside it is ignored, and overlapping ranges merge.\n\nThe clip's linked audio/video partner is cut on the same span so A/V stays in sync. Remaining clips shift left to close every gap; sync-locked tracks shift along to preserve alignment (their content isn't cut — like the timeline's ripple delete). Refuses without changing anything if a sync-locked track can't absorb the shift (e.g. it would move past frame 0).",
+            description: "Cuts one or more ranges out and closes the gaps in one undoable action — the fast path for filler-word/dead-air removal. Replaces hand-cranked split_clip → split_clip → remove_clips → move_clips loops: pass every range at once.\n\nTwo modes — pass exactly one of clipId or trackIndex:\n• trackIndex (preferred for transcript-driven cuts): ranges are PROJECT frames and may span any number of clips on that track. get_transcript returns a clips array with nested words in project frames — collect every cut across the whole timeline and pass them in ONE call, no per-clip splitting and no re-reading the timeline between cuts. units must be 'frames'.\n• clipId: ranges are cut within that single clip only, clamped to its visible span. Allows units 'seconds' (source-media seconds, e.g. inspect_media WITHOUT a clipId or search_media hits); 'frames' = project frames. Use when you already have one clip's per-word timestamps.\n\nOverlapping ranges merge. Linked audio/video partners of every touched clip are cut on the same span so A/V stays in sync. Remaining clips shift left to close every gap; sync-locked tracks shift along to preserve alignment (their content isn't cut). Refuses without changing anything if a sync-locked track can't absorb the shift (e.g. it would move past frame 0). Returns the anchor track's post-cut layout (clip ids/frames) so you don't need to re-read.",
             inputSchema: objectSchema(
                 properties: [
-                    "clipId": ["type": "string", "description": "The clip to cut ranges out of. Ranges are interpreted in this clip's source timebase and clamped to its visible span."],
+                    "trackIndex": ["type": "integer", "description": "Cut project-frame ranges spanning every clip they cross on this track, in one call. From get_transcript's clips array. Mutually exclusive with clipId; requires units 'frames'."],
+                    "clipId": ["type": "string", "description": "Cut ranges within this single clip only, clamped to its visible span. Mutually exclusive with trackIndex."],
                     "ranges": [
                         "type": "array",
                         "description": "Ranges to remove, each a [start, end] pair (end > start). In the unit given by 'units'.",
                         "items": ["type": "array", "items": ["type": "number"], "minItems": 2, "maxItems": 2],
                     ],
-                    "units": ["type": "string", "enum": ["seconds", "frames"], "description": "Interpretation of range values. 'frames' (default) = project/timeline frames, matching inspect_media's per-word timestamps when it's called WITH this clipId. 'seconds' = source-media seconds (inspect_media without a clipId, or search_media hits)."],
+                    "units": ["type": "string", "enum": ["seconds", "frames"], "description": "Interpretation of range values. 'frames' (default) = project/timeline frames, matching get_transcript and inspect_media-with-clipId. 'seconds' = source-media seconds (clipId mode only)."],
                 ],
-                required: ["clipId", "ranges"]
+                required: ["ranges"]
             )
+        ),
+        AgentTool(
+            name: .undo,
+            description: "Reverts the assistant's most recent timeline edit (a cut, move, trim, split, or clip/text/caption add) as one step. The recovery path when an edit went too far — e.g. a ripple_delete_ranges removed more than intended. Verify a cut first (get_transcript reflects the post-cut audio), then undo if it overshot, then retry with corrected ranges.\n\nUndoes only edits the assistant made this session, most-recent-first — it never touches the user's own manual edits, and refuses if the latest change wasn't the assistant's. After undoing, the timeline is restored to its state before that edit; the ids/frames the edit returned are no longer valid, so re-read with get_timeline or get_transcript if you'll edit again. Takes no arguments.",
+            inputSchema: objectSchema()
         ),
         AgentTool(
             name: .addTexts,
@@ -449,7 +485,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .importMedia,
-            description: "Imports external media into the project's library — the bridge for assets coming from other MCP servers (stock libraries, music services, web search) or local files the user already has. The 'source' object must set exactly one of: url (HTTPS only — downloaded in the background, the dominant case; max 1 GB), path (absolute local file path — referenced in place), or bytes (base64-encoded inline data — max ~15 MB of base64 ≈ 11 MB binary; use url/path for anything larger). For url, type is inferred from the URL path's file extension unless source.mimeType is set as an override (needed for signed URLs whose path has no usable extension). For bytes, source.mimeType is required.\n\nSupported types and extensions: video (mov, mp4, m4v), audio (mp3, wav, aac, m4a), image (png, jpg, jpeg, tiff, heic). Anything else is rejected — the caller must transcode externally.\n\nReturns a placeholder asset id immediately; URL imports run in the background and the asset becomes usable in add_clips once ready (same async pattern as generate_*). Path and bytes imports finalize synchronously. Costs nothing.",
+            description: "Imports external media into the project's library — the bridge for assets coming from other MCP servers (stock libraries, music services, web search) or local files the user already has. The 'source' object must set exactly one of: url (HTTPS only — downloaded in the background, the dominant case; max 1 GB), path (absolute local file path — referenced in place; may also be a directory, which is imported recursively, mirroring its subfolder structure as media folders), or bytes (base64-encoded inline data — max ~15 MB of base64 ≈ 11 MB binary; use url/path for anything larger). For url, type is inferred from the URL path's file extension unless source.mimeType is set as an override (needed for signed URLs whose path has no usable extension). For bytes, source.mimeType is required.\n\nSupported types and extensions: video (mov, mp4, m4v), audio (mp3, wav, aac, m4a), image (png, jpg, jpeg, tiff, heic). Anything else is rejected — the caller must transcode externally.\n\nReturns a placeholder asset id immediately; URL imports run in the background and the asset becomes usable in add_clips once ready (same async pattern as generate_*). Path and bytes imports finalize synchronously. Costs nothing.",
             inputSchema: objectSchema(
                 properties: [
                     "source": [
@@ -457,7 +493,7 @@ enum ToolDefinitions {
                         "description": "Exactly one of url, path, or bytes must be set. mimeType is required when bytes is set; for url it acts as a type-inference override.",
                         "properties": [
                             "url": ["type": "string", "description": "HTTPS URL. Pre-signed URLs are fine but must not expire mid-download."],
-                            "path": ["type": "string", "description": "Absolute local file path. The file must be readable by the Palmier process."],
+                            "path": ["type": "string", "description": "Absolute local file or directory path, readable by the Palmier process. A directory is imported recursively — every openable file is pulled in and the folder structure is replicated as media folders."],
                             "bytes": ["type": "string", "description": "Base64-encoded media data. Prefer url or path for anything over ~10MB."],
                             "mimeType": ["type": "string", "description": "Required when bytes is set. Optional override for url when its path has no usable extension (e.g. signed URLs). Accepted: video/mp4, video/quicktime, audio/mpeg, audio/wav, audio/aac, audio/mp4, image/png, image/jpeg, image/tiff, image/heic."],
                         ],

@@ -749,18 +749,14 @@ struct MediaTab: View {
     private func importMedia() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
+        panel.canChooseDirectories = true
+        panel.message = "Select media files or folders to import"
         var types: [UTType] = [.movie, .image, .audio, .json]
         if let lottie = UTType(filenameExtension: "lottie") { types.append(lottie) }
         panel.allowedContentTypes = types
         panel.begin { response in
             guard response == .OK else { return }
-            let folderId = currentFolderId
-            for url in panel.urls {
-                if let asset = editor.addMediaAsset(from: url), let folderId {
-                    editor.moveAssetsToFolder(assetIds: [asset.id], folderId: folderId)
-                }
-            }
+            editor.importFinderItems(panel.urls, into: currentFolderId)
         }
     }
 }

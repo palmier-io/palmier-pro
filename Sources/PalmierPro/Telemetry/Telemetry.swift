@@ -2,6 +2,8 @@ import Foundation
 import Sentry
 
 enum Telemetry {
+    typealias Payload = [String: Any]
+
     private static let dsn = Bundle.main.object(forInfoDictionaryKey: "SentryDSN") as? String ?? ""
     private static let enabledKey = "io.palmier.pro.telemetry.enabled"
 
@@ -45,11 +47,28 @@ enum Telemetry {
         didStart = true
     }
 
-    static func breadcrumb(_ message: String, category: String = "app", level: SentryLevel = .info) {
+    static func breadcrumb(
+        _ message: String,
+        category: String = "app",
+        level: SentryLevel = .info,
+        data: Payload? = nil
+    ) {
         guard didStart else { return }
         let crumb = Breadcrumb(level: level, category: category)
         crumb.message = message
+        crumb.data = data
         SentrySDK.addBreadcrumb(crumb)
+    }
+
+    static func shortId(_ id: String) -> String {
+        String(id.prefix(8))
+    }
+
+    static func setExtra(value: Any?, key: String) {
+        guard didStart else { return }
+        SentrySDK.configureScope { scope in
+            scope.setExtra(value: value, key: key)
+        }
     }
 
     static func captureMessage(_ message: String, level: SentryLevel = .warning) {
@@ -64,23 +83,26 @@ enum Telemetry {
         SentrySDK.capture(error: error)
     }
 
-    static func logWarning(_ message: String, category: String) {
-        breadcrumb(message, category: category, level: .warning)
+    static func logWarning(_ message: String, category: String, data: Payload? = nil) {
+        breadcrumb(message, category: category, level: .warning, data: data)
     }
 
-    static func logError(_ message: String, category: String) {
-        captureLogMessage(message, level: .error, category: category)
+    static func logError(_ message: String, category: String, data: Payload? = nil) {
+        captureLogMessage(message, level: .error, category: category, data: data)
     }
 
-    static func logFault(_ message: String, category: String) {
-        captureLogMessage(message, level: .fatal, category: category)
+    static func logFault(_ message: String, category: String, data: Payload? = nil) {
+        captureLogMessage(message, level: .fatal, category: category, data: data)
     }
 
-    private static func captureLogMessage(_ message: String, level: SentryLevel, category: String) {
+    private static func captureLogMessage(_ message: String, level: SentryLevel, category: String, data: Payload?) {
         guard didStart else { return }
         SentrySDK.capture(message: message) { scope in
             scope.setLevel(level)
             scope.setTag(value: category, key: "log_category")
+            if let data {
+                scope.setExtra(value: data, key: "log")
+            }
         }
     }
 

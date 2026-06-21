@@ -399,9 +399,9 @@ struct ToolExecutorReadOnlyTests {
         #expect(folders?.count == 2)
         let names = folders?.compactMap { $0["name"] as? String }.sorted() ?? []
         #expect(names == ["Refs", "Sub"])
-        // Child must carry parentFolderId; root must not.
+        // Child must carry parentFolderId; root must not. Output ids are shortened prefixes.
         let sub = folders?.first { $0["name"] as? String == "Sub" }
-        #expect(sub?["parentFolderId"] as? String == id1)
+        #expect((sub?["parentFolderId"] as? String).map { id1.hasPrefix($0) } == true)
         let root = folders?.first { $0["name"] as? String == "Refs" }
         #expect(root?["parentFolderId"] == nil)
     }
@@ -1142,7 +1142,7 @@ struct ToolExecutorClipTests {
         let json = try await h.runOK("get_timeline") as? [String: Any]
         let tracks = (json?["tracks"] as? [[String: Any]]) ?? []
         let clip = tracks.flatMap { ($0["clips"] as? [[String: Any]]) ?? [] }
-            .first { ($0["id"] as? String) == clipId }
+            .first { ($0["id"] as? String).map { clipId.hasPrefix($0) } == true }
         let kfs = clip?["keyframes"] as? [String: Any]
         #expect(kfs != nil, "keyframes should be present on the clip in get_timeline output")
         let volRows = kfs?["volume"] as? [[Any]]
@@ -1253,7 +1253,7 @@ struct ToolExecutorTextFolderTests {
         let json = try await h.runOK("create_folder", args: ["name": "Refs"]) as? [String: Any]
         let id = json?["id"] as? String
         #expect(id != nil)
-        #expect(h.editor.folders.contains { $0.id == id && $0.parentFolderId == nil })
+        #expect(h.editor.folders.contains { id.map($0.id.hasPrefix) == true && $0.parentFolderId == nil })
     }
 
     @Test func createFolderNestsInsideParent() async throws {
@@ -1264,7 +1264,7 @@ struct ToolExecutorTextFolderTests {
             "parentFolderId": parentId,
         ]) as? [String: Any]
         let childId = json?["id"] as? String
-        let child = h.editor.folders.first { $0.id == childId }
+        let child = h.editor.folders.first { childId.map($0.id.hasPrefix) == true }
         #expect(child?.parentFolderId == parentId)
     }
 
@@ -1291,8 +1291,10 @@ struct ToolExecutorTextFolderTests {
         let createdIds = Set(folders?.compactMap { $0["id"] as? String } ?? [])
 
         #expect(folders?.count == 2)
-        #expect(h.editor.folders.contains { createdIds.contains($0.id) && $0.name == "A" && $0.parentFolderId == nil })
-        #expect(h.editor.folders.contains { createdIds.contains($0.id) && $0.name == "B" && $0.parentFolderId == parentId })
+        // Output ids are shortened prefixes of the stored ids.
+        func created(_ f: MediaFolder) -> Bool { createdIds.contains { f.id.hasPrefix($0) } }
+        #expect(h.editor.folders.contains { created($0) && $0.name == "A" && $0.parentFolderId == nil })
+        #expect(h.editor.folders.contains { created($0) && $0.name == "B" && $0.parentFolderId == parentId })
     }
 
     @Test func createFolderBatchRejectsMissingParentBeforeMutation() async throws {
@@ -1556,7 +1558,7 @@ struct ToolExecutorTextFolderTests {
     @Test func getTranscriptEmptyTimelineReturnsNoWords() async throws {
         let h = ToolHarness()
         let json = try await h.runOK("get_transcript") as? [String: Any]
-        #expect((json?["words"] as? [Any])?.isEmpty == true)
+        #expect((json?["clips"] as? [Any])?.isEmpty == true)
         #expect(json?["timing"] as? String == "projectFrames")
     }
 
@@ -1567,7 +1569,6 @@ struct ToolExecutorTextFolderTests {
         ]))
         h.addAsset(id: "v", type: .video, hasAudio: false)
         let json = try await h.runOK("get_transcript") as? [String: Any]
-        #expect((json?["words"] as? [Any])?.isEmpty == true)
         #expect((json?["clips"] as? [Any])?.isEmpty == true)
         #expect(json?["skipped"] == nil)
     }
