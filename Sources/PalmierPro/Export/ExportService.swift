@@ -261,7 +261,7 @@ final class ExportService {
             }
         case .h265:
             switch resolution {
-            case .r720p: AVAssetExportPresetHEVC1920x1080
+            case .r720p: AVAssetExportPresetHEVCHighestQuality
             case .r1080p: AVAssetExportPresetHEVC1920x1080
             case .r4k: AVAssetExportPresetHEVC3840x2160
             }
