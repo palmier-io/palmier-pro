@@ -13,6 +13,8 @@ enum LottieVideoGenerator {
 
     /// Final frame is held out to here so a clip can be extended past the animation (freeze-frame).
     private static let holdTailSeconds: Double = 1800
+    private static let jsonSniffByteLimit = 256 * 1024
+    private static let jsonSignatureKeys = ["layers", "v", "w", "h", "op"]
 
     struct Metadata {
         let size: CGSize
@@ -28,11 +30,23 @@ enum LottieVideoGenerator {
             defer { try? handle.close() }
             return (try? handle.read(upToCount: 4)) == Data([0x50, 0x4B, 0x03, 0x04])
         }
-        guard let data = try? Data(contentsOf: url),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: jsonSniffByteLimit),
+              let first = data.first(where: { !isJSONWhitespace($0) }),
+              first == UInt8(ascii: "{")
         else { return false }
-        return obj["layers"] is [Any] && obj["v"] != nil
-            && obj["w"] != nil && obj["h"] != nil && obj["op"] != nil
+        let text = String(decoding: data, as: UTF8.self)
+        return jsonSignatureKeys.allSatisfy { containsJSONKey($0, in: text) }
+    }
+
+    private static func containsJSONKey(_ key: String, in text: String) -> Bool {
+        let escaped = NSRegularExpression.escapedPattern(for: key)
+        return text.range(of: #""\#(escaped)"\s*:"#, options: .regularExpression) != nil
+    }
+
+    private static func isJSONWhitespace(_ byte: UInt8) -> Bool {
+        byte == 0x20 || byte == 0x09 || byte == 0x0A || byte == 0x0D
     }
 
     private static func metadata(for animation: LottieAnimation) -> Metadata {

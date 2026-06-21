@@ -98,12 +98,14 @@ extension MediaTab {
 extension MediaTab {
     @MainActor
     func handlePanelFinderDrop(urls: [URL]) {
-        Self.handlePanelFinderDrop(urls: urls, into: currentFolderId, editor: editor)
+        Task { @MainActor in
+            await Self.handlePanelFinderDrop(urls: urls, into: currentFolderId, editor: editor)
+        }
     }
 
     @MainActor
-    static func handlePanelFinderDrop(urls: [URL], into destFolderId: String?, editor: EditorViewModel) {
-        editor.importFinderItems(urls, into: destFolderId)
+    static func handlePanelFinderDrop(urls: [URL], into destFolderId: String?, editor: EditorViewModel) async {
+        await editor.importFinderItems(urls, into: destFolderId)
     }
 
     func handleProviderDrop(_ providers: [NSItemProvider], into destFolderId: String?) {
@@ -113,7 +115,7 @@ extension MediaTab {
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
                     guard let url else { return }
                     Task { @MainActor in
-                        editor.importFinderItems([url], into: destFolderId)
+                        await Self.handlePanelFinderDrop(urls: [url], into: destFolderId, editor: editor)
                     }
                 }
                 continue
@@ -137,13 +139,15 @@ extension MediaTab {
 
     @MainActor
     func handleClipboardPaste() {
-        Self.handleClipboardPaste(pasteboard: .general, into: currentFolderId, editor: editor)
+        Task { @MainActor in
+            await Self.handleClipboardPaste(pasteboard: .general, into: currentFolderId, editor: editor)
+        }
     }
 
     @MainActor
-    static func handleClipboardPaste(pasteboard pb: NSPasteboard, into destFolderId: String?, editor: EditorViewModel) {
+    static func handleClipboardPaste(pasteboard pb: NSPasteboard, into destFolderId: String?, editor: EditorViewModel) async {
         if let urls = pb.readObjects(forClasses: [NSURL.self]) as? [URL], !urls.isEmpty {
-            handlePanelFinderDrop(urls: urls, into: destFolderId, editor: editor)
+            await handlePanelFinderDrop(urls: urls, into: destFolderId, editor: editor)
             return
         }
         for (type, ext): (NSPasteboard.PasteboardType, String) in [(.png, "png"), (.tiff, "tiff")] {
