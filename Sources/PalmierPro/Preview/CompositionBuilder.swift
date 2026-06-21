@@ -308,7 +308,9 @@ enum CompositionBuilder {
     ) async -> Bool {
         let clipStart = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
         let trimStartFrame = clip.mediaType == .image ? max(0, clip.trimStartFrame) : clip.trimStartFrame
-        let trimStart = CMTime(value: CMTimeValue(trimStartFrame), timescale: timescale)
+        let sourceTimescale = (try? await sourceTrack.load(.naturalTimeScale)) ?? timescale
+        let startSeconds = Double(trimStartFrame) / Double(timescale)
+        let trimStart = CMTime(seconds: startSeconds, preferredTimescale: sourceTimescale)
         let clipDuration = CMTime(value: CMTimeValue(clip.durationFrames), timescale: timescale)
 
         if clipStart > cursor {
@@ -319,7 +321,8 @@ enum CompositionBuilder {
         let sourceFrames = clip.speed == 1.0
             ? clip.durationFrames
             : max(1, Int(Double(clip.durationFrames) * clip.speed))
-        let sourceDuration = CMTime(value: CMTimeValue(sourceFrames), timescale: timescale)
+        let durationSeconds = Double(sourceFrames) / Double(timescale)
+        let sourceDuration = CMTime(seconds: durationSeconds, preferredTimescale: sourceTimescale)
         let sourceRange = CMTimeRange(start: trimStart, duration: sourceDuration)
 
         do {
