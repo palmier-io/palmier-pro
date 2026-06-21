@@ -153,9 +153,12 @@ final class AccountService {
             return
         }
 
+        let keychainConfig = BackendConfig.clerkKeychainAccessGroup
+            .map { Clerk.Options.KeychainConfig(accessGroup: $0) } ?? .init()
         Clerk.configure(
             publishableKey: publishableKey,
             options: Clerk.Options(
+                keychainConfig: keychainConfig,
                 redirectConfig: .init(
                     redirectUrl: "palmier://callback",
                     callbackUrlScheme: "palmier"

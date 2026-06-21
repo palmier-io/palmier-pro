@@ -24,6 +24,7 @@ AuthKey_*.p8
 credentials.json
 secrets.json
 *.local
+*.provisionprofile
 
 # mcpb shim dependencies (vendored only inside the packed .mcpb)
 mcpb/server/node_modules/
