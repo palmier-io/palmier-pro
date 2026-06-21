@@ -28,4 +28,10 @@ For a bundled debug build that launches the `.app` and streams OSLog:
 ./scripts/dev.sh
 ```
 
+## Test
+
+```bash
+swift test
+```
+
 By contributing, you agree your contributions are licensed under [GPLv3](LICENSE).
