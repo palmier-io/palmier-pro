@@ -1,11 +1,15 @@
 import AVFoundation
+import CoreImage
 import VideoToolbox
 
 /// HEVC Main10 BT.2020 HLG/PQ export via `AVAssetReader` → `AVAssetWriter`, since
 /// `AVAssetExportSession` presets can't emit 10-bit HDR.
-/// Reader path limitations: text overlays (CoreAnimationTool is export-session only)
-/// and SDR `.cube` LUTs are not applied here.
+/// Titles are composited per frame here (the CoreAnimationTool is export-session only).
 enum HDRVideoExporter {
+
+    /// SDR working space for compositing titles; 709 → HLG maps SDR white to graphics-white.
+    static let titleWorkingSpace = CGColorSpace(name: CGColorSpace.itur_709)
+        ?? CGColorSpaceCreateDeviceRGB()
 
     enum Transfer { case hlg, pq }
 
@@ -53,32 +57,37 @@ enum HDRVideoExporter {
         let audioMix: AVAudioMix?
     }
 
+    /// A title pre-rendered to a canvas-sized image; the pump composites it per frame at the
+    /// clip's keyframed opacity, at SDR graphics-white (never HDR peak).
+    struct TextOverlay: @unchecked Sendable {
+        let clip: Clip
+        let image: CIImage
+    }
+
     static func export(
         _ inputs: Inputs,
         renderSize: CGSize,
         fps: Int,
         transfer: Transfer = .hlg,
-        to outputURL: URL
+        to outputURL: URL,
+        onProgress: (@Sendable (Double) -> Void)? = nil,
+        textOverlays: [TextOverlay] = []
     ) async throws {
         let composition = inputs.composition
         let videoComposition = inputs.videoComposition
         let audioMix = inputs.audioMix
         let videoTracks = try await composition.loadTracks(withMediaType: .video)
         guard !videoTracks.isEmpty else { throw HDRExportError(reason: "no video tracks") }
+        let totalSeconds = try await composition.load(.duration).seconds
 
-        // Re-tag the composition's working space as HDR (the SDR builder hardcodes 709).
-        let hdrVC = videoComposition.mutableCopy() as! AVMutableVideoComposition
-        hdrVC.colorPrimaries = AVVideoColorPrimaries_ITU_R_2020
-        hdrVC.colorTransferFunction = transfer == .hlg
-            ? AVVideoTransferFunction_ITU_R_2100_HLG
-            : AVVideoTransferFunction_SMPTE_ST_2084_PQ
-        hdrVC.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_2020
-
+        // The compositor renders SDR Rec.709; we convert 709 → HLG BT.2020 per frame in CoreImage.
+        // Relabeling the composition as HLG (what we used to do) tags the output HDR without
+        // converting the pixels, so SDR midtones display at HDR brightness — blown out.
         let reader = try AVAssetReader(asset: composition)
         let videoOutput = AVAssetReaderVideoCompositionOutput(
             videoTracks: videoTracks, videoSettings: readerVideoSettings
         )
-        videoOutput.videoComposition = hdrVC
+        videoOutput.videoComposition = videoComposition
         videoOutput.alwaysCopiesSampleData = false
         guard reader.canAdd(videoOutput) else { throw HDRExportError(reason: "cannot add video output") }
         reader.add(videoOutput)
@@ -118,6 +127,26 @@ enum HDRVideoExporter {
             if writer.canAdd(aIn) { writer.add(aIn); audioInput = aIn }
         }
 
+        // Every HDR frame is processed in CoreImage: decode the SDR 709 frame, composite titles,
+        // and convert 709 → HLG on output. The adaptor must be created before the writer starts.
+        let attrs: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: pixelFormat,
+            kCVPixelBufferWidthKey as String: Int(renderSize.width),
+            kCVPixelBufferHeightKey as String: Int(renderSize.height),
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:],
+        ]
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+            assetWriterInput: videoInput, sourcePixelBufferAttributes: attrs
+        )
+        let hlgSpace = CGColorSpace(name: CGColorSpace.itur_2100_HLG)
+            ?? CGColorSpace(name: CGColorSpace.itur_2020) ?? titleWorkingSpace
+        let processing = ProcessingContext(
+            input: videoInput, output: videoOutput, adaptor: adaptor,
+            ciContext: CIContext(options: [.workingColorSpace: titleWorkingSpace]),
+            overlays: textOverlays, fps: fps, renderSize: renderSize,
+            inputSpace: titleWorkingSpace, hlgSpace: hlgSpace
+        )
+
         guard reader.startReading() else {
             throw HDRExportError(reason: "reader start: \(reader.error?.localizedDescription ?? "?")")
         }
@@ -126,10 +155,15 @@ enum HDRVideoExporter {
         }
         writer.startSession(atSourceTime: .zero)
 
-        let videoPump = PumpBox(videoInput, videoOutput)
+        let progressReporter: (@Sendable (Double) -> Void)?
+        if let onProgress, totalSeconds > 0 {
+            progressReporter = { secs in onProgress(min(1, max(0, secs / totalSeconds))) }
+        } else {
+            progressReporter = nil
+        }
         let audioPump = (audioInput != nil && audioOutput != nil) ? PumpBox(audioInput!, audioOutput!) : nil
         await withTaskGroup(of: Void.self) { group in
-            group.addTask { await pump(videoPump) }
+            group.addTask { await pumpVideoProcessed(processing, onSeconds: progressReporter) }
             if let audioPump { group.addTask { await pump(audioPump) } }
             await group.waitForAll()
         }
@@ -154,9 +188,11 @@ enum HDRVideoExporter {
     }
 
     /// Drain one reader output into one writer input, honoring back-pressure.
-    private static func pump(_ box: PumpBox) async {
+    /// `onSeconds` (video pump only) reports each appended sample's PTS in seconds, throttled.
+    private static func pump(_ box: PumpBox, onSeconds: (@Sendable (Double) -> Void)? = nil) async {
         let queue = DispatchQueue(label: "hdr.pump.\(box.input.mediaType.rawValue)")
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            var lastReported = -1.0
             box.input.requestMediaDataWhenReady(on: queue) {
                 while box.input.isReadyForMoreMediaData {
                     guard let sample = box.output.copyNextSampleBuffer() else {
@@ -168,6 +204,74 @@ enum HDRVideoExporter {
                         box.input.markAsFinished()
                         cont.resume()
                         return
+                    }
+                    if let onSeconds {
+                        let secs = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+                        if secs.isFinite, secs - lastReported >= 0.25 { lastReported = secs; onSeconds(secs) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Bundles the non-Sendable CoreImage handles for the title-compositing video pump.
+    private struct ProcessingContext: @unchecked Sendable {
+        let input: AVAssetWriterInput
+        let output: AVAssetReaderOutput
+        let adaptor: AVAssetWriterInputPixelBufferAdaptor
+        let ciContext: CIContext
+        let overlays: [TextOverlay]
+        let fps: Int
+        let renderSize: CGSize
+        let inputSpace: CGColorSpace
+        let hlgSpace: CGColorSpace
+    }
+
+    /// Like `pump`, but composites each title over the video frame and writes the result to a
+    /// fresh 10-bit HLG buffer via the pixel-buffer adaptor.
+    private static func pumpVideoProcessed(
+        _ c: ProcessingContext, onSeconds: (@Sendable (Double) -> Void)? = nil
+    ) async {
+        let queue = DispatchQueue(label: "hdr.pump.video.processed")
+        let bounds = CGRect(origin: .zero, size: c.renderSize)
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            var lastReported = -1.0
+            c.input.requestMediaDataWhenReady(on: queue) {
+                while c.input.isReadyForMoreMediaData {
+                    guard let sample = c.output.copyNextSampleBuffer(),
+                          let srcBuffer = CMSampleBufferGetImageBuffer(sample) else {
+                        c.input.markAsFinished()
+                        cont.resume()
+                        return
+                    }
+                    let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+                    var image = CIImage(cvPixelBuffer: srcBuffer, options: [.colorSpace: c.inputSpace])
+                    let frame = Int((pts.seconds * Double(c.fps)).rounded())
+                    for overlay in c.overlays {
+                        guard frame >= overlay.clip.startFrame, frame < overlay.clip.endFrame else { continue }
+                        let opacity = overlay.clip.opacityAt(frame: frame)
+                        guard opacity > 0.001 else { continue }
+                        var title = overlay.image
+                        if opacity < 0.999 {
+                            title = title.applyingFilter("CIColorMatrix", parameters: [
+                                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: opacity),
+                            ])
+                        }
+                        image = title.composited(over: image)
+                    }
+                    guard let pool = c.adaptor.pixelBufferPool else {
+                        c.input.markAsFinished(); cont.resume(); return
+                    }
+                    var outBuffer: CVPixelBuffer?
+                    CVPixelBufferPoolCreatePixelBuffer(nil, pool, &outBuffer)
+                    guard let outBuffer else { continue }
+                    c.ciContext.render(image, to: outBuffer, bounds: bounds, colorSpace: c.hlgSpace)
+                    if !c.adaptor.append(outBuffer, withPresentationTime: pts) {
+                        c.input.markAsFinished(); cont.resume(); return
+                    }
+                    if let onSeconds {
+                        let secs = pts.seconds
+                        if secs.isFinite, secs - lastReported >= 0.25 { lastReported = secs; onSeconds(secs) }
                     }
                 }
             }

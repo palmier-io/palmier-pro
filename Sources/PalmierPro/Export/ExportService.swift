@@ -239,15 +239,19 @@ final class ExportService {
                 resolveURL: { resolver.resolveURL(for: $0) },
                 renderSize: renderSize
             )
+            let overlays = TextLayerController.exportClipImages(timeline: timeline, canvasSize: renderSize)
+                .map { HDRVideoExporter.TextOverlay(clip: $0.clip, image: CIImage(cgImage: $0.image)) }
             try? FileManager.default.removeItem(at: outputURL)
-            Log.export.notice("hdr export start size=\(Int(renderSize.width))x\(Int(renderSize.height)) url=\(outputURL.lastPathComponent)")
+            Log.export.notice("hdr export start size=\(Int(renderSize.width))x\(Int(renderSize.height)) titles=\(overlays.count) url=\(outputURL.lastPathComponent)")
             let inputs = HDRVideoExporter.Inputs(
                 composition: result.composition,
                 videoComposition: result.videoComposition,
                 audioMix: result.audioMix
             )
             try await HDRVideoExporter.export(
-                inputs, renderSize: renderSize, fps: timeline.fps, transfer: .hlg, to: outputURL
+                inputs, renderSize: renderSize, fps: timeline.fps, transfer: .hlg, to: outputURL,
+                onProgress: { [weak self] p in Task { @MainActor in self?.progress = p } },
+                textOverlays: overlays
             )
             progress = 1.0
             Log.export.notice("hdr export ok")
