@@ -27,8 +27,4 @@ For a bundled debug build that launches the `.app` and streams OSLog:
 swift test
 ```
 
-CI runs `swift build` and `swift test` on every pull request. The workflow runs on a
-macOS 26 (Tahoe) / arm64 runner, matching the app's deployment target — keep these green
-before requesting review.
-
 By contributing, you agree your contributions are licensed under [GPLv3](LICENSE).
