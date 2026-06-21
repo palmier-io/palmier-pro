@@ -10,6 +10,7 @@ extension EditorViewModel {
         var textCase: CaptionCase = .auto
         var censorProfanity: Bool = false
         var locale: Locale? = nil
+        var wordsPerCaption: Int = 6
     }
 
     enum CaptionCase: String, CaseIterable, Sendable {
@@ -166,9 +167,13 @@ extension EditorViewModel {
         for (ref, result) in results {
             let clips = targets.filter { $0.clip.mediaRef == ref }
             guard !clips.isEmpty else { continue }
-            let phrases = result.segments.flatMap {
-                CaptionBuilder.phrases(for: $0, fits: { captionLineFits($0, style: request.style) }, minDuration: AppTheme.Caption.minDisplayDuration)
-            }
+            // Group by real per-word timestamps (accurate) rather than splitting a
+            // segment's span by character count (drifts).
+            let phrases = CaptionBuilder.phrases(
+                fromWords: result.words,
+                wordsPerCaption: request.wordsPerCaption,
+                minDuration: AppTheme.Caption.minDisplayDuration
+            )
             for p in phrases {
                 guard let owner = bestClip(for: p, among: clips) else { continue }
                 phrasesByClip[owner.id, default: []].append(p)

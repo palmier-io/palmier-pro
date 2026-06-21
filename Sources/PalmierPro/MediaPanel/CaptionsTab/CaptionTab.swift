@@ -8,6 +8,7 @@ struct CaptionTab: View {
     @State private var selectedTrackId: String?
     @State private var selectedClipTargets: [String] = []
     @State private var textCase: EditorViewModel.CaptionCase = .auto
+    @State private var wordsPerCaption = 6
     @State private var censorProfanity = false
     @State private var supportedLocales: [Locale] = []
     @State private var isGenerating = false
@@ -200,6 +201,21 @@ struct CaptionTab: View {
                 } label: {
                     HStack(spacing: AppTheme.Spacing.xxs) {
                         Text(textCase.label)
+                        Image(systemName: "chevron.up.chevron.down").font(.system(size: AppTheme.FontSize.xxs))
+                    }
+                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+            }
+            InspectorRow(icon: "text.word.spacing", label: "Words / caption") {
+                Menu {
+                    ForEach([3, 6], id: \.self) { n in
+                        Button("\(n) words") { wordsPerCaption = n }
+                    }
+                } label: {
+                    HStack(spacing: AppTheme.Spacing.xxs) {
+                        Text("\(wordsPerCaption) words")
                         Image(systemName: "chevron.up.chevron.down").font(.system(size: AppTheme.FontSize.xxs))
                     }
                     .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
@@ -402,7 +418,8 @@ struct CaptionTab: View {
         }
         let request = EditorViewModel.CaptionRequest(
             sourceClipIds: sourceIds, autoDetect: isAutoSource, style: style, center: center,
-            textCase: textCase, censorProfanity: censorProfanity, locale: projectLocale
+            textCase: textCase, censorProfanity: censorProfanity, locale: projectLocale,
+            wordsPerCaption: wordsPerCaption
         )
         Task {
             isGenerating = true

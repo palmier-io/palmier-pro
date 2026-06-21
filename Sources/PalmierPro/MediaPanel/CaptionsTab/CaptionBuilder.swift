@@ -90,6 +90,50 @@ enum CaptionBuilder {
         return out
     }
 
+    /// Group words by their REAL per-word timings into phrases of up to
+    /// `wordsPerCaption`, starting a new phrase early when there's a long pause.
+    /// Far more accurate than distributing a segment's span by character count.
+    static func phrases(
+        fromWords words: [TranscriptionWord],
+        wordsPerCaption: Int,
+        minDuration: Double,
+        maxGap: Double = 0.7
+    ) -> [Phrase] {
+        let timed = normalizedWords(words)
+        guard !timed.isEmpty else { return [] }
+        let limit = max(1, wordsPerCaption)
+
+        var phrases: [Phrase] = []
+        var group: [(text: String, start: Double, end: Double)] = []
+        func flush() {
+            guard let first = group.first, let last = group.last else { return }
+            phrases.append(Phrase(text: group.map(\.text).joined(separator: " "), start: first.start, end: last.end))
+            group.removeAll(keepingCapacity: true)
+        }
+        for w in timed {
+            if let last = group.last, w.start - last.end > maxGap { flush() }
+            group.append(w)
+            if group.count >= limit { flush() }
+        }
+        flush()
+        return enforceMinDuration(phrases, minDuration: minDuration)
+    }
+
+    /// Trim word text and fill any missing timestamps from neighbours.
+    private static func normalizedWords(_ words: [TranscriptionWord]) -> [(text: String, start: Double, end: Double)] {
+        var out: [(text: String, start: Double, end: Double)] = []
+        var cursor = 0.0
+        for w in words {
+            let text = w.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            let start = w.start ?? cursor
+            let end = max(w.end ?? start, start)
+            cursor = max(cursor, end)
+            out.append((text, start, end))
+        }
+        return out
+    }
+
     static func specs(
         for phrases: [Phrase],
         sourceClip: Clip,
