@@ -49,7 +49,7 @@ private enum MediaImportScanner {
         for root in roots {
             let parent = MediaImportPlan.Parent.existingFolderId(root.parentFolderId)
             if isDirectory(root.url) {
-                scanFolderContents(at: root.url, parent: parent, into: &plan)
+                scanFolder(at: root.url, parent: parent, into: &plan)
             } else {
                 scanFile(at: root.url, parent: parent, isRootItem: true, into: &plan)
             }
@@ -59,15 +59,6 @@ private enum MediaImportScanner {
 
     static func isDirectory(_ url: URL) -> Bool {
         (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-    }
-
-    private static func scanFolderContents(
-        at url: URL,
-        parent: MediaImportPlan.Parent,
-        into plan: inout MediaImportPlan
-    ) {
-        guard let entries = directoryEntries(at: url) else { return }
-        scan(entries: entries, parent: parent, into: &plan)
     }
 
     private static func scan(entries: [URL], parent: MediaImportPlan.Parent, into plan: inout MediaImportPlan) {
@@ -192,7 +183,7 @@ extension EditorViewModel {
         return asset
     }
 
-    struct MediaImportSummary {
+    struct MediaImportSummary: Sendable {
         var assetCount: Int
         var folderCount: Int
     }
@@ -200,18 +191,26 @@ extension EditorViewModel {
     /// Import files and folders from the open panel or a Finder drop as one undo step
     @discardableResult
     func importFinderItems(_ urls: [URL], into folderId: String?) async -> MediaImportSummary {
-        let before = mediaLibraryUndoSnapshot()
-        undoManager?.disableUndoRegistration()
-        var roots: [MediaImportScanner.Root] = []
-        for url in urls {
-            if MediaImportScanner.isDirectory(url) {
-                let rootFolderId = createFolder(name: url.lastPathComponent, in: folderId)
-                roots.append(.init(url: url, parentFolderId: rootFolderId))
-            } else {
-                roots.append(.init(url: url, parentFolderId: folderId))
-            }
+        let previous = mediaImportTail
+        mediaImportSequence &+= 1
+        let sequence = mediaImportSequence
+        let task = Task { @MainActor in
+            _ = await previous?.value
+            return await performFinderImport(urls, into: folderId)
         }
-        undoManager?.enableUndoRegistration()
+        mediaImportTail = task
+
+        let summary = await task.value
+        if mediaImportSequence == sequence {
+            mediaImportTail = nil
+        }
+        return summary
+    }
+
+    @discardableResult
+    private func performFinderImport(_ urls: [URL], into folderId: String?) async -> MediaImportSummary {
+        let before = mediaLibraryUndoSnapshot()
+        let roots = urls.map { MediaImportScanner.Root(url: $0, parentFolderId: folderId) }
 
         let plan = await Task.detached(priority: .userInitiated) {
             MediaImportScanner.scan(roots: roots)

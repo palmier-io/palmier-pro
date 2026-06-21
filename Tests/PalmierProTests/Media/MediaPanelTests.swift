@@ -79,6 +79,24 @@ struct FolderReadTests {
         #expect(e.assetsIn(folderId: rootFolder.id).map(\.name) == ["root"])
         #expect(e.assetsIn(folderId: nestedFolder.id).map(\.name) == ["child"])
     }
+
+    @Test func importFinderItemsDoesNotCreateRootFolderWhenDirectoryCannotBeRead() async throws {
+        let e = editor()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("folder-import-denied-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: root.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let summary = await e.importFinderItems([root], into: nil)
+
+        #expect(summary.assetCount == 0)
+        #expect(summary.folderCount == 0)
+        #expect(e.folders.isEmpty)
+    }
 }
 
 @Suite("EditorViewModel — deleteFolders")

@@ -167,6 +167,8 @@ final class EditorViewModel {
     var mediaPanelPasteRequestTick: Int = 0
     var mediaPanelShowMediaTabTick: Int = 0
     var mediaPanelToast: String?
+    @ObservationIgnored var mediaImportTail: Task<MediaImportSummary, Never>?
+    @ObservationIgnored var mediaImportSequence: Int = 0
 
     func showMediaPanelMediaTab() { mediaPanelShowMediaTabTick += 1 }
 
