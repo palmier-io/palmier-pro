@@ -208,20 +208,18 @@ struct CaptionTab: View {
                 }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
             }
-            InspectorRow(icon: "text.word.spacing", label: "Words / caption") {
-                Menu {
-                    ForEach([3, 6], id: \.self) { n in
-                        Button("\(n) words") { wordsPerCaption = n }
-                    }
-                } label: {
-                    HStack(spacing: AppTheme.Spacing.xxs) {
-                        Text("\(wordsPerCaption) words")
-                        Image(systemName: "chevron.up.chevron.down").font(.system(size: AppTheme.FontSize.xxs))
-                    }
-                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+            InspectorRow(
+                icon: "text.word.spacing",
+                label: "Max words / caption",
+                labelHelp: "Each caption holds up to this many words — or fewer when there's a pause in speech."
+            ) {
+                ScrubbableNumberField(
+                    value: Double(wordsPerCaption),
+                    range: 1...12,
+                    format: "%.0f",
+                    valueSuffix: " words",
+                    onChanged: { wordsPerCaption = max(1, Int($0.rounded())) }
+                ) { wordsPerCaption = max(1, Int($0.rounded())) }
             }
             InspectorRow(icon: "exclamationmark.bubble", label: "Censor profanity") {
                 Toggle("", isOn: $censorProfanity)
