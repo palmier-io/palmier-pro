@@ -237,36 +237,6 @@ final class ExportService {
         return session
     }
 
-    /// Writes a CapCut desktop draft folder at `outputURL`.
-    @discardableResult
-    func exportCapCutDraft(
-        timeline: Timeline,
-        resolver: MediaResolver,
-        projectName: String,
-        outputURL: URL
-    ) async -> CapCutExporter.Report? {
-        isExporting = true
-        progress = 0
-        error = nil
-        defer { isExporting = false }
-        do {
-            Log.export.notice("capcut export start url=\(outputURL.lastPathComponent)")
-            let report = try await CapCutExporter.export(
-                timeline: timeline,
-                resolveURL: { resolver.resolveURL(for: $0) },
-                projectName: projectName,
-                outputURL: outputURL
-            )
-            progress = 1.0
-            Log.export.notice("capcut export ok videos=\(report.videos) images=\(report.images) audios=\(report.audios) texts=\(report.texts) missing=\(report.missing)")
-            return report
-        } catch {
-            self.error = Log.detail(error)
-            Log.export.error("capcut export failed: \(Log.detail(error))")
-            return nil
-        }
-    }
-
     /// Writes a self-contained `.palmier` bundle (all media collected internally).
     @discardableResult
     func exportPalmierProject(
