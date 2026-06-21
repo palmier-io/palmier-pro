@@ -14,6 +14,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppNotifications.configure()
 
         AppState.shared.startMCPService()
+
+        // Configure backend clients after first paint so a slow or unreachable
+        // backend can't block the window from appearing (issue #75).
+        Task { @MainActor in
+            AccountService.shared.configure()
+            ModelCatalog.shared.configure()
+        }
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
