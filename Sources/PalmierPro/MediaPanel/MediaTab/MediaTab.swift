@@ -756,7 +756,11 @@ struct MediaTab: View {
         panel.allowedContentTypes = types
         panel.begin { response in
             guard response == .OK else { return }
-            editor.importFinderItems(panel.urls, into: currentFolderId)
+            let urls = panel.urls
+            let folderId = currentFolderId
+            Task { @MainActor in
+                await Self.handlePanelFinderDrop(urls: urls, into: folderId, editor: editor)
+            }
         }
     }
 }

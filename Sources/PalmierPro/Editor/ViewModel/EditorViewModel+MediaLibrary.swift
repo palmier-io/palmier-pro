@@ -14,8 +14,108 @@ enum MediaPanelItemKey {
     }
 }
 
-/// Media library bookkeeping: import, rename, and manifest metadata sync for
-/// the in-memory asset catalog and the persisted `MediaManifest`.
+private struct MediaImportPlan: Sendable {
+    enum Parent: Sendable {
+        case existingFolderId(String?)
+        case plannedFolder(Int)
+    }
+
+    struct Folder: Sendable {
+        let name: String
+        let parent: Parent
+    }
+
+    struct File: Sendable {
+        let url: URL
+        let type: ClipType
+        let name: String
+        let parent: Parent
+    }
+
+    var folders: [Folder] = []
+    var files: [File] = []
+    var rejectedUnsupportedNames: [String] = []
+    var rejectedLottieNames: [String] = []
+}
+
+private enum MediaImportScanner {
+    struct Root: Sendable {
+        let url: URL
+        let parentFolderId: String?
+    }
+
+    static func scan(roots: [Root]) -> MediaImportPlan {
+        var plan = MediaImportPlan()
+        for root in roots {
+            let parent = MediaImportPlan.Parent.existingFolderId(root.parentFolderId)
+            if isDirectory(root.url) {
+                scanFolder(at: root.url, parent: parent, into: &plan)
+            } else {
+                scanFile(at: root.url, parent: parent, isRootItem: true, into: &plan)
+            }
+        }
+        return plan
+    }
+
+    static func isDirectory(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+    }
+
+    private static func scan(entries: [URL], parent: MediaImportPlan.Parent, into plan: inout MediaImportPlan) {
+        let sorted = entries.sorted {
+            $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
+        }
+        for entry in sorted {
+            if isDirectory(entry) {
+                scanFolder(at: entry, parent: parent, into: &plan)
+            } else {
+                scanFile(at: entry, parent: parent, isRootItem: false, into: &plan)
+            }
+        }
+    }
+
+    private static func scanFolder(
+        at url: URL,
+        parent: MediaImportPlan.Parent,
+        into plan: inout MediaImportPlan
+    ) {
+        guard let entries = directoryEntries(at: url) else { return }
+        let folderIndex = plan.folders.count
+        plan.folders.append(.init(name: url.lastPathComponent, parent: parent))
+        scan(entries: entries, parent: .plannedFolder(folderIndex), into: &plan)
+    }
+
+    private static func directoryEntries(at url: URL) -> [URL]? {
+        try? FileManager.default.contentsOfDirectory(
+            at: url,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )
+    }
+
+    private static func scanFile(
+        at url: URL,
+        parent: MediaImportPlan.Parent,
+        isRootItem: Bool,
+        into plan: inout MediaImportPlan
+    ) {
+        guard let type = ClipType(fileExtension: url.pathExtension.lowercased()) else {
+            if isRootItem { plan.rejectedUnsupportedNames.append(url.lastPathComponent) }
+            return
+        }
+        if type == .lottie, !LottieVideoGenerator.isLottie(at: url) {
+            plan.rejectedLottieNames.append(url.lastPathComponent)
+            return
+        }
+        plan.files.append(.init(
+            url: url,
+            type: type,
+            name: url.deletingPathExtension().lastPathComponent,
+            parent: parent
+        ))
+    }
+}
+
 extension EditorViewModel {
 
     func importMediaAsset(_ asset: MediaAsset, skipAppend: Bool = false) {
@@ -70,6 +170,11 @@ extension EditorViewModel {
             mediaPanelToast = "Can't import \"\(url.lastPathComponent)\" — not a Lottie animation."
             return nil
         }
+        return addMediaAsset(from: url, type: type, folderId: folderId)
+    }
+
+    @discardableResult
+    private func addMediaAsset(from url: URL, type: ClipType, folderId: String? = nil) -> MediaAsset {
         let name = url.deletingPathExtension().lastPathComponent
         let asset = MediaAsset(url: url, type: type, name: name)
         asset.folderId = folderId
@@ -78,24 +183,78 @@ extension EditorViewModel {
         return asset
     }
 
-    struct MediaImportSummary {
+    struct MediaImportSummary: Sendable {
         var assetCount: Int
         var folderCount: Int
     }
 
     /// Import files and folders from the open panel or a Finder drop as one undo step
     @discardableResult
-    func importFinderItems(_ urls: [URL], into folderId: String?) -> MediaImportSummary {
+    func importFinderItems(_ urls: [URL], into folderId: String?) async -> MediaImportSummary {
+        let previous = mediaImportTail
+        mediaImportSequence &+= 1
+        let sequence = mediaImportSequence
+        let task = Task { @MainActor in
+            _ = await previous?.value
+            return await performFinderImport(urls, into: folderId)
+        }
+        mediaImportTail = task
+
+        let summary = await task.value
+        if mediaImportSequence == sequence {
+            mediaImportTail = nil
+        }
+        return summary
+    }
+
+    @discardableResult
+    private func performFinderImport(_ urls: [URL], into folderId: String?) async -> MediaImportSummary {
         let before = mediaLibraryUndoSnapshot()
+        let roots = urls.map { MediaImportScanner.Root(url: $0, parentFolderId: folderId) }
+
+        let plan = await Task.detached(priority: .userInitiated) {
+            MediaImportScanner.scan(roots: roots)
+        }.value
+        return applyMediaImportPlan(plan, restoringFrom: before)
+    }
+
+    @discardableResult
+    private func applyMediaImportPlan(_ plan: MediaImportPlan, restoringFrom before: MediaLibraryUndoSnapshot) -> MediaImportSummary {
         undoManager?.disableUndoRegistration()
-        for url in urls {
-            if isDirectory(url) {
-                importFolder(at: url, into: folderId)
-            } else {
-                addMediaAsset(from: url, folderId: folderId)
-            }
+
+        var folderIds = Array(repeating: "", count: plan.folders.count)
+        for (index, folder) in plan.folders.enumerated() {
+            let parentId = parentFolderId(for: folder.parent, plannedFolderIds: folderIds)
+            folderIds[index] = createFolder(name: folder.name, in: parentId)
+        }
+
+        let importedAssets = plan.files.map { file in
+            let folderId = parentFolderId(for: file.parent, plannedFolderIds: folderIds)
+            let asset = MediaAsset(url: file.url, type: file.type, name: file.name)
+            asset.folderId = folderId
+            return asset
+        }
+        if !importedAssets.isEmpty {
+            mediaAssets.append(contentsOf: importedAssets)
+            mediaManifest.entries.append(contentsOf: importedAssets.map { $0.toManifestEntry(projectURL: projectURL) })
+            Log.project.notice(
+                "media import applied assets=\(importedAssets.count) folders=\(plan.folders.count)",
+                telemetry: "Media import applied",
+                data: [
+                    "assets": importedAssets.count,
+                    "folders": plan.folders.count,
+                    "media": mediaAssets.count,
+                    "manifestEntries": mediaManifest.entries.count
+                ]
+            )
         }
         undoManager?.enableUndoRegistration()
+
+        if let name = plan.rejectedUnsupportedNames.last {
+            mediaPanelToast = "Can't import \"\(name)\" — unsupported file type."
+        } else if let name = plan.rejectedLottieNames.last {
+            mediaPanelToast = "Can't import \"\(name)\" — not a Lottie animation."
+        }
 
         let summary = MediaImportSummary(
             assetCount: mediaAssets.count - before.mediaAssets.count,
@@ -106,33 +265,19 @@ extension EditorViewModel {
             vm.restoreMediaLibraryUndoSnapshot(before, actionName: "Import Media")
         }
         undoManager?.setActionName("Import Media")
+        for asset in importedAssets {
+            Task { await finalizeImportedAsset(asset) }
+        }
         return summary
     }
 
-    /// Mirror a directory tree into media folders
-    func importFolder(at url: URL, into parentFolderId: String?) {
-        let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(
-            at: url,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else { return }
-
-        let folderId = createFolder(name: url.lastPathComponent, in: parentFolderId)
-        let sorted = entries.sorted {
-            $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
+    private func parentFolderId(for parent: MediaImportPlan.Parent, plannedFolderIds: [String]) -> String? {
+        switch parent {
+        case .existingFolderId(let id):
+            id
+        case .plannedFolder(let index):
+            plannedFolderIds[index]
         }
-        for entry in sorted {
-            if isDirectory(entry) {
-                importFolder(at: entry, into: folderId)
-            } else if ClipType(fileExtension: entry.pathExtension.lowercased()) != nil {
-                addMediaAsset(from: entry, folderId: folderId)
-            }
-        }
-    }
-
-    private func isDirectory(_ url: URL) -> Bool {
-        (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
     }
 
     @discardableResult

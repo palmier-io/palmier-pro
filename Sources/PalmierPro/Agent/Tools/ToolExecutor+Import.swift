@@ -8,7 +8,7 @@ extension ToolExecutor {
     private static let importMediaAllowedKeys: Set<String> = ["source", "name", "folderId"]
     private static let importSourceAllowedKeys: Set<String> = ["url", "path", "bytes", "mimeType"]
 
-    func importMedia(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+    func importMedia(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.importMediaAllowedKeys, path: "import_media")
         guard let source = args["source"] as? [String: Any] else {
             throw ToolError("Missing required 'source' object")
@@ -29,7 +29,7 @@ extension ToolExecutor {
         let providedName = args.string("name")
 
         if let pathStr {
-            return try importFromPath(editor: editor, path: pathStr, name: providedName, folderId: folderId)
+            return try await importFromPath(editor: editor, path: pathStr, name: providedName, folderId: folderId)
         }
         if let bytesStr {
             guard let mimeType else {
@@ -43,14 +43,14 @@ extension ToolExecutor {
         throw ToolError("unreachable")
     }
 
-    private func importFromPath(editor: EditorViewModel, path: String, name: String?, folderId: String?) throws -> ToolResult {
+    private func importFromPath(editor: EditorViewModel, path: String, name: String?, folderId: String?) async throws -> ToolResult {
         let fileURL = URL(fileURLWithPath: path)
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: fileURL.path, isDirectory: &isDir) else {
             throw ToolError("File not found: \(path)")
         }
         if isDir.boolValue {
-            let summary = editor.importFinderItems([fileURL], into: folderId)
+            let summary = await editor.importFinderItems([fileURL], into: folderId)
             guard summary.assetCount > 0 else {
                 throw ToolError("No supported media found in folder: \(path)")
             }

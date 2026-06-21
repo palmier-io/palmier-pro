@@ -56,6 +56,47 @@ struct FolderReadTests {
         #expect(e.assetsIn(folderId: folderId).map(\.name) == ["in"])
         #expect(e.assetsIn(folderId: nil).map(\.name) == ["out"])
     }
+
+    @Test func importFinderItemsMirrorsFolderTree() async throws {
+        let e = editor()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("folder-import-\(UUID().uuidString)", isDirectory: true)
+        let nested = root.appendingPathComponent("Nested", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        try Data().write(to: root.appendingPathComponent("root.mp4"))
+        try Data().write(to: nested.appendingPathComponent("child.wav"))
+        try Data().write(to: nested.appendingPathComponent("ignored.txt"))
+
+        let summary = await e.importFinderItems([root], into: nil)
+
+        #expect(summary.assetCount == 2)
+        #expect(summary.folderCount == 2)
+        let rootFolder = try #require(e.folders.first { $0.name == root.lastPathComponent })
+        let nestedFolder = try #require(e.folders.first { $0.name == "Nested" })
+        #expect(nestedFolder.parentFolderId == rootFolder.id)
+        #expect(e.assetsIn(folderId: rootFolder.id).map(\.name) == ["root"])
+        #expect(e.assetsIn(folderId: nestedFolder.id).map(\.name) == ["child"])
+    }
+
+    @Test func importFinderItemsDoesNotCreateRootFolderWhenDirectoryCannotBeRead() async throws {
+        let e = editor()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("folder-import-denied-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: root.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let summary = await e.importFinderItems([root], into: nil)
+
+        #expect(summary.assetCount == 0)
+        #expect(summary.folderCount == 0)
+        #expect(e.folders.isEmpty)
+    }
 }
 
 @Suite("EditorViewModel — deleteFolders")
@@ -545,44 +586,44 @@ struct MoveMediaSelectionTests {
 @MainActor
 struct HandlePanelFinderDropTests {
 
-    @Test func addsAssetAtRootWhenDestinationIsNil() {
+    @Test func addsAssetAtRootWhenDestinationIsNil() async {
         let e = editor()
         let url = URL(fileURLWithPath: "/tmp/\(UUID().uuidString)-clip.mp4")
 
-        MediaTab.handlePanelFinderDrop(urls: [url], into: nil, editor: e)
+        await MediaTab.handlePanelFinderDrop(urls: [url], into: nil, editor: e)
 
         #expect(e.mediaAssets.count == 1)
         #expect(e.mediaAssets.first?.folderId == nil)
     }
 
-    @Test func addsAssetAndMovesIntoDestinationFolder() {
+    @Test func addsAssetAndMovesIntoDestinationFolder() async {
         let e = editor()
         let dest = e.createFolder(name: "Dest")
         let url = URL(fileURLWithPath: "/tmp/\(UUID().uuidString)-clip.mp4")
 
-        MediaTab.handlePanelFinderDrop(urls: [url], into: dest, editor: e)
+        await MediaTab.handlePanelFinderDrop(urls: [url], into: dest, editor: e)
 
         #expect(e.mediaAssets.count == 1)
         #expect(e.mediaAssets.first?.folderId == dest)
     }
 
-    @Test func skipsUnsupportedFileExtensions() {
+    @Test func skipsUnsupportedFileExtensions() async {
         let e = editor()
         let url = URL(fileURLWithPath: "/tmp/\(UUID().uuidString)-readme.txt")
 
-        MediaTab.handlePanelFinderDrop(urls: [url], into: nil, editor: e)
+        await MediaTab.handlePanelFinderDrop(urls: [url], into: nil, editor: e)
 
         #expect(e.mediaAssets.isEmpty)
     }
 
-    @Test func addsMultipleAssetsIntoDestination() {
+    @Test func addsMultipleAssetsIntoDestination() async {
         let e = editor()
         let dest = e.createFolder(name: "Dest")
         let urls = (0..<3).map { _ in
             URL(fileURLWithPath: "/tmp/\(UUID().uuidString)-clip.mp4")
         }
 
-        MediaTab.handlePanelFinderDrop(urls: urls, into: dest, editor: e)
+        await MediaTab.handlePanelFinderDrop(urls: urls, into: dest, editor: e)
 
         #expect(e.mediaAssets.count == 3)
         #expect(e.mediaAssets.allSatisfy { $0.folderId == dest })
@@ -645,12 +686,12 @@ struct HandleClipboardPasteTests {
         return pb
     }
 
-    @Test func pngBytesImportAtRootWhenDestinationIsNil() {
+    @Test func pngBytesImportAtRootWhenDestinationIsNil() async {
         let e = editor()
         let pb = freshPasteboard()
         pb.setData(Data([0x89, 0x50, 0x4E, 0x47]), forType: .png)
 
-        MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+        await MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
 
         #expect(e.mediaAssets.count == 1)
         #expect(e.mediaAssets.first?.type == .image)
@@ -658,49 +699,49 @@ struct HandleClipboardPasteTests {
         #expect(e.mediaAssets.first?.folderId == nil)
     }
 
-    @Test func pngBytesLandInDestinationFolder() {
+    @Test func pngBytesLandInDestinationFolder() async {
         let e = editor()
         let dest = e.createFolder(name: "Dest")
         let pb = freshPasteboard()
         pb.setData(Data([0x89, 0x50, 0x4E, 0x47]), forType: .png)
 
-        MediaTab.handleClipboardPaste(pasteboard: pb, into: dest, editor: e)
+        await MediaTab.handleClipboardPaste(pasteboard: pb, into: dest, editor: e)
 
         #expect(e.mediaAssets.first?.folderId == dest)
         #expect(e.mediaManifest.entries.first?.folderId == dest)
     }
 
-    @Test func tiffBytesImportWithTiffExtension() {
+    @Test func tiffBytesImportWithTiffExtension() async {
         let e = editor()
         let pb = freshPasteboard()
         pb.setData(Data([0x4D, 0x4D, 0x00, 0x2A]), forType: .tiff)
 
-        MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+        await MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
 
         #expect(e.mediaAssets.count == 1)
         #expect(e.mediaAssets.first?.url.pathExtension == "tiff")
     }
 
-    @Test func fileURLRoutesThroughFinderDrop() {
+    @Test func fileURLRoutesThroughFinderDrop() async {
         let e = editor()
         let url = URL(fileURLWithPath: "/tmp/\(UUID().uuidString)-clip.mp4")
         let pb = freshPasteboard()
         pb.writeObjects([url as NSURL])
 
-        MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+        await MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
 
         #expect(e.mediaAssets.count == 1)
         #expect(e.mediaAssets.first?.type == .video)
     }
 
-    @Test func fileURLLandsInDestinationFolder() {
+    @Test func fileURLLandsInDestinationFolder() async {
         let e = editor()
         let dest = e.createFolder(name: "Dest")
         let url = URL(fileURLWithPath: "/tmp/\(UUID().uuidString)-clip.mp4")
         let pb = freshPasteboard()
         pb.writeObjects([url as NSURL])
 
-        MediaTab.handleClipboardPaste(pasteboard: pb, into: dest, editor: e)
+        await MediaTab.handleClipboardPaste(pasteboard: pb, into: dest, editor: e)
 
         #expect(e.mediaAssets.first?.folderId == dest)
     }
@@ -709,44 +750,44 @@ struct HandleClipboardPasteTests {
     /// items always carry a TIFF preview alongside the file URL), the URL wins —
     /// avoids creating both the file-imported asset and a duplicate "pasted-*"
     /// image asset for the same payload.
-    @Test func fileURLTakesPrecedenceOverImageData() {
+    @Test func fileURLTakesPrecedenceOverImageData() async {
         let e = editor()
         let url = URL(fileURLWithPath: "/tmp/\(UUID().uuidString)-clip.mp4")
         let pb = freshPasteboard()
         pb.setData(Data([0x89, 0x50, 0x4E, 0x47]), forType: .png)
         pb.writeObjects([url as NSURL])
 
-        MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+        await MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
 
         #expect(e.mediaAssets.count == 1)
         #expect(e.mediaAssets.first?.type == .video)
     }
 
-    @Test func emptyPasteboardIsNoOp() {
+    @Test func emptyPasteboardIsNoOp() async {
         let e = editor()
         let pb = freshPasteboard()
 
-        MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+        await MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
 
         #expect(e.mediaAssets.isEmpty)
     }
 
-    @Test func textOnlyPasteboardIsNoOp() {
+    @Test func textOnlyPasteboardIsNoOp() async {
         let e = editor()
         let pb = freshPasteboard()
         pb.setString("just some text", forType: .string)
 
-        MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+        await MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
 
         #expect(e.mediaAssets.isEmpty)
     }
 
-    @Test func fileURLWithUnsupportedExtensionIsNoOp() {
+    @Test func fileURLWithUnsupportedExtensionIsNoOp() async {
         let e = editor()
         let pb = freshPasteboard()
         pb.writeObjects([URL(fileURLWithPath: "/tmp/\(UUID().uuidString)-readme.txt") as NSURL])
 
-        MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
+        await MediaTab.handleClipboardPaste(pasteboard: pb, into: nil, editor: e)
 
         #expect(e.mediaAssets.isEmpty)
     }
