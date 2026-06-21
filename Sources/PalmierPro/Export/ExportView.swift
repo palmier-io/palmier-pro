@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 enum ExportMode: String, CaseIterable, Identifiable {
     case video = "Video (.mp4)"
     case xml = "Timeline (.xml)"
+    case capcut = "CapCut Draft"
     case palmierProject = "Palmier Project (.palmier)"
 
     var id: String { rawValue }
@@ -147,6 +148,18 @@ struct ExportView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, AppTheme.Spacing.sm)
 
+                case .capcut:
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                        Text("Exports a CapCut desktop draft folder (clips, text, transforms). Drop it into CapCut's Projects folder to open it.")
+                            .font(.system(size: AppTheme.FontSize.sm))
+                            .foregroundStyle(AppTheme.Text.secondaryColor)
+                        Text("Best-effort, version-dependent. Colour grade / LUT / blend / chroma aren't carried over.")
+                            .font(.system(size: AppTheme.FontSize.xs))
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, AppTheme.Spacing.sm)
+
                 case .palmierProject:
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
                         Text("Saves a copy of this project with all media bundled inside, so it opens on any machine.")
@@ -215,7 +228,7 @@ struct ExportView: View {
                     }
                     let out = resolution.renderSize(for: CGSize(width: editor.timeline.width, height: editor.timeline.height))
                     Text("\(Int(out.width))×\(Int(out.height))")
-                case .xml:
+                case .xml, .capcut:
                     Text("\(editor.timeline.width)×\(editor.timeline.height)")
                 case .palmierProject:
                     HStack(spacing: AppTheme.Spacing.xs) {
@@ -270,7 +283,7 @@ struct ExportView: View {
 
     private var exportFormat: ExportFormat {
         switch mode {
-        case .xml, .palmierProject: .xml   // palmierProject has its own path; never rendered
+        case .xml, .palmierProject, .capcut: .xml   // these have their own paths; never rendered
         case .video:
             switch codec {
             case .h264: .h264
@@ -320,6 +333,7 @@ struct ExportView: View {
 
     private func startExport() {
         if mode == .palmierProject { startPalmierExport(); return }
+        if mode == .capcut { startCapCutExport(); return }
         let format = exportFormat
         let panel = NSSavePanel()
         panel.allowedContentTypes = [
@@ -341,6 +355,34 @@ struct ExportView: View {
                 )
                 if service.error == nil {
                     editor.showExportDialog = false
+                }
+            }
+        }
+    }
+
+    private func startCapCutExport() {
+        let base = editor.projectURL?.deletingPathExtension().lastPathComponent ?? Project.defaultProjectName
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "dfd_\(base)"
+        // Default to CapCut's drafts directory so it shows up directly, if present.
+        if let dir = CapCutExporter.capCutDraftsDirectory { panel.directoryURL = dir }
+
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            Task {
+                let report = await service.exportCapCutDraft(
+                    timeline: editor.timeline,
+                    resolver: editor.mediaResolver,
+                    projectName: base,
+                    outputURL: url
+                )
+                guard let report, service.error == nil else { return }
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+                if report.missing == 0 {
+                    editor.showExportDialog = false
+                } else {
+                    palmierResult = "Exported, but \(report.missing) media file\(report.missing == 1 ? "" : "s") couldn't be resolved."
                 }
             }
         }
