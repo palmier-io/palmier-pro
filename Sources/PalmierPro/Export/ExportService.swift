@@ -96,48 +96,114 @@ final class ExportService {
         isExporting = true
         progress = 0
         error = nil
+        defer { isExporting = false }
+
+        guard let fileType = format.utType else {
+            error = "Invalid export format"
+            return
+        }
+        let renderSize = resolution.renderSize(for: CGSize(width: timeline.width, height: timeline.height))
+        let hasText = timeline.tracks.contains { $0.clips.contains { $0.mediaType == .text } }
+        let needsColor = CompositionBuilder.needsColorCompositor(timeline)
 
         do {
-            let session = try await makeExportSession(
-                timeline: timeline, resolver: resolver,
-                format: format, resolution: resolution
-            )
-            guard let fileType = format.utType else { throw ExportError.invalidFormat }
-
-            // AVAssetExportSession fails if the file already exists
             try? FileManager.default.removeItem(at: outputURL)
+            Log.export.notice("export start format=\(String(describing: format)) resolution=\(resolution.rawValue) hasText=\(hasText) color=\(needsColor) url=\(outputURL.lastPathComponent)")
 
-            nonisolated(unsafe) let unsafeSession = session
-            let progressTask = Task { @MainActor in
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .milliseconds(200))
-                    let p = Double(unsafeSession.progress)
-                    if p != self.progress { self.progress = p }
-                }
+            if hasText && needsColor {
+                // The Core Animation text tool and the custom colour compositor can't
+                // coexist in one pass: bake colour first, then overlay text.
+                let temp = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("export-color-\(UUID().uuidString).\(format.fileExtension)")
+                defer { try? FileManager.default.removeItem(at: temp) }
+
+                let colorSession = try await makeExportSession(
+                    timeline: timeline, resolver: resolver, format: format,
+                    resolution: resolution, includeTextOverlay: false
+                )
+                try await runExport(colorSession, to: temp, as: fileType, progressRange: 0.0...0.5)
+
+                let textSession = try await makeTextOverlaySession(
+                    inputURL: temp, timeline: timeline, renderSize: renderSize,
+                    format: format, resolution: resolution
+                )
+                try await runExport(textSession, to: outputURL, as: fileType, progressRange: 0.5...1.0)
+            } else {
+                let session = try await makeExportSession(
+                    timeline: timeline, resolver: resolver, format: format,
+                    resolution: resolution, includeTextOverlay: hasText
+                )
+                try await runExport(session, to: outputURL, as: fileType, progressRange: 0.0...1.0)
             }
-
-            do {
-                Log.export.notice("export start format=\(String(describing: format)) resolution=\(resolution.rawValue) url=\(outputURL.lastPathComponent)")
-                try await session.export(to: outputURL, as: fileType)
-                progress = 1.0
-                Log.export.notice("export ok")
-            } catch {
-                if (error as NSError).domain == NSCocoaErrorDomain && (error as NSError).code == NSUserCancelledError {
-                    self.error = "Export was cancelled"
-                    Log.export.notice("export cancelled")
-                } else {
-                    self.error = Log.detail(error)
-                    Log.export.error("export failed: \(Log.detail(error))")
-                }
-            }
-
-            progressTask.cancel()
+            progress = 1.0
+            Log.export.notice("export ok")
         } catch {
-            self.error = Log.detail(error)
-            Log.export.error("export setup failed: \(Log.detail(error))")
+            if (error as NSError).domain == NSCocoaErrorDomain && (error as NSError).code == NSUserCancelledError {
+                self.error = "Export was cancelled"
+                Log.export.notice("export cancelled")
+            } else {
+                self.error = Log.detail(error)
+                Log.export.error("export failed: \(Log.detail(error))")
+            }
         }
+    }
 
-        isExporting = false
+    /// Run one export session, mapping its 0…1 progress into `progressRange`.
+    private func runExport(
+        _ session: AVAssetExportSession, to url: URL, as fileType: AVFileType,
+        progressRange: ClosedRange<Double>
+    ) async throws {
+        try? FileManager.default.removeItem(at: url)
+        nonisolated(unsafe) let unsafeSession = session
+        let span = progressRange.upperBound - progressRange.lowerBound
+        let lower = progressRange.lowerBound
+        let progressTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(200))
+                let p = lower + Double(unsafeSession.progress) * span
+                if p != self.progress { self.progress = p }
+            }
+        }
+        defer { progressTask.cancel() }
+        try await session.export(to: url, as: fileType)
+    }
+
+    /// Second pass: overlay the timeline's text clips onto an already-rendered video
+    /// using the Core Animation tool (standard compositor, no custom compositor).
+    private func makeTextOverlaySession(
+        inputURL: URL, timeline: Timeline, renderSize: CGSize,
+        format: ExportFormat, resolution: ExportResolution
+    ) async throws -> AVAssetExportSession {
+        let asset = AVURLAsset(url: inputURL)
+        guard let session = AVAssetExportSession(asset: asset, presetName: exportPresetName(format: format, resolution: resolution)) else {
+            throw ExportError.unsupportedPreset
+        }
+        guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
+            throw ExportError.invalidFormat
+        }
+        let duration = try await asset.load(.duration)
+        let (parent, videoLayer) = TextLayerController.buildForExport(
+            timeline: timeline, fps: timeline.fps, renderSize: renderSize
+        )
+
+        var cfg = AVVideoComposition.Configuration()
+        cfg.renderSize = renderSize
+        cfg.frameDuration = CMTime(value: 1, timescale: CMTimeScale(timeline.fps))
+        cfg.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
+        cfg.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
+        cfg.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
+
+        var instr = AVVideoCompositionInstruction.Configuration()
+        instr.timeRange = CMTimeRange(start: .zero, duration: duration)
+        instr.layerInstructions = [
+            AVVideoCompositionLayerInstruction(
+                configuration: AVVideoCompositionLayerInstruction.Configuration(trackID: videoTrack.trackID)
+            )
+        ]
+        cfg.instructions = [AVVideoCompositionInstruction(configuration: instr)]
+        cfg.animationTool = AVVideoCompositionCoreAnimationTool(postProcessingAsVideoLayer: videoLayer, in: parent)
+        session.videoComposition = AVVideoComposition(configuration: cfg)
+        return session
     }
 
     /// Writes a self-contained `.palmier` bundle (all media collected internally).
@@ -177,7 +243,8 @@ final class ExportService {
         timeline: Timeline,
         resolver: MediaResolver,
         format: ExportFormat,
-        resolution: ExportResolution
+        resolution: ExportResolution,
+        includeTextOverlay: Bool
     ) async throws -> AVAssetExportSession {
         let timelineCanvas = CGSize(width: timeline.width, height: timeline.height)
         let renderSize = resolution.renderSize(for: timelineCanvas)
@@ -194,18 +261,22 @@ final class ExportService {
         }
         session.audioMix = result.audioMix
 
-        // Bake text clips into the export via AVVideoCompositionCoreAnimationTool
-        let (parent, videoLayer) = TextLayerController.buildForExport(
-            timeline: timeline,
-            fps: timeline.fps,
-            renderSize: renderSize
-        )
-        var config = result.videoCompositionConfiguration
-        config.animationTool = AVVideoCompositionCoreAnimationTool(
-            postProcessingAsVideoLayer: videoLayer,
-            in: parent
-        )
-        session.videoComposition = AVVideoComposition(configuration: config)
+        if includeTextOverlay {
+            // Bake text clips via the Core Animation tool (valid only without a custom compositor).
+            let (parent, videoLayer) = TextLayerController.buildForExport(
+                timeline: timeline,
+                fps: timeline.fps,
+                renderSize: renderSize
+            )
+            var config = result.videoCompositionConfiguration
+            config.animationTool = AVVideoCompositionCoreAnimationTool(
+                postProcessingAsVideoLayer: videoLayer,
+                in: parent
+            )
+            session.videoComposition = AVVideoComposition(configuration: config)
+        } else {
+            session.videoComposition = result.videoComposition
+        }
         return session
     }
 

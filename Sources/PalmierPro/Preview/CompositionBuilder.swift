@@ -537,6 +537,16 @@ enum CompositionBuilder {
         return (audioMix, vcConfig)
     }
 
+    /// True when any clip needs Core Image compositing (grade, chroma key, or a
+    /// non-normal blend mode), i.e. the custom compositor will be used. The Core
+    /// Animation text tool can't coexist with it, so callers (export) two-pass.
+    static func needsColorCompositor(_ timeline: Timeline) -> Bool {
+        let hasChroma = timeline.tracks.contains { $0.clips.contains { $0.chromaKey?.isActive == true } }
+        let hasGrade = timeline.tracks.contains { $0.clips.contains { $0.colorGrade?.hasEffect == true } }
+        let hasBlend = timeline.tracks.contains { $0.clips.contains { ($0.blendMode ?? .normal) != .normal } }
+        return hasChroma || hasGrade || hasBlend
+    }
+
     /// Build the custom-compositor instruction when any clip carries a colour grade
     /// or an active chroma key; returns nil to keep the built-in compositor.
     private static func colorCompositionInstruction(
@@ -548,11 +558,7 @@ enum CompositionBuilder {
         renderSize: CGSize,
         luts: [String: CubeLUT]
     ) -> ColorCompositionInstruction? {
-        let hasChroma = timeline.tracks.contains { $0.clips.contains { $0.chromaKey?.isActive == true } }
-        // Grades apply on adjustment layers (over everything below) and per-clip.
-        let hasGrade = timeline.tracks.contains { $0.clips.contains { $0.colorGrade?.hasEffect == true } }
-        let hasBlend = timeline.tracks.contains { $0.clips.contains { ($0.blendMode ?? .normal) != .normal } }
-        guard hasChroma || hasGrade || hasBlend else { return nil }
+        guard needsColorCompositor(timeline) else { return nil }
 
         var videoMappingByIndex: [Int: TrackMapping] = [:]
         for mapping in trackMappings where mapping.isVideo {

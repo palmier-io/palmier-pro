@@ -27,6 +27,17 @@ struct ColorCompositorWiringTests {
         )
     }
 
+    @Test func needsColorCompositorGate() {
+        var plain = Clip(mediaRef: "v", startFrame: 0, durationFrames: 30); plain.mediaType = .video
+        #expect(CompositionBuilder.needsColorCompositor(Timeline(tracks: [Track(type: .video, clips: [plain])])) == false)
+
+        var graded = plain; graded.colorGrade = ColorGrade(contrast: 10)
+        #expect(CompositionBuilder.needsColorCompositor(Timeline(tracks: [Track(type: .video, clips: [graded])])))
+
+        var blended = plain; blended.blendMode = .screen
+        #expect(CompositionBuilder.needsColorCompositor(Timeline(tracks: [Track(type: .video, clips: [blended])])))
+    }
+
     @Test func plainTimelineKeepsBuiltInCompositor() {
         var clip = Clip(mediaRef: "v", startFrame: 0, durationFrames: 30)
         clip.mediaType = .video
