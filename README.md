@@ -23,6 +23,8 @@
   <a href="docs/readme/README.ko.md">한국어</a> ·
   <a href="docs/readme/README.vi.md">Tiếng Việt</a> ·
   <a href="docs/readme/README.hi.md">हिन्दी</a> ·
+  <a href="docs/readme/README.bn.md">বাংলা</a> ·
+  <a href="docs/readme/README.ar.md">العربية</a> ·
   <a href="docs/readme/README.it.md">Italiano</a> ·
   <a href="docs/readme/README.pt-BR.md">Português (Brasil)</a> ·
   <a href="docs/readme/README.fr.md">Français</a> ·
