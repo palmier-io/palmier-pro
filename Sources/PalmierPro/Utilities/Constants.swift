@@ -112,12 +112,15 @@ enum Project {
     static let thumbnailFilename = "thumbnail.jpg"
     static let mediaDirectoryName = "media"
 
-    static let storageDirectory: URL = {
-        let url = FileManager.default.homeDirectoryForCurrentUser
+    static var storageDirectory: URL {
+        FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Documents/Palmier Pro", isDirectory: true)
+    }
+
+    nonisolated static func ensureStorageDirectory() {
+        let url = storageDirectory
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
-    }()
+    }
 }
 
 func gcd(_ a: Int, _ b: Int) -> Int {

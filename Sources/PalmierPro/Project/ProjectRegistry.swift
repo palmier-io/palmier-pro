@@ -125,7 +125,8 @@ final class ProjectRegistry {
 
 private actor ProjectRegistryDisk {
     func load(from fileURL: URL) -> [ProjectEntry] {
-        ProjectRegistry.loadEntries(from: fileURL)
+        Project.ensureStorageDirectory()
+        return ProjectRegistry.loadEntries(from: fileURL)
     }
 
     func trashIfPresent(_ url: URL) -> Bool {
