@@ -2,9 +2,23 @@
 
 import PackageDescription
 
+let editorOnly = Context.environment["PALMIER_EDITOR_ONLY"] == "1"
+
+let backendPackages: [Package.Dependency] = editorOnly ? [] : [
+    .package(url: "https://github.com/clerk/clerk-convex-swift", from: "0.1.0"),
+    .package(url: "https://github.com/clerk/clerk-ios", from: "1.0.0"),
+    .package(url: "https://github.com/get-convex/convex-swift", from: "0.8.0"),
+]
+
+let backendProducts: [Target.Dependency] = editorOnly ? [] : [
+    .product(name: "ClerkConvex", package: "clerk-convex-swift"),
+    .product(name: "ClerkKit", package: "clerk-ios"),
+    .product(name: "ConvexMobile", package: "convex-swift"),
+]
+
 let package = Package(
     name: "PalmierPro",
-    platforms: [.macOS(.v26)],
+    platforms: editorOnly ? [.macOS("15.0")] : [.macOS(.v26)],
     products: [
         .executable(name: "PalmierPro", targets: ["PalmierPro"]),
     ],
@@ -13,12 +27,9 @@ let package = Package(
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.11.0"),
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.7.0"),
         .package(url: "https://github.com/getsentry/sentry-cocoa", from: "8.40.0"),
-        .package(url: "https://github.com/clerk/clerk-convex-swift", from: "0.1.0"),
-        .package(url: "https://github.com/clerk/clerk-ios", from: "1.0.0"),
-        .package(url: "https://github.com/get-convex/convex-swift", from: "0.8.0"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.3.3"),
         .package(url: "https://github.com/airbnb/lottie-ios", from: "4.6.1"),
-    ],
+    ] + backendPackages,
     targets: [
         .executableTarget(
             name: "PalmierPro",
@@ -27,12 +38,9 @@ let package = Package(
                 .product(name: "MCP", package: "swift-sdk"),
                 .product(name: "Sparkle", package: "Sparkle"),
                 .product(name: "Sentry", package: "sentry-cocoa"),
-                .product(name: "ClerkConvex", package: "clerk-convex-swift"),
-                .product(name: "ClerkKit", package: "clerk-ios"),
-                .product(name: "ConvexMobile", package: "convex-swift"),
                 .product(name: "Tokenizers", package: "swift-transformers"),
                 .product(name: "Lottie", package: "lottie-ios"),
-            ],
+            ] + backendProducts,
             path: "Sources/PalmierPro",
             exclude: [
                 "Resources/Info.plist",
@@ -45,7 +53,8 @@ let package = Package(
                 .copy("Resources/MCPB/palmier-pro.mcpb"),
                 .copy("Resources/Images"),
                 .copy("Resources/Changelog"),
-            ]
+            ],
+            swiftSettings: editorOnly ? [.define("PALMIER_EDITOR_ONLY")] : []
         ),
         .testTarget(
             name: "PalmierProTests",

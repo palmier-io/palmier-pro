@@ -55,6 +55,11 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Framewor
 cp "$BIN" "$APP/Contents/MacOS/PalmierPro"
 cp "$RESOURCES/Info.plist" "$APP/Contents/Info.plist"
 
+if [ "${PALMIER_EDITOR_ONLY:-}" = "1" ]; then
+  echo "==> Configuring Intel editor-only app metadata"
+  /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 15.0" "$APP/Contents/Info.plist"
+fi
+
 if [ -n "$SENTRY_DSN" ]; then
   echo "==> Injecting SentryDSN into Info.plist"
   /usr/libexec/PlistBuddy -c "Delete :SentryDSN" "$APP/Contents/Info.plist" 2>/dev/null || true
@@ -74,9 +79,13 @@ inject_plist() {
 }
 
 echo "==> Injecting backend config into Info.plist"
-inject_plist PalmierClerkPublishableKey "${CLERK_PUBLISHABLE_KEY:-}"
-inject_plist PalmierConvexDeploymentURL "${CONVEX_DEPLOYMENT_URL:-}"
-inject_plist PalmierConvexHttpURL "${CONVEX_HTTP_URL:-}"
+if [ "${PALMIER_EDITOR_ONLY:-}" = "1" ]; then
+  echo "==> PALMIER_EDITOR_ONLY=1 — skipping Clerk/Convex backend config"
+else
+  inject_plist PalmierClerkPublishableKey "${CLERK_PUBLISHABLE_KEY:-}"
+  inject_plist PalmierConvexDeploymentURL "${CONVEX_DEPLOYMENT_URL:-}"
+  inject_plist PalmierConvexHttpURL "${CONVEX_HTTP_URL:-}"
+fi
 cp "$RESOURCES/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp -R "$SPARKLE_FW" "$APP/Contents/Frameworks/Sparkle.framework"
 

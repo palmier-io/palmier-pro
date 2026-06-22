@@ -2,6 +2,9 @@ import Foundation
 
 extension ToolExecutor {
     func generate(_ editor: EditorViewModel, _ args: [String: Any], type: ClipType) throws -> ToolResult {
+        if BuildMode.isEditorOnly {
+            throw ToolError(BuildMode.editorOnlyUnavailableMessage)
+        }
         let prompt = try args.requireString("prompt")
         guard AccountService.shared.isSignedIn else {
             throw ToolError("Generation requires signing in to Palmier. Tell the user to sign in.")
@@ -195,6 +198,9 @@ extension ToolExecutor {
     }
 
     func generateAudio(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
+        if BuildMode.isEditorOnly {
+            throw ToolError(BuildMode.editorOnlyUnavailableMessage)
+        }
         guard AccountService.shared.isSignedIn else {
             throw ToolError("Generation requires signing in to Palmier. Tell the user to sign in.")
         }
@@ -311,6 +317,9 @@ extension ToolExecutor {
     }
 
     func upscaleMedia(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        if BuildMode.isEditorOnly {
+            throw ToolError(BuildMode.editorOnlyUnavailableMessage)
+        }
         let mediaRef = try args.requireString("mediaRef")
         let asset = try asset(mediaRef, editor: editor)
         guard asset.type == .video || asset.type == .image else {
@@ -371,6 +380,17 @@ extension ToolExecutor {
     }
 
     func listModels(_ args: [String: Any]) -> ToolResult {
+        if BuildMode.isEditorOnly {
+            let body: [String: Any] = [
+                "models": [],
+                "loaded": true,
+                "disabled": BuildMode.editorOnlyUnavailableMessage,
+            ]
+            guard let json = Self.jsonString(roundJSONFloatingPointNumbers(body, toPlaces: 3)) else {
+                return .error("Failed to encode model list")
+            }
+            return .ok(json)
+        }
         let filter = args.string("type")
         var out: [[String: Any]] = []
         if filter == nil || filter == "video" {

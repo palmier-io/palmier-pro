@@ -1,10 +1,35 @@
 import Foundation
 import Combine
+#if !PALMIER_EDITOR_ONLY
 @preconcurrency import ConvexMobile
+#endif
 
 /// The RPC layer for the backend
 @MainActor
 enum GenerationBackend {
+    #if PALMIER_EDITOR_ONLY
+    /// Reactive generation jobs are disabled in editor-only builds.
+    static func subscribe(
+        jobId: String
+    ) -> AnyPublisher<BackendGenerationJob?, Error>? {
+        nil
+    }
+
+    static func uploadReference(
+        fileURL: URL,
+        contentType: String,
+    ) async throws -> String {
+        throw GenerationBackendError.notConfigured
+    }
+
+    static func submit(
+        model: String,
+        params: BackendGenerationParams,
+        projectId: String? = nil,
+    ) async throws -> String {
+        throw GenerationBackendError.notConfigured
+    }
+    #else
     /// Reactive subscription to a single generation job pushed by Convex.
     static func subscribe(
         jobId: String
@@ -72,6 +97,7 @@ enum GenerationBackend {
         )
         return result.jobId
     }
+    #endif
 
     private static func assertHTTPOK(respData: Data, response: URLResponse) throws {
         guard let http = response as? HTTPURLResponse else {
@@ -92,7 +118,7 @@ enum GenerationBackend {
 
 // MARK: - Backend generation types
 
-enum BackendGenerationParams: Encodable, ConvexEncodable, Sendable {
+enum BackendGenerationParams: Encodable, Sendable {
     case video(VideoGenerationParams)
     case image(ImageGenerationParams)
     case audio(AudioGenerationParams)
@@ -108,6 +134,10 @@ enum BackendGenerationParams: Encodable, ConvexEncodable, Sendable {
         }
     }
 }
+
+#if !PALMIER_EDITOR_ONLY
+extension BackendGenerationParams: ConvexEncodable {}
+#endif
 
 enum BackendGenerationStatus: String, Decodable, Sendable {
     case queued, running, succeeded, failed

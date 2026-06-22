@@ -100,6 +100,29 @@ Generative AI features require login and subscription.
 
 macOS 26 (Tahoe) on Apple Silicon only.
 
+## Experimental Intel editor-only build
+
+The default build remains the full Palmier Pro app for macOS 26 on Apple Silicon. There is an experimental opt-in editor-only build mode for Intel Macs:
+
+```bash
+PALMIER_EDITOR_ONLY=1 swift build --arch x86_64
+```
+
+To assemble a local debug `.app` without Developer ID signing or notarization:
+
+```bash
+PALMIER_EDITOR_ONLY=1 ./scripts/bundle.sh debug --fast
+```
+
+This mode targets macOS 15+ and intentionally disables Palmier account, Clerk/Convex backend, generative AI, hosted model catalog, billing, hosted agent chat, and feedback submission. The local editor, project, timeline, import, export, MCP, and BYOK Anthropic agent paths are the intended first compatibility surface.
+
+Requirements and limitations:
+
+- Requires a Swift 6.2-capable toolchain and macOS 26 SDK to compile guarded macOS 26 SwiftUI APIs.
+- Does not link `ConvexMobile`; the upstream Convex binary currently has no macOS x86_64 slice.
+- macOS 15 fallback UI replaces macOS 26 glass effects where guarded.
+- This is experimental until the Intel editor-only build is verified by `swift build`, `swift test`, and launch testing on Intel hardware.
+
 See [FAQ.md](FAQ.md) for more.
 
 ## Development

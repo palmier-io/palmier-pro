@@ -131,7 +131,7 @@ private struct SettingsDetail: View {
                 .padding(.horizontal, AppTheme.Spacing.xlXxl)
                 .padding(.bottom, AppTheme.Spacing.xlXxl)
             }
-            .scrollEdgeEffectStyle(.soft, for: .top)
+            .palmierTopScrollEdgeEffect()
         }
     }
 }

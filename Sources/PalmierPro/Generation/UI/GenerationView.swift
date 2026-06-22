@@ -724,7 +724,7 @@ struct GenerationView: View {
         }
         .padding(AppTheme.Spacing.xs)
         .frame(minWidth: 180)
-        .glassEffect(.clear, in: .rect(cornerRadius: AppTheme.Radius.md))
+        .palmierGlassEffect(.clear, in: RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous))
     }
 
     private func updateRefMentionQuery(from text: String) {
@@ -1303,7 +1303,7 @@ struct GenerationView: View {
                 .font(.system(size: AppTheme.FontSize.sm, weight: .bold))
                 .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
         }
-        .buttonStyle(.glassProminent)
+        .palmierGlassProminentButtonStyle()
         .buttonBorderShape(.circle)
         .controlSize(.regular)
         .tint(AppTheme.Accent.primary)

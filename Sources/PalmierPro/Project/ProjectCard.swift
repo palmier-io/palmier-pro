@@ -78,7 +78,7 @@ struct ProjectCard: View {
                         .font(.system(size: AppTheme.FontSize.smMd, weight: .semibold))
                         .foregroundStyle(.red)
                         .frame(width: AppTheme.IconSize.lgXl, height: AppTheme.IconSize.lgXl)
-                        .glassEffect(.regular, in: .circle)
+                        .palmierGlassEffect(.regular, in: Circle())
                 }
                 .buttonStyle(.plain)
                 .padding(AppTheme.Spacing.smMd)

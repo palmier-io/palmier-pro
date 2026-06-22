@@ -1,6 +1,6 @@
 # PalmierPro
 
-AI-native macOS video editor. Swift 6.2, SwiftUI + AppKit, AVFoundation. macOS 26 only, arm64 only. Non-sandboxed Developer ID app.
+AI-native macOS video editor. Swift 6.2, SwiftUI + AppKit, AVFoundation. Default app is macOS 26 only, arm64 only. The experimental `PALMIER_EDITOR_ONLY=1` build targets Intel/macOS 15+ with backend and generative features disabled. Non-sandboxed Developer ID app.
 
 ## Build
 
@@ -41,4 +41,3 @@ Rule: **any drop target that spans an area containing other drop targets must us
 Palmier Pro speaks like a quietly capable native Mac app for filmmakers: direct, technical, calm, and 
 confident. Prefer Apple HIG-style terseness over warmth. Never chatty or cute. Never marketing. When the
 product needs to ask for action, lead with the action verb; when it reports state, name the thing.
-

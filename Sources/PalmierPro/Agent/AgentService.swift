@@ -296,6 +296,10 @@ final class AgentService {
 
     func send(text: String, mentions: [AgentMention]) {
         guard canStream else {
+            if BuildMode.isEditorOnly {
+                streamError = .upstream(BuildMode.editorOnlyUnavailableMessage)
+                return
+            }
             streamError = .upstream("Sign in to a paid plan or add an Anthropic API key to start.")
             return
         }
