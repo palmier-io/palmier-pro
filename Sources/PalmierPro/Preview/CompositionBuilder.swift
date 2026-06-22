@@ -568,6 +568,7 @@ enum CompositionBuilder {
         var layers: [ColorCompositionInstruction.Layer] = []
         for (idx, track) in timeline.tracks.enumerated() {
             if track.type == .adjustment {
+                guard !track.hidden else { continue }
                 let clips = track.clips.filter { $0.colorGrade != nil }
                 if !clips.isEmpty { layers.append(.adjustment(clips: clips)) }
                 continue

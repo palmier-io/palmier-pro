@@ -31,7 +31,11 @@ final class ColorVideoCompositor: NSObject, AVVideoCompositing, @unchecked Senda
 
     func startRequest(_ request: AVAsynchronousVideoCompositionRequest) {
         renderQueue.async { [weak self] in
-            guard let self else { return }
+            // Never leave a request unfinished — the pipeline would stall.
+            guard let self else {
+                request.finish(with: CompositorError.deallocated)
+                return
+            }
             autoreleasepool {
                 guard let instruction = request.videoCompositionInstruction as? ColorCompositionInstruction,
                       let dest = request.renderContext.newPixelBuffer() else {
@@ -41,18 +45,15 @@ final class ColorVideoCompositor: NSObject, AVVideoCompositing, @unchecked Senda
                 let frame = Int((request.compositionTime.seconds * Double(instruction.fps)).rounded())
                 let bounds = CGRect(origin: .zero, size: request.renderContext.size)
 
-                if let image = instruction.composite(at: frame, request: request) {
-                    self.ciContext.render(
-                        image.cropped(to: bounds),
-                        to: dest,
-                        bounds: bounds,
-                        colorSpace: self.workingColorSpace
-                    )
-                }
+                // Always render something: a produced frame, or a cleared frame so the
+                // output buffer never shows uninitialised/stale pixels.
+                let output = instruction.composite(at: frame, request: request)?.cropped(to: bounds)
+                    ?? CIImage(color: .clear).cropped(to: bounds)
+                self.ciContext.render(output, to: dest, bounds: bounds, colorSpace: self.workingColorSpace)
                 request.finish(withComposedVideoFrame: dest)
             }
         }
     }
 
-    enum CompositorError: Error { case badRequest }
+    enum CompositorError: Error { case badRequest, deallocated }
 }

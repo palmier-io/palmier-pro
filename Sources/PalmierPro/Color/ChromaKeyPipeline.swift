@@ -54,33 +54,13 @@ enum ChromaKeyPipeline {
         keyR: Double, keyG: Double, keyB: Double,
         tolerance: Double, softness: Double, spill: Double, edgeFeather: Double
     ) -> CIImage {
-        let keyHue = rgbToHSV(r: keyR, g: keyG, b: keyB).h
         let n = cubeSize
-
-        var fg = [Float](repeating: 0, count: n * n * n * 4)
-        var matte = [Float](repeating: 0, count: n * n * n * 4)
-        var o = 0
-        let denom = Double(n - 1)
-        for bi in 0..<n {
-            let b = Double(bi) / denom
-            for gi in 0..<n {
-                let g = Double(gi) / denom
-                for ri in 0..<n {
-                    let r = Double(ri) / denom
-                    let a = matteAlpha(r: r, g: g, b: b, keyHue: keyHue, tolerance: tolerance, softness: softness)
-                    let c = spillCorrect(r: r, g: g, b: b, keyHue: keyHue, spill: spill)
-                    // Foreground cube: opaque spill-corrected colour.
-                    fg[o] = Float(c.r); fg[o + 1] = Float(c.g); fg[o + 2] = Float(c.b); fg[o + 3] = 1
-                    // Matte cube: grayscale + alpha both = matte, so feather blurs cleanly.
-                    let af = Float(a)
-                    matte[o] = af; matte[o + 1] = af; matte[o + 2] = af; matte[o + 3] = af
-                    o += 4
-                }
-            }
-        }
-
-        let fgImage = applyCube(fg, dimension: n, to: image)
-        var matteImage = applyCube(matte, dimension: n, to: image)
+        // The cubes depend only on key colour/tolerance/softness/spill, not the frame,
+        // so build them once per parameter set and reuse across frames/clips.
+        let cubes = cachedCubes(keyR: keyR, keyG: keyG, keyB: keyB,
+                                tolerance: tolerance, softness: softness, spill: spill, n: n)
+        let fgImage = applyCube(cubes.fg, dimension: n, to: image)
+        var matteImage = applyCube(cubes.matte, dimension: n, to: image)
 
         if edgeFeather > 0 {
             let blur = CIFilter.gaussianBlur()
@@ -96,12 +76,66 @@ enum ChromaKeyPipeline {
         return (blend.outputImage ?? fgImage).cropped(to: image.extent)
     }
 
-    private static func applyCube(_ data: [Float], dimension: Int, to image: CIImage) -> CIImage {
+    private static func applyCube(_ data: Data, dimension: Int, to image: CIImage) -> CIImage {
         let f = CIFilter.colorCube()
         f.inputImage = image
         f.cubeDimension = Float(dimension)
-        f.cubeData = data.withUnsafeBufferPointer { Data(buffer: $0) }
+        f.cubeData = data
         return f.outputImage ?? image
+    }
+
+    // MARK: - Cube cache
+
+    private static let cubeCache = ChromaCubeCache()
+
+    private static func cachedCubes(
+        keyR: Double, keyG: Double, keyB: Double,
+        tolerance: Double, softness: Double, spill: Double, n: Int
+    ) -> (fg: Data, matte: Data) {
+        let keyHue = rgbToHSV(r: keyR, g: keyG, b: keyB).h
+        let key = "\(Int((keyHue * 1000).rounded()))|\(Int(tolerance.rounded()))|\(Int(softness.rounded()))|\(Int(spill.rounded()))|\(n)"
+        return cubeCache.get(key) {
+            var fg = [Float](repeating: 0, count: n * n * n * 4)
+            var matte = [Float](repeating: 0, count: n * n * n * 4)
+            var o = 0
+            let denom = Double(n - 1)
+            for bi in 0..<n {
+                let b = Double(bi) / denom
+                for gi in 0..<n {
+                    let g = Double(gi) / denom
+                    for ri in 0..<n {
+                        let r = Double(ri) / denom
+                        let a = matteAlpha(r: r, g: g, b: b, keyHue: keyHue, tolerance: tolerance, softness: softness)
+                        let c = spillCorrect(r: r, g: g, b: b, keyHue: keyHue, spill: spill)
+                        fg[o] = Float(c.r); fg[o + 1] = Float(c.g); fg[o + 2] = Float(c.b); fg[o + 3] = 1
+                        let af = Float(a)
+                        matte[o] = af; matte[o + 1] = af; matte[o + 2] = af; matte[o + 3] = af
+                        o += 4
+                    }
+                }
+            }
+            return (fg.withUnsafeBufferPointer { Data(buffer: $0) },
+                    matte.withUnsafeBufferPointer { Data(buffer: $0) })
+        }
+    }
+}
+
+/// Small thread-safe LRU-ish cache for generated chroma-key cubes.
+private final class ChromaCubeCache: @unchecked Sendable {
+    private var store: [String: (fg: Data, matte: Data)] = [:]
+    private var order: [String] = []
+    private let lock = NSLock()
+    private let limit = 12
+
+    func get(_ key: String, build: () -> (fg: Data, matte: Data)) -> (fg: Data, matte: Data) {
+        lock.lock()
+        defer { lock.unlock() }
+        if let cached = store[key] { return cached }
+        let built = build()
+        store[key] = built
+        order.append(key)
+        if order.count > limit { store.removeValue(forKey: order.removeFirst()) }
+        return built
     }
 }
 
