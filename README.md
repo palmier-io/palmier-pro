@@ -5,7 +5,7 @@
 **The video editor built for AI.**
 
 <a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
-  <img src="./assets/macos-badge.png" alt="Download palmierpro for macOS" width="180" />
+  <img src="./assets/macos-badge.png" alt="Download Palmier Pro for macOS" width="180" />
 </a>
 
 <sub><i>Requires macOS 26 (Tahoe) on Apple Silicon</i></sub>
@@ -33,7 +33,7 @@
 
 </div>
 
-<img src="./assets/palmier-ui.png" alt="palmierpro UI" width="900" />
+<img src="./assets/palmier-ui.png" alt="Palmier Pro UI" width="900" />
 
 ---
 
