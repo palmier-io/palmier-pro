@@ -51,7 +51,7 @@ enum TranscriptionError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .editorOnlyUnavailable:
-            return "Transcription is unavailable in the experimental Intel editor-only build."
+            return "This feature is unavailable in the experimental Intel editor-only build."
         case .unsupportedLocale(let id):
             return "On-device transcription is not available for \(id)."
         case .modelInstallFailed(let reason):

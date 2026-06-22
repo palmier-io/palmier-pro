@@ -21,6 +21,11 @@ done
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+EXTRA_SWIFT_BUILD_ARGS=()
+if [ -n "${SWIFT_BUILD_ARGS:-}" ]; then
+  read -r -a EXTRA_SWIFT_BUILD_ARGS <<< "$SWIFT_BUILD_ARGS"
+fi
+
 ENV_FILE=".env"
 if [ "$CONFIG" = "release" ] && [ -f "$ROOT/.env.prod" ]; then
   ENV_FILE=".env.prod"
@@ -45,8 +50,8 @@ ZIP="$ROOT/.build/PalmierPro.zip"
 DMG="$ROOT/.build/PalmierPro.dmg"
 
 echo "==> Building ($CONFIG)"
-swift build -c "$CONFIG"
-BIN="$(swift build -c "$CONFIG" --show-bin-path)/PalmierPro"
+swift build -c "$CONFIG" "${EXTRA_SWIFT_BUILD_ARGS[@]}"
+BIN="$(swift build -c "$CONFIG" "${EXTRA_SWIFT_BUILD_ARGS[@]}" --show-bin-path)/PalmierPro"
 SPARKLE_FW="$ROOT/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
 
 echo "==> Assembling $APP"

@@ -7,5 +7,5 @@ enum BuildMode {
     static let isEditorOnly = false
     #endif
 
-    static let editorOnlyUnavailableMessage = "Unavailable in Intel editor-only build."
+    static let editorOnlyUnavailableMessage = "This feature is unavailable in the experimental Intel editor-only build."
 }

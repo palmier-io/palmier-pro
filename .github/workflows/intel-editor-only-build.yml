@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - intel-mac-support-experiment
+    paths-ignore:
+      - "**/*.md"
 
 concurrency:
   group: intel-editor-only-${{ github.ref }}
@@ -74,6 +76,21 @@ jobs:
             echo "::endgroup::"
           fi
           exit "$status"
+
+      - name: Assemble Intel editor-only app artifact
+        run: |
+          set -euxo pipefail
+          PALMIER_EDITOR_ONLY=1 SIGNING_IDENTITY=- SWIFT_BUILD_ARGS="--arch x86_64" ./scripts/bundle.sh debug --fast
+          file .build/PalmierPro.app/Contents/MacOS/PalmierPro
+          lipo -info .build/PalmierPro.app/Contents/MacOS/PalmierPro
+          /usr/bin/ditto -c -k --keepParent .build/PalmierPro.app .build/PalmierPro-intel-editor-only.app.zip
+
+      - name: Upload Intel editor-only app
+        uses: actions/upload-artifact@v4
+        with:
+          name: palmier-pro-intel-editor-only-app
+          path: .build/PalmierPro-intel-editor-only.app.zip
+          if-no-files-found: error
 
       - name: Upload SwiftPM logs
         if: always()
