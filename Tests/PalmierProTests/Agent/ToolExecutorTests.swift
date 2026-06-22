@@ -1580,3 +1580,23 @@ struct ToolExecutorTextFolderTests {
         #expect(ToolHarness.textOf(result).contains("less than"))
     }
 }
+
+@Suite("ToolExecutor — set_clip_properties")
+@MainActor
+struct SetClipPropertiesTests {
+
+    @Test func transformPreservesRotation() async {
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        clip.transform.rotation = 45.0
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])]))
+
+        _ = await h.runRaw("set_clip_properties", args: [
+            "clipIds": ["c1"],
+            "transform": ["centerX": 0.3]
+        ])
+
+        let updated = h.editor.timeline.tracks[0].clips[0]
+        // Bug: Transform(center:width:height:) defaults rotation to 0, discarding cur.rotation.
+        #expect(updated.transform.rotation == 45.0)
+    }
+}
