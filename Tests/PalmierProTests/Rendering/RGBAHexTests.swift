@@ -68,6 +68,44 @@ struct RGBAHexTests {
         #expect(c?.b == 0)
     }
 
+    // MARK: - Surrounding newlines (issue #71)
+    // .whitespaces trims space/tab but NOT CR/LF, so a trailing newline left the
+    // digit count off-by-one and the whole color parsed as nil.
+
+    @Test func trailingNewlineIsTrimmed() {
+        let c = TextStyle.RGBA(hex: "#FFFFFF\n")
+        #expect(c?.r == 1)
+        #expect(c?.g == 1)
+        #expect(c?.b == 1)
+        #expect(c?.a == 1)
+    }
+
+    @Test func leadingNewlineIsTrimmed() {
+        let c = TextStyle.RGBA(hex: "\n#FFFFFF")
+        #expect(c?.r == 1)
+        #expect(c?.g == 1)
+        #expect(c?.b == 1)
+    }
+
+    @Test func carriageReturnIsTrimmed() {
+        #expect(TextStyle.RGBA(hex: "#00FF00\r")?.g == 1)
+    }
+
+    @Test func crlfIsTrimmed() {
+        #expect(TextStyle.RGBA(hex: "#00FF00\r\n")?.g == 1)
+    }
+
+    @Test func mixedSurroundingWhitespaceIsTrimmed() {
+        // Space, newline, and tab on both ends around an 8-digit color.
+        let c = TextStyle.RGBA(hex: " \n\t#FF8800AA\n \t")
+        #expect(c?.r == 1)
+        #expect(abs((c?.a ?? -1) - 170.0/255.0) < 1e-9)
+    }
+
+    @Test func onlyWhitespaceReturnsNil() {
+        #expect(TextStyle.RGBA(hex: " \n\t\r") == nil)
+    }
+
     // MARK: - Invalid inputs
 
     @Test func emptyStringReturnsNil() {

@@ -89,8 +89,9 @@ extension TextStyle.RGBA {
     }
 
     /// Accepts `#RGB`, `#RRGGBB`, or `#RRGGBBAA`. Leading `#` optional.
+    /// Trims surrounding whitespace including newlines — tool/LLM input often carries CR/LF.
     init?(hex: String) {
-        var s = hex.trimmingCharacters(in: .whitespaces)
+        var s = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if s.hasPrefix("#") { s.removeFirst() }
         let chars = Array(s)
         func component(_ start: Int, _ len: Int) -> Double? {
