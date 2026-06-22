@@ -396,6 +396,47 @@ struct CompositionBuildUnreadableAssetTests {
     }
 }
 
+@Suite("CompositionBuilder.build — video source timing")
+struct CompositionBuildVideoSourceTimingTests {
+
+    @Test func videoClipUsesSourceNaturalTimescaleForInsertedRange() async throws {
+        let videoURL = try await FixtureVideo.write(
+            scenes: [FixtureVideo.Scene(rgb: (255, 0, 0), seconds: 2)],
+            fps: 60,
+            size: 64
+        )
+        defer { try? FileManager.default.removeItem(at: videoURL) }
+
+        let sourceAsset = AVURLAsset(url: videoURL)
+        let sourceTrack = try #require(try await sourceAsset.loadTracks(withMediaType: .video).first)
+        let sourceTimescale = try await sourceTrack.load(.naturalTimeScale)
+        let clip = Fixtures.clip(
+            id: "deep-video",
+            mediaRef: "video",
+            start: 0,
+            duration: 30,
+            trimStart: 15
+        )
+        let timeline = Fixtures.timeline(fps: 30, tracks: [
+            Fixtures.videoTrack(clips: [clip]),
+        ])
+
+        let result = try await CompositionBuilder.build(
+            timeline: timeline,
+            resolveURL: { $0 == "video" ? videoURL : nil },
+            renderSize: CGSize(width: 320, height: 180)
+        )
+
+        let videoMapping = try #require(result.trackMappings.first { mapping in
+            guard mapping.isVideo, case .timeline(_, let clipIds) = mapping.kind else { return false }
+            return clipIds?.contains("deep-video") == true
+        })
+        let mediaSegment = try #require(videoMapping.compositionTrack.segments.first { !$0.isEmpty })
+        #expect(mediaSegment.timeMapping.source.start.timescale == sourceTimescale)
+        #expect(mediaSegment.timeMapping.source.duration.timescale == sourceTimescale)
+    }
+}
+
 // MARK: - audio composition tracks
 
 @Suite("CompositionBuilder.build — audio tracks")
@@ -493,6 +534,9 @@ struct CompositionBuildAudioTrackTests {
     @Test func fractionalSpeedAudioUsesTruncatedSourceFramesForCompositionInsertion() async throws {
         let audioURL = try makeSilentWav(durationSeconds: 4)
         defer { try? FileManager.default.removeItem(at: audioURL) }
+        let sourceAsset = AVURLAsset(url: audioURL)
+        let sourceTrack = try #require(try await sourceAsset.loadTracks(withMediaType: .audio).first)
+        let sourceTimescale = try await sourceTrack.load(.naturalTimeScale)
 
         let clip = Fixtures.clip(
             id: "short-speed",
@@ -516,7 +560,9 @@ struct CompositionBuildAudioTrackTests {
 
         let audioMapping = try #require(result.trackMappings.first { !$0.isVideo })
         let mediaSegment = try #require(audioMapping.compositionTrack.segments.first { !$0.isEmpty })
-        #expect(mediaSegment.timeMapping.source.duration == CMTime(value: 13, timescale: 24))
+        let expectedSourceSeconds = Double(13) / Double(timeline.fps)
+        #expect(abs(mediaSegment.timeMapping.source.duration.seconds - expectedSourceSeconds) <= 1.0 / Double(sourceTimescale))
+        #expect(mediaSegment.timeMapping.source.duration.timescale == sourceTimescale)
         #expect(mediaSegment.timeMapping.target.duration == CMTime(value: 13, timescale: 24))
     }
 
