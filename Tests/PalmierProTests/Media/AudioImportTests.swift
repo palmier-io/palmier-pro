@@ -20,6 +20,7 @@ struct AudioImportTests {
         #expect(ClipType(fileExtension: "aiff") == .audio)
         #expect(ClipType(fileExtension: "aif") == .audio)
         #expect(ClipType(fileExtension: "aifc") == .audio)
+        #expect(ClipType(fileExtension: "flac") == .audio)
         #expect(ClipType(fileExtension: "txt") == nil)
     }
 
