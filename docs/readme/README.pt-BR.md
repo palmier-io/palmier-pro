@@ -90,7 +90,7 @@ Incluímos um pacote [mcpb](https://github.com/modelcontextprotocol/mcpb) no app
 
 **O Palmier Pro é totalmente open source?**
 
-O editor de vídeo, sem os recursos de IA generativa, é totalmente open source. O servidor MCP e o chat do agente também são open source. A única parte proprietária é o processamento de IA generativa..
+O editor de vídeo, sem os recursos de IA generativa, é totalmente open source. O servidor MCP e o chat do agente também são open source. A única parte proprietária é o processamento de IA generativa.
 
 **É gratuito?**
 
