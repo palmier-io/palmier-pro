@@ -268,6 +268,38 @@ enum EffectRegistry {
                     .cropped(to: extent)
             }
         ),
+        EffectDescriptor(
+            id: "blur.noiseReduction", displayName: "Noise Reduction", category: "Blur & Sharpen",
+            params: [EffectParamSpec(key: "amount", label: "Noise Reduction", range: 0...1,
+                                     defaultValue: 0, unit: "")],
+            apply: { image, p, _ in
+                let amount = p.value("amount")
+                guard amount > 0 else { return image }
+                return image.applyingFilter("CINoiseReduction", parameters: [
+                    "inputNoiseLevel": amount * 0.1,
+                    "inputSharpness": 0.4,
+                ])
+            }
+        ),
+        EffectDescriptor(
+            id: "blur.motion", displayName: "Motion Blur", category: "Blur & Sharpen",
+            params: [
+                EffectParamSpec(key: "radius", label: "Motion Blur", range: 0...100,
+                                defaultValue: 0, unit: "px"),
+                EffectParamSpec(key: "angle", label: "Angle", range: -180...180,
+                                defaultValue: 0, unit: "°"),
+            ],
+            apply: { image, p, extent in
+                let radius = p.value("radius")
+                guard radius > 0 else { return image }
+                return image.clampedToExtent()
+                    .applyingFilter("CIMotionBlur", parameters: [
+                        kCIInputRadiusKey: radius,
+                        kCIInputAngleKey: p.value("angle") * .pi / 180,
+                    ])
+                    .cropped(to: extent)
+            }
+        ),
     ]
 
     private static let stylize: [EffectDescriptor] = [
@@ -275,7 +307,7 @@ enum EffectRegistry {
             id: "stylize.vignette", displayName: "Vignette", category: "Stylize",
             params: [
                 EffectParamSpec(key: "intensity", label: "Intensity", range: 0...2,
-                                defaultValue: 1, unit: ""),
+                                defaultValue: 0, unit: ""),
                 EffectParamSpec(key: "radius", label: "Radius", range: 0...2.5,
                                 defaultValue: 1.5, unit: ""),
             ],
@@ -291,13 +323,15 @@ enum EffectRegistry {
             params: [
                 EffectParamSpec(key: "intensity", label: "Glow", range: 0...1,
                                 defaultValue: 0, unit: ""),
+                EffectParamSpec(key: "radius", label: "Radius", range: 0...100,
+                                defaultValue: 20, unit: "px"),
             ],
             apply: { image, p, extent in
                 let intensity = p.value("intensity")
                 guard intensity > 0 else { return image }
                 return image.clampedToExtent()
                     .applyingFilter("CIBloom", parameters: [
-                        kCIInputRadiusKey: 20,
+                        kCIInputRadiusKey: p.value("radius"),
                         kCIInputIntensityKey: intensity,
                     ])
                     .cropped(to: extent)

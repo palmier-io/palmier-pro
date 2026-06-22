@@ -69,7 +69,7 @@ enum AppTheme {
     enum Slider {
         static let trackHeight: CGFloat = 4
         static let thumbSize: CGFloat = 10
-        static let labelColumn: CGFloat = 78
+        static let labelColumn: CGFloat = 106
         /// Temperature track: cool blue (low) → warm amber (high).
         static let tempGradient = [Color(red: 0.32, green: 0.55, blue: 0.92), Color(red: 0.95, green: 0.72, blue: 0.32)]
         /// Tint track: green (low) → magenta (high).

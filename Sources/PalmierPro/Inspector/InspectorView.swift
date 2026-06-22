@@ -27,6 +27,7 @@ struct InspectorView: View {
     @State var adjustSubTab: AdjustTab = .basic
     @State private var preferredAssetTab: AssetTab = .details
     @State private var transformExpanded = true
+    @State var collapsedAdjustSections: Set<String> = ["Motion Blur", "Glow"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

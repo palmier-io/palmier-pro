@@ -41,13 +41,28 @@ extension InspectorView {
         ]
     }
 
-    /// Blur/sharpen/stylize as single always-on rows, labeled by effect name.
+    /// Single-knob effects as always-on rows, labeled by effect name.
     private var stylizeControls: [EffectControl] {
         [
             EffectControl(effectId: "blur.gaussian", paramKey: "radius", label: "Blur"),
             EffectControl(effectId: "blur.sharpen", paramKey: "amount", label: "Sharpen"),
+            EffectControl(effectId: "blur.noiseReduction", paramKey: "amount", label: "Noise Reduction"),
             EffectControl(effectId: "stylize.vignette", paramKey: "intensity", label: "Vignette"),
-            EffectControl(effectId: "stylize.glow", paramKey: "intensity", label: "Glow"),
+        ]
+    }
+
+    /// Motion blur groups its distance + direction rows under one section.
+    private var motionBlurControls: [EffectControl] {
+        [
+            EffectControl(effectId: "blur.motion", paramKey: "radius", label: "Amount"),
+            EffectControl(effectId: "blur.motion", paramKey: "angle", label: "Angle"),
+        ]
+    }
+
+    private var glowControls: [EffectControl] {
+        [
+            EffectControl(effectId: "stylize.glow", paramKey: "intensity", label: "Intensity"),
+            EffectControl(effectId: "stylize.glow", paramKey: "radius", label: "Radius"),
         ]
     }
 
@@ -55,7 +70,8 @@ extension InspectorView {
     private var alwaysOnEffectOrder: [String] {
         ["color.exposure", "color.contrast", "color.highlightsShadows", "color.blacksWhites",
          "color.temperature", "color.vibrance", "color.saturation", "color.wheels", "color.curves",
-         "color.lut", "blur.gaussian", "blur.sharpen", "stylize.vignette", "stylize.glow"]
+         "color.lut", "blur.gaussian", "blur.sharpen", "blur.noiseReduction", "blur.motion",
+         "stylize.vignette", "stylize.glow"]
     }
 
     @ViewBuilder
@@ -76,6 +92,8 @@ extension InspectorView {
                 lutSection(clips: clips)
             case .effects:
                 adjustmentSection(title: "Effects", controls: stylizeControls, clips: clips)
+                adjustmentSection(title: "Motion Blur", controls: motionBlurControls, clips: clips)
+                adjustmentSection(title: "Glow", controls: glowControls, clips: clips)
             }
         }
     }
@@ -369,9 +387,22 @@ extension InspectorView {
     @ViewBuilder
     private func adjustmentSection(title: String, controls: [EffectControl], clips: [Clip]) -> some View {
         let ids = Set(controls.map(\.effectId))
+        let expanded = !collapsedAdjustSections.contains(title)
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             HStack(spacing: AppTheme.Spacing.xs) {
-                sectionTitleLabel(title: title)
+                Button {
+                    if expanded { collapsedAdjustSections.insert(title) }
+                    else { collapsedAdjustSections.remove(title) }
+                } label: {
+                    HStack(spacing: AppTheme.Spacing.xs) {
+                        sectionTitleLabel(title: title)
+                        Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: AppTheme.FontSize.xxs))
+                            .foregroundStyle(AppTheme.Text.mutedColor)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
                 Spacer()
                 if anyAdjusted(ids, clips: clips) {
                     HoldToPreviewButton(
@@ -384,12 +415,14 @@ extension InspectorView {
                     )
                 }
             }
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-                ForEach(controls, id: \.self) { control in
-                    adjustmentRow(control, clips: clips)
+            if expanded {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+                    ForEach(controls, id: \.self) { control in
+                        adjustmentRow(control, clips: clips)
+                    }
                 }
+                .padding(.leading, sectionContentIndent)
             }
-            .padding(.leading, sectionContentIndent)
         }
     }
 
