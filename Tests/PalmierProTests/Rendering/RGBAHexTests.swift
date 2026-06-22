@@ -68,6 +68,20 @@ struct RGBAHexTests {
         #expect(c?.b == 0)
     }
 
+    @Test func surroundingNewlinesAreTrimmed() {
+        // A trailing newline should be trimmed just like the trailing spaces above.
+        // Reaches RGBA(hex:) untrimmed via parseColorHex (ToolExecutor) on agent tool args.
+        let trailing = TextStyle.RGBA(hex: "#00FF00\n")
+        #expect(trailing?.r == 0)
+        #expect(trailing?.g == 1)
+        #expect(trailing?.b == 0)
+
+        let surrounding = TextStyle.RGBA(hex: "\r\n  #00FF00  \n")
+        #expect(surrounding?.r == 0)
+        #expect(surrounding?.g == 1)
+        #expect(surrounding?.b == 0)
+    }
+
     // MARK: - Invalid inputs
 
     @Test func emptyStringReturnsNil() {
