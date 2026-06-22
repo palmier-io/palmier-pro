@@ -222,12 +222,13 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
         // self.view.bounds, which includes the agent column's width.
         applyAfterLayout { [weak self, weak target, weak hSplit] in
             guard let self, let target, let hSplit else { return }
-            guard !self.hasSavedFrames(target.splitView.autosaveName) else { return }
             let targetH = target.view.bounds.height
             let hW = hSplit.view.bounds.width
-            target.splitView.setPosition(round(targetH * 0.7), ofDividerAt: 0)
-            hSplit.splitView.setPosition(Layout.mediaPanelDefault, ofDividerAt: 0)
-            hSplit.splitView.setPosition(hW - Layout.inspectorDefault, ofDividerAt: 1)
+            self.positionIfUnsaved(target) { $0.setPosition(round(targetH * 0.7), ofDividerAt: 0) }
+            self.positionIfUnsaved(hSplit) {
+                $0.setPosition(Layout.mediaPanelDefault, ofDividerAt: 0)
+                $0.setPosition(hW - Layout.inspectorDefault, ofDividerAt: 1)
+            }
         }
     }
 
@@ -252,14 +253,12 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
 
         applyAfterLayout { [weak self, weak target, weak rightSplit, weak topSplit] in
             guard let self, let target, let rightSplit, let topSplit else { return }
-            guard !self.hasSavedFrames(target.splitView.autosaveName) else { return }
             let targetW = target.view.bounds.width
             let rightH = rightSplit.view.bounds.height
             let topW = topSplit.view.bounds.width
-            let mediaWidth = round(targetW * 0.3)
-            target.splitView.setPosition(mediaWidth, ofDividerAt: 0)
-            rightSplit.splitView.setPosition(round(rightH * 0.55), ofDividerAt: 0)
-            topSplit.splitView.setPosition(topW - Layout.inspectorDefault, ofDividerAt: 0)
+            self.positionIfUnsaved(target) { $0.setPosition(round(targetW * 0.3), ofDividerAt: 0) }
+            self.positionIfUnsaved(rightSplit) { $0.setPosition(round(rightH * 0.55), ofDividerAt: 0) }
+            self.positionIfUnsaved(topSplit) { $0.setPosition(topW - Layout.inspectorDefault, ofDividerAt: 0) }
         }
     }
 
@@ -282,12 +281,11 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
 
         applyAfterLayout { [weak self, weak target, weak leftSplit, weak topSplit] in
             guard let self, let target, let leftSplit, let topSplit else { return }
-            guard !self.hasSavedFrames(target.splitView.autosaveName) else { return }
             let targetW = target.view.bounds.width
             let leftH = leftSplit.view.bounds.height
-            target.splitView.setPosition(round(targetW * 0.5), ofDividerAt: 0)
-            leftSplit.splitView.setPosition(round(leftH * 0.55), ofDividerAt: 0)
-            topSplit.splitView.setPosition(Layout.mediaPanelDefault, ofDividerAt: 0)
+            self.positionIfUnsaved(target) { $0.setPosition(round(targetW * 0.5), ofDividerAt: 0) }
+            self.positionIfUnsaved(leftSplit) { $0.setPosition(round(leftH * 0.55), ofDividerAt: 0) }
+            self.positionIfUnsaved(topSplit) { $0.setPosition(Layout.mediaPanelDefault, ofDividerAt: 0) }
         }
     }
 
@@ -305,6 +303,12 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
     private func hasSavedFrames(_ name: String?) -> Bool {
         guard let name else { return false }
         return UserDefaults.standard.object(forKey: "NSSplitView Subview Frames \(name)") != nil
+    }
+
+    /// Default positions apply per split: each is skipped independently once it has autosaved frames.
+    private func positionIfUnsaved(_ controller: NSSplitViewController, _ apply: (NSSplitView) -> Void) {
+        guard !hasSavedFrames(controller.splitView.autosaveName) else { return }
+        apply(controller.splitView)
     }
 
     private func makeMediaItem() -> NSSplitViewItem {
