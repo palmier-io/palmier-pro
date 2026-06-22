@@ -419,11 +419,16 @@ struct ToolExecutorReadOnlyTests {
     }
 
     @Test func listModelsReportsCatalogNotLoadedInTestEnvironment() async throws {
-        // No Convex connection → catalog stays unloaded. Agents must use this to disambiguate
-        // empty results from "catalog not synced yet".
+        // Normal tests have no Convex connection, so the catalog stays unloaded.
+        // Editor-only reports an intentional disabled state instead of a pending sync.
         let h = ToolHarness()
         let body = try await h.runOK("list_models") as? [String: Any]
-        #expect(body?["loaded"] as? Bool == false)
+        if BuildMode.isEditorOnly {
+            #expect(body?["loaded"] as? Bool == true)
+            #expect(body?["disabled"] as? String == BuildMode.editorOnlyUnavailableMessage)
+        } else {
+            #expect(body?["loaded"] as? Bool == false)
+        }
     }
 
     @Test func listModelsFilterIsRespectedForAllEntries() async throws {
