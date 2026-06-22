@@ -85,8 +85,8 @@ struct EmbeddingStore {
                     shotEnd: raw.loadUnaligned(fromByteOffset: base + 16, as: Double.self)
                 ))
                 for d in 0..<header.dim {
-                    let half = raw.loadUnaligned(fromByteOffset: base + 24 + d * 2, as: Float16.self)
-                    vectors[i * header.dim + d] = Float(half)
+                    let half = raw.loadUnaligned(fromByteOffset: base + 24 + d * 2, as: UInt16.self)
+                    vectors[i * header.dim + d] = float32(fromBinary16: half)
                 }
             }
         }
@@ -106,7 +106,7 @@ struct EmbeddingStore {
                 data.append(Data(bytes: &v, count: 8))
             }
             for d in 0..<header.dim {
-                var half = Float16(vectors[i * header.dim + d])
+                var half = binary16(fromFloat32: vectors[i * header.dim + d])
                 data.append(Data(bytes: &half, count: 2))
             }
         }
@@ -116,6 +116,57 @@ struct EmbeddingStore {
 
     static func clearAll() {
         try? FileManager.default.removeItem(at: directory)
+    }
+
+    private static func float32(fromBinary16 bits: UInt16) -> Float {
+        let sign: Float = (bits & 0x8000) == 0 ? 1 : -1
+        let exponent = Int((bits >> 10) & 0x1f)
+        let fraction = Int(bits & 0x03ff)
+
+        switch exponent {
+        case 0:
+            guard fraction != 0 else { return (bits & 0x8000) == 0 ? 0 : -0.0 }
+            return sign * Float(fraction) * Float(pow(2.0, -24.0))
+        case 0x1f:
+            return fraction == 0 ? sign * Float.infinity : Float.nan
+        default:
+            let significand = 1 + Float(fraction) / 1024
+            return sign * significand * Float(pow(2.0, Double(exponent - 15)))
+        }
+    }
+
+    private static func binary16(fromFloat32 value: Float) -> UInt16 {
+        let bits = value.bitPattern
+        let sign = UInt16((bits >> 16) & 0x8000)
+        let exponent = Int((bits >> 23) & 0xff)
+        let fraction = bits & 0x7fffff
+
+        if exponent == 0xff {
+            return sign | (fraction == 0 ? 0x7c00 : 0x7e00)
+        }
+
+        let adjustedExponent = exponent - 127 + 15
+        if adjustedExponent >= 0x1f {
+            return sign | 0x7c00
+        }
+        if adjustedExponent <= 0 {
+            if adjustedExponent < -10 {
+                return sign
+            }
+            let mantissa = fraction | 0x800000
+            let shift = UInt32(14 - adjustedExponent)
+            var halfFraction = UInt16(mantissa >> shift)
+            if ((mantissa >> (shift - 1)) & 1) != 0 {
+                halfFraction &+= 1
+            }
+            return sign | halfFraction
+        }
+
+        var half = sign | UInt16(adjustedExponent << 10) | UInt16(fraction >> 13)
+        if (fraction & 0x00001000) != 0 {
+            half &+= 1
+        }
+        return half
     }
 
 }
