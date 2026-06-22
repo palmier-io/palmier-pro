@@ -287,6 +287,33 @@ struct MoveClipsTests {
     }
 }
 
+@Suite("EditorViewModel — writePosition")
+@MainActor
+struct WritePositionTests {
+
+    @Test func writePositionWithActiveKeyframesPreservesFallbackTransform() {
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        clip.transform.centerX = 0.5
+        clip.transform.centerY = 0.5
+        clip.transform.width = 0.4
+        clip.transform.height = 0.4
+        clip.positionTrack = KeyframeTrack(keyframes: [Keyframe(frame: 0, value: AnimPair(a: 0.1, b: 0.1))])
+
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        e.currentFrame = 0
+
+        e.commitPosition(clipId: "c1", setX: 0.4, setY: 0.4)
+
+        let updated = e.timeline.tracks[0].clips[0]
+        let kf = updated.positionTrack?.keyframes.first(where: { $0.frame == 0 })
+        #expect(kf?.value == AnimPair(a: 0.4, b: 0.4))
+        // Fallback transform must not be touched while keyframes are active.
+        // Bug: without the else-guard, centerX/Y become 0.6 (0.4 + width/2).
+        #expect(updated.transform.centerX == 0.5)
+        #expect(updated.transform.centerY == 0.5)
+    }
+}
+
 @Suite("EditorViewModel — clearRegion")
 @MainActor
 struct ClearRegionTests {
