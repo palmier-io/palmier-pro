@@ -18,6 +18,7 @@ jobs:
     timeout-minutes: 45
     env:
       PALMIER_EDITOR_ONLY: "1"
+      SWIFTPM_FLAGS: "--disable-dependency-cache --scratch-path .build/editor-only --manifest-cache local"
 
     steps:
       - name: Check out repository
@@ -36,17 +37,23 @@ jobs:
           echo "Available Xcode apps:"
           find /Applications -maxdepth 1 -type d -iname "Xcode*.app" -print | sort
 
+      - name: Prepare editor-only SwiftPM workspace
+        run: |
+          set -euxo pipefail
+          rm -f Package.resolved
+          rm -rf .build/editor-only
+
       - name: Resolve packages
         run: |
           set -euxo pipefail
-          PALMIER_EDITOR_ONLY=1 swift package resolve
+          PALMIER_EDITOR_ONLY=1 swift package $SWIFTPM_FLAGS resolve
 
       - name: Build Intel editor-only target
         run: |
           set -euxo pipefail
-          PALMIER_EDITOR_ONLY=1 swift build --arch x86_64
+          PALMIER_EDITOR_ONLY=1 swift build $SWIFTPM_FLAGS --arch x86_64
 
       - name: Test Intel editor-only target
         run: |
           set -euxo pipefail
-          PALMIER_EDITOR_ONLY=1 swift test --arch x86_64
+          PALMIER_EDITOR_ONLY=1 swift test $SWIFTPM_FLAGS --arch x86_64
