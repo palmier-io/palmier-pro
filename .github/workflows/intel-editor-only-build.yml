@@ -1,0 +1,52 @@
+name: Intel Editor-Only Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - intel-mac-support-experiment
+
+concurrency:
+  group: intel-editor-only-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  intel-editor-only:
+    name: Intel editor-only SwiftPM build
+    # GitHub-hosted x64 macOS 26 runner with Xcode 26 / Swift 6.2 tooling.
+    runs-on: macos-26-intel
+    timeout-minutes: 45
+    env:
+      PALMIER_EDITOR_ONLY: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show runner and toolchain
+        run: |
+          set -euxo pipefail
+          sw_vers
+          uname -m
+          xcode-select -p
+          xcodebuild -version
+          xcrun --show-sdk-version --sdk macosx
+          xcrun --find swift
+          swift --version
+          echo "Available Xcode apps:"
+          find /Applications -maxdepth 1 -type d -iname "Xcode*.app" -print | sort
+
+      - name: Resolve packages
+        run: |
+          set -euxo pipefail
+          PALMIER_EDITOR_ONLY=1 swift package resolve
+
+      - name: Build Intel editor-only target
+        run: |
+          set -euxo pipefail
+          PALMIER_EDITOR_ONLY=1 swift build --arch x86_64
+
+      - name: Test Intel editor-only target
+        run: |
+          set -euxo pipefail
+          PALMIER_EDITOR_ONLY=1 swift test --arch x86_64
