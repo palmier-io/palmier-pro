@@ -24,8 +24,6 @@ final class ToolExecutor {
             return .error("Unknown tool: \(name)")
         }
         guard let editor else { return .error("Editor not available") }
-        editor.isApplyingAgentEdit = true
-        defer { editor.isApplyingAgentEdit = false }
         let before = editor.timeline
         let result: ToolResult
         let started = ContinuousClock.now
@@ -72,38 +70,50 @@ final class ToolExecutor {
     }
 
     private func run(_ tool: ToolName, _ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
+        // Tools that await off the main actor run without the agent-edit guard, so a manual edit
+        // during their suspension still pauses the preview. Everything else mutates and rebuilds
+        // synchronously — `applyingAgentEdit` scopes the guard to that work so it never spans an await.
         switch tool {
-        case .getTimeline:   return try getTimeline(editor, args)
-        case .getMedia:      return try getMedia(editor)
-        case .inspectMedia:  return try await inspectMedia(editor, args)
-        case .getTranscript: return try await getTranscript(editor, args)
+        case .inspectMedia:    return try await inspectMedia(editor, args)
+        case .getTranscript:   return try await getTranscript(editor, args)
         case .inspectTimeline: return try await inspectTimeline(editor, args)
-        case .searchMedia:   return try await searchMedia(editor, args)
-        case .addClips:         return try addClips(editor, args)
-        case .insertClips:      return try insertClips(editor, args)
-        case .removeClips:      return try removeClips(editor, args)
-        case .removeTracks:     return try removeTracks(editor, args)
-        case .moveClips:        return try moveClips(editor, args)
-        case .setClipProperties: return try setClipProperties(editor, args)
-        case .setKeyframes:     return try setKeyframes(editor, args)
-        case .splitClip:        return try splitClip(editor, args)
+        case .searchMedia:     return try await searchMedia(editor, args)
+        case .addCaptions:     return try await addCaptions(editor, args)
+        case .generateAudio:   return try await generateAudio(editor, args)
+        case .importMedia:     return try await importMedia(editor, args)
+        default:               return try editor.applyingAgentEdit { try runSync(tool, editor, args) }
+        }
+    }
+
+    private func runSync(_ tool: ToolName, _ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        switch tool {
+        case .getTimeline:        return try getTimeline(editor, args)
+        case .getMedia:           return try getMedia(editor)
+        case .addClips:           return try addClips(editor, args)
+        case .insertClips:        return try insertClips(editor, args)
+        case .removeClips:        return try removeClips(editor, args)
+        case .removeTracks:       return try removeTracks(editor, args)
+        case .moveClips:          return try moveClips(editor, args)
+        case .setClipProperties:  return try setClipProperties(editor, args)
+        case .setKeyframes:       return try setKeyframes(editor, args)
+        case .splitClip:          return try splitClip(editor, args)
         case .rippleDeleteRanges: return try rippleDeleteRanges(editor, args)
-        case .undo:          return try undo(editor)
-        case .addTexts:      return try addTexts(editor, args)
-        case .addCaptions:   return try await addCaptions(editor, args)
-        case .generateVideo: return try generate(editor, args, type: .video)
-        case .generateImage: return try generate(editor, args, type: .image)
-        case .generateAudio: return try await generateAudio(editor, args)
-        case .upscaleMedia:  return try upscaleMedia(editor, args)
-        case .importMedia:   return try await importMedia(editor, args)
-        case .listModels:    return listModels(args)
-        case .listFolders:   return listFolders(editor)
-        case .createFolder:  return try createFolder(editor, args)
-        case .moveToFolder:  return try moveToFolder(editor, args)
-        case .renameMedia:   return try renameMedia(editor, args)
-        case .renameFolder:  return try renameFolder(editor, args)
-        case .deleteMedia:   return try deleteMedia(editor, args)
-        case .deleteFolder:  return try deleteFolder(editor, args)
+        case .undo:               return try undo(editor)
+        case .addTexts:           return try addTexts(editor, args)
+        case .generateVideo:      return try generate(editor, args, type: .video)
+        case .generateImage:      return try generate(editor, args, type: .image)
+        case .upscaleMedia:       return try upscaleMedia(editor, args)
+        case .listModels:         return listModels(args)
+        case .listFolders:        return listFolders(editor)
+        case .createFolder:       return try createFolder(editor, args)
+        case .moveToFolder:       return try moveToFolder(editor, args)
+        case .renameMedia:        return try renameMedia(editor, args)
+        case .renameFolder:       return try renameFolder(editor, args)
+        case .deleteMedia:        return try deleteMedia(editor, args)
+        case .deleteFolder:       return try deleteFolder(editor, args)
+        case .inspectMedia, .getTranscript, .inspectTimeline, .searchMedia,
+             .addCaptions, .generateAudio, .importMedia:
+            throw ToolError("\(tool.rawValue) is async; it must be handled in run(_:_:_:)")
         }
     }
 

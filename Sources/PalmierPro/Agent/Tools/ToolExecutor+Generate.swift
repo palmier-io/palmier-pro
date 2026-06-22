@@ -294,10 +294,12 @@ extension ToolExecutor {
                     editor.finalizeGeneratingClip(placeholderId: asset.id, asset: asset)
                 }
             )
-            editor.placeGeneratingAudioClip(
-                placeholderId: placeholderId, startFrame: startFrame,
-                spanSeconds: span, actionName: "Add \(model.category.label)"
-            )
+            editor.applyingAgentEdit {
+                editor.placeGeneratingAudioClip(
+                    placeholderId: placeholderId, startFrame: startFrame,
+                    spanSeconds: span, actionName: "Add \(model.category.label)"
+                )
+            }
             return .ok("Generation started and placed on the timeline at frame \(startFrame). Placeholder asset ID: \(placeholderId). Model: \(model.displayName), \(model.category.label) (scored from video).")
         }
 
