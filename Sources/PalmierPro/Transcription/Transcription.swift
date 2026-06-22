@@ -1,6 +1,8 @@
 import AVFoundation
 import Foundation
+#if !PALMIER_EDITOR_ONLY
 import Speech
+#endif
 
 struct TranscriptionWord: Sendable, Codable {
     let text: String
@@ -39,6 +41,7 @@ struct TranscriptionResult: Sendable, Codable {
 }
 
 enum TranscriptionError: LocalizedError {
+    case editorOnlyUnavailable
     case unsupportedLocale(String)
     case modelInstallFailed(String)
     case decodeFailed
@@ -47,6 +50,8 @@ enum TranscriptionError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        case .editorOnlyUnavailable:
+            return "Transcription is unavailable in the experimental Intel editor-only build."
         case .unsupportedLocale(let id):
             return "On-device transcription is not available for \(id)."
         case .modelInstallFailed(let reason):
@@ -62,17 +67,6 @@ enum TranscriptionError: LocalizedError {
 }
 
 enum Transcription {
-    static func transcribeVideoAudio(videoURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil, sourceRange: ClosedRange<Double>? = nil) async throws -> TranscriptionResult {
-        let tempAudioURL = try await extractAudioTrack(from: videoURL, range: sourceRange)
-        defer { try? FileManager.default.removeItem(at: tempAudioURL) }
-        let result = try await transcribe(fileURL: tempAudioURL, censorProfanity: censorProfanity, preferredLocale: preferredLocale)
-        return result.offsetting(by: sourceRange?.lowerBound ?? 0)
-    }
-
-    static func supportedLocales() async -> [Locale] {
-        await SpeechTranscriber.supportedLocales
-    }
-
     static func bestSupportedLocale(from supported: [Locale]) -> Locale? {
         let candidates = Locale.preferredLanguages.map(Locale.init(identifier:)) + [Locale.current]
         return matchLocale(candidates: candidates, supported: supported)
@@ -87,6 +81,30 @@ enum Transcription {
             return sameLang.first { $0.region?.identifier == region } ?? sameLang.first
         }
         return nil
+    }
+
+#if PALMIER_EDITOR_ONLY
+    static func transcribeVideoAudio(videoURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil, sourceRange: ClosedRange<Double>? = nil) async throws -> TranscriptionResult {
+        throw TranscriptionError.editorOnlyUnavailable
+    }
+
+    static func supportedLocales() async -> [Locale] {
+        []
+    }
+
+    static func transcribe(fileURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil, sourceRange: ClosedRange<Double>? = nil) async throws -> TranscriptionResult {
+        throw TranscriptionError.editorOnlyUnavailable
+    }
+#else
+    static func transcribeVideoAudio(videoURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil, sourceRange: ClosedRange<Double>? = nil) async throws -> TranscriptionResult {
+        let tempAudioURL = try await extractAudioTrack(from: videoURL, range: sourceRange)
+        defer { try? FileManager.default.removeItem(at: tempAudioURL) }
+        let result = try await transcribe(fileURL: tempAudioURL, censorProfanity: censorProfanity, preferredLocale: preferredLocale)
+        return result.offsetting(by: sourceRange?.lowerBound ?? 0)
+    }
+
+    static func supportedLocales() async -> [Locale] {
+        await SpeechTranscriber.supportedLocales
     }
 
     static func transcribe(fileURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil, sourceRange: ClosedRange<Double>? = nil) async throws -> TranscriptionResult {
@@ -320,4 +338,5 @@ enum Transcription {
             segments: segments,
         )
     }
+#endif
 }

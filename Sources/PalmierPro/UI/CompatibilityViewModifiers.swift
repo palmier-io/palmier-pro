@@ -70,7 +70,7 @@ extension View {
     }
 
     @ViewBuilder
-    func palmierGlassEffectID<ID: Hashable>(_ id: ID, in namespace: Namespace.ID) -> some View {
+    func palmierGlassEffectID<ID: Hashable & Sendable>(_ id: ID, in namespace: Namespace.ID) -> some View {
         if #available(macOS 26.0, *) {
             self.glassEffectID(id, in: namespace)
         } else {
