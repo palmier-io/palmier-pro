@@ -42,6 +42,7 @@ jobs:
           set -euxo pipefail
           rm -f Package.resolved
           rm -rf .build/editor-only
+          mkdir -p .build/ci-logs
 
       - name: Resolve packages
         run: |
@@ -50,10 +51,34 @@ jobs:
 
       - name: Build Intel editor-only target
         run: |
-          set -euxo pipefail
-          PALMIER_EDITOR_ONLY=1 swift build $SWIFTPM_FLAGS --arch x86_64
+          set -uo pipefail
+          log=".build/ci-logs/swift-build-x86_64.log"
+          PALMIER_EDITOR_ONLY=1 swift build $SWIFTPM_FLAGS --arch x86_64 2>&1 | tee "$log"
+          status="${PIPESTATUS[0]}"
+          if [ "$status" -ne 0 ]; then
+            echo "::group::Swift build error summary"
+            grep -nE "error:|fatal error:" "$log" || true
+            echo "::endgroup::"
+          fi
+          exit "$status"
 
       - name: Test Intel editor-only target
         run: |
-          set -euxo pipefail
-          PALMIER_EDITOR_ONLY=1 swift test $SWIFTPM_FLAGS --arch x86_64
+          set -uo pipefail
+          log=".build/ci-logs/swift-test-x86_64.log"
+          PALMIER_EDITOR_ONLY=1 swift test $SWIFTPM_FLAGS --arch x86_64 2>&1 | tee "$log"
+          status="${PIPESTATUS[0]}"
+          if [ "$status" -ne 0 ]; then
+            echo "::group::Swift test error summary"
+            grep -nE "error:|fatal error:|failed:" "$log" || true
+            echo "::endgroup::"
+          fi
+          exit "$status"
+
+      - name: Upload SwiftPM logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: intel-editor-only-swiftpm-logs
+          path: .build/ci-logs
+          if-no-files-found: ignore
