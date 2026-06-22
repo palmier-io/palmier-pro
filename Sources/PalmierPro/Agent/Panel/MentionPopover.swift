@@ -112,7 +112,7 @@ struct MentionPopover: View {
         HStack(spacing: 0) {
             ForEach(MentionTab.allCases, id: \.self) { t in
                 Text(t.label)
-                    .font(.system(size: 10, weight: t == tab ? .semibold : .regular))
+                    .font(.system(size: AppTheme.FontSize.xs, weight: t == tab ? .semibold : .regular))
                     .foregroundStyle(t == tab ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 5)
@@ -126,7 +126,7 @@ struct MentionPopover: View {
                     .onTapGesture { tab = t }
             }
         }
-        .padding(4)
+        .padding(AppTheme.Spacing.xs)
     }
 
     private func mentionRow(asset: MediaAsset, isHighlighted: Bool) -> some View {
@@ -138,7 +138,7 @@ struct MentionPopover: View {
                     ZStack {
                         Rectangle().fill(.quaternary)
                         Image(systemName: asset.type.sfSymbolName)
-                            .font(.system(size: 10))
+                            .font(.system(size: AppTheme.FontSize.xs))
                             .foregroundStyle(AppTheme.Text.tertiaryColor)
                     }
                 }
@@ -152,7 +152,7 @@ struct MentionPopover: View {
                     .foregroundStyle(AppTheme.Text.primaryColor)
                     .lineLimit(1)
                 Text(asset.type.rawValue)
-                    .font(.system(size: 9))
+                    .font(.system(size: AppTheme.FontSize.xxs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
             Spacer()

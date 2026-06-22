@@ -46,7 +46,7 @@ struct ChatHistoryList: View {
                         .lineLimit(1)
                 }
                 Text(Self.formatter.localizedString(for: session.updatedAt, relativeTo: Date()))
-                    .font(.system(size: 9))
+                    .font(.system(size: AppTheme.FontSize.xxs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
             Spacer()
