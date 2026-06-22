@@ -10,7 +10,7 @@
   <img src="../../assets/macos-badge.png" alt="Baixar Palmier Pro para macOS" width="180" />
 </a>
 
-<sub><i>Requer macOS 26 (Tahoe) em Apple Silicon</i></sub>
+<sub><i>Requer macOS 26 (Tahoe) em Macs com Apple Silicon</i></sub>
 
 <a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Follow-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="Seguir no X" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Entrar no Discord" /></a>
@@ -43,7 +43,7 @@ Palmier Pro é um editor de vídeo open source para Mac. Você e seu agente pode
 
 ### Editor de vídeo nativo em Swift
 
-Construímos o Palmier Pro do zero com Swift. A referência é o Premiere Pro, com a nossa forma de integrar IA ao fluxo de trabalho.
+Construímos o Palmier Pro do zero com Swift. Inspirado no Premiere Pro, mas com a nossa própria forma de integrar IA ao fluxo de trabalho.
 
 ### IA generativa integrada
 
@@ -51,7 +51,7 @@ Gere vídeos e imagens com modelos de ponta como Seedance, Kling e Nano Banana P
 
 ### Integração com seus agentes
 
-Conecte Claude, Codex ou Cursor via MCP, ou use o agente dentro do app para trabalhar no mesmo projeto junto com você.
+Conecte Claude, Codex ou Cursor via MCP, ou use o agente integrado ao app para trabalhar com você no mesmo projeto.
 
 ## Servidor MCP
 
@@ -69,7 +69,7 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 **Cursor**
 
-A forma mais fácil é abrir no app `Help` -> `MCP Instructions` -> `Install in Cursor`, ou instalar manualmente adicionando isto a `~/.cursor/mcp.json`:
+A forma mais fácil é abrir, no app, `Help` -> `MCP Instructions` -> `Install in Cursor`, ou instalar manualmente adicionando isto a `~/.cursor/mcp.json`:
 
 ```
 {
@@ -84,23 +84,23 @@ A forma mais fácil é abrir no app `Help` -> `MCP Instructions` -> `Install in 
 
 **Claude Desktop**
 
-Incluímos um [mcpb](https://github.com/modelcontextprotocol/mcpb) com o app que permite instalar a Desktop Extension no Claude Desktop com um clique. Abra `Help` -> `MCP Instructions` -> `Install in Claude Desktop`.
+Incluímos um pacote [mcpb](https://github.com/modelcontextprotocol/mcpb) no app que permite instalar a Desktop Extension no Claude Desktop com um clique. Abra `Help` -> `MCP Instructions` -> `Install in Claude Desktop`.
 
 ## FAQ
 
 **O Palmier Pro é totalmente open source?**
 
-O editor de vídeo, sem os recursos de IA generativa, é totalmente open source. O servidor MCP e o chat do agente também são open source. A única parte fechada é o processamento de IA generativa.
+O editor de vídeo, sem os recursos de IA generativa, é totalmente open source. O servidor MCP e o chat do agente também são open source. A única parte proprietária é o processamento de IA generativa..
 
 **É gratuito?**
 
-O editor é gratuito. Você pode baixá-lo sem login e usá-lo como editor de vídeo, como CapCut ou Adobe Premiere. Você também pode usar o servidor MCP gratuitamente e começar a experimentar com Claude Code, Claude Desktop ou Cursor para interagir com seu editor de linha do tempo.
+O editor é gratuito. Você pode baixá-lo sem login e usá-lo como editor de vídeo, como CapCut ou Adobe Premiere. Você também pode usar o servidor MCP gratuitamente e começar a experimentar com Claude Code, Claude Desktop ou Cursor para interagir com a linha do tempo do seu editor.
 
 Os recursos de IA generativa exigem login e assinatura.
 
 **Quais plataformas são compatíveis?**
 
-Apenas macOS 26 (Tahoe) em Apple Silicon.
+Requer macOS 26 (Tahoe) em Macs com Apple Silicon
 
 Veja [FAQ.md](../../FAQ.md) para mais detalhes.
 
@@ -129,4 +129,4 @@ Veja [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 Copyright (C) 2026 Palmier, Inc.
 
-Palmier Pro é open source sob [GPLv3](../../LICENSE).
+Palmier Pro é open source sob a licença [GPLv3](../../LICENSE).
