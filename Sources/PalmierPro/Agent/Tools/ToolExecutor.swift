@@ -24,6 +24,8 @@ final class ToolExecutor {
             return .error("Unknown tool: \(name)")
         }
         guard let editor else { return .error("Editor not available") }
+        editor.isApplyingAgentEdit = true
+        defer { editor.isApplyingAgentEdit = false }
         let before = editor.timeline
         let result: ToolResult
         let started = ContinuousClock.now

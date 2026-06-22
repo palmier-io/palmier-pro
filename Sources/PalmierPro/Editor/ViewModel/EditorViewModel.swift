@@ -214,6 +214,10 @@ final class EditorViewModel {
     /// Preview playback bridge.
     var videoEngine: VideoEngine?
 
+    /// Set while an agent/MCP tool is applying edits. A timeline rebuild triggered during
+    /// playback then preserves the play intent instead of stopping the preview.
+    @ObservationIgnored var isApplyingAgentEdit = false
+
     @ObservationIgnored
     let playheadState = PreviewPlayheadState()
 
@@ -306,7 +310,9 @@ final class EditorViewModel {
     func notifyTimelineChanged() {
         pendingRebuildTask?.cancel()
         pendingRebuildTask = nil
-        if isPlaying {
+        // Agent edits keep playing across the rebuild — rebuild() reseeks and resumes
+        // because isPlaying stays true. Only manual edits halt the preview.
+        if isPlaying, !isApplyingAgentEdit {
             videoEngine?.pause()
         }
         videoEngine?.syncTextLayers()
