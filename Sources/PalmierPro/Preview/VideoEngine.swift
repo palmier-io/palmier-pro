@@ -101,6 +101,32 @@ final class VideoEngine {
             return
         }
         replacePlayerItem(AVPlayerItem(url: asset.url), reason: "previewAsset")
+        verifyAssetPlayable(asset)
+    }
+
+    /// `AVPlayerItem(url:)` fails silently — a corrupt or unsupported file just
+    /// leaves the preview blank with no error. Probe the tracks so we can flag
+    /// it through the same offline/unprocessable UI the timeline path uses.
+    private func verifyAssetPlayable(_ asset: MediaAsset) {
+        let mediaType: AVMediaType = asset.type == .audio ? .audio : .video
+        let url = asset.url
+        let assetId = asset.id
+        Task { @MainActor [weak self] in
+            let hasTrack: Bool
+            do {
+                hasTrack = try await AVURLAsset(url: url).loadTracks(withMediaType: mediaType).first != nil
+            } catch {
+                hasTrack = false
+            }
+            guard let self, !Task.isCancelled, let editor = self.editor else { return }
+            guard case .mediaAsset(let activeId, _, _) = editor.activePreviewTab, activeId == assetId else { return }
+            if hasTrack {
+                editor.unprocessableMediaRefs.remove(assetId)
+            } else {
+                Log.preview.error("previewAsset: media unplayable assetId=\(assetId.prefix(8))")
+                editor.unprocessableMediaRefs.insert(assetId)
+            }
+        }
     }
 
     func activateTab(_ tab: PreviewTab) {
