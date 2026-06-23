@@ -8,13 +8,13 @@ extension ToolExecutor {
     private static let idPrefixFloor = 8
 
     private static let scalarIdKeys: Set<String> = [
-        "clipId", "sourceClipId",
+        "clipId", "sourceClipId", "referenceClipId", "targetClipId",
         "mediaRef", "startFrameMediaRef", "endFrameMediaRef",
         "sourceVideoMediaRef", "videoSourceMediaRef",
         "folderId", "parentFolderId",
     ]
     private static let arrayIdKeys: Set<String> = [
-        "clipIds", "assetIds", "folderIds",
+        "clipIds", "targetClipIds", "assetIds", "folderIds",
         "referenceMediaRefs", "referenceImageMediaRefs",
         "referenceVideoMediaRefs", "referenceAudioMediaRefs",
     ]

@@ -2,29 +2,21 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.3.5",
-      "date": "2026-06-19",
+      "version": "0.3.6",
+      "date": "2026-06-22",
       "sections": [
-        {
-          "heading": "New",
-          "items": [
-            "Import entire folders to your Palmier project.",
-            "More agent's capabilities - undo edits, ripple delete, ripple insert.",
-          ]
-        },
         {
           "heading": "Improved",
           "items": [
-            "Better image and video generation prompts.",
-            "Improved agent tools - more compact context, accurate clip operations.",
-            "Better transcription-based editing - more accurate and faster."
+            "Improve app hang performance",
+            "Pressing Play at the end of a video now starts playback from the beginning"
           ]
         },
         {
           "heading": "Fixed",
           "items": [
-            "Fixed crashes when tracks changed, captions picked a stale source, or animated opacity rendered during export.",
-            "Splitting an animated clip now keeps the motion and visual changes intact on both sides."
+            "Fixed incorrect 720p HEVC export behavior",
+            "Fixed text color parsing when pasted hex values include line breaks"
           ]
         }
       ]

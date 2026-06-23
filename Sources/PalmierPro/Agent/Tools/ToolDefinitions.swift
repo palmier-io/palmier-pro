@@ -13,6 +13,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case setKeyframes = "set_keyframes"
     case splitClip = "split_clip"
     case rippleDeleteRanges = "ripple_delete_ranges"
+    case syncAudio = "sync_audio"
     case undo = "undo"
     case addTexts = "add_texts"
     case addCaptions = "add_captions"
@@ -295,6 +296,20 @@ enum ToolDefinitions {
             )
         ),
         AgentTool(
+            name: .syncAudio,
+            description: "Align one or more clips to a reference clip by cross-correlating audio and shifting targets on the timeline. referenceClipId stays put — use for dual-system sound (camera + external audio) or multicam. Returns offsetFrames and confidence (0–1) per target; refuses weak matches.",
+            inputSchema: objectSchema(
+                properties: [
+                    "referenceClipId": ["type": "string", "description": "Clip the others align to. Stays put."],
+                    "targetClipId": ["type": "string", "description": "Single clip to align. Use targetClipIds for several."],
+                    "targetClipIds": ["type": "array", "items": ["type": "string"], "description": "Clips to align with the reference."],
+                    "searchWindowSeconds": ["type": "number", "description": "Max ± offset to search in seconds (default 30)."],
+                    "minConfidence": ["type": "number", "description": "Minimum correlation confidence 0–1 (default 0.5)."],
+                ],
+                required: ["referenceClipId"]
+            )
+        ),
+        AgentTool(
             name: .undo,
             description: "Reverts the assistant's most recent timeline edit (a cut, move, trim, split, or clip/text/caption add) as one step. The recovery path when an edit went too far — e.g. a ripple_delete_ranges removed more than intended. Verify a cut first (get_transcript reflects the post-cut audio), then undo if it overshot, then retry with corrected ranges.\n\nUndoes only edits the assistant made this session, most-recent-first — it never touches the user's own manual edits, and refuses if the latest change wasn't the assistant's. After undoing, the timeline is restored to its state before that edit; the ids/frames the edit returned are no longer valid, so re-read with get_timeline or get_transcript if you'll edit again. Takes no arguments.",
             inputSchema: objectSchema()
@@ -428,7 +443,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .importMedia,
-            description: "Imports external media into the project's library — the bridge for assets coming from other MCP servers (stock libraries, music services, web search) or local files the user already has. The 'source' object must set exactly one of: url (HTTPS only — downloaded in the background, the dominant case; max 1 GB), path (absolute local file path — referenced in place; may also be a directory, which is imported recursively, mirroring its subfolder structure as media folders), or bytes (base64-encoded inline data — max ~15 MB of base64 ≈ 11 MB binary; use url/path for anything larger). For url, type is inferred from the URL path's file extension unless source.mimeType is set as an override (needed for signed URLs whose path has no usable extension). For bytes, source.mimeType is required.\n\nSupported types and extensions: video (mov, mp4, m4v), audio (mp3, wav, aac, m4a), image (png, jpg, jpeg, tiff, heic). Anything else is rejected — the caller must transcode externally.\n\nReturns a placeholder asset id immediately; URL imports run in the background and the asset becomes usable in add_clips once ready (same async pattern as generate_*). Path and bytes imports finalize synchronously. Costs nothing.",
+            description: "Imports external media into the project's library — the bridge for assets coming from other MCP servers (stock libraries, music services, web search) or local files the user already has. The 'source' object must set exactly one of: url (HTTPS only — downloaded in the background, the dominant case; max 1 GB), path (absolute local file path — referenced in place; may also be a directory, which is imported recursively, mirroring its subfolder structure as media folders), or bytes (base64-encoded inline data — max ~15 MB of base64 ≈ 11 MB binary; use url/path for anything larger). For url, type is inferred from the URL path's file extension unless source.mimeType is set as an override (needed for signed URLs whose path has no usable extension). For bytes, source.mimeType is required.\n\nSupported types and extensions: video (mov, mp4, m4v), audio (mp3, wav, aac, m4a, aiff, aifc, flac), image (png, jpg, jpeg, tiff, heic). Anything else is rejected — the caller must transcode externally.\n\nReturns a placeholder asset id immediately; URL imports run in the background and the asset becomes usable in add_clips once ready (same async pattern as generate_*). Path and bytes imports finalize synchronously. Costs nothing.",
             inputSchema: objectSchema(
                 properties: [
                     "source": [

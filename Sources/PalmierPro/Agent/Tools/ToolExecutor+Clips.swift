@@ -551,6 +551,7 @@ extension ToolExecutor {
                     width: t.width ?? cur.width,
                     height: t.height ?? cur.height
                 )
+                next.rotation = cur.rotation
                 next.flipHorizontal = t.flipHorizontal ?? cur.flipHorizontal
                 next.flipVertical = t.flipVertical ?? cur.flipVertical
                 clip.transform = next

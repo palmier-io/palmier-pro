@@ -6,7 +6,7 @@ let editorOnly = Context.environment["PALMIER_EDITOR_ONLY"] == "1"
 
 let backendPackages: [Package.Dependency] = editorOnly ? [] : [
     .package(url: "https://github.com/clerk/clerk-convex-swift", from: "0.1.0"),
-    .package(url: "https://github.com/clerk/clerk-ios", from: "1.0.0"),
+    .package(url: "https://github.com/clerk/clerk-ios", from: "1.2.1"),
     .package(url: "https://github.com/get-convex/convex-swift", from: "0.8.0"),
 ]
 

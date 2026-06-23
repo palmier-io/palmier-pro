@@ -4,13 +4,13 @@
 
 # Palmier Pro
 
-**محرر فيديو مصمم لـ AI.**
+**محرر فيديو مصمم لعصر الذكاء الاصطناعي.**
 
 <a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
   <img src="../../assets/macos-badge.png" alt="تنزيل Palmier Pro لنظام macOS" width="180" />
 </a>
 
-<sub><i>يتطلب macOS 26 (Tahoe) على Apple Silicon</i></sub>
+<sub><i>يتطلب macOS 26 (Tahoe) على Apple Silicon لتحميله</i></sub>
 
 <a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Follow-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="تابع على X" /></a>
 <a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="انضم إلى Discord" /></a>
@@ -39,21 +39,20 @@
 
 ---
 
-Palmier Pro هو محرر فيديو open source لنظام Mac. يمكنك أنت والـ agent الخاص بك إنشاء الفيديوهات وتحريرها معًا داخل timeline.
+بالمي برو (Palmier Pro) هو محرر فيديو مفتوح المصدر لنظام macOS. يتيح لك العمل جنبًا إلى جنب مع المساعد الذكي الخاص بك لإنشاء الفيديوهات وتحريرها داخل الخط الزمني (Timeline) نفسه.
 
 ### محرر فيديو Swift-native
 
-بنينا Palmier Pro من الصفر باستخدام Swift. المرجع الأساسي هو Premiere Pro، مع طريقتنا الخاصة في دمج AI داخل workflow.
+تم تطوير بالمي برو (Palmier Pro) من الصفر باستخدام Swift. استلهمنا تجربة الاستخدام من Premiere Pro، مع إعادة تصميمها لتناسب أدوات الذكاء الاصطناعي الحديثة وسير العمل المعتمد عليها.
 
-### Generative AI مدمج
+### ذكاء اصطناعي توليدي مدمج (Generative AI)
 
-أنشئ فيديوهات وصورًا باستخدام نماذج SOTA مثل Seedance وKling وNano Banana Pro داخل محرر timeline.
+أنشئ الفيديوهات والصور مباشرة من داخل المحرر باستخدام أحدث النماذج مثل Seedance وKling وNano Banana Pro، دون الحاجة إلى التنقل بين تطبيقات متعددة.
 
-### يتكامل مع agents الخاصة بك
+### يتكامل مع أدواتك ومساعديك الذكيين
 
-صل Claude أو Codex أو Cursor عبر MCP، أو استخدم الـ agent داخل التطبيق للعمل معًا على المشروع نفسه.
-
-## MCP server
+يمكنك ربط Claude أو Codex أو Cursor عبر MCP، أو استخدام المساعد المدمج داخل التطبيق للعمل معًا على المشروع نفسه.
+## خادم الMCP
 
 عندما يكون التطبيق مفتوحًا، فإنه يوفّر MCP server على `http://127.0.0.1:19789/mcp` عبر HTTP. للاتصال:
 
@@ -100,8 +99,10 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 **ما المنصات المدعومة؟**
 
-macOS 26 (Tahoe) على Apple Silicon فقط.
-
+يدعم Palmier Pro حاليًا:
+* macOS 26 (Tahoe)
+* أجهزة Apple Silicon فقط
+  
 راجع [FAQ.md](../../FAQ.md) للمزيد.
 
 ## Development

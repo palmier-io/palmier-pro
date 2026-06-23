@@ -58,6 +58,10 @@ enum AgentInstructions {
           • set_keyframes: replace the keyframe track for one (clipId, property) pair. Empty \
             array clears. Frames are clip-relative.
           • split_clip: atFrame must be strictly inside the clip.
+          • sync_audio: align one or more clips to a reference (usually the camera) clip by \
+            waveform — referenceClipId stays, the target(s) move. Use for dual-system sound \
+            or multicam (pass targetClipIds); it returns per-clip confidence and refuses \
+            weak matches.
         - speed 1.0 is normal; <1.0 stretches the clip longer on the timeline; >1.0 shortens \
           it. trim* values are source offsets, not timeline offsets.
         - Edits are undoable and effectively free. Don't ask permission for individual edits — \
