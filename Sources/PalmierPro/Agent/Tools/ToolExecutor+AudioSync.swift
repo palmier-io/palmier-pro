@@ -13,14 +13,14 @@ extension ToolExecutor {
         if let single = args.string("targetClipId") { targets.append(single) }
         guard !targets.isEmpty else { throw ToolError("sync_audio: provide targetClipId or targetClipIds.") }
 
-        let searchWindow = args.double("searchWindowSeconds") ?? 30
+        let searchWindow = args.double("searchWindowSeconds") ?? EditorViewModel.AudioSyncDefaults.searchWindowSeconds
         guard searchWindow > 0 else { throw ToolError("sync_audio: searchWindowSeconds must be > 0.") }
 
         let report = await editor.syncAudio(
             referenceClipId: referenceClipId,
             targetClipIds: targets,
             searchWindowSeconds: searchWindow,
-            minConfidence: args.double("minConfidence") ?? 0.5
+            minConfidence: args.double("minConfidence") ?? EditorViewModel.AudioSyncDefaults.minConfidence
         )
         guard !report.synced.isEmpty else {
             throw ToolError("sync_audio: \(report.failures.first?.message ?? "no clips aligned")")

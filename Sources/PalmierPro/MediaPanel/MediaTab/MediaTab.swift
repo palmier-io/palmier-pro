@@ -182,12 +182,12 @@ struct MediaTab: View {
         }
     }
 
-    private func toastBanner(_ message: String) -> some View {
+    private func toastBanner(_ toast: MediaPanelToast) -> some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image(systemName: toast.kind == .success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                 .font(.system(size: AppTheme.FontSize.smMd, weight: .semibold))
-                .foregroundStyle(AppTheme.Accent.timecodeColor)
-            Text(message)
+                .foregroundStyle(toast.kind == .success ? AppTheme.Status.successColor : AppTheme.Accent.timecodeColor)
+            Text(toast.message)
                 .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                 .foregroundStyle(AppTheme.Text.primaryColor)
                 .lineLimit(2)
@@ -207,7 +207,7 @@ struct MediaTab: View {
         .padding(.horizontal, AppTheme.Spacing.lgXl)
         .padding(.bottom, AppTheme.Spacing.lgXl)
         .onTapGesture { editor.dismissMediaPanelToast() }
-        .task(id: message) {
+        .task(id: toast) {
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
             editor.dismissMediaPanelToast()

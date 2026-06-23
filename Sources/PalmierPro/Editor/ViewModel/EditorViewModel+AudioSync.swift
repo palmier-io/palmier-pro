@@ -6,12 +6,18 @@ extension EditorViewModel {
         var failures: [(clipId: String, message: String)] = []
     }
 
+    enum AudioSyncDefaults {
+        static let searchWindowSeconds: Double = 30
+        static let minConfidence: Double = 0.5
+        static let minSpeed: Double = 0.0001
+    }
+
     @discardableResult
     func syncAudio(
         referenceClipId: String,
         targetClipIds: [String],
-        searchWindowSeconds: Double = 30,
-        minConfidence: Double = 0.5
+        searchWindowSeconds: Double = AudioSyncDefaults.searchWindowSeconds,
+        minConfidence: Double = AudioSyncDefaults.minConfidence
     ) async -> AudioSyncBatchReport {
         let fps = Double(timeline.fps)
         let targets = targetClipIds.filter { $0 != referenceClipId }
@@ -68,7 +74,7 @@ extension EditorViewModel {
             guard let match, match.confidence >= minConfidence else {
                 report.failures.append((id, "No confident alignment — clips may not overlap.")); continue
             }
-            let lagFrames = Double(match.lagHops) * AudioEnvelopeExtractor.hopSeconds * fps / max(refClip.speed, 0.0001)
+            let lagFrames = Double(match.lagHops) * AudioEnvelopeExtractor.hopSeconds * fps / max(refClip.speed, AudioSyncDefaults.minSpeed)
             let rawStart = Int((Double(refClip.startFrame) + lagFrames).rounded())
             guard rawStart >= 0 else { report.failures.append((id, "Alignment falls before the timeline start.")); continue }
             let offset = rawStart - target.startFrame
@@ -104,14 +110,16 @@ extension EditorViewModel {
         let selected = timeline.tracks.flatMap(\.clips).filter { selectedClipIds.contains($0.id) }
         var units: [String: [Clip]] = [:]
         for clip in selected { units[clip.linkGroupId ?? clip.id, default: []].append(clip) }
-        guard units.count >= 2 else { return nil }
 
+        // Skip units with no transcribable audio (text/image/etc.) rather than
+        // suppressing sync for the whole selection.
         var bearers: [(unit: [Clip], clip: Clip)] = []
         for unit in units.values {
             guard let clip = unit.first(where: { $0.mediaType == .audio && captionCanTranscribe($0) })
-                ?? unit.first(where: { captionCanTranscribe($0) }) else { return nil }
+                ?? unit.first(where: { captionCanTranscribe($0) }) else { continue }
             bearers.append((unit, clip))
         }
+        guard bearers.count >= 2 else { return nil }
 
         func rank(_ b: (unit: [Clip], clip: Clip)) -> (Int, Int, Int) {
             (b.unit.contains { $0.linkGroupId != nil } ? 0 : 1,
@@ -156,7 +164,7 @@ extension EditorViewModel {
     private func envelope(of clip: Clip, fps: Double) async -> AudioEnvelope? {
         guard let url = mediaResolver.resolveURL(for: clip.mediaRef) else { return nil }
         let start = Double(clip.trimStartFrame) / fps
-        let end = start + Double(clip.durationFrames) * max(clip.speed, 0.0001) / fps
+        let end = start + Double(clip.durationFrames) * max(clip.speed, AudioSyncDefaults.minSpeed) / fps
         return try? await AudioEnvelopeExtractor.extract(from: url, range: start...max(start + AudioEnvelopeExtractor.hopSeconds, end))
     }
 }
