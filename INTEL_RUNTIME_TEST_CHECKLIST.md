@@ -3,6 +3,25 @@
 This checklist is for the experimental Intel editor-only app artifact. It is not
 official Palmier Intel support.
 
+## Recorded Intel Runtime Result
+
+Runtime smoke testing passed on an Intel iMac running macOS 15.7.7.
+
+- App opened.
+- Import worked.
+- Timeline playback worked.
+- Audio worked.
+- Basic editing worked.
+- Save/reopen worked.
+- Export worked.
+- Export opened in QuickTime Player.
+- No crashes were observed.
+
+Disabled feature testing passed for Account, Feedback, Models, Generate, Music,
+and Captions. AI Edit now shows a visible unavailable notice in addition to
+disabled controls. Update checks are intentionally unavailable in the
+experimental Intel artifact.
+
 ## Test Setup
 
 - Download the latest `palmier-pro-intel-editor-only-app` artifact from the
@@ -99,8 +118,8 @@ Specific entry points to check:
 - Media panel > Generate opens an AI generation-unavailable panel.
 - Media panel > Music keeps the tab visible and disables Generate with the unavailable message.
 - Media panel > Captions disables Generate Captions with the transcription unavailable message.
-- Inspector > AI tab remains visible for visual assets/clips and disables AI actions.
-- App menu > Check for Updates is disabled for the experimental Intel artifact.
+- Inspector > AI tab remains visible for visual assets/clips, shows an unavailable notice, and disables AI actions.
+- App menu > Check for Updates shows an unavailable disabled item for the experimental Intel artifact.
 
 ## Stability Pass
 

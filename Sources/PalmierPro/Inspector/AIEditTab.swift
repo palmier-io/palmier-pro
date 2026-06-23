@@ -21,6 +21,14 @@ struct AIEditTab: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
+                if FeatureGate.hostedAIGeneration.unavailableReason != nil {
+                    UnavailableFeatureNotice(
+                        title: "AI Edit unavailable",
+                        message: BuildMode.editorOnlyUnavailableMessage,
+                        detail: "AI Edit requires Palmier hosted AI services and account/backend support."
+                    )
+                }
+
                 if hasScopeToggles {
                     aiSection(title: "Scope") {
                         if clipId != nil { replaceToggle }

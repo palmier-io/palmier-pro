@@ -2,8 +2,8 @@
 
 This branch contains an experimental Intel Mac editor-only build mode for Palmier Pro.
 It is not official Palmier support. The GitHub Actions build has produced an
-Intel app artifact, and that artifact has been smoke-tested on an Intel iMac,
-but the branch is still a reduced editor-only experiment.
+Intel app artifact, and that artifact has been runtime-tested on an Intel iMac
+running macOS 15.7.7, but the branch is still a reduced editor-only experiment.
 
 The normal Palmier Pro build path is unchanged when `PALMIER_EDITOR_ONLY` is not
 set: it remains the full macOS 26 Apple Silicon build with the normal backend and
@@ -63,12 +63,12 @@ show a disabled state instead of silently disappearing.
 
 | Area | Intel editor-only status | Notes |
 | --- | --- | --- |
-| Launch | Working in smoke test | The app launched on an Intel iMac running macOS 15.7.7. |
-| Media import | Working in smoke test | A screen recording imported into the timeline. More formats still need runtime testing. |
-| Timeline editing | Expected to work | Core timeline build and tests pass. Trim, split, move, snapping, text, and multi-track editing still need manual runtime testing. |
-| Preview/playback | Expected to work | Uses local AVFoundation/editor code paths. Needs runtime playback testing with video, audio, and text layers. |
-| Export dialog | Working in smoke test | The export dialog opens. Actual export, output playback, and error handling still need runtime testing. |
-| Project save/reopen | Expected to work | Project document IO tests pass. Manual save/reopen testing is still required. |
+| Launch | Working in runtime test | The app launched on an Intel iMac running macOS 15.7.7. |
+| Media import | Working in runtime test | A screen recording imported into the timeline. More formats still need broader testing. |
+| Timeline editing | Working in runtime test | Basic edit, playback, and audio worked. Broader edit coverage still needs maintainer QA. |
+| Preview/playback | Working in runtime test | Timeline playback and audio worked on Intel macOS 15.7.7. |
+| Export | Working in runtime test | Export completed and the exported file opened in QuickTime Player. |
+| Project save/reopen | Working in runtime test | Save/reopen worked on Intel macOS 15.7.7. |
 | Local project export | Expected to work | Palmier project export tests pass. Needs runtime verification with real imported media. |
 | Visual search/indexing | Partially available | Local search/indexing code and tests build for x86_64. Core ML model download/load and real Intel performance are unverified. |
 | Spoken search | Partially available | Searching existing transcript data can work, but editor-only builds cannot currently generate transcripts from media. |
@@ -96,7 +96,7 @@ with clear disabled states:
 - Media panel > Music
 - Media panel > Captions > Generate Captions
 - Inspector > AI tab for visual assets and clips
-- App menu > Check for Updates
+- App menu > Check for Updates Unavailable
 
 Disabled feature paths should include the shared message:
 
