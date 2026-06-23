@@ -25,6 +25,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case listModels = "list_models"
     case inspectMedia = "inspect_media"
     case getTranscript = "get_transcript"
+    case exportTimeline = "export_timeline"
     case inspectTimeline = "inspect_timeline"
     case searchMedia = "search_media"
     case applyColor = "apply_color"
@@ -87,6 +88,19 @@ enum ToolDefinitions {
                     "endFrame": ["type": "integer", "description": "Optional. Only return words starting before this project frame."],
                     "clipId": ["type": "string", "description": "Scope the transcript to a single clip — returns only what that clip says, in project frames. Answers \"what's in clip X?\" without scanning the whole timeline."],
                 ]
+            )
+        ),
+        AgentTool(
+            name: .exportTimeline,
+            description: "Exports the current timeline through Palmier Pro's native export pipeline. Video formats render the full timeline with the same AVFoundation/text-overlay path as the Export dialog; xml writes Final Cut Pro 7 XMEML; palmierProject writes a self-contained .palmier project package. Returns output path and timeline metadata after the export completes.",
+            inputSchema: objectSchema(
+                properties: [
+                    "outputPath": ["type": "string", "description": "Absolute output path. Use .mp4 for h264/h265, .mov for prores, .xml for xml, and .palmier for palmierProject."],
+                    "format": ["type": "string", "enum": ["h264", "h265", "prores", "xml", "palmierProject"], "description": "Optional. Default h264."],
+                    "resolution": ["type": "string", "enum": ["720p", "1080p", "1440p", "4k", "native"], "description": "Optional for video formats. Default 1080p. Ignored for xml and palmierProject."],
+                    "overwrite": ["type": "boolean", "description": "Optional. Default false. Refuses to replace an existing file or package unless true."],
+                ],
+                required: ["outputPath"]
             )
         ),
         AgentTool(
