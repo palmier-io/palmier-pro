@@ -6,7 +6,9 @@ struct AccountPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
-            if account.isLoading {
+            if let reason = FeatureGate.palmierBackendAuth.unavailableReason {
+                unavailableBody(reason: reason)
+            } else if account.isLoading {
                 Text("Loading…")
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -16,7 +18,7 @@ struct AccountPane: View {
                 signedOutBody
             }
 
-            if let error = account.lastError {
+            if let error = account.lastError, FeatureGate.palmierBackendAuth.isAvailable {
                 Text(error)
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(.red)
@@ -37,6 +39,36 @@ struct AccountPane: View {
             Task { await account.signOut() }
         }
         .buttonStyle(.capsule(.secondary, size: .regular))
+    }
+
+    @ViewBuilder
+    private func unavailableBody(reason: String) -> some View {
+        UnavailableFeatureNotice(
+            title: "Account unavailable",
+            message: BuildMode.editorOnlyUnavailableMessage,
+            detail: "Account/login, subscriptions, billing, credits, cloud sync, and hosted AI generation require Palmier backend support."
+        )
+
+        section(title: "Account") {
+            Button("Sign in with Google") {}
+                .buttonStyle(.capsule(.secondary, size: .regular))
+                .disabled(true)
+                .help(reason)
+        }
+
+        section(title: "Billing and Credits") {
+            Text("Plans, credit balance, top-offs, and subscription management are unavailable in this build.")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        section(title: "Cloud Sync") {
+            Text("Local project files continue to work. Cloud sync requires Convex and Clerk support.")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     @ViewBuilder

@@ -24,6 +24,10 @@ enum MainMenuBuilder {
         menu.addItem(.separator())
         let updatesItem = NSMenuItem(title: "Check for Updates…", action: #selector(Updater.checkForUpdates(_:)), keyEquivalent: "")
         updatesItem.target = Updater.shared
+        if let reason = FeatureGate.officialUpdateChecks.unavailableReason {
+            updatesItem.isEnabled = false
+            updatesItem.toolTip = reason
+        }
         menu.addItem(updatesItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")

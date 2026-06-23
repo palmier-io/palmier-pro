@@ -40,6 +40,25 @@ For editor-only app bundles, `scripts/bundle.sh` also lowers
 `LSMinimumSystemVersion` to `15.0` and disables Sparkle's automatic checks
 against the official Palmier update feed.
 
+## Capability Source Of Truth
+
+Runtime feature visibility is centralized in:
+
+```text
+Sources/PalmierPro/Utilities/FeatureGate.swift
+```
+
+`FeatureGate` answers:
+
+- whether this is the official full build or experimental Intel editor-only build
+- whether the current binary is Apple Silicon or Intel
+- whether macOS 26 APIs are available at runtime
+- whether Palmier backend/auth is available
+- whether transcription, hosted AI generation, cloud sync, model catalog, feedback, and official update checks are available
+
+UI entry points should stay visible where practical and use `FeatureGate` to
+show a disabled state instead of silently disappearing.
+
 ## Feature Status
 
 | Area | Intel editor-only status | Notes |
@@ -65,6 +84,26 @@ against the official Palmier update feed.
 | Cloud/backend sync | Disabled | No Convex backend connection is available in editor-only mode. Local project files remain the intended persistence path. |
 | Sparkle updates | Disabled for editor-only artifacts | Official Sparkle metadata stays in the source plist, but the editor-only bundle removes the official feed and disables automatic checks. |
 
+## Visible Disabled States
+
+The experimental Intel editor-only build keeps the following entry points visible
+with clear disabled states:
+
+- Settings > Account
+- Settings > Models
+- Help > Send Feedback
+- Media panel > Generate
+- Media panel > Music
+- Media panel > Captions > Generate Captions
+- Inspector > AI tab for visual assets and clips
+- App menu > Check for Updates
+
+Disabled feature paths should include the shared message:
+
+```text
+This feature is unavailable in the experimental Intel editor-only build.
+```
+
 ## Disabled Features
 
 The following features are disabled or stubbed only when `PALMIER_EDITOR_ONLY=1`:
@@ -77,7 +116,7 @@ The following features are disabled or stubbed only when `PALMIER_EDITOR_ONLY=1`
 - Backend-dependent feedback submission.
 - Sparkle automatic update checks against the official Palmier feed in editor-only artifacts.
 
-Disabled feature paths should report:
+Disabled feature paths should report or include:
 
 ```text
 This feature is unavailable in the experimental Intel editor-only build.
@@ -94,7 +133,12 @@ The current official transcription path uses `SpeechTranscriber`,
 Those APIs are not safe to compile into the macOS 15 Intel editor-only build.
 
 A macOS 15-compatible fallback appears realistic, but it should be implemented
-as a separate focused change after runtime testing. A possible design is:
+as a separate focused change after runtime testing. Apple documents
+`SFSpeechRecognizer` as the older recognizer object, `SFSpeechURLRecognitionRequest`
+as the path for recognition from an audio file, and `SpeechTranscriber` /
+`SpeechAnalyzer` as the newer macOS 26 path.
+
+A possible internal provider shape is:
 
 - Keep using AVFoundation to extract an imported video's audio track to a
   temporary audio file.
@@ -115,6 +159,79 @@ the macOS 26 transcription stack. In particular, product review is needed before
 allowing server-backed recognition as a fallback, and the Intel app needs real
 runtime validation of permission prompts, long media files, locale handling, and
 caption timing quality.
+
+### Speech Provider Options
+
+| Provider path | Pros | Cons / risks | Status for this branch |
+| --- | --- | --- | --- |
+| Apple `SpeechTranscriber` / `SpeechAnalyzer` | Modern first-party path, designed for the current Palmier implementation. | Requires macOS 26 APIs and Swift 6.2/macOS 26 SDK. | Official build path only. |
+| Apple `SFSpeechRecognizer` + `SFSpeechURLRecognitionRequest` | First-party macOS 15-compatible fallback for prerecorded audio files; can reuse Palmier's AVFoundation audio extraction. | Different permission flow, locale availability, server-vs-on-device behavior, timing quality, and long-file behavior. Needs Intel runtime testing. | Recommended next transcription spike. |
+| OpenAI transcription API | High-quality hosted transcription; official API supports file transcription. | Sends user media to a third party, requires explicit consent and user or Palmier API configuration, may have cost/file-size constraints. | Future optional provider only; do not make mandatory. |
+| Deepgram prerecorded audio API | Mature hosted STT path with prerecorded audio support. | Requires API key, network upload, consent, cost, and vendor configuration. | Future optional provider only; do not make mandatory. |
+| Local Whisper / whisper.cpp | Can run offline and preserve media privacy; plausible on macOS 15 Intel. | Adds binary/model distribution complexity, model downloads, CPU/GPU performance risk on Intel, and packaging/review work. | Future local provider spike. |
+
+External providers must be opt-in, must not hardcode API keys, and must not send
+user media off-device without explicit consent.
+
+Useful references:
+
+- Apple Speech framework: https://developer.apple.com/documentation/speech/
+- Apple `SFSpeechRecognizer`: https://developer.apple.com/documentation/speech/sfspeechrecognizer
+- Apple `SFSpeechURLRecognitionRequest`: https://developer.apple.com/documentation/speech/sfspeechurlrecognitionrequest
+- Apple `SpeechTranscriber`: https://developer.apple.com/documentation/speech/speechtranscriber
+- OpenAI speech-to-text: https://developers.openai.com/api/docs/guides/speech-to-text
+- Deepgram prerecorded audio: https://developers.deepgram.com/docs/pre-recorded-audio
+- whisper.cpp: https://github.com/ggml-org/whisper.cpp
+
+## Two-Download Strategy
+
+Recommended release shape for maintainers:
+
+1. Official Apple Silicon / macOS 26 Palmier Pro build
+   - Keep the current full backend/auth/generation feature set.
+   - Keep the official Sparkle feed and existing signing/notarization process.
+   - Publish using the normal Palmier release channel.
+
+2. Experimental Intel editor-only build
+   - Publish separately and label clearly as experimental.
+   - Keep artifact name `palmier-pro-intel-editor-only-app`.
+   - Do not connect this artifact to the official Apple Silicon Sparkle feed.
+   - Keep hosted backend, account, generation, and advanced transcription
+     unavailable until maintainers validate Intel-compatible backend and
+     transcription paths.
+
+Maintainers can later choose a universal release, but separate downloads are
+safer while the Intel build is editor-only and differently supported.
+
+## Maintainer Path To Restore Full Intel Features
+
+- Account/login: restore Clerk support only after `clerk-ios` and related auth
+  flows compile and run on x86_64/macOS 15, including keychain access groups and
+  OAuth callback testing.
+- Convex/ConvexMobile: either validate `ConvexMobile` on x86_64/macOS 15 or
+  introduce an Intel-compatible backend client abstraction for subscriptions,
+  mutations, storage tickets, and account sync.
+- Cloud sync: re-enable only after auth and Convex/backend state are stable on
+  Intel, then test local/offline project file behavior alongside remote sync.
+- Hosted AI generation: re-enable only after account auth, upload tickets,
+  model catalog sync, generation job subscriptions, billing, credits, and
+  download/rerun/upscale paths work on Intel.
+- Billing/credits: re-enable after account state, plan catalog, subscription
+  management links, top-offs, and credit accounting are validated.
+- Model catalog: re-enable after backend model subscription works on Intel, or
+  after maintainers provide a signed/static catalog suitable for editor-only
+  review builds.
+- Transcription: add a `TranscriptionProvider` abstraction, keep the macOS 26
+  `SpeechTranscriber` provider for the official build, and add a tested legacy
+  Apple Speech or optional external/local provider for macOS 15.
+- Official update checks: use a separate signed Intel appcast/feed or a universal
+  release feed that only offers compatible updates to compatible machines.
+- Release packaging: keep separate Intel and Apple Silicon artifacts until the
+  support matrix, updater feed, signing, notarization, and QA plan are unified.
+- Before declaring official Intel support, run GitHub Actions, launch testing,
+  import/edit/playback, save/reopen, export/open-in-QuickTime, disabled-feature
+  checks, transcription tests if restored, backend account tests if restored, and
+  crash/Console log review on real Intel macOS 15 hardware.
 
 ## Known Risks
 

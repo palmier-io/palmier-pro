@@ -264,7 +264,7 @@ struct MediaTab: View {
     }
 
     private var actionsRow: some View {
-        let showGenerate = !AccountService.shared.isMisconfigured
+        let showGenerate = !AccountService.shared.isMisconfigured || FeatureGate.isExperimentalIntelEditorOnly
         return HStack(spacing: AppTheme.Spacing.xs) {
             toolbarButton(title: "Import", systemImage: "plus", action: importMedia)
                 .tourAnchor(.importButton)

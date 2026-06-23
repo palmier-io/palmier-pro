@@ -34,14 +34,23 @@ struct ModelsPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
-            searchBar
+            if let reason = FeatureGate.hostedModelCatalog.unavailableReason {
+                UnavailableFeatureNotice(
+                    title: "Hosted model catalog unavailable",
+                    message: BuildMode.editorOnlyUnavailableMessage,
+                    detail: "Image, video, audio, and upscale model settings require Palmier backend support."
+                )
+                .help(reason)
+            } else if sections.isEmpty {
+                searchBar
 
-            if sections.isEmpty {
                 Text(catalog.isLoaded ? "No models match \"\(query)\"." : "Loading models…")
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .padding(.top, AppTheme.Spacing.lg)
             } else {
+                searchBar
+
                 ForEach(sections) { section in
                     sectionView(section)
                 }

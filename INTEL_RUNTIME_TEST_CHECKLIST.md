@@ -91,6 +91,17 @@ Expected message:
 This feature is unavailable in the experimental Intel editor-only build.
 ```
 
+Specific entry points to check:
+
+- Settings > Account shows account, billing, credits, and cloud sync as unavailable.
+- Settings > Models shows the hosted model catalog as unavailable.
+- Help > Send Feedback opens a feedback-unavailable message.
+- Media panel > Generate opens an AI generation-unavailable panel.
+- Media panel > Music keeps the tab visible and disables Generate with the unavailable message.
+- Media panel > Captions disables Generate Captions with the transcription unavailable message.
+- Inspector > AI tab remains visible for visual assets/clips and disables AI actions.
+- App menu > Check for Updates is disabled for the experimental Intel artifact.
+
 ## Stability Pass
 
 - Use the app for 20 to 30 minutes with a small project.
