@@ -35,6 +35,23 @@ class PaddedDividerSplitViewController: NSSplitViewController {
     }
 }
 
+/// Autosave keys for the editor splits, defined once so call sites can't drift.
+private enum SplitAutosave {
+    static let root         = "editor.root"
+    static let defaultH     = "editor.default.h"
+    static let mediaTop     = "editor.media.top"
+    static let mediaRight   = "editor.media.right"
+    static let verticalTop  = "editor.vertical.top"
+    static let verticalLeft = "editor.vertical.left"
+    static func preset(_ p: LayoutPreset) -> String { "editor.\(p.rawValue).preset" }
+
+    /// AppKit persists divider frames under this key; no public API queries it.
+    static func hasSavedFrames(_ name: String?) -> Bool {
+        guard let name else { return false }
+        return UserDefaults.standard.object(forKey: "NSSplitView Subview Frames \(name)") != nil
+    }
+}
+
 final class EditorSplitViewController: PaddedDividerSplitViewController {
     let editor: EditorViewModel
     private var currentPreset: LayoutPreset?
@@ -70,7 +87,7 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         splitView.dividerStyle = .thin
-        splitView.autosaveName = "editor.root"
+        splitView.autosaveName = SplitAutosave.root
         buildLayout(editor.layoutPreset)
     }
 
@@ -183,7 +200,7 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
         splitView.isVertical = true
 
         // Preset layout lives in an inner VC so the agent can be a sibling column.
-        let presetRoot = makeChildSplit(isVertical: false, autosave: "editor.\(preset.rawValue).preset")
+        let presetRoot = makeChildSplit(isVertical: false, autosave: SplitAutosave.preset(preset))
         switch preset {
         case .default:  buildDefaultLayout(into: presetRoot)
         case .media:    buildMediaLayout(into: presetRoot)
@@ -208,7 +225,7 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
     private func buildDefaultLayout(into target: NSSplitViewController) {
         target.splitView.isVertical = false
 
-        let hSplit = makeChildSplit(isVertical: true, autosave: "editor.default.h")
+        let hSplit = makeChildSplit(isVertical: true, autosave: SplitAutosave.defaultH)
         hSplit.addSplitViewItem(makeMediaItem())
         hSplit.addSplitViewItem(makePreviewItem())
         hSplit.addSplitViewItem(makeInspectorItem())
@@ -238,11 +255,11 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
     private func buildMediaLayout(into target: NSSplitViewController) {
         target.splitView.isVertical = true
 
-        let topSplit = makeChildSplit(isVertical: true, autosave: "editor.media.top")
+        let topSplit = makeChildSplit(isVertical: true, autosave: SplitAutosave.mediaTop)
         topSplit.addSplitViewItem(makePreviewItem())
         topSplit.addSplitViewItem(makeInspectorItem())
 
-        let rightSplit = makeChildSplit(isVertical: false, autosave: "editor.media.right")
+        let rightSplit = makeChildSplit(isVertical: false, autosave: SplitAutosave.mediaRight)
         let topItem = NSSplitViewItem(viewController: topSplit)
         topItem.minimumThickness = Layout.previewMinHeight
         rightSplit.addSplitViewItem(topItem)
@@ -268,11 +285,11 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
     private func buildVerticalLayout(into target: NSSplitViewController) {
         target.splitView.isVertical = true
 
-        let topSplit = makeChildSplit(isVertical: true, autosave: "editor.vertical.top")
+        let topSplit = makeChildSplit(isVertical: true, autosave: SplitAutosave.verticalTop)
         topSplit.addSplitViewItem(makeMediaItem())
         topSplit.addSplitViewItem(makeInspectorItem())
 
-        let leftSplit = makeChildSplit(isVertical: false, autosave: "editor.vertical.left")
+        let leftSplit = makeChildSplit(isVertical: false, autosave: SplitAutosave.verticalLeft)
         leftSplit.addSplitViewItem(NSSplitViewItem(viewController: topSplit))
         leftSplit.addSplitViewItem(makeTimelineItem())
 
@@ -299,15 +316,9 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
         return vc
     }
 
-    /// Once a split has autosaved frames, they're restored on launch, so the hardcoded defaults must be skipped.
-    private func hasSavedFrames(_ name: String?) -> Bool {
-        guard let name else { return false }
-        return UserDefaults.standard.object(forKey: "NSSplitView Subview Frames \(name)") != nil
-    }
-
     /// Default positions apply per split: each is skipped independently once it has autosaved frames.
     private func positionIfUnsaved(_ controller: NSSplitViewController, _ apply: (NSSplitView) -> Void) {
-        guard !hasSavedFrames(controller.splitView.autosaveName) else { return }
+        guard !SplitAutosave.hasSavedFrames(controller.splitView.autosaveName) else { return }
         apply(controller.splitView)
     }
 
