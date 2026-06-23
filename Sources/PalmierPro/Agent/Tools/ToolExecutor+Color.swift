@@ -133,15 +133,17 @@ extension ToolExecutor {
         guard clip.mediaType == .video || clip.mediaType == .image else {
             throw ToolError("Clip \(clipId) is a \(clip.mediaType.rawValue) clip; inspect_color needs a video or image clip.")
         }
-        let srcAsset = try asset(clip.mediaRef, editor: editor, label: "Clip source")
+        _ = try asset(clip.mediaRef, editor: editor, label: "Clip source")   // validates the asset exists
         guard let srcURL = editor.mediaResolver.resolveURL(for: clip.mediaRef) else {
             throw ToolError("Could not resolve a source URL for clip \(clipId).")
         }
-        let fps = srcAsset.sourceFPS ?? Double(editor.timeline.fps)
+        // trim/duration are timeline-fps frame counts (CompositionBuilder uses timeline.fps as the
+        // source timescale), so convert to source seconds with timeline.fps, not the media's own fps.
+        let fps = Double(editor.timeline.fps)
         let sourceFrame: Double
-        let offset: Int   // clip-relative frame, drives keyframed/animated effects so they match the sampled pixel
+        let offset: Int   // clip-relative frame (0…durationFrames-1), drives keyframed/animated effects
         if let f = atFrame {
-            offset = max(0, min(clip.durationFrames, f - clip.startFrame))
+            offset = max(0, min(clip.durationFrames - 1, f - clip.startFrame))
             sourceFrame = Double(clip.trimStartFrame) + Double(offset) * clip.speed
         } else {
             offset = clip.durationFrames / 2
@@ -150,7 +152,9 @@ extension ToolExecutor {
         guard let frame = await Self.frameImage(url: srcURL, type: clip.mediaType, atSeconds: sourceFrame / max(1, fps)) else {
             throw ToolError("Could not decode a frame for clip \(clipId).")
         }
-        let graded = Self.applyingEffects(frame, clip: clip, atOffset: offset)
+        // Match the render path: crop to the visible region before grading (FrameRenderer crops first).
+        let cropped = Self.cropping(frame, crop: clip.cropAt(frame: clip.startFrame + offset))
+        let graded = Self.applyingEffects(cropped, clip: clip, atOffset: offset)
         guard let scopes = ColorScopes.measure(graded) else { throw ToolError("Could not measure the clip frame.") }
         return (graded, scopes)
     }
@@ -183,6 +187,18 @@ extension ToolExecutor {
         let time = CMTime(seconds: max(0, atSeconds), preferredTimescale: 600)
         guard let cg = try? await generator.image(at: time).image else { return nil }
         return CIImage(cgImage: cg, options: [.colorSpace: NSNull()])
+    }
+
+    /// Crops a display-oriented frame to its visible region (insets are display-space, CI origin is bottom-left).
+    fileprivate static func cropping(_ image: CIImage, crop: Crop) -> CIImage {
+        guard !crop.isIdentity else { return image }
+        let e = image.extent
+        guard e.width > 0, e.height > 0, e.width.isFinite, e.height.isFinite else { return image }
+        return image.cropped(to: CGRect(
+            x: e.origin.x + crop.left * e.width,
+            y: e.origin.y + crop.bottom * e.height,
+            width: max(1, crop.visibleWidthFraction * e.width),
+            height: max(1, crop.visibleHeightFraction * e.height)))
     }
 
     fileprivate static func applyingEffects(_ image: CIImage, clip: Clip, atOffset offset: Int) -> CIImage {
