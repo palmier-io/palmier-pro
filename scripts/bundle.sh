@@ -63,6 +63,8 @@ cp "$RESOURCES/Info.plist" "$APP/Contents/Info.plist"
 if [ "${PALMIER_EDITOR_ONLY:-}" = "1" ]; then
   echo "==> Configuring Intel editor-only app metadata"
   /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 15.0" "$APP/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Set :SUEnableAutomaticChecks false" "$APP/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Delete :SUFeedURL" "$APP/Contents/Info.plist" 2>/dev/null || true
 fi
 
 if [ -n "$SENTRY_DSN" ]; then
