@@ -256,17 +256,15 @@ struct ExportView: View {
 
     private var estimatedFileSize: String {
         let seconds = Double(editor.timeline.totalFrames) / Double(max(1, editor.timeline.fps))
-        let bytesPerSec: Double = switch (codec, resolution) {
-        case (.h264, .r720p):    0.85e6
-        case (.h264, .r1080p):   1.3e6
-        case (.h264, .r4k):      2.8e6
-        case (.h265, .r720p):    0.45e6
-        case (.h265, .r1080p):   0.65e6
-        case (.h265, .r4k):      2.2e6
-        case (.prores, .r720p):  8.0e6
-        case (.prores, .r1080p): 18.5e6
-        case (.prores, .r4k):    65.0e6
+        // Bitrate scales with output pixel area, so any resolution (incl. 2K / native) is covered.
+        let out = resolution.renderSize(for: CGSize(width: editor.timeline.width, height: editor.timeline.height))
+        let megapixels = Double(out.width * out.height) / 1_000_000
+        let bytesPerSecPerMP: Double = switch codec {
+        case .h264:   0.63e6
+        case .h265:   0.32e6
+        case .prores: 9.0e6
         }
+        let bytesPerSec = bytesPerSecPerMP * max(0.1, megapixels)
         return ByteCountFormatter.string(fromByteCount: Int64(bytesPerSec * seconds), countStyle: .file)
     }
 
