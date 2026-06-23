@@ -353,12 +353,32 @@ extension EditorViewModel {
     func isMediaOffline(_ mediaRef: String) -> Bool {
         offlineMediaRefs.contains(mediaRef)
             || unprocessableMediaRefs.contains(mediaRef)
-            || mediaResolver.isMissing(for: mediaRef)
+            || missingMediaRefs.contains(mediaRef)
     }
 
     /// Present-but-unpreparable (e.g. failed to encode)
     func isMediaUnprocessable(_ mediaRef: String) -> Bool {
-        unprocessableMediaRefs.contains(mediaRef) && !mediaResolver.isMissing(for: mediaRef)
+        unprocessableMediaRefs.contains(mediaRef) && !missingMediaRefs.contains(mediaRef)
+    }
+
+    /// Recompute `missingMediaRefs` off the main thread, then publish on the main actor.
+    func refreshMissingMediaCache() {
+        let entries = mediaManifest.entries
+        let projectPath = projectURL?.path
+        missingMediaRefreshTask?.cancel()
+        missingMediaRefreshTask = Task { [weak self] in
+            let missing = await Task.detached(priority: .utility) {
+                MediaResolver.missingAssetIds(entries: entries, projectPath: projectPath)
+            }.value
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard let self else { return }
+                if self.missingMediaRefs != missing {
+                    self.missingMediaRefs = missing
+                }
+                self.missingMediaRefreshTask = nil
+            }
+        }
     }
 
     func isClipMediaOffline(_ clip: Clip) -> Bool {
@@ -569,6 +589,7 @@ extension EditorViewModel {
         )
         await asset.loadMetadata()
         updateManifestMetadata(for: asset)
+        refreshMissingMediaCache()
         searchIndex.schedule(asset)
         switch asset.type {
         case .video:

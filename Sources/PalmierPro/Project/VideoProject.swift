@@ -428,10 +428,12 @@ final class VideoProject: NSDocument {
         let resolver = editorViewModel.mediaResolver
         var restored = 0
         var missing = 0
+        var missingRefs: Set<String> = []
         for entry in editorViewModel.mediaManifest.entries {
             guard let url = resolver.expectedURL(for: entry.id) else {
                 Log.project.warning("restore: could not resolve URL for entry id=\(entry.id) name=\(entry.name)")
                 missing += 1
+                missingRefs.insert(entry.id)
                 continue
             }
             let asset = MediaAsset(entry: entry, resolvedURL: url)
@@ -439,6 +441,7 @@ final class VideoProject: NSDocument {
             guard FileManager.default.fileExists(atPath: url.path) else {
                 Log.project.warning("restore: media file missing id=\(entry.id) name=\(entry.name) path=\(url.path)")
                 missing += 1
+                missingRefs.insert(entry.id)
                 continue
             }
             restored += 1
@@ -453,6 +456,7 @@ final class VideoProject: NSDocument {
             }
             Task { await asset.loadMetadata() }
         }
+        editorViewModel.missingMediaRefs = missingRefs
         Log.project.notice(
             "restore ok restored=\(restored) missing=\(missing)",
             telemetry: "Media restored",

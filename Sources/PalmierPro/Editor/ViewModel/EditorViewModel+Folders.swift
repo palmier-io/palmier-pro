@@ -197,6 +197,7 @@ extension EditorViewModel {
         }
         undoManager?.setActionName(actionName)
         videoEngine?.activateTab(activePreviewTab)
+        refreshMissingMediaCache()
         notifyTimelineChanged()
     }
 }
