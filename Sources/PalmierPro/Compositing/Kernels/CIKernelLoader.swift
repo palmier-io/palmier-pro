@@ -1,14 +1,17 @@
 import CoreImage
 import Foundation
 
+private final class CIKernelBundleToken {}
+
 /// Loads Core Image kernels from the plugin-compiled `.metallib` resources.
 enum CIKernelLoader {
     private static func metallibURL(_ lib: String) -> URL? {
-        guard let resourceURL = Bundle.main.resourceURL else { return nil }
+        let buildDir = Bundle(for: CIKernelBundleToken.self).bundleURL.deletingLastPathComponent()
         let candidates = [
-            resourceURL.appendingPathComponent("\(lib).metallib"),
-            resourceURL.appendingPathComponent("PalmierPro_PalmierPro.bundle/\(lib).metallib"),
-        ]
+            Bundle.main.resourceURL?.appendingPathComponent("\(lib).metallib"),                             // packaged .app
+            Bundle.main.resourceURL?.appendingPathComponent("PalmierPro_PalmierPro.bundle/\(lib).metallib"), // swift run
+            buildDir.appendingPathComponent("PalmierPro_PalmierPro.bundle/\(lib).metallib"),                 // swift test
+        ].compactMap { $0 }
         return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
     }
 
