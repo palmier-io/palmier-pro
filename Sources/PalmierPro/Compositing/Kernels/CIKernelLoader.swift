@@ -1,11 +1,19 @@
 import CoreImage
 import Foundation
 
-/// Loads Core Image kernels from a plugin-compiled `.metallib` in `Bundle.module`.
-/// Centralizes the load + the silent-failure path the per-effect kernels all shared.
+/// Loads Core Image kernels from the plugin-compiled `.metallib` resources.
 enum CIKernelLoader {
+    private static func metallibURL(_ lib: String) -> URL? {
+        guard let resourceURL = Bundle.main.resourceURL else { return nil }
+        let candidates = [
+            resourceURL.appendingPathComponent("\(lib).metallib"),
+            resourceURL.appendingPathComponent("PalmierPro_PalmierPro.bundle/\(lib).metallib"),
+        ]
+        return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
     private static func data(_ lib: String) -> Data? {
-        Bundle.module.url(forResource: lib, withExtension: "metallib").flatMap { try? Data(contentsOf: $0) }
+        metallibURL(lib).flatMap { try? Data(contentsOf: $0) }
     }
 
     static func kernel(_ lib: String, _ function: String) -> CIKernel? {
