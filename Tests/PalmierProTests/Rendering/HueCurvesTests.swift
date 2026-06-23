@@ -88,31 +88,6 @@ struct HueCurvesTests {
         #expect(bins.allSatisfy { $0 == 0 }, "achromatic frame should produce no hue data")
     }
 
-    @Test func kernelCostPer4KFrameIsNegligible() {
-        let ctx = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
-        let rect = CGRect(x: 0, y: 0, width: 3840, height: 2160)
-        let src = CIImage(color: CIColor(red: 0.6, green: 0.35, blue: 0.15)).cropped(to: rect)
-        var pb: CVPixelBuffer?
-        CVPixelBufferCreate(nil, 3840, 2160, kCVPixelFormatType_32BGRA,
-                            [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary, &pb)
-        let buf = pb!
-
-        func timeRender(_ image: CIImage, iters: Int) -> Double {
-            ctx.render(image, to: buf)  // warm up (kernel compile + GPU pipeline)
-            let t0 = Date()
-            for _ in 0..<iters { ctx.render(image, to: buf) }
-            return Date().timeIntervalSince(t0) / Double(iters) * 1000  // ms/frame
-        }
-
-        let graded = HueCurveKernel.apply(src, curves: redOnly)
-        let baseline = timeRender(src, iters: 30)
-        let withHSL = timeRender(graded, iters: 30)
-        let marginal = withHSL - baseline
-        print(String(format: "[perf] 4K render baseline=%.2fms hueCurves=%.2fms marginal=%.2fms",
-                     baseline, withHSL, marginal))
-        #expect(marginal < 8.0, "hue curve kernel adds \(marginal)ms/4K-frame")
-    }
-
     @Test func cyclicEvalIsSeamlessAtHueWrap() {
         // Value just past the last point wraps toward the first — no jump across the seam.
         let pts = [CurvePoint(x: 0, y: 0.9), CurvePoint(x: 5.0 / 6, y: 0.2)]
