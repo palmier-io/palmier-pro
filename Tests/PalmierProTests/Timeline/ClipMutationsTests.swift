@@ -144,6 +144,41 @@ struct SplitClipTests {
         #expect(halves[1].fadeInFrames == 0)
         #expect(halves[1].fadeOutFrames == 20)
     }
+
+    @Test func splitClipPreservesHoldInterpolationOnRightHalf() {
+        // Clip with opacity: kf at frame 0 (value 1.0, .hold) → kf at frame 30 (value 0.5).
+        // .hold means the value stays at 1.0 until frame 30. After splitting at frame 15,
+        // the right half should still hold 1.0 from frame 0 to frame 15, then jump to 0.5.
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        clip.opacityTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 1.0, interpolationOut: .hold),
+            Keyframe(frame: 30, value: 0.5),
+        ])
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let rightIds = e.splitClip(clipId: "c1", atFrame: 15)
+        let right = e.timeline.tracks[0].clips.first { $0.id == rightIds[0] }!
+        // Frame 7 on the right half is inside the hold segment; value must remain 1.0.
+        #expect(right.opacityTrack?.sample(at: 7, fallback: 1.0) == 1.0)
+        // Frame 15 on the right half is at the rebased kf (30 - 15 = 15); value should be 0.5.
+        #expect(right.opacityTrack?.sample(at: 15, fallback: 0.0) == 0.5)
+    }
+
+    @Test func splitClipPreservesLinearInterpolationOnRightHalf() {
+        // Clip with rotation: kf at frame 0 (0°, .linear) → kf at frame 20 (20°).
+        // Linear means exactly 1° per frame. After splitting at frame 10, the right half
+        // should continue linearly from 10° to 20° — i.e. value at frame 5 = 15°.
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 40)
+        clip.rotationTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 0.0, interpolationOut: .linear),
+            Keyframe(frame: 20, value: 20.0),
+        ])
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let rightIds = e.splitClip(clipId: "c1", atFrame: 10)
+        let right = e.timeline.tracks[0].clips.first { $0.id == rightIds[0] }!
+        // Right half: boundary kf at frame 0 (value 10.0), original kf at frame 10 (value 20.0).
+        // At frame 5 (halfway), linear interpolation gives exactly 15.0.
+        #expect(right.rotationTrack?.sample(at: 5, fallback: 0.0) == 15.0)
+    }
 }
 
 @Suite("EditorViewModel — applyTimelineSettings")
