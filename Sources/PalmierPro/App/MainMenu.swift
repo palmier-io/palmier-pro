@@ -22,9 +22,16 @@ enum MainMenuBuilder {
         let menu = NSMenu(title: "Palmier Pro")
         menu.addItem(withTitle: "About Palmier Pro", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         menu.addItem(.separator())
-        let updatesItem = NSMenuItem(title: "Check for Updates…", action: #selector(Updater.checkForUpdates(_:)), keyEquivalent: "")
-        updatesItem.target = Updater.shared
-        menu.addItem(updatesItem)
+        if let reason = FeatureGate.officialUpdateChecks.unavailableReason {
+            let updatesItem = NSMenuItem(title: "Check for Updates Unavailable", action: nil, keyEquivalent: "")
+            updatesItem.isEnabled = false
+            updatesItem.toolTip = reason
+            menu.addItem(updatesItem)
+        } else {
+            let updatesItem = NSMenuItem(title: "Check for Updates…", action: #selector(Updater.checkForUpdates(_:)), keyEquivalent: "")
+            updatesItem.target = Updater.shared
+            menu.addItem(updatesItem)
+        }
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
         menu.addItem(.separator())

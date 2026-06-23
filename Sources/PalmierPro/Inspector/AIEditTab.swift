@@ -21,6 +21,14 @@ struct AIEditTab: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
+                if FeatureGate.hostedAIGeneration.unavailableReason != nil {
+                    UnavailableFeatureNotice(
+                        title: "AI Edit unavailable",
+                        message: BuildMode.editorOnlyUnavailableMessage,
+                        detail: "AI Edit requires Palmier hosted AI services and account/backend support."
+                    )
+                }
+
                 if hasScopeToggles {
                     aiSection(title: "Scope") {
                         if clipId != nil { replaceToggle }
@@ -239,8 +247,9 @@ struct AIEditTab: View {
             for: asset,
             effectiveDurationOverride: effectiveDurationForAvailability
         )
-        let isEnabled = availability.isAvailable
-        let disabledReason = availability.reason
+        let featureUnavailableReason = FeatureGate.hostedAIGeneration.unavailableReason
+        let isEnabled = availability.isAvailable && featureUnavailableReason == nil
+        let disabledReason = availability.reason ?? featureUnavailableReason
 
         HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
             Image(systemName: icon)
@@ -257,7 +266,7 @@ struct AIEditTab: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: AppTheme.Spacing.sm)
-            actionTrigger(action: action, title: triggerTitle ?? title, isEnabled: isEnabled)
+            actionTrigger(action: action, title: triggerTitle ?? title, isEnabled: isEnabled, disabledReason: disabledReason)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .help(disabledReason ?? "")
@@ -274,7 +283,7 @@ struct AIEditTab: View {
     }
 
     @ViewBuilder
-    private func actionTrigger(action: EditAction, title: String, isEnabled: Bool) -> some View {
+    private func actionTrigger(action: EditAction, title: String, isEnabled: Bool, disabledReason: String?) -> some View {
         switch action {
         case .upscale:
             Menu(title) {
@@ -290,7 +299,7 @@ struct AIEditTab: View {
             .fixedSize()
             .controlSize(.small)
             .disabled(!isEnabled || !account.aiAllowed)
-            .help(account.aiAllowed ? "" : "Sign in to upscale")
+            .help(disabledReason ?? (account.aiAllowed ? "" : "Sign in to upscale"))
         case .createVideo:
             Menu(title) {
                 Button("Set as first frame") { sendToVideo(asReference: false) }
@@ -300,6 +309,7 @@ struct AIEditTab: View {
             .fixedSize()
             .controlSize(.small)
             .disabled(!isEnabled)
+            .help(disabledReason ?? "")
         case .edit, .generateMusic, .generateSFX, .rerun:
             Button(title) {
                 present(action)
@@ -307,6 +317,7 @@ struct AIEditTab: View {
             .buttonStyle(.capsule(.secondary))
             .controlSize(.small)
             .disabled(!isEnabled)
+            .help(disabledReason ?? "")
         }
     }
 

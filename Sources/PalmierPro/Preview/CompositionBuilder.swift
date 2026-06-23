@@ -406,16 +406,16 @@ enum CompositionBuilder {
         }
 
         let layerInstructions: [AVVideoCompositionLayerInstruction] = trackMappings.filter { $0.isVideo }.map { mapping in
-            var liConfig = AVVideoCompositionLayerInstruction.Configuration(trackID: mapping.compositionTrack.trackID)
-            emitOpacitySet(config: &liConfig, value: 0, at: .zero)
+            let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: mapping.compositionTrack)
+            emitOpacitySet(config: layerInstruction, value: 0, at: .zero)
 
             switch mapping.kind {
             case .blackBackground(let range):
-                emitOpacitySet(config: &liConfig, value: 1, at: range.start)
+                emitOpacitySet(config: layerInstruction, value: 1, at: range.start)
                 if range.end < compositionDuration {
-                    emitOpacitySet(config: &liConfig, value: 0, at: range.end)
+                    emitOpacitySet(config: layerInstruction, value: 0, at: range.end)
                 }
-                return AVVideoCompositionLayerInstruction(configuration: liConfig)
+                return layerInstruction
             case .timeline(let trackIndex, let clipIds):
                 let track = timeline.tracks.indices.contains(trackIndex)
                     ? timeline.tracks[trackIndex] : nil
@@ -430,37 +430,36 @@ enum CompositionBuilder {
                         let natSize = clipNaturalSizes[clip.id] ?? mapping.naturalSize
                         let preferredTransform = clipTransforms[clip.id] ?? .identity
 
-                        emitOpacity(config: &liConfig, clip: clip, start: start, end: end, timescale: timescale)
-                        emitOpacitySet(config: &liConfig, value: 0, at: end)
-                        emitTransform(config: &liConfig, clip: clip, start: start, end: end,
+                        emitOpacity(config: layerInstruction, clip: clip, start: start, end: end, timescale: timescale)
+                        emitOpacitySet(config: layerInstruction, value: 0, at: end)
+                        emitTransform(config: layerInstruction, clip: clip, start: start, end: end,
                                       natSize: natSize, preferredTransform: preferredTransform,
                                       renderSize: renderSize, timescale: timescale)
-                        emitCrop(config: &liConfig, clip: clip, start: start, end: end,
+                        emitCrop(config: layerInstruction, clip: clip, start: start, end: end,
                                  natSize: natSize, preferredTransform: preferredTransform, timescale: timescale)
                         prevEndFrame = clip.endFrame
                     }
                 }
                 if mapping.endTime < compositionDuration {
-                    emitOpacitySet(config: &liConfig, value: 0, at: mapping.endTime)
+                    emitOpacitySet(config: layerInstruction, value: 0, at: mapping.endTime)
                 }
-                return AVVideoCompositionLayerInstruction(configuration: liConfig)
+                return layerInstruction
             }
         }
 
-        var instrConfig = AVVideoCompositionInstruction.Configuration()
-        instrConfig.timeRange = CMTimeRange(start: .zero, duration: compositionDuration)
-        instrConfig.layerInstructions = layerInstructions
-        let instruction = AVVideoCompositionInstruction(configuration: instrConfig)
+        let instruction = AVMutableVideoCompositionInstruction()
+        instruction.timeRange = CMTimeRange(start: .zero, duration: compositionDuration)
+        instruction.layerInstructions = layerInstructions
 
-        var vcConfig = AVVideoComposition.Configuration()
-        vcConfig.renderSize = renderSize
-        vcConfig.frameDuration = CMTime(value: 1, timescale: timescale)
-        vcConfig.instructions = [instruction]
-        vcConfig.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
-        vcConfig.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
-        vcConfig.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
+        let videoComposition = AVMutableVideoComposition()
+        videoComposition.renderSize = renderSize
+        videoComposition.frameDuration = CMTime(value: 1, timescale: timescale)
+        videoComposition.instructions = [instruction]
+        videoComposition.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
+        videoComposition.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
+        videoComposition.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
 
-        return (audioMix, AVVideoComposition(configuration: vcConfig))
+        return (audioMix, videoComposition)
     }
 
     /// Smooth-curve subdivision count for non-linear keyframe segments.
@@ -566,7 +565,7 @@ enum CompositionBuilder {
     }
 
     private static func emitOpacitySet(
-        config: inout AVVideoCompositionLayerInstruction.Configuration,
+        config: AVMutableVideoCompositionLayerInstruction,
         value: Float,
         at time: CMTime
     ) {
@@ -575,7 +574,7 @@ enum CompositionBuilder {
     }
 
     private static func emitOpacityRamp(
-        config: inout AVVideoCompositionLayerInstruction.Configuration,
+        config: AVMutableVideoCompositionLayerInstruction,
         start: Float,
         end: Float,
         timeRange: CMTimeRange
@@ -585,7 +584,7 @@ enum CompositionBuilder {
               isUsableInstructionTime(timeRange.start),
               isUsableInstructionTime(timeRange.end),
               timeRange.duration > .zero else { return }
-        config.addOpacityRamp(.init(timeRange: timeRange, start: start, end: end))
+        config.setOpacityRamp(fromStartOpacity: start, toEndOpacity: end, timeRange: timeRange)
     }
 
     private static func normalizedOpacity(_ value: Float) -> Float? {
@@ -618,7 +617,7 @@ enum CompositionBuilder {
 
     /// Emit the transform instructions from a clip's keyframes
     private static func emitTransform(
-        config: inout AVVideoCompositionLayerInstruction.Configuration,
+        config: AVMutableVideoCompositionLayerInstruction,
         clip: Clip,
         start: CMTime,
         end: CMTime,
@@ -680,11 +679,11 @@ enum CompositionBuilder {
                 let offsetAtT = aOff + Int((Double(bOff - aOff) * t).rounded())
                 let nextTransform = clip.transformAt(frame: clip.startFrame + offsetAtT)
                 if nextT > prevT {
-                    config.addTransformRamp(.init(
-                        timeRange: CMTimeRange(start: prevT, end: nextT),
-                        start: affine(prevTransform),
-                        end: affine(nextTransform)
-                    ))
+                    config.setTransformRamp(
+                        fromStart: affine(prevTransform),
+                        toEnd: affine(nextTransform),
+                        timeRange: CMTimeRange(start: prevT, end: nextT)
+                    )
                 }
                 prevT = nextT
                 prevTransform = nextTransform
@@ -701,7 +700,7 @@ enum CompositionBuilder {
 
     /// Emit the crop instructions from a clip's keyframes
     private static func emitCrop(
-        config: inout AVVideoCompositionLayerInstruction.Configuration,
+        config: AVMutableVideoCompositionLayerInstruction,
         clip: Clip,
         start: CMTime,
         end: CMTime,
@@ -725,14 +724,14 @@ enum CompositionBuilder {
             case .setStatic(let v, let t):
                 config.setCropRectangle(rect(v), at: t)
             case .ramp(let a, let b, let range):
-                config.addCropRectangleRamp(.init(timeRange: range, start: rect(a), end: rect(b)))
+                config.setCropRectangleRamp(fromStartCropRectangle: rect(a), toEndCropRectangle: rect(b), timeRange: range)
             }
         }
     }
 
     /// Opacity instructions for a clip's keyframes + fade envelope.
     private static func emitOpacity(
-        config: inout AVVideoCompositionLayerInstruction.Configuration,
+        config: AVMutableVideoCompositionLayerInstruction,
         clip: Clip,
         start: CMTime,
         end: CMTime,
@@ -746,9 +745,9 @@ enum CompositionBuilder {
             for op in ops {
                 switch op {
                 case .setStatic(let v, let t):
-                    emitOpacitySet(config: &config, value: Float(v), at: t)
+                    emitOpacitySet(config: config, value: Float(v), at: t)
                 case .ramp(let a, let b, let range):
-                    emitOpacityRamp(config: &config, start: Float(a), end: Float(b), timeRange: range)
+                    emitOpacityRamp(config: config, start: Float(a), end: Float(b), timeRange: range)
                 }
             }
             return
@@ -759,7 +758,7 @@ enum CompositionBuilder {
             : []
 
         if clip.durationFrames <= 0 {
-            emitOpacitySet(config: &config, value: Float(clip.opacityAt(frame: clip.startFrame)), at: start)
+            emitOpacitySet(config: config, value: Float(clip.opacityAt(frame: clip.startFrame)), at: start)
         }
         emitEnvelopeRamps(
             clip: clip,
@@ -767,7 +766,7 @@ enum CompositionBuilder {
             timescale: timescale,
             sampleAt: { Float(clip.opacityAt(frame: clip.startFrame + $0)) },
             emit: { aVal, bVal, range in
-                emitOpacityRamp(config: &config, start: aVal, end: bVal, timeRange: range)
+                emitOpacityRamp(config: config, start: aVal, end: bVal, timeRange: range)
             }
         )
     }

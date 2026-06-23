@@ -428,7 +428,9 @@ struct GenerationView: View {
 
     var body: some View {
         Group {
-            if catalogReady {
+            if let reason = FeatureGate.hostedAIGeneration.unavailableReason {
+                generationUnavailableView(reason: reason)
+            } else if catalogReady {
                 bodyContent
             } else {
                 catalogLoadingView
@@ -437,6 +439,53 @@ struct GenerationView: View {
     }
 
     private var aiAllowed: Bool { account.aiAllowed }
+
+    private func generationUnavailableView(reason: String) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            HStack(spacing: AppTheme.Spacing.sm) {
+                ForEach(GenerationType.allCases, id: \.self) { type in
+                    Label(type.rawValue, systemImage: type.icon)
+                        .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .padding(.horizontal, AppTheme.Spacing.smMd)
+                        .padding(.vertical, AppTheme.Spacing.xs)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(Color.white.opacity(AppTheme.Opacity.subtle))
+                        )
+                }
+                Spacer()
+                Button {
+                    editor.showGenerationPanel = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
+                        .hoverHighlight()
+                }
+                .buttonStyle(.plain)
+            }
+
+            UnavailableFeatureNotice(
+                title: "AI generation unavailable",
+                message: BuildMode.editorOnlyUnavailableMessage,
+                detail: "Hosted image, video, audio, upscale, rerun, and model catalog flows require Palmier auth, credits, upload tickets, and backend job updates."
+            )
+            .help(reason)
+        }
+        .padding(AppTheme.Spacing.sm)
+        .background {
+            RoundedRectangle(cornerRadius: AppTheme.Radius.lg)
+                .fill(AppTheme.aiGradientDark)
+                .allowsHitTesting(false)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.lg))
+        .shadow(AppTheme.Shadow.sm)
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.bottom, AppTheme.Spacing.sm)
+        .frame(maxHeight: max(0, CGFloat(maxPanelHeight)), alignment: .top)
+    }
 
     private var catalogLoadingView: some View {
         VStack(spacing: AppTheme.Spacing.md) {
@@ -724,7 +773,7 @@ struct GenerationView: View {
         }
         .padding(AppTheme.Spacing.xs)
         .frame(minWidth: 180)
-        .glassEffect(.clear, in: .rect(cornerRadius: AppTheme.Radius.md))
+        .palmierGlassEffect(.clear, in: RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous))
     }
 
     private func updateRefMentionQuery(from text: String) {
@@ -1303,7 +1352,7 @@ struct GenerationView: View {
                 .font(.system(size: AppTheme.FontSize.sm, weight: .bold))
                 .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
         }
-        .buttonStyle(.glassProminent)
+        .palmierGlassProminentButtonStyle()
         .buttonBorderShape(.circle)
         .controlSize(.regular)
         .tint(AppTheme.Accent.primary)

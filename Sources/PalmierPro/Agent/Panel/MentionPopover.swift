@@ -50,7 +50,7 @@ struct MentionPopover: View {
                 .frame(height: 280)
         }
         .frame(width: 260)
-        .glassEffect(.clear, in: .rect(cornerRadius: AppTheme.Radius.md))
+        .palmierGlassEffect(.clear, in: RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous))
     }
 
     @ViewBuilder

@@ -1,5 +1,7 @@
 import Foundation
+#if !PALMIER_EDITOR_ONLY
 import ClerkKit
+#endif
 
 struct PalmierClient: AgentClient {
     let model: AnthropicModel
@@ -29,6 +31,9 @@ struct PalmierClient: AgentClient {
         messages: [AnthropicMessage],
         continuation: AsyncThrowingStream<AnthropicStreamEvent, Error>.Continuation
     ) async throws {
+        #if PALMIER_EDITOR_ONLY
+        throw PalmierClientError.upstream(BuildMode.editorOnlyUnavailableMessage)
+        #else
         guard let baseURL = BackendConfig.convexHttpURL else {
             throw PalmierClientError.upstream("Backend not configured")
         }
@@ -61,6 +66,7 @@ struct PalmierClient: AgentClient {
         }
 
         try await AnthropicSSE.parse(bytes: bytes, continuation: continuation)
+        #endif
     }
 }
 

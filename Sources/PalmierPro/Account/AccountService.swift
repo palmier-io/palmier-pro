@@ -1,9 +1,11 @@
 import AppKit
 import Foundation
 import Combine
+#if !PALMIER_EDITOR_ONLY
 import ClerkKit
 import ClerkConvex
 @preconcurrency import ConvexMobile
+#endif
 
 enum AccountTier: String, Decodable, Sendable {
     case none, pro, max
@@ -88,6 +90,72 @@ private struct OkResponse: Decodable, Sendable {
     let ok: Bool
 }
 
+#if PALMIER_EDITOR_ONLY
+@Observable
+@MainActor
+final class AccountService {
+    static let shared = AccountService()
+
+    private(set) var isLoading: Bool = false
+    private(set) var isMisconfigured: Bool = true
+    private(set) var account: AccountResponse?
+    private(set) var availablePlans: [AvailablePlan] = []
+    private(set) var lastError: String? = BuildMode.editorOnlyUnavailableMessage
+    private(set) var isBuyingCredits: Bool = false
+
+    var isSignedIn: Bool { false }
+    var aiAllowed: Bool { false }
+    var tier: AccountTier { .none }
+    var isPaid: Bool { false }
+    var spentCredits: Int { 0 }
+    var budgetCredits: Int? { nil }
+    var remainingCredits: Int { 0 }
+    var hasCredits: Bool { false }
+
+    private init() {}
+
+    func configure() {
+        isLoading = false
+        isMisconfigured = true
+        lastError = BuildMode.editorOnlyUnavailableMessage
+    }
+
+    func signInWithGoogle() async {
+        lastError = BuildMode.editorOnlyUnavailableMessage
+    }
+
+    func signOut() async {
+        lastError = nil
+    }
+
+    func subscribe(tier: AccountTier) async {
+        lastError = BuildMode.editorOnlyUnavailableMessage
+    }
+
+    func buyCredits(dollars: Int) {
+        lastError = BuildMode.editorOnlyUnavailableMessage
+    }
+
+    func sendFeedback(
+        message: String,
+        email: String?,
+        mayContact: Bool,
+        screenshotPngBase64: String?,
+        appVersion: String,
+        osVersion: String
+    ) async throws {
+        throw NSError(
+            domain: "Palmier.EditorOnly",
+            code: -1,
+            userInfo: [NSLocalizedDescriptionKey: BuildMode.editorOnlyUnavailableMessage]
+        )
+    }
+
+    func manageSubscription() async {
+        lastError = BuildMode.editorOnlyUnavailableMessage
+    }
+}
+#else
 @Observable
 @MainActor
 final class AccountService {
@@ -419,6 +487,7 @@ final class AccountService {
         NSWorkspace.shared.open(url, configuration: .init(), completionHandler: nil)
     }
 }
+#endif
 
 // MARK: - Display helpers
 

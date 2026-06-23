@@ -40,7 +40,7 @@ struct SettingsView: View {
 
     private var visibleTabs: [SettingsTab] {
         SettingsTab.allCases.filter { tab in
-            !(tab == .account && account.isMisconfigured)
+            !(tab == .account && account.isMisconfigured && !FeatureGate.isExperimentalIntelEditorOnly)
         }
     }
 
@@ -71,7 +71,7 @@ private struct SettingsSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if !account.isMisconfigured {
+            if !account.isMisconfigured || FeatureGate.isExperimentalIntelEditorOnly {
                 IdentityStrip()
             }
             tabList
@@ -131,7 +131,7 @@ private struct SettingsDetail: View {
                 .padding(.horizontal, AppTheme.Spacing.xlXxl)
                 .padding(.bottom, AppTheme.Spacing.xlXxl)
             }
-            .scrollEdgeEffectStyle(.soft, for: .top)
+            .palmierTopScrollEdgeEffect()
         }
     }
 }

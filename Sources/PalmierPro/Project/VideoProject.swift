@@ -450,7 +450,12 @@ extension NSWindow {
         wrapper.frame = NSRect(x: 0, y: 0, width: width, height: 28)
         wrapper.addSubview(host.view)
 
-        let safeArea = wrapper.layoutGuide(for: .safeArea(cornerAdaptation: .horizontal))
+        let safeArea: NSLayoutGuide
+        if #available(macOS 26.0, *) {
+            safeArea = wrapper.layoutGuide(for: .safeArea(cornerAdaptation: .horizontal))
+        } else {
+            safeArea = wrapper.safeAreaLayoutGuide
+        }
         var constraints = [
             host.view.topAnchor.constraint(equalTo: wrapper.topAnchor),
             host.view.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor),

@@ -43,7 +43,9 @@ struct FeedbackView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lgXl) {
-            if didSend {
+            if let reason = FeatureGate.feedbackSubmission.unavailableReason {
+                unavailableBlock(reason: reason)
+            } else if didSend {
                 successBlock
             } else {
                 formBlock
@@ -57,6 +59,24 @@ struct FeedbackView: View {
     }
 
     // MARK: - Form
+
+    private func unavailableBlock(reason: String) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
+            UnavailableFeatureNotice(
+                title: "Feedback unavailable",
+                message: BuildMode.editorOnlyUnavailableMessage,
+                detail: "Feedback submission requires Palmier backend support."
+            )
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .buttonStyle(.capsule(.prominent, size: .regular))
+                    .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
+                    .help(reason)
+            }
+        }
+    }
 
     private var formBlock: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {

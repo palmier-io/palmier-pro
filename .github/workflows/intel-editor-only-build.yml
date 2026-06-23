@@ -1,0 +1,101 @@
+name: Intel Editor-Only Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - intel-mac-support-experiment
+    paths-ignore:
+      - "**/*.md"
+
+concurrency:
+  group: intel-editor-only-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  intel-editor-only:
+    name: Intel editor-only SwiftPM build
+    # GitHub-hosted x64 macOS 26 runner with Xcode 26 / Swift 6.2 tooling.
+    runs-on: macos-26-intel
+    timeout-minutes: 45
+    env:
+      PALMIER_EDITOR_ONLY: "1"
+      SWIFTPM_FLAGS: "--disable-dependency-cache --scratch-path .build/editor-only --manifest-cache local"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show runner and toolchain
+        run: |
+          set -euxo pipefail
+          sw_vers
+          uname -m
+          xcode-select -p
+          xcodebuild -version
+          xcrun --show-sdk-version --sdk macosx
+          xcrun --find swift
+          swift --version
+          echo "Available Xcode apps:"
+          find /Applications -maxdepth 1 -type d -iname "Xcode*.app" -print | sort
+
+      - name: Prepare editor-only SwiftPM workspace
+        run: |
+          set -euxo pipefail
+          rm -f Package.resolved
+          rm -rf .build/editor-only
+          mkdir -p .build/ci-logs
+
+      - name: Resolve packages
+        run: |
+          set -euxo pipefail
+          PALMIER_EDITOR_ONLY=1 swift package $SWIFTPM_FLAGS resolve
+
+      - name: Build Intel editor-only target
+        run: |
+          set -uo pipefail
+          log=".build/ci-logs/swift-build-x86_64.log"
+          PALMIER_EDITOR_ONLY=1 swift build $SWIFTPM_FLAGS --arch x86_64 2>&1 | tee "$log"
+          status="${PIPESTATUS[0]}"
+          if [ "$status" -ne 0 ]; then
+            echo "::group::Swift build error summary"
+            grep -nE "error:|fatal error:" "$log" || true
+            echo "::endgroup::"
+          fi
+          exit "$status"
+
+      - name: Test Intel editor-only target
+        run: |
+          set -uo pipefail
+          log=".build/ci-logs/swift-test-x86_64.log"
+          PALMIER_EDITOR_ONLY=1 swift test $SWIFTPM_FLAGS --arch x86_64 2>&1 | tee "$log"
+          status="${PIPESTATUS[0]}"
+          if [ "$status" -ne 0 ]; then
+            echo "::group::Swift test error summary"
+            grep -nE "error:|fatal error:|failed:" "$log" || true
+            echo "::endgroup::"
+          fi
+          exit "$status"
+
+      - name: Assemble Intel editor-only app artifact
+        run: |
+          set -euxo pipefail
+          PALMIER_EDITOR_ONLY=1 SIGNING_IDENTITY=- SWIFT_BUILD_ARGS="--arch x86_64" ./scripts/bundle.sh debug --fast
+          file .build/PalmierPro.app/Contents/MacOS/PalmierPro
+          lipo -info .build/PalmierPro.app/Contents/MacOS/PalmierPro
+          /usr/bin/ditto -c -k --keepParent .build/PalmierPro.app .build/PalmierPro-intel-editor-only.app.zip
+
+      - name: Upload Intel editor-only app
+        uses: actions/upload-artifact@v4
+        with:
+          name: palmier-pro-intel-editor-only-app
+          path: .build/PalmierPro-intel-editor-only.app.zip
+          if-no-files-found: error
+
+      - name: Upload SwiftPM logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: intel-editor-only-swiftpm-logs
+          path: .build/ci-logs
+          if-no-files-found: ignore

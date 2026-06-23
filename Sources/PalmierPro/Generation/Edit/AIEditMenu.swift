@@ -9,7 +9,9 @@ struct AIEditMenu: View {
         if availableActions.isEmpty {
             EmptyView()
         } else if !aiAllowed {
-            Button("AI Edit") {}.disabled(true)
+            Button("AI Edit") {}
+                .disabled(true)
+                .help(FeatureGate.hostedAIGeneration.unavailableReason ?? "Sign in to use AI Edit")
         } else {
             Menu("AI Edit") {
                 if availableActions.contains(.upscale) {

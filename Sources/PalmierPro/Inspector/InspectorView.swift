@@ -178,7 +178,9 @@ struct InspectorView: View {
         if isSingleText { tabs.append(.text) }
         if !nonText.isEmpty { tabs.append(.video) }
         if !audios.isEmpty { tabs.append(.audio) }
-        if aiEditEligible && !AccountService.shared.isMisconfigured { tabs.append(.ai) }
+        if aiEditEligible && (!AccountService.shared.isMisconfigured || FeatureGate.isExperimentalIntelEditorOnly) {
+            tabs.append(.ai)
+        }
         return tabs
     }
 
@@ -866,7 +868,7 @@ struct InspectorView: View {
 
     @ViewBuilder
     private func mediaAssetInspectorContent(_ asset: MediaAsset) -> some View {
-        if asset.type.isVisual && !AccountService.shared.isMisconfigured {
+        if asset.type.isVisual && (!AccountService.shared.isMisconfigured || FeatureGate.isExperimentalIntelEditorOnly) {
             VStack(spacing: 0) {
                 assetTabBar([.details, .ai])
                 if preferredAssetTab == .ai {

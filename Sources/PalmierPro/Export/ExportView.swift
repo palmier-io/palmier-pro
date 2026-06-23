@@ -232,7 +232,7 @@ struct ExportView: View {
             Button("Cancel") { editor.showExportDialog = false }
                 .keyboardShortcut(.cancelAction)
             Button("Export") { startExport() }
-                .buttonStyle(.glassProminent)
+                .palmierGlassProminentButtonStyle()
                 .buttonBorderShape(.capsule)
                 .disabled(service.isExporting)
                 .keyboardShortcut(.defaultAction)

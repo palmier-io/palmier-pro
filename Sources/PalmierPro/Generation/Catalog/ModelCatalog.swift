@@ -1,6 +1,8 @@
 import Foundation
+#if !PALMIER_EDITOR_ONLY
 import Combine
 @preconcurrency import ConvexMobile
+#endif
 
 enum ModelKind: Sendable {
     case video(VideoModelConfig)
@@ -39,7 +41,9 @@ final class ModelCatalog {
     private(set) var isLoaded: Bool = false
     private(set) var lastError: String?
 
+    #if !PALMIER_EDITOR_ONLY
     @ObservationIgnored private var subscription: AnyCancellable?
+    #endif
     @ObservationIgnored private var didConfigure = false
 
     private init() {}
@@ -48,6 +52,10 @@ final class ModelCatalog {
         guard !didConfigure else { return }
         didConfigure = true
 
+        #if PALMIER_EDITOR_ONLY
+        isLoaded = true
+        lastError = BuildMode.editorOnlyUnavailableMessage
+        #else
         guard let client = AccountService.shared.convex else { return }
 
         subscription = client
@@ -64,6 +72,7 @@ final class ModelCatalog {
                     self?.apply(entries)
                 }
             )
+        #endif
     }
 
     private func apply(_ entries: [CatalogEntry]) {

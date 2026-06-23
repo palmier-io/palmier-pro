@@ -22,6 +22,16 @@ swift build
 swift run
 ```
 
+### Experimental Intel editor-only build
+
+The reduced Intel build is opt-in and excludes Clerk/Convex backend features:
+
+```bash
+PALMIER_EDITOR_ONLY=1 swift build --arch x86_64
+```
+
+It still requires Swift 6.2 and a macOS 26 SDK because compatibility wrappers must reference macOS 26 SwiftUI APIs before guarding them at runtime.
+
 For a bundled debug build that launches the `.app` and streams OSLog:
 
 ```bash

@@ -61,7 +61,7 @@ struct AgentPanelView: View {
     }
 
     private var floatingTabBar: some View {
-        GlassEffectContainer {
+        PalmierGlassEffectContainer {
             HStack(spacing: AppTheme.Spacing.xs) {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -88,7 +88,7 @@ struct AgentPanelView: View {
             .padding(.horizontal, AppTheme.Spacing.sm)
             .frame(maxWidth: .infinity)
             .frame(height: Layout.panelHeaderHeight)
-            .glassEffect(.regular, in: Rectangle())
+            .palmierGlassEffect(.regular, in: Rectangle())
             .overlay(alignment: .bottom) {
                 Rectangle()
                     .fill(AppTheme.Border.subtleColor)
@@ -217,13 +217,7 @@ struct AgentPanelView: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.never)
-            .scrollEdgeEffectStyle(.soft, for: .bottom)
-            .onScrollGeometryChange(for: Bool.self) { geo in
-                let distance = geo.contentSize.height - geo.contentOffset.y - geo.containerSize.height
-                return distance > 80
-            } action: { _, newValue in
-                withAnimation(.easeOut(duration: 0.15)) { isScrolledFromBottom = newValue }
-            }
+            .palmierBottomScrollTracking(isScrolledFromBottom: $isScrolledFromBottom)
             .onChange(of: service.messages.count) { _, _ in scrollToBottom(proxy) }
             .onChange(of: service.isStreaming) { _, _ in scrollToBottom(proxy) }
             .overlay(alignment: .bottomTrailing) {
@@ -245,7 +239,7 @@ struct AgentPanelView: View {
                 .font(.system(size: AppTheme.FontSize.smMd, weight: .semibold))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .frame(width: AppTheme.IconSize.lgXl, height: AppTheme.IconSize.lgXl)
-                .glassEffect(.regular, in: .circle)
+                .palmierGlassEffect(.regular, in: Circle())
         }
         .buttonStyle(.plain)
         .focusable(false)
@@ -317,25 +311,41 @@ struct AgentPanelView: View {
     @ViewBuilder
     private var missingKeyState: some View {
         let account = AccountService.shared
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Button(action: { SettingsWindowController.shared.show(tab: .account) }) {
-                Text(missingKeyPrimaryAction(account: account))
-                    .underline()
-                    .foregroundStyle(AppTheme.Accent.primary)
-            }
-            .buttonStyle(.plain)
+        if BuildMode.isEditorOnly {
+            VStack(spacing: AppTheme.Spacing.xs) {
+                Text("Palmier account and generation features are unavailable in this Intel editor-only build.")
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .multilineTextAlignment(.center)
 
-            Text("or use")
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-
-            Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
-                Text("your own Anthropic key")
-                    .underline()
-                    .foregroundStyle(AppTheme.Accent.primary)
+                Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
+                    Text("Add your own Anthropic key")
+                        .underline()
+                        .foregroundStyle(AppTheme.Accent.primary)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+            .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Button(action: { SettingsWindowController.shared.show(tab: .account) }) {
+                    Text(missingKeyPrimaryAction(account: account))
+                        .underline()
+                        .foregroundStyle(AppTheme.Accent.primary)
+                }
+                .buttonStyle(.plain)
+
+                Text("or use")
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+
+                Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
+                    Text("your own Anthropic key")
+                        .underline()
+                        .foregroundStyle(AppTheme.Accent.primary)
+                }
+                .buttonStyle(.plain)
+            }
+            .font(.system(size: AppTheme.FontSize.md, weight: .medium))
         }
-        .font(.system(size: AppTheme.FontSize.md, weight: .medium))
     }
 
     private func missingKeyPrimaryAction(account: AccountService) -> String {

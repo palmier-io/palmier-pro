@@ -36,7 +36,7 @@ struct UpdateBadgeView: View {
                 .buttonStyle(.plain)
                 .help("Dismiss")
             }
-            .glassEffect(.regular, in: .capsule)
+            .palmierGlassEffect(.regular, in: Capsule())
             .fixedSize(horizontal: true, vertical: false)
             .transition(.opacity.combined(with: .scale))
         }

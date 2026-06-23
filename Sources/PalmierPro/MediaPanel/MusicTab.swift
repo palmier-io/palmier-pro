@@ -57,6 +57,9 @@ struct MusicTab: View {
     }
 
     private var validationNote: String? {
+        if let reason = FeatureGate.hostedAIGeneration.unavailableReason {
+            return reason
+        }
         guard let model else { return "No music models available." }
         if isTextMode {
             if trimmedPrompt.isEmpty { return "Describe the music to generate." }
@@ -227,7 +230,7 @@ struct MusicTab: View {
                 }
                 .buttonStyle(.plain).focusable(false)
                 .disabled(!canGenerate || !account.aiAllowed)
-                .help(account.aiAllowed ? "" : "Sign in to generate")
+                .help(FeatureGate.hostedAIGeneration.unavailableReason ?? (account.aiAllowed ? "" : "Sign in to generate"))
 
                 agentMenu
             }

@@ -38,6 +38,9 @@ struct CaptionTab: View {
     private var captionTrackIndices: [Int] {
         editor.timeline.tracks.indices.filter { !editor.captionTargets(trackIds: [editor.timeline.tracks[$0].id]).isEmpty }
     }
+    private var transcriptionUnavailableReason: String? {
+        FeatureGate.transcription.unavailableReason
+    }
 
     private static let translateLanguages = [
         "Spanish", "French", "German", "Italian", "Portuguese",
@@ -354,7 +357,7 @@ struct CaptionTab: View {
 
     private var generateBar: some View {
         VStack(spacing: AppTheme.Spacing.sm) {
-            if let note {
+            if let note = note ?? transcriptionUnavailableReason {
                 Text(note)
                     .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
                     .foregroundStyle(AppTheme.Status.errorColor)
@@ -370,10 +373,11 @@ struct CaptionTab: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, AppTheme.Spacing.smMd)
                         .background(RoundedRectangle(cornerRadius: AppTheme.Radius.sm).fill(AppTheme.Accent.primary))
-                        .opacity(effectiveCount == 0 ? AppTheme.Opacity.medium : AppTheme.Opacity.opaque)
+                        .opacity((effectiveCount == 0 || transcriptionUnavailableReason != nil) ? AppTheme.Opacity.medium : AppTheme.Opacity.opaque)
                 }
                 .buttonStyle(.plain).focusable(false)
-                .disabled(effectiveCount == 0 || isGenerating)
+                .disabled(effectiveCount == 0 || isGenerating || transcriptionUnavailableReason != nil)
+                .help(transcriptionUnavailableReason ?? "")
 
                 agentMenu
             }
