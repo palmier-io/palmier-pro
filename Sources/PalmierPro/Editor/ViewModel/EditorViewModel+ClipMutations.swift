@@ -257,10 +257,13 @@ extension EditorViewModel {
         let basis = dragBefore[clip.id] ?? clip
         let sourceFrames = Double(basis.durationFrames) * basis.speed
         let newDuration = max(1, Int((sourceFrames / newSpeed).rounded()))
+        let oldDuration = clip.durationFrames
         let oldEnd = clip.endFrame
 
         timeline.tracks[ti].clips[loc.clipIndex].speed = newSpeed
         timeline.tracks[ti].clips[loc.clipIndex].durationFrames = newDuration
+        // Keyframe offsets are clip-relative, so retime them before the clamp drops them.
+        timeline.tracks[ti].clips[loc.clipIndex].rescaleKeyframes(by: Double(newDuration) / Double(oldDuration))
         timeline.tracks[ti].clips[loc.clipIndex].clampKeyframesToDuration()
         timeline.tracks[ti].clips[loc.clipIndex].clampFadesToDuration()
 
