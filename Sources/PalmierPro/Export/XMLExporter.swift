@@ -37,9 +37,37 @@ import Foundation
 
 enum XMLExporter {
 
-    static func export(timeline: Timeline, resolver: MediaResolver, outputURL: URL) {
-        let xml = Builder(timeline: timeline, resolver: resolver).build()
+    static func export(timeline: Timeline, resolver: MediaResolver, outputURL: URL) async {
+        var startFrameCache: [String: Int?] = [:]
+        let mediaRefs = Set(timeline.tracks.flatMap { $0.clips.map { $0.mediaRef } })
+        for mediaRef in mediaRefs {
+            if let url = resolver.resolveURL(for: mediaRef) {
+                startFrameCache[mediaRef] = await readStartTimecodeFrame(url: url)
+            } else {
+                startFrameCache[mediaRef] = nil
+            }
+        }
+        let xml = Builder(timeline: timeline, resolver: resolver, startFrameCache: startFrameCache).build()
         try? xml.data(using: .utf8)?.write(to: outputURL)
+    }
+
+    private static func readStartTimecodeFrame(url: URL) async -> Int? {
+        let asset = AVURLAsset(url: url)
+        guard let tracks = try? await asset.loadTracks(withMediaType: .timecode),
+              let track = tracks.first,
+              let reader = try? AVAssetReader(asset: asset) else { return nil }
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        guard reader.canAdd(output) else { return nil }
+        reader.add(output)
+        guard reader.startReading() else { return nil }
+        while let sample = output.copyNextSampleBuffer() {
+            guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
+            var be: UInt32 = 0
+            guard CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: 4, destination: &be) == kCMBlockBufferNoErr
+            else { return nil }
+            return Int(UInt32(bigEndian: be))
+        }
+        return nil
     }
 
     // MARK: - Builder
@@ -57,17 +85,18 @@ enum XMLExporter {
         private var clipAddresses: [String: ClipAddress] = [:]
         private var clipsByLinkGroup: [String: [Clip]] = [:]
         /// Source start timecode (frames) per media ref; nil = no timecode track. Avoids re-reading per file.
-        private var startFrameCache: [String: Int?] = [:]
+        private var startFrameCache: [String: Int?]
 
         private struct FileKey: Hashable { let mediaRef: String; let isAudio: Bool }
         private struct ClipAddress { let trackIndex: Int; let clipIndex: Int; let isAudio: Bool }  // indices 1-based
 
-        init(timeline: Timeline, resolver: MediaResolver) {
+        init(timeline: Timeline, resolver: MediaResolver, startFrameCache: [String: Int?]) {
             self.timeline = timeline
             self.resolver = resolver
             self.fps = timeline.fps
             self.seqWidth = timeline.width
             self.seqHeight = timeline.height
+            self.startFrameCache = startFrameCache
         }
 
         // MARK: - Document shell
@@ -236,29 +265,7 @@ enum XMLExporter {
 
         /// Source start timecode — one read serves both the video and audio file nodes.
         private func sourceStartFrame(for mediaRef: String) -> Int? {
-            if let cached = startFrameCache[mediaRef] { return cached }
-            let frame = resolver.resolveURL(for: mediaRef).flatMap(Builder.readStartTimecodeFrame)
-            startFrameCache[mediaRef] = frame
-            return frame
-        }
-
-        /// Start frame from the QuickTime `tmcd` track; skip the leading edit-boundary buffer (no data buffer).
-        private static func readStartTimecodeFrame(url: URL) -> Int? {
-            let asset = AVURLAsset(url: url)
-            guard let track = asset.tracks(withMediaType: .timecode).first,
-                  let reader = try? AVAssetReader(asset: asset) else { return nil }
-            let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
-            guard reader.canAdd(output) else { return nil }
-            reader.add(output)
-            guard reader.startReading() else { return nil }
-            while let sample = output.copyNextSampleBuffer() {
-                guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
-                var be: UInt32 = 0
-                guard CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: 4, destination: &be) == kCMBlockBufferNoErr
-                else { return nil }
-                return Int(UInt32(bigEndian: be))
-            }
-            return nil
+            return startFrameCache[mediaRef] ?? nil
         }
 
         /// Frame count → SMPTE string; drop-frame (29.97/59.94) uses `;` separators and skips dropped frames.
