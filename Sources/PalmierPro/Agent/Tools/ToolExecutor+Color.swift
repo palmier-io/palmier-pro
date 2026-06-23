@@ -73,10 +73,14 @@ extension ToolExecutor {
         let actionName = input.clipIds.count == 1 ? "Color Grade (Agent)" : "Color Grade ×\(input.clipIds.count) (Agent)"
         withUndoGroup(editor, actionName: actionName) {
             editor.mutateClips(ids: Set(input.clipIds), actionName: actionName) { clip in
+                let disabledColor = reset ? []
+                    : Set((clip.effects ?? []).filter { $0.type.hasPrefix("color.") && !$0.enabled }.map(\.type))
                 var state = GradeState(effects: reset ? nil : clip.effects)
                 state.apply(input, lutDestPath: lutDestPath)
                 let nonColor = (clip.effects ?? []).filter { !$0.type.hasPrefix("color.") }
-                clip.effects = nonColor + state.buildStack()
+                var color = state.buildStack()
+                for i in color.indices where disabledColor.contains(color[i].type) { color[i].enabled = false }
+                clip.effects = nonColor + color
             }
         }
         return .ok("Graded \(input.clipIds.count) clip\(input.clipIds.count == 1 ? "" : "s") (\(reset ? "reset" : "merged")). Verify with inspect_timeline.")
@@ -333,7 +337,7 @@ private struct GradeState {
             if let p = points(i.blueCurve) { c.blue = p }
             curve = c
         }
-        if let targets = i.hueCurves?.targets { hueCurves = Self.compileHueCurves(targets) }
+        if let targets = i.hueCurves?.targets, !targets.isEmpty { hueCurves = Self.compileHueCurves(targets) }
         if let dest = lutDestPath {
             lutPath = dest
             lutIntensity = (i.lut?.strength).map { clamp3(min(1, max(0, $0))) } ?? 1

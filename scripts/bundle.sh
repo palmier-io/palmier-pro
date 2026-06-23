@@ -104,10 +104,6 @@ else
   exit 1
 fi
 
-# Ship the whole SwiftPM resource bundle so Bundle.module resolves at runtime —
-# CIKernelLoader loads the Metal CI kernels (.metallib) via Bundle.module, and the
-# generated accessor fatalErrors if the bundle is absent. (Fonts/Images/etc. above are
-# also flattened for Bundle.main consumers; this copy is what carries the .metallib files.)
 if ! ls "$RES_BUNDLE"/*.metallib >/dev/null 2>&1; then
   echo "!! no .metallib in SwiftPM resource bundle at $RES_BUNDLE — Metal effects would be missing" >&2
   exit 1
