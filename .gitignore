@@ -33,3 +33,6 @@ models/*/.venv/
 models/*/build*/
 models/*/checkpoint*
 models/*/convert*.log
+
+# Brainstorming companion (local session output)
+.superpowers/
