@@ -46,8 +46,8 @@ struct ExportView: View {
                 .background(.ultraThinMaterial)
         }
         .task {
-            loadPreview()
             palmierSummary = computePalmierSummary()
+            await loadPreview()
         }
     }
 
@@ -296,22 +296,19 @@ struct ExportView: View {
         return (collect, missing, bytes)
     }
 
-    private func loadPreview() {
+    private func loadPreview() async {
         for track in editor.timeline.tracks where track.type == .video {
             for clip in track.clips {
                 guard let url = editor.mediaResolver.resolveURL(for: clip.mediaRef) else { continue }
                 let asset = AVURLAsset(url: url)
-                guard !asset.tracks(withMediaType: .video).isEmpty else { continue }
+                guard let tracks = try? await asset.loadTracks(withMediaType: .video),
+                      !tracks.isEmpty else { continue }
                 let generator = AVAssetImageGenerator(asset: asset)
                 generator.maximumSize = CGSize(width: 480, height: 270)
                 generator.appliesPreferredTrackTransform = true
                 let time = CMTime(value: CMTimeValue(clip.trimStartFrame), timescale: CMTimeScale(editor.timeline.fps))
-                generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { _, image, _, _, _ in
-                    if let image {
-                        Task { @MainActor in
-                            preview = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
-                        }
-                    }
+                if let cgImage = try? await generator.image(at: time).image {
+                    preview = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
                 }
                 return
             }

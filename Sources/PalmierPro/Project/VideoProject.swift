@@ -373,20 +373,28 @@ final class VideoProject: NSDocument {
                 }
                 guard clip.mediaType == .video else { continue }
 
-                let asset = AVURLAsset(url: url)
-                guard !asset.tracks(withMediaType: .video).isEmpty else { continue }
-                let generator = AVAssetImageGenerator(asset: asset)
-                generator.maximumSize = CGSize(width: 320, height: 180)
-                generator.appliesPreferredTrackTransform = true
                 let time = CMTime(value: CMTimeValue(clip.trimStartFrame), timescale: CMTimeScale(editorViewModel.timeline.fps))
-                nonisolated(unsafe) var result: CGImage?
                 let semaphore = DispatchSemaphore(value: 0)
-                generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { _, image, _, _, _ in
-                    result = image
+                nonisolated(unsafe) var result: CGImage?
+                let task = Task {
+                    do {
+                        let asset = AVURLAsset(url: url)
+                        let generator = AVAssetImageGenerator(asset: asset)
+                        generator.maximumSize = CGSize(width: 320, height: 180)
+                        generator.appliesPreferredTrackTransform = true
+
+                        let tracks = try await asset.loadTracks(withMediaType: .video)
+                        if !tracks.isEmpty {
+                            let (cgImage, _) = try await generator.image(at: time)
+                            result = cgImage
+                        }
+                    } catch {
+                        Log.project.error("Thumbnail generation error: \(error)")
+                    }
                     semaphore.signal()
                 }
                 guard semaphore.wait(timeout: .now() + .seconds(5)) == .success else {
-                    generator.cancelAllCGImageGeneration()
+                    task.cancel()
                     continue
                 }
                 if let cgImage = result {
