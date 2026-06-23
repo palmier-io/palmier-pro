@@ -56,7 +56,7 @@ extension ToolExecutor {
     func applyColor(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let input: ApplyColorInput = try decodeToolArgs(args, path: "apply_color")
         guard !input.clipIds.isEmpty else { throw ToolError("clipIds is empty.") }
-        guard input.hasAnyParam else { throw ToolError("No grade parameters provided.") }
+        guard input.hasAnyParam || (input.reset ?? false) else { throw ToolError("No grade parameters provided.") }
         for id in input.clipIds {
             guard let clip = editor.clipFor(id: id) else { throw ToolError("Clip not found: \(id)") }
             guard clip.mediaType == .video || clip.mediaType == .image else {
@@ -156,16 +156,18 @@ extension ToolExecutor {
         }
         let fps = srcAsset.sourceFPS ?? Double(editor.timeline.fps)
         let sourceFrame: Double
+        let offset: Int   // clip-relative frame, drives keyframed/animated effects so they match the sampled pixel
         if let f = atFrame {
-            let rel = max(0, min(clip.durationFrames, f - clip.startFrame))
-            sourceFrame = Double(clip.trimStartFrame) + Double(rel) * clip.speed
+            offset = max(0, min(clip.durationFrames, f - clip.startFrame))
+            sourceFrame = Double(clip.trimStartFrame) + Double(offset) * clip.speed
         } else {
+            offset = clip.durationFrames / 2
             sourceFrame = Double(clip.trimStartFrame) + Double(clip.sourceFramesConsumed) / 2
         }
         guard let frame = await Self.frameImage(url: srcURL, type: clip.mediaType, atSeconds: sourceFrame / max(1, fps)) else {
             throw ToolError("Could not decode a frame for clip \(clipId).")
         }
-        let graded = Self.applyingEffects(frame, clip: clip, atOffset: clip.durationFrames / 2)
+        let graded = Self.applyingEffects(frame, clip: clip, atOffset: offset)
         guard let scopes = ColorScopes.measure(graded) else { throw ToolError("Could not measure the clip frame.") }
         return (graded, scopes)
     }
