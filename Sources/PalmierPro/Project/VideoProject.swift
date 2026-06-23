@@ -357,46 +357,68 @@ final class VideoProject: NSDocument {
     // MARK: - Thumbnail
 
     private var cachedThumbnail: Data?
+    private var thumbnailInFlight = false
+    private nonisolated static let thumbnailMaxPixelSize = 640
 
     private func captureThumbnail() -> Data? {
         if let cached = cachedThumbnail { return cached }
-        Log.project.debug("captureThumbnail begin")
-
-        for track in editorViewModel.timeline.tracks where track.type == .video {
-            for clip in track.clips {
-                guard let url = editorViewModel.mediaResolver.resolveURL(for: clip.mediaRef) else { continue }
-                if clip.mediaType == .image,
-                   let image = ImageEncoder.thumbnail(url: url, maxPixelSize: 640),
-                   let data = ImageEncoder.encodeJPEG(image, quality: 0.7) {
-                    cachedThumbnail = data
-                    return data
-                }
-                guard clip.mediaType == .video else { continue }
-
-                let asset = AVURLAsset(url: url)
-                guard !asset.tracks(withMediaType: .video).isEmpty else { continue }
-                let generator = AVAssetImageGenerator(asset: asset)
-                generator.maximumSize = CGSize(width: 320, height: 180)
-                generator.appliesPreferredTrackTransform = true
-                let time = CMTime(value: CMTimeValue(clip.trimStartFrame), timescale: CMTimeScale(editorViewModel.timeline.fps))
-                nonisolated(unsafe) var result: CGImage?
-                let semaphore = DispatchSemaphore(value: 0)
-                generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { _, image, _, _, _ in
-                    result = image
-                    semaphore.signal()
-                }
-                guard semaphore.wait(timeout: .now() + .seconds(5)) == .success else {
-                    generator.cancelAllCGImageGeneration()
-                    continue
-                }
-                if let cgImage = result {
-                    let rep = NSBitmapImageRep(cgImage: cgImage)
-                    cachedThumbnail = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.7])
-                    return cachedThumbnail
-                }
-            }
+        guard !thumbnailInFlight else { return nil }
+        thumbnailInFlight = true
+        Task { [weak self] in
+            await self?.generateThumbnail()
         }
         return nil
+    }
+
+    /// Picks the first usable video-track clip and generates a jpeg
+    private func generateThumbnail() async {
+        defer { thumbnailInFlight = false }
+
+        struct Candidate { let url: URL; let isVideo: Bool; let trimStartFrame: Int }
+        var candidates: [Candidate] = []
+        for track in editorViewModel.timeline.tracks where track.type == .video {
+            for clip in track.clips {
+                guard clip.mediaType == .image || clip.mediaType == .video,
+                      let url = editorViewModel.mediaResolver.expectedURL(for: clip.mediaRef) else { continue }
+                candidates.append(Candidate(
+                    url: url,
+                    isVideo: clip.mediaType == .video,
+                    trimStartFrame: clip.trimStartFrame
+                ))
+            }
+        }
+        let fps = editorViewModel.timeline.fps
+        guard !candidates.isEmpty else { return }
+
+        let maxPixelSize = Self.thumbnailMaxPixelSize
+        let data: Data? = await Task.detached(priority: .utility) {
+            for candidate in candidates {
+                if candidate.isVideo {
+                    // Async `loadTracks` / `image(at:)` — no blocking semaphore wait.
+                    let asset = AVURLAsset(url: candidate.url)
+                    guard (try? await asset.loadTracks(withMediaType: .video).first) != nil else { continue }
+                    let generator = AVAssetImageGenerator(asset: asset)
+                    // Aspect-preserving box; frame is ~640px on the long edge.
+                    generator.maximumSize = CGSize(width: maxPixelSize, height: maxPixelSize)
+                    generator.appliesPreferredTrackTransform = true
+                    let time = CMTime(value: CMTimeValue(candidate.trimStartFrame), timescale: CMTimeScale(max(fps, 1)))
+                    guard let cgImage = try? await generator.image(at: time).image else { continue }
+                    return NSBitmapImageRep(cgImage: cgImage).representation(using: .jpeg, properties: [.compressionFactor: 0.7])
+                } else if let image = ImageEncoder.thumbnail(url: candidate.url, maxPixelSize: maxPixelSize),
+                          let data = ImageEncoder.encodeJPEG(image, quality: 0.7) {
+                    return data
+                }
+            }
+            return nil
+        }.value
+
+        guard let data else { return }
+        cachedThumbnail = data
+        guard let packageURL = fileURL else { return }
+        let thumbURL = packageURL.appendingPathComponent(Project.thumbnailFilename, isDirectory: false)
+        try? await Task.detached(priority: .utility) {
+            try data.write(to: thumbURL, options: .atomic)
+        }.value
     }
 
     // MARK: - Media restore
