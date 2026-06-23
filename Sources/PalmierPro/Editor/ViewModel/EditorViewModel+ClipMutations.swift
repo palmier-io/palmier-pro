@@ -337,6 +337,33 @@ extension EditorViewModel {
         }
     }
 
+    func applyClipProperties(clipIds: [String], rebuild: Bool = false, _ modify: (inout Clip) -> Void) {
+        var touchedText = false
+        var touchedVisual = false
+        for clipId in clipIds {
+            guard let loc = findClip(id: clipId) else { continue }
+            var clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            if dragBefore[clipId] == nil {
+                dragBefore[clipId] = clip
+            }
+            modify(&clip)
+            timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
+            if clip.mediaType == .text {
+                touchedText = true
+            } else {
+                touchedVisual = true
+            }
+        }
+        if touchedText { videoEngine?.syncTextLayers() }
+        if touchedVisual {
+            if rebuild {
+                notifyTimelineChangedDebounced()
+            } else {
+                videoEngine?.refreshVisuals()
+            }
+        }
+    }
+
     func revertClipProperty(clipId: String) {
         guard let original = dragBefore.removeValue(forKey: clipId),
               let loc = findClip(id: clipId) else { return }
@@ -409,6 +436,26 @@ extension EditorViewModel {
         } else {
             notifyTimelineChanged()
         }
+    }
+
+    func commitClipProperties(clipIds: [String], _ modify: (inout Clip) -> Void) {
+        var touchedText = false
+        var touchedVisual = false
+        for clipId in clipIds {
+            guard let loc = findClip(id: clipId) else { continue }
+            var clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            let before = dragBefore.removeValue(forKey: clipId) ?? clip
+            modify(&clip)
+            timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
+            registerClipPropertySwap(clipId: clipId, undoTarget: before, redoTarget: clip)
+            if clip.mediaType == .text {
+                touchedText = true
+            } else {
+                touchedVisual = true
+            }
+        }
+        if touchedText { videoEngine?.syncTextLayers() }
+        if touchedVisual { notifyTimelineChanged() }
     }
 
     /// Bidirectional undo/redo for a single clip's property change.

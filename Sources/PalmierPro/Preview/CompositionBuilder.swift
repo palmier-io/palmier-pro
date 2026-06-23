@@ -405,62 +405,85 @@ enum CompositionBuilder {
             return params
         }
 
-        let layerInstructions: [AVVideoCompositionLayerInstruction] = trackMappings.filter { $0.isVideo }.map { mapping in
-            var liConfig = AVVideoCompositionLayerInstruction.Configuration(trackID: mapping.compositionTrack.trackID)
-            emitOpacitySet(config: &liConfig, value: 0, at: .zero)
-
-            switch mapping.kind {
-            case .blackBackground(let range):
-                emitOpacitySet(config: &liConfig, value: 1, at: range.start)
-                if range.end < compositionDuration {
-                    emitOpacitySet(config: &liConfig, value: 0, at: range.end)
-                }
-                return AVVideoCompositionLayerInstruction(configuration: liConfig)
-            case .timeline(let trackIndex, let clipIds):
-                let track = timeline.tracks.indices.contains(trackIndex)
-                    ? timeline.tracks[trackIndex] : nil
-                if let track, !track.hidden {
-                    var prevEndFrame = Int.min
-                    for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame })
-                        where clip.mediaType != .text {
-                        if let clipIds, !clipIds.contains(clip.id) { continue }
-                        guard clip.durationFrames > 0, clip.startFrame >= prevEndFrame else { continue }
-                        let start = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
-                        let end = CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale)
-                        let natSize = clipNaturalSizes[clip.id] ?? mapping.naturalSize
-                        let preferredTransform = clipTransforms[clip.id] ?? .identity
-
-                        emitOpacity(config: &liConfig, clip: clip, start: start, end: end, timescale: timescale)
-                        emitOpacitySet(config: &liConfig, value: 0, at: end)
-                        emitTransform(config: &liConfig, clip: clip, start: start, end: end,
-                                      natSize: natSize, preferredTransform: preferredTransform,
-                                      renderSize: renderSize, timescale: timescale)
-                        emitCrop(config: &liConfig, clip: clip, start: start, end: end,
-                                 natSize: natSize, preferredTransform: preferredTransform, timescale: timescale)
-                        prevEndFrame = clip.endFrame
-                    }
-                }
-                if mapping.endTime < compositionDuration {
-                    emitOpacitySet(config: &liConfig, value: 0, at: mapping.endTime)
-                }
-                return AVVideoCompositionLayerInstruction(configuration: liConfig)
-            }
-        }
-
-        var instrConfig = AVVideoCompositionInstruction.Configuration()
-        instrConfig.timeRange = CMTimeRange(start: .zero, duration: compositionDuration)
-        instrConfig.layerInstructions = layerInstructions
-        let instruction = AVVideoCompositionInstruction(configuration: instrConfig)
-
         var vcConfig = AVVideoComposition.Configuration()
         vcConfig.renderSize = renderSize
         vcConfig.frameDuration = CMTime(value: 1, timescale: timescale)
-        vcConfig.instructions = [instruction]
-        vcConfig.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
-        vcConfig.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
-        vcConfig.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
 
+        vcConfig.customVideoCompositorClass = CustomVideoCompositor.self
+        vcConfig.instructions = compositorInstructions(
+            timeline: timeline,
+            trackMappings: trackMappings,
+            clipNaturalSizes: clipNaturalSizes,
+            clipTransforms: clipTransforms,
+            compositionDuration: compositionDuration,
+            renderSize: renderSize
+        )
         return (audioMix, AVVideoComposition(configuration: vcConfig))
+    }
+
+    /// One instruction per segment between clip boundaries, layers bottom → top.
+    /// The black-background track is excluded — FrameRenderer fills black itself.
+    private static func compositorInstructions(
+        timeline: Timeline,
+        trackMappings: [TrackMapping],
+        clipNaturalSizes: [String: CGSize],
+        clipTransforms: [String: CGAffineTransform],
+        compositionDuration: CMTime,
+        renderSize: CGSize
+    ) -> [CompositorInstruction] {
+        let timescale = CMTimeScale(timeline.fps)
+        struct Entry {
+            let start: CMTime
+            let end: CMTime
+            let plan: LayerPlan
+        }
+
+        // trackMappings order: timeline track 0 first (topmost), black background last.
+        var entries: [Entry] = []
+        for mapping in trackMappings.reversed() where mapping.isVideo {
+            guard case .timeline(let trackIndex, let clipIds) = mapping.kind,
+                  timeline.tracks.indices.contains(trackIndex) else { continue }
+            let track = timeline.tracks[trackIndex]
+            guard !track.hidden else { continue }
+            var prevEndFrame = Int.min
+            for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame })
+                where clip.mediaType != .text {
+                if let clipIds, !clipIds.contains(clip.id) { continue }
+                guard clip.durationFrames > 0, clip.startFrame >= prevEndFrame else { continue }
+                entries.append(Entry(
+                    start: CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale),
+                    end: CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale),
+                    plan: LayerPlan(
+                        trackID: mapping.compositionTrack.trackID,
+                        clip: clip,
+                        natSize: clipNaturalSizes[clip.id] ?? mapping.naturalSize,
+                        preferredTransform: clipTransforms[clip.id] ?? .identity
+                    )
+                ))
+                prevEndFrame = clip.endFrame
+            }
+        }
+
+        var cutSet = Set<CMTime>()
+        for e in entries {
+            cutSet.insert(e.start)
+            cutSet.insert(e.end)
+        }
+        let cuts = cutSet.filter { $0 > .zero && $0 < compositionDuration }.sorted()
+        let bounds = [.zero] + cuts + [compositionDuration]
+
+        var instructions: [CompositorInstruction] = []
+        for i in 0..<(bounds.count - 1) {
+            let range = CMTimeRange(start: bounds[i], end: bounds[i + 1])
+            guard range.duration > .zero else { continue }
+            let layers = entries
+                .filter { $0.start <= range.start && $0.end >= range.end }
+                .map(\.plan)
+            instructions.append(CompositorInstruction(
+                timeRange: range, layers: layers, renderSize: renderSize, fps: timeline.fps
+            ))
+        }
+        return instructions
     }
 
     /// Smooth-curve subdivision count for non-linear keyframe segments.
@@ -506,7 +529,7 @@ enum CompositionBuilder {
         )
     }
 
-    /// Piecewise-linear envelope shared by audio volume and video opacity fade emission.
+    /// Piecewise-linear envelope for the audio volume curve.
     private static func emitEnvelopeRamps(
         clip: Clip,
         kfs: [Keyframe<Double>],
@@ -565,38 +588,6 @@ enum CompositionBuilder {
         return keyed.values.sorted { $0.frame < $1.frame }
     }
 
-    private static func emitOpacitySet(
-        config: inout AVVideoCompositionLayerInstruction.Configuration,
-        value: Float,
-        at time: CMTime
-    ) {
-        guard let value = normalizedOpacity(value), isUsableInstructionTime(time) else { return }
-        config.setOpacity(value, at: time)
-    }
-
-    private static func emitOpacityRamp(
-        config: inout AVVideoCompositionLayerInstruction.Configuration,
-        start: Float,
-        end: Float,
-        timeRange: CMTimeRange
-    ) {
-        guard let start = normalizedOpacity(start),
-              let end = normalizedOpacity(end),
-              isUsableInstructionTime(timeRange.start),
-              isUsableInstructionTime(timeRange.end),
-              timeRange.duration > .zero else { return }
-        config.addOpacityRamp(.init(timeRange: timeRange, start: start, end: end))
-    }
-
-    private static func normalizedOpacity(_ value: Float) -> Float? {
-        guard value.isFinite else { return nil }
-        return min(1, max(0, value))
-    }
-
-    private static func isUsableInstructionTime(_ time: CMTime) -> Bool {
-        time.isNumeric && time >= .zero
-    }
-
     /// Maps a clip's Transform (in normalized 0–1 canvas coordinates) to the
     /// CGAffineTransform an AVFoundation layer instruction expects.
     static func affineTransform(for t: Transform, natSize: CGSize, renderSize: CGSize) -> CGAffineTransform {
@@ -616,231 +607,4 @@ enum CompositionBuilder {
             .concatenating(CGAffineTransform(translationX: cx, y: cy))
     }
 
-    /// Emit the transform instructions from a clip's keyframes
-    private static func emitTransform(
-        config: inout AVVideoCompositionLayerInstruction.Configuration,
-        clip: Clip,
-        start: CMTime,
-        end: CMTime,
-        natSize: CGSize,
-        preferredTransform: CGAffineTransform,
-        renderSize: CGSize,
-        timescale: CMTimeScale
-    ) {
-        let affine: (Transform) -> CGAffineTransform = { t in
-            preferredTransform.concatenating(affineTransform(for: t, natSize: natSize, renderSize: renderSize))
-        }
-
-        guard clip.hasTransformAnimation else {
-            config.setTransform(affine(clip.transform), at: start)
-            return
-        }
-
-        // Union of position + scale + rotation offsets, defensively clamped to [0, durationFrames].
-        var offsetSet = Set<Int>()
-        for kf in clip.positionTrack?.keyframes ?? [] where kf.frame >= 0 && kf.frame <= clip.durationFrames {
-            offsetSet.insert(kf.frame)
-        }
-        for kf in clip.scaleTrack?.keyframes ?? [] where kf.frame >= 0 && kf.frame <= clip.durationFrames {
-            offsetSet.insert(kf.frame)
-        }
-        for kf in clip.rotationTrack?.keyframes ?? [] where kf.frame >= 0 && kf.frame <= clip.durationFrames {
-            offsetSet.insert(kf.frame)
-        }
-        let offsets = offsetSet.sorted()
-
-        guard let firstOffset = offsets.first else {
-            config.setTransform(affine(clip.transform), at: start)
-            return
-        }
-
-        // Track storage uses clip-relative offsets; we shift to absolute by adding `clip.startFrame`
-        let cmTime: (Int) -> CMTime = { offset in
-            CMTime(value: CMTimeValue(clip.startFrame + offset), timescale: timescale)
-        }
-
-        // Hold the first kf's value during the [start, firstKf) gap.
-        if firstOffset > 0 {
-            config.setTransform(affine(clip.transformAt(frame: clip.startFrame + firstOffset)), at: start)
-        }
-
-        // Subdivide each segment using fractional CMTimes so consecutive ramps never
-        // share a timeRange (integer-frame rounding would collapse short spans).
-        for i in 0..<(offsets.count - 1) {
-            let aOff = offsets[i], bOff = offsets[i + 1]
-            let aT = cmTime(aOff)
-            let bT = cmTime(bOff)
-            let span = bT - aT
-            guard span > .zero else { continue }
-            var prevT = aT
-            var prevTransform = clip.transformAt(frame: clip.startFrame + aOff)
-            for s in 1...smoothSegments {
-                let t = Double(s) / Double(smoothSegments)
-                let nextT = aT + CMTime(seconds: span.seconds * t, preferredTimescale: span.timescale * Int32(smoothSegments))
-                let offsetAtT = aOff + Int((Double(bOff - aOff) * t).rounded())
-                let nextTransform = clip.transformAt(frame: clip.startFrame + offsetAtT)
-                if nextT > prevT {
-                    config.addTransformRamp(.init(
-                        timeRange: CMTimeRange(start: prevT, end: nextT),
-                        start: affine(prevTransform),
-                        end: affine(nextTransform)
-                    ))
-                }
-                prevT = nextT
-                prevTransform = nextTransform
-            }
-        }
-
-        // Hold last value until the clip's end.
-        let lastOffset = offsets.last!
-        let lastT = cmTime(lastOffset)
-        if lastT < end {
-            config.setTransform(affine(clip.transformAt(frame: clip.startFrame + lastOffset)), at: lastT)
-        }
-    }
-
-    /// Emit the crop instructions from a clip's keyframes
-    private static func emitCrop(
-        config: inout AVVideoCompositionLayerInstruction.Configuration,
-        clip: Clip,
-        start: CMTime,
-        end: CMTime,
-        natSize: CGSize,
-        preferredTransform: CGAffineTransform,
-        timescale: CMTimeScale
-    ) {
-        let toSource = preferredTransform.inverted()
-        let rect: (Crop) -> CGRect = { cp in
-            CGRect(
-                x: cp.left * natSize.width,
-                y: cp.top * natSize.height,
-                width: max(1, cp.visibleWidthFraction * natSize.width),
-                height: max(1, cp.visibleHeightFraction * natSize.height)
-            ).applying(toSource)
-        }
-        let ops = trackOps(track: clip.cropTrack, fallback: clip.crop, clip: clip,
-                           clipStart: start, clipEnd: end, timescale: timescale)
-        for op in ops {
-            switch op {
-            case .setStatic(let v, let t):
-                config.setCropRectangle(rect(v), at: t)
-            case .ramp(let a, let b, let range):
-                config.addCropRectangleRamp(.init(timeRange: range, start: rect(a), end: rect(b)))
-            }
-        }
-    }
-
-    /// Opacity instructions for a clip's keyframes + fade envelope.
-    private static func emitOpacity(
-        config: inout AVVideoCompositionLayerInstruction.Configuration,
-        clip: Clip,
-        start: CMTime,
-        end: CMTime,
-        timescale: CMTimeScale
-    ) {
-        let hasFade = clip.fadeInFrames > 0 || clip.fadeOutFrames > 0
-
-        if !hasFade {
-            let ops = trackOps(track: clip.opacityTrack, fallback: clip.opacity, clip: clip,
-                               clipStart: start, clipEnd: end, timescale: timescale)
-            for op in ops {
-                switch op {
-                case .setStatic(let v, let t):
-                    emitOpacitySet(config: &config, value: Float(v), at: t)
-                case .ramp(let a, let b, let range):
-                    emitOpacityRamp(config: &config, start: Float(a), end: Float(b), timeRange: range)
-                }
-            }
-            return
-        }
-
-        let kfs = (clip.opacityTrack?.isActive == true)
-            ? normalizedKeyframes(clip.opacityTrack?.keyframes ?? [], duration: clip.durationFrames)
-            : []
-
-        if clip.durationFrames <= 0 {
-            emitOpacitySet(config: &config, value: Float(clip.opacityAt(frame: clip.startFrame)), at: start)
-        }
-        emitEnvelopeRamps(
-            clip: clip,
-            kfs: kfs,
-            timescale: timescale,
-            sampleAt: { Float(clip.opacityAt(frame: clip.startFrame + $0)) },
-            emit: { aVal, bVal, range in
-                emitOpacityRamp(config: &config, start: aVal, end: bVal, timeRange: range)
-            }
-        )
-    }
-
-    /// One emitted ramp instruction. Generated by `trackOps` and consumed per-property by
-    /// the appropriate AVFoundation API (`setOpacity` / `setCropRectangle` / etc.).
-    enum TrackOp<V> {
-        case setStatic(V, CMTime)
-        case ramp(V, V, CMTimeRange)
-    }
-
-    /// Compute the ramp instructions for a single-property keyframe track
-    static func trackOps<V: KeyframeInterpolatable & Codable & Sendable & Equatable>(
-        track: KeyframeTrack<V>?,
-        fallback: V,
-        clip: Clip,
-        clipStart: CMTime,
-        clipEnd: CMTime,
-        timescale: CMTimeScale
-    ) -> [TrackOp<V>] {
-        guard let track, track.isActive else {
-            return [.setStatic(fallback, clipStart)]
-        }
-        // Defensive: drop kfs whose offsets fall outside the clip's visible range.
-        let kfs = normalizedKeyframes(track.keyframes, duration: clip.durationFrames)
-        guard !kfs.isEmpty else {
-            return [.setStatic(fallback, clipStart)]
-        }
-
-        // Track storage uses clip-relative offsets; we shift to absolute by adding `clip.startFrame`
-        let cmTime: (Int) -> CMTime = { offset in
-            CMTime(value: CMTimeValue(clip.startFrame + offset), timescale: timescale)
-        }
-
-        var ops: [TrackOp<V>] = []
-        let firstT = cmTime(kfs[0].frame)
-        if firstT > clipStart {
-            ops.append(.setStatic(kfs[0].value, clipStart))
-        }
-        for i in 0..<(kfs.count - 1) {
-            let a = kfs[i], b = kfs[i + 1]
-            let aT = cmTime(a.frame)
-            let bT = cmTime(b.frame)
-            switch a.interpolationOut {
-            case .hold:
-                ops.append(.setStatic(a.value, aT))
-            case .linear:
-                let range = CMTimeRange(start: aT, end: bT)
-                if range.duration > .zero {
-                    ops.append(.ramp(a.value, b.value, range))
-                }
-            case .smooth:
-                let span = bT - aT
-                guard span > .zero else { continue }
-                var prevT = aT
-                var prevValue = a.value
-                for s in 1...smoothSegments {
-                    let t = Double(s) / Double(smoothSegments)
-                    let nextValue = V.keyframeInterpolate(a.value, b.value, t: smoothstep(t))
-                    let nextT = aT + CMTime(seconds: span.seconds * t, preferredTimescale: span.timescale * Int32(smoothSegments))
-                    if nextT > prevT {
-                        ops.append(.ramp(prevValue, nextValue, CMTimeRange(start: prevT, end: nextT)))
-                    }
-                    prevT = nextT
-                    prevValue = nextValue
-                }
-            }
-        }
-        let last = kfs.last!
-        let lastT = cmTime(last.frame)
-        if lastT < clipEnd {
-            ops.append(.setStatic(last.value, lastT))
-        }
-        return ops
-    }
 }
