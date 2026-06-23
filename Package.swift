@@ -18,6 +18,7 @@ let package = Package(
         .package(url: "https://github.com/get-convex/convex-swift", from: "0.8.0"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.3.3"),
         .package(url: "https://github.com/airbnb/lottie-ios", from: "4.6.1"),
+        .package(url: "https://github.com/migueldeicaza/SwiftTerm", from: "1.2.0"),
     ],
     targets: [
         .executableTarget(
@@ -32,6 +33,7 @@ let package = Package(
                 .product(name: "ConvexMobile", package: "convex-swift"),
                 .product(name: "Tokenizers", package: "swift-transformers"),
                 .product(name: "Lottie", package: "lottie-ios"),
+                .product(name: "SwiftTerm", package: "SwiftTerm"),
             ],
             path: "Sources/PalmierPro",
             exclude: [

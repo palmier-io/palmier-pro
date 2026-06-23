@@ -3,44 +3,44 @@ import SwiftUI
 
 struct AgentPane: View {
     @Bindable private var appState = AppState.shared
-    @State private var hasKey: Bool = false
-    @State private var maskedKey: String = ""
-    @State private var draft: String = ""
-    @FocusState private var isFocused: Bool
+    @State private var claudePath: String?
+    @State private var checking = true
 
-    private let consoleURL = URL(string: "https://console.anthropic.com/settings/keys")!
+    private let installURL = URL(string: "https://docs.claude.com/en/docs/claude-code/setup")!
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
-            apiKeySection
+            claudeCodeSection
             Divider().overlay(AppTheme.Border.subtleColor)
             mcpSection
         }
-        .onAppear(perform: refresh)
+        .onAppear(perform: refreshClaude)
     }
 
-    private var apiKeySection: some View {
+    // MARK: - Claude Code
+
+    private var claudeCodeSection: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
-            header
-            keyField
+            claudeHeader
+            claudeStatusRow
         }
     }
 
-    private var header: some View {
+    private var claudeHeader: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text("Anthropic API Key")
+            Text("Claude Code")
                 .font(.system(size: AppTheme.FontSize.md, weight: .medium))
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
             HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-                Text("Used your own API key for the AI chat. Stored in your macOS Keychain.")
+                Text("The agent panel runs Claude Code, using whatever account it's signed into on this Mac.")
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Button(action: { NSWorkspace.shared.open(consoleURL, configuration: .init(), completionHandler: nil) }) {
+                Button(action: { NSWorkspace.shared.open(installURL) }) {
                     HStack(spacing: 2) {
-                        Text("Get Anthropic API key")
+                        Text("Install Claude Code")
                         Image(systemName: "arrow.up.right")
                             .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
                     }
@@ -53,84 +53,55 @@ struct AgentPane: View {
         }
     }
 
-    private var keyField: some View {
+    private var claudeStatusRow: some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            fieldBox
-            trailingControl
-        }
-    }
+            HStack(spacing: AppTheme.Spacing.sm) {
+                Circle()
+                    .fill(checking ? AppTheme.Text.mutedColor : (claudePath != nil ? Color.green : Color.red.opacity(AppTheme.Opacity.prominent)))
+                    .frame(width: 8, height: 8)
 
-    private var fieldBox: some View {
-        SecureField(placeholder, text: $draft)
-            .textFieldStyle(.plain)
-            .focused($isFocused)
-            .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
-            .foregroundStyle(AppTheme.Text.primaryColor)
-            .onSubmit(save)
-            .padding(.horizontal, AppTheme.Spacing.md)
-            .padding(.vertical, AppTheme.Spacing.smMd)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(Color.black.opacity(AppTheme.Opacity.muted))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .strokeBorder(
-                        isFocused ? AppTheme.Border.primaryColor : AppTheme.Border.subtleColor,
-                        lineWidth: AppTheme.BorderWidth.thin
-                    )
-            )
-            .animation(.easeOut(duration: AppTheme.Anim.hover), value: isFocused)
-    }
-
-    private var placeholder: String {
-        hasKey ? maskedKey : "sk-ant-..."
-    }
-
-    @ViewBuilder
-    private var trailingControl: some View {
-        let trimmed = draft.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty {
-            Button("Save", action: save)
-                .buttonStyle(.capsule(.prominent, size: .regular))
-                .controlSize(.large)
-        } else if hasKey {
-            Button(action: remove) {
-                Image(systemName: "trash")
-                    .font(.system(size: AppTheme.FontSize.md))
-                    .foregroundStyle(AppTheme.Text.secondaryColor)
-                    .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
+                if checking {
+                    Text("Looking for the claude binary…")
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                } else if let claudePath {
+                    Text(claudePath)
+                        .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+                        .foregroundStyle(AppTheme.Text.primaryColor)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else {
+                    Text("Not found on this Mac")
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
             }
-            .buttonStyle(.capsule(.secondary, size: .regular))
-            .controlSize(.large)
-            .help("Remove API key")
+            .font(.system(size: AppTheme.FontSize.sm))
+
+            Spacer()
+
+            Button("Recheck", action: refreshClaude)
+                .buttonStyle(.capsule(.secondary, size: .regular))
+                .controlSize(.small)
+                .disabled(checking)
         }
+        .padding(.horizontal, AppTheme.Spacing.md)
+        .padding(.vertical, AppTheme.Spacing.smMd)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                .fill(Color.black.opacity(AppTheme.Opacity.muted))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
+        )
     }
 
-    private func refresh() {
-        let key = AnthropicKeychain.load() ?? ""
-        hasKey = !key.isEmpty
-        maskedKey = mask(key)
-    }
-
-    private func save() {
-        let key = draft.trimmingCharacters(in: .whitespaces)
-        guard !key.isEmpty else { return }
-        AnthropicKeychain.save(key)
-        draft = ""
-        isFocused = false
-        refresh()
-    }
-
-    private func remove() {
-        AnthropicKeychain.delete()
-        draft = ""
-        refresh()
-    }
-
-    private func mask(_ key: String) -> String {
-        guard key.count > 4 else { return String(repeating: "\u{2022}", count: 32) }
-        return String(repeating: "\u{2022}", count: 36) + key.suffix(4)
+    private func refreshClaude() {
+        checking = true
+        Task {
+            let path = await Task.detached(priority: .utility) { ClaudeCodeLocator.find() }.value
+            claudePath = path
+            checking = false
+        }
     }
 
     // MARK: - MCP server
@@ -149,7 +120,7 @@ struct AgentPane: View {
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
             HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-                Text("Lets external clients like Cursor, Claude Desktop, Claude Code, and Codex edit your timeline.")
+                Text("How the agent edits your timeline. Also lets external clients like Cursor, Claude Desktop, and Codex connect.")
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)

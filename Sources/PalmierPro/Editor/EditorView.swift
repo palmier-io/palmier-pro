@@ -50,7 +50,7 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
     private lazy var mediaHC: NSViewController     = makeHosting(MediaPanelView(), panel: .media)
     private lazy var previewHC: NSViewController   = makeHosting(PreviewContainerView(), panel: .preview)
     private lazy var inspectorHC: NSViewController = makeHosting(InspectorView(), panel: .inspector)
-    private lazy var agentHC: NSViewController     = makeHosting(AgentPanelView(), panel: .agent)
+    private lazy var agentHC: NSViewController     = makeHosting(AgentTerminalPanel(), panel: .agent)
     private lazy var timelineHC: NSViewController  = makeHosting(
         VStack(spacing: 0) {
             ToolbarView().frame(height: Layout.toolbarHeight)

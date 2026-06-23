@@ -284,10 +284,7 @@ struct MusicTab: View {
     }
 
     private func musicTask(_ prompt: String) {
-        let service = editor.agentService
-        service.newChat()
-        service.draft = prompt
-        editor.agentPanelVisible = true
+        editor.agentService.seedPrompt(prompt)
     }
 
     private func generate() {

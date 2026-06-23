@@ -90,8 +90,8 @@ enum ImageEncoder {
 
     // MARK: - Cache
 
-    /// Memoize by path + size + mtime so `apiMessages()`, which runs on every
-    /// agent loop iteration, doesn't re-read and re-encode the same images.
+    /// Memoize by path + size + mtime so building a turn's mentioned-image
+    /// blocks doesn't re-read and re-encode the same images.
     private struct FileStamp: Hashable {
         let path: String
         let size: Int

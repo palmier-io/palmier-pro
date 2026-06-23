@@ -120,14 +120,42 @@ private let uncaughtExceptionHandler: @convention(c) (NSException) -> Void = { e
         .fault("\(message, privacy: .public)")
 }
 
-/// Async-signal-safe: uses only `write`, `backtrace*`, `fsync`, `raise`.
+private let fatalSignalHeader: StaticString = "\n*** FATAL SIGNAL ***\n"
+
+/// Truly async-signal-safe: only `write`, `backtrace`, `fsync`, `signal`, `raise`,
+/// and stack-only formatting. Deliberately avoids `backtrace_symbols_fd`, which
+/// symbolicates via `dladdr`/dyld (NOT signal-safe) — under a multi-threaded fault
+/// that deadlocks the handler and masks the real crash. Addresses are written raw;
+/// symbolicate offline (`atos`) or read the OS crash report. A reentrancy guard
+/// keeps concurrent faulting threads from interleaving in the handler.
+private nonisolated(unsafe) var crashHandlerEntered: Int32 = 0
+
 private let signalHandler: @convention(c) (Int32) -> Void = { sig in
+    // First faulting thread wins; others go straight to the default disposition.
+    if !OSAtomicCompareAndSwap32(0, 1, &crashHandlerEntered) {
+        signal(sig, SIG_DFL)
+        raise(sig)
+        return
+    }
     let target = CrashHandler.fd >= 0 ? CrashHandler.fd : STDERR_FILENO
-    let header = "\n*** FATAL SIGNAL ***\n"
-    header.withCString { _ = write(target, $0, strlen($0)) }
+    fatalSignalHeader.withUTF8Buffer { _ = write(target, $0.baseAddress, $0.count) }
     withUnsafeTemporaryAllocation(of: UnsafeMutableRawPointer?.self, capacity: 64) { frames in
-        let count = backtrace(frames.baseAddress, 64)
-        backtrace_symbols_fd(frames.baseAddress, count, target)
+        let count = Int(backtrace(frames.baseAddress, 64))
+        withUnsafeTemporaryAllocation(of: CChar.self, capacity: 19) { line in
+            for i in 0..<count {
+                line[0] = CChar(UInt8(ascii: "0")); line[1] = CChar(UInt8(ascii: "x"))
+                var v = UInt(bitPattern: frames[i])
+                var idx = 17
+                while idx >= 2 {
+                    let nibble = UInt8(v & 0xF)
+                    line[idx] = CChar(nibble < 10 ? UInt8(ascii: "0") + nibble : UInt8(ascii: "a") + nibble - 10)
+                    v >>= 4
+                    idx -= 1
+                }
+                line[18] = CChar(UInt8(ascii: "\n"))
+                _ = write(target, line.baseAddress, 19)
+            }
+        }
     }
     fsync(target)
     signal(sig, SIG_DFL)

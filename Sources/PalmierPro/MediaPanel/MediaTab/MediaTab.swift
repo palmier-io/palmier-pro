@@ -593,10 +593,7 @@ struct MediaTab: View {
 
     private func organizeWithAgent() {
         let folderHint = currentFolderId.map { _ in " Work within the current folder." } ?? ""
-        let service = editor.agentService
-        service.newChat()
-        service.draft = "Organize my media library. Review the assets, group related ones into clearly named folders, and give generically-named assets short descriptive names — inspect an asset when its name is unclear. Don't delete anything or change the timeline.\(folderHint)"
-        editor.agentPanelVisible = true
+        editor.agentService.seedPrompt("Organize my media library. Review the assets, group related ones into clearly named folders, and give generically-named assets short descriptive names — inspect an asset when its name is unclear. Don't delete anything or change the timeline.\(folderHint)")
     }
 
     private func toolbarMenuIcon<Content: View>(
