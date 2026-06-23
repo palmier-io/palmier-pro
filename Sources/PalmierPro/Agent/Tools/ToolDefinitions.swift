@@ -13,6 +13,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case setKeyframes = "set_keyframes"
     case splitClip = "split_clip"
     case rippleDeleteRanges = "ripple_delete_ranges"
+    case syncAudio = "sync_audio"
     case undo = "undo"
     case addTexts = "add_texts"
     case addCaptions = "add_captions"
@@ -292,6 +293,20 @@ enum ToolDefinitions {
                     "units": ["type": "string", "enum": ["seconds", "frames"], "description": "Interpretation of range values. 'frames' (default) = project/timeline frames, matching get_transcript and inspect_media-with-clipId. 'seconds' = source-media seconds (clipId mode only)."],
                 ],
                 required: ["ranges"]
+            )
+        ),
+        AgentTool(
+            name: .syncAudio,
+            description: "Align one or more clips to a reference clip by cross-correlating audio and shifting targets on the timeline. referenceClipId stays put — use for dual-system sound (camera + external audio) or multicam. Returns offsetFrames and confidence (0–1) per target; refuses weak matches.",
+            inputSchema: objectSchema(
+                properties: [
+                    "referenceClipId": ["type": "string", "description": "Clip the others align to. Stays put."],
+                    "targetClipId": ["type": "string", "description": "Single clip to align. Use targetClipIds for several."],
+                    "targetClipIds": ["type": "array", "items": ["type": "string"], "description": "Clips to align with the reference."],
+                    "searchWindowSeconds": ["type": "number", "description": "Max ± offset to search in seconds (default 30)."],
+                    "minConfidence": ["type": "number", "description": "Minimum correlation confidence 0–1 (default 0.5)."],
+                ],
+                required: ["referenceClipId"]
             )
         ),
         AgentTool(

@@ -750,8 +750,16 @@ final class TimelineView: NSView {
             item.representedObject = clip.id
             mediaItems.append(item)
         }
+        // Sync
+        var syncItems: [NSMenuItem] = []
+        if let pair = editor.audioSyncSelection() {
+            let syncItem = NSMenuItem(title: "Synchronize", action: #selector(performSynchronize(_:)), keyEquivalent: "")
+            syncItem.target = self
+            syncItem.representedObject = ["referenceClipId": pair.referenceClipId, "targetClipIds": pair.targetClipIds] as [String: Any]
+            syncItems.append(syncItem)
+        }
 
-        for group in [timelineItems, aiItems, mediaItems] where !group.isEmpty {
+        for group in [timelineItems, aiItems, mediaItems, syncItems] where !group.isEmpty {
             if !menu.items.isEmpty { menu.addItem(.separator()) }
             group.forEach { menu.addItem($0) }
         }
