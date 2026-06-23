@@ -66,7 +66,8 @@ extension ToolExecutor {
         // LUT file I/O up front so it can throw before mutating.
         var lutDestPath: String?
         if let path = input.lut?.path, !path.isEmpty {
-            lutDestPath = try copyLUTIntoProject(path, editor: editor)
+            do { lutDestPath = try LUTLoader.store(path: path, projectId: editor.projectId) }
+            catch let e as LUTStoreError { throw ToolError(e.errorDescription ?? "Invalid LUT.") }
         }
         let reset = input.reset ?? false
         let actionName = input.clipIds.count == 1 ? "Color Grade (Agent)" : "Color Grade ×\(input.clipIds.count) (Agent)"
@@ -79,11 +80,6 @@ extension ToolExecutor {
             }
         }
         return .ok("Graded \(input.clipIds.count) clip\(input.clipIds.count == 1 ? "" : "s") (\(reset ? "reset" : "merged")). Verify with inspect_timeline.")
-    }
-
-    private func copyLUTIntoProject(_ path: String, editor: EditorViewModel) throws -> String {
-        do { return try LUTLoader.store(path: path, projectId: editor.projectId) }
-        catch let e as LUTStoreError { throw ToolError(e.errorDescription ?? "Invalid LUT.") }
     }
 
     fileprivate struct InspectColorInput: DecodableToolArgs {
