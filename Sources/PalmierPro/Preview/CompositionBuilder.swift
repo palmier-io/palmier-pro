@@ -541,10 +541,21 @@ enum CompositionBuilder {
     /// non-normal blend mode), i.e. the custom compositor will be used. The Core
     /// Animation text tool can't coexist with it, so callers (export) two-pass.
     static func needsColorCompositor(_ timeline: Timeline) -> Bool {
-        let hasChroma = timeline.tracks.contains { $0.clips.contains { $0.chromaKey?.isActive == true } }
-        let hasGrade = timeline.tracks.contains { $0.clips.contains { $0.colorGrade?.hasEffect == true } }
-        let hasBlend = timeline.tracks.contains { $0.clips.contains { ($0.blendMode ?? .normal) != .normal } }
-        return hasChroma || hasGrade || hasBlend
+        // Only count effects the custom compositor actually renders: visible tracks,
+        // and (for chroma/blend) non-text source clips. Mirrors colorCompositionInstruction,
+        // so we don't activate the compositor — and force a two-pass export — for nothing.
+        for track in timeline.tracks where !track.hidden {
+            if track.type == .adjustment {
+                if track.clips.contains(where: { $0.colorGrade?.hasEffect == true }) { return true }
+            } else {
+                for clip in track.clips where clip.mediaType != .text {
+                    if clip.chromaKey?.isActive == true { return true }
+                    if clip.colorGrade?.hasEffect == true { return true }
+                    if (clip.blendMode ?? .normal) != .normal { return true }
+                }
+            }
+        }
+        return false
     }
 
     /// Build the custom-compositor instruction when any clip carries a colour grade

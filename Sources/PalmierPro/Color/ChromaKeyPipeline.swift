@@ -130,7 +130,11 @@ private final class ChromaCubeCache: @unchecked Sendable {
     func get(_ key: String, build: () -> (fg: Data, matte: Data)) -> (fg: Data, matte: Data) {
         lock.lock()
         defer { lock.unlock() }
-        if let cached = store[key] { return cached }
+        if let cached = store[key] {
+            // Refresh recency so reused parameter sets aren't evicted before cold ones.
+            if let i = order.firstIndex(of: key) { order.remove(at: i); order.append(key) }
+            return cached
+        }
         let built = build()
         store[key] = built
         order.append(key)
