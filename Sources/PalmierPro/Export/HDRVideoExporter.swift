@@ -92,18 +92,7 @@ enum HDRVideoExporter {
         guard reader.canAdd(videoOutput) else { throw HDRExportError(reason: "cannot add video output") }
         reader.add(videoOutput)
 
-        // Audio (optional): mix down to PCM for re-encode.
         let audioTracks = try await composition.loadTracks(withMediaType: .audio)
-        var audioOutput: AVAssetReaderAudioMixOutput?
-        if !audioTracks.isEmpty {
-            let out = AVAssetReaderAudioMixOutput(audioTracks: audioTracks, audioSettings: [
-                AVFormatIDKey: kAudioFormatLinearPCM,
-                AVNumberOfChannelsKey: 2,
-                AVSampleRateKey: 48000,
-            ])
-            out.audioMix = audioMix
-            if reader.canAdd(out) { reader.add(out); audioOutput = out }
-        }
 
         try? FileManager.default.removeItem(at: outputURL)
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
@@ -115,8 +104,18 @@ enum HDRVideoExporter {
         guard writer.canAdd(videoInput) else { throw HDRExportError(reason: "cannot add video input") }
         writer.add(videoInput)
 
+        // Audio (optional): mix down to PCM, re-encode to AAC. Add the reader output and writer
+        // input atomically — both or neither. An audio reader output that nobody drains stalls the
+        // reader's shared read-ahead and deadlocks the video pump.
+        var audioOutput: AVAssetReaderAudioMixOutput?
         var audioInput: AVAssetWriterInput?
-        if audioOutput != nil {
+        if !audioTracks.isEmpty {
+            let out = AVAssetReaderAudioMixOutput(audioTracks: audioTracks, audioSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVNumberOfChannelsKey: 2,
+                AVSampleRateKey: 48000,
+            ])
+            out.audioMix = audioMix
             let aIn = AVAssetWriterInput(mediaType: .audio, outputSettings: [
                 AVFormatIDKey: kAudioFormatMPEG4AAC,
                 AVNumberOfChannelsKey: 2,
@@ -124,7 +123,10 @@ enum HDRVideoExporter {
                 AVEncoderBitRateKey: 192_000,
             ])
             aIn.expectsMediaDataInRealTime = false
-            if writer.canAdd(aIn) { writer.add(aIn); audioInput = aIn }
+            if reader.canAdd(out), writer.canAdd(aIn) {
+                reader.add(out); writer.add(aIn)
+                audioOutput = out; audioInput = aIn
+            }
         }
 
         // Every HDR frame is processed in CoreImage: decode the SDR 709 frame, composite titles,
