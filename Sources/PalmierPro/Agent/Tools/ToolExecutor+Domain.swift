@@ -41,6 +41,11 @@ extension ToolExecutor {
             payload["note"] = "Pass ceremonyType for an ordered timeline, or momentType for one moment's guidance."
         }
 
+        // How real editors actually sequence shots — available alongside any branch.
+        if args.string("momentType") == nil, let ls = pack.learnedSequences {
+            payload["learnedSequences"] = Self.learnedJSON(ls)
+        }
+
         guard let json = Self.jsonString(payload) else {
             throw ToolError("get_reference_guidance: failed to encode result.")
         }
@@ -58,6 +63,18 @@ extension ToolExecutor {
             "cues": m.classificationCues,
         ]
         if let dur = m.typicalDurationSec { out["typicalDurationSec"] = dur }
+        return out
+    }
+
+    private static func learnedJSON(_ ls: DomainPack.LearnedSequences) -> [String: Any] {
+        func pairs(_ list: [DomainPack.MomentFraction]) -> [[String: Any]] {
+            list.map { ["moment": $0.moment, "fraction": $0.fraction] }
+        }
+        var out: [String: Any] = [:]
+        if let v = ls.videosAnalyzed { out["videosAnalyzed"] = v }
+        if let o = ls.openingMoments { out["openingMoments"] = pairs(o) }
+        if let n = ls.commonNext { out["commonNext"] = n.mapValues(pairs) }
+        if let note = ls.note { out["note"] = note }
         return out
     }
 

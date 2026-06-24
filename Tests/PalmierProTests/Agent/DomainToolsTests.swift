@@ -85,6 +85,15 @@ struct DomainToolsTests {
         #expect(timeline?.allSatisfy { $0["importance"] != nil && $0["audioPolicy"] != nil } == true)
     }
 
+    @Test func referenceGuidanceIncludesLearnedSequences() async throws {
+        let h = ToolHarness()
+        let result = await h.runRaw("get_reference_guidance", args: ["ceremonyType": "nikah"])
+        let json = textPayload(result)
+        let learned = json?["learnedSequences"] as? [String: Any]
+        #expect(learned?["openingMoments"] is [Any])
+        #expect(learned?["commonNext"] is [String: Any])
+    }
+
     @Test func tagMomentsPersistsOntoAssetAndManifest() async throws {
         let h = ToolHarness()
         let asset = h.addAsset(id: "vid1")

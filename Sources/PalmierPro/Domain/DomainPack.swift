@@ -9,6 +9,19 @@ struct DomainPack: Decodable, Sendable {
     let typicalPacing: String?
     let moments: [String: Moment]
     let ceremonies: [String: [String]]
+    let learnedSequences: LearnedSequences?
+
+    struct LearnedSequences: Decodable, Sendable {
+        let videosAnalyzed: Int?
+        let openingMoments: [MomentFraction]?
+        let commonNext: [String: [MomentFraction]]?
+        let note: String?
+    }
+
+    struct MomentFraction: Decodable, Sendable {
+        let moment: String
+        let fraction: Double
+    }
 
     struct Moment: Decodable, Sendable {
         let category: String

@@ -119,6 +119,49 @@ def top_values(counter: Counter, n: int) -> list[str]:
     return [v for v, _ in counter.most_common(n)]
 
 
+def learned_sequences(records: list[dict]) -> dict | None:
+    """Reconstruct each video's real edit order (sort segments by sequence hint, dedupe
+    consecutive repeats) and learn how editors open and transition between moments."""
+    byvid: dict[str, list[dict]] = defaultdict(list)
+    for r in records:
+        pm = r.get("primaryMoment")
+        pos = r.get("timecodeStart", r.get("momentSequenceHint"))
+        if pm and pos is not None and r.get("sourceVideoId"):
+            byvid[r["sourceVideoId"]].append(r)
+
+    timelines: list[list[str]] = []
+    for segs in byvid.values():
+        # Order by actual timecode (precise) and fall back to the coarse sequence hint.
+        segs.sort(key=lambda s: s.get("timecodeStart", s.get("momentSequenceHint", 0)))
+        seq: list[str] = []
+        for s in segs:
+            m = s["primaryMoment"]
+            if not seq or seq[-1] != m:   # collapse consecutive repeats from frame sampling
+                seq.append(m)
+        if len(seq) >= 2:
+            timelines.append(seq)
+
+    if len(timelines) < 10:
+        return None   # too little data to be meaningful
+
+    opens: Counter = Counter(t[0] for t in timelines)
+    trans: dict[str, Counter] = defaultdict(Counter)
+    for t in timelines:
+        for a, b in zip(t, t[1:]):
+            trans[a][b] += 1
+
+    def frac_list(counter: Counter, n: int) -> list[dict]:
+        tot = sum(counter.values())
+        return [{"moment": m, "fraction": round(c / tot, 2)} for m, c in counter.most_common(n)]
+
+    return {
+        "videosAnalyzed": len(timelines),
+        "openingMoments": frac_list(opens, 5),
+        "commonNext": {m: frac_list(c, 3) for m, c in sorted(trans.items())},
+        "note": "How real editors actually sequence shots (deduped per-video timelines). A market-trend guide — the canonical ceremony order is still the safe default.",
+    }
+
+
 def build() -> dict:
     taxonomy = json.loads((SRC_DIR / "taxonomy_malay_wedding.json").read_text(encoding="utf-8"))
     records, total_read = load_records()
@@ -211,6 +254,14 @@ def build() -> dict:
         "reception": ordered_for(CEREMONY_CATEGORIES["reception"], set()),
     }
 
+    # Open-taxonomy guard: surface any moment types not yet placed in momentCategories so
+    # new scenes (outdoor_shoot, sarung_cincin, ...) get a real category instead of "scene".
+    known = {m for ms in categories.values() for m in ms}
+    uncategorized = sorted(m for m in moments if m not in known)
+    if uncategorized:
+        print("  WARNING uncategorized moments (defaulted to 'scene' — add to taxonomy "
+              f"momentCategories): {', '.join(uncategorized)}")
+
     return {
         "_note": "Derived from AI-reference by scripts/build_domain_pack.py. Audio/order/duration come from vision-verified records where available, else category heuristics. Editable by hand.",
         "domain": taxonomy.get("domain", "malay_wedding"),
@@ -222,6 +273,7 @@ def build() -> dict:
         "recordsTotal": total_read,
         "moments": moments,
         "ceremonies": ceremonies,
+        "learnedSequences": learned_sequences(records),
     }
 
 

@@ -174,6 +174,10 @@ enum AgentInstructions {
              dumping everything.
         - Exposure is gradeable: a slightly under/overexposed but otherwise clear, stable \
           shot is usable — place it and fix with apply_color rather than discarding it.
+        - The ceremony timeline is the safe default order. get_reference_guidance also \
+          returns learnedSequences (openingMoments + commonNext) — how real editors actually \
+          sequence shots. Use it to open with a strong shot and shape transitions like a real \
+          highlight reel rather than rigid chronology, especially for reception/highlight cuts.
 
         # Prompt craft
         - Images: 15–30 words. Formula: subject + setting + shot type + lighting/mood. \

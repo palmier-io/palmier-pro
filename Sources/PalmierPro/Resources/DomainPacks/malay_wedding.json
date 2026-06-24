@@ -43,6 +43,224 @@
   "confidenceMin": 0.8,
   "culture": "Malay (Malaysia/Singapore/Brunei)",
   "domain": "malay_wedding",
+  "learnedSequences": {
+    "commonNext": {
+      "akad_nikah": [
+        {
+          "fraction": 0.37,
+          "moment": "couple_portrait"
+        },
+        {
+          "fraction": 0.12,
+          "moment": "reception"
+        },
+        {
+          "fraction": 0.1,
+          "moment": "venue_establishing"
+        }
+      ],
+      "bride_prep": [
+        {
+          "fraction": 0.19,
+          "moment": "akad_nikah"
+        },
+        {
+          "fraction": 0.14,
+          "moment": "reception"
+        },
+        {
+          "fraction": 0.14,
+          "moment": "venue_establishing"
+        }
+      ],
+      "couple_portrait": [
+        {
+          "fraction": 0.24,
+          "moment": "akad_nikah"
+        },
+        {
+          "fraction": 0.16,
+          "moment": "venue_establishing"
+        },
+        {
+          "fraction": 0.14,
+          "moment": "bride_prep"
+        }
+      ],
+      "decor_detail": [
+        {
+          "fraction": 0.33,
+          "moment": "akad_nikah"
+        },
+        {
+          "fraction": 0.11,
+          "moment": "pelamin"
+        },
+        {
+          "fraction": 0.11,
+          "moment": "venue_establishing"
+        }
+      ],
+      "exit_or_closing": [
+        {
+          "fraction": 0.5,
+          "moment": "guest_reaction"
+        },
+        {
+          "fraction": 0.5,
+          "moment": "bride_prep"
+        }
+      ],
+      "family_portrait": [
+        {
+          "fraction": 0.38,
+          "moment": "couple_portrait"
+        },
+        {
+          "fraction": 0.25,
+          "moment": "reception"
+        },
+        {
+          "fraction": 0.12,
+          "moment": "salam_family"
+        }
+      ],
+      "groom_prep": [
+        {
+          "fraction": 0.38,
+          "moment": "akad_nikah"
+        },
+        {
+          "fraction": 0.12,
+          "moment": "couple_portrait"
+        },
+        {
+          "fraction": 0.12,
+          "moment": "pelamin"
+        }
+      ],
+      "guest_reaction": [
+        {
+          "fraction": 0.29,
+          "moment": "reception"
+        },
+        {
+          "fraction": 0.21,
+          "moment": "akad_nikah"
+        },
+        {
+          "fraction": 0.14,
+          "moment": "couple_portrait"
+        }
+      ],
+      "hantaran_detail": [
+        {
+          "fraction": 1.0,
+          "moment": "akad_nikah"
+        }
+      ],
+      "makan_beradab": [
+        {
+          "fraction": 1.0,
+          "moment": "exit_or_closing"
+        }
+      ],
+      "pelamin": [
+        {
+          "fraction": 0.29,
+          "moment": "reception"
+        },
+        {
+          "fraction": 0.29,
+          "moment": "akad_nikah"
+        },
+        {
+          "fraction": 0.14,
+          "moment": "guest_reaction"
+        }
+      ],
+      "reception": [
+        {
+          "fraction": 0.35,
+          "moment": "guest_reaction"
+        },
+        {
+          "fraction": 0.19,
+          "moment": "couple_portrait"
+        },
+        {
+          "fraction": 0.12,
+          "moment": "family_portrait"
+        }
+      ],
+      "ring_exchange": [
+        {
+          "fraction": 0.25,
+          "moment": "family_portrait"
+        },
+        {
+          "fraction": 0.25,
+          "moment": "venue_establishing"
+        },
+        {
+          "fraction": 0.25,
+          "moment": "decor_detail"
+        }
+      ],
+      "salam_family": [
+        {
+          "fraction": 0.42,
+          "moment": "akad_nikah"
+        },
+        {
+          "fraction": 0.25,
+          "moment": "family_portrait"
+        },
+        {
+          "fraction": 0.25,
+          "moment": "couple_portrait"
+        }
+      ],
+      "venue_establishing": [
+        {
+          "fraction": 0.35,
+          "moment": "couple_portrait"
+        },
+        {
+          "fraction": 0.21,
+          "moment": "akad_nikah"
+        },
+        {
+          "fraction": 0.15,
+          "moment": "salam_family"
+        }
+      ]
+    },
+    "note": "How real editors actually sequence shots (deduped per-video timelines). A market-trend guide — the canonical ceremony order is still the safe default.",
+    "openingMoments": [
+      {
+        "fraction": 0.27,
+        "moment": "bride_prep"
+      },
+      {
+        "fraction": 0.21,
+        "moment": "venue_establishing"
+      },
+      {
+        "fraction": 0.16,
+        "moment": "couple_portrait"
+      },
+      {
+        "fraction": 0.09,
+        "moment": "akad_nikah"
+      },
+      {
+        "fraction": 0.09,
+        "moment": "reception"
+      }
+    ],
+    "videosAnalyzed": 75
+  },
   "moments": {
     "akad_nikah": {
       "audioPolicy": "feature-original",
