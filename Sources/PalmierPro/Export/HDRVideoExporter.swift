@@ -163,19 +163,40 @@ enum HDRVideoExporter {
         } else {
             progressReporter = nil
         }
+        let failure = FailureBox()
         let audioPump = (audioInput != nil && audioOutput != nil) ? PumpBox(audioInput!, audioOutput!) : nil
         await withTaskGroup(of: Void.self) { group in
-            group.addTask { await pumpVideoProcessed(processing, onSeconds: progressReporter) }
+            group.addTask { await pumpVideoProcessed(processing, failure: failure, onSeconds: progressReporter) }
             if let audioPump { group.addTask { await pump(audioPump) } }
             await group.waitForAll()
         }
 
+        if let reason = failure.reason {
+            reader.cancelReading()
+            writer.cancelWriting()
+            throw HDRExportError(reason: reason)
+        }
         if reader.status == .failed {
             throw HDRExportError(reason: reader.error?.localizedDescription ?? "reader failed")
         }
         await writer.finishWriting()
         if writer.status != .completed {
             throw HDRExportError(reason: writer.error?.localizedDescription ?? "writer status \(writer.status.rawValue)")
+        }
+    }
+
+    /// Records the first pump failure so the caller surfaces an error instead of finalizing a
+    /// truncated file as if it succeeded.
+    private final class FailureBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: String?
+        func set(_ reason: String) {
+            lock.lock(); defer { lock.unlock() }
+            if stored == nil { stored = reason }
+        }
+        var reason: String? {
+            lock.lock(); defer { lock.unlock() }
+            return stored
         }
     }
 
@@ -232,7 +253,7 @@ enum HDRVideoExporter {
     /// Like `pump`, but composites each title over the video frame and writes the result to a
     /// fresh 10-bit HLG buffer via the pixel-buffer adaptor.
     private static func pumpVideoProcessed(
-        _ c: ProcessingContext, onSeconds: (@Sendable (Double) -> Void)? = nil
+        _ c: ProcessingContext, failure: FailureBox, onSeconds: (@Sendable (Double) -> Void)? = nil
     ) async {
         let queue = DispatchQueue(label: "hdr.pump.video.processed")
         let bounds = CGRect(origin: .zero, size: c.renderSize)
@@ -262,13 +283,18 @@ enum HDRVideoExporter {
                         image = title.composited(over: image)
                     }
                     guard let pool = c.adaptor.pixelBufferPool else {
+                        failure.set("pixel buffer pool unavailable")
                         c.input.markAsFinished(); cont.resume(); return
                     }
                     var outBuffer: CVPixelBuffer?
-                    CVPixelBufferPoolCreatePixelBuffer(nil, pool, &outBuffer)
-                    guard let outBuffer else { continue }
+                    let status = CVPixelBufferPoolCreatePixelBuffer(nil, pool, &outBuffer)
+                    guard let outBuffer else {
+                        failure.set("pixel buffer alloc failed (\(status))")
+                        c.input.markAsFinished(); cont.resume(); return
+                    }
                     c.ciContext.render(image, to: outBuffer, bounds: bounds, colorSpace: c.hlgSpace)
                     if !c.adaptor.append(outBuffer, withPresentationTime: pts) {
+                        failure.set("frame append failed")
                         c.input.markAsFinished(); cont.resume(); return
                     }
                     if let onSeconds {

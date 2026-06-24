@@ -251,6 +251,9 @@ final class ExportService {
                 resolveURL: { resolver.resolveURL(for: $0) },
                 renderSize: renderSize
             )
+            // `CIImage(cgImage:)` honors the bitmap's premultipliedLast alpha, so it composites and
+            // fades correctly as-is. (Do NOT add `.unpremultiplyingAlpha()` — unlike FrameRenderer's
+            // color-management-off CVPixelBuffer path, that double-divides and blows out titles.)
             let overlays = TextLayerController.exportClipImages(timeline: timeline, canvasSize: renderSize)
                 .map { HDRVideoExporter.TextOverlay(clip: $0.clip, image: CIImage(cgImage: $0.image)) }
             try? FileManager.default.removeItem(at: outputURL)
