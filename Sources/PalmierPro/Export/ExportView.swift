@@ -14,6 +14,7 @@ enum VideoCodec: String, CaseIterable, Identifiable {
     case h264 = "H.264"
     case h265 = "H.265"
     case prores = "ProRes"
+    case hdr = "HEVC 10-bit HDR"
 
     var id: String { rawValue }
 }
@@ -263,6 +264,7 @@ struct ExportView: View {
         case .h264:   0.63e6
         case .h265:   0.32e6
         case .prores: 9.0e6
+        case .hdr:    0.45e6
         }
         let bytesPerSec = bytesPerSecPerMP * max(0.1, megapixels)
         return ByteCountFormatter.string(fromByteCount: Int64(bytesPerSec * seconds), countStyle: .file)
@@ -276,6 +278,7 @@ struct ExportView: View {
             case .h264: .h264
             case .h265: .h265
             case .prores: .prores
+            case .hdr: .hevcHDR
             }
         }
     }
@@ -325,7 +328,7 @@ struct ExportView: View {
         panel.allowedContentTypes = [
             format == .xml
                 ? .xml
-                : (format == .prores ? .movie : .mpeg4Movie)
+                : ((format == .prores || format == .hevcHDR) ? .movie : .mpeg4Movie)
         ]
         panel.nameFieldStringValue = "export.\(format.fileExtension)"
 

@@ -1,13 +1,16 @@
 import AVFoundation
 import AppKit
+import CoreImage
 
 enum ExportFormat {
     case h264, h265, prores, xml
+    /// HEVC Main10, BT.2020 + HLG — preserves 10-bit HDR (via AVAssetWriter).
+    case hevcHDR
 
     var fileExtension: String {
         switch self {
         case .h264, .h265: "mp4"
-        case .prores: "mov"
+        case .prores, .hevcHDR: "mov"
         case .xml: "xml"
         }
     }
@@ -15,10 +18,12 @@ enum ExportFormat {
     var utType: AVFileType? {
         switch self {
         case .h264, .h265: .mp4
-        case .prores: .mov
+        case .prores, .hevcHDR: .mov
         case .xml: nil
         }
     }
+
+    var isHDR: Bool { self == .hevcHDR }
 }
 
 enum ExportResolution: String, CaseIterable, Identifiable {
@@ -96,6 +101,10 @@ final class ExportService {
             XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
             progress = 1.0
             Log.export.notice("export ok format=xml", telemetry: "Export finished", data: ["format": "xml"])
+            return
+        }
+        if format.isHDR {
+            await exportHDR(timeline: timeline, resolver: resolver, resolution: resolution, outputURL: outputURL)
             return
         }
 
@@ -223,6 +232,47 @@ final class ExportService {
         }
     }
 
+    /// Build the composition, then encode HEVC Main10 HDR. The compositor renders SDR Rec.709
+    /// (grades and effects already baked in); `HDRVideoExporter` converts 709 → HLG per frame.
+    private func exportHDR(
+        timeline: Timeline,
+        resolver: MediaResolver,
+        resolution: ExportResolution,
+        outputURL: URL
+    ) async {
+        isExporting = true
+        progress = 0
+        error = nil
+        defer { isExporting = false }
+        do {
+            let renderSize = resolution.renderSize(for: CGSize(width: timeline.width, height: timeline.height))
+            let result = try await CompositionBuilder.build(
+                timeline: timeline,
+                resolveURL: { resolver.resolveURL(for: $0) },
+                renderSize: renderSize
+            )
+            let overlays = TextLayerController.exportClipImages(timeline: timeline, canvasSize: renderSize)
+                .map { HDRVideoExporter.TextOverlay(clip: $0.clip, image: CIImage(cgImage: $0.image)) }
+            try? FileManager.default.removeItem(at: outputURL)
+            Log.export.notice("hdr export start size=\(Int(renderSize.width))x\(Int(renderSize.height)) titles=\(overlays.count) url=\(outputURL.lastPathComponent)")
+            let inputs = HDRVideoExporter.Inputs(
+                composition: result.composition,
+                videoComposition: result.videoComposition,
+                audioMix: result.audioMix
+            )
+            try await HDRVideoExporter.export(
+                inputs, renderSize: renderSize, fps: timeline.fps, transfer: .hlg, to: outputURL,
+                onProgress: { [weak self] p in Task { @MainActor in self?.progress = p } },
+                textOverlays: overlays
+            )
+            progress = 1.0
+            Log.export.notice("hdr export ok")
+        } catch {
+            self.error = Log.detail(error)
+            Log.export.error("hdr export failed: \(Log.detail(error))")
+        }
+    }
+
     private func makeExportSession(
         timeline: Timeline,
         resolver: MediaResolver,
@@ -281,8 +331,8 @@ final class ExportService {
             }
         case .prores:
             AVAssetExportPresetAppleProRes422LPCM
-        case .xml:
-            AVAssetExportPresetPassthrough // unreachable — XML returns early
+        case .xml, .hevcHDR:
+            AVAssetExportPresetPassthrough // unreachable — XML and HDR return early
         }
     }
 }

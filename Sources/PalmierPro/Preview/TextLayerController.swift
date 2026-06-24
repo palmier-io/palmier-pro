@@ -99,6 +99,39 @@ final class TextLayerController {
         return (parent, videoLayer)
     }
 
+    /// One opaque (alpha = text coverage) sRGB image per visible title, canvas-sized, for the
+    /// HDR reader path which composites titles itself (no CoreAnimationTool). Caller applies the
+    /// per-frame opacity. Main-thread only (CATextLayer typesetting).
+    static func exportClipImages(
+        timeline: Timeline,
+        canvasSize: CGSize
+    ) -> [(clip: Clip, image: CGImage)] {
+        let w = Int(canvasSize.width), h = Int(canvasSize.height)
+        guard w > 0, h > 0,
+              let space = CGColorSpace(name: CGColorSpace.sRGB) else { return [] }
+        var out: [(clip: Clip, image: CGImage)] = []
+        for clip in visibleTextClips(in: timeline) {
+            let host = CALayer()
+            host.frame = CGRect(origin: .zero, size: canvasSize)
+            host.isGeometryFlipped = true
+            let layer = makeTextLayer()
+            applyStyle(to: layer, clip: clip, containerSize: canvasSize)
+            layer.opacity = 1
+            host.addSublayer(layer)
+            layer.displayIfNeeded()
+            guard let ctx = CGContext(
+                data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { continue }
+            // CIImage space is bottom-left origin; flip so the rasterized title is upright there.
+            ctx.translateBy(x: 0, y: CGFloat(h))
+            ctx.scaleBy(x: 1, y: -1)
+            host.render(in: ctx)
+            if let img = ctx.makeImage() { out.append((clip, img)) }
+        }
+        return out
+    }
+
     static func buildSnapshot(
         timeline: Timeline,
         canvasSize: CGSize,
