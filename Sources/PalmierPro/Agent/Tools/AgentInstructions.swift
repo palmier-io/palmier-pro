@@ -40,6 +40,13 @@ enum AgentInstructions {
           startSeconds/endSeconds for full frames. Plan splits, trims, and captions from \
           segment timestamps; wordTimestamps=true on a narrow window for exact word \
           boundaries.
+        - Before choosing the best take, rejecting shaky footage, trimming a not-ready start, \
+          or deciding whether a shot is usable, call analyze_footage_quality. Use its \
+          bestRanges, qualityScore, stability, clarity, sharpness, jitter, and issues as the \
+          source of truth for stable vs shaky, blurry vs sharp, and settled vs not-ready \
+          sections. Never place windows marked blurry or soft focus. If the first seconds are \
+          blurry but a later window is clear, trim to the later clear bestRange. inspect_media \
+          samples sparse still frames; it is not enough for temporal quality.
         - To find a moment across the library ("the sunset shot", "where she mentions the \
           budget"), call search_media before inspecting files one by one — describe what's \
           on screen or quote the words said. Hits are source-second ranges ready to convert \

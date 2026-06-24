@@ -1,0 +1,59 @@
+{
+  "datasetName": "Malay Wedding Reference Dataset",
+  "domain": "malay_wedding",
+  "culture": "Malay (Malaysia/Singapore/Brunei)",
+  "totalReferences": 242,
+  "momentTypes": {
+    "akad_nikah": 125,
+    "venue_establishing": 53,
+    "decor_detail": 17,
+    "couple_portrait": 65,
+    "pelamin": 95,
+    "reception": 101,
+    "salam_family": 42,
+    "guest_reaction": 10,
+    "bride_prep": 12,
+    "hantaran_detail": 17,
+    "ring_exchange": 42,
+    "exit_or_closing": 10,
+    "makan_beradab": 13,
+    "groom_prep": 2,
+    "family_portrait": 2
+  },
+  "sourcePlatforms": {
+    "youtube": 242
+  },
+  "momentCategories": {
+    "ceremony": [
+      "akad_nikah",
+      "ring_exchange",
+      "doa"
+    ],
+    "family": [
+      "salam_family",
+      "family_portrait",
+      "guest_reaction"
+    ],
+    "preparation": [
+      "bride_prep",
+      "groom_prep",
+      "hantaran_detail"
+    ],
+    "celebration": [
+      "pelamin",
+      "reception",
+      "makan_beradab",
+      "exit_or_closing"
+    ],
+    "scene": [
+      "venue_establishing",
+      "decor_detail",
+      "couple_portrait"
+    ]
+  },
+  "typicalPacing": "slow_romantic for ceremony, mixed for reception highlights",
+  "preferredComposition": "closeup for reactions, wide for venue/scene, medium for akad",
+  "audioPatterns": "traditional music during pelamin, silent/reverent during akad, upbeats for reception",
+  "generated_at": "2026-06-24T01:41:47.673551",
+  "avgDurationSec": 637.9628099173553
+}

@@ -23,6 +23,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case importMedia = "import_media"
     case listModels = "list_models"
     case inspectMedia = "inspect_media"
+    case analyzeFootageQuality = "analyze_footage_quality"
     case getTranscript = "get_transcript"
     case inspectTimeline = "inspect_timeline"
     case searchMedia = "search_media"
@@ -71,6 +72,21 @@ enum ToolDefinitions {
                     "endSeconds": ["type": "number", "description": "Video/audio. Window end (default: asset duration)."],
                     "wordTimestamps": ["type": "boolean", "description": "Video/audio. Add word-level [text, start, end] tuples (capped at 10000 — most clips return all words at once; narrow with startSeconds/endSeconds only for very long media). Use for word-boundary edits like filler-word removal."],
                     "overview": ["type": "boolean", "description": "Video only. One storyboard grid of visually distinct, timestamped moments instead of frames — far more coverage per token; few tiles means static footage. maxFrames ignored."],
+                ],
+                required: ["mediaRef"]
+            )
+        ),
+        AgentTool(
+            name: .analyzeFootageQuality,
+            description: "Analyze video usability with on-device temporal metrics before choosing good takes or trimming bad footage. Returns per-window qualityScore, stability, clarity, sharpness, motion, jitter, visualChange, isUsable, and issues such as shaky, blurry, soft focus, static, or high motion. bestRanges only contains clear, non-shaky windows, so if the start is blurry but the later shot becomes clear, use the later clear range and do not place the blurry section on the timeline. This is the reliable signal for stable vs shaky footage, motion settling, focus/blur, and candidate usable ranges; inspect_media only shows sparse still frames.\n\nUse windowSeconds around 1.5–3 for take selection. Use startSeconds/endSeconds to zoom into a suspected range. Results are source seconds unless clipId is supplied; when clipId is set, frame ranges are mapped to project frames for that clip.",
+            inputSchema: objectSchema(
+                properties: [
+                    "mediaRef": ["type": "string", "description": "Video asset ID from get_media."],
+                    "clipId": ["type": "string", "description": "Optional. Clip referencing mediaRef; adds project-frame ranges for each window."],
+                    "startSeconds": ["type": "number", "description": "Optional source-time window start."],
+                    "endSeconds": ["type": "number", "description": "Optional source-time window end."],
+                    "sampleFPS": ["type": "number", "description": "Optional analysis sample rate. Default 4, range 1–8."],
+                    "windowSeconds": ["type": "number", "description": "Optional scoring window size. Default 2, range 0.75–6."],
                 ],
                 required: ["mediaRef"]
             )
