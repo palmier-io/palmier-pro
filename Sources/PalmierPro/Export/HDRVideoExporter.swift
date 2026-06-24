@@ -143,7 +143,7 @@ enum HDRVideoExporter {
         let hlgSpace = CGColorSpace(name: CGColorSpace.itur_2100_HLG)
             ?? CGColorSpace(name: CGColorSpace.itur_2020) ?? titleWorkingSpace
         let processing = ProcessingContext(
-            input: videoInput, output: videoOutput, adaptor: adaptor,
+            input: videoInput, output: videoOutput, reader: reader, adaptor: adaptor,
             ciContext: CIContext(options: [.workingColorSpace: titleWorkingSpace]),
             overlays: textOverlays, fps: fps, renderSize: renderSize,
             inputSpace: titleWorkingSpace, hlgSpace: hlgSpace
@@ -164,10 +164,10 @@ enum HDRVideoExporter {
             progressReporter = nil
         }
         let failure = FailureBox()
-        let audioPump = (audioInput != nil && audioOutput != nil) ? PumpBox(audioInput!, audioOutput!) : nil
+        let audioPump = (audioInput != nil && audioOutput != nil) ? PumpBox(audioInput!, audioOutput!, reader) : nil
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await pumpVideoProcessed(processing, failure: failure, onSeconds: progressReporter) }
-            if let audioPump { group.addTask { await pump(audioPump) } }
+            if let audioPump { group.addTask { await pump(audioPump, failure: failure) } }
             await group.waitForAll()
         }
 
@@ -204,15 +204,17 @@ enum HDRVideoExporter {
     private final class PumpBox: @unchecked Sendable {
         let input: AVAssetWriterInput
         let output: AVAssetReaderOutput
-        init(_ input: AVAssetWriterInput, _ output: AVAssetReaderOutput) {
+        let reader: AVAssetReader
+        init(_ input: AVAssetWriterInput, _ output: AVAssetReaderOutput, _ reader: AVAssetReader) {
             self.input = input
             self.output = output
+            self.reader = reader
         }
     }
 
     /// Drain one reader output into one writer input, honoring back-pressure.
     /// `onSeconds` (video pump only) reports each appended sample's PTS in seconds, throttled.
-    private static func pump(_ box: PumpBox, onSeconds: (@Sendable (Double) -> Void)? = nil) async {
+    private static func pump(_ box: PumpBox, failure: FailureBox, onSeconds: (@Sendable (Double) -> Void)? = nil) async {
         let queue = DispatchQueue(label: "hdr.pump.\(box.input.mediaType.rawValue)")
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             var lastReported = -1.0
@@ -224,6 +226,10 @@ enum HDRVideoExporter {
                         return
                     }
                     if !box.input.append(sample) {
+                        // Abort: cancel the shared reader so the video pump's undrained output
+                        // unblocks instead of stalling read-ahead and deadlocking waitForAll.
+                        failure.set("audio append failed")
+                        box.reader.cancelReading()
                         box.input.markAsFinished()
                         cont.resume()
                         return
@@ -241,6 +247,7 @@ enum HDRVideoExporter {
     private struct ProcessingContext: @unchecked Sendable {
         let input: AVAssetWriterInput
         let output: AVAssetReaderOutput
+        let reader: AVAssetReader
         let adaptor: AVAssetWriterInputPixelBufferAdaptor
         let ciContext: CIContext
         let overlays: [TextOverlay]
@@ -282,20 +289,22 @@ enum HDRVideoExporter {
                         }
                         image = title.composited(over: image)
                     }
+                    // On any abort, cancel the shared reader so a concurrent audio pump unblocks
+                    // (its undrained output would otherwise stall read-ahead and deadlock waitForAll).
                     guard let pool = c.adaptor.pixelBufferPool else {
                         failure.set("pixel buffer pool unavailable")
-                        c.input.markAsFinished(); cont.resume(); return
+                        c.reader.cancelReading(); c.input.markAsFinished(); cont.resume(); return
                     }
                     var outBuffer: CVPixelBuffer?
                     let status = CVPixelBufferPoolCreatePixelBuffer(nil, pool, &outBuffer)
                     guard let outBuffer else {
                         failure.set("pixel buffer alloc failed (\(status))")
-                        c.input.markAsFinished(); cont.resume(); return
+                        c.reader.cancelReading(); c.input.markAsFinished(); cont.resume(); return
                     }
                     c.ciContext.render(image, to: outBuffer, bounds: bounds, colorSpace: c.hlgSpace)
                     if !c.adaptor.append(outBuffer, withPresentationTime: pts) {
                         failure.set("frame append failed")
-                        c.input.markAsFinished(); cont.resume(); return
+                        c.reader.cancelReading(); c.input.markAsFinished(); cont.resume(); return
                     }
                     if let onSeconds {
                         let secs = pts.seconds
