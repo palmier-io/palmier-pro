@@ -425,6 +425,21 @@ extension ToolExecutor {
         if let df = input.durationFrames, df < 1 {
             throw ToolError("durationFrames must be >= 1 (got \(df))")
         }
+        if let s = input.speed, s <= 0 {
+            throw ToolError("speed must be > 0 (got \(s))")
+        }
+        if let v = input.volume, !(0...1).contains(v) {
+            throw ToolError("volume must be between 0 and 1 (got \(v))")
+        }
+        if let o = input.opacity, !(0...1).contains(o) {
+            throw ToolError("opacity must be between 0 and 1 (got \(o))")
+        }
+        if let t = input.trimStartFrame, t < 0 {
+            throw ToolError("trimStartFrame must be >= 0 (got \(t))")
+        }
+        if let t = input.trimEndFrame, t < 0 {
+            throw ToolError("trimEndFrame must be >= 0 (got \(t))")
+        }
         let color = try parseColorHex(input.color, path: "set_clip_properties")
         let alignment = try parseAlignment(input.alignment, path: "set_clip_properties")
 

@@ -980,6 +980,22 @@ struct ToolExecutorClipTests {
         #expect(result.isError)
     }
 
+    @Test func setClipPropertiesRejectsOutOfRangeValues() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        let clipId = await addedClip(in: h, asset: asset)
+        let cases: [(String, Any)] = [
+            ("speed", 0.0), ("speed", -2.0),
+            ("volume", 5.0), ("opacity", -1.0), ("trimStartFrame", -100),
+        ]
+        for (field, value) in cases {
+            var args: [String: Any] = ["clipIds": [clipId]]
+            args[field] = value
+            let result = await h.runRaw("set_clip_properties", args: args)
+            #expect(result.isError, "\(field)=\(value) should be rejected")
+            #expect(ToolHarness.textOf(result).contains(field), "error should name \(field)")
+        }
+    }
+
     @Test func setClipPropertiesDurationAndSpeedPropagateToLinkedPartner() async throws {
         let (h, videoId, audioId) = await setupLinkedPair()
         _ = await h.runRaw("set_clip_properties", args: [
