@@ -383,9 +383,11 @@ struct AgentPanelView: View {
 
     private func submit() {
         guard canSend else { return }
-        service.send(text: service.draft, mentions: service.mentions)
+        let text = service.draft
+        let mentions = service.mentions
         service.draft = ""
         service.mentions.removeAll()
+        Task { await service.send(text: text, mentions: mentions) }
     }
 
     private func populatePrompt(_ prompt: String) {
