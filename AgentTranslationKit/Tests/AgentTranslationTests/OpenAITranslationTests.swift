@@ -142,9 +142,9 @@ final class OpenAITranslationTests: XCTestCase {
         // arguments must be a STRING containing valid JSON, not a nested object.
         let argsString = str(fn, "arguments")
         XCTAssertNotNil(argsString)
-        let parsed = try? JSONSerialization.jsonObject(with: Data(argsString!.utf8)) as? [String: Any]
-        XCTAssertEqual(parsed??["clipId"] as? String, "x")
-        XCTAssertEqual(parsed??["opacity"] as? Double, 0.5)
+        let parsed = (try? JSONSerialization.jsonObject(with: Data(argsString!.utf8))) as? [String: Any]
+        XCTAssertEqual(parsed?["clipId"] as? String, "x")
+        XCTAssertEqual(parsed?["opacity"] as? Double, 0.5)
     }
 
     func testAssistantTextAndToolUseCoexist() {
