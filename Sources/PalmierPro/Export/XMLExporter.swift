@@ -280,6 +280,7 @@ enum XMLExporter {
             guard let track = asset.tracks(withMediaType: .timecode).first,
                   let format = track.formatDescriptions.first,
                   let reader = try? AVAssetReader(asset: asset) else { return nil }
+            guard CFGetTypeID(format as CFTypeRef) == CMFormatDescriptionGetTypeID() else { return nil }
             let desc = format as! CMFormatDescription
             let quanta = Int(CMTimeCodeFormatDescriptionGetFrameQuanta(desc))
             let dropFrame = CMTimeCodeFormatDescriptionGetTimeCodeFlags(desc) & UInt32(kCMTimeCodeFlag_DropFrame) != 0
