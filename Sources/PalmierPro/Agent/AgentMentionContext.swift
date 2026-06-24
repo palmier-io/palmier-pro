@@ -11,26 +11,32 @@ enum AgentMentionContext {
         mentions.filter { text.contains("@\($0.displayName)") }
     }
 
+    /// Frozen at send time so the cached prompt prefix stays byte-stable
     @MainActor
-    static func hint(
-        _ mentions: [AgentMention],
-        editor: EditorViewModel?,
-        inlined: InlinedMentions = InlinedMentions()
-    ) -> String {
-        let entries = mentionEntries(mentions, editor: editor, inlined: inlined)
+    static func hint(_ mentions: [AgentMention], editor: EditorViewModel?) -> String {
+        let entries = mentionEntries(mentions, editor: editor)
         let data = (try? JSONSerialization.data(withJSONObject: entries, options: [.sortedKeys])) ?? Data()
         let json = String(data: data, encoding: .utf8) ?? "[]"
-        let notes = mentionNotes(mentions, inlined: inlined)
+        let notes = mentionNotes(mentions)
         let suffix = notes.isEmpty ? "" : " " + notes.joined(separator: " ")
         return "Referenced assets and timeline context in this message: \(json).\(suffix)"
     }
 
+    /// Which mentioned images were actually attached this request
+    static func inlineNote(for inlined: InlinedMentions) -> String? {
+        var parts: [String] = []
+        if !inlined.inlinedIds.isEmpty {
+            parts.append("These mentioned images are attached inline as image blocks — do not call inspect_media for them: \(inlined.inlinedIds.sorted().joined(separator: ", ")).")
+        }
+        if !inlined.failures.isEmpty {
+            let list = inlined.failures.sorted { $0.key < $1.key }.map { "\($0.key) (\($0.value))" }.joined(separator: ", ")
+            parts.append("These images could not be attached; tell the user the image could not be read rather than describing it: \(list).")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
+    }
+
     @MainActor
-    static func mentionEntries(
-        _ mentions: [AgentMention],
-        editor: EditorViewModel?,
-        inlined: InlinedMentions
-    ) -> [[String: Any]] {
+    static func mentionEntries(_ mentions: [AgentMention], editor: EditorViewModel?) -> [[String: Any]] {
         mentions.map { mention in
             var entry: [String: Any] = [
                 "mention": "@\(mention.displayName)",
@@ -44,8 +50,6 @@ enum AgentMentionContext {
             entry["kind"] = mention.clipId == nil ? "mediaAsset" : "timelineClip"
             if let mediaRef = mention.mediaRef {
                 entry["mediaRef"] = mediaRef
-                if inlined.inlinedIds.contains(mediaRef) { entry["inlined"] = true }
-                if let reason = inlined.failures[mediaRef] { entry["inlineError"] = reason }
             }
             if let type = mention.type { entry["type"] = type.rawValue }
             if let clipId = mention.clipId {
@@ -56,14 +60,8 @@ enum AgentMentionContext {
         }
     }
 
-    private static func mentionNotes(_ mentions: [AgentMention], inlined: InlinedMentions) -> [String] {
+    private static func mentionNotes(_ mentions: [AgentMention]) -> [String] {
         var notes: [String] = []
-        if !inlined.inlinedIds.isEmpty {
-            notes.append("Assets marked \"inlined\": true are attached as image blocks in this message — do not call inspect_media for them.")
-        }
-        if !inlined.failures.isEmpty {
-            notes.append("Assets with \"inlineError\" could not be attached; tell the user the image could not be read rather than describing it.")
-        }
         if mentions.contains(where: { $0.referencesTimelineClips }) {
             notes.append("Entries with \"clipId\" refer to timeline clips; use clipId for timeline edits and pass it to inspect_media when inspecting visible source media.")
         }

@@ -4,14 +4,13 @@ import UniformTypeIdentifiers
 
 /// Downscales images to a max longest edge and re-encodes as JPEG
 /// so its more token efficient for agent.
-@MainActor
 enum ImageEncoder {
     /// Target 3.5 MB
     static let maxBytes = 3_500_000
     /// Internal downsample target.
     static let maxLongestEdge = 1568
 
-    struct Output {
+    struct Output: Sendable {
         let data: Data
         let mime: String
     }
@@ -24,12 +23,9 @@ enum ImageEncoder {
 
     static func encode(url: URL) -> Output? {
         let stamp = fileStamp(url: url)
-        if let stamp, let hit = cache[stamp] { return hit }
+        if let stamp, let hit = cachedOutput(stamp) { return hit }
         let output = passthrough(url: url, stamp: stamp) ?? downscaled(url: url)
-        if let output, let stamp {
-            if cache.count >= maxCacheEntries { cache.removeAll() }
-            cache[stamp] = output
-        }
+        if let output, let stamp { store(output, for: stamp) }
         return output
     }
 
@@ -97,8 +93,20 @@ enum ImageEncoder {
         let size: Int
         let mtime: Date
     }
-    private static var cache: [FileStamp: Output] = [:]
+    private nonisolated(unsafe) static var cache: [FileStamp: Output] = [:]
+    private static let cacheLock = NSLock()
     private static let maxCacheEntries = 32
+
+    private static func cachedOutput(_ stamp: FileStamp) -> Output? {
+        cacheLock.withLock { cache[stamp] }
+    }
+
+    private static func store(_ output: Output, for stamp: FileStamp) {
+        cacheLock.withLock {
+            if cache.count >= maxCacheEntries { cache.removeAll() }
+            cache[stamp] = output
+        }
+    }
 
     private static func fileStamp(url: URL) -> FileStamp? {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),

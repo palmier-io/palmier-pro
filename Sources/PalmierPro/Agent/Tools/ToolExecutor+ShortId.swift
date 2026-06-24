@@ -50,17 +50,30 @@ extension ToolExecutor {
         return ToolResult(content: content, isError: result.isError)
     }
 
-    /// Maps each id to its shortest prefix (≥ 8 chars) that no other id shares.
+    /// Maps each id to its shortest prefix (≥ idPrefixFloor) that no other id shares. O(n log n)
     static func shortIdMap(_ ids: Set<String>) -> [String: String] {
+        let sorted = ids.sorted()
         var out: [String: String] = [:]
-        for id in ids {
-            var len = idPrefixFloor
-            while len < id.count, ids.contains(where: { $0 != id && $0.hasPrefix(id.prefix(len)) }) {
-                len += 1
-            }
+        for (i, id) in sorted.enumerated() {
+            var sharedLen = 0
+            if i > 0 { sharedLen = max(sharedLen, commonPrefixLength(id, sorted[i - 1])) }
+            if i < sorted.count - 1 { sharedLen = max(sharedLen, commonPrefixLength(id, sorted[i + 1])) }
+            let len = min(id.count, max(idPrefixFloor, sharedLen + 1))
             out[id] = String(id.prefix(len))
         }
         return out
+    }
+
+    private static func commonPrefixLength(_ a: String, _ b: String) -> Int {
+        var count = 0
+        var i = a.startIndex
+        var j = b.startIndex
+        while i < a.endIndex, j < b.endIndex, a[i] == b[j] {
+            count += 1
+            i = a.index(after: i)
+            j = b.index(after: j)
+        }
+        return count
     }
 
     /// Expands id-prefix arguments back to full ids before a tool runs. Throws on an ambiguous prefix;

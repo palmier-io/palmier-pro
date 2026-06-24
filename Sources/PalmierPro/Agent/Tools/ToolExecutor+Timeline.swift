@@ -288,7 +288,7 @@ extension ToolExecutor {
         }
 
         switch asset.type {
-        case .image: return try readImage(asset: asset, args: args)
+        case .image: return try await readImage(asset: asset, args: args)
         case .video: return try await readVideo(editor: editor, asset: asset, args: args, mapping: mapping)
         case .audio: return try await readAudio(editor: editor, asset: asset, args: args, mapping: mapping)
         case .lottie: return try await readLottie(asset: asset, args: args)
@@ -318,17 +318,22 @@ extension ToolExecutor {
         ]
     }
 
-    private func readImage(asset: MediaAsset, args: [String: Any]) throws -> ToolResult {
+    private func readImage(asset: MediaAsset, args: [String: Any]) async throws -> ToolResult {
         let url = asset.url
-        let fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.uint64Value ?? 0
-        guard let encoded = ImageEncoder.encode(url: url) else {
+        let encoded = await Task.detached(priority: .userInitiated) {
+            ImageEncoder.encode(url: url).map {
+                (base64: $0.data.base64EncodedString(), mime: $0.mime, encodedByteSize: $0.data.count)
+            }
+        }.value
+        guard let encoded else {
             throw ToolError("Failed to read or decode image file")
         }
 
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.uint64Value ?? 0
         var meta = Self.baseMeta(for: asset)
         meta["mimeType"] = encoded.mime
         meta["byteSize"] = fileSize
-        meta["encodedByteSize"] = encoded.data.count
+        meta["encodedByteSize"] = encoded.encodedByteSize
         if let props = Self.imagePropertiesSummary(at: url) {
             meta["imageProperties"] = props
         }
@@ -337,7 +342,7 @@ extension ToolExecutor {
             throw ToolError("Failed to encode metadata")
         }
         return ToolResult(
-            content: [.image(base64: encoded.data.base64EncodedString(), mediaType: encoded.mime), .text(metaJSON)],
+            content: [.image(base64: encoded.base64, mediaType: encoded.mime), .text(metaJSON)],
             isError: false
         )
     }
