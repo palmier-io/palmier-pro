@@ -304,10 +304,7 @@ final class AgentService {
         let referencedMentions = AgentMentionContext.referencedMentions(mentions, in: trimmed)
         let contextHint = referencedMentions.isEmpty
             ? nil
-            : AgentMentionContext.hint(
-                referencedMentions, editor: editor,
-                inlined: plannedInlines(for: referencedMentions)
-            )
+            : AgentMentionContext.hint(referencedMentions, editor: editor)
 
         resolveOrphanToolUses()
         messages.append(AgentMessage(
@@ -516,8 +513,8 @@ final class AgentService {
             var content = msg.blocks.compactMap(Self.contentBlockJSON)
             if msg.role == .user, !msg.mentions.isEmpty {
                 let inlined = await inlineImageBlocks(for: msg.mentions)
-                let hint = msg.contextHint
-                    ?? AgentMentionContext.hint(msg.mentions, editor: editor, inlined: inlined)
+                var hint = msg.contextHint ?? AgentMentionContext.hint(msg.mentions, editor: editor)
+                if let note = AgentMentionContext.inlineNote(for: inlined) { hint += " " + note }
                 content.insert(contentsOf: inlined.blocks, at: 0)
                 content.insert(["type": "text", "text": hint], at: 0)
             }
@@ -525,20 +522,6 @@ final class AgentService {
             result.append(AnthropicMessage(role: msg.role == .user ? .user : .assistant, content: content))
         }
         return result
-    }
-
-    /// Which image mentions will inline
-    private func plannedInlines(for mentions: [AgentMention]) -> AgentMentionContext.InlinedMentions {
-        var out = AgentMentionContext.InlinedMentions()
-        for mention in mentions where mention.type == .image {
-            guard let mediaRef = mention.mediaRef else { continue }
-            if editor?.mediaAssets.contains(where: { $0.id == mediaRef }) ?? false {
-                out.inlinedIds.insert(mediaRef)
-            } else {
-                out.failures[mediaRef] = editor == nil ? "editor unavailable" : "asset not in media library"
-            }
-        }
-        return out
     }
 
     private func inlineImageBlocks(for mentions: [AgentMention]) async -> AgentMentionContext.InlinedMentions {
