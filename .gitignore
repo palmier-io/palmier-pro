@@ -34,3 +34,6 @@ models/*/.venv/
 models/*/build*/
 models/*/checkpoint*
 models/*/convert*.log
+
+# Local reference research data (scraped videos/frames, not source)
+References/

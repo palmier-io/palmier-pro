@@ -6,27 +6,39 @@ import Observation
 final class AgentService {
 
     private var apiKey: String = ""
+    private var openRouterKey: String = ""
     private var apiKeyObserver: NSObjectProtocol?
+    private var openRouterKeyObserver: NSObjectProtocol?
 
     init() {
-        reloadAPIKey()
+        reloadKeys()
         apiKeyObserver = NotificationCenter.default.addObserver(
             forName: .anthropicAPIKeyChanged,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.reloadAPIKey()
+                self?.reloadKeys()
+            }
+        }
+        openRouterKeyObserver = NotificationCenter.default.addObserver(
+            forName: .openRouterAPIKeyChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.reloadKeys()
             }
         }
     }
 
-    private func reloadAPIKey() {
+    private func reloadKeys() {
         Task { [weak self] in
-            let key = await Task.detached(priority: .utility) {
-                AnthropicKeychain.load() ?? ""
+            let keys = await Task.detached(priority: .utility) {
+                (anthropic: AnthropicKeychain.load() ?? "", openRouter: OpenRouterKeychain.load() ?? "")
             }.value
-            self?.apiKey = key
+            self?.apiKey = keys.anthropic
+            self?.openRouterKey = keys.openRouter
         }
     }
 
@@ -34,12 +46,16 @@ final class AgentService {
         if let token = apiKeyObserver {
             NotificationCenter.default.removeObserver(token)
         }
+        if let token = openRouterKeyObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
     }
 
     var hasApiKey: Bool { !apiKey.isEmpty }
+    var hasOpenRouterKey: Bool { !openRouterKey.isEmpty }
 
     var canStream: Bool {
-        if hasApiKey { return true }
+        if hasOpenRouterKey || hasApiKey { return true }
         let account = AccountService.shared
         return account.isSignedIn && account.hasCredits
     }
@@ -50,6 +66,9 @@ final class AgentService {
     }
 
     private func selectClient() -> (any AgentClient)? {
+        if let config = OpenAICompatibleConfig.resolved() {
+            return OpenAICompatibleClient(config: config)
+        }
         let chosen = effectiveModel
         if hasApiKey { return AnthropicClient(apiKey: apiKey, model: chosen) }
         if AccountService.shared.isSignedIn {
