@@ -120,13 +120,19 @@ extension ToolExecutor {
     }
 
     private func exportPalmier(_ editor: EditorViewModel, outputURL: URL) async throws -> ToolResult {
+        guard ExportCoordinator.beginExportIfIdle() else {
+            throw ToolError("export_project: Another export is already in progress.")
+        }
+        defer { ExportCoordinator.endExport() }
+
         let service = ExportService()
         guard let report = await service.exportPalmierProject(
             timeline: editor.timeline,
             manifest: editor.mediaManifest,
             generationLog: editor.generationLog,
             sourceProjectURL: editor.projectURL,
-            outputURL: outputURL
+            outputURL: outputURL,
+            acquireSlot: false
         ) else {
             throw ToolError("export_project: \(service.error ?? "Palmier project export failed")")
         }

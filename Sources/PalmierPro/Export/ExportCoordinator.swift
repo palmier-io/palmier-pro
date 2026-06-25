@@ -6,11 +6,17 @@ enum ExportCoordinator {
 
     static var isExportActive: Bool { exportActive }
 
-    /// Claims the single heavy-export slot. Returns false if one is already running.
     static func beginExportIfIdle() -> Bool {
         guard !exportActive else { return false }
         exportActive = true
         return true
+    }
+
+    static func acquireExport() async {
+        while exportActive {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        exportActive = true
     }
 
     static func endExport() {

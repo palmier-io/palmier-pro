@@ -54,10 +54,7 @@ final class ExportService {
         }
 
         if acquireSlot {
-            guard ExportCoordinator.beginExportIfIdle() else {
-                error = "Another export is already in progress."
-                return
-            }
+            await ExportCoordinator.acquireExport()
         }
         defer { if acquireSlot { ExportCoordinator.endExport() } }
 
@@ -145,7 +142,8 @@ final class ExportService {
         manifest: MediaManifest,
         generationLog: GenerationLog,
         sourceProjectURL: URL?,
-        outputURL: URL
+        outputURL: URL,
+        acquireSlot: Bool = true
     ) async -> PalmierProjectExporter.Report? {
         isExporting = true
         progress = 0
@@ -153,11 +151,10 @@ final class ExportService {
         lastReport = nil
         defer { isExporting = false }
 
-        guard ExportCoordinator.beginExportIfIdle() else {
-            error = "Another export is already in progress."
-            return nil
+        if acquireSlot {
+            await ExportCoordinator.acquireExport()
         }
-        defer { ExportCoordinator.endExport() }
+        defer { if acquireSlot { ExportCoordinator.endExport() } }
 
         do {
             Log.export.notice(
