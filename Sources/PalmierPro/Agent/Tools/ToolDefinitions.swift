@@ -13,6 +13,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case setKeyframes = "set_keyframes"
     case splitClip = "split_clip"
     case rippleDeleteRanges = "ripple_delete_ranges"
+    case removeWords = "remove_words"
     case syncAudio = "sync_audio"
     case undo = "undo"
     case addTexts = "add_texts"
@@ -81,7 +82,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .getTranscript,
-            description: "Returns the spoken transcript of the CURRENT timeline in project frames — the post-edit caption track in one call. Unlike inspect_media (which transcribes one source asset in isolation, in source seconds), this walks every audio/video clip on the timeline, maps each word through that clip's trim/speed/position, and concatenates in timeline order. Deleted ranges are gone by construction, so after cuts this always reflects what's actually audible — no stale results, no per-clip frame math.\n\nReturns clips in timeline order, each with its words nested as compact [text, startFrame, endFrame] rows (the field order is given once in wordFormat) — clipId and trackIndex are stated once per clip, not repeated per word. Words are monotonic and non-overlapping; each is attributed to one clip, so a word split across a clip seam is emitted once, not re-emitted per clip. Pass a clip's clipId and a word's frames straight to ripple_delete_ranges. Capped at 10000 words total; page with startFrame/endFrame using nextStartFrame. Pass clipId to scope to a single clip (\"what does this clip say?\"). Transcription runs on-device.\n\nUse for transcript-driven edits (filler-word / dead-air removal, locating a quote, take selection) and to verify what remains after cutting.",
+            description: "Returns the spoken transcript of the CURRENT timeline in project frames — the post-edit caption track in one call. Unlike inspect_media (which transcribes one source asset in isolation, in source seconds), this walks every audio/video clip on the timeline, maps each word through that clip's trim/speed/position, and concatenates in timeline order. Deleted ranges are gone by construction, so after cuts this always reflects what's actually audible — no stale results, no per-clip frame math.\n\nReturns clips in timeline order, each with its words nested as compact [index, text, startFrame, endFrame] rows (the field order is given once in wordFormat) — clipId and trackIndex are stated once per clip, not repeated per word. The index is a stable, global, 0-based position in timeline order; pass it straight to remove_words to cut that word (the intuitive path for text-based editing). Words are monotonic and non-overlapping; each is attributed to one clip, so a word split across a clip seam is emitted once. Indices stay global even when scoped with clipId or paged with a window. Capped at 10000 words total; page with startFrame/endFrame using nextStartFrame. Pass clipId to scope to a single clip (\"what does this clip say?\"). Transcription runs on-device.\n\nUse for transcript-driven edits (filler-word / dead-air removal, locating a quote, take selection) and to verify what remains after cutting. To cut, prefer remove_words (give it the indices); drop to ripple_delete_ranges only for non-word-aligned spans.",
             inputSchema: objectSchema(
                 properties: [
                     "startFrame": ["type": "integer", "description": "Optional. Only return words ending after this project frame. Use with the returned nextStartFrame to page a long timeline."],
@@ -297,6 +298,25 @@ enum ToolDefinitions {
                     "units": ["type": "string", "enum": ["seconds", "frames"], "description": "Interpretation of range values. 'frames' (default) = project/timeline frames, matching get_transcript and inspect_media-with-clipId. 'seconds' = source-media seconds (clipId mode only)."],
                 ],
                 required: ["ranges"]
+            )
+        ),
+        AgentTool(
+            name: .removeWords,
+            description: "Cut speech by the word, Descript-style — the primary tool for text-based editing (filler words, flubbed sentences, dropped retakes, tightening a ramble). You name WHICH words to remove by their get_transcript index; this resolves them to frames, removes the surrounding pause so survivors don't end up double-spaced, merges adjacent removals, cuts linked A/V partners, and closes the gaps. You never deal in frame numbers — that's the whole point versus ripple_delete_ranges.\n\nWorkflow: call get_transcript, read it as prose, then pass the indices of the words to drop. Removals across multiple clips/tracks are handled in one undoable action. After it runs, indices have shifted — re-read get_transcript before another remove_words.\n\nWhen to use which: remove_words for anything you can point at in the transcript; ripple_delete_ranges only for spans that aren't word-aligned (e.g. a visual-only dead-air gap). Verify reworded retakes and sub-frame seam fragments against the word list, not a summary.",
+            inputSchema: objectSchema(
+                properties: [
+                    "words": [
+                        "type": "array",
+                        "description": "Words to remove, by their get_transcript index. Each element is either a single index (e.g. 42) or an inclusive [startIndex, endIndex] span (e.g. [12, 18] removes words 12 through 18). Mix freely: [3, [12, 18], 40]. Indices come from the current get_transcript; re-read after any edit.",
+                        "items": ["type": ["integer", "array"]],
+                    ],
+                    "cutAggressiveness": [
+                        "type": "string",
+                        "enum": ["tight", "balanced", "loose"],
+                        "description": "How much silence to leave between the words on either side of a cut. 'tight' butts them close (snappy, can feel clipped), 'balanced' (default) keeps a natural beat, 'loose' leaves more breathing room. The removed words' own frames always go regardless.",
+                    ],
+                ],
+                required: ["words"]
             )
         ),
         AgentTool(

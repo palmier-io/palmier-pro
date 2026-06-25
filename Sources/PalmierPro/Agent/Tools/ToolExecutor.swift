@@ -91,6 +91,7 @@ final class ToolExecutor {
         case .setKeyframes:     return try setKeyframes(editor, args)
         case .splitClip:        return try splitClip(editor, args)
         case .rippleDeleteRanges: return try rippleDeleteRanges(editor, args)
+        case .removeWords:   return try await removeWords(editor, args)
         case .syncAudio:     return try await syncAudio(editor, args)
         case .undo:          return try undo(editor)
         case .addTexts:      return try addTexts(editor, args)
@@ -162,6 +163,24 @@ final class ToolExecutor {
             editor.undoManager?.setActionName(actionName)
         }
         return try work()
+    }
+
+    func resolveClipTarget(clipId: String?, trackIndex: Int?) throws -> Set<String> {
+        guard (clipId != nil) != (trackIndex != nil) else {
+            throw ToolError("Provide exactly one of 'clipId' (one clip) or 'trackIndex' (a whole track).")
+        }
+        guard let editor else { throw ToolError("Editor not available") }
+        if let clipId {
+            guard editor.findClip(id: clipId) != nil else { throw ToolError("Clip not found: \(clipId)") }
+            return [clipId]
+        }
+        let ti = trackIndex!
+        guard editor.timeline.tracks.indices.contains(ti) else {
+            throw ToolError("Track index out of range: \(ti)")
+        }
+        let ids = Set(editor.timeline.tracks[ti].clips.map(\.id))
+        guard !ids.isEmpty else { throw ToolError("Track \(ti) has no clips.") }
+        return ids
     }
 }
 

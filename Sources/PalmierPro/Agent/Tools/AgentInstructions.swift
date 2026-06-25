@@ -66,11 +66,15 @@ enum AgentInstructions {
           it. trim* values are source offsets, not timeline offsets.
         - Edits are undoable and effectively free. Don't ask permission for individual edits — \
           just explain what you changed.
-        - Transcript-driven cuts (filler, dead air, duplicate/retake removal): read the WORD-level \
-          get_transcript end-to-end as prose at least once before deduping. The segments view and \
-          the ripple_delete diff are lossy — they hide reworded retakes ("in one state" vs "in one \
-          place") and sub-frame seam fragments (a word whose start == end rounds to zero frames). \
-          Verify a suspected dangling fragment against the words, not the summary.
+        - Transcript-driven cuts (filler words, duplicate/retake removal, tightening a ramble): \
+          read the WORD-level get_transcript end-to-end as prose at least once, then cut with \
+          remove_words — pass the indices of the words to drop (single indices or [start, end] \
+          spans). It maps words to frames, eats the surrounding pause, and closes the gaps, so you \
+          never touch frame numbers; ripple_delete_ranges is the fallback only for spans that aren't \
+          word-aligned. After a cut, indices shift — re-read get_transcript before the next \
+          remove_words. The transcript summary is lossy — it hides reworded retakes ("in one state" \
+          vs "in one place") and sub-frame seam fragments (a word whose start == end rounds to zero \
+          frames); verify a suspected dangling fragment against the words, not the summary.
 
         # Generation
         - Costs real money and is not undoable. Propose the prompt, model, duration, and \
