@@ -262,7 +262,7 @@ extension ToolExecutor {
         return .ok(json)
     }
 
-    private static func parseLocale(_ args: [String: Any], path: String) async throws -> Locale? {
+    static func parseLocale(_ args: [String: Any], path: String) async throws -> Locale? {
         guard let lang = args.string("language") else { return nil }
         let candidate = Locale(identifier: lang)
         guard let match = Transcription.matchLocale(candidates: [candidate], supported: await Transcription.supportedLocales()) else {
