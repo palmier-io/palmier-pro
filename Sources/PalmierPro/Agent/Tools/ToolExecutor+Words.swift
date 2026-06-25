@@ -34,21 +34,45 @@ extension ToolExecutor {
         let keepGapFrames = msToFrames(aggressiveness.keptGapMs, fps: editor.timeline.fps)
         var removedTexts: [String] = []
         var rangesByTrack: [Int: [FrameRange]] = [:]
-        forEachTimelineClipGroup(in: allWords) { _, trackIndex, clipStart, clipEnd, clipWords in
+        var involvedClips: [String] = []
+        forEachTimelineClipGroup(in: allWords) { clipId, trackIndex, clipStart, clipEnd, clipWords in
             guard clipWords.contains(where: { selected.contains($0.index) }) else { return }
             removedTexts.append(contentsOf: clipWords.filter { selected.contains($0.index) }.map(\.text))
             let plan = clipWords.map {
                 WordCutPlanner.Word(startFrame: $0.startFrame, endFrame: $0.endFrame, selected: selected.contains($0.index))
             }
             let ranges = WordCutPlanner.cutRanges(words: plan, clipStart: clipStart, clipEnd: clipEnd, keepGapFrames: keepGapFrames)
-            if !ranges.isEmpty { rangesByTrack[trackIndex, default: []].append(contentsOf: ranges) }
+            if !ranges.isEmpty {
+                rangesByTrack[trackIndex, default: []].append(contentsOf: ranges)
+                involvedClips.append(clipId)
+            }
         }
         guard !rangesByTrack.isEmpty else {
             throw ToolError("The selected words resolved to no removable frames. Re-read get_transcript.")
         }
 
+        // Cut on one track; the ripple carries linked A/V partners on the same span. Words on more
+        // than one track are coherent only if those tracks are a single linked unit (e.g. camera +
+        // mic). Independent tracks can't be cut together without breaking alignment.
+        let primaryTrack: Int
+        let primaryRanges: [FrameRange]
+        if rangesByTrack.count == 1 {
+            primaryTrack = rangesByTrack.first!.key
+            primaryRanges = rangesByTrack.first!.value
+        } else {
+            let groupIds: [String] = involvedClips.compactMap { id in
+                editor.findClip(id: id).flatMap { editor.timeline.tracks[$0.trackIndex].clips[$0.clipIndex].linkGroupId }
+            }
+            guard groupIds.count == involvedClips.count, Set(groupIds).count == 1 else {
+                let tracks = rangesByTrack.keys.sorted().map(String.init).joined(separator: ", ")
+                throw ToolError("Selected words span multiple unlinked tracks (\(tracks)). Remove words one track at a time — linked video/audio is cut automatically. If these tracks are the same source (e.g. camera + mic), link them into one unit first.")
+            }
+            primaryTrack = rangesByTrack.keys.min()!
+            primaryRanges = rangesByTrack.values.flatMap { $0 }
+        }
+
         editor.undoManager?.beginUndoGrouping()
-        let outcome = editor.rippleDeleteRangesOnTracks(rangesByTrack)
+        let outcome = editor.rippleDeleteRangesOnTrack(trackIndex: primaryTrack, ranges: primaryRanges)
         editor.undoManager?.endUndoGrouping()
         editor.undoManager?.setActionName("Remove Words (Agent)")
         guard case .ok(let report) = outcome else {
@@ -58,7 +82,7 @@ extension ToolExecutor {
 
         var payload: [String: Any] = [
             "removedWords": removedTexts.count, "removedFrames": report.removedFrames,
-            "tracksEdited": rangesByTrack.count, "cutAggressiveness": aggressiveness.rawValue,
+            "tracksEdited": report.clearedTracks, "cutAggressiveness": aggressiveness.rawValue,
             "note": "Removed and closed the gaps. Re-read get_transcript before another remove_words.",
         ]
         let preview = removedTexts.prefix(24).joined(separator: " ")
