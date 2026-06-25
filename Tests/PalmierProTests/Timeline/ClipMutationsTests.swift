@@ -131,6 +131,17 @@ struct SplitClipTests {
         #expect(leftGroups == ["g1"])
     }
 
+    @Test func splitClipsAtMultiplePointsCutsEachAndSkipsBoundaries() {
+        let clip = Fixtures.clip(id: "c1", start: 0, duration: 90)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        // Two real cuts plus a repeat of the first: the repeat lands on a boundary and is a no-op.
+        let rightIds = e.splitClips(at: [(0, 30), (0, 60), (0, 30)])
+        let clips = e.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(clips.map(\.startFrame) == [0, 30, 60])
+        #expect(clips.map(\.durationFrames) == [30, 30, 30])
+        #expect(rightIds.count == 2)
+    }
+
     @Test func splitClipZerosOpacityFadesAcrossCut() {
         var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
         clip.fadeInFrames = 15

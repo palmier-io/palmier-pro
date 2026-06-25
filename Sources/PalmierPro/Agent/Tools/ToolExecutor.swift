@@ -89,7 +89,7 @@ final class ToolExecutor {
         case .moveClips:        return try moveClips(editor, args)
         case .setClipProperties: return try setClipProperties(editor, args)
         case .setKeyframes:     return try setKeyframes(editor, args)
-        case .splitClip:        return try splitClip(editor, args)
+        case .splitClips:       return try splitClips(editor, args)
         case .rippleDeleteRanges: return try rippleDeleteRanges(editor, args)
         case .removeWords:   return try await removeWords(editor, args)
         case .syncAudio:     return try await syncAudio(editor, args)

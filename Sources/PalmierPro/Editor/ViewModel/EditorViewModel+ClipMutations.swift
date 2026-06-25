@@ -93,25 +93,34 @@ extension EditorViewModel {
     @discardableResult
     func splitClip(clipId: String, atFrame: Int) -> [String] {
         guard let loc = findClip(id: clipId) else { return [] }
-        let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        let groupIds: Set<String> = clip.linkGroupId != nil
-            ? Set([clipId] + linkedPartnerIds(of: clipId))
-            : [clipId]
+        return splitClips(at: [(loc.trackIndex, atFrame)])
+    }
 
+    /// Splits at one or more project frames in a single undoable action
+    func splitClips(at points: [(trackIndex: Int, atFrame: Int)]) -> [String] {
         undoManager?.beginUndoGrouping()
+        defer {
+            undoManager?.endUndoGrouping()
+            undoManager?.setActionName(points.count > 1 ? "Split Clips" : "Split Clip")
+        }
         var rightIds: [String] = []
-        for id in groupIds {
-            if let rightId = splitSingleClip(clipId: id, atFrame: atFrame) {
-                rightIds.append(rightId)
+        for p in points {
+            guard p.trackIndex >= 0, p.trackIndex < timeline.tracks.count,
+                  let clip = timeline.tracks[p.trackIndex].clips.first(where: {
+                      p.atFrame > $0.startFrame && p.atFrame < $0.endFrame
+                  })
+            else { continue }
+            let groupIds: Set<String> = clip.linkGroupId != nil
+                ? Set([clip.id] + linkedPartnerIds(of: clip.id))
+                : [clip.id]
+            let rights = groupIds.compactMap { splitSingleClip(clipId: $0, atFrame: p.atFrame) }
+            // Regroup the right halves so each side is its own linked pair.
+            if groupIds.count > 1 && !rights.isEmpty {
+                let newGroup = UUID().uuidString
+                mutateClips(ids: Set(rights), actionName: "Split Clip") { $0.linkGroupId = newGroup }
             }
+            rightIds.append(contentsOf: rights)
         }
-        // Regroup the right halves so each side is its own linked pair.
-        if groupIds.count > 1 && !rightIds.isEmpty {
-            let newGroup = UUID().uuidString
-            mutateClips(ids: Set(rightIds), actionName: "Split Clip") { $0.linkGroupId = newGroup }
-        }
-        undoManager?.endUndoGrouping()
-        undoManager?.setActionName(groupIds.count > 1 ? "Split Clips" : "Split Clip")
         return rightIds
     }
 
