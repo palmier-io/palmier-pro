@@ -111,6 +111,7 @@ final class ToolExecutor {
         case .deleteMedia:   return try deleteMedia(editor, args)
         case .deleteFolder:  return try deleteFolder(editor, args)
         case .sendFeedback:  return try await sendFeedback(editor, args)
+        case .setProjectSettings: return try setProjectSettings(editor, args)
         }
     }
 
