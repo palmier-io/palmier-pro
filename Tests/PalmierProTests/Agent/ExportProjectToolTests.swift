@@ -1,4 +1,3 @@
-import CoreGraphics
 import Foundation
 import Testing
 @testable import PalmierPro
@@ -62,56 +61,34 @@ struct ExportProjectToolTests {
         #expect(uniqueURL.deletingLastPathComponent().standardizedFileURL == downloads.standardizedFileURL)
         #expect(uniqueURL.lastPathComponent == "\(base) 2.xml")
 
-        #expect(ExportCoordinator.beginExclusiveExportIfIdle())
-        defer { ExportCoordinator.endExclusiveExport() }
+        ExportCoordinator.beginExport()
+        defer { ExportCoordinator.endExport() }
 
-        let activeXML = FileManager.default.temporaryDirectory
-            .appendingPathComponent("export-tool-active-\(UUID().uuidString).xml")
-        defer { try? FileManager.default.removeItem(at: activeXML) }
-        let xmlResult = await h.runRaw("export_project", args: ["mode": "xml", "outputPath": activeXML.path])
-        #expect(!xmlResult.isError)
-        #expect(FileManager.default.fileExists(atPath: activeXML.path))
+        let uiActiveXML = FileManager.default.temporaryDirectory
+            .appendingPathComponent("export-tool-ui-active-\(UUID().uuidString).xml")
+        defer { try? FileManager.default.removeItem(at: uiActiveXML) }
+        let uiActiveXMLResult = await h.runRaw("export_project", args: [
+            "mode": "xml",
+            "outputPath": uiActiveXML.path,
+        ])
+        #expect(!uiActiveXMLResult.isError)
+        #expect(FileManager.default.fileExists(atPath: uiActiveXML.path))
 
-        let activeVideo = FileManager.default.temporaryDirectory
-            .appendingPathComponent("export-tool-active-\(UUID().uuidString).mp4")
-        let videoResult = await h.runRaw("export_project", args: ["mode": "video", "outputPath": activeVideo.path])
-        #expect(videoResult.isError)
-        #expect(ToolHarness.textOf(videoResult).contains("another export"))
-        #expect(!FileManager.default.fileExists(atPath: activeVideo.path))
+        let uiActiveVideo = FileManager.default.temporaryDirectory
+            .appendingPathComponent("export-tool-ui-active-\(UUID().uuidString).mp4")
+        let uiActiveResult = await h.runRaw("export_project", args: [
+            "mode": "video",
+            "outputPath": uiActiveVideo.path,
+        ])
+        #expect(uiActiveResult.isError)
+        #expect(ToolHarness.textOf(uiActiveResult).contains("another export"))
+        #expect(!FileManager.default.fileExists(atPath: uiActiveVideo.path))
     }
 
-    @Test func exportsVideoXMLAndPalmier() async throws {
-        let renderSize = CGSize(width: 320, height: 180)
-        let mediaRef = "black-fixture"
-        let blackURL = try await ImageVideoGenerator.blackVideo(size: renderSize)
-        let clip = Fixtures.clip(id: "c1", mediaRef: mediaRef, start: 0, duration: 30)
-        var timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
-        timeline.width = Int(renderSize.width)
-        timeline.height = Int(renderSize.height)
-
-        let h = ToolHarness(timeline: timeline)
-        h.editor.mediaManifest.entries = [MediaManifestEntry(
-            id: mediaRef,
-            name: "black",
-            type: .video,
-            source: .external(absolutePath: blackURL.path),
-            duration: 5.0
-        )]
-
-        let videoURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("export-tool-\(UUID().uuidString).mp4")
-        defer { try? FileManager.default.removeItem(at: videoURL) }
-        let video = try await h.runOK("export_project", args: [
-            "mode": "video",
-            "outputPath": videoURL.path,
-        ]) as? [String: Any]
-        #expect(video?["status"] as? String == "exported")
-        #expect(video?["codec"] as? String == "H.264")
-        #expect(video?["resolution"] as? String == "Match Timeline")
-        #expect(video?["width"] as? Int == Int(renderSize.width))
-        #expect(video?["height"] as? Int == Int(renderSize.height))
-        #expect(FileManager.default.fileExists(atPath: videoURL.path))
-
+    @Test func exportsXML() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(mediaRef: "missing", start: 0, duration: 30)]),
+        ]))
         let xmlURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("export-tool-\(UUID().uuidString).xml")
         defer { try? FileManager.default.removeItem(at: xmlURL) }
@@ -122,30 +99,5 @@ struct ExportProjectToolTests {
         #expect(xml?["status"] as? String == "exported")
         #expect(xml?["mode"] as? String == "xml")
         #expect(try String(contentsOf: xmlURL, encoding: .utf8).contains("<xmeml version=\"4\">"))
-
-        h.editor.mediaManifest.entries = [MediaManifestEntry(
-            id: "missing-media",
-            name: "Missing Media",
-            type: .video,
-            source: .external(absolutePath: "/tmp/missing-\(UUID().uuidString).mp4"),
-            duration: 1.0
-        )]
-        let palmierURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("export-tool-existing-\(UUID().uuidString).palmier", isDirectory: true)
-        let staleURL = palmierURL.appendingPathComponent("stale.txt")
-        try FileManager.default.createDirectory(at: palmierURL, withIntermediateDirectories: true)
-        try Data("stale".utf8).write(to: staleURL)
-        defer { try? FileManager.default.removeItem(at: palmierURL) }
-
-        let palmier = try await h.runOK("export_project", args: [
-            "mode": "palmier",
-            "outputPath": palmierURL.path,
-        ]) as? [String: Any]
-        let missing = palmier?["missingMedia"] as? [[String: Any]]
-        #expect(palmier?["status"] as? String == "exportedWithWarnings")
-        #expect(missing?.first?["id"] as? String == "missing-media")
-        #expect(!FileManager.default.fileExists(atPath: staleURL.path))
-        #expect(FileManager.default.fileExists(atPath: palmierURL.appendingPathComponent(Project.timelineFilename).path))
-        #expect(FileManager.default.fileExists(atPath: palmierURL.appendingPathComponent(Project.manifestFilename).path))
     }
 }

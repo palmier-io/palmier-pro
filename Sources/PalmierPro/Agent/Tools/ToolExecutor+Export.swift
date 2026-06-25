@@ -18,15 +18,6 @@ extension ToolExecutor {
         let format = try mode == .video ? ExportFormat.videoCodec(named: input.codec) : nil
         let resolution = try mode == .video ? ExportResolution.exportPreset(named: input.resolution) : .matchTimeline
 
-        var reservedExportSlot = false
-        if mode != .xml {
-            guard ExportCoordinator.beginExclusiveExportIfIdle() else {
-                throw ToolError("export_project: another export is already in progress")
-            }
-            reservedExportSlot = true
-        }
-        defer { if reservedExportSlot { ExportCoordinator.endExclusiveExport() } }
-
         let outputURL = try exportDestination(
             outputPath: input.outputPath,
             mode: mode,
@@ -40,11 +31,24 @@ extension ToolExecutor {
             guard let format else {
                 throw ToolError("export_project: codec is required for video mode")
             }
+            guard editor.timeline.totalFrames > 0 else {
+                throw ToolError("export_project: timeline is empty")
+            }
+            try beginExclusiveExport()
+            defer { ExportCoordinator.endExclusiveExport() }
             return try await exportVideo(editor, format: format, resolution: resolution, outputURL: outputURL)
         case .xml:
             return try exportXML(editor, outputURL: outputURL)
         case .palmier:
+            try beginExclusiveExport()
+            defer { ExportCoordinator.endExclusiveExport() }
             return try await exportPalmier(editor, outputURL: outputURL)
+        }
+    }
+
+    private func beginExclusiveExport() throws {
+        guard ExportCoordinator.beginExclusiveExportIfIdle() else {
+            throw ToolError("export_project: another export is already in progress")
         }
     }
 
@@ -54,10 +58,6 @@ extension ToolExecutor {
         resolution: ExportResolution,
         outputURL: URL
     ) async throws -> ToolResult {
-        guard editor.timeline.totalFrames > 0 else {
-            throw ToolError("export_project: timeline is empty")
-        }
-
         let service = ExportService()
         await service.export(
             timeline: editor.timeline,

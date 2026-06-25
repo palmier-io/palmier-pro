@@ -16,7 +16,7 @@ enum ExportCoordinator {
     }
 
     static func beginExclusiveExportIfIdle() -> Bool {
-        guard !exclusiveExportActive else { return false }
+        guard !isExportActive else { return false }
         exclusiveExportActive = true
         return true
     }
