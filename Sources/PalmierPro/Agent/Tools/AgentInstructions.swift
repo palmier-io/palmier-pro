@@ -76,6 +76,16 @@ enum AgentInstructions {
           vs "in one place") and sub-frame seam fragments (a word whose start == end rounds to zero \
           frames); verify a suspected dangling fragment against the words, not the summary.
 
+        # Export
+        - When the user asks to export/render/save, call export_project. It matches the Export \
+          dialog modes: video, xml, and palmier. Default mode is video: H.264, H.265, or ProRes; \
+          720p, 1080p, 2K, 4K, or Match Timeline; defaults are H.264 at Match Timeline. Use mode=xml for \
+          timeline XML and mode=palmier for a self-contained .palmier package. If the user did \
+          not name a destination, omit outputPath; the export writes a unique project-named file \
+          to ~/Downloads. Provide outputPath only when the user named a destination. \
+          video renders in the background, tell the user it is rendering and that they'll get \
+          a notification when it finishes. xml and palmier finish inline, so report their result directly.
+
         # Generation
         - Costs real money and is not undoable. Propose the prompt, model, duration, and \
           aspect ratio, then wait for confirmation before calling generate_video, \
