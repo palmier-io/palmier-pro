@@ -281,18 +281,25 @@ extension EditorViewModel {
     }
 
     @discardableResult
-    func importPastedImageData(_ data: Data, fileExtension: String = "png") -> MediaAsset? {
+    func importPastedImageData(_ data: Data, fileExtension: String = "png") async -> MediaAsset? {
         let filename = "pasted-\(UUID().uuidString.prefix(8)).\(fileExtension)"
         let destURL: URL
+        let mediaDir: URL?
         if let projectURL {
-            let mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-            try? FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
-            destURL = mediaDir.appendingPathComponent(filename)
+            let dir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
+            mediaDir = dir
+            destURL = dir.appendingPathComponent(filename)
         } else {
+            mediaDir = nil
             destURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
         }
         do {
-            try data.write(to: destURL)
+            try await Task.detached(priority: .userInitiated) {
+                if let mediaDir {
+                    try FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
+                }
+                try data.write(to: destURL)
+            }.value
         } catch {
             Log.project.error("importPastedImageData: write failed \(error.localizedDescription)")
             return nil
@@ -544,12 +551,15 @@ extension EditorViewModel {
                     Log.project.error("captureCurrentFrameToMedia: png encode failed")
                     return
                 }
-                guard let mediaAsset = self.importPastedImageData(data, fileExtension: "png") else { return }
-                mediaAsset.name = "\(nameBase) \(frame)"
-                if let idx = self.mediaManifest.entries.firstIndex(where: { $0.id == mediaAsset.id }) {
-                    self.mediaManifest.entries[idx].name = mediaAsset.name
+                Task { @MainActor [weak self] in
+                    guard let self,
+                          let mediaAsset = await self.importPastedImageData(data, fileExtension: "png") else { return }
+                    mediaAsset.name = "\(nameBase) \(frame)"
+                    if let idx = self.mediaManifest.entries.firstIndex(where: { $0.id == mediaAsset.id }) {
+                        self.mediaManifest.entries[idx].name = mediaAsset.name
+                    }
+                    self.moveAssetsToFolder(assetIds: [mediaAsset.id], folderId: self.mediaPanelCurrentFolderId)
                 }
-                self.moveAssetsToFolder(assetIds: [mediaAsset.id], folderId: self.mediaPanelCurrentFolderId)
             }
         }
     }
