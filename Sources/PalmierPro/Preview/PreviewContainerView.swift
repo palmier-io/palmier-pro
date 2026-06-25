@@ -94,7 +94,7 @@ struct PreviewContainerView: View {
             if isTimeline || editor.activePreviewTab.clipType == .video {
                 captureFrameButton
             }
-            projectSettingsGroup
+            settingsMenuButton(label: zoomBadgeLabel, help: "Canvas Zoom") { zoomMenuItems }
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .frame(height: 36)
@@ -128,83 +128,6 @@ struct PreviewContainerView: View {
 
     // MARK: - Project settings
 
-    private var projectSettingsGroup: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: AppTheme.Spacing.md) {
-                settingsMenuButton(label: aspectBadgeLabel, help: "Aspect Ratio") { aspectMenuItems }
-                settingsMenuButton(label: "\(editor.timeline.fps)", help: "Frame Rate") { fpsMenuItems }
-                settingsMenuButton(label: qualityBadgeLabel, help: "Resolution") { qualityMenuItems }
-                settingsMenuButton(label: zoomBadgeLabel, help: "Canvas Zoom") { zoomMenuItems }
-            }
-
-            Menu {
-                Menu("Aspect Ratio") { aspectMenuItems }
-                Menu("Frame Rate") { fpsMenuItems }
-                Menu("Quality") { qualityMenuItems }
-                Menu("Zoom") { zoomMenuItems }
-            } label: {
-                badgeIcon("slider.horizontal.3")
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .hoverHighlight()
-            .help("Project Settings")
-        }
-    }
-
-    @ViewBuilder
-    private var aspectMenuItems: some View {
-        ForEach(AspectPreset.allCases, id: \.self) { preset in
-            Button {
-                editor.applyTimelineSettings(fps: editor.timeline.fps, width: preset.width, height: preset.height)
-            } label: {
-                HStack {
-                    Text(preset.label)
-                    Spacer()
-                    if editor.timeline.width == preset.width && editor.timeline.height == preset.height {
-                        Image(systemName: "checkmark")
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var fpsMenuItems: some View {
-        ForEach([24, 25, 30, 50, 60], id: \.self) { fps in
-            Button {
-                editor.applyTimelineSettings(fps: fps, width: editor.timeline.width, height: editor.timeline.height)
-            } label: {
-                HStack {
-                    Text("\(fps) fps")
-                    Spacer()
-                    if editor.timeline.fps == fps {
-                        Image(systemName: "checkmark")
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var qualityMenuItems: some View {
-        ForEach(QualityPreset.allCases, id: \.self) { preset in
-            Button {
-                let (w, h) = preset.resolution(currentWidth: editor.timeline.width, currentHeight: editor.timeline.height)
-                editor.applyTimelineSettings(fps: editor.timeline.fps, width: w, height: h)
-            } label: {
-                HStack {
-                    Text(preset.label)
-                    Spacer()
-                    if preset.matches(width: editor.timeline.width, height: editor.timeline.height) {
-                        Image(systemName: "checkmark")
-                    }
-                }
-            }
-        }
-    }
-
     @ViewBuilder
     private var zoomMenuItems: some View {
         ForEach(ZoomPreset.allCases, id: \.self) { preset in
@@ -235,21 +158,6 @@ struct PreviewContainerView: View {
         abs(editor.canvasZoom - preset.value) < 0.01
     }
 
-    private var aspectBadgeLabel: String {
-        let w = editor.timeline.width
-        let h = editor.timeline.height
-        let g = gcd(w, h)
-        return "\(w / g):\(h / g)"
-    }
-
-    private var qualityBadgeLabel: String {
-        let h = min(editor.timeline.width, editor.timeline.height)
-        if h <= 720 { return "HD" }
-        if h <= 1080 { return "FHD" }
-        if h <= 1440 { return "2K" }
-        return "4K"
-    }
-
     private func settingsMenuButton<MenuContent: View>(
         label: String,
         help: String,
@@ -273,13 +181,6 @@ struct PreviewContainerView: View {
             .foregroundStyle(AppTheme.Text.secondaryColor)
             .padding(.horizontal, AppTheme.Spacing.sm)
             .frame(height: AppTheme.IconSize.mdLg)
-    }
-
-    private func badgeIcon(_ systemName: String) -> some View {
-        Image(systemName: systemName)
-            .font(.system(size: AppTheme.FontSize.sm))
-            .foregroundStyle(AppTheme.Text.secondaryColor)
-            .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
     }
 
     // MARK: - Image preview
@@ -771,78 +672,6 @@ struct PreviewContainerView: View {
 }
 
 // MARK: - Settings Presets
-
-private enum AspectPreset: CaseIterable {
-    case sixteenNine, nineByFourteen, nineSixteen, oneOne, fourThree, twoPointFourOne
-
-    var label: String {
-        switch self {
-        case .sixteenNine: "16:9"
-        case .nineByFourteen: "9:14"
-        case .nineSixteen: "9:16"
-        case .oneOne: "1:1"
-        case .fourThree: "4:3"
-        case .twoPointFourOne: "2.4:1"
-        }
-    }
-
-    var width: Int {
-        switch self {
-        case .sixteenNine: 1920
-        case .nineByFourteen: 1080
-        case .nineSixteen: 1080
-        case .oneOne: 1080
-        case .fourThree: 1440
-        case .twoPointFourOne: 2560
-        }
-    }
-
-    var height: Int {
-        switch self {
-        case .sixteenNine: 1080
-        case .nineByFourteen: 1680
-        case .nineSixteen: 1920
-        case .oneOne: 1080
-        case .fourThree: 1080
-        case .twoPointFourOne: 1080
-        }
-    }
-}
-
-private enum QualityPreset: CaseIterable {
-    case hd720, fullHD, twoK, fourK
-
-    var label: String {
-        switch self {
-        case .hd720: "720p"
-        case .fullHD: "1080p"
-        case .twoK: "2K"
-        case .fourK: "4K"
-        }
-    }
-
-    /// Scale resolution while preserving the current aspect ratio.
-    func resolution(currentWidth: Int, currentHeight: Int) -> (width: Int, height: Int) {
-        let target = shortEdge
-        if currentWidth <= currentHeight {
-            return (target, Int(Double(target) * Double(currentHeight) / Double(currentWidth)))
-        }
-        return (Int(Double(target) * Double(currentWidth) / Double(currentHeight)), target)
-    }
-
-    func matches(width: Int, height: Int) -> Bool {
-        min(width, height) == shortEdge
-    }
-
-    private var shortEdge: Int {
-        switch self {
-        case .hd720: 720
-        case .fullHD: 1080
-        case .twoK: 1440
-        case .fourK: 2160
-        }
-    }
-}
 
 private enum ZoomPreset: CaseIterable {
     case twentyFivePercent, fiftyPercent, seventyFivePercent, fit, oneTwentyFivePercent, oneFiftyPercent, twoHundredPercent
