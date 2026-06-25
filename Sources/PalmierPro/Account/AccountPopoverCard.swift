@@ -22,7 +22,7 @@ struct AccountPopoverCard: View {
             if let error = account.lastError {
                 Text(error)
                     .font(.system(size: AppTheme.FontSize.xs))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(AppTheme.Status.errorColor)
             }
         }
         .padding(AppTheme.Spacing.md)
@@ -205,10 +205,11 @@ struct AccountPopoverCard: View {
                     dismiss()
                 }
             } else {
-                footerButton(label: "Sign in", systemImage: "person.crop.circle") {
+                footerButton(label: account.isSigningIn ? "Opening Google…" : "Sign in", systemImage: "person.crop.circle") {
                     Task { await account.signInWithGoogle() }
                     dismiss()
                 }
+                .disabled(account.isSigningIn)
             }
         }
     }

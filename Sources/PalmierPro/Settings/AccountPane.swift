@@ -19,7 +19,7 @@ struct AccountPane: View {
             if let error = account.lastError {
                 Text(error)
                     .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(AppTheme.Status.errorColor)
             }
         }
     }
@@ -249,10 +249,11 @@ struct AccountPane: View {
             .foregroundStyle(AppTheme.Text.tertiaryColor)
             .fixedSize(horizontal: false, vertical: true)
 
-        Button("Sign in with Google") {
+        Button(account.isSigningIn ? "Opening Google…" : "Sign in with Google") {
             Task { await account.signInWithGoogle() }
         }
         .buttonStyle(.capsule(.secondary, size: .regular))
+        .disabled(account.isSigningIn)
         .padding(.top, AppTheme.Spacing.xs)
     }
 }

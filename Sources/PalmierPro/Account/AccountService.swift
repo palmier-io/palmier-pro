@@ -103,6 +103,7 @@ final class AccountService {
     private(set) var account: AccountResponse?
     private(set) var availablePlans: [AvailablePlan] = []
     private(set) var lastError: String?
+    private(set) var isSigningIn: Bool = false
     private(set) var isBuyingCredits: Bool = false
     private(set) var authState: AuthState<String> = .loading
 
@@ -301,8 +302,19 @@ final class AccountService {
 
     func signInWithGoogle() async {
         guard !isMisconfigured else { return }
+        guard !isSigningIn else {
+            lastError = "Sign-in is already in progress."
+            Log.account.notice(
+                "sign in ignored provider=google reason=in_progress",
+                telemetry: "Sign in ignored",
+                data: ["provider": "google", "reason": "in_progress"]
+            )
+            return
+        }
+        isSigningIn = true
         lastError = nil
         Log.account.notice("sign in requested provider=google", telemetry: "Sign in requested", data: ["provider": "google"])
+        defer { isSigningIn = false }
         do {
             _ = try await Clerk.shared.auth.signInWithOAuth(provider: .google)
         } catch {

@@ -174,10 +174,11 @@ private struct HomeSidebar: View {
             VStack(alignment: .leading, spacing: 2) {
                 if !account.isSignedIn && !account.isMisconfigured {
                     SidebarRowButton(
-                        label: "Sign in with Google",
+                        label: account.isSigningIn ? "Opening Google…" : "Sign in with Google",
                         systemImage: "person.crop.circle",
                         action: { Task { await account.signInWithGoogle() } }
                     )
+                    .disabled(account.isSigningIn)
                 }
                 SidebarRowButton(
                     label: "New Project",
