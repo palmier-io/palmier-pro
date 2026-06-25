@@ -15,6 +15,8 @@ extension ToolExecutor {
         }
     }
 
+    func resetFeedbackState() { feedbackState = FeedbackState() }
+
     private static let feedbackCategories: Set<String> = [
         "missing_capability", "wrong_result", "confusing_ux", "failure", "suggestion",
     ]
