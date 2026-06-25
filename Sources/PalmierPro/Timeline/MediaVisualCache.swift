@@ -206,7 +206,6 @@ final class MediaVisualCache {
         return digest.prefix(16).map { String(format: "%02x", $0) }.joined()
     }
 
-    // ".waveform2" supersedes the old averaged-envelope cache so stale shapes regenerate.
     private nonisolated static func loadWaveform(key: String) -> [Float]? {
         let url = diskCache.directory.appendingPathComponent(key + ".waveform2")
         guard let data = try? Data(contentsOf: url), !data.isEmpty, data.count % 4 == 0 else { return nil }

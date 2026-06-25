@@ -2,17 +2,9 @@ import Accelerate
 import AVFoundation
 import Foundation
 
-/// Extracts a peak amplitude envelope for timeline waveform display.
-///
-/// Unlike an averaged envelope, each bucket stores the loudest sample it spans, so
-/// transients (drum hits, consonants) keep their height instead of being smoothed
-/// toward the noise floor. Output matches the draw convention: 0 = full scale, 1 =
-/// at/below the noise floor.
 enum WaveformExtractor {
     static let samplesPerSecond: Double = 200
     static let noiseFloorDb: Float = -50
-    /// Resolution ceiling. Below ~20 min this never binds; longer assets taper so a
-    /// 2-hour file stays ~240k samples instead of growing without bound.
     static let maxSamples = 240_000
 
     static func peakEnvelope(from url: URL, range: ClosedRange<Double>? = nil) async throws -> [Float] {
@@ -59,7 +51,6 @@ enum WaveformExtractor {
         return out
     }
 
-    /// Linear peak → normalized dB position. 0 dBFS → 0, ≤ noise floor → 1.
     private static func normalized(peak: Float) -> Float {
         guard peak > 0 else { return 1 }
         let db = 20 * log10(peak)
