@@ -14,6 +14,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case splitClip = "split_clip"
     case rippleDeleteRanges = "ripple_delete_ranges"
     case removeWords = "remove_words"
+    case removeSilence = "remove_silence"
     case syncAudio = "sync_audio"
     case undo = "undo"
     case addTexts = "add_texts"
@@ -318,6 +319,19 @@ enum ToolDefinitions {
                     ],
                 ],
                 required: ["words"]
+            )
+        ),
+        AgentTool(
+            name: .removeSilence,
+            description: "Auto-remove silence from one clip — detect dead air (pauses, gaps, room tone) on-device and ripple-delete it in a single undoable action, closing the gaps so the clip tightens up. This is the tool for \"cut the silences\", \"remove dead air\", \"tighten the pauses\", or \"trim the gaps\" on a specific clip. No transcript needed: detection is purely from the audio waveform, so it works even on music or non-speech.\n\nPass a clipId from get_timeline; the clip must carry audio (an audio clip, or a video clip with sound). Detection walks the clip's RMS envelope: any stretch quieter than thresholdDb for at least minSilenceDuration is a silence, then edgePadding is left on each side so words/notes aren't clipped. Linked A/V partners are cut automatically and sync-locked tracks ripple along. Returns removedSilences (count) and removedFrames; re-read get_timeline or get_transcript afterward, since frames have shifted.\n\nWhen to use which: remove_silence for waveform-based dead-air on a clip; remove_words for cutting specific spoken words by transcript index; ripple_delete_ranges for an exact, hand-specified frame span. If nothing is removed, lower the threshold (e.g. -30) or minSilenceDuration and call again.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipId": ["type": "string", "description": "Clip to scan, from get_timeline. Must have audio (audio clip, or video with sound)."],
+                    "thresholdDb": ["type": "number", "description": "Loudness floor in dBFS (≤ 0). Audio quieter than this counts as silence. Default -35. Raise toward 0 (e.g. -25) to catch quieter pauses; lower (e.g. -45) to only cut near-total silence."],
+                    "minSilenceDuration": ["type": "number", "description": "Shortest silence to remove, in seconds. Default 0.5. Lower to catch brief pauses; raise to keep natural beats."],
+                    "edgePadding": ["type": "number", "description": "Seconds of audio kept on each side of a detected silence so speech/notes aren't clipped. Default 0.05."],
+                ],
+                required: ["clipId"]
             )
         ),
         AgentTool(
