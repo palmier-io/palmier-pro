@@ -206,6 +206,7 @@ final class AccountService {
         guard let convex else { return }
 
         let user = Clerk.shared.user
+        Telemetry.setUser(id: user?.id)
         let name = [user?.firstName, user?.lastName]
             .compactMap { $0 }
             .joined(separator: " ")
@@ -289,6 +290,7 @@ final class AccountService {
     }
 
     private func clearAccount() {
+        Telemetry.setUser(id: nil)
         accountSubscription?.cancel()
         accountSubscription = nil
         buyCreditsTask?.cancel()

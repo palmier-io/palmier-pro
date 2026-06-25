@@ -52,7 +52,7 @@ struct HelpView: View {
         return Button(action: { selectedTab = tab }) {
             HStack(spacing: 10) {
                 Image(systemName: tab.icon)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: AppTheme.FontSize.smMd, weight: .medium))
                     .frame(width: 16)
                 Text(tab.rawValue)
                     .font(.system(size: AppTheme.FontSize.md, weight: isActive ? .medium : .regular))

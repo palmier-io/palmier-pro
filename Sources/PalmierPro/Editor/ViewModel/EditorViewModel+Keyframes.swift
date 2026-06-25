@@ -167,9 +167,10 @@ extension EditorViewModel {
         let sz = clip.sizeAt(frame: frame)
         if clip.positionTrack?.isActive == true {
             clip.upsertKeyframe(in: \.positionTrack, frame: frame, value: AnimPair(a: newX, b: newY))
+        } else {
+            clip.transform.centerX = newX + sz.width / 2
+            clip.transform.centerY = newY + sz.height / 2
         }
-        clip.transform.centerX = newX + sz.width / 2
-        clip.transform.centerY = newY + sz.height / 2
     }
 
     func applyScale(clipId: String, newScale: Double) {

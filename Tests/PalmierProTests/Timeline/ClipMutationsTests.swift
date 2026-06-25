@@ -52,6 +52,25 @@ struct ApplyClipSpeedTests {
         let updated = e.timeline.tracks[0].clips.first { $0.id == "c2" }!
         #expect(updated.startFrame == 100)
     }
+
+    @Test func applyClipSpeedRescalesKeyframesInsteadOfDroppingThem() {
+        // 2x speed halves a 60-frame clip; keyframes must rescale, not get clamped away.
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        clip.opacityTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 1.0),
+            Keyframe(frame: 30, value: 0.5),
+            Keyframe(frame: 60, value: 0.0),
+        ])
+        clip.scaleTrack = KeyframeTrack(keyframes: [Keyframe(frame: 60, value: AnimPair(a: 2.0, b: 2.0))])
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+
+        e.applyClipSpeed(clipId: "c1", newSpeed: 2.0)
+        let updated = e.timeline.tracks[0].clips[0]
+
+        #expect(updated.durationFrames == 30)
+        #expect(updated.opacityTrack?.keyframes.map(\.frame) == [0, 15, 30])
+        #expect(updated.scaleTrack?.keyframes.map(\.frame) == [30])
+    }
 }
 
 @Suite("EditorViewModel — splitClip")
@@ -284,6 +303,33 @@ struct MoveClipsTests {
         e.moveClips([(clipId: "c1", toTrack: 1, toFrame: -50)])
         let loc = e.findClip(id: "c1")!
         #expect(e.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame == 0)
+    }
+}
+
+@Suite("EditorViewModel — writePosition")
+@MainActor
+struct WritePositionTests {
+
+    @Test func writePositionWithActiveKeyframesPreservesFallbackTransform() {
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        clip.transform.centerX = 0.5
+        clip.transform.centerY = 0.5
+        clip.transform.width = 0.4
+        clip.transform.height = 0.4
+        clip.positionTrack = KeyframeTrack(keyframes: [Keyframe(frame: 0, value: AnimPair(a: 0.1, b: 0.1))])
+
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        e.currentFrame = 0
+
+        e.commitPosition(clipId: "c1", setX: 0.4, setY: 0.4)
+
+        let updated = e.timeline.tracks[0].clips[0]
+        let kf = updated.positionTrack?.keyframes.first(where: { $0.frame == 0 })
+        #expect(kf?.value == AnimPair(a: 0.4, b: 0.4))
+        // Fallback transform must not be touched while keyframes are active.
+        // Bug: without the else-guard, centerX/Y become 0.6 (0.4 + width/2).
+        #expect(updated.transform.centerX == 0.5)
+        #expect(updated.transform.centerY == 0.5)
     }
 }
 

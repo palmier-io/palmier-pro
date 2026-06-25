@@ -104,6 +104,34 @@ struct MediaResolverTests {
 
     // MARK: - Cache behavior
 
+    // MARK: - missingAssetIds (off-main-thread offline computation)
+
+    @Test func missingAssetIdsFlagsExternalMissingAndKeepsPresent() throws {
+        let present = try makeTempFile()
+        defer { try? FileManager.default.removeItem(at: present) }
+
+        let entries = [
+            entry(id: "present", source: .external(absolutePath: present.path)),
+            entry(id: "gone", source: .external(absolutePath: "/tmp/missing-\(UUID().uuidString)"))
+        ]
+        let missing = MediaResolver.missingAssetIds(entries: entries, projectPath: nil)
+        #expect(missing == ["gone"])
+    }
+
+    @Test func missingAssetIdsResolvesProjectRelativePaths() throws {
+        let projectDir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("proj-\(UUID().uuidString)")
+        let inner = projectDir.appendingPathComponent("media/asset.mp4")
+        try FileManager.default.createDirectory(at: inner.deletingLastPathComponent(), withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: inner.path, contents: Data())
+        defer { try? FileManager.default.removeItem(at: projectDir) }
+
+        let entries = [entry(id: "a", source: .project(relativePath: "media/asset.mp4"))]
+        #expect(MediaResolver.missingAssetIds(entries: entries, projectPath: projectDir.path).isEmpty)
+        // No project base path -> project-relative entry cannot resolve -> missing.
+        #expect(MediaResolver.missingAssetIds(entries: entries, projectPath: nil) == ["a"])
+    }
+
     @Test func entryCacheRebuildsWhenEntryCountChanges() {
         var entries = [entry(id: "a", source: .external(absolutePath: "/tmp/a"))]
         var manifest = MediaManifest()

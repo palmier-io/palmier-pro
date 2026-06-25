@@ -64,6 +64,16 @@ enum Telemetry {
         String(id.prefix(8))
     }
 
+    static func setUser(id: String?) {
+        guard didStart else { return }
+        SentrySDK.configureScope { scope in
+            guard let id else { scope.setUser(nil); return }
+            let user = User()
+            user.userId = id
+            scope.setUser(user)
+        }
+    }
+
     static func setExtra(value: Any?, key: String) {
         guard didStart else { return }
         SentrySDK.configureScope { scope in

@@ -64,6 +64,40 @@ enum AppTheme {
         )
     }
 
+    // MARK: - Adjust sliders
+
+    enum Slider {
+        static let trackHeight: CGFloat = 4
+        static let thumbSize: CGFloat = 10
+        static let labelColumn: CGFloat = 106
+        /// Temperature track: cool blue (low) → warm amber (high).
+        static let tempGradient = [Color(red: 0.32, green: 0.55, blue: 0.92), Color(red: 0.95, green: 0.72, blue: 0.32)]
+        /// Tint track: green (low) → magenta (high).
+        static let tintGradient = [Color(red: 0.42, green: 0.78, blue: 0.45), Color(red: 0.82, green: 0.38, blue: 0.72)]
+        /// Master luma track: near-black → near-white.
+        static let lumaGradient = [Color(white: 0.05), Color(white: 0.95)]
+    }
+
+    // MARK: - Color wheels
+
+    enum Wheels {
+        static let padSize: CGFloat = 96
+        static let puckSize: CGFloat = 10
+        static let ringWidth: CGFloat = 1
+        static let crosshairColor = Color.white.opacity(AppTheme.Opacity.faint)
+    }
+
+    enum Curve {
+        static let editorHeight: CGFloat = 180
+        static let pointDiameter: CGFloat = 9
+        /// Invisible grab target around each point — much larger than the dot so it's easy to hit.
+        static let pointHitDiameter: CGFloat = 30
+        static let lumaColor = Color(red: 1, green: 1, blue: 1)
+        static let redColor = Color(red: 1, green: 0.22, blue: 0.18)
+        static let greenColor = Color(red: 0.32, green: 0.82, blue: 0.36)
+        static let blueColor = Color(red: 0.32, green: 0.56, blue: 1)
+    }
+
     /// Monochrome silver shimmer
     static let aiGradient = LinearGradient(
         stops: [
@@ -97,6 +131,10 @@ enum AppTheme {
         static let error = NSColor(red: 0xE5/255.0, green: 0x4F/255.0, blue: 0x4F/255.0, alpha: 1)
 
         static var errorColor: Color { Color(error) }
+
+        static let success = NSColor(red: 0x4F/255.0, green: 0xB8/255.0, blue: 0x5F/255.0, alpha: 1)
+
+        static var successColor: Color { Color(success) }
     }
 
     // MARK: - Text

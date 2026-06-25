@@ -257,10 +257,13 @@ extension EditorViewModel {
         let basis = dragBefore[clip.id] ?? clip
         let sourceFrames = Double(basis.durationFrames) * basis.speed
         let newDuration = max(1, Int((sourceFrames / newSpeed).rounded()))
+        let oldDuration = clip.durationFrames
         let oldEnd = clip.endFrame
 
         timeline.tracks[ti].clips[loc.clipIndex].speed = newSpeed
         timeline.tracks[ti].clips[loc.clipIndex].durationFrames = newDuration
+        // Keyframe offsets are clip-relative, so retime them before the clamp drops them.
+        timeline.tracks[ti].clips[loc.clipIndex].rescaleKeyframes(by: Double(newDuration) / Double(oldDuration))
         timeline.tracks[ti].clips[loc.clipIndex].clampKeyframesToDuration()
         timeline.tracks[ti].clips[loc.clipIndex].clampFadesToDuration()
 
@@ -337,6 +340,33 @@ extension EditorViewModel {
         }
     }
 
+    func applyClipProperties(clipIds: [String], rebuild: Bool = false, _ modify: (inout Clip) -> Void) {
+        var touchedText = false
+        var touchedVisual = false
+        for clipId in clipIds {
+            guard let loc = findClip(id: clipId) else { continue }
+            var clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            if dragBefore[clipId] == nil {
+                dragBefore[clipId] = clip
+            }
+            modify(&clip)
+            timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
+            if clip.mediaType == .text {
+                touchedText = true
+            } else {
+                touchedVisual = true
+            }
+        }
+        if touchedText { videoEngine?.syncTextLayers() }
+        if touchedVisual {
+            if rebuild {
+                notifyTimelineChangedDebounced()
+            } else {
+                videoEngine?.refreshVisuals()
+            }
+        }
+    }
+
     func revertClipProperty(clipId: String) {
         guard let original = dragBefore.removeValue(forKey: clipId),
               let loc = findClip(id: clipId) else { return }
@@ -409,6 +439,26 @@ extension EditorViewModel {
         } else {
             notifyTimelineChanged()
         }
+    }
+
+    func commitClipProperties(clipIds: [String], _ modify: (inout Clip) -> Void) {
+        var touchedText = false
+        var touchedVisual = false
+        for clipId in clipIds {
+            guard let loc = findClip(id: clipId) else { continue }
+            var clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            let before = dragBefore.removeValue(forKey: clipId) ?? clip
+            modify(&clip)
+            timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
+            registerClipPropertySwap(clipId: clipId, undoTarget: before, redoTarget: clip)
+            if clip.mediaType == .text {
+                touchedText = true
+            } else {
+                touchedVisual = true
+            }
+        }
+        if touchedText { videoEngine?.syncTextLayers() }
+        if touchedVisual { notifyTimelineChanged() }
     }
 
     /// Bidirectional undo/redo for a single clip's property change.
