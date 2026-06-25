@@ -164,24 +164,6 @@ final class ToolExecutor {
         }
         return try work()
     }
-
-    func resolveClipTarget(clipId: String?, trackIndex: Int?) throws -> Set<String> {
-        guard (clipId != nil) != (trackIndex != nil) else {
-            throw ToolError("Provide exactly one of 'clipId' (one clip) or 'trackIndex' (a whole track).")
-        }
-        guard let editor else { throw ToolError("Editor not available") }
-        if let clipId {
-            guard editor.findClip(id: clipId) != nil else { throw ToolError("Clip not found: \(clipId)") }
-            return [clipId]
-        }
-        let ti = trackIndex!
-        guard editor.timeline.tracks.indices.contains(ti) else {
-            throw ToolError("Track index out of range: \(ti)")
-        }
-        let ids = Set(editor.timeline.tracks[ti].clips.map(\.id))
-        guard !ids.isEmpty else { throw ToolError("Track \(ti) has no clips.") }
-        return ids
-    }
 }
 
 private extension Duration {

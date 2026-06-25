@@ -37,7 +37,7 @@ extension ToolExecutor {
         var involvedClips: [String] = []
         forEachTimelineClipGroup(in: allWords) { clipId, trackIndex, clipStart, clipEnd, clipWords in
             guard clipWords.contains(where: { selected.contains($0.index) }) else { return }
-            removedTexts.append(contentsOf: clipWords.filter { selected.contains($0.index) }.map(\.text))
+            removedTexts.append(contentsOf: clipWords.filter { selected.contains($0.index) && $0.endFrame > $0.startFrame }.map(\.text))
             let plan = clipWords.map {
                 WordCutPlanner.Word(startFrame: $0.startFrame, endFrame: $0.endFrame, selected: selected.contains($0.index))
             }
@@ -51,15 +51,13 @@ extension ToolExecutor {
             throw ToolError("The selected words resolved to no removable frames. Re-read get_transcript.")
         }
 
-        // Cut on one track; the ripple carries linked A/V partners on the same span. Words on more
-        // than one track are coherent only if those tracks are a single linked unit (e.g. camera +
-        // mic). Independent tracks can't be cut together without breaking alignment.
+        // Cut one track; the ripple carries its linked A/V partners across the same span.
         let primaryTrack: Int
-        let primaryRanges: [FrameRange]
         if rangesByTrack.count == 1 {
             primaryTrack = rangesByTrack.first!.key
-            primaryRanges = rangesByTrack.first!.value
         } else {
+            // Multiple tracks are only coherent as one linked unit (e.g. camera + mic); otherwise
+            // cutting them together breaks alignment.
             let groupIds: [String] = involvedClips.compactMap { id in
                 editor.findClip(id: id).flatMap { editor.timeline.tracks[$0.trackIndex].clips[$0.clipIndex].linkGroupId }
             }
@@ -68,8 +66,10 @@ extension ToolExecutor {
                 throw ToolError("Selected words span multiple unlinked tracks (\(tracks)). Remove words one track at a time — linked video/audio is cut automatically. If these tracks are the same source (e.g. camera + mic), link them into one unit first.")
             }
             primaryTrack = rangesByTrack.keys.min()!
-            primaryRanges = rangesByTrack.values.flatMap { $0 }
         }
+        // Use only the primary track's own ranges; the ripple removes the same span from linked
+        // partners, so flattening foreign-track frames here would over-cut the primary track.
+        let primaryRanges = rangesByTrack[primaryTrack]!
 
         editor.undoManager?.beginUndoGrouping()
         let outcome = editor.rippleDeleteRangesOnTrack(trackIndex: primaryTrack, ranges: primaryRanges)

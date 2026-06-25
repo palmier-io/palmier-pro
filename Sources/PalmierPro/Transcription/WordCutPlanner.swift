@@ -30,18 +30,6 @@ enum WordCutPlanner {
             if end > start { ranges.append(FrameRange(start: start, end: end)) }
             k = l + 1
         }
-        return mergeOverlapping(ranges)
-    }
-
-    private static func mergeOverlapping(_ ranges: [FrameRange]) -> [FrameRange] {
-        let sorted = ranges.filter { $0.length > 0 }.sorted { $0.start < $1.start }
-        guard var head = sorted.first else { return [] }
-        var out: [FrameRange] = []
-        for r in sorted.dropFirst() {
-            if r.start <= head.end { head = FrameRange(start: head.start, end: max(head.end, r.end)) }
-            else { out.append(head); head = r }
-        }
-        out.append(head)
-        return out
+        return RippleEngine.mergeRanges(ranges)
     }
 }
