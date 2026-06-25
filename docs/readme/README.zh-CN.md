@@ -30,7 +30,8 @@
   <a href="README.it.md">Italiano</a> ·
   <a href="README.pt-BR.md">Português (Brasil)</a> ·
   <a href="README.fr.md">Français</a> ·
-  <a href="README.ru.md">Русский</a>
+  <a href="README.ru.md">Русский</a> ·
+  <a href="README.tr.md">Türkçe</a>
 </p>
 
 </div>
