@@ -108,7 +108,13 @@ struct AgentPane: View {
     }
 
     private func refresh() {
-        let key = AnthropicKeychain.load() ?? ""
+        Task { @MainActor in
+            let key = await Self.loadKey()
+            applyKey(key)
+        }
+    }
+
+    private func applyKey(_ key: String) {
         hasKey = !key.isEmpty
         maskedKey = mask(key)
     }
@@ -116,16 +122,30 @@ struct AgentPane: View {
     private func save() {
         let key = draft.trimmingCharacters(in: .whitespaces)
         guard !key.isEmpty else { return }
-        AnthropicKeychain.save(key)
         draft = ""
         isFocused = false
-        refresh()
+        Task { @MainActor in
+            await Task.detached(priority: .userInitiated) {
+                AnthropicKeychain.save(key)
+            }.value
+            applyKey(key)
+        }
     }
 
     private func remove() {
-        AnthropicKeychain.delete()
         draft = ""
-        refresh()
+        Task { @MainActor in
+            await Task.detached(priority: .userInitiated) {
+                AnthropicKeychain.delete()
+            }.value
+            applyKey("")
+        }
+    }
+
+    private static func loadKey() async -> String {
+        await Task.detached(priority: .utility) {
+            AnthropicKeychain.load() ?? ""
+        }.value
     }
 
     private func mask(_ key: String) -> String {

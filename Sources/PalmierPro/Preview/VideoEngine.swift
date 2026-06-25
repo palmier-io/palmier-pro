@@ -139,7 +139,8 @@ final class VideoEngine {
         guard let editor, editor.activePreviewTab == .timeline else { return }
         rebuildTask?.cancel()
 
-        let resolver = editor.mediaResolver
+        let mediaURLs = editor.mediaResolver.expectedURLMap()
+        let missingMediaRefs = editor.missingMediaRefs
         let assetSizes: [String: CGSize] = Dictionary(
             uniqueKeysWithValues: editor.mediaAssets.compactMap { asset in
                 guard let w = asset.sourceWidth, let h = asset.sourceHeight, w > 0, h > 0 else { return nil }
@@ -152,8 +153,9 @@ final class VideoEngine {
             do {
                 result = try await CompositionBuilder.build(
                     timeline: editor.timeline,
-                    resolveURL: { resolver.resolveURL(for: $0) },
+                    resolveURL: { mediaURLs[$0] },
                     resolveSourceSize: { assetSizes[$0] },
+                    missingMediaRefs: missingMediaRefs,
                     renderSize: CGSize(width: editor.timeline.width, height: editor.timeline.height)
                 )
             } catch {

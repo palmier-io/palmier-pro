@@ -49,13 +49,13 @@ struct XMLExporterTests {
 
     // MARK: - Header / sequence shell
 
-    @Test func headerHasXmemlVersionAndSequenceShell() throws {
+    @Test func headerHasXmemlVersionAndSequenceShell() async throws {
         // No clips → output is just the sequence shell. Tests the boilerplate around content.
         let timeline = Fixtures.timeline()
         let (resolver, tmpDir) = try makeResolver(entries: [])
         let outURL = tmpDir.appendingPathComponent("out.xml")
 
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(xml.hasPrefix("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"))
@@ -67,7 +67,7 @@ struct XMLExporterTests {
         #expect(xml.contains("</xmeml>"))
     }
 
-    @Test func exportThrowsWhenDestinationIsUnwritable() throws {
+    @Test func exportThrowsWhenDestinationIsUnwritable() async throws {
         // A path inside a directory that does not exist can't be written.
         // The exporter must surface that failure instead of silently "succeeding".
         let timeline = Fixtures.timeline()
@@ -76,20 +76,20 @@ struct XMLExporterTests {
             .appendingPathComponent("does-not-exist", isDirectory: true)
             .appendingPathComponent("out.xml")
 
-        #expect(throws: (any Error).self) {
-            try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: unwritable)
+        await #expect(throws: (any Error).self) {
+            try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: unwritable)
         }
         #expect(!FileManager.default.fileExists(atPath: unwritable.path))
     }
 
-    @Test func headerReportsTimelineFpsAndCanvasDimensions() throws {
+    @Test func headerReportsTimelineFpsAndCanvasDimensions() async throws {
         var timeline = Fixtures.timeline(fps: 24)
         timeline.width = 1280
         timeline.height = 720
         let (resolver, tmpDir) = try makeResolver(entries: [])
         let outURL = tmpDir.appendingPathComponent("out.xml")
 
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(xml.contains("<timebase>24</timebase>"))
@@ -97,12 +97,12 @@ struct XMLExporterTests {
         #expect(xml.contains("<height>720</height>"))
     }
 
-    @Test func emptyTimelineProducesZeroDuration() throws {
+    @Test func emptyTimelineProducesZeroDuration() async throws {
         let timeline = Fixtures.timeline()
         let (resolver, tmpDir) = try makeResolver(entries: [])
         let outURL = tmpDir.appendingPathComponent("out.xml")
 
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(xml.contains("<duration>0</duration>"))
@@ -110,7 +110,7 @@ struct XMLExporterTests {
 
     // MARK: - Clip emission
 
-    @Test func videoClipEmitsClipitemWithStartAndEnd() throws {
+    @Test func videoClipEmitsClipitemWithStartAndEnd() async throws {
         let tmpDir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("XMLExporterTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
@@ -133,7 +133,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [track])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(xml.contains("<clipitem id=\"clipitem-clip-1\">"))
@@ -142,7 +142,7 @@ struct XMLExporterTests {
         #expect(xml.contains("<end>90</end>")) // 30 + 60
     }
 
-    @Test func clipsReferencingUnresolvableMediaAreSkipped() throws {
+    @Test func clipsReferencingUnresolvableMediaAreSkipped() async throws {
         // No manifest entry for the clip's mediaRef → resolveURL returns nil → sortEmittable
         // drops the clip → no clipitem element in the output. Pins this fail-soft behavior
         // so a future change to "fail loudly" forces a deliberate test update.
@@ -152,14 +152,14 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [track])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(!xml.contains("ghost-clip"))
         #expect(!xml.contains("clipitem"))
     }
 
-    @Test func repeatedMediaRefEmitsFileOnceThenReferences() throws {
+    @Test func repeatedMediaRefEmitsFileOnceThenReferences() async throws {
         // First clipitem gets the full <file> element; subsequent references collapse to
         // <file id="..."/> with no children. Catches the emittedFiles cache logic.
         let tmpDir = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -186,7 +186,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [track])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         // The full <file> element appears exactly once; the second reference is a self-closing tag.
@@ -200,13 +200,13 @@ struct XMLExporterTests {
 
     // MARK: - Audio clips
 
-    @Test func audioClipAppearsInAudioSectionOnly() throws {
+    @Test func audioClipAppearsInAudioSectionOnly() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [audioManifestEntry(id: "media-a", in: NSTemporaryDirectory())])
         let clip = Fixtures.clip(id: "audio-clip", mediaRef: "media-a", mediaType: .audio, start: 0, duration: 30)
         let timeline = Fixtures.timeline(tracks: [Fixtures.audioTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         guard let audioSec = xml.range(of: "<audio>"), let videoSec = xml.range(of: "<video>") else {
@@ -224,7 +224,7 @@ struct XMLExporterTests {
 
     // MARK: - Links
 
-    @Test func linkedClipsEmitCrossReferences() throws {
+    @Test func linkedClipsEmitCrossReferences() async throws {
         // Video + audio sharing a linkGroupId emit <link> entries pointing at each other.
         let tmpDir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("XMLExporterTests-\(UUID().uuidString)", isDirectory: true)
@@ -253,7 +253,7 @@ struct XMLExporterTests {
         ])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(xml.contains("<linkclipref>clipitem-vc</linkclipref>"))
@@ -263,13 +263,13 @@ struct XMLExporterTests {
         #expect(xml.contains("<mediatype>audio</mediatype>"))
     }
 
-    @Test func unlinkedClipsEmitNoLinkBlocks() throws {
+    @Test func unlinkedClipsEmitNoLinkBlocks() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [videoManifestEntry(id: "media-v", in: NSTemporaryDirectory())])
         let clip = Fixtures.clip(id: "lone", mediaRef: "media-v", start: 0, duration: 30)
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(!xml.contains("<link>"))
@@ -278,13 +278,13 @@ struct XMLExporterTests {
 
     // MARK: - Filters
 
-    @Test func speedNotOneEmitsTimeRemapFilter() throws {
+    @Test func speedNotOneEmitsTimeRemapFilter() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [videoManifestEntry(id: "media-v", in: NSTemporaryDirectory())])
         let clip = Fixtures.clip(id: "c1", mediaRef: "media-v", start: 0, duration: 60, speed: 2.0)
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(xml.contains("<effectid>timeremap</effectid>"))
@@ -292,51 +292,51 @@ struct XMLExporterTests {
         #expect(xml.contains("<value>200.0000</value>"))
     }
 
-    @Test func speedOneEmitsNoTimeRemapFilter() throws {
+    @Test func speedOneEmitsNoTimeRemapFilter() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [videoManifestEntry(id: "media-v", in: NSTemporaryDirectory())])
         let clip = Fixtures.clip(id: "c1", mediaRef: "media-v", start: 0, duration: 60, speed: 1.0)
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(!xml.contains("timeremap"))
     }
 
-    @Test func volumeNotOneEmitsAudioLevelsFilter() throws {
+    @Test func volumeNotOneEmitsAudioLevelsFilter() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [audioManifestEntry(id: "media-a", in: NSTemporaryDirectory())])
         let clip = Fixtures.clip(id: "c1", mediaRef: "media-a", mediaType: .audio, start: 0, duration: 60, volume: 0.5)
         let timeline = Fixtures.timeline(tracks: [Fixtures.audioTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(xml.contains("<effectid>audiolevels</effectid>"))
         #expect(xml.contains("<value>0.5000</value>"))
     }
 
-    @Test func volumeAtUnityEmitsNoAudioLevelsFilter() throws {
+    @Test func volumeAtUnityEmitsNoAudioLevelsFilter() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [audioManifestEntry(id: "media-a", in: NSTemporaryDirectory())])
         let clip = Fixtures.clip(id: "c1", mediaRef: "media-a", mediaType: .audio, start: 0, duration: 60, volume: 1.0)
         let timeline = Fixtures.timeline(tracks: [Fixtures.audioTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(!xml.contains("audiolevels"))
     }
 
-    @Test func opacityNotOneEmitsDedicatedOpacityEffect() throws {
+    @Test func opacityNotOneEmitsDedicatedOpacityEffect() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [videoManifestEntry(id: "media-v", in: NSTemporaryDirectory())])
         var clip = Fixtures.clip(id: "c1", mediaRef: "media-v", start: 0, duration: 30)
         clip.opacity = 0.5
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         // FCP7 keeps opacity in its own Opacity effect, not inside Basic Motion.
@@ -346,7 +346,7 @@ struct XMLExporterTests {
         #expect(xml.contains("<value>50.0</value>"))
     }
 
-    @Test func nonDefaultTransformEmitsMotionFilterWithMatchingParams() throws {
+    @Test func nonDefaultTransformEmitsMotionFilterWithMatchingParams() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [videoManifestEntry(id: "media-v", in: NSTemporaryDirectory())])
         var clip = Fixtures.clip(id: "c1", mediaRef: "media-v", start: 0, duration: 30)
         // Centered at (0.5, 0.5) is the default; shift to (0.6, 0.6) — non-zero center offset.
@@ -354,7 +354,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(xml.contains("<effectid>basic</effectid>"))
@@ -367,13 +367,13 @@ struct XMLExporterTests {
         #expect(xml.contains("<value>50.00</value>"))
     }
 
-    @Test func defaultClipEmitsNoMotionFilter() throws {
+    @Test func defaultClipEmitsNoMotionFilter() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [videoManifestEntry(id: "media-v", in: NSTemporaryDirectory())])
         let clip = Fixtures.clip(id: "c1", mediaRef: "media-v", start: 0, duration: 30)
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         // Defaults (centerX/Y=0.5, width=height=1, rotation=0, opacity=1) → no filter at all.
@@ -382,7 +382,7 @@ struct XMLExporterTests {
 
     // MARK: - Text clips
 
-    @Test func textClipsAreNotEmitted() throws {
+    @Test func textClipsAreNotEmitted() async throws {
         // Text clips have no manifest entry (CATextLayer renders them at preview/export time
         // via the AVVideoComposition path, not as composition tracks). XML must skip them too.
         let (resolver, tmpDir) = try makeResolver(entries: [videoManifestEntry(id: "media-v", in: NSTemporaryDirectory())])
@@ -393,7 +393,7 @@ struct XMLExporterTests {
         ])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(!xml.contains("clipitem-tc"))
@@ -402,7 +402,7 @@ struct XMLExporterTests {
 
     // MARK: - Track enabled state
 
-    @Test func mutedAudioTrackEmitsEnabledFalse() throws {
+    @Test func mutedAudioTrackEmitsEnabledFalse() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [audioManifestEntry(id: "media-a", in: NSTemporaryDirectory())])
         var track = Fixtures.audioTrack(clips: [
             Fixtures.clip(id: "ac", mediaRef: "media-a", mediaType: .audio, start: 0, duration: 30),
@@ -411,7 +411,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [track])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         // Find the <track> block in the <audio> section and verify its enabled flag.
@@ -421,7 +421,7 @@ struct XMLExporterTests {
                 "muted audio track should produce <enabled>FALSE</enabled>")
     }
 
-    @Test func hiddenVideoTrackEmitsEnabledFalse() throws {
+    @Test func hiddenVideoTrackEmitsEnabledFalse() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [videoManifestEntry(id: "media-v", in: NSTemporaryDirectory())])
         var track = Fixtures.videoTrack(clips: [
             Fixtures.clip(id: "vc", mediaRef: "media-v", start: 0, duration: 30),
@@ -430,7 +430,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [track])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         guard let videoStart = xml.range(of: "<video>") else { Issue.record("no <video>"); return }
@@ -441,7 +441,7 @@ struct XMLExporterTests {
 
     // MARK: - Escaping
 
-    @Test func specialCharsInClipNameAreXMLEscaped() throws {
+    @Test func specialCharsInClipNameAreXMLEscaped() async throws {
         let tmpDir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("XMLExporterTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
@@ -463,7 +463,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(xml.contains("A &amp; B &lt; C &gt; &quot;D&quot; &apos;E&apos;"))
@@ -473,13 +473,13 @@ struct XMLExporterTests {
 
     // MARK: - Trim handling
 
-    @Test func trimStartIsReflectedInInOutPoints() throws {
+    @Test func trimStartIsReflectedInInOutPoints() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [videoManifestEntry(id: "media-v", in: NSTemporaryDirectory())])
         let clip = Fixtures.clip(id: "c1", mediaRef: "media-v", start: 0, duration: 60, trimStart: 10)
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         // in = trimStart, out = trimStart + sourceFramesConsumed (= durationFrames * speed = 60 at speed=1).
@@ -489,14 +489,14 @@ struct XMLExporterTests {
 
     // MARK: - Timeline duration
 
-    @Test func sequenceDurationEqualsTimelineTotalFrames() throws {
+    @Test func sequenceDurationEqualsTimelineTotalFrames() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [videoManifestEntry(id: "media-v", in: NSTemporaryDirectory())])
         let clipA = Fixtures.clip(id: "a", mediaRef: "media-v", start: 0, duration: 50)
         let clipB = Fixtures.clip(id: "b", mediaRef: "media-v", start: 100, duration: 80) // ends at 180
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clipA, clipB])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         // Sequence <duration> appears before the first <media> block; clip <duration> entries
@@ -507,7 +507,7 @@ struct XMLExporterTests {
         #expect(xml.contains("<duration>180</duration>"))
     }
 
-    @Test func multipleClipsOnSameTrackAreSortedByStartFrame() throws {
+    @Test func multipleClipsOnSameTrackAreSortedByStartFrame() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [videoManifestEntry(id: "media-v", in: NSTemporaryDirectory())])
         // Insert in reverse order; exporter must sort by startFrame.
         let later = Fixtures.clip(id: "later", mediaRef: "media-v", start: 100, duration: 30)
@@ -515,7 +515,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [later, earlier])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         guard let earlyRange = xml.range(of: "earlier"), let laterRange = xml.range(of: "later") else {
@@ -543,7 +543,7 @@ struct XMLExporterTests {
         #expect(FileManager.default.fileExists(atPath: outURL.path))
     }
 
-    @Test func videoTracksAreReversedForFCPConvention() throws {
+    @Test func videoTracksAreReversedForFCPConvention() async throws {
         // Our model stores video tracks top→bottom; FCP XML wants bottom→top. So the LAST
         // video track in our model should appear FIRST in the XML.
         let tmpDir = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -568,7 +568,7 @@ struct XMLExporterTests {
         ])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         let bottomRange = xml.range(of: "bottom-clip")
@@ -598,18 +598,18 @@ struct XMLExporterTests {
         return (MediaResolver(manifest: { manifest }, projectURL: { nil }), file)
     }
 
-    private func export(_ clip: Clip, resolver: MediaResolver) -> String {
+    private func export(_ clip: Clip, resolver: MediaResolver) async -> String {
         let track = clip.mediaType == .audio
             ? Fixtures.audioTrack(clips: [clip])
             : Fixtures.videoTrack(clips: [clip])
         let timeline = Fixtures.timeline(tracks: [track])
         let out = FileManager.default.temporaryDirectory
             .appendingPathComponent("export-\(UUID().uuidString).xml")
-        try? XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: out)
+        try? await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: out)
         return (try? String(contentsOf: out, encoding: .utf8)) ?? ""
     }
 
-    @Test func positionKeyframesEmitVaryingCenter() throws {
+    @Test func positionKeyframesEmitVaryingCenter() async throws {
         let (resolver, file) = try fixture()
         defer { try? FileManager.default.removeItem(at: file) }
 
@@ -619,7 +619,7 @@ struct XMLExporterTests {
             Keyframe(frame: 0, value: AnimPair(a: 0.0, b: 0.0)),
             Keyframe(frame: 100, value: AnimPair(a: 0.5, b: 0.5)),
         ])
-        let xml = export(clip, resolver: resolver)
+        let xml = await export(clip, resolver: resolver)
 
         #expect(xml.contains("<parameterid>center</parameterid>"))
         // Center is normalized (0 = frame center), not pixels, positive toward bottom-right.
@@ -628,7 +628,7 @@ struct XMLExporterTests {
         #expect(xml.contains("<vert>0.50000</vert>"))
     }
 
-    @Test func opacityKeyframesEmittedWithClipRelativeWhen() throws {
+    @Test func opacityKeyframesEmittedWithClipRelativeWhen() async throws {
         let (resolver, file) = try fixture()
         defer { try? FileManager.default.removeItem(at: file) }
 
@@ -638,7 +638,7 @@ struct XMLExporterTests {
             Keyframe(frame: 30, value: 1.0),
             Keyframe(frame: 150, value: 0.5),
         ])
-        let xml = export(clip, resolver: resolver)
+        let xml = await export(clip, resolver: resolver)
 
         // Own Opacity effect, not folded into Basic Motion.
         #expect(xml.contains("<effectid>opacity</effectid>"))
@@ -649,7 +649,7 @@ struct XMLExporterTests {
         #expect(xml.contains("<value>50.0</value>"))
     }
 
-    @Test func volumeKeyframesEmittedOnAudioClip() throws {
+    @Test func volumeKeyframesEmittedOnAudioClip() async throws {
         let (resolver, file) = try fixture()
         defer { try? FileManager.default.removeItem(at: file) }
 
@@ -658,7 +658,7 @@ struct XMLExporterTests {
             Keyframe(frame: 0, value: 0),    // 0 dB → linear 1
             Keyframe(frame: 50, value: -6),  // attenuated
         ])
-        let xml = export(clip, resolver: resolver)
+        let xml = await export(clip, resolver: resolver)
 
         #expect(xml.contains("<effectid>audiolevels</effectid>"))
         #expect(xml.contains("<when>0</when>"))
@@ -667,14 +667,14 @@ struct XMLExporterTests {
         #expect(xml.contains("<keyframe>"))
     }
 
-    @Test func fadesEmitSingleSidedCrossDissolveTransitions() throws {
+    @Test func fadesEmitSingleSidedCrossDissolveTransitions() async throws {
         let (resolver, file) = try fixture()
         defer { try? FileManager.default.removeItem(at: file) }
 
         var clip = Fixtures.clip(start: 100, duration: 200)
         clip.fadeInFrames = 30
         clip.fadeOutFrames = 20
-        let xml = export(clip, resolver: resolver)
+        let xml = await export(clip, resolver: resolver)
 
         #expect(xml.contains("<effectid>Cross Dissolve</effectid>"))
         // Fade-in: start-black spanning [start, start+fadeIn).
@@ -691,14 +691,14 @@ struct XMLExporterTests {
         #expect(tIdx.lowerBound < cIdx.lowerBound)
     }
 
-    @Test func audioClipFadesEmitCrossFadeTransitions() throws {
+    @Test func audioClipFadesEmitCrossFadeTransitions() async throws {
         let (resolver, file) = try fixture()
         defer { try? FileManager.default.removeItem(at: file) }
 
         var clip = Fixtures.clip(mediaType: .audio, start: 0, duration: 100)
         clip.fadeInFrames = 10
         clip.fadeOutFrames = 15
-        let xml = export(clip, resolver: resolver)
+        let xml = await export(clip, resolver: resolver)
 
         // Audio uses Cross Fade, not the video Cross Dissolve, and carries no wipe tags.
         #expect(xml.contains("<effectid>KGAudioTransCrossFade0dB</effectid>"))
@@ -712,23 +712,23 @@ struct XMLExporterTests {
         #expect(xml.contains("<end>100</end>"))
     }
 
-    @Test func noFadeEmitsNoTransition() throws {
+    @Test func noFadeEmitsNoTransition() async throws {
         let (resolver, file) = try fixture()
         defer { try? FileManager.default.removeItem(at: file) }
 
         let clip = Fixtures.clip(start: 0, duration: 100)
-        let xml = export(clip, resolver: resolver)
+        let xml = await export(clip, resolver: resolver)
 
         #expect(!xml.contains("<transitionitem>"))
     }
 
-    @Test func staticCropEmitsCropFilterAsPercentages() throws {
+    @Test func staticCropEmitsCropFilterAsPercentages() async throws {
         let (resolver, file) = try fixture()
         defer { try? FileManager.default.removeItem(at: file) }
 
         var clip = Fixtures.clip(start: 0, duration: 100)
         clip.crop = Crop(left: 0.1, top: 0.25, right: 0.2, bottom: 0.05)
-        let xml = export(clip, resolver: resolver)
+        let xml = await export(clip, resolver: resolver)
 
         #expect(xml.contains("<effectid>crop</effectid>"))
         #expect(xml.contains("<parameterid>left</parameterid>"))
@@ -738,7 +738,7 @@ struct XMLExporterTests {
         #expect(!xml.contains("<keyframe>"))
     }
 
-    @Test func cropKeyframesEmitClipRelativeWhen() throws {
+    @Test func cropKeyframesEmitClipRelativeWhen() async throws {
         let (resolver, file) = try fixture()
         defer { try? FileManager.default.removeItem(at: file) }
 
@@ -747,7 +747,7 @@ struct XMLExporterTests {
             Keyframe(frame: 0, value: Crop()),
             Keyframe(frame: 60, value: Crop(left: 0.5, top: 0, right: 0, bottom: 0)),
         ])
-        let xml = export(clip, resolver: resolver)
+        let xml = await export(clip, resolver: resolver)
 
         #expect(xml.contains("<effectid>crop</effectid>"))
         #expect(xml.contains("<when>0</when>"))
@@ -755,41 +755,41 @@ struct XMLExporterTests {
         #expect(xml.contains("<value>50.00</value>"))
     }
 
-    @Test func identityCropEmitsNoFilter() throws {
+    @Test func identityCropEmitsNoFilter() async throws {
         let (resolver, file) = try fixture()
         defer { try? FileManager.default.removeItem(at: file) }
 
         let clip = Fixtures.clip(start: 0, duration: 100)
-        let xml = export(clip, resolver: resolver)
+        let xml = await export(clip, resolver: resolver)
 
         #expect(!xml.contains("<effectid>crop</effectid>"))
     }
 
-    @Test func ntscSourceMarksFileRateTrue() throws {
+    @Test func ntscSourceMarksFileRateTrue() async throws {
         // 29.97 footage → the <file> rate carries ntsc TRUE, while the sequence stays FALSE.
         let (resolver, file) = try fixture(sourceFPS: 30000.0 / 1001.0)
         defer { try? FileManager.default.removeItem(at: file) }
 
-        let xml = export(Fixtures.clip(start: 0, duration: 100), resolver: resolver)
+        let xml = await export(Fixtures.clip(start: 0, duration: 100), resolver: resolver)
         #expect(xml.contains("<ntsc>TRUE</ntsc>"))   // the source file
         #expect(xml.contains("<ntsc>FALSE</ntsc>"))  // the sequence
     }
 
-    @Test func cleanFpsSourceStaysNtscFalse() throws {
+    @Test func cleanFpsSourceStaysNtscFalse() async throws {
         let (resolver, file) = try fixture(sourceFPS: 30.0)
         defer { try? FileManager.default.removeItem(at: file) }
 
-        let xml = export(Fixtures.clip(start: 0, duration: 100), resolver: resolver)
+        let xml = await export(Fixtures.clip(start: 0, duration: 100), resolver: resolver)
         #expect(!xml.contains("<ntsc>TRUE</ntsc>"))
     }
 
-    @Test func noKeyframesStillEmitsStaticValueOnly() throws {
+    @Test func noKeyframesStillEmitsStaticValueOnly() async throws {
         let (resolver, file) = try fixture()
         defer { try? FileManager.default.removeItem(at: file) }
 
         var clip = Fixtures.clip(start: 0, duration: 100)
         clip.opacity = 0.5
-        let xml = export(clip, resolver: resolver)
+        let xml = await export(clip, resolver: resolver)
 
         #expect(xml.contains("<effectid>opacity</effectid>"))
         #expect(!xml.contains("<keyframe>"))

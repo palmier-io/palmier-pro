@@ -68,7 +68,7 @@ final class ToolExecutor {
             )
         }
         // Shorten on the post-run state so newly created ids in summaries are shortened too.
-        return shorteningIds(in: result, editor: editor)
+        return await shorteningIds(in: result, editor: editor)
     }
 
     private func run(_ tool: ToolName, _ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {

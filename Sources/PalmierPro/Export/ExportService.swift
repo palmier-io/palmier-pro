@@ -34,6 +34,7 @@ final class ExportService {
         resolver: MediaResolver,
         format: ExportFormat,
         resolution: ExportResolution,
+        missingMediaRefs: Set<String> = [],
         outputURL: URL,
         acquireSlot: Bool = true
     ) async {
@@ -50,7 +51,7 @@ final class ExportService {
                 data: ["format": "xml", "tracks": timeline.tracks.count, "clips": timeline.tracks.reduce(0) { $0 + $1.clips.count }]
             )
             do {
-                try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
+                try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
                 progress = 1.0
                 Log.export.notice("export ok format=xml", telemetry: "Export finished", data: ["format": "xml"])
             } catch {
@@ -85,7 +86,8 @@ final class ExportService {
         do {
             let prepared = try await makeExportSession(
                 timeline: timeline, resolver: resolver,
-                format: format, resolution: resolution
+                format: format, resolution: resolution,
+                missingMediaRefs: missingMediaRefs
             )
             let session = prepared.session
             guard let fileType = format.utType else { throw ExportError.invalidFormat }
@@ -218,14 +220,17 @@ final class ExportService {
         timeline: Timeline,
         resolver: MediaResolver,
         format: ExportFormat,
-        resolution: ExportResolution
+        resolution: ExportResolution,
+        missingMediaRefs: Set<String>
     ) async throws -> (session: AVAssetExportSession, result: CompositionResult, renderSize: CGSize) {
         let timelineCanvas = CGSize(width: timeline.width, height: timeline.height)
         let renderSize = resolution.renderSize(for: timelineCanvas)
+        let mediaURLs = resolver.expectedURLMap()
 
         let result = try await CompositionBuilder.build(
             timeline: timeline,
-            resolveURL: { resolver.resolveURL(for: $0) },
+            resolveURL: { mediaURLs[$0] },
+            missingMediaRefs: missingMediaRefs,
             renderSize: renderSize
         )
 

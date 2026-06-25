@@ -38,10 +38,11 @@ extension ToolExecutor {
 
         let canvas = CGSize(width: timeline.width, height: timeline.height)
         let renderSize = Self.fit(canvas, longestEdge: Self.inspectTimelineMaxDimension)
-        let resolver = editor.mediaResolver
+        let mediaURLs = editor.mediaResolver.expectedURLMap()
         let composition = try await CompositionBuilder.build(
             timeline: timeline,
-            resolveURL: { resolver.resolveURL(for: $0) },
+            resolveURL: { mediaURLs[$0] },
+            missingMediaRefs: editor.missingMediaRefs,
             renderSize: canvas
         )
 

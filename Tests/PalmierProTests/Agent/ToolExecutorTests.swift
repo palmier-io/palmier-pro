@@ -80,6 +80,32 @@ struct ToolExecutorSmokeTests {
     }
 }
 
+@Suite("ToolExecutor — import_media")
+@MainActor
+struct ToolExecutorImportMediaTests {
+    @Test func importBytesWritesFileAndRegistersAsset() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp-import-media-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let h = ToolHarness()
+        h.editor.projectURL = root.appendingPathComponent("Import.palmier", isDirectory: true)
+        let bytes = Data("fake-png".utf8).base64EncodedString()
+
+        let result = await h.runRaw("import_media", args: [
+            "source": ["bytes": bytes, "mimeType": "image/png"],
+            "name": "Imported Still",
+        ])
+
+        #expect(result.isError == false)
+        let asset = try #require(h.editor.mediaAssets.first)
+        #expect(asset.name == "Imported Still")
+        #expect(asset.type == .image)
+        #expect(FileManager.default.fileExists(atPath: asset.url.path))
+        #expect(h.editor.mediaManifest.entries.first?.name == "Imported Still")
+    }
+}
+
 @Suite("ToolExecutor — read-only handlers")
 @MainActor
 struct ToolExecutorReadOnlyTests {

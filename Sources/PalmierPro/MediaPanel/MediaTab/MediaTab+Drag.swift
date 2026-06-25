@@ -152,7 +152,7 @@ extension MediaTab {
         }
         for (type, ext): (NSPasteboard.PasteboardType, String) in [(.png, "png"), (.tiff, "tiff")] {
             guard let data = pb.data(forType: type),
-                  let asset = editor.importPastedImageData(data, fileExtension: ext) else { continue }
+                  let asset = await editor.importPastedImageData(data, fileExtension: ext) else { continue }
             if let folderId = destFolderId {
                 editor.moveAssetsToFolder(assetIds: [asset.id], folderId: folderId)
             }
