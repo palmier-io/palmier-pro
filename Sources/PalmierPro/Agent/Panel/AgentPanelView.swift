@@ -160,11 +160,21 @@ struct AgentPanelView: View {
 
     @ViewBuilder
     private var byokIndicator: some View {
-        if service.hasApiKey {
+        if service.hasApiKey && !service.hasGateway {
             Text("using API key")
                 .font(.system(size: AppTheme.FontSize.xs).italic())
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .help("Streaming through your Anthropic API key (BYOK)")
+        }
+    }
+
+    @ViewBuilder
+    private var gatewayIndicator: some View {
+        if service.hasGateway {
+            Text(service.gatewayModel.isEmpty ? "using gateway" : "using \(service.gatewayModel)")
+                .font(.system(size: AppTheme.FontSize.xs).italic())
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .help("Streaming through your OpenAI-compatible gateway")
         }
     }
 
@@ -372,6 +382,7 @@ struct AgentPanelView: View {
             ) {
                 modelPicker
                 byokIndicator
+                gatewayIndicator
             }
         }
         .padding(.horizontal, AppTheme.Spacing.mdLg)

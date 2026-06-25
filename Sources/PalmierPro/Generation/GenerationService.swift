@@ -193,7 +193,13 @@ final class GenerationService {
     private func downloadAndFinalize(asset: MediaAsset, remoteURL: URL, editor: EditorViewModel) async -> Bool {
         asset.generationStatus = .downloading
         do {
-            let (tempURL, _) = try await URLSession.shared.download(from: remoteURL)
+            let tempURL: URL
+            if remoteURL.isFileURL {
+                tempURL = remoteURL   // gateway base64 image already written locally
+            } else {
+                let (downloaded, _) = try await URLSession.shared.download(from: remoteURL)
+                tempURL = downloaded
+            }
             let realExt = remoteURL.pathExtension.lowercased()
             if !realExt.isEmpty, realExt != asset.url.pathExtension.lowercased(),
                ClipType(fileExtension: realExt) != nil {
@@ -302,6 +308,18 @@ final class GenerationService {
         Log.generation.notice("run \(runId) start model=\(genInput.model) placeholders=\(placeholders.count)")
         defer { Log.generation.notice("run \(runId) settled") }
 
+        // Gateway path: OpenAI-compatible image generation is synchronous — no Convex.
+        if OpenAICompatGenerationClient.gatewayConfigured,
+           case .image(let imageParams) = params,
+           let client = OpenAICompatGenerationClient.fromGateway() {
+            await runGatewayImageJob(
+                client: client, model: genInput.model, params: imageParams,
+                placeholders: placeholders, editor: editor,
+                onComplete: onComplete, onFailure: onFailure
+            )
+            return
+        }
+
         let jobId: String
         do {
             jobId = try await GenerationBackend.submit(
@@ -370,9 +388,23 @@ final class GenerationService {
         onComplete: (@MainActor (MediaAsset) -> Void)?,
         onFailure: (@MainActor () -> Void)?
     ) async {
-        let urlStrings = job.resultUrls ?? []
+        await finalize(
+            urlStrings: job.resultUrls ?? [],
+            placeholders: placeholders, editor: editor,
+            onComplete: onComplete, onFailure: onFailure
+        )
+    }
+
+    /// Download (or move, for local file URLs) each result into its placeholder.
+    private func finalize(
+        urlStrings: [String],
+        placeholders: [MediaAsset],
+        editor: EditorViewModel,
+        onComplete: (@MainActor (MediaAsset) -> Void)?,
+        onFailure: (@MainActor () -> Void)?
+    ) async {
         guard !urlStrings.isEmpty else {
-            Log.generation.error("backend job succeeded with no resultUrls")
+            Log.generation.error("generation succeeded with no result URLs")
             for placeholder in placeholders {
                 placeholder.generationStatus = .failed("No URL in response")
             }
@@ -380,7 +412,7 @@ final class GenerationService {
             return
         }
         if urlStrings.count < placeholders.count {
-            Log.generation.notice("backend returned \(urlStrings.count) URL(s) for \(placeholders.count) placeholder(s); marking extras as failed")
+            Log.generation.notice("got \(urlStrings.count) URL(s) for \(placeholders.count) placeholder(s); marking extras as failed")
         }
 
         var finalized: [MediaAsset] = []
@@ -406,6 +438,47 @@ final class GenerationService {
         } else {
             onFailure?()
         }
+    }
+
+    // MARK: - Gateway (OpenAI-compatible) image generation
+
+    private func runGatewayImageJob(
+        client: OpenAICompatGenerationClient,
+        model: String,
+        params: ImageGenerationParams,
+        placeholders: [MediaAsset],
+        editor: EditorViewModel,
+        onComplete: (@MainActor (MediaAsset) -> Void)?,
+        onFailure: (@MainActor () -> Void)?
+    ) async {
+        do {
+            let urls = try await client.generateImages(
+                model: model,
+                prompt: params.prompt,
+                n: placeholders.count,
+                size: Self.imageSize(resolution: params.resolution)
+            )
+            await finalize(
+                urlStrings: urls.map(\.absoluteString),
+                placeholders: placeholders, editor: editor,
+                onComplete: onComplete, onFailure: onFailure
+            )
+        } catch {
+            let message = error.localizedDescription
+            Log.generation.error("gateway image gen failed model=\(model) error=\(message)")
+            for placeholder in placeholders {
+                placeholder.generationStatus = .failed(message)
+            }
+            onFailure?()
+        }
+    }
+
+    /// Only set an explicit size when the caller gave a concrete WxH; otherwise let the
+    /// model/gateway pick (arbitrary gateway models reject sizes they don't support).
+    private static func imageSize(resolution: String?) -> String? {
+        guard let r = resolution?.trimmingCharacters(in: .whitespacesAndNewlines),
+              ImageModelConfig.parseWxH(r) != nil else { return nil }
+        return r
     }
 
 }

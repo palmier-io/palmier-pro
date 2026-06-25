@@ -7,9 +7,18 @@ final class AgentService {
 
     private var apiKey: String = ""
     private var apiKeyObserver: NSObjectProtocol?
+    private var gatewayObserver: NSObjectProtocol?
+
+    // OpenAI-compatible gateway (a local model server or a LiteLLM gateway). When
+    // configured it is the primary driver. Base URL + model are global (UserDefaults
+    // via GatewayConfig); the optional key lives in the Keychain.
+    private(set) var gatewayBaseURLString: String = ""
+    private(set) var gatewayModel: String = ""
+    private var gatewayKey: String = ""
 
     init() {
         reloadAPIKey()
+        reloadGatewayConfig()
         apiKeyObserver = NotificationCenter.default.addObserver(
             forName: .anthropicAPIKeyChanged,
             object: nil,
@@ -17,6 +26,15 @@ final class AgentService {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.reloadAPIKey()
+            }
+        }
+        gatewayObserver = NotificationCenter.default.addObserver(
+            forName: .openAICompatGatewayChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.reloadGatewayConfig()
             }
         }
     }
@@ -30,16 +48,42 @@ final class AgentService {
         }
     }
 
+    private func reloadGatewayConfig() {
+        gatewayBaseURLString = GatewayConfig.baseURLString
+        gatewayModel = GatewayConfig.model
+        // Synchronous Keychain read (fast SecItemCopyMatching) so hasGateway reflects the
+        // key immediately — otherwise the first stream after launch/config-change races an
+        // empty bearer and 401s on the key-requiring default gateway.
+        gatewayKey = GatewayKeychain.load() ?? ""
+    }
+
     isolated deinit {
         if let token = apiKeyObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
+        if let token = gatewayObserver {
             NotificationCenter.default.removeObserver(token)
         }
     }
 
     var hasApiKey: Bool { !apiKey.isEmpty }
 
+    var hasGateway: Bool {
+        let base = gatewayBaseURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !base.isEmpty, let url = URL(string: base),
+              !gatewayModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        // A remote gateway activates only once a key is set, so the pre-filled default
+        // can't be turned on by an accidental Save; loopback (local) gateways need no key.
+        return !gatewayKey.isEmpty || Self.isGatewayLoopback(url)
+    }
+
+    static func isGatewayLoopback(_ url: URL) -> Bool {
+        let host = url.host?.lowercased()
+        return host == "localhost" || host == "127.0.0.1" || host == "::1"
+    }
+
     var canStream: Bool {
-        if hasApiKey { return true }
+        if hasGateway || hasApiKey { return true }
         let account = AccountService.shared
         return account.isSignedIn && account.hasCredits
     }
@@ -50,6 +94,14 @@ final class AgentService {
     }
 
     private func selectClient() -> (any AgentClient)? {
+        if hasGateway,
+           let url = URL(string: gatewayBaseURLString.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return OpenAICompatClient(
+                baseURL: url,
+                apiKey: gatewayKey,
+                model: gatewayModel.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        }
         let chosen = effectiveModel
         if hasApiKey { return AnthropicClient(apiKey: apiKey, model: chosen) }
         if AccountService.shared.isSignedIn {

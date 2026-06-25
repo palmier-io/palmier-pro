@@ -8,11 +8,18 @@ struct AgentPane: View {
     @State private var draft: String = ""
     @FocusState private var isFocused: Bool
 
+    @State private var gatewayBaseURL: String = ""
+    @State private var gatewayModel: String = ""
+    @State private var gatewayKeyDraft: String = ""
+    @State private var gatewayHasKey: Bool = false
+
     private let consoleURL = URL(string: "https://console.anthropic.com/settings/keys")!
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
             apiKeySection
+            Divider().overlay(AppTheme.Border.subtleColor)
+            gatewaySection
             Divider().overlay(AppTheme.Border.subtleColor)
             mcpSection
         }
@@ -111,6 +118,11 @@ struct AgentPane: View {
         let key = AnthropicKeychain.load() ?? ""
         hasKey = !key.isEmpty
         maskedKey = mask(key)
+        let savedURL = GatewayConfig.baseURLString
+        let savedModel = GatewayConfig.model
+        gatewayBaseURL = savedURL.isEmpty ? GatewayConfig.defaultBaseURL : savedURL
+        gatewayModel = savedModel.isEmpty ? GatewayConfig.defaultModel : savedModel
+        gatewayHasKey = !(GatewayKeychain.load() ?? "").isEmpty
     }
 
     private func save() {
@@ -131,6 +143,89 @@ struct AgentPane: View {
     private func mask(_ key: String) -> String {
         guard key.count > 4 else { return String(repeating: "\u{2022}", count: 32) }
         return String(repeating: "\u{2022}", count: 36) + key.suffix(4)
+    }
+
+    // MARK: - Custom gateway (OpenAI-compatible)
+
+    private var gatewaySection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                Text("Custom Gateway (OpenAI-compatible)")
+                    .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                Text("Route the AI chat through any OpenAI-compatible endpoint — a local model server or a LiteLLM gateway. Used as the primary driver when set; otherwise falls back to the Anthropic key or your account.")
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            gatewayField(label: "Base URL", placeholder: "http://localhost:4000/v1", text: $gatewayBaseURL, secure: false)
+            gatewayField(label: "Model", placeholder: "model-or-gateway-alias", text: $gatewayModel, secure: false)
+            gatewayField(
+                label: "API Key (optional)",
+                placeholder: gatewayHasKey ? String(repeating: "\u{2022}", count: 24) : "leave blank for a local server",
+                text: $gatewayKeyDraft,
+                secure: true
+            )
+            HStack(spacing: AppTheme.Spacing.sm) {
+                Button("Save", action: saveGateway)
+                    .buttonStyle(.capsule(.prominent, size: .regular))
+                    .controlSize(.large)
+                if !gatewayBaseURL.trimmingCharacters(in: .whitespaces).isEmpty || gatewayHasKey {
+                    Button("Clear", action: clearGateway)
+                        .buttonStyle(.capsule(.secondary, size: .regular))
+                        .controlSize(.large)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func gatewayField(label: String, placeholder: String, text: Binding<String>, secure: Bool) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            Text(label)
+                .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+            Group {
+                if secure {
+                    SecureField(placeholder, text: text)
+                } else {
+                    TextField(placeholder, text: text)
+                }
+            }
+            .textFieldStyle(.plain)
+            .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+            .foregroundStyle(AppTheme.Text.primaryColor)
+            .padding(.horizontal, AppTheme.Spacing.md)
+            .padding(.vertical, AppTheme.Spacing.smMd)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                    .fill(Color.black.opacity(AppTheme.Opacity.muted))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                    .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
+            )
+        }
+    }
+
+    private func saveGateway() {
+        GatewayConfig.save(
+            baseURL: gatewayBaseURL.trimmingCharacters(in: .whitespaces),
+            model: gatewayModel.trimmingCharacters(in: .whitespaces)
+        )
+        let key = gatewayKeyDraft.trimmingCharacters(in: .whitespaces)
+        if !key.isEmpty { GatewayKeychain.save(key) }
+        gatewayKeyDraft = ""
+        refresh()
+    }
+
+    private func clearGateway() {
+        GatewayConfig.save(baseURL: "", model: "")
+        GatewayKeychain.delete()
+        gatewayBaseURL = ""
+        gatewayModel = ""
+        gatewayKeyDraft = ""
+        refresh()
     }
 
     // MARK: - MCP server

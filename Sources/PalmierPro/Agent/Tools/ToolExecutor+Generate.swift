@@ -3,11 +3,16 @@ import Foundation
 extension ToolExecutor {
     func generate(_ editor: EditorViewModel, _ args: [String: Any], type: ClipType) throws -> ToolResult {
         let prompt = try args.requireString("prompt")
-        guard AccountService.shared.isSignedIn else {
-            throw ToolError("Generation requires signing in to Palmier. Tell the user to sign in.")
-        }
-        guard AccountService.shared.hasCredits else {
-            throw ToolError("Out of credits. Tell the user to add credits or subscribe to keep generating.")
+        // Image generation routes to the OpenAI-compatible gateway when configured — no
+        // Palmier account/credits needed. Other types still use the hosted backend.
+        let routesToGateway = type == .image && OpenAICompatGenerationClient.gatewayConfigured
+        if !routesToGateway {
+            guard AccountService.shared.isSignedIn else {
+                throw ToolError("Generation requires signing in to Palmier. Tell the user to sign in.")
+            }
+            guard AccountService.shared.hasCredits else {
+                throw ToolError("Out of credits. Tell the user to add credits or subscribe to keep generating.")
+            }
         }
         switch type {
         case .video:
@@ -151,6 +156,9 @@ extension ToolExecutor {
         _ editor: EditorViewModel, _ args: [String: Any], prompt: String
     ) throws -> ToolResult {
         guard !prompt.isEmpty else { throw ToolError("Empty prompt") }
+        if OpenAICompatGenerationClient.gatewayConfigured {
+            return try generateImageViaGateway(editor, args, prompt: prompt)
+        }
         guard let modelId = args.string("model") ?? ImageModelConfig.allModels.first?.id else {
             throw ToolError("Model catalog not loaded yet. Try again in a moment.")
         }
@@ -192,6 +200,42 @@ extension ToolExecutor {
             editor: editor
         )
         return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), aspect: \(aspectRatio)")
+    }
+
+    /// Image generation routed to the OpenAI-compatible gateway. Skips the Convex
+    /// catalog — the model is whatever image alias the gateway exposes.
+    private func generateImageViaGateway(
+        _ editor: EditorViewModel, _ args: [String: Any], prompt: String
+    ) throws -> ToolResult {
+        guard let modelId = args.string("model"), !modelId.isEmpty else {
+            throw ToolError("Specify an image 'model' your gateway exposes (one of your configured image aliases).")
+        }
+        let aspectRatio = args.string("aspectRatio") ?? ""
+        let resolution = args.string("resolution")
+        let numImages = max(1, min(4, args.int("numImages") ?? 1))
+
+        let genInput = GenerationInput(
+            prompt: prompt, model: modelId, duration: 0,
+            aspectRatio: aspectRatio, resolution: resolution, quality: nil
+        )
+        let folderId = try resolveFolderId(args, editor: editor)
+        let placeholderId = editor.generationService.generate(
+            genInput: genInput,
+            assetType: .image,
+            placeholderDuration: 0,
+            numImages: numImages,
+            folderId: folderId,
+            buildParams: { uploaded in
+                .image(ImageGenerationParams(
+                    prompt: prompt, aspectRatio: aspectRatio, resolution: resolution,
+                    quality: nil, imageURLs: uploaded, numImages: numImages
+                ))
+            },
+            fileExtension: "png",
+            projectURL: editor.projectURL,
+            editor: editor
+        )
+        return .ok("Generation started (gateway). Placeholder asset ID: \(placeholderId). Model: \(modelId).")
     }
 
     func generateAudio(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -370,7 +414,11 @@ extension ToolExecutor {
         )
     }
 
-    func listModels(_ args: [String: Any]) -> ToolResult {
+    func listModels(_ args: [String: Any]) async -> ToolResult {
+        if OpenAICompatGenerationClient.gatewayConfigured,
+           let client = OpenAICompatGenerationClient.fromGateway() {
+            return await listGatewayModels(client: client, filter: args.string("type"))
+        }
         let filter = args.string("type")
         var out: [[String: Any]] = []
         if filter == nil || filter == "video" {
@@ -393,6 +441,40 @@ extension ToolExecutor {
             return .error("Failed to encode model list")
         }
         return .ok(json)
+    }
+
+    private func listGatewayModels(
+        client: OpenAICompatGenerationClient, filter: String?
+    ) async -> ToolResult {
+        let models: [OpenAICompatGenerationClient.GatewayModel]
+        do {
+            models = try await client.listModels()
+        } catch {
+            return .error("Could not list gateway models: \(error.localizedDescription)")
+        }
+        var out: [[String: Any]] = []
+        for model in models {
+            let type = Self.gatewayModelType(model.mode)
+            if let filter, !filter.isEmpty, filter != type { continue }
+            var info: [String: Any] = ["id": model.id, "type": type]
+            if let mode = model.mode { info["mode"] = mode }
+            out.append(info)
+        }
+        let body: [String: Any] = ["models": out, "loaded": true, "source": "gateway"]
+        guard let json = Self.jsonString(body) else {
+            return .error("Failed to encode model list")
+        }
+        return .ok(json)
+    }
+
+    /// Map a LiteLLM `model_info.mode` to the tool's type vocabulary.
+    nonisolated static func gatewayModelType(_ mode: String?) -> String {
+        guard let mode = mode?.lowercased() else { return "unknown" }
+        if mode.contains("image") { return "image" }
+        if mode.contains("video") { return "video" }
+        if mode.contains("audio") || mode.contains("speech") || mode.contains("transcription") { return "audio" }
+        if mode.contains("chat") || mode.contains("completion") { return "chat" }
+        return mode
     }
 
     nonisolated static func videoModelInfo(_ m: VideoModelConfig, includeType: Bool = false) -> [String: Any] {
