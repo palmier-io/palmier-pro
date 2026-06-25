@@ -32,7 +32,8 @@ final class ExportService {
         resolver: MediaResolver,
         format: ExportFormat,
         resolution: ExportResolution,
-        outputURL: URL
+        outputURL: URL,
+        acquireSlot: Bool = true
     ) async {
         error = nil
         lastReport = nil
@@ -52,11 +53,13 @@ final class ExportService {
             return
         }
 
-        guard ExportCoordinator.beginExportIfIdle() else {
-            error = "Another export is already in progress."
-            return
+        if acquireSlot {
+            guard ExportCoordinator.beginExportIfIdle() else {
+                error = "Another export is already in progress."
+                return
+            }
         }
-        defer { ExportCoordinator.endExport() }
+        defer { if acquireSlot { ExportCoordinator.endExport() } }
 
         Log.export.notice(
             "export requested format=\(String(describing: format)) resolution=\(resolution.rawValue)",

@@ -48,7 +48,7 @@ extension ToolExecutor {
         resolution: ExportResolution,
         outputURL: URL
     ) throws -> ToolResult {
-        guard !ExportCoordinator.isExportActive else {
+        guard ExportCoordinator.beginExportIfIdle() else {
             throw ToolError("export_project: Another export is already in progress.")
         }
 
@@ -57,13 +57,15 @@ extension ToolExecutor {
         let name = outputURL.lastPathComponent
 
         Task { @MainActor in
+            defer { ExportCoordinator.endExport() }
             let service = ExportService()
             await service.export(
                 timeline: timeline,
                 resolver: resolver,
                 format: format,
                 resolution: resolution,
-                outputURL: outputURL
+                outputURL: outputURL,
+                acquireSlot: false
             )
             if let error = service.error {
                 AppNotifications.exportFailed(name: name, reason: error)
