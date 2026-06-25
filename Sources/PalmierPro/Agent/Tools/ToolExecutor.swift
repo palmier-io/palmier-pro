@@ -93,6 +93,7 @@ final class ToolExecutor {
         case .undo:          return try undo(editor)
         case .addTexts:      return try addTexts(editor, args)
         case .addCaptions:   return try await addCaptions(editor, args)
+        case .exportProject: return try await exportProject(editor, args)
         case .generateVideo: return try generate(editor, args, type: .video)
         case .generateImage: return try generate(editor, args, type: .image)
         case .generateAudio: return try await generateAudio(editor, args)

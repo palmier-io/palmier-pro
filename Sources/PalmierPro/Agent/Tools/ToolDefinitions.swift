@@ -17,6 +17,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case undo = "undo"
     case addTexts = "add_texts"
     case addCaptions = "add_captions"
+    case exportProject = "export_project"
     case generateVideo = "generate_video"
     case generateImage = "generate_image"
     case generateAudio = "generate_audio"
@@ -368,6 +369,19 @@ enum ToolDefinitions {
                     "centerY": ["type": "number", "description": "Optional vertical center 0–1 (default 0.9, near the bottom)."],
                     "textCase": ["type": "string", "enum": ["auto", "upper", "lower"], "description": "Optional letter case (default auto)."],
                     "censorProfanity": ["type": "boolean", "description": "Optional. Mask profanity (default false)."],
+                ]
+            )
+        ),
+        AgentTool(
+            name: .exportProject,
+            description: "Exports from the current project using the same modes as the Export dialog. mode defaults to video. video renders H.264, H.265, or ProRes; xml writes timeline XML; palmier writes a self-contained .palmier project package. Omit outputPath to write a unique file to ~/Downloads. Existing direct outputPath files are overwritten by default to match the UI save flow; pass overwrite=false to refuse.",
+            inputSchema: objectSchema(
+                properties: [
+                    "mode": ["type": "string", "enum": ["video", "xml", "palmier"], "description": "Optional. Default video."],
+                    "codec": ["type": "string", "enum": ["H.264", "H.265", "ProRes"], "description": "Video mode only. Optional. Default H.264."],
+                    "resolution": ["type": "string", "enum": ["720p", "1080p", "2K", "4K", "Match Timeline"], "description": "Video mode only. Optional. Default Match Timeline."],
+                    "outputPath": ["type": "string", "description": "Optional. Absolute destination path. If omitted, a unique project-named file is written to ~/Downloads. If no extension is provided, the mode's extension is appended."],
+                    "overwrite": ["type": "boolean", "description": "Optional. Default true, matching the UI save flow. false refuses when outputPath already exists."],
                 ]
             )
         ),

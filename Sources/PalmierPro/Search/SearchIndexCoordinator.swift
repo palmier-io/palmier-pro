@@ -45,6 +45,11 @@ final class SearchIndexCoordinator {
     static var exportActive: Bool { exportPause.isActive }
     static func exportDidBegin() { exportPause.begin() }
     static func exportDidEnd() { exportPause.end() }
+    static func exportDidBeginIfIdle() -> Bool {
+        guard !exportPause.isActive else { return false }
+        exportPause.begin()
+        return true
+    }
 
     static func waitWhileExportActive() async throws {
         while exportActive {

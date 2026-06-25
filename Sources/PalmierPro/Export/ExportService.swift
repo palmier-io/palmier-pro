@@ -1,61 +1,6 @@
 import AVFoundation
 import AppKit
 
-enum ExportFormat {
-    case h264, h265, prores, xml
-
-    var fileExtension: String {
-        switch self {
-        case .h264, .h265: "mp4"
-        case .prores: "mov"
-        case .xml: "xml"
-        }
-    }
-
-    var utType: AVFileType? {
-        switch self {
-        case .h264, .h265: .mp4
-        case .prores: .mov
-        case .xml: nil
-        }
-    }
-}
-
-enum ExportResolution: String, CaseIterable, Identifiable {
-    case r720p = "720p"
-    case r1080p = "1080p"
-    case r1440p = "2K"
-    case r4k = "4K"
-    case native = "Match Timeline"
-
-    var id: String { rawValue }
-
-    /// Target short-side height for the fixed presets; nil for `.native` (uses the timeline size).
-    var shortSidePixels: Int? {
-        switch self {
-        case .r720p: 720
-        case .r1080p: 1080
-        case .r1440p: 1440
-        case .r4k: 2160
-        case .native: nil
-        }
-    }
-
-    func renderSize(for canvas: CGSize) -> CGSize {
-        guard let shortSidePixels else { return evenSize(canvas) }
-        let canvasShort = min(canvas.width, canvas.height)
-        guard canvasShort > 0 else { return canvas }
-        let scale = Double(shortSidePixels) / Double(canvasShort)
-        return evenSize(CGSize(width: canvas.width * scale, height: canvas.height * scale))
-    }
-
-    private func evenSize(_ size: CGSize) -> CGSize {
-        let w = (Int(size.width.rounded()) / 2) * 2
-        let h = (Int(size.height.rounded()) / 2) * 2
-        return CGSize(width: max(2, w), height: max(2, h))
-    }
-}
-
 enum ExportError: LocalizedError {
     case unsupportedPreset
     case invalidFormat
@@ -66,6 +11,17 @@ enum ExportError: LocalizedError {
         case .invalidFormat: "Invalid export format"
         }
     }
+}
+
+struct ExportRunReport {
+    let outputURL: URL
+    let format: ExportFormat
+    let resolution: ExportResolution
+    let renderSize: CGSize
+    let totalFrames: Int
+    let fps: Int
+    let offlineMediaRefs: Set<String>
+    let unprocessableMediaRefs: Set<String>
 }
 
 @Observable
@@ -79,6 +35,7 @@ final class ExportService {
         }
     }
     var error: String?
+    var lastReport: ExportRunReport?
 
     func export(
         timeline: Timeline,
@@ -87,6 +44,12 @@ final class ExportService {
         resolution: ExportResolution,
         outputURL: URL
     ) async {
+        error = nil
+        lastReport = nil
+        isExporting = true
+        progress = 0
+        defer { isExporting = false }
+
         if format == .xml {
             Log.export.notice(
                 "export requested format=xml",
@@ -99,9 +62,6 @@ final class ExportService {
             return
         }
 
-        isExporting = true
-        progress = 0
-        error = nil
         Log.export.notice(
             "export requested format=\(String(describing: format)) resolution=\(resolution.rawValue)",
             telemetry: "Export started",
@@ -116,10 +76,11 @@ final class ExportService {
         )
 
         do {
-            let session = try await makeExportSession(
+            let prepared = try await makeExportSession(
                 timeline: timeline, resolver: resolver,
                 format: format, resolution: resolution
             )
+            let session = prepared.session
             guard let fileType = format.utType else { throw ExportError.invalidFormat }
 
             // AVAssetExportSession fails if the file already exists
@@ -136,6 +97,16 @@ final class ExportService {
 
             do {
                 try await session.export(to: outputURL, as: fileType)
+                lastReport = ExportRunReport(
+                    outputURL: outputURL,
+                    format: format,
+                    resolution: resolution,
+                    renderSize: prepared.renderSize,
+                    totalFrames: timeline.totalFrames,
+                    fps: timeline.fps,
+                    offlineMediaRefs: prepared.result.offlineMediaRefs,
+                    unprocessableMediaRefs: prepared.result.unprocessableMediaRefs
+                )
                 progress = 1.0
                 Log.export.notice(
                     "export ok",
@@ -170,7 +141,6 @@ final class ExportService {
             )
         }
 
-        isExporting = false
     }
 
     /// Writes a self-contained `.palmier` bundle (all media collected internally).
@@ -185,6 +155,7 @@ final class ExportService {
         isExporting = true
         progress = 0
         error = nil
+        lastReport = nil
         defer { isExporting = false }
 
         do {
@@ -228,7 +199,7 @@ final class ExportService {
         resolver: MediaResolver,
         format: ExportFormat,
         resolution: ExportResolution
-    ) async throws -> AVAssetExportSession {
+    ) async throws -> (session: AVAssetExportSession, result: CompositionResult, renderSize: CGSize) {
         let timelineCanvas = CGSize(width: timeline.width, height: timeline.height)
         let renderSize = resolution.renderSize(for: timelineCanvas)
 
@@ -256,7 +227,7 @@ final class ExportService {
             in: parent
         )
         session.videoComposition = mutableVC
-        return session
+        return (session, result, renderSize)
     }
 
     // MARK: - Export preset mapping
@@ -269,15 +240,15 @@ final class ExportService {
             case .r1080p: AVAssetExportPreset1920x1080
             case .r4k: AVAssetExportPreset3840x2160
             // Size-named presets clamp dimensions; HighestQuality honours the
-            // composition's renderSize, so 2K / native export at their true size.
-            case .r1440p, .native: AVAssetExportPresetHighestQuality
+            // composition's renderSize, so 2K / Match Timeline export at their true size.
+            case .r1440p, .matchTimeline: AVAssetExportPresetHighestQuality
             }
         case .h265:
             switch resolution {
             case .r720p: AVAssetExportPresetHEVCHighestQuality
             case .r1080p: AVAssetExportPresetHEVC1920x1080
             case .r4k: AVAssetExportPresetHEVC3840x2160
-            case .r1440p, .native: AVAssetExportPresetHEVCHighestQuality
+            case .r1440p, .matchTimeline: AVAssetExportPresetHEVCHighestQuality
             }
         case .prores:
             AVAssetExportPresetAppleProRes422LPCM
