@@ -954,6 +954,92 @@ struct ToolExecutorClipTests {
         #expect(musicTrack.element.clips.contains { $0.mediaRef == music.id && $0.linkGroupId == nil })
     }
 
+    // MARK: - duplicate_clips
+
+    @Test func duplicateClipsCreatesExactCopyAtNewPosition() async throws {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+        let asset = h.addAsset(type: .video)
+        _ = h.editor.placeClip(asset: asset, trackIndex: 0, startFrame: 0, durationFrames: 60)
+        let srcClip = h.editor.timeline.tracks[0].clips[0]
+        h.editor.commitClipProperty(clipId: srcClip.id) { $0.speed = 1.5; $0.opacity = 0.7 }
+
+        let result = await h.runRaw("duplicate_clips", args: [
+            "entries": [["clipId": srcClip.id, "toFrame": 100]]
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+
+        let clips = h.editor.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(clips.count == 2)
+        let copy = clips[1]
+        #expect(copy.startFrame == 100)
+        #expect(copy.id != srcClip.id)
+        #expect(copy.speed == 1.5)
+        #expect(copy.opacity == 0.7)
+        #expect(copy.mediaRef == srcClip.mediaRef)
+    }
+
+    @Test func duplicateClipsPreservesKeyframesAndEffects() async throws {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+        let asset = h.addAsset(type: .video)
+        _ = h.editor.placeClip(asset: asset, trackIndex: 0, startFrame: 0, durationFrames: 60)
+        let srcId = h.editor.timeline.tracks[0].clips[0].id
+        h.editor.commitClipProperty(clipId: srcId) {
+            $0.opacityTrack = KeyframeTrack(keyframes: [
+                Keyframe(frame: 0, value: 1.0),
+                Keyframe(frame: 30, value: 0.5),
+            ])
+            $0.effects = [Effect.make("blur", ["radius": 10.0])]
+            $0.fadeInFrames = 5
+        }
+
+        let result = await h.runRaw("duplicate_clips", args: [
+            "entries": [["clipId": srcId, "toFrame": 100]]
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+
+        let copy = h.editor.timeline.tracks[0].clips.first { $0.startFrame == 100 }!
+        #expect(copy.opacityTrack?.keyframes.count == 2)
+        #expect(copy.opacityTrack?.keyframes[1].value == 0.5)
+        #expect(copy.effects?.count == 1)
+        #expect(copy.effects?[0].type == "blur")
+        #expect(copy.fadeInFrames == 5)
+    }
+
+    @Test func duplicateClipsExpandsLinkedPartners() async throws {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+        let asset = h.addAsset(type: .video, hasAudio: true)
+        _ = h.editor.placeClip(asset: asset, trackIndex: 0, startFrame: 0, durationFrames: 60)
+        #expect(h.editor.timeline.tracks.count == 2)
+        let videoClip = h.editor.timeline.tracks[0].clips[0]
+
+        let result = await h.runRaw("duplicate_clips", args: [
+            "entries": [["clipId": videoClip.id, "toFrame": 100]]
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+
+        let videoClips = h.editor.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        let audioClips = h.editor.timeline.tracks[1].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(videoClips.count == 2)
+        #expect(audioClips.count == 2)
+        #expect(videoClips[1].startFrame == 100)
+        #expect(audioClips[1].startFrame == 100)
+    }
+
+    @Test func duplicateClipsRejectsInvalidTrack() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        _ = h.editor.placeClip(asset: asset, trackIndex: 0, startFrame: 0, durationFrames: 30)
+        let clipId = h.editor.timeline.tracks[0].clips[0].id
+
+        let result = await h.runRaw("duplicate_clips", args: [
+            "entries": [["clipId": clipId, "toTrack": 99, "toFrame": 0]]
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("out of range"))
+    }
+
     // MARK: - remove_clips
 
     @Test func removeClipsDropsClipsByIds() async throws {
