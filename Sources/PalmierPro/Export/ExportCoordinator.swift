@@ -2,31 +2,23 @@ import Foundation
 
 @MainActor
 enum ExportCoordinator {
-    private static var activeCount = 0
-    private static var exclusiveExportActive = false
+    private static var exportActive = false
 
-    static var isExportActive: Bool { activeCount > 0 || exclusiveExportActive }
+    static var isExportActive: Bool { exportActive }
 
-    static func beginExport() {
-        activeCount += 1
-    }
-
-    static func endExport() {
-        activeCount = max(0, activeCount - 1)
-    }
-
-    static func beginExclusiveExportIfIdle() -> Bool {
-        guard !isExportActive else { return false }
-        exclusiveExportActive = true
+    /// Claims the single heavy-export slot. Returns false if one is already running.
+    static func beginExportIfIdle() -> Bool {
+        guard !exportActive else { return false }
+        exportActive = true
         return true
     }
 
-    static func endExclusiveExport() {
-        exclusiveExportActive = false
+    static func endExport() {
+        exportActive = false
     }
 
     static func waitWhileExportActive() async throws {
-        while isExportActive {
+        while exportActive {
             try await Task.sleep(for: .seconds(2))
         }
     }

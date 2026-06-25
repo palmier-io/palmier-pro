@@ -61,7 +61,7 @@ struct ExportProjectToolTests {
         #expect(uniqueURL.deletingLastPathComponent().standardizedFileURL == downloads.standardizedFileURL)
         #expect(uniqueURL.lastPathComponent == "\(base) 2.xml")
 
-        ExportCoordinator.beginExport()
+        #expect(ExportCoordinator.beginExportIfIdle())
         defer { ExportCoordinator.endExport() }
 
         let uiActiveXML = FileManager.default.temporaryDirectory
@@ -81,7 +81,7 @@ struct ExportProjectToolTests {
             "outputPath": uiActiveVideo.path,
         ])
         #expect(uiActiveResult.isError)
-        #expect(ToolHarness.textOf(uiActiveResult).contains("another export"))
+        #expect(ToolHarness.textOf(uiActiveResult).contains("Another export"))
         #expect(!FileManager.default.fileExists(atPath: uiActiveVideo.path))
     }
 

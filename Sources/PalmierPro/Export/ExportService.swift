@@ -57,7 +57,10 @@ final class ExportService {
             return
         }
 
-        ExportCoordinator.beginExport()
+        guard ExportCoordinator.beginExportIfIdle() else {
+            error = "Another export is already in progress."
+            return
+        }
         defer { ExportCoordinator.endExport() }
 
         Log.export.notice(
@@ -156,7 +159,10 @@ final class ExportService {
         lastReport = nil
         defer { isExporting = false }
 
-        ExportCoordinator.beginExport()
+        guard ExportCoordinator.beginExportIfIdle() else {
+            error = "Another export is already in progress."
+            return nil
+        }
         defer { ExportCoordinator.endExport() }
 
         do {

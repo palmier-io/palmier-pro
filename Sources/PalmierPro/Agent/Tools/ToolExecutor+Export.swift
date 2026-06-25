@@ -34,21 +34,11 @@ extension ToolExecutor {
             guard editor.timeline.totalFrames > 0 else {
                 throw ToolError("export_project: timeline is empty")
             }
-            try beginExclusiveExport()
-            defer { ExportCoordinator.endExclusiveExport() }
             return try await exportVideo(editor, format: format, resolution: resolution, outputURL: outputURL)
         case .xml:
             return try exportXML(editor, outputURL: outputURL)
         case .palmier:
-            try beginExclusiveExport()
-            defer { ExportCoordinator.endExclusiveExport() }
             return try await exportPalmier(editor, outputURL: outputURL)
-        }
-    }
-
-    private func beginExclusiveExport() throws {
-        guard ExportCoordinator.beginExclusiveExportIfIdle() else {
-            throw ToolError("export_project: another export is already in progress")
         }
     }
 
