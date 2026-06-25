@@ -306,6 +306,10 @@ final class VideoProject: NSDocument {
                 ProjectSettingsMismatchView(mismatch: mismatch)
                     .environment(editorViewModel)
             }
+            .sheet(isPresented: Bindable(editorViewModel).showSilenceRemovalSheet) { [editorViewModel] in
+                SilenceRemovalSheet()
+                    .environment(editorViewModel)
+            }
             .overlay {
                 TourOverlay()
                     .environment(editorViewModel)
