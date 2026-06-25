@@ -85,6 +85,7 @@ final class ExportService {
         resolver: MediaResolver,
         format: ExportFormat,
         resolution: ExportResolution,
+        missingMediaRefs: Set<String> = [],
         outputURL: URL
     ) async {
         if format == .xml {
@@ -118,7 +119,8 @@ final class ExportService {
         do {
             let session = try await makeExportSession(
                 timeline: timeline, resolver: resolver,
-                format: format, resolution: resolution
+                format: format, resolution: resolution,
+                missingMediaRefs: missingMediaRefs
             )
             guard let fileType = format.utType else { throw ExportError.invalidFormat }
 
@@ -227,14 +229,17 @@ final class ExportService {
         timeline: Timeline,
         resolver: MediaResolver,
         format: ExportFormat,
-        resolution: ExportResolution
+        resolution: ExportResolution,
+        missingMediaRefs: Set<String>
     ) async throws -> AVAssetExportSession {
         let timelineCanvas = CGSize(width: timeline.width, height: timeline.height)
         let renderSize = resolution.renderSize(for: timelineCanvas)
+        let mediaURLs = resolver.expectedURLMap()
 
         let result = try await CompositionBuilder.build(
             timeline: timeline,
-            resolveURL: { resolver.resolveURL(for: $0) },
+            resolveURL: { mediaURLs[$0] },
+            missingMediaRefs: missingMediaRefs,
             renderSize: renderSize
         )
 

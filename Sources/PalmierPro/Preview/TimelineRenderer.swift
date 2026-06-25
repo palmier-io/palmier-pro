@@ -25,10 +25,11 @@ enum TimelineRenderer {
 
         let canvas = CGSize(width: timeline.width, height: timeline.height)
         let renderSize = Self.renderSize(canvas: canvas, shortSide: shortSide)
+        let mediaURLs = resolver.expectedURLMap()
 
         let result = try await CompositionBuilder.build(
             timeline: timeline,
-            resolveURL: { resolver.resolveURL(for: $0) },
+            resolveURL: { mediaURLs[$0] },
             renderSize: renderSize
         )
 
