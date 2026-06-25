@@ -76,8 +76,8 @@ struct InspectorView: View {
     private var projectMetadataContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
-                if let url = editor.projectURL {
-                    metadataSection(title: "Project") {
+                metadataSection(title: "Project") {
+                    if let url = editor.projectURL {
                         plainMetadataRow(
                             label: "Name",
                             value: url.deletingPathExtension().lastPathComponent
@@ -88,13 +88,13 @@ struct InspectorView: View {
                             truncate: .middle
                         )
                     }
+                    plainMetadataRow(label: "Duration", value: formatDuration(Double(editor.timeline.totalFrames) / Double(editor.timeline.fps)))
                 }
 
-                metadataSection(title: "Format") {
-                    plainMetadataRow(label: "Resolution", value: "\(editor.timeline.width) × \(editor.timeline.height)")
-                    plainMetadataRow(label: "Frame Rate", value: "\(editor.timeline.fps) fps")
-                    plainMetadataRow(label: "Aspect Ratio", value: formatAspectRatio(width: editor.timeline.width, height: editor.timeline.height))
-                    plainMetadataRow(label: "Duration", value: formatDuration(Double(editor.timeline.totalFrames) / Double(editor.timeline.fps)))
+                metadataSection(title: "Settings") {
+                    menuMetadataRow(label: "Resolution", value: "\(editor.timeline.width) × \(editor.timeline.height)") { qualityMenuItems }
+                    menuMetadataRow(label: "Frame Rate", value: "\(editor.timeline.fps) fps") { fpsMenuItems }
+                    menuMetadataRow(label: "Aspect Ratio", value: formatAspectRatio(width: editor.timeline.width, height: editor.timeline.height)) { aspectMenuItems }
                 }
             }
             .padding(.horizontal, AppTheme.Spacing.lg)
@@ -138,12 +138,100 @@ struct InspectorView: View {
                 .multilineTextAlignment(.trailing)
                 .textSelection(.enabled)
                 .help(valueHelp ?? value)
+                .padding(.horizontal, AppTheme.Spacing.xs)
         }
+        .frame(height: AppTheme.IconSize.md)
     }
 
     private func formatAspectRatio(width: Int, height: Int) -> String {
         let gcd = gcd(width, height)
         return "\(width / gcd):\(height / gcd)"
+    }
+
+    private func menuMetadataRow<MenuContent: View>(
+        label: String,
+        value: String,
+        @ViewBuilder menu: @escaping () -> MenuContent
+    ) -> some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Text(label)
+                .font(.system(size: AppTheme.FontSize.xs))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .fixedSize()
+            Spacer()
+            Menu {
+                menu()
+            } label: {
+                HStack(spacing: AppTheme.Spacing.xxs) {
+                    Text(value)
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
+                        .foregroundStyle(AppTheme.Text.mutedColor)
+                }
+                .padding(.horizontal, AppTheme.Spacing.xs)
+                .frame(height: AppTheme.IconSize.md)
+                .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        }
+    }
+
+    @ViewBuilder
+    private var aspectMenuItems: some View {
+        ForEach(AspectPreset.allCases, id: \.self) { preset in
+            Button {
+                editor.applyTimelineSettings(fps: editor.timeline.fps, width: preset.width, height: preset.height)
+            } label: {
+                HStack {
+                    Text(preset.label)
+                    Spacer()
+                    if editor.timeline.width == preset.width && editor.timeline.height == preset.height {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var fpsMenuItems: some View {
+        ForEach([24, 25, 30, 50, 60], id: \.self) { fps in
+            Button {
+                editor.applyTimelineSettings(fps: fps, width: editor.timeline.width, height: editor.timeline.height)
+            } label: {
+                HStack {
+                    Text("\(fps) fps")
+                    Spacer()
+                    if editor.timeline.fps == fps {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var qualityMenuItems: some View {
+        ForEach(QualityPreset.allCases, id: \.self) { preset in
+            Button {
+                let (w, h) = preset.resolution(currentWidth: editor.timeline.width, currentHeight: editor.timeline.height)
+                editor.applyTimelineSettings(fps: editor.timeline.fps, width: w, height: h)
+            } label: {
+                HStack {
+                    Text(preset.label)
+                    Spacer()
+                    if preset.matches(width: editor.timeline.width, height: editor.timeline.height) {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Clip Inspector
