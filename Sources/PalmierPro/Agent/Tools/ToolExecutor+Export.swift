@@ -54,6 +54,7 @@ extension ToolExecutor {
 
         let timeline = editor.timeline
         let resolver = editor.mediaResolver
+        let missingMediaRefs = editor.missingMediaRefs
         let name = outputURL.lastPathComponent
 
         Task { @MainActor in
@@ -64,6 +65,7 @@ extension ToolExecutor {
                 resolver: resolver,
                 format: format,
                 resolution: resolution,
+                missingMediaRefs: missingMediaRefs,
                 outputURL: outputURL,
                 acquireSlot: false
             )
