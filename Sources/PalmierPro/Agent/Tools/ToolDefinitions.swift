@@ -318,6 +318,7 @@ enum ToolDefinitions {
                         "enum": ["tight", "balanced", "loose"],
                         "description": "How much silence to leave between the words on either side of a cut. 'tight' butts them close (snappy, can feel clipped), 'balanced' (default) keeps a natural beat, 'loose' leaves more breathing room. The removed words' own frames always go regardless.",
                     ],
+                    "language": ["type": "string", "description": "BCP-47 language tag of the spoken audio. Must match the language passed to the get_transcript call the indices came from — word indices are only valid against the same transcription, so a localed transcript requires the same tag here or the wrong words are cut."],
                 ],
                 required: ["words"]
             )

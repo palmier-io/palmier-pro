@@ -2,7 +2,7 @@ import Foundation
 
 extension ToolExecutor {
 
-    private static let removeWordsAllowedKeys: Set<String> = ["words", "cutAggressiveness"]
+    private static let removeWordsAllowedKeys: Set<String> = ["words", "cutAggressiveness", "language"]
 
     func removeWords(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.removeWordsAllowedKeys, path: "remove_words")
@@ -17,7 +17,8 @@ extension ToolExecutor {
             aggressiveness = a
         } else { aggressiveness = .balanced }
 
-        let (allWords, _) = try await timelineWords(editor)
+        let preferredLocale = try await Self.parseLocale(args, path: "remove_words")
+        let (allWords, _) = try await timelineWords(editor, preferredLocale: preferredLocale)
         guard !allWords.isEmpty else { throw ToolError("No transcribable speech on the timeline.") }
 
         var selected = Set<Int>(), ignored: [Int] = []

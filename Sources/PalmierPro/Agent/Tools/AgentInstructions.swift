@@ -79,7 +79,9 @@ enum AgentInstructions {
           (or differs from the user's system locale), always pass language as a BCP-47 tag \
           (e.g. language='es', language='fr', language='ja') to get_transcript and inspect_media. \
           Without it, the wrong model is used and the output will be garbled or empty. If the user \
-          says transcription looks wrong, ask for the spoken language and retry with language set.
+          says transcription looks wrong, ask for the spoken language and retry with language set. \
+          When you then cut with remove_words, pass the SAME language — the indices are only valid \
+          against the transcription that produced them, so a mismatch cuts the wrong words.
 
         # Export
         - When the user asks to export/render/save, call export_project. It matches the Export \
