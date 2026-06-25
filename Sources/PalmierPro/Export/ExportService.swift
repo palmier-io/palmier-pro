@@ -14,12 +14,7 @@ enum ExportError: LocalizedError {
 }
 
 struct ExportRunReport {
-    let outputURL: URL
-    let format: ExportFormat
-    let resolution: ExportResolution
     let outputSize: CGSize
-    let totalFrames: Int
-    let fps: Int
     let offlineMediaRefs: Set<String>
     let unprocessableMediaRefs: Set<String>
 }
@@ -100,12 +95,7 @@ final class ExportService {
                 try await session.export(to: outputURL, as: fileType)
                 let outputSize = await Self.encodedVideoSize(of: outputURL) ?? prepared.renderSize
                 lastReport = ExportRunReport(
-                    outputURL: outputURL,
-                    format: format,
-                    resolution: resolution,
                     outputSize: outputSize,
-                    totalFrames: timeline.totalFrames,
-                    fps: timeline.fps,
                     offlineMediaRefs: prepared.result.offlineMediaRefs,
                     unprocessableMediaRefs: prepared.result.unprocessableMediaRefs
                 )

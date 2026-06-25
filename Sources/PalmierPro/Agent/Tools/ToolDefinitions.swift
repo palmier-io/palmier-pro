@@ -374,7 +374,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .exportProject,
-            description: "Exports from the current project using the same modes as the Export dialog. mode defaults to video. video renders H.264, H.265, or ProRes; xml writes timeline XML; palmier writes a self-contained .palmier project package. Omit outputPath to write a unique file to ~/Downloads. Existing direct outputPath files are overwritten by default to match the UI save flow; pass overwrite=false to refuse.",
+            description: "Exports from the current project using the same modes as the Export dialog. mode defaults to video. video renders H.264, H.265, or ProRes; xml writes timeline XML; palmier writes a self-contained .palmier project package. Omit outputPath to write a unique file to ~/Downloads. Existing direct outputPath files are overwritten by default to match the UI save flow; pass overwrite=false to refuse. video renders in the background and returns status=started with the destination path; the app posts a system notification on completion or failure, so do not expect a final result inline. xml and palmier finish before returning and report their result inline.",
             inputSchema: objectSchema(
                 properties: [
                     "mode": ["type": "string", "enum": ["video", "xml", "palmier"], "description": "Optional. Default video."],

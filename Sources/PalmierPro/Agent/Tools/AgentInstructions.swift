@@ -78,7 +78,9 @@ enum AgentInstructions {
           720p, 1080p, 2K, 4K, or Match Timeline; defaults are H.264 at Match Timeline. Use mode=xml for \
           timeline XML and mode=palmier for a self-contained .palmier package. If the user did \
           not name a destination, omit outputPath; the export writes a unique project-named file \
-          to ~/Downloads. Provide outputPath only when the user named a destination.
+          to ~/Downloads. Provide outputPath only when the user named a destination. \
+          video renders in the background, tell the user it is rendering and that they'll get \
+          a notification when it finishes. xml and palmier finish inline, so report their result directly.
 
         # Generation
         - Costs real money and is not undoable. Propose the prompt, model, duration, and \

@@ -34,7 +34,7 @@ extension ToolExecutor {
             guard editor.timeline.totalFrames > 0 else {
                 throw ToolError("export_project: timeline is empty")
             }
-            return try await exportVideo(editor, format: format, resolution: resolution, outputURL: outputURL)
+            return try exportVideo(editor, format: format, resolution: resolution, outputURL: outputURL)
         case .xml:
             return try exportXML(editor, outputURL: outputURL)
         case .palmier:
@@ -47,47 +47,48 @@ extension ToolExecutor {
         format: ExportFormat,
         resolution: ExportResolution,
         outputURL: URL
-    ) async throws -> ToolResult {
-        let service = ExportService()
-        await service.export(
-            timeline: editor.timeline,
-            resolver: editor.mediaResolver,
-            format: format,
-            resolution: resolution,
-            outputURL: outputURL
-        )
-
-        if let error = service.error {
-            throw ToolError("export_project: \(error)")
-        }
-        guard let report = service.lastReport else {
-            throw ToolError("export_project: export finished without a report")
+    ) throws -> ToolResult {
+        guard !ExportCoordinator.isExportActive else {
+            throw ToolError("export_project: Another export is already in progress.")
         }
 
-        let offline = report.offlineMediaRefs.sorted()
-        let unprocessable = report.unprocessableMediaRefs.sorted()
-        var warnings: [String] = []
-        if !offline.isEmpty {
-            warnings.append("Skipped offline media: \(offline.joined(separator: ", "))")
-        }
-        if !unprocessable.isEmpty {
-            warnings.append("Skipped unprocessable media: \(unprocessable.joined(separator: ", "))")
+        let timeline = editor.timeline
+        let resolver = editor.mediaResolver
+        let name = outputURL.lastPathComponent
+
+        Task { @MainActor in
+            let service = ExportService()
+            await service.export(
+                timeline: timeline,
+                resolver: resolver,
+                format: format,
+                resolution: resolution,
+                outputURL: outputURL
+            )
+            if let error = service.error {
+                AppNotifications.exportFailed(name: name, reason: error)
+            } else {
+                let report = service.lastReport
+                let warningCount = (report?.offlineMediaRefs.count ?? 0) + (report?.unprocessableMediaRefs.count ?? 0)
+                AppNotifications.exportComplete(
+                    name: name,
+                    outputURL: outputURL,
+                    size: report?.outputSize,
+                    warningCount: warningCount
+                )
+            }
         }
 
         return try jsonResult([
-            "status": warnings.isEmpty ? "exported" : "exportedWithWarnings",
+            "status": "started",
             "mode": ExportProjectMode.video.rawValue,
-            "path": report.outputURL.path,
-            "codec": report.format.displayName,
-            "resolution": report.resolution.rawValue,
-            "width": Int(report.outputSize.width),
-            "height": Int(report.outputSize.height),
-            "durationFrames": report.totalFrames,
-            "durationSeconds": Double(report.totalFrames) / Double(max(1, report.fps)),
-            "fps": report.fps,
-            "offlineMediaRefs": offline,
-            "unprocessableMediaRefs": unprocessable,
-            "warnings": warnings,
+            "path": outputURL.path,
+            "codec": format.displayName,
+            "resolution": resolution.rawValue,
+            "durationFrames": editor.timeline.totalFrames,
+            "durationSeconds": Double(editor.timeline.totalFrames) / Double(max(1, editor.timeline.fps)),
+            "fps": editor.timeline.fps,
+            "note": "Rendering in the background. A system notification will report completion or failure.",
         ])
     }
 

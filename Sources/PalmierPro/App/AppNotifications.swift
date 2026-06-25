@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import UserNotifications
 
@@ -67,6 +68,58 @@ enum AppNotifications {
         }
     }
 
+    /// Agent-triggered exports run in the background
+    static func exportComplete(name: String, outputURL: URL, size: CGSize?, warningCount: Int) {
+        guard canUseUserNotifications, isEnabled else { return }
+
+        var detail = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if detail.isEmpty { detail = "Export" }
+        if let size { detail += " (\(Int(size.width))×\(Int(size.height)))" }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Export complete"
+        content.body = warningCount > 0
+            ? "\(detail) exported with \(warningCount) warning\(warningCount == 1 ? "" : "s")."
+            : "\(detail) is ready."
+        content.sound = .default
+        content.userInfo = ["exportPath": outputURL.path]
+
+        let request = UNNotificationRequest(
+            identifier: "export-complete-\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                Log.app.warning("notification delivery failed error=\(error.localizedDescription)")
+            }
+        }
+    }
+
+    static func exportFailed(name: String, reason: String) {
+        guard canUseUserNotifications, isEnabled else { return }
+
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        let content = UNMutableNotificationContent()
+        content.title = "Export failed"
+        content.body = trimmedReason.isEmpty
+            ? "\(trimmedName.isEmpty ? "The export" : trimmedName) could not be exported."
+            : trimmedReason
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "export-failed-\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                Log.app.warning("notification delivery failed error=\(error.localizedDescription)")
+            }
+        }
+    }
+
     private static var canUseUserNotifications: Bool {
         Bundle.main.bundleURL.pathExtension == "app"
             && (Bundle.main.bundleIdentifier?.contains(".") ?? false)
@@ -97,6 +150,11 @@ private final class AppNotificationDelegate: NSObject, UNUserNotificationCenterD
         didReceive response: UNNotificationResponse
     ) async {
         let userInfo = response.notification.request.content.userInfo
+        if let exportPath = userInfo["exportPath"] as? String {
+            let url = URL(fileURLWithPath: exportPath)
+            await MainActor.run { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            return
+        }
         let assetId = userInfo["assetId"] as? String
         let projectURL = (userInfo["projectPath"] as? String).map(URL.init(fileURLWithPath:))
         await AppState.shared.revealGeneratedAssetFromNotification(assetId: assetId, projectURL: projectURL)
