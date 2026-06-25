@@ -280,16 +280,13 @@ extension ToolExecutor {
         guard input.atFrame >= 0 else { throw ToolError("atFrame must be >= 0 (got \(input.atFrame))") }
         let targetType = editor.timeline.tracks[input.trackIndex].type
 
-        var specs: [EditorViewModel.RippleInsertSpec] = []
-        specs.reserveCapacity(input.entries.count)
+        // Apply settings before deriving durations: it may change FPS, which clipDurationFrames depends on.
+        var resolvedAssets: [MediaAsset] = []
+        resolvedAssets.reserveCapacity(input.entries.count)
         for (idx, entry) in input.entries.enumerated() {
             let asset = try asset(entry.mediaRef, editor: editor)
             guard asset.type.isCompatible(with: targetType) else {
                 throw ToolError("entries[\(idx)]: asset type \(asset.type.rawValue) is not compatible with \(targetType.rawValue) track at index \(input.trackIndex)")
-            }
-            let duration = entry.durationFrames ?? editor.clipDurationFrames(for: asset, segment: nil)
-            guard duration >= 1 else {
-                throw ToolError("entries[\(idx)]: durationFrames must be >= 1 (got \(duration))")
             }
             if let t = entry.trimStartFrame, t < 0 {
                 throw ToolError("entries[\(idx)]: trimStartFrame must be >= 0 (got \(t))")
@@ -297,10 +294,21 @@ extension ToolExecutor {
             if let t = entry.trimEndFrame, t < 0 {
                 throw ToolError("entries[\(idx)]: trimEndFrame must be >= 0 (got \(t))")
             }
-            specs.append(.init(asset: asset, durationFrames: duration, trimStartFrame: entry.trimStartFrame, trimEndFrame: entry.trimEndFrame))
+            resolvedAssets.append(asset)
         }
 
-        let settingsNote = applySettingsIfNeededForAgent(editor, assets: specs.map(\.asset))
+        let settingsNote = applySettingsIfNeededForAgent(editor, assets: resolvedAssets)
+
+        var specs: [EditorViewModel.RippleInsertSpec] = []
+        specs.reserveCapacity(input.entries.count)
+        for (idx, entry) in input.entries.enumerated() {
+            let asset = resolvedAssets[idx]
+            let duration = entry.durationFrames ?? editor.clipDurationFrames(for: asset, segment: nil)
+            guard duration >= 1 else {
+                throw ToolError("entries[\(idx)]: durationFrames must be >= 1 (got \(duration))")
+            }
+            specs.append(.init(asset: asset, durationFrames: duration, trimStartFrame: entry.trimStartFrame, trimEndFrame: entry.trimEndFrame))
+        }
 
         let totalPush = specs.reduce(0) { $0 + $1.durationFrames }
         let tracksBefore = editor.timeline.tracks.count
