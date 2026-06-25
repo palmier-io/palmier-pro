@@ -18,6 +18,7 @@ final class ToolExecutor {
     }
 
     private var agentUndoStack: [String] = []
+    var feedbackState = FeedbackState()
 
     func execute(name: String, args: [String: Any]) async -> ToolResult {
         guard let tool = ToolName(rawValue: name) else {
@@ -45,6 +46,7 @@ final class ToolExecutor {
         } catch {
             result = .error(error.localizedDescription)
         }
+        feedbackState.record(result, for: tool)
         let elapsed = started.duration(to: .now).seconds
         let telemetry = result.isError ? "Agent tool failed" : "Agent tool finished"
         let payload: Telemetry.Payload = [
@@ -106,6 +108,7 @@ final class ToolExecutor {
         case .renameFolder:  return try renameFolder(editor, args)
         case .deleteMedia:   return try deleteMedia(editor, args)
         case .deleteFolder:  return try deleteFolder(editor, args)
+        case .sendFeedback:  return try await sendFeedback(editor, args)
         }
     }
 
