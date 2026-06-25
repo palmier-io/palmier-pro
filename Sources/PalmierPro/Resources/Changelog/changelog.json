@@ -2,27 +2,13 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.4.1",
+      "version": "0.4.2",
       "date": "2026-06-25",
       "sections": [
         {
           "heading": "New",
           "items": [
-            "New export_project tool - Agent can now export videos for you.",
-            "New remove_words tool - Agent can now read your timeline, and remove filler words."
-          ]
-        },
-        {
-          "heading": "UI",
-          "items": [
-            "Change project settings in the inspector panel - edit fps, resolution, and aspect ratio."
-          ]
-        },
-        {
-          "heading": "Fixed",
-          "items": [
-            "Fix XMEML export issue.",
-            "Fixed more app hang issues."
+            "New set_project_settings tool - Agent can now set project settings (fps, resolution, aspect ratio) for you."
           ]
         }
       ]
