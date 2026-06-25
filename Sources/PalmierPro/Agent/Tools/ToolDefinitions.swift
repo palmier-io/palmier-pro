@@ -13,10 +13,12 @@ enum ToolName: String, CaseIterable, Sendable {
     case setKeyframes = "set_keyframes"
     case splitClip = "split_clip"
     case rippleDeleteRanges = "ripple_delete_ranges"
+    case removeWords = "remove_words"
     case syncAudio = "sync_audio"
     case undo = "undo"
     case addTexts = "add_texts"
     case addCaptions = "add_captions"
+    case exportProject = "export_project"
     case generateVideo = "generate_video"
     case generateImage = "generate_image"
     case generateAudio = "generate_audio"
@@ -37,6 +39,8 @@ enum ToolName: String, CaseIterable, Sendable {
     case renameFolder = "rename_folder"
     case deleteMedia = "delete_media"
     case deleteFolder = "delete_folder"
+    case sendFeedback = "send_feedback"
+    case setProjectSettings = "set_project_settings"
 }
 
 struct AgentTool: @unchecked Sendable {
@@ -80,7 +84,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .getTranscript,
-            description: "Returns the spoken transcript of the CURRENT timeline in project frames — the post-edit caption track in one call. Unlike inspect_media (which transcribes one source asset in isolation, in source seconds), this walks every audio/video clip on the timeline, maps each word through that clip's trim/speed/position, and concatenates in timeline order. Deleted ranges are gone by construction, so after cuts this always reflects what's actually audible — no stale results, no per-clip frame math.\n\nReturns clips in timeline order, each with its words nested as compact [text, startFrame, endFrame] rows (the field order is given once in wordFormat) — clipId and trackIndex are stated once per clip, not repeated per word. Words are monotonic and non-overlapping; each is attributed to one clip, so a word split across a clip seam is emitted once, not re-emitted per clip. Pass a clip's clipId and a word's frames straight to ripple_delete_ranges. Capped at 10000 words total; page with startFrame/endFrame using nextStartFrame. Pass clipId to scope to a single clip (\"what does this clip say?\"). Transcription runs on-device.\n\nUse for transcript-driven edits (filler-word / dead-air removal, locating a quote, take selection) and to verify what remains after cutting.",
+            description: "Returns the spoken transcript of the CURRENT timeline in project frames — the post-edit caption track in one call. Unlike inspect_media (which transcribes one source asset in isolation, in source seconds), this walks every audio/video clip on the timeline, maps each word through that clip's trim/speed/position, and concatenates in timeline order. Deleted ranges are gone by construction, so after cuts this always reflects what's actually audible — no stale results, no per-clip frame math.\n\nReturns clips in timeline order, each with its words nested as compact [index, text, startFrame, endFrame] rows (the field order is given once in wordFormat) — clipId and trackIndex are stated once per clip, not repeated per word. The index is a stable, global, 0-based position in timeline order; pass it straight to remove_words to cut that word (the intuitive path for text-based editing). Words are monotonic and non-overlapping; each is attributed to one clip, so a word split across a clip seam is emitted once. Indices stay global even when scoped with clipId or paged with a window. Capped at 10000 words total; page with startFrame/endFrame using nextStartFrame. Pass clipId to scope to a single clip (\"what does this clip say?\"). Transcription runs on-device.\n\nUse for transcript-driven edits (filler-word / dead-air removal, locating a quote, take selection) and to verify what remains after cutting. To cut, prefer remove_words (give it the indices); drop to ripple_delete_ranges only for non-word-aligned spans.",
             inputSchema: objectSchema(
                 properties: [
                     "startFrame": ["type": "integer", "description": "Optional. Only return words ending after this project frame. Use with the returned nextStartFrame to page a long timeline."],
@@ -299,6 +303,25 @@ enum ToolDefinitions {
             )
         ),
         AgentTool(
+            name: .removeWords,
+            description: "Cut speech by the word, Descript-style — the primary tool for text-based editing (filler words, flubbed sentences, dropped retakes, tightening a ramble). You name WHICH words to remove by their get_transcript index; this resolves them to frames, removes the surrounding pause so survivors don't end up double-spaced, merges adjacent removals, cuts linked A/V partners, and closes the gaps. You never deal in frame numbers — that's the whole point versus ripple_delete_ranges.\n\nWorkflow: call get_transcript, read it as prose, then pass the indices of the words to drop. Words across multiple clips on ONE track are handled in a single undoable action, and any linked A/V partner (e.g. the video paired with this audio) is cut automatically. Edit one track at a time: if your indices span multiple unlinked tracks (e.g. two separate mics), the call is refused — cut each track in its own call, or link the tracks into one unit first. After it runs, indices have shifted — re-read get_transcript before another remove_words.\n\nWhen to use which: remove_words for anything you can point at in the transcript; ripple_delete_ranges only for spans that aren't word-aligned (e.g. a visual-only dead-air gap). Verify reworded retakes and sub-frame seam fragments against the word list, not a summary.",
+            inputSchema: objectSchema(
+                properties: [
+                    "words": [
+                        "type": "array",
+                        "description": "Words to remove, by their get_transcript index. Each element is either a single index (e.g. 42) or an inclusive [startIndex, endIndex] span (e.g. [12, 18] removes words 12 through 18). Mix freely: [3, [12, 18], 40]. Indices come from the current get_transcript; re-read after any edit.",
+                        "items": ["type": ["integer", "array"]],
+                    ],
+                    "cutAggressiveness": [
+                        "type": "string",
+                        "enum": ["tight", "balanced", "loose"],
+                        "description": "How much silence to leave between the words on either side of a cut. 'tight' butts them close (snappy, can feel clipped), 'balanced' (default) keeps a natural beat, 'loose' leaves more breathing room. The removed words' own frames always go regardless.",
+                    ],
+                ],
+                required: ["words"]
+            )
+        ),
+        AgentTool(
             name: .syncAudio,
             description: "Align one or more clips to a reference clip by cross-correlating audio and shifting targets on the timeline. referenceClipId stays put — use for dual-system sound (camera + external audio) or multicam. Returns offsetFrames and confidence (0–1) per target; refuses weak matches.",
             inputSchema: objectSchema(
@@ -368,6 +391,19 @@ enum ToolDefinitions {
                     "centerY": ["type": "number", "description": "Optional vertical center 0–1 (default 0.9, near the bottom)."],
                     "textCase": ["type": "string", "enum": ["auto", "upper", "lower"], "description": "Optional letter case (default auto)."],
                     "censorProfanity": ["type": "boolean", "description": "Optional. Mask profanity (default false)."],
+                ]
+            )
+        ),
+        AgentTool(
+            name: .exportProject,
+            description: "Exports from the current project using the same modes as the Export dialog. mode defaults to video. video renders H.264, H.265, or ProRes; xml writes timeline XML; palmier writes a self-contained .palmier project package. Omit outputPath to write a unique file to ~/Downloads. Existing direct outputPath files are overwritten by default to match the UI save flow; pass overwrite=false to refuse. video renders in the background and returns status=started with the destination path; the app posts a system notification on completion or failure, so do not expect a final result inline. xml and palmier finish before returning and report their result inline.",
+            inputSchema: objectSchema(
+                properties: [
+                    "mode": ["type": "string", "enum": ["video", "xml", "palmier"], "description": "Optional. Default video."],
+                    "codec": ["type": "string", "enum": ["H.264", "H.265", "ProRes"], "description": "Video mode only. Optional. Default H.264."],
+                    "resolution": ["type": "string", "enum": ["720p", "1080p", "2K", "4K", "Match Timeline"], "description": "Video mode only. Optional. Default Match Timeline."],
+                    "outputPath": ["type": "string", "description": "Optional. Absolute destination path. If omitted, a unique project-named file is written to ~/Downloads. If no extension is provided, the mode's extension is appended."],
+                    "overwrite": ["type": "boolean", "description": "Optional. Default true, matching the UI save flow. false refuses when outputPath already exists."],
                 ]
             )
         ),
@@ -711,6 +747,32 @@ enum ToolDefinitions {
                     "atFrame": ["type": "integer", "description": "Optional project frame to sample a clip. Defaults to the clip's midpoint. Ignored for mediaRef."],
                     "reference": ["type": "string", "description": "Optional image/video asset id from get_media to compare against; returns its scopes + the subject−reference gap."],
                 ]
+            )
+        ),
+        AgentTool(
+            name: .setProjectSettings,
+            description: "Change the project's frame rate, resolution, or aspect ratio. Pass any combination of fps, explicit width+height, aspectRatio, and quality. aspectRatio and explicit width/height are mutually exclusive; quality scales the current aspect ratio (or the selected preset when combined with aspectRatio). The timeline's existing clips are re-fitted automatically: auto-fit transforms recalculate for the new canvas size, and all frame positions/durations rescale when fps changes. Undoable.",
+            inputSchema: objectSchema(
+                properties: [
+                    "fps": ["type": "integer", "description": "Frame rate in frames per second. Common values: 24, 25, 30, 48, 50, 60."],
+                    "width": ["type": "integer", "description": "Canvas width in pixels. Use with height for an exact resolution. Mutually exclusive with aspectRatio."],
+                    "height": ["type": "integer", "description": "Canvas height in pixels. Use with width for an exact resolution. Mutually exclusive with aspectRatio."],
+                    "aspectRatio": ["type": "string", "enum": ["16:9", "9:16", "1:1", "4:3", "2.4:1", "9:14"], "description": "Preset aspect ratio — sets both width and height from the preset, or combined with quality to pick a specific size. Mutually exclusive with width/height."],
+                    "quality": ["type": "string", "enum": ["720p", "1080p", "2K", "4K"], "description": "Resolution quality preset — scales the short edge to the target while preserving the current (or specified) aspect ratio."],
+                ]
+            )
+        ),
+        AgentTool(
+            name: .sendFeedback,
+            description: "Report an agent limitation or bug to the Palmier team so they can improve the product. Use when you can't do what the user asked because a capability or tool is missing or behaves wrong, the result is clearly off, or the user is plainly hitting a rough edge. This sends directly — there is no user confirmation step — so PARAPHRASE in your own words: never include verbatim user messages, prompts, file paths, media, transcript text, or any project content. App/OS version and your recent tool names are attached automatically. Use sparingly: at most once per distinct issue.",
+            inputSchema: objectSchema(
+                properties: [
+                    "category": ["type": "string", "enum": ["missing_capability", "wrong_result", "confusing_ux", "failure", "suggestion"], "description": "What kind of problem this is."],
+                    "summary": ["type": "string", "description": "One-line paraphrased summary of the issue. Becomes the report's subject."],
+                    "details": ["type": "string", "description": "Optional. Paraphrased explanation of what the user was trying to do and what went wrong or was missing. No verbatim content."],
+                    "severity": ["type": "string", "enum": ["low", "medium", "high"], "description": "Optional. How much this blocked the user."],
+                ],
+                required: ["category", "summary"]
             )
         ),
     ]

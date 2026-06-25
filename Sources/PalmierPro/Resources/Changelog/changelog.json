@@ -2,30 +2,13 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.4.0",
-      "date": "2026-06-23",
+      "version": "0.4.2",
+      "date": "2026-06-25",
       "sections": [
         {
           "heading": "New",
           "items": [
-            "Color grading and visual effects per clip. Curves, color wheels, LUTs, grain, chroma key, and more. Start asking agent to color grade your clips.",
-            "Sync audio across multiple tracks. Useful for syncing camera footage and dedicated mic. "
-          ]
-        },
-        {
-          "heading": "Improved",
-          "items": [
-            "Export at 2K or Match Timeline resolution",
-            "Import FLAC and AIFF-C audio files",
-            "Editor panel sizes are remembered between sessions"
-          ]
-        },
-        {
-          "heading": "Fixed",
-          "items": [
-            "Fixed silent sign-in failures on macOS",
-            "Fixed clip rotation being dropped when the agent adjusts transform properties",
-            "Fixed position keyframes corrupting clip transform"
+            "New set_project_settings tool - Agent can now set project settings (fps, resolution, aspect ratio) for you."
           ]
         }
       ]

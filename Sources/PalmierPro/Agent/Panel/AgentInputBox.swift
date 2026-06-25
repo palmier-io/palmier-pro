@@ -99,7 +99,11 @@ struct AgentInputBox<LeadingTools: View>: View {
                 .onChange(of: draft) { old, new in
                     updateMentionQuery(from: new)
                     if !old.isEmpty && new.isEmpty {
+                        let wasFocused = focused
                         textEditorID = UUID()
+                        if wasFocused {
+                            Task { @MainActor in focused = true }
+                        }
                     }
                 }
                 .onPasteCommand(of: [.fileURL, .image, .png, .jpeg, .tiff], perform: handlePaste)

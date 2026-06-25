@@ -43,9 +43,12 @@ struct ToolbarView: View {
 
             // Zoom
             HStack(spacing: AppTheme.Spacing.xs) {
-                Image(systemName: "minus.magnifyingglass")
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .font(.system(size: AppTheme.FontSize.sm))
+                zoomButton(
+                    "minus.magnifyingglass",
+                    help: "Zoom Out",
+                    isDisabled: editor.zoomScale <= editor.minZoomScale,
+                    action: zoomOut
+                )
                 // Log-mapped so slider travel is uniform per zoom factor
                 let zoomBinding = Binding(
                     get: { log(editor.zoomScale) },
@@ -55,9 +58,12 @@ struct ToolbarView: View {
                     .controlSize(.mini)
                     .tint(AppTheme.Accent.primary)
                     .frame(width: 100)
-                Image(systemName: "plus.magnifyingglass")
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .font(.system(size: AppTheme.FontSize.sm))
+                zoomButton(
+                    "plus.magnifyingglass",
+                    help: "Zoom In",
+                    isDisabled: editor.zoomScale >= Zoom.max,
+                    action: zoomIn
+                )
             }
         }
         .padding(.horizontal, AppTheme.Spacing.md)
@@ -74,6 +80,36 @@ struct ToolbarView: View {
         }
         .buttonStyle(.plain)
         .help(help)
+    }
+
+    private func zoomButton(
+        _ systemName: String,
+        help: String,
+        isDisabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(isDisabled ? AppTheme.Text.mutedColor : AppTheme.Text.tertiaryColor)
+                .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
+                .hoverHighlight()
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .help(help)
+    }
+
+    private func zoomOut() {
+        setZoomScale(editor.zoomScale / Zoom.toolbarStepFactor)
+    }
+
+    private func zoomIn() {
+        setZoomScale(editor.zoomScale * Zoom.toolbarStepFactor)
+    }
+
+    private func setZoomScale(_ zoomScale: Double) {
+        editor.zoomScale = min(Zoom.max, max(editor.minZoomScale, zoomScale))
     }
 
     private func undo() {
