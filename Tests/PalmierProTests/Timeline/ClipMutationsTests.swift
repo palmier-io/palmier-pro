@@ -142,6 +142,25 @@ struct SplitClipTests {
         #expect(rightIds.count == 2)
     }
 
+    @Test func splitClipKeepsSegmentInterpolationOnRightHalf() {
+        // hold opacity (0→1.0) and linear rotation (0°→20°). Splitting mid-segment must not
+        // turn the right half's opening keyframe smooth: hold stays flat, linear stays straight.
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        clip.opacityTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 1.0, interpolationOut: .hold),
+            Keyframe(frame: 30, value: 0.5),
+        ])
+        clip.rotationTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 0.0, interpolationOut: .linear),
+            Keyframe(frame: 20, value: 20.0),
+        ])
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let rightId = e.splitClip(clipId: "c1", atFrame: 10)[0]
+        let right = e.timeline.tracks[0].clips.first { $0.id == rightId }!
+        #expect(right.opacityTrack?.sample(at: 5, fallback: 0.0) == 1.0)   // hold: still flat
+        #expect(right.rotationTrack?.sample(at: 5, fallback: 0.0) == 15.0) // linear: 10°→20° at halfway
+    }
+
     @Test func splitClipZerosOpacityFadesAcrossCut() {
         var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
         clip.fadeInFrames = 15

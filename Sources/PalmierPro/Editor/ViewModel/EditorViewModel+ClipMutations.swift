@@ -187,7 +187,8 @@ extension EditorViewModel {
             .filter { $0.frame >= splitOffset }
             .map { Keyframe(frame: $0.frame - splitOffset, value: $0.value, interpolationOut: $0.interpolationOut) }
         if rightKfs.first?.frame != 0 {
-            rightKfs.insert(Keyframe(frame: 0, value: boundary), at: 0)
+            let interp = track.keyframes.last { $0.frame < splitOffset }?.interpolationOut ?? .smooth
+            rightKfs.insert(Keyframe(frame: 0, value: boundary, interpolationOut: interp), at: 0)
         }
         return (
             leftKfs.isEmpty ? nil : KeyframeTrack(keyframes: leftKfs),
