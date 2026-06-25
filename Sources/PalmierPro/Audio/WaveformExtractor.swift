@@ -11,7 +11,9 @@ enum WaveformExtractor {
         let asset = AVURLAsset(url: url)
         let duration = (try? await asset.load(.duration).seconds) ?? 0
         let span = range.map { $0.upperBound - $0.lowerBound } ?? duration
-        let rate = span > 0 ? min(samplesPerSecond, Double(maxSamples) / span) : samplesPerSecond
+        let rate = span.isFinite && span > 0
+            ? min(samplesPerSecond, Double(maxSamples) / span)
+            : samplesPerSecond
 
         var out: [Float] = []
         var carryPeak: Float = 0
