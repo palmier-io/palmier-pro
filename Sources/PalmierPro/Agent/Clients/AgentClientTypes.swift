@@ -58,6 +58,22 @@ enum AnthropicClientError: LocalizedError {
     }
 }
 
+// MARK: - Provider selection
+
+enum AgentProvider: String, CaseIterable, Sendable {
+    case palmier
+    case anthropic
+    case openRouter
+
+    var displayName: String {
+        switch self {
+        case .palmier: "Palmier Backend"
+        case .anthropic: "Anthropic API Key"
+        case .openRouter: "OpenRouter"
+        }
+    }
+}
+
 // MARK: - Client protocol
 
 protocol AgentClient: Sendable {
@@ -190,5 +206,61 @@ enum AnthropicRequestBody {
         ]
         if !toolBlocks.isEmpty { body["tools"] = toolBlocks }
         return body
+    }
+}
+
+// MARK: - OpenRouter keychain
+
+extension Notification.Name {
+    static let openRouterKeyChanged = Notification.Name("openRouterKeyChanged")
+}
+
+enum OpenRouterKeychain {
+    private static let account = "openrouter-api-key"
+
+    static func save(_ key: String) {
+        KeychainStore.save(key, account: account)
+        NotificationCenter.default.post(name: .openRouterKeyChanged, object: nil)
+    }
+
+    static func load() -> String? {
+        KeychainStore.load(account: account)
+    }
+
+    static func delete() {
+        KeychainStore.delete(account: account)
+        NotificationCenter.default.post(name: .openRouterKeyChanged, object: nil)
+    }
+}
+
+// MARK: - Generic agent error
+
+enum AgentError: LocalizedError {
+    case unauthenticated
+    case insufficientCredits(String)
+    case upstream(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .unauthenticated: "Sign in to your provider to use the AI agent."
+        case .insufficientCredits(let m): m
+        case .upstream(let m): m
+        }
+    }
+}
+
+// MARK: - OpenRouter error
+
+enum OpenRouterClientError: LocalizedError {
+    case missingAPIKey
+    case httpError(status: Int, body: String)
+    case streamError(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .missingAPIKey: "No OpenRouter API key is set."
+        case .httpError(let status, let body): "OpenRouter API error (\(status)): \(body.prefix(500))"
+        case .streamError(let msg): "Stream error: \(msg)"
+        }
     }
 }

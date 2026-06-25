@@ -137,7 +137,7 @@ struct AgentPanelView: View {
 
     @ViewBuilder
     private var modelPicker: some View {
-        if service.hasApiKey {
+        if !service.availableModels.isEmpty {
             Menu {
                 ForEach(service.availableModels, id: \.self) { m in
                     Button(m.displayName) { service.model = m }
@@ -160,11 +160,16 @@ struct AgentPanelView: View {
 
     @ViewBuilder
     private var byokIndicator: some View {
-        if service.hasApiKey {
+        if service.hasAnthropicKey {
             Text("using API key")
                 .font(.system(size: AppTheme.FontSize.xs).italic())
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .help("Streaming through your Anthropic API key (BYOK)")
+                .help("Streaming through your Anthropic API key")
+        } else if service.hasOpenRouterKey {
+            Text("via OpenRouter")
+                .font(.system(size: AppTheme.FontSize.xs).italic())
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .help("Streaming through OpenRouter")
         }
     }
 
@@ -260,6 +265,7 @@ struct AgentPanelView: View {
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.leading)
+                    .textSelection(.enabled)
                 if let cta = errorCTA(for: err) {
                     Button(action: cta.action) {
                         Text(cta.title)
@@ -277,20 +283,37 @@ struct AgentPanelView: View {
         let action: () -> Void
     }
 
-    private func errorCTA(for error: PalmierClientError?) -> ErrorCTA? {
+    private func errorCTA(for error: Error?) -> ErrorCTA? {
         guard let error else { return nil }
-        switch error {
-        case .unauthenticated:
-            return ErrorCTA(title: "Sign in") {
-                SettingsWindowController.shared.show(tab: .account)
+        if error is PalmierClientError {
+            switch error as! PalmierClientError {
+            case .unauthenticated:
+                return ErrorCTA(title: "Sign in") {
+                    SettingsWindowController.shared.show(tab: .account)
+                }
+            case .insufficientCredits:
+                return ErrorCTA(title: "View plans") {
+                    SettingsWindowController.shared.show(tab: .account)
+                }
+            case .upstream:
+                return nil
             }
-        case .insufficientCredits:
-            return ErrorCTA(title: "View plans") {
-                SettingsWindowController.shared.show(tab: .account)
-            }
-        case .upstream:
-            return nil
         }
+        if error is AgentError {
+            switch error as! AgentError {
+            case .unauthenticated:
+                return ErrorCTA(title: "Sign in") {
+                    SettingsWindowController.shared.show(tab: .account)
+                }
+            case .insufficientCredits:
+                return ErrorCTA(title: "View plans") {
+                    SettingsWindowController.shared.show(tab: .account)
+                }
+            case .upstream:
+                return nil
+            }
+        }
+        return nil
     }
 
     @ViewBuilder
@@ -317,6 +340,13 @@ struct AgentPanelView: View {
     @ViewBuilder
     private var missingKeyState: some View {
         let account = AccountService.shared
+        let providerName: String = {
+            switch service.provider {
+            case .palmier: return "Sign in"
+            case .anthropic: return "your own Anthropic key"
+            case .openRouter: return "your own OpenRouter key"
+            }
+        }()
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Button(action: { SettingsWindowController.shared.show(tab: .account) }) {
                 Text(missingKeyPrimaryAction(account: account))
@@ -325,15 +355,17 @@ struct AgentPanelView: View {
             }
             .buttonStyle(.plain)
 
-            Text("or use")
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            if service.provider != .palmier {
+                Text("or use")
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
 
-            Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
-                Text("your own Anthropic key")
-                    .underline()
-                    .foregroundStyle(AppTheme.Accent.primary)
+                Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
+                    Text(providerName)
+                        .underline()
+                        .foregroundStyle(AppTheme.Accent.primary)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .font(.system(size: AppTheme.FontSize.md, weight: .medium))
     }

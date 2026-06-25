@@ -182,7 +182,7 @@ private struct ToolRunRow: View {
             ForEach(Array(r.content.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .text(let s):
-                    Text(s).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(s).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                 case .image(let base64, _):
                     ToolResultImageView(base64: base64)
                 }

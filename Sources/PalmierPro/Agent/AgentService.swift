@@ -5,8 +5,10 @@ import Observation
 @MainActor
 final class AgentService {
 
-    private var apiKey: String = ""
+    private var anthropicApiKey: String = AnthropicKeychain.load() ?? ""
+    private var openRouterApiKey: String = OpenRouterKeychain.load() ?? ""
     private var apiKeyObserver: NSObjectProtocol?
+    private var openRouterKeyObserver: NSObjectProtocol?
 
     init() {
         reloadAPIKey()
@@ -16,46 +18,76 @@ final class AgentService {
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.reloadAPIKey()
+                self?.anthropicApiKey = AnthropicKeychain.load() ?? ""
+            }
+        }
+        openRouterKeyObserver = NotificationCenter.default.addObserver(
+            forName: .openRouterKeyChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.openRouterApiKey = OpenRouterKeychain.load() ?? ""
             }
         }
     }
 
     private func reloadAPIKey() {
         Task { [weak self] in
-            let key = await Task.detached(priority: .utility) {
+            let anthropic = await Task.detached(priority: .utility) {
                 AnthropicKeychain.load() ?? ""
             }.value
-            self?.apiKey = key
+            let openRouter = await Task.detached(priority: .utility) {
+                OpenRouterKeychain.load() ?? ""
+            }.value
+            self?.anthropicApiKey = anthropic
+            self?.openRouterApiKey = openRouter
         }
     }
 
     isolated deinit {
-        if let token = apiKeyObserver {
-            NotificationCenter.default.removeObserver(token)
+        [apiKeyObserver, openRouterKeyObserver].compactMap { $0 }.forEach {
+            NotificationCenter.default.removeObserver($0)
         }
     }
 
-    var hasApiKey: Bool { !apiKey.isEmpty }
+    var hasAnthropicKey: Bool { !anthropicApiKey.isEmpty }
+    var hasOpenRouterKey: Bool { !openRouterApiKey.isEmpty }
 
     var canStream: Bool {
-        if hasApiKey { return true }
-        let account = AccountService.shared
-        return account.isSignedIn && account.hasCredits
+        switch provider {
+        case .palmier:
+            let account = AccountService.shared
+            return account.isSignedIn && account.hasCredits
+        case .anthropic: return hasAnthropicKey
+        case .openRouter: return hasOpenRouterKey && !openRouterModel.isEmpty
+        }
     }
 
     var availableModels: [AnthropicModel] {
-        if hasApiKey { return AnthropicModel.allCases }
-        return AccountService.shared.isPaid ? [.sonnet46] : [.haiku45]
+        switch provider {
+        case .anthropic:
+            if hasAnthropicKey { return AnthropicModel.allCases }
+            return []
+        case .palmier:
+            return AccountService.shared.isPaid ? [.sonnet46] : [.haiku45]
+        case .openRouter:
+            return []
+        }
     }
 
     private func selectClient() -> (any AgentClient)? {
-        let chosen = effectiveModel
-        if hasApiKey { return AnthropicClient(apiKey: apiKey, model: chosen) }
-        if AccountService.shared.isSignedIn {
-            return PalmierClient(model: chosen)
+        switch provider {
+        case .palmier:
+            guard AccountService.shared.isSignedIn else { return nil }
+            return PalmierClient(model: effectiveModel)
+        case .anthropic:
+            guard hasAnthropicKey else { return nil }
+            return AnthropicClient(apiKey: anthropicApiKey, model: effectiveModel)
+        case .openRouter:
+            guard hasOpenRouterKey, !openRouterModel.isEmpty else { return nil }
+            return OpenRouterClient(apiKey: openRouterApiKey, model: openRouterModel)
         }
-        return nil
     }
 
     var effectiveModel: AnthropicModel {
@@ -74,11 +106,27 @@ final class AgentService {
         didSet { UserDefaults.standard.set(model.rawValue, forKey: "agentModel") }
     }
 
+    var provider: AgentProvider = {
+        if let raw = UserDefaults.standard.string(forKey: "agentProvider"),
+           let p = AgentProvider(rawValue: raw) {
+            return p
+        }
+        return .palmier
+    }() {
+        didSet { UserDefaults.standard.set(provider.rawValue, forKey: "agentProvider") }
+    }
+
+    var openRouterModel: String = {
+        UserDefaults.standard.string(forKey: "openRouterModel") ?? "openai/gpt-4o"
+    }() {
+        didSet { UserDefaults.standard.set(openRouterModel, forKey: "openRouterModel") }
+    }
+
     var sessions: [ChatSession] = []
     var currentSessionId: UUID?
     var messages: [AgentMessage] = []
     var isStreaming: Bool = false
-    var streamError: PalmierClientError?
+    var streamError: Error?
     var onSessionsChanged: (@MainActor () -> Void)?
 
     var draft: String = ""
@@ -298,7 +346,7 @@ final class AgentService {
 
     func send(text: String, mentions: [AgentMention]) {
         guard canStream else {
-            streamError = .upstream("Sign in to a paid plan or add an Anthropic API key to start.")
+            streamError = AgentError.upstream("Sign in to a paid plan or add an API key to start.")
             return
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -338,7 +386,7 @@ final class AgentService {
 
     private func runLoop() async {
         guard let client = selectClient() else {
-            streamError = .upstream("No backend available.")
+            streamError = AgentError.upstream("No backend available.")
             return
         }
         let tools = ToolDefinitions.all.map {
@@ -381,13 +429,9 @@ final class AgentService {
             } catch is CancellationError {
                 dropEmptyAssistantTurn(id: assistantID)
                 break loop
-            } catch let err as PalmierClientError {
-                dropEmptyAssistantTurn(id: assistantID)
-                streamError = err
-                break loop
             } catch {
                 dropEmptyAssistantTurn(id: assistantID)
-                streamError = .upstream(error.localizedDescription)
+                streamError = error
                 break loop
             }
         }
