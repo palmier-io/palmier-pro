@@ -14,6 +14,7 @@ enum TimelineRenderer {
     static func render(
         timeline: Timeline,
         resolver: MediaResolver,
+        missingMediaRefs: Set<String> = [],
         startFrame: Int,
         frameCount: Int,
         shortSide: Int? = nil,
@@ -30,6 +31,7 @@ enum TimelineRenderer {
         let result = try await CompositionBuilder.build(
             timeline: timeline,
             resolveURL: { mediaURLs[$0] },
+            missingMediaRefs: missingMediaRefs,
             renderSize: renderSize
         )
 

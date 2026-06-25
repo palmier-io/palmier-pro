@@ -268,7 +268,7 @@ enum CompositionBuilder {
                 )
             } catch {
                 Log.preview.error("stillVideo failed mediaRef=\(clip.mediaRef) size=\(Int(imageSize.width))x\(Int(imageSize.height)): \(Log.detail(error))")
-                return .unprocessable
+                return FileManager.default.fileExists(atPath: resolved.path) ? .unprocessable : .offline
             }
         } else if clip.mediaType == .lottie {
             let lottieSize = resolveSourceSize(clip.mediaRef) ?? renderSize
@@ -280,7 +280,7 @@ enum CompositionBuilder {
                 )
             } catch {
                 Log.preview.error("lottieVideo failed mediaRef=\(clip.mediaRef) size=\(Int(lottieSize.width))x\(Int(lottieSize.height)): \(Log.detail(error))")
-                return .unprocessable
+                return FileManager.default.fileExists(atPath: resolved.path) ? .unprocessable : .offline
             }
         } else if mediaType == .video {
             mediaURL = (try? await AlphaVideoNormalizer.premultipliedVideo(for: resolved, mediaRef: clip.mediaRef)) ?? resolved
