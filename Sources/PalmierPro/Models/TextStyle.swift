@@ -122,8 +122,8 @@ extension TextStyle.RGBA {
 
 extension TextStyle {
     func resolvedFont(size: CGFloat) -> NSFont {
-        // 1. Load the base font
-        let baseFont = NSFont(name: self.fontName, size: size) ?? .systemFont(ofSize: size)
+        // 1. Load the base font, falling back to bold system font if missing
+        let baseFont = NSFont(name: self.fontName, size: size) ?? .boldSystemFont(ofSize: size)
         
         // 2. Sanitize the weight to protect against Infinity math crashes
         var safeWeight = self.fontWeight
@@ -152,7 +152,6 @@ extension TextStyle {
         // Fallback if the font doesn't support the variation
         return baseFont
     }
-
     /// True if `fontName` resolves to a font with a `wght` variation axis.
     var fontSupportsWeightAxis: Bool {
     guard let base = NSFont(name: fontName, size: 12) else { return false }

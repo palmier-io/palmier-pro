@@ -73,7 +73,7 @@ struct TextTab: View {
         }
     }
 
-    private var weightSlider: some View {
+ private var weightSlider: some View {
     InspectorRow(icon: "bold", label: "Weight") {
         ScrubbableNumberField(
             value: style.fontWeight,
@@ -86,12 +86,12 @@ struct TextTab: View {
             }
         ) { newVal in
             editor.commitTextStyle(clipId: clip.id) { $0.fontWeight = newVal }
+            editor.fitTextClipToContent(clipId: clip.id) 
         }
         .disabled(!style.fontSupportsWeightAxis)
         .opacity(style.fontSupportsWeightAxis ? 1.0 : 0.4)
     }
 }
-
     private var sizeSlider: some View {
         InspectorRow(icon: "textformat.size", label: "Size") {
             ScrubbableNumberField(
