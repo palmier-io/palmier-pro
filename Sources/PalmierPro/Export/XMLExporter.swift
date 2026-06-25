@@ -38,9 +38,10 @@ import Foundation
 
 enum XMLExporter {
 
-    static func export(timeline: Timeline, resolver: MediaResolver, outputURL: URL) {
+    static func export(timeline: Timeline, resolver: MediaResolver, outputURL: URL) throws {
         let xml = Builder(timeline: timeline, resolver: resolver).build()
-        try? xml.data(using: .utf8)?.write(to: outputURL)
+        guard let data = xml.data(using: .utf8) else { throw ExportError.xmlEncodingFailed }
+        try data.write(to: outputURL)
     }
 
     // MARK: - Source timecode

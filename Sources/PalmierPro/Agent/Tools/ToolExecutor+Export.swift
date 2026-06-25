@@ -102,7 +102,11 @@ extension ToolExecutor {
                 throw ToolError("export_project: \(error.localizedDescription)")
             }
         }
-        XMLExporter.export(timeline: editor.timeline, resolver: editor.mediaResolver, outputURL: outputURL)
+        do {
+            try XMLExporter.export(timeline: editor.timeline, resolver: editor.mediaResolver, outputURL: outputURL)
+        } catch {
+            throw ToolError("export_project: XML export failed: \(error.localizedDescription)")
+        }
         guard FileManager.default.fileExists(atPath: outputURL.path) else {
             throw ToolError("export_project: XML export failed")
         }
