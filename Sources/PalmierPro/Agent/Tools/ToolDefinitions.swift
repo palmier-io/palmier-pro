@@ -11,7 +11,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case moveClips = "move_clips"
     case setClipProperties = "set_clip_properties"
     case setKeyframes = "set_keyframes"
-    case splitClip = "split_clip"
+    case splitClips = "split_clips"
     case rippleDeleteRanges = "ripple_delete_ranges"
     case removeWords = "remove_words"
     case syncAudio = "sync_audio"
@@ -277,19 +277,34 @@ enum ToolDefinitions {
             )
         ),
         AgentTool(
-            name: .splitClip,
-            description: "Splits a clip into two at atFrame. The frame must be strictly between the clip's start and end — use get_timeline to confirm the range.",
+            name: .splitClips,
+            description: "Splits clips into two at one or more cut points, all in a single undoable action. A split only inserts a boundary — it never trims media or moves clips, so unlike ripple_delete_ranges nothing shifts and there's no gap to close.\n\nTwo modes — pass exactly one:\n• splits: an array of {clipId, atFrame} (project frames). Use when you know the clip IDs.\n• trackIndex + frames: cut one track at the given project frames; each frame is matched to whichever clip on that track contains it. Pairs naturally with get_transcript / get_timeline project frames.\n\nEvery frame must fall strictly between a clip's start and end. Multiple cuts on the SAME clip are allowed — pass all the frames at once and each is resolved against the current sub-clips. Duplicate cut points are ignored. Linked audio/video partners are split at the same frame so A/V stays in sync, and the right halves are regrouped into their own link pair. One bad cut point rejects the whole call with no partial state.",
             inputSchema: objectSchema(
                 properties: [
-                    "clipId": ["type": "string", "description": "The clip ID to split"],
-                    "atFrame": ["type": "integer", "description": "Frame position to split at (must be between clip start and end)"],
+                    "splits": [
+                        "type": "array",
+                        "description": "Explicit cuts. Each item is {clipId, atFrame}.",
+                        "items": objectSchema(
+                            properties: [
+                                "clipId": ["type": "string", "description": "The clip ID to split"],
+                                "atFrame": ["type": "integer", "description": "Project frame to split at (strictly between clip start and end)"],
+                            ],
+                            required: ["clipId", "atFrame"]
+                        ),
+                    ],
+                    "trackIndex": ["type": "integer", "description": "Track to cut (use with 'frames')"],
+                    "frames": [
+                        "type": "array",
+                        "description": "Project frames to cut on trackIndex; each is matched to the clip containing it.",
+                        "items": ["type": "integer"],
+                    ],
                 ],
-                required: ["clipId", "atFrame"]
+                required: []
             )
         ),
         AgentTool(
             name: .rippleDeleteRanges,
-            description: "Cuts one or more ranges out and closes the gaps in one undoable action — the fast path for filler-word/dead-air removal. Replaces hand-cranked split_clip → split_clip → remove_clips → move_clips loops: pass every range at once.\n\nTwo modes — pass exactly one of clipId or trackIndex:\n• trackIndex (preferred for transcript-driven cuts): ranges are PROJECT frames and may span any number of clips on that track. get_transcript returns a clips array with nested words in project frames — collect every cut across the whole timeline and pass them in ONE call, no per-clip splitting and no re-reading the timeline between cuts. units must be 'frames'.\n• clipId: ranges are cut within that single clip only, clamped to its visible span. Allows units 'seconds' (source-media seconds, e.g. inspect_media WITHOUT a clipId or search_media hits); 'frames' = project frames. Use when you already have one clip's per-word timestamps.\n\nOverlapping ranges merge. Linked audio/video partners of every touched clip are cut on the same span so A/V stays in sync. Remaining clips shift left to close every gap; sync-locked tracks shift along to preserve alignment (their content isn't cut). Refuses without changing anything if a sync-locked track can't absorb the shift (e.g. it would move past frame 0). Returns the anchor track's post-cut layout (clip ids/frames) so you don't need to re-read.",
+            description: "Cuts one or more ranges out and closes the gaps in one undoable action — the fast path for filler-word/dead-air removal. Replaces hand-cranked split_clips → remove_clips → move_clips loops: pass every range at once.\n\nTwo modes — pass exactly one of clipId or trackIndex:\n• trackIndex (preferred for transcript-driven cuts): ranges are PROJECT frames and may span any number of clips on that track. get_transcript returns a clips array with nested words in project frames — collect every cut across the whole timeline and pass them in ONE call, no per-clip splitting and no re-reading the timeline between cuts. units must be 'frames'.\n• clipId: ranges are cut within that single clip only, clamped to its visible span. Allows units 'seconds' (source-media seconds, e.g. inspect_media WITHOUT a clipId or search_media hits); 'frames' = project frames. Use when you already have one clip's per-word timestamps.\n\nOverlapping ranges merge. Linked audio/video partners of every touched clip are cut on the same span so A/V stays in sync. Remaining clips shift left to close every gap; sync-locked tracks shift along to preserve alignment (their content isn't cut). Refuses without changing anything if a sync-locked track can't absorb the shift (e.g. it would move past frame 0). Returns the anchor track's post-cut layout (clip ids/frames) so you don't need to re-read.",
             inputSchema: objectSchema(
                 properties: [
                     "trackIndex": ["type": "integer", "description": "Cut project-frame ranges spanning every clip they cross on this track, in one call. From get_transcript's clips array. Mutually exclusive with clipId; requires units 'frames'."],

@@ -44,6 +44,19 @@ fileprivate struct MoveClipsInput: DecodableToolArgs {
     }
 }
 
+fileprivate struct SplitClipsInput: DecodableToolArgs {
+    let splits: [Split]?
+    let trackIndex: Int?
+    let frames: [Int]?
+    static let allowedKeys: Set<String> = ["splits", "trackIndex", "frames"]
+
+    struct Split: DecodableToolArgs {
+        let clipId: String
+        let atFrame: Int
+        static let allowedKeys: Set<String> = ["clipId", "atFrame"]
+    }
+}
+
 fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     let clipIds: [String]
     let durationFrames: Int?
@@ -644,24 +657,60 @@ extension ToolExecutor {
         return .ok("\(action) keyframes on \(input.property) for \(input.clipId)")
     }
 
-    // MARK: split_clip
+    // MARK: split_clips
 
-    func splitClip(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
-        let clipId = try args.requireString("clipId")
-        let atFrame = try args.requireInt("atFrame")
-        guard let loc = editor.findClip(id: clipId) else { throw ToolError("Clip not found: \(clipId)") }
-        let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        guard atFrame > clip.startFrame && atFrame < clip.endFrame else {
-            throw ToolError("Frame \(atFrame) is outside clip range (\(clip.startFrame)..\(clip.endFrame))")
+    func splitClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        let input: SplitClipsInput = try decodeToolArgs(args, path: "split_clips")
+        let hasSplits = !(input.splits ?? []).isEmpty
+        let hasTrack = input.trackIndex != nil || !(input.frames ?? []).isEmpty
+        guard hasSplits != hasTrack else {
+            throw ToolError("Provide exactly one of 'splits' (an array of {clipId, atFrame}) or 'trackIndex'+'frames' (project frames to cut on one track).")
         }
-        let rightIds = editor.splitClip(clipId: clipId, atFrame: atFrame)
-        let rightEndFrame = clip.endFrame
-        let leftSummary = "\(clipId) (frames \(clip.startFrame)..\(atFrame))"
-        let rightList = rightIds
-            .map { "\($0) (frames \(atFrame)..\(rightEndFrame))" }
+
+        // Resolve every cut to a (trackIndex, atFrame) pair against the CURRENT timeline
+        var points: [(trackIndex: Int, atFrame: Int)] = []
+        var seen: Set<String> = []
+
+        func addCut(trackIndex: Int, atFrame: Int, clip: Clip) throws {
+            guard atFrame > clip.startFrame && atFrame < clip.endFrame else {
+                throw ToolError("Frame \(atFrame) is outside clip \(clip.id) range (\(clip.startFrame)..\(clip.endFrame))")
+            }
+            let key = "\(trackIndex):\(atFrame)"
+            guard seen.insert(key).inserted else { return }
+            points.append((trackIndex, atFrame))
+        }
+
+        if hasSplits {
+            for s in input.splits ?? [] {
+                guard let loc = editor.findClip(id: s.clipId) else { throw ToolError("Clip not found: \(s.clipId)") }
+                let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+                try addCut(trackIndex: loc.trackIndex, atFrame: s.atFrame, clip: clip)
+            }
+        } else {
+            guard let trackIndex = input.trackIndex,
+                  trackIndex >= 0, trackIndex < editor.timeline.tracks.count else {
+                throw ToolError("trackIndex is required and must be in 0..\(editor.timeline.tracks.count - 1)")
+            }
+            guard let frames = input.frames, !frames.isEmpty else {
+                throw ToolError("'frames' must be a non-empty array of project frames")
+            }
+            let track = editor.timeline.tracks[trackIndex]
+            for f in frames {
+                guard let clip = track.clips.first(where: { f > $0.startFrame && f < $0.endFrame }) else {
+                    throw ToolError("Frame \(f) is not strictly inside any clip on track \(trackIndex)")
+                }
+                try addCut(trackIndex: trackIndex, atFrame: f, clip: clip)
+            }
+        }
+
+        guard !points.isEmpty else { throw ToolError("No valid split points") }
+        let rightIds = editor.splitClips(at: points)
+        let cutList = points
+            .sorted { $0.trackIndex == $1.trackIndex ? $0.atFrame < $1.atFrame : $0.trackIndex < $1.trackIndex }
+            .map { "track \($0.trackIndex)@\($0.atFrame)" }
             .joined(separator: ", ")
-        let rightNote = rightIds.isEmpty ? "" : " → new right clip(s): \(rightList)"
-        return .ok("Split clip \(clipId) at frame \(atFrame). Left: \(leftSummary)\(rightNote)")
+        let newNote = rightIds.isEmpty ? "" : " New right-half clip(s): \(rightIds.joined(separator: ", "))."
+        return .ok("Split \(points.count) point(s) [\(cutList)].\(newNote) Re-read with get_timeline for updated ranges.")
     }
 
     // MARK: ripple_delete_ranges

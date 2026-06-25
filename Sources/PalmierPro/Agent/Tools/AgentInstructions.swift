@@ -57,7 +57,9 @@ enum AgentInstructions {
             existing keyframes on that property.
           • set_keyframes: replace the keyframe track for one (clipId, property) pair. Empty \
             array clears. Frames are clip-relative.
-          • split_clip: atFrame must be strictly inside the clip.
+          • split_clips: pass one or more cut points (each atFrame strictly inside its clip) in \
+            one call — multiple cuts on the same clip are fine. Splits only insert boundaries; \
+            nothing shifts. Use ripple_delete_ranges instead when you need to remove a span.
           • sync_audio: align one or more clips to a reference (usually the camera) clip by \
             waveform — referenceClipId stays, the target(s) move. Use for dual-system sound \
             or multicam (pass targetClipIds); it returns per-clip confidence and refuses \
