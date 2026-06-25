@@ -20,12 +20,12 @@ extension ToolExecutor {
 
         var reservedExportSlot = false
         if mode != .xml {
-            guard SearchIndexCoordinator.exportDidBeginIfIdle() else {
+            guard ExportCoordinator.beginExclusiveExportIfIdle() else {
                 throw ToolError("export_project: another export is already in progress")
             }
             reservedExportSlot = true
         }
-        defer { if reservedExportSlot { SearchIndexCoordinator.exportDidEnd() } }
+        defer { if reservedExportSlot { ExportCoordinator.endExclusiveExport() } }
 
         let outputURL = try exportDestination(
             outputPath: input.outputPath,

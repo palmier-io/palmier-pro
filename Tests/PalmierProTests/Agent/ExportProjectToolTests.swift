@@ -62,8 +62,8 @@ struct ExportProjectToolTests {
         #expect(uniqueURL.deletingLastPathComponent().standardizedFileURL == downloads.standardizedFileURL)
         #expect(uniqueURL.lastPathComponent == "\(base) 2.xml")
 
-        SearchIndexCoordinator.exportDidBegin()
-        defer { SearchIndexCoordinator.exportDidEnd() }
+        #expect(ExportCoordinator.beginExclusiveExportIfIdle())
+        defer { ExportCoordinator.endExclusiveExport() }
 
         let activeXML = FileManager.default.temporaryDirectory
             .appendingPathComponent("export-tool-active-\(UUID().uuidString).xml")

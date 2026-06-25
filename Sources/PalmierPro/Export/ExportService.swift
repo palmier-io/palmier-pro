@@ -28,12 +28,7 @@ struct ExportRunReport {
 @MainActor
 final class ExportService {
     var progress: Double = 0
-    var isExporting = false {
-        didSet {
-            guard isExporting != oldValue else { return }
-            isExporting ? SearchIndexCoordinator.exportDidBegin() : SearchIndexCoordinator.exportDidEnd()
-        }
-    }
+    var isExporting = false
     var error: String?
     var lastReport: ExportRunReport?
 
@@ -61,6 +56,9 @@ final class ExportService {
             Log.export.notice("export ok format=xml", telemetry: "Export finished", data: ["format": "xml"])
             return
         }
+
+        ExportCoordinator.beginExport()
+        defer { ExportCoordinator.endExport() }
 
         Log.export.notice(
             "export requested format=\(String(describing: format)) resolution=\(resolution.rawValue)",
@@ -157,6 +155,9 @@ final class ExportService {
         error = nil
         lastReport = nil
         defer { isExporting = false }
+
+        ExportCoordinator.beginExport()
+        defer { ExportCoordinator.endExport() }
 
         do {
             Log.export.notice(
