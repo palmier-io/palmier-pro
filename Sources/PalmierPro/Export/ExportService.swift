@@ -17,7 +17,7 @@ struct ExportRunReport {
     let outputURL: URL
     let format: ExportFormat
     let resolution: ExportResolution
-    let renderSize: CGSize
+    let outputSize: CGSize
     let totalFrames: Int
     let fps: Int
     let offlineMediaRefs: Set<String>
@@ -98,11 +98,12 @@ final class ExportService {
 
             do {
                 try await session.export(to: outputURL, as: fileType)
+                let outputSize = await Self.encodedVideoSize(of: outputURL) ?? prepared.renderSize
                 lastReport = ExportRunReport(
                     outputURL: outputURL,
                     format: format,
                     resolution: resolution,
-                    renderSize: prepared.renderSize,
+                    outputSize: outputSize,
                     totalFrames: timeline.totalFrames,
                     fps: timeline.fps,
                     offlineMediaRefs: prepared.result.offlineMediaRefs,
@@ -199,6 +200,17 @@ final class ExportService {
             )
             return nil
         }
+    }
+
+    /// Encoded dimensions of the written file (natural size with preferred
+    /// transform applied), the source of truth when a preset clamped the size.
+    private static func encodedVideoSize(of url: URL) async -> CGSize? {
+        let asset = AVURLAsset(url: url)
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+              let naturalSize = try? await track.load(.naturalSize),
+              let transform = try? await track.load(.preferredTransform) else { return nil }
+        let size = naturalSize.applying(transform)
+        return CGSize(width: abs(size.width), height: abs(size.height))
     }
 
     private func makeExportSession(
