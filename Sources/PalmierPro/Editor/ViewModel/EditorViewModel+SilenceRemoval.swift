@@ -16,14 +16,33 @@ enum SilenceRemovalError: LocalizedError {
 
 extension EditorViewModel {
 
-    /// The single selected audio/video clip eligible for silence removal, or nil.
+    /// The audio/video clip to use as the silence-detection source, or nil.
+    ///
+    /// Accepts a single selected A/V clip, or a set of clips that all share one link group
+    /// (e.g. a linked camera-video + audio pair). In the linked case the audio clip is
+    /// preferred as the detection source; `removeSilences` then runs the ripple on that
+    /// track and the engine cuts the linked video partner automatically.
     var silenceRemovalCandidate: Clip? {
-        guard selectedClipIds.count == 1,
-              let clipId = selectedClipIds.first,
-              let loc = findClip(id: clipId) else { return nil }
-        let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        guard clip.mediaType == .video || clip.mediaType == .audio else { return nil }
-        return clip
+        guard !selectedClipIds.isEmpty else { return nil }
+
+        let clips: [Clip] = selectedClipIds.compactMap { id in
+            guard let loc = findClip(id: id) else { return nil }
+            return timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        }
+        guard clips.count == selectedClipIds.count else { return nil }
+
+        // All selected clips must be audio or video — text/caption clips disqualify.
+        guard clips.allSatisfy({ $0.mediaType == .video || $0.mediaType == .audio }) else { return nil }
+
+        if clips.count == 1 { return clips[0] }
+
+        // Multiple clips: allow only when they all share exactly one link group.
+        let groupIds = Set(clips.compactMap(\.linkGroupId))
+        guard groupIds.count == 1 else { return nil }
+
+        // Prefer the dedicated audio clip as the detection source so the waveform
+        // is read from the correct asset. Fall back to video (which may carry audio).
+        return clips.first { $0.mediaType == .audio } ?? clips.first { $0.mediaType == .video }
     }
 
     /// Extract the clip's audio envelope and detect silent source-second ranges.
