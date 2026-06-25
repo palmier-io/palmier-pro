@@ -55,7 +55,7 @@ struct XMLExporterTests {
         let (resolver, tmpDir) = try makeResolver(entries: [])
         let outURL = tmpDir.appendingPathComponent("out.xml")
 
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(xml.hasPrefix("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"))
@@ -67,6 +67,21 @@ struct XMLExporterTests {
         #expect(xml.contains("</xmeml>"))
     }
 
+    @Test func exportThrowsWhenDestinationIsUnwritable() throws {
+        // A path inside a directory that does not exist can't be written.
+        // The exporter must surface that failure instead of silently "succeeding".
+        let timeline = Fixtures.timeline()
+        let (resolver, tmpDir) = try makeResolver(entries: [])
+        let unwritable = tmpDir
+            .appendingPathComponent("does-not-exist", isDirectory: true)
+            .appendingPathComponent("out.xml")
+
+        #expect(throws: (any Error).self) {
+            try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: unwritable)
+        }
+        #expect(!FileManager.default.fileExists(atPath: unwritable.path))
+    }
+
     @Test func headerReportsTimelineFpsAndCanvasDimensions() throws {
         var timeline = Fixtures.timeline(fps: 24)
         timeline.width = 1280
@@ -74,7 +89,7 @@ struct XMLExporterTests {
         let (resolver, tmpDir) = try makeResolver(entries: [])
         let outURL = tmpDir.appendingPathComponent("out.xml")
 
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(xml.contains("<timebase>24</timebase>"))
@@ -87,7 +102,7 @@ struct XMLExporterTests {
         let (resolver, tmpDir) = try makeResolver(entries: [])
         let outURL = tmpDir.appendingPathComponent("out.xml")
 
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(xml.contains("<duration>0</duration>"))
@@ -118,7 +133,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [track])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(xml.contains("<clipitem id=\"clipitem-clip-1\">"))
@@ -137,7 +152,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [track])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(!xml.contains("ghost-clip"))
@@ -171,7 +186,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [track])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         // The full <file> element appears exactly once; the second reference is a self-closing tag.
@@ -191,7 +206,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [Fixtures.audioTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         guard let audioSec = xml.range(of: "<audio>"), let videoSec = xml.range(of: "<video>") else {
@@ -238,7 +253,7 @@ struct XMLExporterTests {
         ])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(xml.contains("<linkclipref>clipitem-vc</linkclipref>"))
@@ -254,7 +269,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(!xml.contains("<link>"))
@@ -269,7 +284,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(xml.contains("<effectid>timeremap</effectid>"))
@@ -283,7 +298,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(!xml.contains("timeremap"))
@@ -295,7 +310,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [Fixtures.audioTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(xml.contains("<effectid>audiolevels</effectid>"))
@@ -308,7 +323,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [Fixtures.audioTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(!xml.contains("audiolevels"))
@@ -321,7 +336,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         // FCP7 keeps opacity in its own Opacity effect, not inside Basic Motion.
@@ -339,7 +354,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(xml.contains("<effectid>basic</effectid>"))
@@ -358,7 +373,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         // Defaults (centerX/Y=0.5, width=height=1, rotation=0, opacity=1) → no filter at all.
@@ -378,7 +393,7 @@ struct XMLExporterTests {
         ])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(!xml.contains("clipitem-tc"))
@@ -396,7 +411,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [track])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         // Find the <track> block in the <audio> section and verify its enabled flag.
@@ -415,7 +430,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [track])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         guard let videoStart = xml.range(of: "<video>") else { Issue.record("no <video>"); return }
@@ -448,7 +463,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         #expect(xml.contains("A &amp; B &lt; C &gt; &quot;D&quot; &apos;E&apos;"))
@@ -464,7 +479,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         // in = trimStart, out = trimStart + sourceFramesConsumed (= durationFrames * speed = 60 at speed=1).
@@ -481,7 +496,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clipA, clipB])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         // Sequence <duration> appears before the first <media> block; clip <duration> entries
@@ -500,7 +515,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [later, earlier])])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         guard let earlyRange = xml.range(of: "earlier"), let laterRange = xml.range(of: "later") else {
@@ -553,7 +568,7 @@ struct XMLExporterTests {
         ])
 
         let outURL = tmpDir.appendingPathComponent("out.xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
 
         let xml = try readXML(at: outURL)
         let bottomRange = xml.range(of: "bottom-clip")
@@ -590,7 +605,7 @@ struct XMLExporterTests {
         let timeline = Fixtures.timeline(tracks: [track])
         let out = FileManager.default.temporaryDirectory
             .appendingPathComponent("export-\(UUID().uuidString).xml")
-        XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: out)
+        try? XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: out)
         return (try? String(contentsOf: out, encoding: .utf8)) ?? ""
     }
 
