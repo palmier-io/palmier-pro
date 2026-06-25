@@ -199,7 +199,7 @@ final class GenerationService {
             }
             let destinationURL = asset.url
             try await Task.detached(priority: .utility) {
-                try Self.finalizeDownloadedFile(from: tempURL, to: destinationURL)
+                try FileIO.moveReplacingDestination(from: tempURL, to: destinationURL)
             }.value
 
             asset.pendingDownloadURL = nil
@@ -215,13 +215,6 @@ final class GenerationService {
             asset.generationStatus = .failed(message)
             return false
         }
-    }
-
-    private nonisolated static func finalizeDownloadedFile(from tempURL: URL, to destinationURL: URL) throws {
-        let mediaDir = destinationURL.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
-        try? FileManager.default.removeItem(at: destinationURL)
-        try FileManager.default.moveItem(at: tempURL, to: destinationURL)
     }
 
     func retryDownload(asset: MediaAsset, editor: EditorViewModel) {

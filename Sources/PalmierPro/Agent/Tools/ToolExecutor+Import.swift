@@ -135,11 +135,6 @@ extension ToolExecutor {
             throw ToolError("No project is open; cannot import from URL")
         }
         let mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-        do {
-            try FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
-        } catch {
-            throw ToolError("Failed to prepare media directory: \(error.localizedDescription)")
-        }
 
         let id = UUID().uuidString
         let destURL = mediaDir.appendingPathComponent("imported-\(id.prefix(8)).\(fileExt)")
@@ -184,7 +179,11 @@ extension ToolExecutor {
 
             let destinationURL = asset.url
             _ = try await Task.detached(priority: .userInitiated) {
-                try Self.moveDownloadedAsset(tempURL: tempURL, destinationURL: destinationURL)
+                try FileIO.moveReplacingDestination(
+                    from: tempURL,
+                    to: destinationURL,
+                    maxBytes: importDownloadMaxBytes
+                )
             }.value
             asset.generationStatus = .none
             editor.importMediaAsset(asset, skipAppend: true)
@@ -222,34 +221,14 @@ extension ToolExecutor {
             throw ToolError("source.bytes is not valid non-empty base64")
         }
         let mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-        do {
-            try FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
-        } catch {
-            throw ToolError("Failed to prepare media directory: \(error.localizedDescription)")
-        }
         let filename = "imported-\(UUID().uuidString.prefix(8)).\(fileExt)"
         let destURL = mediaDir.appendingPathComponent(filename)
         do {
-            try data.write(to: destURL)
+            try FileIO.writeData(data, to: destURL)
         } catch {
             throw ToolError("Failed to write bytes to disk: \(error.localizedDescription)")
         }
         return ImportedBytesFile(url: destURL, byteCount: data.count)
-    }
-
-    @discardableResult
-    private nonisolated static func moveDownloadedAsset(tempURL: URL, destinationURL: URL) throws -> Int64 {
-        let fm = FileManager.default
-        defer { try? fm.removeItem(at: tempURL) }
-        let downloadedSize = (try? fm.attributesOfItem(atPath: tempURL.path)[.size] as? NSNumber)?.int64Value ?? 0
-        if downloadedSize > importDownloadMaxBytes {
-            throw ToolError("downloaded file exceeds max size (\(downloadedSize) > \(importDownloadMaxBytes) bytes)")
-        }
-        if fm.fileExists(atPath: destinationURL.path) {
-            try fm.removeItem(at: destinationURL)
-        }
-        try fm.moveItem(at: tempURL, to: destinationURL)
-        return downloadedSize
     }
 
     private nonisolated static func fileExtension(forMime mime: String) -> String? {

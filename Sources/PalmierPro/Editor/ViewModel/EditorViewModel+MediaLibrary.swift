@@ -284,21 +284,15 @@ extension EditorViewModel {
     func importPastedImageData(_ data: Data, fileExtension: String = "png") async -> MediaAsset? {
         let filename = "pasted-\(UUID().uuidString.prefix(8)).\(fileExtension)"
         let destURL: URL
-        let mediaDir: URL?
         if let projectURL {
             let dir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-            mediaDir = dir
             destURL = dir.appendingPathComponent(filename)
         } else {
-            mediaDir = nil
             destURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
         }
         do {
             try await Task.detached(priority: .userInitiated) {
-                if let mediaDir {
-                    try FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
-                }
-                try data.write(to: destURL)
+                try FileIO.writeData(data, to: destURL)
             }.value
         } catch {
             Log.project.error("importPastedImageData: write failed \(error.localizedDescription)")
