@@ -43,6 +43,21 @@ struct SilenceRemovalSheet: View {
                     range: 0.0 ... 0.3,
                     format: { String(format: "%.2f s", $0) }
                 )
+
+                HStack {
+                    Text("Smooth cuts")
+                        .font(.system(size: AppTheme.FontSize.sm))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                        .frame(width: 88, alignment: .leading)
+                    Toggle("", isOn: $config.smoothCuts)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                    Spacer()
+                    Text("2-frame fade-in at each cut")
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
             }
 
             statusRow
@@ -135,7 +150,7 @@ struct SilenceRemovalSheet: View {
 
     private func applyAndDismiss() {
         guard let clip = editor.silenceRemovalCandidate else { return }
-        editor.removeSilences(clip: clip, silences: detectedSilences)
+        editor.removeSilences(clip: clip, silences: detectedSilences, config: config)
         dismiss()
     }
 }

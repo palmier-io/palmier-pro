@@ -46,10 +46,7 @@ extension ToolExecutor {
             return .ok(json)
         }
 
-        editor.undoManager?.beginUndoGrouping()
-        let removedFrames = editor.removeSilences(clip: clip, silences: silences)
-        editor.undoManager?.endUndoGrouping()
-        editor.undoManager?.setActionName("Remove Silence (Agent)")
+        let removedFrames = editor.removeSilences(clip: clip, silences: silences, config: config)
 
         guard removedFrames > 0 else {
             throw ToolError("Detected \(silences.count) silence\(silences.count == 1 ? "" : "s") but none resolved to removable frames on the timeline.")

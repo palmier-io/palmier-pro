@@ -64,12 +64,33 @@ extension EditorViewModel {
 
     /// Ripple-delete the given source-second silence ranges from `clip`. Returns frames removed.
     @discardableResult
-    func removeSilences(clip: Clip, silences: [(start: Double, end: Double)]) -> Int {
+    func removeSilences(clip: Clip, silences: [(start: Double, end: Double)], config: SilenceConfig = SilenceConfig()) -> Int {
         guard let loc = findClip(id: clip.id) else { return 0 }
         let ranges = SilenceDetector.timelineRanges(silences: silences, clip: clip, fps: timeline.fps)
         guard !ranges.isEmpty else { return 0 }
+
+        let beforeIds = Set(timeline.tracks.flatMap(\.clips).map(\.id))
+        undoManager?.beginUndoGrouping()
         let outcome = rippleDeleteRangesOnTrack(trackIndex: loc.trackIndex, ranges: ranges)
-        guard case .ok(let report) = outcome else { return 0 }
+        guard case .ok(let report) = outcome else {
+            undoManager?.endUndoGrouping()
+            return 0
+        }
+
+        if config.smoothCuts {
+            let newIds = Set(timeline.tracks.flatMap(\.clips).map(\.id)).subtracting(beforeIds)
+            if !newIds.isEmpty {
+                withTimelineSwap(actionName: "Smooth Cuts") {
+                    for id in newIds {
+                        guard let l = findClip(id: id) else { continue }
+                        timeline.tracks[l.trackIndex].clips[l.clipIndex].fadeInFrames = 2
+                    }
+                }
+            }
+        }
+
+        undoManager?.setActionName("Remove Silence")
+        undoManager?.endUndoGrouping()
         return report.removedFrames
     }
 }

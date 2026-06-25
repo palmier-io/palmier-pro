@@ -4,6 +4,7 @@ struct SilenceConfig: Sendable, Equatable {
     var thresholdLinear: Float = 0.018  // ~-35dB RMS
     var minSilenceDuration: Double = 0.5
     var edgePaddingSeconds: Double = 0.05
+    var smoothCuts: Bool = true
 }
 
 enum SilenceDetector {
