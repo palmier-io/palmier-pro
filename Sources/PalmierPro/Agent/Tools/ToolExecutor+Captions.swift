@@ -16,14 +16,7 @@ extension ToolExecutor {
         if let s = args.double("fontSize") { style.fontSize = s }
         if let c = try parseColorHex(args.string("color"), path: "add_captions") { style.color = c }
 
-        var locale: Locale?
-        if let lang = args.string("language") {
-            let candidate = Locale(identifier: lang)
-            guard let match = Transcription.matchLocale(candidates: [candidate], supported: await Transcription.supportedLocales()) else {
-                throw ToolError("add_captions: on-device transcription does not support language '\(lang)'.")
-            }
-            locale = match
-        }
+        let locale = try await Self.parseLocale(args, path: "add_captions")
 
         var center = AppTheme.Caption.defaultCenter
         if let x = args.double("centerX") { center.x = CGFloat(x) }

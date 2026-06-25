@@ -9,7 +9,13 @@ actor TranscriptCache {
     private var memory: [String: TranscriptionResult] = [:]
     private static let memoryMax = 4
 
-    func transcript(for url: URL, isVideo: Bool, range: ClosedRange<Double>?) async throws -> TranscriptionResult {
+    func transcript(for url: URL, isVideo: Bool, range: ClosedRange<Double>?, preferredLocale: Locale? = nil) async throws -> TranscriptionResult {
+        // When a locale is forced, bypass the cache — locale variants must not overwrite the auto-detected entry.
+        if let preferredLocale {
+            return isVideo
+                ? try await Transcription.transcribeVideoAudio(videoURL: url, preferredLocale: preferredLocale, sourceRange: range)
+                : try await Transcription.transcribe(fileURL: url, preferredLocale: preferredLocale, sourceRange: range)
+        }
         let key = Self.key(for: url)
         if let key, let full = cached(key) {
             return range.map { Self.filter(full, to: $0) } ?? full

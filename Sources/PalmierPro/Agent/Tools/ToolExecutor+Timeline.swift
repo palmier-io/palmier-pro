@@ -262,8 +262,17 @@ extension ToolExecutor {
         return .ok(json)
     }
 
+    static func parseLocale(_ args: [String: Any], path: String) async throws -> Locale? {
+        guard let lang = args.string("language") else { return nil }
+        let candidate = Locale(identifier: lang)
+        guard let match = Transcription.matchLocale(candidates: [candidate], supported: await Transcription.supportedLocales()) else {
+            throw ToolError("\(path): on-device transcription does not support language '\(lang)'.")
+        }
+        return match
+    }
+
     private static let inspectMediaAllowedKeys: Set<String> = [
-        "mediaRef", "clipId", "maxFrames", "startSeconds", "endSeconds", "wordTimestamps", "overview",
+        "mediaRef", "clipId", "maxFrames", "startSeconds", "endSeconds", "wordTimestamps", "overview", "language",
     ]
 
     func inspectMedia(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -298,10 +307,12 @@ extension ToolExecutor {
             mapping = (clip, editor.timeline.fps)
         }
 
+        let preferredLocale = try await Self.parseLocale(args, path: "inspect_media")
+
         switch asset.type {
         case .image: return try await readImage(asset: asset, args: args)
-        case .video: return try await readVideo(editor: editor, asset: asset, args: args, mapping: mapping)
-        case .audio: return try await readAudio(editor: editor, asset: asset, args: args, mapping: mapping)
+        case .video: return try await readVideo(editor: editor, asset: asset, args: args, mapping: mapping, preferredLocale: preferredLocale)
+        case .audio: return try await readAudio(editor: editor, asset: asset, args: args, mapping: mapping, preferredLocale: preferredLocale)
         case .lottie: return try await readLottie(asset: asset, args: args)
         case .text: throw ToolError("Text clips are not stored as media assets.")
         }
@@ -358,7 +369,7 @@ extension ToolExecutor {
         )
     }
 
-    private func readVideo(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil) async throws -> ToolResult {
+    private func readVideo(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil, preferredLocale: Locale? = nil) async throws -> ToolResult {
         guard asset.duration > 0 else { throw ToolError("Video has zero duration: \(asset.name)") }
 
         let range = try Self.sourceRange(args, duration: asset.duration)
@@ -381,7 +392,7 @@ extension ToolExecutor {
         )
         async let transcriptTask: Result<TranscriptionResult, Error>? = {
             guard hasAudio else { return nil }
-            do { return .success(try await TranscriptCache.shared.transcript(for: url, isVideo: true, range: range)) }
+            do { return .success(try await TranscriptCache.shared.transcript(for: url, isVideo: true, range: range, preferredLocale: preferredLocale)) }
             catch { return .failure(error) }
         }()
 
@@ -493,11 +504,11 @@ extension ToolExecutor {
         return context.makeImage().flatMap { ImageEncoder.encodeJPEG($0, quality: quality) }
     }
 
-    private func readAudio(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil) async throws -> ToolResult {
+    private func readAudio(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil, preferredLocale: Locale? = nil) async throws -> ToolResult {
         let range = try Self.sourceRange(args, duration: asset.duration)
         let transcript: TranscriptionResult
         do {
-            transcript = try await TranscriptCache.shared.transcript(for: asset.url, isVideo: false, range: range)
+            transcript = try await TranscriptCache.shared.transcript(for: asset.url, isVideo: false, range: range, preferredLocale: preferredLocale)
         } catch {
             throw ToolError("Transcription failed: \(error.localizedDescription)")
         }
@@ -557,7 +568,7 @@ extension ToolExecutor {
         return out
     }
 
-    private static let getTranscriptAllowedKeys: Set<String> = ["startFrame", "endFrame", "clipId", "wordTimestamps"]
+    private static let getTranscriptAllowedKeys: Set<String> = ["startFrame", "endFrame", "clipId", "wordTimestamps", "language"]
 
     func getTranscript(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.getTranscriptAllowedKeys, path: "get_transcript")
@@ -576,8 +587,9 @@ extension ToolExecutor {
                 throw ToolError("Clip \(clipFilter) has no transcribable audio. If it's a video with linked audio, scope to the linked audio clip instead.")
             }
         }
+        let preferredLocale = try await Self.parseLocale(args, path: "get_transcript")
 
-        let (allWords, skipped) = try await timelineWords(editor)
+        let (allWords, skipped) = try await timelineWords(editor, preferredLocale: preferredLocale)
 
         var clipsOut: [[String: Any]] = []
         var totalWords = 0
@@ -619,7 +631,7 @@ extension ToolExecutor {
         return .ok(json)
     }
 
-    func timelineWords(_ editor: EditorViewModel) async throws -> (words: [TimelineWord], skipped: [[String: Any]]) {
+    func timelineWords(_ editor: EditorViewModel, preferredLocale: Locale? = nil) async throws -> (words: [TimelineWord], skipped: [[String: Any]]) {
         let fps = editor.timeline.fps
         let assetsById = Dictionary(editor.mediaAssets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         struct Frag { let clipId: String; let trackIndex: Int; let clip: Clip; let url: URL; let isVideo: Bool }
@@ -636,7 +648,7 @@ extension ToolExecutor {
         var transcripts: [URL: TranscriptionResult] = [:]
         var skipped: [[String: Any]] = []
         for url in Set(frags.map(\.url)) {
-            do { transcripts[url] = try await TranscriptCache.shared.transcript(for: url, isVideo: isVideoByURL[url] ?? true, range: nil) }
+            do { transcripts[url] = try await TranscriptCache.shared.transcript(for: url, isVideo: isVideoByURL[url] ?? true, range: nil, preferredLocale: preferredLocale) }
             catch { skipped.append(["file": url.lastPathComponent, "reason": error.localizedDescription]) }
         }
 

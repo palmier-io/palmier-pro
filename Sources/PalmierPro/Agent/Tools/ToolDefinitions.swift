@@ -78,6 +78,7 @@ enum ToolDefinitions {
                     "endSeconds": ["type": "number", "description": "Video/audio. Window end (default: asset duration)."],
                     "wordTimestamps": ["type": "boolean", "description": "Video/audio. Add word-level [text, start, end] tuples (capped at 10000 — most clips return all words at once; narrow with startSeconds/endSeconds only for very long media). Use for word-boundary edits like filler-word removal."],
                     "overview": ["type": "boolean", "description": "Video only. One storyboard grid of visually distinct, timestamped moments instead of frames — far more coverage per token; few tiles means static footage. maxFrames ignored."],
+                    "language": ["type": "string", "description": "Optional BCP-47 language tag of the spoken audio (e.g. 'es', 'fr', 'ja', 'zh-Hans'). Defaults to the system language. Specify when the spoken language differs from the system locale — on-device models are language-specific and will produce garbled output if the wrong language is used."],
                 ],
                 required: ["mediaRef"]
             )
@@ -90,6 +91,7 @@ enum ToolDefinitions {
                     "startFrame": ["type": "integer", "description": "Optional. Only return words ending after this project frame. Use with the returned nextStartFrame to page a long timeline."],
                     "endFrame": ["type": "integer", "description": "Optional. Only return words starting before this project frame."],
                     "clipId": ["type": "string", "description": "Scope the transcript to a single clip — returns only what that clip says, in project frames. Answers \"what's in clip X?\" without scanning the whole timeline."],
+                    "language": ["type": "string", "description": "Optional BCP-47 language tag of the spoken audio (e.g. 'es', 'fr', 'ja', 'zh-Hans'). Defaults to the system language. Specify when the spoken language differs from the system locale — on-device models are language-specific and will produce garbled output if the wrong language is used."],
                 ]
             )
         ),
@@ -317,6 +319,7 @@ enum ToolDefinitions {
                         "enum": ["tight", "balanced", "loose"],
                         "description": "How much silence to leave between the words on either side of a cut. 'tight' butts them close (snappy, can feel clipped), 'balanced' (default) keeps a natural beat, 'loose' leaves more breathing room. The removed words' own frames always go regardless.",
                     ],
+                    "language": ["type": "string", "description": "BCP-47 language tag of the spoken audio. Must match the language passed to the get_transcript call the indices came from — word indices are only valid against the same transcription, so a localed transcript requires the same tag here or the wrong words are cut."],
                 ],
                 required: ["words"]
             )
