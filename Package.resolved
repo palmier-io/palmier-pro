@@ -1,5 +1,5 @@
 {
-  "originHash" : "9cea4e06af93ec4e9468a1239c6feb73249f1373664f3daf6aa8fec20701023b",
+  "originHash" : "806aa29ab163d9ddd0a263c12468e03f6dc0cc679d156fc54fb46aeab0640103",
   "pins" : [
     {
       "identity" : "clerk-convex-swift",
@@ -26,15 +26,6 @@
       "state" : {
         "revision" : "125b71b2f8725931a5b0e8252f0799ef2adad120",
         "version" : "0.8.1"
-      }
-    },
-    {
-      "identity" : "dswaveformimage",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/dmrschmidt/DSWaveformImage",
-      "state" : {
-        "revision" : "a7a96cf4478c6fa084e76c175bcf7f4c9a38f80a",
-        "version" : "14.3.0"
       }
     },
     {

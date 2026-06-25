@@ -9,7 +9,6 @@ let package = Package(
         .executable(name: "PalmierPro", targets: ["PalmierPro"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/dmrschmidt/DSWaveformImage", from: "14.2.2"),
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.11.0"),
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.7.0"),
         .package(url: "https://github.com/getsentry/sentry-cocoa", from: "8.40.0"),
@@ -23,7 +22,6 @@ let package = Package(
         .executableTarget(
             name: "PalmierPro",
             dependencies: [
-                .product(name: "DSWaveformImage", package: "DSWaveformImage"),
                 .product(name: "MCP", package: "swift-sdk"),
                 .product(name: "Sparkle", package: "Sparkle"),
                 .product(name: "Sentry", package: "sentry-cocoa"),
