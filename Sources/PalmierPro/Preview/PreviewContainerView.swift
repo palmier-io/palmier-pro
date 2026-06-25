@@ -8,6 +8,20 @@ struct PreviewContainerView: View {
     private var isImage: Bool { editor.activePreviewTab.clipType == .image }
 
     @State private var hoveredTabId: String?
+    @State private var activeGuides: Set<ViewerGuide> = []
+
+    private var guidesDefaultsKey: String {
+        "viewerGuides.\(editor.projectId ?? "default")"
+    }
+
+    private func loadGuides() {
+        let saved = UserDefaults.standard.stringArray(forKey: guidesDefaultsKey) ?? []
+        activeGuides = Set(saved.compactMap(ViewerGuide.init(rawValue:)))
+    }
+
+    private func saveGuides() {
+        UserDefaults.standard.set(activeGuides.map(\.rawValue), forKey: guidesDefaultsKey)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,6 +48,9 @@ struct PreviewContainerView: View {
                     if let overlay = offlineOverlay {
                         offlinePreview(assetId: overlay.assetId, path: overlay.path, isUnprocessable: overlay.isUnprocessable)
                     }
+                    if !activeGuides.isEmpty {
+                        ViewerGuidesOverlay(activeGuides: activeGuides)
+                    }
                     if editor.cropEditingActive {
                         CropOverlayView()
                     } else {
@@ -57,6 +74,9 @@ struct PreviewContainerView: View {
             }
         }
         .background(AppTheme.Background.surfaceColor)
+        .onAppear { loadGuides() }
+        .onChange(of: editor.projectId) { loadGuides() }
+        .onChange(of: activeGuides) { saveGuides() }
     }
 
     // MARK: - Transport bar
@@ -554,6 +574,7 @@ struct PreviewContainerView: View {
                 }
             }
 
+            guidesToggleButton
             overflowMenu
         }
     }
@@ -625,6 +646,40 @@ struct PreviewContainerView: View {
         .fixedSize()
         .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
         .help("More")
+    }
+
+    private var guidesToggleButton: some View {
+        Menu {
+            Section("Safe Zones") {
+                ForEach([ViewerGuide.actionSafe, .titleSafe, .center]) { guide in
+                    Toggle(guide.displayName, isOn: guideBinding(for: guide))
+                }
+            }
+            Section("Format Reference") {
+                ForEach([ViewerGuide.scope, .wide, .square, .portrait]) { guide in
+                    Toggle(guide.displayName, isOn: guideBinding(for: guide))
+                }
+            }
+        } label: {
+            Image(systemName: activeGuides.isEmpty ? "viewfinder" : "viewfinder.circle.fill")
+                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                .foregroundStyle(activeGuides.isEmpty ? AppTheme.Text.secondaryColor : AppTheme.Accent.primary)
+                .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+        .help("Viewer Guides")
+    }
+
+    private func guideBinding(for guide: ViewerGuide) -> Binding<Bool> {
+        Binding(
+            get: { activeGuides.contains(guide) },
+            set: { on in
+                if on { activeGuides.insert(guide) } else { activeGuides.remove(guide) }
+            }
+        )
     }
 
     private func closeButton(tabId: String) -> some View {
