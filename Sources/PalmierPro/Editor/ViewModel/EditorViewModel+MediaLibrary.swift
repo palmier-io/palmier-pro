@@ -593,6 +593,11 @@ extension EditorViewModel {
         )
         await asset.loadMetadata()
         updateManifestMetadata(for: asset)
+        if FileManager.default.fileExists(atPath: asset.url.path) {
+            missingMediaRefs.remove(asset.id)
+            offlineMediaRefs.remove(asset.id)
+            unprocessableMediaRefs.remove(asset.id)
+        }
         refreshMissingMediaCache()
         searchIndex.schedule(asset)
         switch asset.type {
