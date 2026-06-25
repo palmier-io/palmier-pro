@@ -93,6 +93,8 @@ extension EditorViewModel {
     @discardableResult
     func splitClip(clipId: String, atFrame: Int) -> [String] {
         guard let loc = findClip(id: clipId) else { return [] }
+        let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        guard atFrame > clip.startFrame && atFrame < clip.endFrame else { return [] }
         return splitClips(at: [(loc.trackIndex, atFrame)])
     }
 

@@ -104,6 +104,17 @@ struct SplitClipTests {
         #expect(e.timeline.tracks[0].clips.count == 1)
     }
 
+    @Test func splitClipDoesNotCutAnotherClipOnSameTrack() {
+        // c1 = 0..30, c2 = 30..60. Splitting c1 at frame 45 (inside c2, outside c1) must
+        // do nothing — not resolve to c2 and cut it.
+        let e = editor([Fixtures.videoTrack(clips: [
+            Fixtures.clip(id: "c1", start: 0, duration: 30),
+            Fixtures.clip(id: "c2", start: 30, duration: 30),
+        ])])
+        #expect(e.splitClip(clipId: "c1", atFrame: 45).isEmpty)
+        #expect(e.timeline.tracks[0].clips.count == 2)
+    }
+
     @Test func splitWithLinkedPartnerSplitsBothAndRegroupsRightHalves() {
         // video + audio sharing g1. After split at 30, the right halves should share a
         // *new* group id (not the original g1).

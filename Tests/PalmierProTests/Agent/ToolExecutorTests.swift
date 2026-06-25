@@ -846,6 +846,17 @@ struct ToolExecutorClipTests {
         #expect(neither.isError)
     }
 
+    @Test func splitClipsEmptySplitsFallsThroughToTrackMode() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        _ = await h.runRaw("add_clips", args: [
+            "entries": [["mediaRef": asset.id, "trackIndex": 0, "startFrame": 0, "durationFrames": 90]]
+        ])
+        // Empty splits + valid trackIndex/frames must apply the track cuts, not error out.
+        let result = await h.runRaw("split_clips", args: ["splits": [], "trackIndex": 0, "frames": [30]])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        #expect(h.editor.timeline.tracks[0].clips.count == 2)
+    }
+
     // MARK: - move_clips
 
     /// Add a video clip and return its id, for tests that need an existing clip.

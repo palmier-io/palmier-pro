@@ -680,8 +680,8 @@ extension ToolExecutor {
             points.append((trackIndex, atFrame))
         }
 
-        if let splits = input.splits {
-            for s in splits {
+        if hasSplits {
+            for s in input.splits ?? [] {
                 guard let loc = editor.findClip(id: s.clipId) else { throw ToolError("Clip not found: \(s.clipId)") }
                 let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
                 try addCut(trackIndex: loc.trackIndex, atFrame: s.atFrame, clip: clip)
