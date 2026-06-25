@@ -51,7 +51,7 @@ final class ExportService {
                 data: ["format": "xml", "tracks": timeline.tracks.count, "clips": timeline.tracks.reduce(0) { $0 + $1.clips.count }]
             )
             do {
-                try XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
+                try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
                 progress = 1.0
                 Log.export.notice("export ok format=xml", telemetry: "Export finished", data: ["format": "xml"])
             } catch {

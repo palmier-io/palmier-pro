@@ -38,10 +38,55 @@ import Foundation
 
 enum XMLExporter {
 
-    static func export(timeline: Timeline, resolver: MediaResolver, outputURL: URL) throws {
-        let xml = Builder(timeline: timeline, resolver: resolver).build()
+    static func export(timeline: Timeline, resolver: MediaResolver, outputURL: URL) async throws {
+        let startFrameCache = await sourceTimecodeCache(timeline: timeline, resolver: resolver)
+        let xml = Builder(timeline: timeline, resolver: resolver, startFrameCache: startFrameCache).build()
         guard let data = xml.data(using: .utf8) else { throw ExportError.xmlEncodingFailed }
         try data.write(to: outputURL)
+    }
+
+    private static func sourceTimecodeCache(timeline: Timeline, resolver: MediaResolver) async -> [String: SourceTimecode] {
+        let mediaURLs = resolver.expectedURLMap()
+        let mediaRefs = Set(timeline.tracks.flatMap { $0.clips.map(\.mediaRef) })
+        return await withTaskGroup(of: (String, SourceTimecode?).self) { group in
+            for mediaRef in mediaRefs {
+                guard let url = mediaURLs[mediaRef] else { continue }
+                group.addTask {
+                    (mediaRef, await readSourceTimecode(url: url))
+                }
+            }
+            var cache: [String: SourceTimecode] = [:]
+            for await (mediaRef, timecode) in group {
+                if let timecode {
+                    cache[mediaRef] = timecode
+                }
+            }
+            return cache
+        }
+    }
+
+    private static func readSourceTimecode(url: URL) async -> SourceTimecode? {
+        let asset = AVURLAsset(url: url)
+        guard let track = try? await asset.loadTracks(withMediaType: .timecode).first,
+              let format = try? await track.load(.formatDescriptions).first,
+              let reader = try? AVAssetReader(asset: asset) else { return nil }
+        let desc = format
+        let quanta = Int(CMTimeCodeFormatDescriptionGetFrameQuanta(desc))
+        let dropFrame = CMTimeCodeFormatDescriptionGetTimeCodeFlags(desc) & UInt32(kCMTimeCodeFlag_DropFrame) != 0
+        guard quanta > 0 else { return nil }
+
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        guard reader.canAdd(output) else { return nil }
+        reader.add(output)
+        guard reader.startReading() else { return nil }
+        while let sample = output.copyNextSampleBuffer() {
+            guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
+            var be: UInt32 = 0
+            guard CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: 4, destination: &be) == kCMBlockBufferNoErr
+            else { return nil }
+            return SourceTimecode(frame: Int(UInt32(bigEndian: be)), quanta: quanta, dropFrame: dropFrame)
+        }
+        return nil
     }
 
     // MARK: - Source timecode
@@ -89,18 +134,18 @@ enum XMLExporter {
         /// Clip id → position within its media type, used to emit `<link>` cross-references.
         private var clipAddresses: [String: ClipAddress] = [:]
         private var clipsByLinkGroup: [String: [Clip]] = [:]
-        /// Source start timecode per media ref; nil = no timecode track. Avoids re-reading per file.
-        private var startFrameCache: [String: SourceTimecode?] = [:]
+        private let startFrameCache: [String: SourceTimecode]
 
         private struct FileKey: Hashable { let mediaRef: String; let isAudio: Bool }
         private struct ClipAddress { let trackIndex: Int; let clipIndex: Int; let isAudio: Bool }  // indices 1-based
 
-        init(timeline: Timeline, resolver: MediaResolver) {
+        init(timeline: Timeline, resolver: MediaResolver, startFrameCache: [String: SourceTimecode]) {
             self.timeline = timeline
             self.resolver = resolver
             self.fps = timeline.fps
             self.seqWidth = timeline.width
             self.seqHeight = timeline.height
+            self.startFrameCache = startFrameCache
         }
 
         // MARK: - Document shell
@@ -268,37 +313,7 @@ enum XMLExporter {
 
         /// Source start timecode — one read serves both the video and audio file nodes.
         private func sourceTimecode(for mediaRef: String) -> SourceTimecode? {
-            if let cached = startFrameCache[mediaRef] { return cached }
-            let tc = resolver.resolveURL(for: mediaRef).flatMap(Builder.readSourceTimecode)
-            startFrameCache[mediaRef] = tc
-            return tc
-        }
-
-        /// Start timecode read from the QuickTime `tmcd` track: the start frame plus the timecode's
-        /// own frame quanta and drop-frame flag (often 30 DF even on 60p footage).
-        private static func readSourceTimecode(url: URL) -> SourceTimecode? {
-            let asset = AVURLAsset(url: url)
-            guard let track = asset.tracks(withMediaType: .timecode).first,
-                  let format = track.formatDescriptions.first,
-                  let reader = try? AVAssetReader(asset: asset) else { return nil }
-            guard CFGetTypeID(format as CFTypeRef) == CMFormatDescriptionGetTypeID() else { return nil }
-            let desc = format as! CMFormatDescription
-            let quanta = Int(CMTimeCodeFormatDescriptionGetFrameQuanta(desc))
-            let dropFrame = CMTimeCodeFormatDescriptionGetTimeCodeFlags(desc) & UInt32(kCMTimeCodeFlag_DropFrame) != 0
-            guard quanta > 0 else { return nil }
-
-            let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
-            guard reader.canAdd(output) else { return nil }
-            reader.add(output)
-            guard reader.startReading() else { return nil }
-            while let sample = output.copyNextSampleBuffer() {
-                guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
-                var be: UInt32 = 0
-                guard CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: 4, destination: &be) == kCMBlockBufferNoErr
-                else { return nil }
-                return SourceTimecode(frame: Int(UInt32(bigEndian: be)), quanta: quanta, dropFrame: dropFrame)
-            }
-            return nil
+            startFrameCache[mediaRef]
         }
 
         // MARK: - Links

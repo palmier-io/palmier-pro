@@ -36,7 +36,7 @@ extension ToolExecutor {
             }
             return try exportVideo(editor, format: format, resolution: resolution, outputURL: outputURL)
         case .xml:
-            return try exportXML(editor, outputURL: outputURL)
+            return try await exportXML(editor, outputURL: outputURL)
         case .palmier:
             return try await exportPalmier(editor, outputURL: outputURL)
         }
@@ -94,7 +94,7 @@ extension ToolExecutor {
         ])
     }
 
-    private func exportXML(_ editor: EditorViewModel, outputURL: URL) throws -> ToolResult {
+    private func exportXML(_ editor: EditorViewModel, outputURL: URL) async throws -> ToolResult {
         if FileManager.default.fileExists(atPath: outputURL.path) {
             do {
                 try FileManager.default.removeItem(at: outputURL)
@@ -103,7 +103,7 @@ extension ToolExecutor {
             }
         }
         do {
-            try XMLExporter.export(timeline: editor.timeline, resolver: editor.mediaResolver, outputURL: outputURL)
+            try await XMLExporter.export(timeline: editor.timeline, resolver: editor.mediaResolver, outputURL: outputURL)
         } catch {
             throw ToolError("export_project: XML export failed: \(error.localizedDescription)")
         }
