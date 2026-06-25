@@ -55,6 +55,18 @@ fileprivate struct SplitClipsInput: DecodableToolArgs {
     }
 }
 
+fileprivate struct DuplicateClipsInput: DecodableToolArgs {
+    let entries: [Entry]
+    static let allowedKeys: Set<String> = ["entries"]
+
+    struct Entry: DecodableToolArgs {
+        let clipId: String
+        let toTrack: Int?
+        let toFrame: Int
+        static let allowedKeys: Set<String> = ["clipId", "toTrack", "toFrame"]
+    }
+}
+
 fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     let clipIds: [String]?
     let durationFrames: Int?
@@ -462,6 +474,61 @@ extension ToolExecutor {
         }
 
         return mutationResult(editor, since: snapshot, touched: allMoves.map(\.clipId))
+    }
+
+    // MARK: duplicate_clips
+
+    func duplicateClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        let input: DuplicateClipsInput = try decodeToolArgs(args, path: "duplicate_clips")
+        guard !input.entries.isEmpty else { throw ToolError("Missing or empty 'entries' array") }
+        if let raws = args["entries"] as? [Any] {
+            for (idx, raw) in raws.enumerated() {
+                if let d = raw as? [String: Any] {
+                    try validateUnknownKeys(d, allowed: DuplicateClipsInput.Entry.allowedKeys, path: "entries[\(idx)]")
+                }
+            }
+        }
+
+        var moves: [(clipId: String, toTrack: Int, toFrame: Int)] = []
+        var seen: Set<String> = Set(input.entries.map(\.clipId))
+        for (idx, entry) in input.entries.enumerated() {
+            let path = "entries[\(idx)]"
+            guard let loc = editor.findClip(id: entry.clipId) else {
+                throw ToolError("\(path): clip not found: \(entry.clipId)")
+            }
+            guard entry.toFrame >= 0 else {
+                throw ToolError("\(path): toFrame must be >= 0 (got \(entry.toFrame))")
+            }
+            let toTrack: Int
+            if let ti = entry.toTrack {
+                guard editor.timeline.tracks.indices.contains(ti) else {
+                    throw ToolError("\(path): toTrack \(ti) out of range (0..\(editor.timeline.tracks.count - 1))")
+                }
+                let srcType = editor.timeline.tracks[loc.trackIndex].type
+                let destType = editor.timeline.tracks[ti].type
+                guard destType.isCompatible(with: srcType) else {
+                    throw ToolError("\(path): toTrack \(ti) (\(destType.rawValue)) is incompatible with clip's \(srcType.rawValue) source track")
+                }
+                toTrack = ti
+            } else {
+                toTrack = loc.trackIndex
+            }
+            moves.append((clipId: entry.clipId, toTrack: toTrack, toFrame: entry.toFrame))
+            seen.insert(entry.clipId)
+
+            for pm in editor.partnerMoves(forMoveOf: entry.clipId, toFrame: entry.toFrame) where !seen.contains(pm.clipId) {
+                guard let pLoc = editor.findClip(id: pm.clipId) else { continue }
+                moves.append((clipId: pm.clipId, toTrack: pLoc.trackIndex, toFrame: max(0, pm.toFrame)))
+                seen.insert(pm.clipId)
+            }
+        }
+
+        let snapshot = timelineSnapshot(editor)
+        let actionName = input.entries.count == 1 ? "Duplicate Clip (Agent)" : "Duplicate Clips (Agent)"
+        editor.undo.perform(actionName) {
+            editor.duplicateClipsToPositions(moves)
+        }
+        return mutationResult(editor, since: snapshot)
     }
 
     // MARK: set_clip_properties
