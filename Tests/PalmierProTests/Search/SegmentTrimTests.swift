@@ -27,8 +27,8 @@ struct SegmentTrimTests {
         let a = asset()
         e.createClips(from: [a], trackIndex: 0, startFrame: 0, segments: [a.id: 10...14])
         let clip = e.timeline.tracks[0].clips.first
-        #expect(clip?.trimStartFrame == 300)   // 10s × 30
-        #expect(clip?.trimEndFrame == 420)     // trimStart + 120
+        #expect(clip?.trimStartFrame == 300)   // 10s × 30, head trim
+        #expect(clip?.trimEndFrame == 2580)    // tail trim: 3000 total − 300 head − 120 visible
         #expect(clip?.durationFrames == 120)
     }
 
@@ -41,13 +41,14 @@ struct SegmentTrimTests {
         #expect(clip?.durationFrames == 3000)
     }
 
-    /// Fence-post: a segment ending exactly at the asset end yields an exclusive
-    /// trimEnd equal to the asset's frame count — valid, not an overrun.
+    /// Fence-post: a segment ending exactly at the asset end trims nothing off
+    /// the tail, so trimEndFrame is 0 (and the clip references the full source).
     @Test func segmentAtAssetEndStaysInBounds() {
         let e = editor()
         let a = asset()
         e.createClips(from: [a], trackIndex: 0, startFrame: 0, segments: [a.id: 96...100])
         let clip = e.timeline.tracks[0].clips.first
-        #expect(clip?.trimEndFrame == 3000)    // 100s × 30, exclusive end
+        #expect(clip?.trimEndFrame == 0)            // ends at asset end → no tail trim
+        #expect(clip?.sourceDurationFrames == 3000) // references the whole 100s × 30 source
     }
 }
