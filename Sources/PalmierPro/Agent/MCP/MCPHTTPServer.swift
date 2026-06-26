@@ -29,7 +29,9 @@ actor MCPHTTPServer {
         listener?.newConnectionHandler = { [weak self] connection in
             guard let self else { return }
             connection.start(queue: .global(qos: .userInitiated))
-            Task { await self.handleConnection(connection) }
+            Task.detached(priority: .userInitiated) {
+                await self.handleConnection(connection)
+            }
         }
 
         listener?.start(queue: .global(qos: .userInitiated))
@@ -42,7 +44,7 @@ actor MCPHTTPServer {
 
     // MARK: - Connection
 
-    private func handleConnection(_ connection: NWConnection) async {
+    private nonisolated func handleConnection(_ connection: NWConnection) async {
         let pipeline = StandardValidationPipeline(validators: [
             OriginValidator.localhost(port: Int(port)),
             ContentTypeValidator(),
@@ -54,16 +56,18 @@ actor MCPHTTPServer {
         receive(on: connection, transport: transport)
     }
 
-    private func receive(on connection: NWConnection, transport: StatelessHTTPServerTransport) {
+    private nonisolated func receive(on connection: NWConnection, transport: StatelessHTTPServerTransport) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 1_048_576) { [weak self] data, _, _, error in
             guard let self, let data, !data.isEmpty, error == nil else {
                 connection.cancel(); return
             }
-            Task { await self.handle(data: data, connection: connection, transport: transport) }
+            Task.detached(priority: .userInitiated) {
+                await self.handle(data: data, connection: connection, transport: transport)
+            }
         }
     }
 
-    private func handle(data: Data, connection: NWConnection, transport: StatelessHTTPServerTransport) async {
+    private nonisolated func handle(data: Data, connection: NWConnection, transport: StatelessHTTPServerTransport) async {
         guard let request = parseHTTPRequest(data) else {
             sendRaw("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n", on: connection, keepAlive: false)
             return
@@ -86,11 +90,12 @@ actor MCPHTTPServer {
             return
         }
 
+        await Task.yield()
         let mcpResponse = await transport.handleRequest(request)
         writeResponse(mcpResponse, on: connection, transport: transport)
     }
 
-    private func writeResponse(_ response: HTTPResponse, on connection: NWConnection, transport: StatelessHTTPServerTransport) {
+    private nonisolated func writeResponse(_ response: HTTPResponse, on connection: NWConnection, transport: StatelessHTTPServerTransport) {
         var head = "HTTP/1.1 \(response.statusCode) \(statusText(response.statusCode))\r\n"
         for (k, v) in response.headers { head += "\(k): \(v)\r\n" }
         head += "Content-Length: \(response.bodyData?.count ?? 0)\r\nConnection: keep-alive\r\n\r\n"

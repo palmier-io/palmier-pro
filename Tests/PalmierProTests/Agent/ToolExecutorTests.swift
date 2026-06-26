@@ -80,6 +80,95 @@ struct ToolExecutorSmokeTests {
     }
 }
 
+@Suite("ToolExecutor — responsiveness")
+@MainActor
+struct ToolExecutorResponsivenessTests {
+    @Test func suspendedExecutionDoesNotBlockConcurrentDispatch() async throws {
+        let h = ToolHarness()
+        var shouldPause = true
+        var didPause = false
+        var release = false
+        h.executor.executionHook = { _ in
+            guard shouldPause else { return }
+            shouldPause = false
+            didPause = true
+            while !release {
+                try Task.checkCancellation()
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+
+        let slow = Task { @MainActor in
+            await h.runRaw("get_timeline")
+        }
+        for _ in 0..<50 where !didPause {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        guard didPause else {
+            slow.cancel()
+            Issue.record("slow tool call never reached the cooperative suspension point")
+            return
+        }
+
+        var fastResult: ToolResult?
+        let fast = Task { @MainActor in
+            fastResult = await h.runRaw("get_timeline")
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(fastResult?.isError == false)
+
+        release = true
+        _ = await fast.value
+        let slowResult = await slow.value
+        #expect(slowResult.isError == false)
+    }
+
+    @Test func cancelledExecutionDoesNotWedgeSubsequentDispatch() async throws {
+        let h = ToolHarness()
+        var didPause = false
+        h.executor.executionHook = { _ in
+            didPause = true
+            while true {
+                try Task.checkCancellation()
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+
+        let task = Task { @MainActor in
+            await h.runRaw("get_timeline")
+        }
+        for _ in 0..<50 where !didPause {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        guard didPause else {
+            task.cancel()
+            Issue.record("tool call never reached the cancellation point")
+            return
+        }
+
+        task.cancel()
+        let cancelled = await task.value
+        #expect(cancelled.isError)
+        #expect(ToolHarness.textOf(cancelled) == "Cancelled")
+
+        h.executor.executionHook = nil
+        let followUp = await h.runRaw("get_timeline")
+        #expect(followUp.isError == false)
+    }
+
+    @Test func missingEditorReturnsErrorWithoutWedgingExecutor() async {
+        let executor = ToolExecutor(editorProvider: { nil })
+
+        let missing = await executor.execute(name: "get_timeline", args: [:])
+        #expect(missing.isError)
+        #expect(ToolHarness.textOf(missing).contains("Editor not available"))
+
+        let unknown = await executor.execute(name: "unknown_tool", args: [:])
+        #expect(unknown.isError)
+        #expect(ToolHarness.textOf(unknown).contains("Unknown tool"))
+    }
+}
+
 @Suite("ToolExecutor — import_media")
 @MainActor
 struct ToolExecutorImportMediaTests {
