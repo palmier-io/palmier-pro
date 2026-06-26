@@ -163,10 +163,35 @@ final class TextLayerController {
         )
 
         let fontSize = CGFloat(style.fontSize * style.fontScale) * scale
-        layer.string = NSAttributedString(
-            string: content,
-            attributes: style.attributes(size: fontSize)
-        )
+        let attrs = style.attributes(size: fontSize)
+        let attrStr = NSAttributedString(string: content, attributes: attrs)
+
+        if style.outline.enabled {
+            let layerSize = layer.bounds.size
+            let ctScale = layer.contentsScale
+            let pxW = Int(layerSize.width * ctScale)
+            let pxH = Int(layerSize.height * ctScale)
+            if pxW > 0, pxH > 0,
+               let ctx = CGContext(
+                   data: nil, width: pxW, height: pxH,
+                   bitsPerComponent: 8, bytesPerRow: 0,
+                   space: CGColorSpaceCreateDeviceRGB(),
+                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+               ) {
+                ctx.scaleBy(x: ctScale, y: ctScale)
+                ctx.translateBy(x: 0, y: layerSize.height)
+                ctx.scaleBy(x: 1, y: -1)
+                attrStr.draw(in: CGRect(origin: .zero, size: layerSize))
+                layer.string = nil
+                layer.contents = ctx.makeImage()
+            } else {
+                layer.contents = nil
+                layer.string = attrStr
+            }
+        } else {
+            layer.contents = nil
+            layer.string = attrStr
+        }
         layer.alignmentMode = style.alignment.caTextAlignmentMode
 
         layer.backgroundColor = style.background.enabled ? style.background.color.nsColor.cgColor : nil
