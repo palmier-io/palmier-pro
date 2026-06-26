@@ -32,7 +32,7 @@ enum TimelineExportFormat: String, CaseIterable, Identifiable {
     var versionLabel: String {
         switch self {
         case .xmeml: "v4"
-        case .fcpxml: "v\(FCPXMLExporter.version)"
+        case .fcpxml: ""   // user-selectable; shown via the version picker
         }
     }
 
@@ -56,6 +56,7 @@ struct ExportView: View {
     @State private var service = ExportService()
     @State private var destination: ExportDestination = .video
     @State private var timelineFormat: TimelineExportFormat = .fcpxml
+    @State private var fcpxmlVersion: FCPXMLVersion = .default
     @State private var codec: VideoCodec = .h264
     @State private var resolution: ExportResolution = .matchTimeline
     @State private var palmierResult: String?
@@ -211,6 +212,31 @@ struct ExportView: View {
         .padding(.vertical, AppTheme.Spacing.xs)
     }
 
+    @ViewBuilder
+    private var fcpxmlVersionRow: some View {
+        Divider().opacity(AppTheme.Opacity.moderate)
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Text("Version")
+                .font(.system(size: AppTheme.FontSize.xs))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            Picker("", selection: $fcpxmlVersion) {
+                ForEach(FCPXMLVersion.allCases) { version in
+                    Text(version.rawValue).tag(version)
+                }
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .font(.system(size: AppTheme.FontSize.xs))
+            .fixedSize()
+            Text(fcpxmlVersion.compatibilityNote)
+                .font(.system(size: AppTheme.FontSize.xs))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, AppTheme.IconSize.sm + AppTheme.Spacing.md)
+    }
+
     private var palmierProjectSettings: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             Text("Saves a copy of this project with all media bundled inside, so it opens on any machine.")
@@ -325,9 +351,7 @@ struct ExportView: View {
 
     private func timelineFormatButton(_ format: TimelineExportFormat) -> some View {
         let selected = timelineFormat == format
-        return Button {
-            timelineFormat = format
-        } label: {
+        return VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
                 Image(systemName: selected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
@@ -342,9 +366,11 @@ struct ExportView: View {
                         Text(format.extensionLabel)
                             .font(.system(size: AppTheme.FontSize.xs))
                             .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        Text(format.versionLabel)
-                            .font(.system(size: AppTheme.FontSize.xs))
-                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        if !format.versionLabel.isEmpty {
+                            Text(format.versionLabel)
+                                .font(.system(size: AppTheme.FontSize.xs))
+                                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        }
                     }
 
                     Text(format.summary)
@@ -359,17 +385,22 @@ struct ExportView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(AppTheme.Spacing.md)
-            .background {
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                    .fill(selected ? AppTheme.Background.prominentColor : AppTheme.Background.raisedColor)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                    .strokeBorder(selected ? AppTheme.Border.primaryColor : AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
+            .contentShape(Rectangle())
+            .onTapGesture { timelineFormat = format }
+
+            if selected && format == .fcpxml {
+                fcpxmlVersionRow
             }
         }
-        .buttonStyle(.plain)
+        .padding(AppTheme.Spacing.md)
+        .background {
+            RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+                .fill(selected ? AppTheme.Background.prominentColor : AppTheme.Background.raisedColor)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+                .strokeBorder(selected ? AppTheme.Border.primaryColor : AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
+        }
     }
 
     private var estimatedFileSize: String {
@@ -435,6 +466,7 @@ struct ExportView: View {
                     resolver: editor.mediaResolver,
                     format: format,
                     resolution: resolution,
+                    fcpxmlVersion: fcpxmlVersion,
                     missingMediaRefs: editor.missingMediaRefs,
                     outputURL: url
                 )

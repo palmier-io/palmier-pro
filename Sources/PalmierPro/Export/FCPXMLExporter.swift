@@ -1,20 +1,46 @@
 import AppKit
 import Foundation
 
-/// Exports a Timeline as FCPXML 1.14 (for DaVinci Resolve / Final Cut Pro). Companion to
-/// XMLExporter (XMEML, for Premiere). The document is an `FCPXMLNode` tree (defined at the
-/// bottom); `renderFCPXML` owns indentation and escaping. Read `build()` top-down:
-/// `<fcpxml>` → `<resources>` (formats + assets) → `<library>/<event>/<project>/<sequence>`.
-/// The whole timeline is one `<gap>` with every clip connected on a lane.
+/// The `version` attribute Resolve/FCP gate import on (a literal allow-list), so it's the only thing
+/// the user picks. Every element we emit has existed since FCPXML 1.1 — the body is version-identical.
+enum FCPXMLVersion: String, CaseIterable, Identifiable, Sendable {
+    case v1_10 = "1.10"
+    case v1_11 = "1.11"
+    case v1_12 = "1.12"
+    case v1_13 = "1.13"
+    case v1_14 = "1.14"
+
+    var id: String { rawValue }
+    /// 1.10 is the broadest: every Resolve from 18 up accepts it. Higher versions need Resolve 21+.
+    static let `default`: FCPXMLVersion = .v1_10
+
+    var compatibilityNote: String {
+        switch self {
+        case .v1_10: "DaVinci Resolve 18+, Final Cut Pro 10.6+"
+        case .v1_11: "DaVinci Resolve 21+, Final Cut Pro 10.7+"
+        case .v1_12: "DaVinci Resolve 21+, Final Cut Pro 10.8+"
+        case .v1_13: "DaVinci Resolve 21+, Final Cut Pro 11+"
+        case .v1_14: "DaVinci Resolve 21+, Final Cut Pro 12+"
+        }
+    }
+}
+
+/// Exports a Timeline as FCPXML (for DaVinci Resolve / Final Cut Pro). Companion to XMLExporter
+/// (XMEML, for Premiere). The document is an `FCPXMLNode` tree (defined at the bottom); `renderFCPXML`
+/// owns indentation and escaping. Read `build()` top-down: `<fcpxml>` → `<resources>` (formats +
+/// assets + per-clip compound clips) → `<library>/<event>/<project>/<sequence>`. The timeline is one
+/// `<gap>` with every clip connected on a lane.
 ///
 /// Encoding facts (reverse-engineered from Resolve round-trips):
 /// - Position: unit = 1% of frame height, square, origin at center, +Y up.
 /// - Scale: multiplier on the conform-fit size, so we divide the aspect-fit out of width/height.
 /// - Rotation: degrees, negated (FCP is counter-clockwise-positive). Flip: negative scale.
 /// - Crop: `<adjust-crop>/<trim-rect>`, a percentage of the source per edge.
-/// - Retime: `start` holds the in-point; the `<timeMap>` is relative (0 → source span).
-/// - Volume: `<adjust-volume amount>` in dB. Keyframes: child `<param>/<keyframeAnimation>`,
-///   `time` in clip-relative seconds, `value` in the param's own unit.
+/// - Retime: a visual clip is a `<ref-clip>` over a compound clip holding the full media; the
+///   `<timeMap>` ramps the whole media (output[0, media/speed] → source[0, media]) and `start` windows
+///   in along the output axis (= source in-point ÷ speed). A clip-local ramp blacks the tail.
+/// - Keyframes: child `<param>/<keyframeAnimation>`; `time` is offset by `start` (the output axis),
+///   `value` in the param's own unit. Volume: `<adjust-volume amount>` in dB.
 ///
 /// What transports: clip placement/trims, speed, lane order, enabled state; text + font/face/
 /// size/color/alignment; position/scale/rotation/flip (+ position/scale/rotation keyframes);
@@ -26,10 +52,9 @@ import Foundation
 ///
 /// Reference: https://developer.apple.com/documentation/professional-video-applications/fcpxml-reference
 enum FCPXMLExporter {
-    static let version = "1.14"
-
-    static func export(timeline: Timeline, resolver: MediaResolver, outputURL: URL) throws {
-        let xml = Builder(timeline: timeline, resolver: resolver).build()
+    static func export(timeline: Timeline, resolver: MediaResolver,
+                       version: FCPXMLVersion = .default, outputURL: URL) throws {
+        let xml = Builder(timeline: timeline, resolver: resolver, version: version).build()
         guard let data = xml.data(using: .utf8) else { throw ExportError.xmlEncodingFailed }
         try data.write(to: outputURL)
     }
@@ -37,6 +62,7 @@ enum FCPXMLExporter {
     private final class Builder {
         private let timeline: Timeline
         private let resolver: MediaResolver
+        private let version: FCPXMLVersion
         private let fps: Int
         private let seqWidth: Int
         private let seqHeight: Int
@@ -66,6 +92,8 @@ enum FCPXMLExporter {
             let key: MediaResourceKey
             let assetId: String
             let formatId: String?
+            // Visual clips ref a compound clip (retime needs it; see `timeMapNode`); nil for audio.
+            let compoundId: String?
             let entry: MediaManifestEntry
             let url: URL
             var durationFrames: Int
@@ -73,9 +101,10 @@ enum FCPXMLExporter {
             var needsAudio: Bool { key.kind == .audio }
         }
 
-        init(timeline: Timeline, resolver: MediaResolver) {
+        init(timeline: Timeline, resolver: MediaResolver, version: FCPXMLVersion) {
             self.timeline = timeline
             self.resolver = resolver
+            self.version = version
             self.fps = max(1, timeline.fps)
             self.seqWidth = timeline.width
             self.seqHeight = timeline.height
@@ -85,7 +114,7 @@ enum FCPXMLExporter {
             let clips = emittableClips()
             collectResources(from: clips)
             let hasTitles = clips.contains { $0.clip.mediaType == .text }
-            let root = FCPXMLNode(name: "fcpxml", attributes: [("version", FCPXMLExporter.version)], children: [
+            let root = FCPXMLNode(name: "fcpxml", attributes: [("version", version.rawValue)], children: [
                 resourcesNode(hasTitles: hasTitles),
                 libraryNode(clips: clips),
             ])
@@ -113,7 +142,36 @@ enum FCPXMLExporter {
 
             children += resources.compactMap(formatNode)
             children += resources.map(assetNode)
+            children += resources.compactMap(compoundClipNode)
             return FCPXMLNode(name: "resources", children: children)
+        }
+
+        private func compoundClipNode(for resource: MediaResource) -> FCPXMLNode? {
+            guard let compoundId = resource.compoundId else { return nil }
+            let dur = time(frames: resource.durationFrames)
+            let video = FCPXMLNode(name: "video", attributes: [
+                ("ref", resource.assetId),
+                ("duration", dur),
+                ("start", "0s"),
+                ("offset", "0s"),
+            ])
+            let innerClip = FCPXMLNode(name: "clip", attributes: [
+                ("name", resource.entry.name),
+                ("duration", dur),
+                ("start", "0s"),
+                ("offset", "0s"),
+                ("format", resource.formatId ?? sequenceFormatId),
+            ], children: [video])
+            let sequence = FCPXMLNode(name: "sequence", attributes: [
+                ("format", resource.formatId ?? sequenceFormatId),
+                ("duration", dur),
+                ("tcStart", "0s"),
+                ("tcFormat", "NDF"),
+            ], children: [FCPXMLNode(name: "spine", children: [innerClip])])
+            return FCPXMLNode(name: "media", attributes: [
+                ("id", compoundId),
+                ("name", resource.entry.name),
+            ], children: [sequence])
         }
 
         private func libraryNode(clips: [EmittableClip]) -> FCPXMLNode {
@@ -171,13 +229,34 @@ enum FCPXMLExporter {
             let clip = item.clip
             guard let i = resourceIndex[resourceKey(for: clip)] else { return nil }
             let resource = resources[i]
-            let timeMap = timeMapNode(for: clip)
+
+            // Visual → <ref-clip> over the compound clip; audio → plain <asset-clip>.
+            if let compoundId = resource.compoundId {
+                let attrs: [(String, String)] = [
+                    ("ref", compoundId),
+                    ("name", resolver.displayName(for: clip.mediaRef)),
+                    ("lane", "\(item.lane)"),
+                    ("offset", time(frames: clip.startFrame)),
+                    ("start", clipStart(for: clip)),
+                    ("duration", time(frames: clip.durationFrames)),
+                    ("enabled", item.enabled ? "1" : "0"),
+                    ("srcEnable", "video"),
+                ]
+                return FCPXMLNode(name: "ref-clip", attributes: attrs, children: [
+                    timeMapNode(for: clip, mediaFrames: resource.durationFrames),
+                    FCPXMLNode(name: "adjust-conform", attributes: [("type", "fit")]),
+                    cropNode(for: clip),
+                    transformNode(for: clip),
+                    blendNode(for: clip),
+                ].compactMap { $0 })
+            }
+
             let attrs: [(String, String)] = [
                 ("ref", resource.assetId),
                 ("name", resolver.displayName(for: clip.mediaRef)),
                 ("lane", "\(item.lane)"),
                 ("offset", time(frames: clip.startFrame)),
-                ("start", time(frames: clip.trimStartFrame)),
+                ("start", clipStart(for: clip)),
                 ("duration", time(frames: clip.durationFrames)),
                 ("enabled", item.enabled ? "1" : "0"),
             ]
@@ -185,10 +264,7 @@ enum FCPXMLExporter {
                 name: "asset-clip",
                 attributes: attrs,
                 children: [
-                    timeMap,
-                    cropNode(for: clip),
-                    transformNode(for: clip),
-                    blendNode(for: clip),
+                    timeMapNode(for: clip, mediaFrames: resource.durationFrames),
                     volumeNode(for: clip),
                 ].compactMap { $0 }
             )
@@ -293,11 +369,11 @@ enum FCPXMLExporter {
             return "\(formatNumber(sx)) \(formatNumber(sy))"
         }
 
-        /// A keyframed `<param>`: time is clip-relative seconds, value uses the param's own unit.
+        /// A keyframed `<param>`: time is in the clip's output axis, value uses the param's own unit.
         private func keyframeParam(name: String, base: String, clip: Clip, property: AnimatableProperty,
                                    frames: [Int], value: (Int) -> String) -> FCPXMLNode {
             let keyframes = frames.sorted().map { f -> FCPXMLNode in
-                var attrs: [(String, String)] = [("time", time(frames: f - clip.startFrame))]
+                var attrs: [(String, String)] = [("time", keyframeTime(f, clip: clip))]
                 if clip.interpolation(for: property, atFrame: f) == .linear { attrs.append(("curve", "linear")) }
                 attrs.append(("value", value(f)))
                 return FCPXMLNode(name: "keyframe", attributes: attrs)
@@ -305,6 +381,16 @@ enum FCPXMLExporter {
             return FCPXMLNode(name: "param", attributes: [("name", name), ("value", base)], children: [
                 FCPXMLNode(name: "keyframeAnimation", children: keyframes),
             ])
+        }
+
+        /// A retimed clip's keyframes live in the timeMap's output axis, so `time` is offset by the clip's
+        /// `start` (= clipStart): `start + (f − startFrame)/fps`. Without it the animation lands before the
+        /// content and plays compressed. Unspeeded clips have no timeMap origin, so they stay clip-relative.
+        private func keyframeTime(_ f: Int, clip: Clip) -> String {
+            guard abs(clip.speed - 1.0) > 0.001 else { return time(frames: f - clip.startFrame) }
+            let (p, q) = rationalSpeed(clip.speed)
+            let num = clip.trimStartFrame * q + (f - clip.startFrame) * p
+            return rationalTime(num: num, den: fps * p)
         }
 
         private func cropNode(for clip: Clip) -> FCPXMLNode? {
@@ -331,22 +417,47 @@ enum FCPXMLExporter {
             linear > 0 ? 20.0 * log10(linear) : -96.0
         }
 
-        private func timeMapNode(for clip: Clip) -> FCPXMLNode? {
-            guard abs(clip.speed - 1.0) > 0.001 else { return nil }
-            // `start` already positions the in-point; the timeMap describes the retime span relative to it.
-            let sourceSpan = Int((Double(clip.durationFrames) * clip.speed).rounded())
+        /// Source in-point in the post-retime output axis Resolve expects (source ÷ speed); the raw
+        /// source frame when unspeeded.
+        private func clipStart(for clip: Clip) -> String {
+            guard abs(clip.speed - 1.0) > 0.001 else { return time(frames: clip.trimStartFrame) }
+            let (p, q) = rationalSpeed(clip.speed)
+            return rationalTime(num: clip.trimStartFrame * q, den: fps * p)
+        }
+
+        /// Resolve ramps the WHOLE media (`output[0, media/speed] → source[0, media]`) and windows in via
+        /// `start`/`duration`. A ramp that stops at the clip edge leaves no tail mapping → black last frames.
+        private func timeMapNode(for clip: Clip, mediaFrames: Int) -> FCPXMLNode? {
+            guard abs(clip.speed - 1.0) > 0.001, mediaFrames > 0 else { return nil }
+            let (p, q) = rationalSpeed(clip.speed)
             return FCPXMLNode(name: "timeMap", attributes: [("frameSampling", "floor")], children: [
+                FCPXMLNode(name: "timept", attributes: [("time", "0s"), ("value", "0s"), ("interp", "linear")]),
                 FCPXMLNode(name: "timept", attributes: [
-                    ("time", "0s"),
-                    ("value", "0s"),
-                    ("interp", "linear"),
-                ]),
-                FCPXMLNode(name: "timept", attributes: [
-                    ("time", time(frames: clip.durationFrames)),
-                    ("value", time(frames: sourceSpan)),
+                    ("time", rationalTime(num: mediaFrames * q, den: fps * p)),  // media / speed
+                    ("value", time(frames: mediaFrames)),                        // full media
                     ("interp", "linear"),
                 ]),
             ])
+        }
+
+        /// Speed as a small-denominator fraction, so the timeMap slope is exact and `start` maps back to
+        /// the original source frame. Speeds are user values (1.25, 1.24, 2.0, 0.5…).
+        private func rationalSpeed(_ speed: Double) -> (p: Int, q: Int) {
+            var best = (p: 1, q: 1), bestErr = Double.infinity
+            for q in 1...1000 {
+                let p = Int((speed * Double(q)).rounded())
+                guard p > 0 else { continue }
+                let err = abs(speed - Double(p) / Double(q))
+                if err < bestErr { best = (p, q); bestErr = err; if err == 0 { break } }
+            }
+            return best
+        }
+
+        private func rationalTime(num: Int, den: Int) -> String {
+            guard num != 0 else { return "0s" }
+            let g = gcd(abs(num), abs(den))
+            let n = num / g, d = den / g
+            return d == 1 ? "\(n)s" : "\(n)/\(d)s"
         }
 
         private func collectResources(from clips: [EmittableClip]) {
@@ -369,6 +480,7 @@ enum FCPXMLExporter {
                     key: key,
                     assetId: "asset\(id)",
                     formatId: key.kind == .visual ? "format\(id)" : nil,
+                    compoundId: key.kind == .visual ? "media\(id)" : nil,
                     entry: entry,
                     url: url,
                     durationFrames: duration
