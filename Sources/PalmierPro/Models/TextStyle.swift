@@ -7,6 +7,7 @@ struct TextStyle: Codable, Sendable, Equatable {
     var fontScale: Double = 1.0
     var color: RGBA = RGBA()
     var alignment: Alignment = .center
+    var outline: Outline = Outline()
     var shadow: Shadow = Shadow()
     var background: Fill = Fill(enabled: false, color: RGBA(r: 0, g: 0, b: 0, a: 0.6))
     var border: Fill = Fill(enabled: false, color: RGBA(r: 0, g: 0, b: 0, a: 1))
@@ -22,6 +23,13 @@ struct TextStyle: Codable, Sendable, Equatable {
         var g: Double = 1
         var b: Double = 1
         var a: Double = 1
+    }
+
+    struct Outline: Codable, Sendable, Equatable {
+        var enabled: Bool = false
+        var color: RGBA = RGBA(r: 0, g: 0, b: 0, a: 1)
+        /// Stroke width in canvas points; scaled at render time.
+        var width: Double = 3
     }
 
     struct Shadow: Codable, Sendable, Equatable {
@@ -41,7 +49,7 @@ struct TextStyle: Codable, Sendable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case fontName, fontSize, fontScale, color, alignment, shadow, background, border
+        case fontName, fontSize, fontScale, color, alignment, outline, shadow, background, border
     }
 }
 
@@ -55,6 +63,7 @@ extension TextStyle {
             fontScale: (try? c.decode(Double.self, forKey: .fontScale)) ?? 1.0,
             color: (try? c.decode(RGBA.self, forKey: .color)) ?? RGBA(),
             alignment: (try? c.decode(Alignment.self, forKey: .alignment)) ?? .center,
+            outline: (try? c.decode(Outline.self, forKey: .outline)) ?? Outline(),
             shadow: (try? c.decode(Shadow.self, forKey: .shadow)) ?? Shadow(),
             background: (try? c.decode(Fill.self, forKey: .background)) ?? Fill(enabled: false, color: RGBA(r: 0, g: 0, b: 0, a: 0.6)),
             border: (try? c.decode(Fill.self, forKey: .border)) ?? Fill(enabled: false, color: RGBA(r: 0, g: 0, b: 0, a: 1))
@@ -141,6 +150,11 @@ extension TextStyle {
             .paragraphStyle: paragraphStyle,
         ]
         if includeColor { attrs[.foregroundColor] = nsColor }
+        if outline.enabled, size > 0 {
+            let strokePercent = -(outline.width / Double(size)) * 100
+            attrs[.strokeColor] = outline.color.nsColor
+            attrs[.strokeWidth] = NSNumber(value: strokePercent)
+        }
         return attrs
     }
 }
