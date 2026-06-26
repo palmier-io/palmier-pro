@@ -135,7 +135,11 @@ extension ToolExecutor {
                 throw ToolError("export_project: \(error.localizedDescription)")
             }
         }
-        FCPXMLExporter.export(timeline: editor.timeline, resolver: editor.mediaResolver, outputURL: outputURL)
+        do {
+            try FCPXMLExporter.export(timeline: editor.timeline, resolver: editor.mediaResolver, outputURL: outputURL)
+        } catch {
+            throw ToolError("export_project: FCPXML export failed: \(error.localizedDescription)")
+        }
         guard FileManager.default.fileExists(atPath: outputURL.path) else {
             throw ToolError("export_project: FCPXML export failed")
         }

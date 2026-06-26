@@ -51,7 +51,7 @@ struct FCPXMLExporterTests {
 
     private func export(_ timeline: Timeline, resolver: MediaResolver, tmpDir: URL) throws -> String {
         let outURL = tmpDir.appendingPathComponent("out.fcpxml")
-        FCPXMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        try FCPXMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
         return try readXML(at: outURL)
     }
 

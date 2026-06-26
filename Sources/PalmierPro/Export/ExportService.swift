@@ -55,7 +55,7 @@ final class ExportService {
                 if format == .xml {
                     try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
                 } else {
-                    FCPXMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
+                    try FCPXMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
                 }
                 progress = 1.0
                 Log.export.notice("export ok format=\(name)", telemetry: "Export finished", data: ["format": name])

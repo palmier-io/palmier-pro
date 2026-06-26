@@ -57,7 +57,7 @@ struct ExportView: View {
     @State private var destination: ExportDestination = .video
     @State private var timelineFormat: TimelineExportFormat = .fcpxml
     @State private var codec: VideoCodec = .h264
-    @State private var resolution: ExportResolution = .r1080p
+    @State private var resolution: ExportResolution = .matchTimeline
     @State private var palmierResult: String?
     @State private var palmierSummary: (collect: Int, missing: Int, bytes: Int64) = (0, 0, 0)
 
@@ -435,6 +435,7 @@ struct ExportView: View {
                     resolver: editor.mediaResolver,
                     format: format,
                     resolution: resolution,
+                    missingMediaRefs: editor.missingMediaRefs,
                     outputURL: url
                 )
                 if service.error == nil {
