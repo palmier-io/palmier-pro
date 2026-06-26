@@ -56,7 +56,7 @@ struct BetaWelcomeOverlay: View {
                     .buttonStyle(.capsule(.prominent, size: .regular))
                     .keyboardShortcut(.defaultAction)
             }
-            .padding(.top, AppTheme.Spacing.sm)
+            .padding(.top, AppTheme.Spacing.xs)
         }
         .padding(AppTheme.Spacing.xxl)
         .background(

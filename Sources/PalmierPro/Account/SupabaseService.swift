@@ -81,7 +81,9 @@ final class SupabaseService {
             session_id: nil,
             app_version: appVersion
         )
-        Task {
+        // Fire-and-forget on a background task so editing/agent never waits on the network.
+        let client = self.client
+        Task.detached(priority: .utility) {
             do {
                 try await client.from("usage_event").insert(row).execute()
             } catch {
@@ -120,7 +122,9 @@ final class SupabaseService {
             provider_mode: providerMode,
             app_version: appVersion
         )
-        Task {
+        // Fire-and-forget on a background task so sending a prompt never waits on the network.
+        let client = self.client
+        Task.detached(priority: .utility) {
             do {
                 try await client.from("agent_prompt").insert(row).execute()
             } catch {
