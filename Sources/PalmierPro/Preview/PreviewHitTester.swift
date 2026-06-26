@@ -10,25 +10,32 @@ enum PreviewHitTester {
         guard videoRect.width > 0, videoRect.height > 0 else { return nil }
         let frame = editor.playheadState.timelineFrame
 
-        // Text overlays draw above all video in the preview, so they win hit priority.
-        // Within each pass, track 0 is topmost (see CompositionBuilder).
-        for textPass in [true, false] {
-            for track in editor.timeline.tracks where track.type != .audio && !track.hidden {
-                for clip in track.clips {
-                    guard clip.mediaType != .audio else { continue }
-                    guard (clip.mediaType == .text) == textPass else { continue }
-                    guard clip.contains(timelineFrame: frame) else { continue }
-                    guard clip.opacityAt(frame: frame) > 0.01 else { continue }
-                    if hit(clip: clip, frame: frame, point: point, videoRect: videoRect) {
-                        return clip.id
-                    }
-                }
+        // Text draws above all video; within text, higher track index is on top, so keep the last hit.
+        var topText: String?
+        for track in editor.timeline.tracks where !track.hidden {
+            for clip in track.clips where clip.mediaType == .text {
+                guard clip.contains(timelineFrame: frame), clip.opacityAt(frame: frame) > 0.01 else { continue }
+                if textHit(clip, point: point, videoRect: videoRect) { topText = clip.id }
+            }
+        }
+        if let topText { return topText }
+
+        // Video/image: track 0 is topmost (see CompositionBuilder), so first hit wins.
+        for track in editor.timeline.tracks where track.type != .audio && !track.hidden {
+            for clip in track.clips where clip.mediaType != .text && clip.mediaType != .audio {
+                guard clip.contains(timelineFrame: frame), clip.opacityAt(frame: frame) > 0.01 else { continue }
+                if videoHit(clip, frame: frame, point: point, videoRect: videoRect) { return clip.id }
             }
         }
         return nil
     }
 
-    private static func hit(clip: Clip, frame: Int, point: CGPoint, videoRect: CGRect) -> Bool {
+    /// Text renders as an axis-aligned `CATextLayer` from the static transform — no rotation/crop.
+    private static func textHit(_ clip: Clip, point: CGPoint, videoRect: CGRect) -> Bool {
+        clipFrame(clip.transform, videoRect: videoRect).contains(point)
+    }
+
+    private static func videoHit(_ clip: Clip, frame: Int, point: CGPoint, videoRect: CGRect) -> Bool {
         let t = clip.transformAt(frame: frame)
         let rect = clipFrame(t, videoRect: videoRect)
         guard rect.width > 0, rect.height > 0 else { return false }
