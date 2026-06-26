@@ -249,6 +249,8 @@ enum ToolDefinitions {
                     "fontSize": ["type": "number", "description": "Text clips only. Font size in canvas points."],
                     "color": ["type": "string", "description": "Text clips only. Hex '#RRGGBB' or '#RRGGBBAA'."],
                     "alignment": ["type": "string", "enum": ["left", "center", "right"], "description": "Text clips only."],
+                    "outlineColor": ["type": "string", "description": "Text clips only. Hex '#RRGGBB' or '#RRGGBBAA'. Enables per-character outline when set."],
+                    "outlineWidth": ["type": "number", "description": "Text clips only. Outline width in canvas points (default 3). Enables outline when set."],
                 ],
                 required: ["clipIds"]
             )
@@ -368,6 +370,8 @@ enum ToolDefinitions {
                                 "fontSize": ["type": "number", "description": "Font size in canvas points (default 96). On a 1080p canvas ~50 is a caption, ~120 is a title."],
                                 "color": ["type": "string", "description": "Hex '#RRGGBB' or '#RRGGBBAA' (default '#FFFFFF')"],
                                 "alignment": ["type": "string", "enum": ["left", "center", "right"], "description": "Text alignment (default 'center')"],
+                                "outlineColor": ["type": "string", "description": "Hex '#RRGGBB' or '#RRGGBBAA'. Enables a per-character text outline/stroke when set (default disabled)."],
+                                "outlineWidth": ["type": "number", "description": "Outline width in canvas points (default 3). Enables outline when set."],
                             ],
                             "required": ["startFrame", "durationFrames", "content"],
                         ],
@@ -390,6 +394,8 @@ enum ToolDefinitions {
                     "centerY": ["type": "number", "description": "Optional vertical center 0–1 (default 0.9, near the bottom)."],
                     "textCase": ["type": "string", "enum": ["auto", "upper", "lower"], "description": "Optional letter case (default auto)."],
                     "censorProfanity": ["type": "boolean", "description": "Optional. Mask profanity (default false)."],
+                    "outlineColor": ["type": "string", "description": "Optional. Hex '#RRGGBB' or '#RRGGBBAA'. Enables per-character outline on captions when set."],
+                    "outlineWidth": ["type": "number", "description": "Optional. Outline width in canvas points (default 3). Enables outline when set."],
                 ]
             )
         ),
