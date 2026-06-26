@@ -37,6 +37,7 @@ struct MusicGenerationSubmission {
             let mp4 = try await TimelineRenderer.render(
                 timeline: editor.timeline,
                 resolver: editor.mediaResolver,
+                missingMediaRefs: editor.missingMediaRefs,
                 startFrame: source.startFrame,
                 frameCount: source.frameCount,
                 shortSide: 360,

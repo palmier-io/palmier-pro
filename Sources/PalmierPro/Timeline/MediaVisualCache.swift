@@ -1,7 +1,6 @@
 import AppKit
 import AVFoundation
 import CryptoKit
-import DSWaveformImage
 import ImageIO
 import UniformTypeIdentifiers
 
@@ -176,17 +175,9 @@ final class MediaVisualCache {
         let asset = AVURLAsset(url: url)
         guard (try? await asset.loadTracks(withMediaType: .audio).first) != nil else { return nil }
 
-        let duration = (try? await asset.load(.duration).seconds) ?? 0
-        let count = waveformSampleCount(duration: duration)
-        guard let samples = try? await WaveformAnalyzer().samples(fromAudioAt: url, count: count) else { return nil }
+        guard let samples = try? await WaveformExtractor.peakEnvelope(from: url), !samples.isEmpty else { return nil }
         if let cacheKey { saveWaveform(samples, key: cacheKey) }
         return samples
-    }
-
-    private nonisolated static func waveformSampleCount(duration: Double) -> Int {
-        guard duration.isFinite, duration > 0 else { return 4000 }
-        if duration >= Double(20_000) / 150 { return 20_000 }
-        return max(4000, Int(duration * 150))
     }
 
     private nonisolated static func videoThumbnailTimes(duration: Double) -> [CMTime] {
@@ -216,13 +207,13 @@ final class MediaVisualCache {
     }
 
     private nonisolated static func loadWaveform(key: String) -> [Float]? {
-        let url = diskCache.directory.appendingPathComponent(key + ".waveform")
+        let url = diskCache.directory.appendingPathComponent(key + ".waveform2")
         guard let data = try? Data(contentsOf: url), !data.isEmpty, data.count % 4 == 0 else { return nil }
         return data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
     }
 
     private nonisolated static func saveWaveform(_ samples: [Float], key: String) {
-        let url = diskCache.directory.appendingPathComponent(key + ".waveform")
+        let url = diskCache.directory.appendingPathComponent(key + ".waveform2")
         samples.withUnsafeBytes { try? Data($0).write(to: url) }
     }
 

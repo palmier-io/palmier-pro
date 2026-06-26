@@ -80,6 +80,32 @@ struct ToolExecutorSmokeTests {
     }
 }
 
+@Suite("ToolExecutor — import_media")
+@MainActor
+struct ToolExecutorImportMediaTests {
+    @Test func importBytesWritesFileAndRegistersAsset() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp-import-media-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let h = ToolHarness()
+        h.editor.projectURL = root.appendingPathComponent("Import.palmier", isDirectory: true)
+        let bytes = Data("fake-png".utf8).base64EncodedString()
+
+        let result = await h.runRaw("import_media", args: [
+            "source": ["bytes": bytes, "mimeType": "image/png"],
+            "name": "Imported Still",
+        ])
+
+        #expect(result.isError == false)
+        let asset = try #require(h.editor.mediaAssets.first)
+        #expect(asset.name == "Imported Still")
+        #expect(asset.type == .image)
+        #expect(FileManager.default.fileExists(atPath: asset.url.path))
+        #expect(h.editor.mediaManifest.entries.first?.name == "Imported Still")
+    }
+}
+
 @Suite("ToolExecutor — read-only handlers")
 @MainActor
 struct ToolExecutorReadOnlyTests {
@@ -740,27 +766,7 @@ struct ToolExecutorClipTests {
         #expect(result.isError)
     }
 
-    // MARK: - split_clip
-
-    @Test func splitClipDividesAtFrame() async throws {
-        let (h, asset) = await setupWithVideoTrack()
-        _ = await h.runRaw("add_clips", args: [
-            "entries": [[
-                "mediaRef": asset.id,
-                "trackIndex": 0,
-                "startFrame": 0,
-                "durationFrames": 60,
-            ]]
-        ])
-        let clipId = h.editor.timeline.tracks[0].clips[0].id
-
-        let result = await h.runRaw("split_clip", args: ["clipId": clipId, "atFrame": 30])
-        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
-        let clips = h.editor.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
-        #expect(clips.count == 2)
-        #expect(clips[0].startFrame == 0 && clips[0].durationFrames == 30)
-        #expect(clips[1].startFrame == 30 && clips[1].durationFrames == 30)
-    }
+    // MARK: - split_clips
 
     @Test func splitClipRejectsFrameOutsideClipRange() async throws {
         let (h, asset) = await setupWithVideoTrack()
@@ -775,9 +781,80 @@ struct ToolExecutorClipTests {
         let clipId = h.editor.timeline.tracks[0].clips[0].id
 
         // Split at endFrame should fail (must be strictly inside).
-        let result = await h.runRaw("split_clip", args: ["clipId": clipId, "atFrame": 60])
+        let result = await h.runRaw("split_clips", args: ["splits": [["clipId": clipId, "atFrame": 60]]])
         #expect(result.isError)
         #expect(ToolHarness.textOf(result).contains("outside"))
+    }
+
+    @Test func splitClipsMultipleFramesOnSameClip() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        _ = await h.runRaw("add_clips", args: [
+            "entries": [[
+                "mediaRef": asset.id,
+                "trackIndex": 0,
+                "startFrame": 0,
+                "durationFrames": 90,
+            ]]
+        ])
+
+        // Two cuts on one clip via the trackIndex+frames mode → three segments.
+        let result = await h.runRaw("split_clips", args: ["trackIndex": 0, "frames": [30, 60]])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let clips = h.editor.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(clips.count == 3)
+        #expect(clips[0].startFrame == 0 && clips[0].durationFrames == 30)
+        #expect(clips[1].startFrame == 30 && clips[1].durationFrames == 30)
+        #expect(clips[2].startFrame == 60 && clips[2].durationFrames == 30)
+    }
+
+    @Test func splitClipsDedupsDuplicateFrames() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        _ = await h.runRaw("add_clips", args: [
+            "entries": [["mediaRef": asset.id, "trackIndex": 0, "startFrame": 0, "durationFrames": 90]]
+        ])
+        let result = await h.runRaw("split_clips", args: ["trackIndex": 0, "frames": [30, 30]])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        #expect(h.editor.timeline.tracks[0].clips.count == 2)
+        #expect(ToolHarness.textOf(result).contains("1 point"))
+    }
+
+    @Test func splitClipsRejectsSeamFrame() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        _ = await h.runRaw("add_clips", args: [
+            "entries": [["mediaRef": asset.id, "trackIndex": 0, "startFrame": 0, "durationFrames": 90]]
+        ])
+        _ = await h.runRaw("split_clips", args: ["trackIndex": 0, "frames": [30]])
+        // Frame 30 is now a seam between two clips — strictly inside neither.
+        let result = await h.runRaw("split_clips", args: ["trackIndex": 0, "frames": [30]])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("not strictly inside"))
+    }
+
+    @Test func splitClipsRejectsBothAndNeitherMode() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        _ = await h.runRaw("add_clips", args: [
+            "entries": [["mediaRef": asset.id, "trackIndex": 0, "startFrame": 0, "durationFrames": 90]]
+        ])
+        let clipId = h.editor.timeline.tracks[0].clips[0].id
+
+        let both = await h.runRaw("split_clips", args: [
+            "splits": [["clipId": clipId, "atFrame": 30]], "trackIndex": 0, "frames": [60],
+        ])
+        #expect(both.isError)
+
+        let neither = await h.runRaw("split_clips", args: [:])
+        #expect(neither.isError)
+    }
+
+    @Test func splitClipsEmptySplitsFallsThroughToTrackMode() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        _ = await h.runRaw("add_clips", args: [
+            "entries": [["mediaRef": asset.id, "trackIndex": 0, "startFrame": 0, "durationFrames": 90]]
+        ])
+        // Empty splits + valid trackIndex/frames must apply the track cuts, not error out.
+        let result = await h.runRaw("split_clips", args: ["splits": [], "trackIndex": 0, "frames": [30]])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        #expect(h.editor.timeline.tracks[0].clips.count == 2)
     }
 
     // MARK: - move_clips

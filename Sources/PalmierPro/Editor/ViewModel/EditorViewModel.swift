@@ -367,12 +367,17 @@ final class EditorViewModel {
         let shouldLink = addLinkedAudio && targetIsVideo && asset.type == .video && asset.hasAudio
         let linkGroupId: String? = shouldLink ? UUID().uuidString : nil
         let trimStart = sourceSegment.map { secondsToFrame(seconds: $0.lowerBound, fps: timeline.fps) } ?? 0
+        let totalSourceFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
 
         // sourceSegment (source seconds) and explicit trim frames are mutually exclusive; callers pass one.
         let applyTrim: (inout Clip) -> Void = { clip in
             if sourceSegment != nil {
+                // trimStartFrame/trimEndFrame are amounts trimmed off the head/tail
+                // (sourceDurationFrames = consumed + trimStart + trimEnd), so the tail
+                // trim is whatever source remains after the head trim and visible span.
+                let consumed = Int((Double(durationFrames) * clip.speed).rounded())
                 clip.trimStartFrame = trimStart
-                clip.trimEndFrame = trimStart + durationFrames
+                clip.trimEndFrame = max(0, totalSourceFrames - trimStart - consumed)
             } else {
                 if let t = trimStartFrame { clip.trimStartFrame = t }
                 if let t = trimEndFrame { clip.trimEndFrame = t }

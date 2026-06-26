@@ -1,113 +1,80 @@
 import AVFoundation
 import AppKit
 
-enum ExportFormat {
-    case h264, h265, prores, xml, fcpxml
-
-    var fileExtension: String {
-        switch self {
-        case .h264, .h265: "mp4"
-        case .prores: "mov"
-        case .xml: "xml"
-        case .fcpxml: "fcpxml"
-        }
-    }
-
-    var utType: AVFileType? {
-        switch self {
-        case .h264, .h265: .mp4
-        case .prores: .mov
-        case .xml, .fcpxml: nil
-        }
-    }
-}
-
-enum ExportResolution: String, CaseIterable, Identifiable {
-    case r720p = "720p"
-    case r1080p = "1080p"
-    case r1440p = "2K"
-    case r4k = "4K"
-    case native = "Match Timeline"
-
-    var id: String { rawValue }
-
-    /// Target short-side height for the fixed presets; nil for `.native` (uses the timeline size).
-    var shortSidePixels: Int? {
-        switch self {
-        case .r720p: 720
-        case .r1080p: 1080
-        case .r1440p: 1440
-        case .r4k: 2160
-        case .native: nil
-        }
-    }
-
-    func renderSize(for canvas: CGSize) -> CGSize {
-        guard let shortSidePixels else { return evenSize(canvas) }
-        let canvasShort = min(canvas.width, canvas.height)
-        guard canvasShort > 0 else { return canvas }
-        let scale = Double(shortSidePixels) / Double(canvasShort)
-        return evenSize(CGSize(width: canvas.width * scale, height: canvas.height * scale))
-    }
-
-    private func evenSize(_ size: CGSize) -> CGSize {
-        let w = (Int(size.width.rounded()) / 2) * 2
-        let h = (Int(size.height.rounded()) / 2) * 2
-        return CGSize(width: max(2, w), height: max(2, h))
-    }
-}
-
 enum ExportError: LocalizedError {
     case unsupportedPreset
     case invalidFormat
+    case xmlEncodingFailed
 
     var errorDescription: String? {
         switch self {
         case .unsupportedPreset: "Export preset not supported on this system"
         case .invalidFormat: "Invalid export format"
+        case .xmlEncodingFailed: "Couldn't encode the timeline as XML"
         }
     }
+}
+
+struct ExportRunReport {
+    let outputSize: CGSize
+    let offlineMediaRefs: Set<String>
+    let unprocessableMediaRefs: Set<String>
 }
 
 @Observable
 @MainActor
 final class ExportService {
     var progress: Double = 0
-    var isExporting = false {
-        didSet {
-            guard isExporting != oldValue else { return }
-            isExporting ? SearchIndexCoordinator.exportDidBegin() : SearchIndexCoordinator.exportDidEnd()
-        }
-    }
+    var isExporting = false
     var error: String?
+    var lastReport: ExportRunReport?
 
     func export(
         timeline: Timeline,
         resolver: MediaResolver,
         format: ExportFormat,
         resolution: ExportResolution,
-        outputURL: URL
+        missingMediaRefs: Set<String> = [],
+        outputURL: URL,
+        acquireSlot: Bool = true
     ) async {
+        error = nil
+        lastReport = nil
+        isExporting = true
+        progress = 0
+        defer { isExporting = false }
+
         if format == .xml || format == .fcpxml {
-            let formatName = format == .xml ? "xml" : "fcpxml"
+            let name = format.fileExtension
             Log.export.notice(
-                "export requested format=\(formatName)",
+                "export requested format=\(name)",
                 telemetry: "Export started",
-                data: ["format": formatName, "tracks": timeline.tracks.count, "clips": timeline.tracks.reduce(0) { $0 + $1.clips.count }]
+                data: ["format": name, "tracks": timeline.tracks.count, "clips": timeline.tracks.reduce(0) { $0 + $1.clips.count }]
             )
-            if format == .xml {
-                XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
-            } else {
-                FCPXMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
+            do {
+                if format == .xml {
+                    try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
+                } else {
+                    FCPXMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
+                }
+                progress = 1.0
+                Log.export.notice("export ok format=\(name)", telemetry: "Export finished", data: ["format": name])
+            } catch {
+                self.error = Log.detail(error)
+                Log.export.error(
+                    "export failed format=\(name): \(Log.detail(error))",
+                    telemetry: "Export failed",
+                    data: ["format": name, "error": Log.detail(error)]
+                )
             }
-            progress = 1.0
-            Log.export.notice("export ok format=\(formatName)", telemetry: "Export finished", data: ["format": formatName])
             return
         }
 
-        isExporting = true
-        progress = 0
-        error = nil
+        if acquireSlot {
+            await ExportCoordinator.acquireExport()
+        }
+        defer { if acquireSlot { ExportCoordinator.endExport() } }
+
         Log.export.notice(
             "export requested format=\(String(describing: format)) resolution=\(resolution.rawValue)",
             telemetry: "Export started",
@@ -122,10 +89,12 @@ final class ExportService {
         )
 
         do {
-            let session = try await makeExportSession(
+            let prepared = try await makeExportSession(
                 timeline: timeline, resolver: resolver,
-                format: format, resolution: resolution
+                format: format, resolution: resolution,
+                missingMediaRefs: missingMediaRefs
             )
+            let session = prepared.session
             guard let fileType = format.utType else { throw ExportError.invalidFormat }
 
             // AVAssetExportSession fails if the file already exists
@@ -142,6 +111,12 @@ final class ExportService {
 
             do {
                 try await session.export(to: outputURL, as: fileType)
+                let outputSize = await Self.encodedVideoSize(of: outputURL) ?? prepared.renderSize
+                lastReport = ExportRunReport(
+                    outputSize: outputSize,
+                    offlineMediaRefs: prepared.result.offlineMediaRefs,
+                    unprocessableMediaRefs: prepared.result.unprocessableMediaRefs
+                )
                 progress = 1.0
                 Log.export.notice(
                     "export ok",
@@ -176,7 +151,6 @@ final class ExportService {
             )
         }
 
-        isExporting = false
     }
 
     /// Writes a self-contained `.palmier` bundle (all media collected internally).
@@ -186,12 +160,19 @@ final class ExportService {
         manifest: MediaManifest,
         generationLog: GenerationLog,
         sourceProjectURL: URL?,
-        outputURL: URL
+        outputURL: URL,
+        acquireSlot: Bool = true
     ) async -> PalmierProjectExporter.Report? {
         isExporting = true
         progress = 0
         error = nil
+        lastReport = nil
         defer { isExporting = false }
+
+        if acquireSlot {
+            await ExportCoordinator.acquireExport()
+        }
+        defer { if acquireSlot { ExportCoordinator.endExport() } }
 
         do {
             Log.export.notice(
@@ -229,18 +210,32 @@ final class ExportService {
         }
     }
 
+    /// Encoded dimensions of the written file (natural size with preferred
+    /// transform applied), the source of truth when a preset clamped the size.
+    private static func encodedVideoSize(of url: URL) async -> CGSize? {
+        let asset = AVURLAsset(url: url)
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+              let naturalSize = try? await track.load(.naturalSize),
+              let transform = try? await track.load(.preferredTransform) else { return nil }
+        let size = naturalSize.applying(transform)
+        return CGSize(width: abs(size.width), height: abs(size.height))
+    }
+
     private func makeExportSession(
         timeline: Timeline,
         resolver: MediaResolver,
         format: ExportFormat,
-        resolution: ExportResolution
-    ) async throws -> AVAssetExportSession {
+        resolution: ExportResolution,
+        missingMediaRefs: Set<String>
+    ) async throws -> (session: AVAssetExportSession, result: CompositionResult, renderSize: CGSize) {
         let timelineCanvas = CGSize(width: timeline.width, height: timeline.height)
         let renderSize = resolution.renderSize(for: timelineCanvas)
+        let mediaURLs = resolver.expectedURLMap()
 
         let result = try await CompositionBuilder.build(
             timeline: timeline,
-            resolveURL: { resolver.resolveURL(for: $0) },
+            resolveURL: { mediaURLs[$0] },
+            missingMediaRefs: missingMediaRefs,
             renderSize: renderSize
         )
 
@@ -262,7 +257,7 @@ final class ExportService {
             in: parent
         )
         session.videoComposition = mutableVC
-        return session
+        return (session, result, renderSize)
     }
 
     // MARK: - Export preset mapping
@@ -275,20 +270,20 @@ final class ExportService {
             case .r1080p: AVAssetExportPreset1920x1080
             case .r4k: AVAssetExportPreset3840x2160
             // Size-named presets clamp dimensions; HighestQuality honours the
-            // composition's renderSize, so 2K / native export at their true size.
-            case .r1440p, .native: AVAssetExportPresetHighestQuality
+            // composition's renderSize, so 2K / Match Timeline export at their true size.
+            case .r1440p, .matchTimeline: AVAssetExportPresetHighestQuality
             }
         case .h265:
             switch resolution {
             case .r720p: AVAssetExportPresetHEVCHighestQuality
             case .r1080p: AVAssetExportPresetHEVC1920x1080
             case .r4k: AVAssetExportPresetHEVC3840x2160
-            case .r1440p, .native: AVAssetExportPresetHEVCHighestQuality
+            case .r1440p, .matchTimeline: AVAssetExportPresetHEVCHighestQuality
             }
         case .prores:
             AVAssetExportPresetAppleProRes422LPCM
         case .xml, .fcpxml:
-            AVAssetExportPresetPassthrough // unreachable — XML returns early
+            AVAssetExportPresetPassthrough // unreachable — timeline formats return early
         }
     }
 }

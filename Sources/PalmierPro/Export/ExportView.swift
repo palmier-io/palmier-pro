@@ -1,93 +1,37 @@
+import AVFoundation
 import SwiftUI
 import UniformTypeIdentifiers
-
-enum ExportDestination: String, CaseIterable, Identifiable {
-    case video = "Video"
-    case timeline = "Timeline"
-    case palmierProject = "Palmier Project"
-
-    var id: String { rawValue }
-}
-
-enum TimelineExportFormat: String, CaseIterable, Identifiable {
-    case xmeml = "XMEML"
-    case fcpxml = "FCPXML"
-
-    var id: String { rawValue }
-
-    var exportFormat: ExportFormat {
-        switch self {
-        case .xmeml: .xml
-        case .fcpxml: .fcpxml
-        }
-    }
-
-    var extensionLabel: String {
-        switch self {
-        case .xmeml: ".xml"
-        case .fcpxml: ".fcpxml"
-        }
-    }
-
-    var versionLabel: String {
-        switch self {
-        case .xmeml: "v4"
-        case .fcpxml: "v\(FCPXMLExporter.version)"
-        }
-    }
-
-    var summary: String {
-        switch self {
-        case .xmeml: "Older interchange format, best when Premiere Pro is the destination. Supports basic edits and keyframes, but not text, color, or effects."
-        case .fcpxml: "Newer timeline format with better support for DaVinci Resolve and Final Cut Pro. Supports basic edits, keyframes, and text, but not color or effects."
-        }
-    }
-
-    var compatibilityLabel: String {
-        switch self {
-        case .xmeml: "Premiere Pro and DaVinci Resolve"
-        case .fcpxml: "DaVinci Resolve and Final Cut Pro"
-        }
-    }
-}
-
-enum VideoCodec: String, CaseIterable, Identifiable {
-    case h264 = "H.264"
-    case h265 = "H.265"
-    case prores = "ProRes"
-
-    var id: String { rawValue }
-
-    var containerLabel: String {
-        switch self {
-        case .h264, .h265: "MPEG-4 (.mp4)"
-        case .prores: "QuickTime (.mov)"
-        }
-    }
-}
 
 struct ExportView: View {
     @Environment(EditorViewModel.self) var editor
     @State private var service = ExportService()
-    @State private var destination: ExportDestination = .video
-    @State private var timelineFormat: TimelineExportFormat = .fcpxml
+    @State private var mode: ExportMode = .video
     @State private var codec: VideoCodec = .h264
-    @State private var resolution: ExportResolution = .r1080p
+    @State private var resolution: ExportResolution = .matchTimeline
+    @State private var preview: NSImage?
     @State private var palmierResult: String?
     @State private var palmierSummary: (collect: Int, missing: Int, bytes: Int64) = (0, 0, 0)
 
     var body: some View {
         VStack(spacing: 0) {
-            settingsPanel
+            HStack(spacing: 0) {
+                settingsPanel
+                    .frame(width: 360)
+                previewPanel
+                    .frame(maxWidth: .infinity)
+            }
+            .frame(maxHeight: .infinity)
+
             bottomBar
         }
-        .frame(width: AppTheme.Export.sheetWidth, height: AppTheme.Export.sheetHeight)
+        .frame(width: 860, height: 560)
         .presentationBackground {
             AppTheme.Background.surfaceColor.opacity(0.85)
                 .background(.ultraThinMaterial)
         }
         .task {
-            palmierSummary = computePalmierSummary()
+            await loadPreview()
+            palmierSummary = await computePalmierSummary()
         }
     }
 
@@ -101,145 +45,157 @@ struct ExportView: View {
             .padding(.vertical, AppTheme.Spacing.md)
     }
 
-    // MARK: - Settings
+    // MARK: - Preview (right)
+
+    private var previewPanel: some View {
+        ZStack {
+            if let preview {
+                Image(nsImage: preview)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                Image(systemName: "film")
+                    .font(.system(size: AppTheme.FontSize.title2, weight: .light))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AppTheme.Background.baseColor)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
+        .padding(AppTheme.Spacing.xl)
+    }
+
+    // MARK: - Settings (left)
 
     private var settingsPanel: some View {
         VStack(spacing: 0) {
             panelHeader("Export")
 
             VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 0) {
-                    destinationPicker
-
-                    Divider().opacity(AppTheme.Opacity.moderate)
-
-                    switch destination {
-                    case .video:
-                        videoSettings
-                    case .timeline:
-                        timelineSettings
-                    case .palmierProject:
-                        palmierProjectSettings
+            // Settings rows
+            VStack(spacing: 0) {
+                settingRow(label: "Format") {
+                    Picker("", selection: $mode) {
+                        ForEach(ExportMode.allCases) { m in
+                            Text(m.rawValue).tag(m)
+                        }
                     }
+                    .labelsHidden()
                 }
 
-                if service.isExporting {
-                    VStack(spacing: AppTheme.Spacing.xs) {
-                        ProgressView(value: service.progress)
-                            .progressViewStyle(.linear)
-                        Text("\(Int(service.progress * 100))%")
-                            .font(.system(size: AppTheme.FontSize.xs))
-                            .monospacedDigit()
+                Divider().opacity(0.2)
+
+                switch mode {
+                case .video:
+                    settingRow(label: "Codec") {
+                        Picker("", selection: $codec) {
+                            ForEach(VideoCodec.allCases) { c in
+                                Text(c.rawValue).tag(c)
+                            }
+                        }
+                        .labelsHidden()
+                    }
+
+                    Divider().opacity(0.2)
+
+                    settingRow(label: "Resolution") {
+                        Picker("", selection: $resolution) {
+                            ForEach(ExportResolution.allCases) { p in
+                                Text(p.rawValue).tag(p)
+                            }
+                        }
+                        .labelsHidden()
+                    }
+
+                    Divider().opacity(0.2)
+
+                    settingRow(label: "Frame Rate") {
+                        Text("\(editor.timeline.fps) fps")
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    }
+
+                case .xml:
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                        Text("Exports your timeline as XML for use in other editors.")
+                            .font(.system(size: AppTheme.FontSize.sm))
                             .foregroundStyle(AppTheme.Text.secondaryColor)
+
+                        Text("Works with DaVinci Resolve, Premiere Pro, and Final Cut Pro.")
+                            .font(.system(size: AppTheme.FontSize.xs))
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+
+                        Text("Text overlays, flips, adjustments, effects, and keyframe easing aren't included.")
+                            .font(.system(size: AppTheme.FontSize.xs))
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
                     }
-                    .padding(.top, AppTheme.Spacing.md)
-                }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, AppTheme.Spacing.sm)
 
-                if let error = service.error {
-                    Text(error)
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .foregroundStyle(AppTheme.Status.errorColor)
-                        .padding(.top, AppTheme.Spacing.sm)
-                }
+                case .fcpxml:
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                        Text("Exports your timeline as FCPXML \(FCPXMLExporter.version) for DaVinci Resolve and Final Cut Pro.")
+                            .font(.system(size: AppTheme.FontSize.sm))
+                            .foregroundStyle(AppTheme.Text.secondaryColor)
 
-                if let palmierResult {
-                    Text(palmierResult)
+                        Text("Includes text, transforms, crop, opacity, and keyframes.")
+                            .font(.system(size: AppTheme.FontSize.xs))
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+
+                        Text("Color, effects, audio fades, and keyframed volume aren't included.")
+                            .font(.system(size: AppTheme.FontSize.xs))
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, AppTheme.Spacing.sm)
+
+                case .palmierProject:
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                        Text("Saves a copy of this project with all media bundled inside, so it opens on any machine.")
+                            .font(.system(size: AppTheme.FontSize.sm))
+                            .foregroundStyle(AppTheme.Text.secondaryColor)
+
+                        if palmierSummary.missing > 0 {
+                            Text("\(palmierSummary.missing) media file\(palmierSummary.missing == 1 ? "" : "s") missing — they'll be skipped.")
+                                .font(.system(size: AppTheme.FontSize.xs))
+                                .foregroundStyle(AppTheme.Status.errorColor)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, AppTheme.Spacing.sm)
+                }
+            }
+
+            // Progress
+            if service.isExporting {
+                VStack(spacing: AppTheme.Spacing.xs) {
+                    ProgressView(value: service.progress)
+                        .progressViewStyle(.linear)
+                    Text("\(Int(service.progress * 100))%")
                         .font(.system(size: AppTheme.FontSize.xs))
+                        .monospacedDigit()
                         .foregroundStyle(AppTheme.Text.secondaryColor)
-                        .padding(.top, AppTheme.Spacing.sm)
                 }
+                .padding(.top, AppTheme.Spacing.md)
+            }
 
-                Spacer()
+            if let error = service.error {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.top, AppTheme.Spacing.sm)
+            }
+
+            if let palmierResult {
+                Text(palmierResult)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .padding(.top, AppTheme.Spacing.sm)
+            }
+
+            Spacer()
             }
             .padding(AppTheme.Spacing.xl)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var destinationPicker: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            Text("Destination")
-                .font(.system(size: AppTheme.FontSize.md))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
-
-            HStack(spacing: AppTheme.Spacing.lg) {
-                ForEach(ExportDestination.allCases) { destination in
-                    destinationButton(destination)
-                }
-            }
-        }
-        .padding(.vertical, AppTheme.Spacing.sm)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var videoSettings: some View {
-        VStack(spacing: 0) {
-            settingRow(label: "Codec") {
-                Picker("", selection: $codec) {
-                    ForEach(VideoCodec.allCases) { codec in
-                        Text(codec.rawValue).tag(codec)
-                    }
-                }
-                .labelsHidden()
-            }
-
-            Divider().opacity(AppTheme.Opacity.moderate)
-
-            settingRow(label: "File Type") {
-                Text(codec.containerLabel)
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-            }
-
-            Divider().opacity(AppTheme.Opacity.moderate)
-
-            settingRow(label: "Resolution") {
-                Picker("", selection: $resolution) {
-                    ForEach(ExportResolution.allCases) { resolution in
-                        Text(resolution.rawValue).tag(resolution)
-                    }
-                }
-                .labelsHidden()
-            }
-
-            Divider().opacity(AppTheme.Opacity.moderate)
-
-            settingRow(label: "Frame Rate") {
-                Text("\(editor.timeline.fps) fps")
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-            }
-        }
-    }
-
-    private var timelineSettings: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            Text("Timeline Format")
-                .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
-                .padding(.top, AppTheme.Spacing.md)
-
-            VStack(spacing: AppTheme.Spacing.sm) {
-                ForEach(TimelineExportFormat.allCases) { format in
-                    timelineFormatButton(format)
-                }
-            }
-        }
-        .padding(.vertical, AppTheme.Spacing.xs)
-    }
-
-    private var palmierProjectSettings: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text("Saves a copy of this project with all media bundled inside, so it opens on any machine.")
-                .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
-
-            if palmierSummary.missing > 0 {
-                Text("\(palmierSummary.missing) media file\(palmierSummary.missing == 1 ? "" : "s") missing - they'll be skipped.")
-                    .font(.system(size: AppTheme.FontSize.xs))
-                    .foregroundStyle(AppTheme.Status.errorColor)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, AppTheme.Spacing.sm)
     }
 
     // MARK: - Bottom bar
@@ -252,7 +208,7 @@ struct ExportView: View {
                     Image(systemName: "clock")
                     Text(duration)
                 }
-                switch destination {
+                switch mode {
                 case .video:
                     HStack(spacing: AppTheme.Spacing.xs) {
                         Image(systemName: "doc")
@@ -260,16 +216,13 @@ struct ExportView: View {
                     }
                     let out = resolution.renderSize(for: CGSize(width: editor.timeline.width, height: editor.timeline.height))
                     Text("\(Int(out.width))×\(Int(out.height))")
-                    Text(codec.containerLabel)
-                case .timeline:
+                case .xml, .fcpxml:
                     Text("\(editor.timeline.width)×\(editor.timeline.height)")
-                    Text(timelineFormat.extensionLabel)
                 case .palmierProject:
                     HStack(spacing: AppTheme.Spacing.xs) {
                         Image(systemName: "shippingbox")
                         Text("~\(ByteCountFormatter.string(fromByteCount: palmierSummary.bytes, countStyle: .file))")
                     }
-                    Text(".\(Project.fileExtension)")
                 }
             }
             .font(.system(size: AppTheme.FontSize.xs))
@@ -302,94 +255,9 @@ struct ExportView: View {
         .padding(.vertical, AppTheme.Spacing.sm)
     }
 
-    private func destinationButton(_ option: ExportDestination) -> some View {
-        let selected = destination == option
-        return Button {
-            destination = option
-        } label: {
-            HStack(spacing: AppTheme.Spacing.sm) {
-                radioIndicator(selected: selected)
-
-                Text(option.rawValue)
-                    .font(.system(size: AppTheme.FontSize.md, weight: selected ? AppTheme.FontWeight.semibold : AppTheme.FontWeight.medium))
-                    .foregroundStyle(selected ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
-                    .lineLimit(1)
-                    .layoutPriority(1)
-            }
-            .padding(.horizontal, AppTheme.Spacing.xs)
-            .padding(.vertical, AppTheme.Spacing.smMd)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .focusable(false)
-    }
-
-    private func radioIndicator(selected: Bool) -> some View {
-        ZStack {
-            Circle()
-                .strokeBorder(selected ? AppTheme.Accent.primary : AppTheme.Text.mutedColor, lineWidth: AppTheme.BorderWidth.thin)
-
-            if selected {
-                Circle()
-                    .fill(AppTheme.Accent.primary)
-                    .padding(AppTheme.Spacing.xs)
-            }
-        }
-        .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
-    }
-
-    private func timelineFormatButton(_ format: TimelineExportFormat) -> some View {
-        let selected = timelineFormat == format
-        return Button {
-            timelineFormat = format
-        } label: {
-            HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
-                    .foregroundStyle(selected ? AppTheme.Accent.primary : AppTheme.Text.mutedColor)
-                    .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
-
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-                    HStack(spacing: AppTheme.Spacing.xs) {
-                        Text(format.rawValue)
-                            .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.semibold))
-                            .foregroundStyle(AppTheme.Text.primaryColor)
-                        Text(format.extensionLabel)
-                            .font(.system(size: AppTheme.FontSize.xs))
-                            .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        Text(format.versionLabel)
-                            .font(.system(size: AppTheme.FontSize.xs))
-                            .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    }
-
-                    Text(format.summary)
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text("Compatibility: \(format.compatibilityLabel)")
-                        .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
-                        .foregroundStyle(AppTheme.Text.secondaryColor)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(AppTheme.Spacing.md)
-            .background {
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                    .fill(selected ? AppTheme.Background.prominentColor : AppTheme.Background.raisedColor)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                    .strokeBorder(selected ? AppTheme.Border.primaryColor : AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
     private var estimatedFileSize: String {
         let seconds = Double(editor.timeline.totalFrames) / Double(max(1, editor.timeline.fps))
-        // Bitrate scales with output pixel area, so any resolution (incl. 2K / native) is covered.
+        // Bitrate scales with output pixel area, so any resolution is covered.
         let out = resolution.renderSize(for: CGSize(width: editor.timeline.width, height: editor.timeline.height))
         let megapixels = Double(out.width * out.height) / 1_000_000
         let bytesPerSecPerMP: Double = switch codec {
@@ -402,47 +270,67 @@ struct ExportView: View {
     }
 
     private var exportFormat: ExportFormat {
-        switch destination {
-        case .timeline: timelineFormat.exportFormat
-        case .palmierProject: .xml   // Palmier Project has its own path; never rendered.
-        case .video:
-            switch codec {
-            case .h264: .h264
-            case .h265: .h265
-            case .prores: .prores
-            }
+        switch mode {
+        case .xml, .palmierProject: .xml   // palmierProject has its own path; never rendered
+        case .fcpxml: .fcpxml
+        case .video: codec.exportFormat
         }
     }
 
     /// Quick estimate for exporting a Palmier Project
-    private func computePalmierSummary() -> (collect: Int, missing: Int, bytes: Int64) {
-        var collect = 0, missing = 0
-        var bytes: Int64 = 0
-        for entry in editor.mediaManifest.entries {
-            let url: URL? = switch entry.source {
-            case .external(let path): URL(fileURLWithPath: path)
-            case .project(let rel): editor.projectURL?.appendingPathComponent(rel)
+    private func computePalmierSummary() async -> (collect: Int, missing: Int, bytes: Int64) {
+        let entries = editor.mediaManifest.entries
+        let projectURL = editor.projectURL
+        return await Task.detached(priority: .utility) {
+            var collect = 0, missing = 0
+            var bytes: Int64 = 0
+            for entry in entries {
+                let url: URL? = switch entry.source {
+                case .external(let path): URL(fileURLWithPath: path)
+                case .project(let rel): projectURL?.appendingPathComponent(rel)
+                }
+                guard let url, FileManager.default.fileExists(atPath: url.path) else { missing += 1; continue }
+                if case .external = entry.source { collect += 1 }
+                bytes += Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
             }
-            guard let url, FileManager.default.fileExists(atPath: url.path) else { missing += 1; continue }
-            if case .external = entry.source { collect += 1 }
-            bytes += Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
-        }
-        return (collect, missing, bytes)
+            return (collect, missing, bytes)
+        }.value
+    }
+
+    private func loadPreview() async {
+        let timeline = editor.timeline
+        let mediaURLs = editor.mediaResolver.expectedURLMap()
+        let missingMediaRefs = editor.missingMediaRefs
+        let image = await Task.detached(priority: .utility) { () async -> CGImage? in
+            for track in timeline.tracks where track.type == .video {
+                for clip in track.clips {
+                    guard !missingMediaRefs.contains(clip.mediaRef),
+                          let url = mediaURLs[clip.mediaRef] else { continue }
+                    let asset = AVURLAsset(url: url)
+                    guard (try? await asset.loadTracks(withMediaType: .video).first) != nil else { continue }
+                    let generator = AVAssetImageGenerator(asset: asset)
+                    generator.maximumSize = CGSize(width: 480, height: 270)
+                    generator.appliesPreferredTrackTransform = true
+                    let time = CMTime(value: CMTimeValue(clip.trimStartFrame), timescale: CMTimeScale(timeline.fps))
+                    guard let image = try? await generator.image(at: time).image else { continue }
+                    return image
+                }
+            }
+            return nil
+        }.value
+        guard let image, !Task.isCancelled else { return }
+        preview = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
     }
 
     private func startExport() {
-        if destination == .palmierProject { startPalmierExport(); return }
+        if mode == .palmierProject { startPalmierExport(); return }
         let format = exportFormat
         let panel = NSSavePanel()
         let contentType: UTType = switch format {
-        case .xml:
-            .xml
-        case .fcpxml:
-            UTType(filenameExtension: "fcpxml") ?? .xml
-        case .prores:
-            .movie
-        case .h264, .h265:
-            .mpeg4Movie
+        case .xml: .xml
+        case .fcpxml: UTType(filenameExtension: "fcpxml") ?? .xml
+        case .prores: .movie
+        default: .mpeg4Movie
         }
         panel.allowedContentTypes = [contentType]
         panel.nameFieldStringValue = "export.\(format.fileExtension)"
@@ -455,6 +343,7 @@ struct ExportView: View {
                     resolver: editor.mediaResolver,
                     format: format,
                     resolution: resolution,
+                    missingMediaRefs: editor.missingMediaRefs,
                     outputURL: url
                 )
                 if service.error == nil {
