@@ -41,6 +41,18 @@ struct PreviewContainerView: View {
                     }
                 }
                 .frame(width: scaledWidth, height: scaledHeight)
+                .simultaneousGesture(
+                    SpatialTapGesture(count: 2)
+                        .onEnded { value in
+                            guard isTimeline,
+                                  let id = PreviewHitTester.clipID(
+                                    at: value.location,
+                                    viewSize: CGSize(width: scaledWidth, height: scaledHeight),
+                                    editor: editor
+                                  ) else { return }
+                            editor.selectedClipIds = editor.expandToLinkGroup([id])
+                        }
+                )
                 .overlay(
                     Rectangle()
                         .stroke(Color.white.opacity(editor.canvasZoom < 1.0 ? AppTheme.Opacity.moderate : 0), lineWidth: AppTheme.BorderWidth.thin)
