@@ -28,6 +28,7 @@ import Foundation
 /// - Text overlays. FCPXML supports this, not XMEML.
 /// - Flips (horizontal/vertical)
 /// - Keyframe interpolation curves (linear/hold/smooth): keyframes import with default easing
+/// - Adjustments and effects (Clip.effects): Core Image stacks have no XMEML representation
 ///
 /// Coordinates are in timeline frames; FCP7 rotation is counter-clockwise-positive, so we negate our clockwise-positive values.
 /// 
@@ -37,9 +38,86 @@ import Foundation
 
 enum XMLExporter {
 
-    static func export(timeline: Timeline, resolver: MediaResolver, outputURL: URL) {
-        let xml = Builder(timeline: timeline, resolver: resolver).build()
-        try? xml.data(using: .utf8)?.write(to: outputURL)
+    static func export(timeline: Timeline, resolver: MediaResolver, outputURL: URL) async throws {
+        let startFrameCache = await sourceTimecodeCache(timeline: timeline, resolver: resolver)
+        let xml = Builder(timeline: timeline, resolver: resolver, startFrameCache: startFrameCache).build()
+        guard let data = xml.data(using: .utf8) else { throw ExportError.xmlEncodingFailed }
+        try data.write(to: outputURL)
+    }
+
+    private static func sourceTimecodeCache(timeline: Timeline, resolver: MediaResolver) async -> [String: SourceTimecode] {
+        let mediaURLs = resolver.expectedURLMap()
+        let mediaRefs = Set(timeline.tracks.flatMap { $0.clips.map(\.mediaRef) })
+        return await withTaskGroup(of: (String, SourceTimecode?).self) { group in
+            for mediaRef in mediaRefs {
+                guard let url = mediaURLs[mediaRef] else { continue }
+                group.addTask {
+                    (mediaRef, await readSourceTimecode(url: url))
+                }
+            }
+            var cache: [String: SourceTimecode] = [:]
+            for await (mediaRef, timecode) in group {
+                if let timecode {
+                    cache[mediaRef] = timecode
+                }
+            }
+            return cache
+        }
+    }
+
+    private static func readSourceTimecode(url: URL) async -> SourceTimecode? {
+        let asset = AVURLAsset(url: url)
+        guard let track = try? await asset.loadTracks(withMediaType: .timecode).first,
+              let format = try? await track.load(.formatDescriptions).first,
+              let reader = try? AVAssetReader(asset: asset) else { return nil }
+        let desc = format
+        let quanta = Int(CMTimeCodeFormatDescriptionGetFrameQuanta(desc))
+        let dropFrame = CMTimeCodeFormatDescriptionGetTimeCodeFlags(desc) & UInt32(kCMTimeCodeFlag_DropFrame) != 0
+        guard quanta > 0 else { return nil }
+
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        guard reader.canAdd(output) else { return nil }
+        reader.add(output)
+        guard reader.startReading() else { return nil }
+        while let sample = output.copyNextSampleBuffer() {
+            guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
+            var be: UInt32 = 0
+            guard CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: 4, destination: &be) == kCMBlockBufferNoErr
+            else { return nil }
+            return SourceTimecode(frame: Int(UInt32(bigEndian: be)), quanta: quanta, dropFrame: dropFrame)
+        }
+        return nil
+    }
+
+    // MARK: - Source timecode
+
+    /// A source's start timecode: frame number in the timecode track's own `quanta` rate, plus its drop-frame flag.
+    struct SourceTimecode: Equatable { let frame: Int; let quanta: Int; let dropFrame: Bool }
+
+    /// The `<timecode>` values to emit for a file. A `tmcd` timecode runs at its own rate (often 30 DF
+    /// even on 60p footage), so when present it — not the video rate — drives the rate/format. When absent,
+    /// fall back to the video rate and emit a dummy 00:00:00:00.
+    static func timecodeTags(source: SourceTimecode?, videoTimebase: Int, videoNtsc: Bool)
+        -> (base: Int, ntsc: Bool, frame: Int, dropFrame: Bool, string: String) {
+        let base = source?.quanta ?? videoTimebase
+        let dropFrame = source?.dropFrame ?? (videoNtsc && videoTimebase % 30 == 0)
+        let ntsc = dropFrame ? true : videoNtsc
+        let frame = source?.frame ?? 0
+        return (base, ntsc, frame, dropFrame, formatTimecode(frame: frame, fps: base, dropFrame: dropFrame))
+    }
+
+    /// Frame count → SMPTE string; drop-frame (29.97/59.94) uses `;` separators and skips dropped frames.
+    static func formatTimecode(frame: Int, fps: Int, dropFrame: Bool) -> String {
+        guard fps > 0 else { return "00:00:00:00" }
+        var f = frame
+        if dropFrame {
+            let drop = Int((Double(fps) * 0.066666).rounded())   // 2 @ 30, 4 @ 60
+            let d = f / (fps * 600), m = f % (fps * 600)
+            f += drop * 9 * d + (m > drop ? drop * ((m - drop) / (fps * 60)) : 0)
+        }
+        let sep = dropFrame ? ";" : ":"
+        let ff = f % fps, ss = (f / fps) % 60, mm = (f / (fps * 60)) % 60, hh = f / (fps * 3600)
+        return String(format: "%02d\(sep)%02d\(sep)%02d\(sep)%02d", hh, mm, ss, ff)
     }
 
     // MARK: - Builder
@@ -56,18 +134,18 @@ enum XMLExporter {
         /// Clip id → position within its media type, used to emit `<link>` cross-references.
         private var clipAddresses: [String: ClipAddress] = [:]
         private var clipsByLinkGroup: [String: [Clip]] = [:]
-        /// Source start timecode (frames) per media ref; nil = no timecode track. Avoids re-reading per file.
-        private var startFrameCache: [String: Int?] = [:]
+        private let startFrameCache: [String: SourceTimecode]
 
         private struct FileKey: Hashable { let mediaRef: String; let isAudio: Bool }
         private struct ClipAddress { let trackIndex: Int; let clipIndex: Int; let isAudio: Bool }  // indices 1-based
 
-        init(timeline: Timeline, resolver: MediaResolver) {
+        init(timeline: Timeline, resolver: MediaResolver, startFrameCache: [String: SourceTimecode]) {
             self.timeline = timeline
             self.resolver = resolver
             self.fps = timeline.fps
             self.seqWidth = timeline.width
             self.seqHeight = timeline.height
+            self.startFrameCache = startFrameCache
         }
 
         // MARK: - Document shell
@@ -215,14 +293,13 @@ enum XMLExporter {
                     rate(timebase, ntsc: ntsc),
                   ])])])
 
-            // timecode is required for Davinci Resolve. Either read from source or emit a dummy 00:00:00:00.
-            let dropFrame = ntsc && timebase % 30 == 0
-            let startFrame = sourceStartFrame(for: mediaRef) ?? 0
+            // timecode is required for Davinci Resolve; computed by the unit-tested timecodeTags.
+            let tc = XMLExporter.timecodeTags(source: sourceTimecode(for: mediaRef), videoTimebase: timebase, videoNtsc: ntsc)
             let timecode = el("timecode", [
-                rate(timebase, ntsc: ntsc),
-                leaf("string", formatTimecode(frame: startFrame, fps: timebase, dropFrame: dropFrame)),
-                leaf("frame", startFrame),
-                leaf("displayformat", dropFrame ? "DF" : "NDF"),
+                rate(tc.base, ntsc: tc.ntsc),
+                leaf("string", tc.string),
+                leaf("frame", tc.frame),
+                leaf("displayformat", tc.dropFrame ? "DF" : "NDF"),
             ])
             return el("file", attrs: [("id", fileId)], [
                 leaf("name", fileName),
@@ -235,43 +312,8 @@ enum XMLExporter {
         }
 
         /// Source start timecode — one read serves both the video and audio file nodes.
-        private func sourceStartFrame(for mediaRef: String) -> Int? {
-            if let cached = startFrameCache[mediaRef] { return cached }
-            let frame = resolver.resolveURL(for: mediaRef).flatMap(Builder.readStartTimecodeFrame)
-            startFrameCache[mediaRef] = frame
-            return frame
-        }
-
-        /// Start frame from the QuickTime `tmcd` track; skip the leading edit-boundary buffer (no data buffer).
-        private static func readStartTimecodeFrame(url: URL) -> Int? {
-            let asset = AVURLAsset(url: url)
-            guard let track = asset.tracks(withMediaType: .timecode).first,
-                  let reader = try? AVAssetReader(asset: asset) else { return nil }
-            let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
-            guard reader.canAdd(output) else { return nil }
-            reader.add(output)
-            guard reader.startReading() else { return nil }
-            while let sample = output.copyNextSampleBuffer() {
-                guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
-                var be: UInt32 = 0
-                guard CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: 4, destination: &be) == kCMBlockBufferNoErr
-                else { return nil }
-                return Int(UInt32(bigEndian: be))
-            }
-            return nil
-        }
-
-        /// Frame count → SMPTE string; drop-frame (29.97/59.94) uses `;` separators and skips dropped frames.
-        private func formatTimecode(frame: Int, fps: Int, dropFrame: Bool) -> String {
-            var f = frame
-            if dropFrame {
-                let drop = Int((Double(fps) * 0.066666).rounded())   // 2 @ 30, 4 @ 60
-                let d = f / (fps * 600), m = f % (fps * 600)
-                f += drop * 9 * d + (m > drop ? drop * ((m - drop) / (fps * 60)) : 0)
-            }
-            let sep = dropFrame ? ";" : ":"
-            let ff = f % fps, ss = (f / fps) % 60, mm = (f / (fps * 60)) % 60, hh = f / (fps * 3600)
-            return String(format: "%02d\(sep)%02d\(sep)%02d\(sep)%02d", hh, mm, ss, ff)
+        private func sourceTimecode(for mediaRef: String) -> SourceTimecode? {
+            startFrameCache[mediaRef]
         }
 
         // MARK: - Links

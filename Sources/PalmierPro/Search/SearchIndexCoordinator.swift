@@ -31,27 +31,6 @@ final class SearchIndexCoordinator {
         Self.registry.add(self)
     }
 
-    // MARK: - Export pause (refcounted across windows)
-
-    /// Counts in-flight exports across all windows; indexing pauses while any run.
-    struct ExportPauseCounter {
-        private(set) var count = 0
-        var isActive: Bool { count > 0 }
-        mutating func begin() { count += 1 }
-        mutating func end() { count = max(0, count - 1) }
-    }
-
-    private static var exportPause = ExportPauseCounter()
-    static var exportActive: Bool { exportPause.isActive }
-    static func exportDidBegin() { exportPause.begin() }
-    static func exportDidEnd() { exportPause.end() }
-
-    static func waitWhileExportActive() async throws {
-        while exportActive {
-            try await Task.sleep(for: .seconds(2))
-        }
-    }
-
     // MARK: - App-level fan-out
 
     static func sweepAll() { for c in live { c.sweep() } }
@@ -147,7 +126,7 @@ final class SearchIndexCoordinator {
         )
         worker = Task(priority: .utility) { [weak self] in
             while let self, !Task.isCancelled, let asset = self.dequeue() {
-                while Self.exportActive, !Task.isCancelled {
+                while ExportCoordinator.isExportActive, !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(2))
                 }
                 self.currentAssetFraction = 0
@@ -189,7 +168,7 @@ final class SearchIndexCoordinator {
         do {
             async let transcriptDone: Void = {
                 if transcribe {
-                    try await SearchIndexCoordinator.waitWhileExportActive()
+                    try await ExportCoordinator.waitWhileExportActive()
                     _ = try await TranscriptCache.shared.transcript(for: url, isVideo: isVideo, range: nil)
                 }
             }()

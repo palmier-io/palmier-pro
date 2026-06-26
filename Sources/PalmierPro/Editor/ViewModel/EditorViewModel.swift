@@ -110,6 +110,8 @@ final class EditorViewModel {
     var mediaAssets: [MediaAsset] = []
     var offlineMediaRefs: Set<String> = []
     var unprocessableMediaRefs: Set<String> = []
+    var missingMediaRefs: Set<String> = []
+    @ObservationIgnored var missingMediaRefreshTask: Task<Void, Never>?
     let mediaVisualCache = MediaVisualCache()
     let searchIndex = SearchIndexCoordinator()
     var projectURL: URL? {
@@ -166,11 +168,16 @@ final class EditorViewModel {
     var mediaPanelCurrentFolderId: String?
     var mediaPanelPasteRequestTick: Int = 0
     var mediaPanelShowMediaTabTick: Int = 0
-    var mediaPanelToast: String?
+    var mediaPanelToast: MediaPanelToast?
     @ObservationIgnored var mediaImportTail: Task<MediaImportSummary, Never>?
     @ObservationIgnored var mediaImportSequence: Int = 0
 
-    func showMediaPanelMediaTab() { mediaPanelShowMediaTabTick += 1 }
+    func showMediaPanelMediaTab() {
+        mediaPanelShowMediaTabTick += 1
+        // Refresh offline status when the user opens the media tab, so missing
+        // files show as offline even for assets not on the timeline.
+        refreshMissingMediaCache()
+    }
 
     init() {
         mediaResolver = MediaResolver(
@@ -179,6 +186,23 @@ final class EditorViewModel {
         )
         agentService.editor = self
         searchIndex.assetsProvider = { [weak self] in self?.mediaAssets ?? [] }
+
+        // Re-check media presence when the app regains focus: a user may have
+        // deleted/moved backing files in Finder (or ejected a volume) while we
+        // were inactive. `refreshMissingMediaCache` stats off the main thread.
+        didBecomeActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshMissingMediaCache() }
+        }
+    }
+
+    @ObservationIgnored private nonisolated(unsafe) var didBecomeActiveObserver: NSObjectProtocol?
+
+    deinit {
+        if let didBecomeActiveObserver {
+            NotificationCenter.default.removeObserver(didBecomeActiveObserver)
+        }
     }
 
     // MARK: - Document bridge
@@ -358,12 +382,17 @@ final class EditorViewModel {
         let shouldLink = addLinkedAudio && targetIsVideo && asset.type == .video && asset.hasAudio
         let linkGroupId: String? = shouldLink ? UUID().uuidString : nil
         let trimStart = sourceSegment.map { secondsToFrame(seconds: $0.lowerBound, fps: timeline.fps) } ?? 0
+        let totalSourceFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
 
         // sourceSegment (source seconds) and explicit trim frames are mutually exclusive; callers pass one.
         let applyTrim: (inout Clip) -> Void = { clip in
             if sourceSegment != nil {
+                // trimStartFrame/trimEndFrame are amounts trimmed off the head/tail
+                // (sourceDurationFrames = consumed + trimStart + trimEnd), so the tail
+                // trim is whatever source remains after the head trim and visible span.
+                let consumed = Int((Double(durationFrames) * clip.speed).rounded())
                 clip.trimStartFrame = trimStart
-                clip.trimEndFrame = trimStart + durationFrames
+                clip.trimEndFrame = max(0, totalSourceFrames - trimStart - consumed)
             } else {
                 if let t = trimStartFrame { clip.trimStartFrame = t }
                 if let t = trimEndFrame { clip.trimEndFrame = t }

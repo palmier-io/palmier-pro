@@ -17,11 +17,25 @@ final class MediaResolver: @unchecked Sendable {
 
     func expectedURL(for assetId: String) -> URL? {
         guard let entry = entry(for: assetId) else { return nil }
+        return Self.expectedURL(for: entry, projectURL: projectURL())
+    }
+
+    func expectedURLMap() -> [String: URL] {
+        Self.expectedURLMap(entries: manifest().entries, projectURL: projectURL())
+    }
+
+    static func expectedURLMap(entries: [MediaManifestEntry], projectURL: URL?) -> [String: URL] {
+        Dictionary(uniqueKeysWithValues: entries.compactMap { entry in
+            expectedURL(for: entry, projectURL: projectURL).map { (entry.id, $0) }
+        })
+    }
+
+    private static func expectedURL(for entry: MediaManifestEntry, projectURL: URL?) -> URL? {
         switch entry.source {
         case .external(let absolutePath):
             return URL(fileURLWithPath: absolutePath)
         case .project(let relativePath):
-            guard let base = projectURL() else { return nil }
+            guard let base = projectURL else { return nil }
             return base.appendingPathComponent(relativePath)
         }
     }
@@ -29,6 +43,26 @@ final class MediaResolver: @unchecked Sendable {
     func isMissing(for assetId: String) -> Bool {
         guard let url = expectedURL(for: assetId) else { return true }
         return !FileManager.default.fileExists(atPath: url.path)
+    }
+
+    /// Compute the set of asset IDs whose backing file is missing on disk, from a
+    /// snapshot of manifest entries + the project base path
+    static func missingAssetIds(entries: [MediaManifestEntry], projectPath: String?) -> Set<String> {
+        var missing: Set<String> = []
+        for entry in entries {
+            let path: String?
+            switch entry.source {
+            case .external(let absolutePath):
+                path = absolutePath
+            case .project(let relativePath):
+                path = projectPath.map { ($0 as NSString).appendingPathComponent(relativePath) }
+            }
+            guard let path, FileManager.default.fileExists(atPath: path) else {
+                missing.insert(entry.id)
+                continue
+            }
+        }
+        return missing
     }
 
     func displayName(for assetId: String) -> String {

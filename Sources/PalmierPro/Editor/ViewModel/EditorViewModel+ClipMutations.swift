@@ -94,24 +94,35 @@ extension EditorViewModel {
     func splitClip(clipId: String, atFrame: Int) -> [String] {
         guard let loc = findClip(id: clipId) else { return [] }
         let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        let groupIds: Set<String> = clip.linkGroupId != nil
-            ? Set([clipId] + linkedPartnerIds(of: clipId))
-            : [clipId]
+        guard atFrame > clip.startFrame && atFrame < clip.endFrame else { return [] }
+        return splitClips(at: [(loc.trackIndex, atFrame)])
+    }
 
+    /// Splits at one or more project frames in a single undoable action
+    func splitClips(at points: [(trackIndex: Int, atFrame: Int)]) -> [String] {
         undoManager?.beginUndoGrouping()
+        defer {
+            undoManager?.endUndoGrouping()
+            undoManager?.setActionName(points.count > 1 ? "Split Clips" : "Split Clip")
+        }
         var rightIds: [String] = []
-        for id in groupIds {
-            if let rightId = splitSingleClip(clipId: id, atFrame: atFrame) {
-                rightIds.append(rightId)
+        for p in points {
+            guard p.trackIndex >= 0, p.trackIndex < timeline.tracks.count,
+                  let clip = timeline.tracks[p.trackIndex].clips.first(where: {
+                      p.atFrame > $0.startFrame && p.atFrame < $0.endFrame
+                  })
+            else { continue }
+            let groupIds: Set<String> = clip.linkGroupId != nil
+                ? Set([clip.id] + linkedPartnerIds(of: clip.id))
+                : [clip.id]
+            let rights = groupIds.compactMap { splitSingleClip(clipId: $0, atFrame: p.atFrame) }
+            // Regroup the right halves so each side is its own linked pair.
+            if groupIds.count > 1 && !rights.isEmpty {
+                let newGroup = UUID().uuidString
+                mutateClips(ids: Set(rights), actionName: "Split Clip") { $0.linkGroupId = newGroup }
             }
+            rightIds.append(contentsOf: rights)
         }
-        // Regroup the right halves so each side is its own linked pair.
-        if groupIds.count > 1 && !rightIds.isEmpty {
-            let newGroup = UUID().uuidString
-            mutateClips(ids: Set(rightIds), actionName: "Split Clip") { $0.linkGroupId = newGroup }
-        }
-        undoManager?.endUndoGrouping()
-        undoManager?.setActionName(groupIds.count > 1 ? "Split Clips" : "Split Clip")
         return rightIds
     }
 
@@ -178,7 +189,8 @@ extension EditorViewModel {
             .filter { $0.frame >= splitOffset }
             .map { Keyframe(frame: $0.frame - splitOffset, value: $0.value, interpolationOut: $0.interpolationOut) }
         if rightKfs.first?.frame != 0 {
-            rightKfs.insert(Keyframe(frame: 0, value: boundary), at: 0)
+            let interp = track.keyframes.last { $0.frame < splitOffset }?.interpolationOut ?? .smooth
+            rightKfs.insert(Keyframe(frame: 0, value: boundary, interpolationOut: interp), at: 0)
         }
         return (
             leftKfs.isEmpty ? nil : KeyframeTrack(keyframes: leftKfs),
@@ -257,10 +269,13 @@ extension EditorViewModel {
         let basis = dragBefore[clip.id] ?? clip
         let sourceFrames = Double(basis.durationFrames) * basis.speed
         let newDuration = max(1, Int((sourceFrames / newSpeed).rounded()))
+        let oldDuration = clip.durationFrames
         let oldEnd = clip.endFrame
 
         timeline.tracks[ti].clips[loc.clipIndex].speed = newSpeed
         timeline.tracks[ti].clips[loc.clipIndex].durationFrames = newDuration
+        // Keyframe offsets are clip-relative, so retime them before the clamp drops them.
+        timeline.tracks[ti].clips[loc.clipIndex].rescaleKeyframes(by: Double(newDuration) / Double(oldDuration))
         timeline.tracks[ti].clips[loc.clipIndex].clampKeyframesToDuration()
         timeline.tracks[ti].clips[loc.clipIndex].clampFadesToDuration()
 
@@ -337,6 +352,33 @@ extension EditorViewModel {
         }
     }
 
+    func applyClipProperties(clipIds: [String], rebuild: Bool = false, _ modify: (inout Clip) -> Void) {
+        var touchedText = false
+        var touchedVisual = false
+        for clipId in clipIds {
+            guard let loc = findClip(id: clipId) else { continue }
+            var clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            if dragBefore[clipId] == nil {
+                dragBefore[clipId] = clip
+            }
+            modify(&clip)
+            timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
+            if clip.mediaType == .text {
+                touchedText = true
+            } else {
+                touchedVisual = true
+            }
+        }
+        if touchedText { videoEngine?.syncTextLayers() }
+        if touchedVisual {
+            if rebuild {
+                notifyTimelineChangedDebounced()
+            } else {
+                videoEngine?.refreshVisuals()
+            }
+        }
+    }
+
     func revertClipProperty(clipId: String) {
         guard let original = dragBefore.removeValue(forKey: clipId),
               let loc = findClip(id: clipId) else { return }
@@ -409,6 +451,26 @@ extension EditorViewModel {
         } else {
             notifyTimelineChanged()
         }
+    }
+
+    func commitClipProperties(clipIds: [String], _ modify: (inout Clip) -> Void) {
+        var touchedText = false
+        var touchedVisual = false
+        for clipId in clipIds {
+            guard let loc = findClip(id: clipId) else { continue }
+            var clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            let before = dragBefore.removeValue(forKey: clipId) ?? clip
+            modify(&clip)
+            timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
+            registerClipPropertySwap(clipId: clipId, undoTarget: before, redoTarget: clip)
+            if clip.mediaType == .text {
+                touchedText = true
+            } else {
+                touchedVisual = true
+            }
+        }
+        if touchedText { videoEngine?.syncTextLayers() }
+        if touchedVisual { notifyTimelineChanged() }
     }
 
     /// Bidirectional undo/redo for a single clip's property change.

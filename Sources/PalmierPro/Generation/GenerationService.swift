@@ -182,9 +182,7 @@ final class GenerationService {
 
     private static func destinationDirectory(for projectURL: URL?) -> URL {
         if let projectURL {
-            let dir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            return dir
+            return projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
         }
         return FileManager.default.temporaryDirectory
     }
@@ -199,8 +197,10 @@ final class GenerationService {
                ClipType(fileExtension: realExt) != nil {
                 asset.url = asset.url.deletingPathExtension().appendingPathExtension(realExt)
             }
-            try? FileManager.default.removeItem(at: asset.url)
-            try FileManager.default.moveItem(at: tempURL, to: asset.url)
+            let destinationURL = asset.url
+            try await Task.detached(priority: .utility) {
+                try FileIO.moveReplacingDestination(from: tempURL, to: destinationURL)
+            }.value
 
             asset.pendingDownloadURL = nil
             asset.generationStatus = .none
@@ -275,6 +275,8 @@ final class GenerationService {
         case "mp3": return "audio/mpeg"
         case "wav": return "audio/wav"
         case "m4a": return "audio/mp4"
+        case "aiff", "aif", "aifc": return "audio/aiff"
+        case "flac": return "audio/flac"
         default:
             switch fallback {
             case .image: return "image/jpeg"

@@ -235,6 +235,7 @@ extension ToolExecutor {
             }
             let mp4 = try await TimelineRenderer.render(
                 timeline: editor.timeline, resolver: editor.mediaResolver,
+                missingMediaRefs: editor.missingMediaRefs,
                 startFrame: start, frameCount: end - start,
                 shortSide: 360, includeAudio: false
             )

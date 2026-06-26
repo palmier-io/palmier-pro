@@ -5,21 +5,19 @@ import Foundation
 // the project and accept any prefix back: tools always run on full ids (resolved on input),
 // and every text response has its known ids shortened on the way out.
 extension ToolExecutor {
-    private static let idPrefixFloor = 8
+    private nonisolated static let idPrefixFloor = 8
 
     private static let scalarIdKeys: Set<String> = [
-        "clipId", "sourceClipId",
+        "clipId", "sourceClipId", "referenceClipId", "targetClipId",
         "mediaRef", "startFrameMediaRef", "endFrameMediaRef",
         "sourceVideoMediaRef", "videoSourceMediaRef",
         "folderId", "parentFolderId",
     ]
     private static let arrayIdKeys: Set<String> = [
-        "clipIds", "assetIds", "folderIds",
+        "clipIds", "targetClipIds", "assetIds", "folderIds",
         "referenceMediaRefs", "referenceImageMediaRefs",
         "referenceVideoMediaRefs", "referenceAudioMediaRefs",
     ]
-
-    private static let uuidRegex = /[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}/
 
     /// Every entity id the agent can see or name back. One set serves both directions: a min-unique
     /// prefix is distinct across the whole set, so anything we emit resolves to exactly one id.
@@ -29,8 +27,8 @@ extension ToolExecutor {
             ids.insert(track.id)
             for clip in track.clips {
                 ids.insert(clip.id)
-                clip.captionGroupId.map { ids.insert($0) }
-                clip.linkGroupId.map { ids.insert($0) }
+                if let captionGroupId = clip.captionGroupId { ids.insert(captionGroupId) }
+                if let linkGroupId = clip.linkGroupId { ids.insert(linkGroupId) }
             }
         }
         for asset in editor.mediaAssets { ids.insert(asset.id) }
@@ -40,27 +38,54 @@ extension ToolExecutor {
 
     /// Replaces each known full UUID in a result's text with its short prefix. Unknown UUIDs
     /// (e.g. ones embedded in a filename) aren't in the map and pass through untouched.
-    func shorteningIds(in result: ToolResult, editor: EditorViewModel) -> ToolResult {
-        let map = Self.shortIdMap(currentIdUniverse(editor))
+    func shorteningIds(in result: ToolResult, editor: EditorViewModel) async -> ToolResult {
+        guard result.content.contains(where: { block in
+            if case .text = block { return true }
+            return false
+        }) else { return result }
+
+        let universe = currentIdUniverse(editor)
+        guard !universe.isEmpty else { return result }
+        return await Task.detached(priority: .utility) {
+            Self.shorteningIds(in: result, universe: universe)
+        }.value
+    }
+
+    nonisolated static func shorteningIds(in result: ToolResult, universe: Set<String>) -> ToolResult {
+        let map = shortIdMap(universe)
         guard !map.isEmpty else { return result }
+        let uuidRegex = /[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}/
         let content = result.content.map { block -> ToolResult.Block in
             guard case .text(let s) = block else { return block }
-            return .text(s.replacing(Self.uuidRegex) { map[String($0.output)] ?? String($0.output) })
+            return .text(s.replacing(uuidRegex) { map[String($0.output)] ?? String($0.output) })
         }
         return ToolResult(content: content, isError: result.isError)
     }
 
-    /// Maps each id to its shortest prefix (≥ 8 chars) that no other id shares.
-    static func shortIdMap(_ ids: Set<String>) -> [String: String] {
+    /// Maps each id to its shortest prefix (≥ idPrefixFloor) that no other id shares. O(n log n)
+    nonisolated static func shortIdMap(_ ids: Set<String>) -> [String: String] {
+        let sorted = ids.sorted()
         var out: [String: String] = [:]
-        for id in ids {
-            var len = idPrefixFloor
-            while len < id.count, ids.contains(where: { $0 != id && $0.hasPrefix(id.prefix(len)) }) {
-                len += 1
-            }
+        for (i, id) in sorted.enumerated() {
+            var sharedLen = 0
+            if i > 0 { sharedLen = max(sharedLen, commonPrefixLength(id, sorted[i - 1])) }
+            if i < sorted.count - 1 { sharedLen = max(sharedLen, commonPrefixLength(id, sorted[i + 1])) }
+            let len = min(id.count, max(idPrefixFloor, sharedLen + 1))
             out[id] = String(id.prefix(len))
         }
         return out
+    }
+
+    private nonisolated static func commonPrefixLength(_ a: String, _ b: String) -> Int {
+        var count = 0
+        var i = a.startIndex
+        var j = b.startIndex
+        while i < a.endIndex, j < b.endIndex, a[i] == b[j] {
+            count += 1
+            i = a.index(after: i)
+            j = b.index(after: j)
+        }
+        return count
     }
 
     /// Expands id-prefix arguments back to full ids before a tool runs. Throws on an ambiguous prefix;

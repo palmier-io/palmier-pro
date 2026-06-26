@@ -2,21 +2,26 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.3.6",
-      "date": "2026-06-22",
+      "version": "0.4.3",
+      "date": "2026-06-26",
       "sections": [
+        {
+          "heading": "New",
+          "items": [
+            "New FCPXML export format - Agent can now export your timeline as FCPXML v1.14 for Davinci Resolve."
+          ]
+        },
         {
           "heading": "Improved",
           "items": [
-            "Improve app hang performance",
-            "Pressing Play at the end of a video now starts playback from the beginning"
+            "Agent's split_clips now can do batch operations.",
+            "Agent can specify language for the transcript generation."
           ]
         },
         {
           "heading": "Fixed",
           "items": [
-            "Fixed incorrect 720p HEVC export behavior",
-            "Fixed text color parsing when pasted hex values include line breaks"
+            "Fixed caption phase timing issue."
           ]
         }
       ]

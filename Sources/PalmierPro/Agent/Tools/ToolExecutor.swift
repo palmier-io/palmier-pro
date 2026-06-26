@@ -18,6 +18,7 @@ final class ToolExecutor {
     }
 
     private var agentUndoStack: [String] = []
+    var feedbackState = FeedbackState()
 
     func execute(name: String, args: [String: Any]) async -> ToolResult {
         guard let tool = ToolName(rawValue: name) else {
@@ -45,6 +46,7 @@ final class ToolExecutor {
         } catch {
             result = .error(error.localizedDescription)
         }
+        feedbackState.record(result, for: tool)
         let elapsed = started.duration(to: .now).seconds
         let telemetry = result.isError ? "Agent tool failed" : "Agent tool finished"
         let payload: Telemetry.Payload = [
@@ -66,7 +68,7 @@ final class ToolExecutor {
             )
         }
         // Shorten on the post-run state so newly created ids in summaries are shortened too.
-        return shorteningIds(in: result, editor: editor)
+        return await shorteningIds(in: result, editor: editor)
     }
 
     private func run(_ tool: ToolName, _ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -78,9 +80,14 @@ final class ToolExecutor {
         case .getTranscript:   return try await getTranscript(editor, args)
         case .inspectTimeline: return try await inspectTimeline(editor, args)
         case .searchMedia:     return try await searchMedia(editor, args)
+        case .inspectColor:    return try await inspectColor(editor, args)
         case .addCaptions:     return try await addCaptions(editor, args)
+        case .removeWords:     return try await removeWords(editor, args)
+        case .syncAudio:       return try await syncAudio(editor, args)
+        case .exportProject:   return try await exportProject(editor, args)
         case .generateAudio:   return try await generateAudio(editor, args)
         case .importMedia:     return try await importMedia(editor, args)
+        case .sendFeedback:    return try await sendFeedback(editor, args)
         default:               return try editor.applyingAgentEdit { try runSync(tool, editor, args) }
         }
     }
@@ -96,8 +103,10 @@ final class ToolExecutor {
         case .moveClips:          return try moveClips(editor, args)
         case .setClipProperties:  return try setClipProperties(editor, args)
         case .setKeyframes:       return try setKeyframes(editor, args)
-        case .splitClip:          return try splitClip(editor, args)
+        case .splitClips:         return try splitClips(editor, args)
         case .rippleDeleteRanges: return try rippleDeleteRanges(editor, args)
+        case .applyColor:         return try applyColor(editor, args)
+        case .applyEffect:        return try applyEffect(editor, args)
         case .undo:               return try undo(editor)
         case .addTexts:           return try addTexts(editor, args)
         case .generateVideo:      return try generate(editor, args, type: .video)
@@ -111,8 +120,10 @@ final class ToolExecutor {
         case .renameFolder:       return try renameFolder(editor, args)
         case .deleteMedia:        return try deleteMedia(editor, args)
         case .deleteFolder:       return try deleteFolder(editor, args)
-        case .inspectMedia, .getTranscript, .inspectTimeline, .searchMedia,
-             .addCaptions, .generateAudio, .importMedia:
+        case .setProjectSettings: return try setProjectSettings(editor, args)
+        case .inspectMedia, .getTranscript, .inspectTimeline, .searchMedia, .inspectColor,
+             .addCaptions, .removeWords, .syncAudio, .exportProject, .generateAudio,
+             .importMedia, .sendFeedback:
             throw ToolError("\(tool.rawValue) is async; it must be handled in run(_:_:_:)")
         }
     }

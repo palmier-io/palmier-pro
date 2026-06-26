@@ -99,7 +99,11 @@ struct AgentInputBox<LeadingTools: View>: View {
                 .onChange(of: draft) { old, new in
                     updateMentionQuery(from: new)
                     if !old.isEmpty && new.isEmpty {
+                        let wasFocused = focused
                         textEditorID = UUID()
+                        if wasFocused {
+                            Task { @MainActor in focused = true }
+                        }
                     }
                 }
                 .onPasteCommand(of: [.fileURL, .image, .png, .jpeg, .tiff], perform: handlePaste)
@@ -278,9 +282,11 @@ struct AgentInputBox<LeadingTools: View>: View {
             return
         }
         for (type, ext) in [(NSPasteboard.PasteboardType.png, "png"), (.tiff, "tiff")] {
-            if let data = pb.data(forType: type),
-               let asset = editor.importPastedImageData(data, fileExtension: ext) {
-                editor.agentService.attachMention(for: asset)
+            if let data = pb.data(forType: type) {
+                Task { @MainActor in
+                    guard let asset = await editor.importPastedImageData(data, fileExtension: ext) else { return }
+                    editor.agentService.attachMention(for: asset)
+                }
                 return
             }
         }

@@ -1,4 +1,5 @@
 import AppKit
+import ClerkKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -28,6 +29,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppState.shared.showHome()
         }
         return true
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            Task { @MainActor in
+                do {
+                    let handled = try await Clerk.shared.handle(url)
+                    Log.account.notice(
+                        "auth callback \(handled ? "handled" : "ignored") url=\(Self.safeURLDescription(url))",
+                        telemetry: "Auth callback received",
+                        data: ["handled": handled, "url": Self.safeURLDescription(url)]
+                    )
+                } catch {
+                    Log.account.warning(
+                        "auth callback failed url=\(Self.safeURLDescription(url)) error=\(Log.detail(error))",
+                        telemetry: "Auth callback failed",
+                        data: ["error": error.localizedDescription, "url": Self.safeURLDescription(url)]
+                    )
+                }
+            }
+        }
+    }
+
+    private static func safeURLDescription(_ url: URL) -> String {
+        var components = URLComponents()
+        components.scheme = url.scheme
+        components.host = url.host
+        components.path = url.path
+        return components.string ?? url.scheme ?? "unknown"
     }
 
     @MainActor

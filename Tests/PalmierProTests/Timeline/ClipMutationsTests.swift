@@ -52,6 +52,25 @@ struct ApplyClipSpeedTests {
         let updated = e.timeline.tracks[0].clips.first { $0.id == "c2" }!
         #expect(updated.startFrame == 100)
     }
+
+    @Test func applyClipSpeedRescalesKeyframesInsteadOfDroppingThem() {
+        // 2x speed halves a 60-frame clip; keyframes must rescale, not get clamped away.
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        clip.opacityTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 1.0),
+            Keyframe(frame: 30, value: 0.5),
+            Keyframe(frame: 60, value: 0.0),
+        ])
+        clip.scaleTrack = KeyframeTrack(keyframes: [Keyframe(frame: 60, value: AnimPair(a: 2.0, b: 2.0))])
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+
+        e.applyClipSpeed(clipId: "c1", newSpeed: 2.0)
+        let updated = e.timeline.tracks[0].clips[0]
+
+        #expect(updated.durationFrames == 30)
+        #expect(updated.opacityTrack?.keyframes.map(\.frame) == [0, 15, 30])
+        #expect(updated.scaleTrack?.keyframes.map(\.frame) == [30])
+    }
 }
 
 @Suite("EditorViewModel — splitClip")
@@ -85,6 +104,17 @@ struct SplitClipTests {
         #expect(e.timeline.tracks[0].clips.count == 1)
     }
 
+    @Test func splitClipDoesNotCutAnotherClipOnSameTrack() {
+        // c1 = 0..30, c2 = 30..60. Splitting c1 at frame 45 (inside c2, outside c1) must
+        // do nothing — not resolve to c2 and cut it.
+        let e = editor([Fixtures.videoTrack(clips: [
+            Fixtures.clip(id: "c1", start: 0, duration: 30),
+            Fixtures.clip(id: "c2", start: 30, duration: 30),
+        ])])
+        #expect(e.splitClip(clipId: "c1", atFrame: 45).isEmpty)
+        #expect(e.timeline.tracks[0].clips.count == 2)
+    }
+
     @Test func splitWithLinkedPartnerSplitsBothAndRegroupsRightHalves() {
         // video + audio sharing g1. After split at 30, the right halves should share a
         // *new* group id (not the original g1).
@@ -110,6 +140,36 @@ struct SplitClipTests {
         let leftIds: Set<String> = ["v", "a"]
         let leftGroups = Set(allClips.filter { leftIds.contains($0.id) }.compactMap(\.linkGroupId))
         #expect(leftGroups == ["g1"])
+    }
+
+    @Test func splitClipsAtMultiplePointsCutsEachAndSkipsBoundaries() {
+        let clip = Fixtures.clip(id: "c1", start: 0, duration: 90)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        // Two real cuts plus a repeat of the first: the repeat lands on a boundary and is a no-op.
+        let rightIds = e.splitClips(at: [(0, 30), (0, 60), (0, 30)])
+        let clips = e.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(clips.map(\.startFrame) == [0, 30, 60])
+        #expect(clips.map(\.durationFrames) == [30, 30, 30])
+        #expect(rightIds.count == 2)
+    }
+
+    @Test func splitClipKeepsSegmentInterpolationOnRightHalf() {
+        // hold opacity (0→1.0) and linear rotation (0°→20°). Splitting mid-segment must not
+        // turn the right half's opening keyframe smooth: hold stays flat, linear stays straight.
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        clip.opacityTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 1.0, interpolationOut: .hold),
+            Keyframe(frame: 30, value: 0.5),
+        ])
+        clip.rotationTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 0.0, interpolationOut: .linear),
+            Keyframe(frame: 20, value: 20.0),
+        ])
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let rightId = e.splitClip(clipId: "c1", atFrame: 10)[0]
+        let right = e.timeline.tracks[0].clips.first { $0.id == rightId }!
+        #expect(right.opacityTrack?.sample(at: 5, fallback: 0.0) == 1.0)   // hold: still flat
+        #expect(right.rotationTrack?.sample(at: 5, fallback: 0.0) == 15.0) // linear: 10°→20° at halfway
     }
 
     @Test func splitClipZerosOpacityFadesAcrossCut() {
@@ -284,6 +344,33 @@ struct MoveClipsTests {
         e.moveClips([(clipId: "c1", toTrack: 1, toFrame: -50)])
         let loc = e.findClip(id: "c1")!
         #expect(e.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame == 0)
+    }
+}
+
+@Suite("EditorViewModel — writePosition")
+@MainActor
+struct WritePositionTests {
+
+    @Test func writePositionWithActiveKeyframesPreservesFallbackTransform() {
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        clip.transform.centerX = 0.5
+        clip.transform.centerY = 0.5
+        clip.transform.width = 0.4
+        clip.transform.height = 0.4
+        clip.positionTrack = KeyframeTrack(keyframes: [Keyframe(frame: 0, value: AnimPair(a: 0.1, b: 0.1))])
+
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        e.currentFrame = 0
+
+        e.commitPosition(clipId: "c1", setX: 0.4, setY: 0.4)
+
+        let updated = e.timeline.tracks[0].clips[0]
+        let kf = updated.positionTrack?.keyframes.first(where: { $0.frame == 0 })
+        #expect(kf?.value == AnimPair(a: 0.4, b: 0.4))
+        // Fallback transform must not be touched while keyframes are active.
+        // Bug: without the else-guard, centerX/Y become 0.6 (0.4 + width/2).
+        #expect(updated.transform.centerX == 0.5)
+        #expect(updated.transform.centerY == 0.5)
     }
 }
 

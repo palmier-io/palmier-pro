@@ -201,35 +201,6 @@ enum Transcription {
 
     /// Decode the asset's audio track to a PCM file with AVAssetReader
     private static func extractAudioTrack(from videoURL: URL, range: ClosedRange<Double>? = nil) async throws -> URL {
-        let asset = AVURLAsset(url: videoURL)
-        guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
-            throw TranscriptionError.audioExtractionFailed("No audio track in \(videoURL.lastPathComponent)")
-        }
-
-        let reader: AVAssetReader
-        do { reader = try AVAssetReader(asset: asset) } catch {
-            throw TranscriptionError.audioExtractionFailed(error.localizedDescription)
-        }
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: 16_000,
-            AVNumberOfChannelsKey: 1,
-            AVLinearPCMBitDepthKey: 16,
-            AVLinearPCMIsFloatKey: false,
-            AVLinearPCMIsBigEndianKey: false,
-            AVLinearPCMIsNonInterleaved: false,
-        ])
-        guard reader.canAdd(output) else {
-            throw TranscriptionError.audioExtractionFailed("Cannot read audio from \(videoURL.lastPathComponent)")
-        }
-        reader.add(output)
-        if let range {
-            reader.timeRange = CMTimeRange(
-                start: CMTime(seconds: range.lowerBound, preferredTimescale: 600),
-                end: CMTime(seconds: range.upperBound, preferredTimescale: 600)
-            )
-        }
-
         let outURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("palmier-stt-\(UUID().uuidString).caf")
         Log.transcription.notice(
@@ -238,35 +209,31 @@ enum Transcription {
             data: ["hasRange": range != nil, "rangeSeconds": range.map { $0.upperBound - $0.lowerBound } ?? 0]
         )
 
-        guard reader.startReading() else {
-            throw TranscriptionError.audioExtractionFailed(reader.error?.localizedDescription ?? "Reader could not start")
-        }
-
         var audioFile: AVAudioFile?
-        while let sample = output.copyNextSampleBuffer() {
-            guard let desc = CMSampleBufferGetFormatDescription(sample),
-                  let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc),
-                  let format = AVAudioFormat(streamDescription: asbd) else { continue }
-            let frames = AVAudioFrameCount(CMSampleBufferGetNumSamples(sample))
-            guard frames > 0, let pcm = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { continue }
-            pcm.frameLength = frames
-            CMSampleBufferCopyPCMDataIntoAudioBufferList(
-                sample, at: 0, frameCount: Int32(frames), into: pcm.mutableAudioBufferList
-            )
-            if audioFile == nil {
-                audioFile = try AVAudioFile(
-                    forWriting: outURL,
-                    settings: format.settings,
-                    commonFormat: format.commonFormat,
-                    interleaved: format.isInterleaved
-                )
+        do {
+            try await AudioTrackReader.read(from: videoURL, outputSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: 16_000,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false,
+                AVLinearPCMIsNonInterleaved: false,
+            ], range: range) { pcm in
+                if audioFile == nil {
+                    audioFile = try AVAudioFile(
+                        forWriting: outURL,
+                        settings: pcm.format.settings,
+                        commonFormat: pcm.format.commonFormat,
+                        interleaved: pcm.format.isInterleaved
+                    )
+                }
+                try audioFile?.write(from: pcm)
             }
-            try audioFile?.write(from: pcm)
+        } catch let error as AudioTrackReader.ReadError {
+            throw TranscriptionError.audioExtractionFailed(error.message)
         }
 
-        if reader.status == .failed {
-            throw TranscriptionError.audioExtractionFailed(reader.error?.localizedDescription ?? "Read failed")
-        }
         guard audioFile != nil else {
             throw TranscriptionError.audioExtractionFailed("No audio samples in \(videoURL.lastPathComponent)")
         }

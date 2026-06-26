@@ -281,18 +281,19 @@ extension EditorViewModel {
     }
 
     @discardableResult
-    func importPastedImageData(_ data: Data, fileExtension: String = "png") -> MediaAsset? {
+    func importPastedImageData(_ data: Data, fileExtension: String = "png") async -> MediaAsset? {
         let filename = "pasted-\(UUID().uuidString.prefix(8)).\(fileExtension)"
         let destURL: URL
         if let projectURL {
-            let mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-            try? FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
-            destURL = mediaDir.appendingPathComponent(filename)
+            let dir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
+            destURL = dir.appendingPathComponent(filename)
         } else {
             destURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
         }
         do {
-            try data.write(to: destURL)
+            try await Task.detached(priority: .userInitiated) {
+                try FileIO.writeData(data, to: destURL)
+            }.value
         } catch {
             Log.project.error("importPastedImageData: write failed \(error.localizedDescription)")
             return nil
@@ -353,12 +354,32 @@ extension EditorViewModel {
     func isMediaOffline(_ mediaRef: String) -> Bool {
         offlineMediaRefs.contains(mediaRef)
             || unprocessableMediaRefs.contains(mediaRef)
-            || mediaResolver.isMissing(for: mediaRef)
+            || missingMediaRefs.contains(mediaRef)
     }
 
     /// Present-but-unpreparable (e.g. failed to encode)
     func isMediaUnprocessable(_ mediaRef: String) -> Bool {
-        unprocessableMediaRefs.contains(mediaRef) && !mediaResolver.isMissing(for: mediaRef)
+        unprocessableMediaRefs.contains(mediaRef) && !missingMediaRefs.contains(mediaRef)
+    }
+
+    /// Recompute `missingMediaRefs` off the main thread, then publish on the main actor.
+    func refreshMissingMediaCache() {
+        let entries = mediaManifest.entries
+        let projectPath = projectURL?.path
+        missingMediaRefreshTask?.cancel()
+        missingMediaRefreshTask = Task { [weak self] in
+            let missing = await Task.detached(priority: .utility) {
+                MediaResolver.missingAssetIds(entries: entries, projectPath: projectPath)
+            }.value
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard let self else { return }
+                if self.missingMediaRefs != missing {
+                    self.missingMediaRefs = missing
+                }
+                self.missingMediaRefreshTask = nil
+            }
+        }
     }
 
     func isClipMediaOffline(_ clip: Clip) -> Bool {
@@ -524,12 +545,15 @@ extension EditorViewModel {
                     Log.project.error("captureCurrentFrameToMedia: png encode failed")
                     return
                 }
-                guard let mediaAsset = self.importPastedImageData(data, fileExtension: "png") else { return }
-                mediaAsset.name = "\(nameBase) \(frame)"
-                if let idx = self.mediaManifest.entries.firstIndex(where: { $0.id == mediaAsset.id }) {
-                    self.mediaManifest.entries[idx].name = mediaAsset.name
+                Task { @MainActor [weak self] in
+                    guard let self,
+                          let mediaAsset = await self.importPastedImageData(data, fileExtension: "png") else { return }
+                    mediaAsset.name = "\(nameBase) \(frame)"
+                    if let idx = self.mediaManifest.entries.firstIndex(where: { $0.id == mediaAsset.id }) {
+                        self.mediaManifest.entries[idx].name = mediaAsset.name
+                    }
+                    self.moveAssetsToFolder(assetIds: [mediaAsset.id], folderId: self.mediaPanelCurrentFolderId)
                 }
-                self.moveAssetsToFolder(assetIds: [mediaAsset.id], folderId: self.mediaPanelCurrentFolderId)
             }
         }
     }
@@ -569,6 +593,12 @@ extension EditorViewModel {
         )
         await asset.loadMetadata()
         updateManifestMetadata(for: asset)
+        if FileManager.default.fileExists(atPath: asset.url.path) {
+            missingMediaRefs.remove(asset.id)
+            offlineMediaRefs.remove(asset.id)
+            unprocessableMediaRefs.remove(asset.id)
+        }
+        refreshMissingMediaCache()
         searchIndex.schedule(asset)
         switch asset.type {
         case .video:
