@@ -60,30 +60,41 @@ enum CaptionBuilder {
         return [words[..<mid].joined(separator: " "), words[mid...].joined(separator: " ")]
     }
 
-    /// Time phrases from real word timestamps, consuming words in order: each phrase
-    /// spans its first word's start to its last word's end
+    /// Time phrases from real word timestamps by aligning on shared text: walk the
+    /// timed runs, consuming each phrase's alphanumeric characters, and take the first
+    /// run's start and last run's end. Matching on characters (not space tokens) stays
+    /// correct when runs don't split on spaces — contractions, split numbers, or
+    /// punctuation runs. Falls back to character distribution only when no run is timed.
     private static func time(_ texts: [String], segment: TranscriptionSegment, words: [TranscriptionWord]) -> [Phrase] {
-        let timed = words.compactMap { w -> (start: Double, end: Double)? in
+        let timed = words.compactMap { w -> (count: Int, start: Double, end: Double)? in
             guard let s = w.start, let e = w.end else { return nil }
-            return (s, e)
+            let count = alphanumericCount(w.text)
+            return count > 0 ? (count, s, e) : nil
         }
-        let needed = texts.reduce(0) { $0 + tokenCount($1) }
-        guard timed.count >= needed else { return distribute(texts, start: segment.start, end: segment.end) }
+        guard !timed.isEmpty else { return distribute(texts, start: segment.start, end: segment.end) }
 
         var phrases: [Phrase] = []
         var idx = 0
         for text in texts {
-            let n = max(tokenCount(text), 1)
-            let slice = timed[idx ..< min(idx + n, timed.count)]
-            guard let first = slice.first, let last = slice.last else { break }
-            phrases.append(Phrase(text: text, start: first.start, end: last.end))
-            idx += n
+            let want = alphanumericCount(text)
+            var got = 0
+            var first: (start: Double, end: Double)?
+            var last: (start: Double, end: Double)?
+            while idx < timed.count, got < want {
+                let run = timed[idx]
+                if first == nil { first = (run.start, run.end) }
+                last = (run.start, run.end)
+                got += run.count
+                idx += 1
+            }
+            guard let f = first, let l = last else { break }
+            phrases.append(Phrase(text: text, start: f.start, end: l.end))
         }
         return phrases.count == texts.count ? phrases : distribute(texts, start: segment.start, end: segment.end)
     }
 
-    private static func tokenCount(_ text: String) -> Int {
-        text.split(separator: " ").count
+    private static func alphanumericCount(_ text: String) -> Int {
+        text.reduce(0) { $0 + ($1.isLetter || $1.isNumber ? 1 : 0) }
     }
 
     /// Share the segment's time across pieces by character count, back to back.
