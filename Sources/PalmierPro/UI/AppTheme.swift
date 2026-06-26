@@ -300,6 +300,11 @@ enum AppTheme {
         static let contextRowHeight: CGFloat = IconSize.md
     }
 
+    enum Export {
+        static let sheetWidth: CGFloat = 560
+        static let sheetHeight: CGFloat = 520
+    }
+
     // MARK: - Shadows
 
     struct ShadowStyle {

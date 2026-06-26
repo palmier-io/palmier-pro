@@ -2,13 +2,14 @@ import AVFoundation
 import AppKit
 
 enum ExportFormat {
-    case h264, h265, prores, xml
+    case h264, h265, prores, xml, fcpxml
 
     var fileExtension: String {
         switch self {
         case .h264, .h265: "mp4"
         case .prores: "mov"
         case .xml: "xml"
+        case .fcpxml: "fcpxml"
         }
     }
 
@@ -16,7 +17,7 @@ enum ExportFormat {
         switch self {
         case .h264, .h265: .mp4
         case .prores: .mov
-        case .xml: nil
+        case .xml, .fcpxml: nil
         }
     }
 }
@@ -87,15 +88,20 @@ final class ExportService {
         resolution: ExportResolution,
         outputURL: URL
     ) async {
-        if format == .xml {
+        if format == .xml || format == .fcpxml {
+            let formatName = format == .xml ? "xml" : "fcpxml"
             Log.export.notice(
-                "export requested format=xml",
+                "export requested format=\(formatName)",
                 telemetry: "Export started",
-                data: ["format": "xml", "tracks": timeline.tracks.count, "clips": timeline.tracks.reduce(0) { $0 + $1.clips.count }]
+                data: ["format": formatName, "tracks": timeline.tracks.count, "clips": timeline.tracks.reduce(0) { $0 + $1.clips.count }]
             )
-            XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
+            if format == .xml {
+                XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
+            } else {
+                FCPXMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
+            }
             progress = 1.0
-            Log.export.notice("export ok format=xml", telemetry: "Export finished", data: ["format": "xml"])
+            Log.export.notice("export ok format=\(formatName)", telemetry: "Export finished", data: ["format": formatName])
             return
         }
 
@@ -281,7 +287,7 @@ final class ExportService {
             }
         case .prores:
             AVAssetExportPresetAppleProRes422LPCM
-        case .xml:
+        case .xml, .fcpxml:
             AVAssetExportPresetPassthrough // unreachable — XML returns early
         }
     }
