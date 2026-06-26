@@ -64,6 +64,12 @@ enum AppTheme {
         )
     }
 
+    enum Update {
+        static let accent = Accent.timecodeColor
+        static let fill = Accent.timecodeColor.opacity(Opacity.moderate)
+        static let border = Accent.timecodeColor.opacity(Opacity.prominent)
+    }
+
     // MARK: - Adjust sliders
 
     enum Slider {
