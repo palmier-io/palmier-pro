@@ -2,13 +2,26 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.4.2",
-      "date": "2026-06-25",
+      "version": "0.4.3",
+      "date": "2026-06-26",
       "sections": [
         {
           "heading": "New",
           "items": [
-            "New set_project_settings tool - Agent can now set project settings (fps, resolution, aspect ratio) for you."
+            "New FCPXML export format - Agent can now export your timeline as FCPXML v1.14 for Davinci Resolve."
+          ]
+        },
+        {
+          "heading": "Improved",
+          "items": [
+            "Agent's split_clips now can do batch operations.",
+            "Agent can specify language for the transcript generation."
+          ]
+        },
+        {
+          "heading": "Fixed",
+          "items": [
+            "Fixed caption phase timing issue."
           ]
         }
       ]
