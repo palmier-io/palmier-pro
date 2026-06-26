@@ -34,6 +34,7 @@ final class ExportService {
         resolver: MediaResolver,
         format: ExportFormat,
         resolution: ExportResolution,
+        fcpxmlVersion: FCPXMLVersion = .default,
         missingMediaRefs: Set<String> = [],
         outputURL: URL,
         acquireSlot: Bool = true
@@ -55,7 +56,7 @@ final class ExportService {
                 if format == .xml {
                     try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
                 } else {
-                    try FCPXMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
+                    try FCPXMLExporter.export(timeline: timeline, resolver: resolver, version: fcpxmlVersion, outputURL: outputURL)
                 }
                 progress = 1.0
                 Log.export.notice("export ok format=\(name)", telemetry: "Export finished", data: ["format": name])

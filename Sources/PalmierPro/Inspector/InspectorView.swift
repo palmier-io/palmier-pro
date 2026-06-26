@@ -565,7 +565,7 @@ struct InspectorView: View {
             onReset: transformExpanded ? {
                 commitToClips(clips, actionName: "Reset Transform") { c in
                     editor.commitClipProperty(clipId: c.id) {
-                        $0.transform = Transform()
+                        $0.transform = editor.fitTransform(for: c)
                         $0.opacity = 1
                         $0.opacityTrack = nil
                         $0.positionTrack = nil

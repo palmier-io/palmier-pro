@@ -65,7 +65,7 @@ struct FCPXMLExporterTests {
 
         #expect(xml.hasPrefix("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"))
         #expect(xml.contains("<!DOCTYPE fcpxml>"))
-        #expect(xml.contains("<fcpxml version=\"1.14\">"))
+        #expect(xml.contains("<fcpxml version=\"1.10\">"))
         #expect(xml.contains("<resources>"))
         #expect(xml.contains("<format id=\"r1\""))
         #expect(xml.contains("<library>"))
@@ -75,6 +75,16 @@ struct FCPXMLExporterTests {
         #expect(xml.contains("<spine/>"))
     }
 
+    @Test func explicitVersionIsHonoredInHeader() throws {
+        let timeline = Fixtures.timeline()
+        let (resolver, tmpDir) = try makeResolver(entries: [])
+        let outURL = tmpDir.appendingPathComponent("v14.fcpxml")
+
+        try FCPXMLExporter.export(timeline: timeline, resolver: resolver, version: .v1_14, outputURL: outURL)
+
+        #expect(try readXML(at: outURL).contains("<fcpxml version=\"1.14\">"))
+    }
+
     @Test func clipsReferencingUnresolvableMediaAreSkipped() throws {
         let (resolver, tmpDir) = try makeResolver(entries: [])
         let clip = Fixtures.clip(id: "ghost", mediaRef: "missing", start: 0, duration: 30)
@@ -82,7 +92,8 @@ struct FCPXMLExporterTests {
 
         let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
 
-        #expect(!xml.contains("<asset-clip"))
+        #expect(!xml.contains("<ref-clip"))     // visual clips emit ref-clips now
+        #expect(!xml.contains("<media id="))    // and their compound clip
         #expect(!xml.contains("ghost"))
     }
 
@@ -95,9 +106,29 @@ struct FCPXMLExporterTests {
         let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
 
         let assetCount = xml.components(separatedBy: "<asset id=\"asset").count - 1
-        let clipCount = xml.components(separatedBy: "<asset-clip ref=\"asset1\"").count - 1
-        #expect(assetCount == 1)
-        #expect(clipCount == 2)
+        let compoundCount = xml.components(separatedBy: "<media id=\"media").count - 1
+        let clipCount = xml.components(separatedBy: "<ref-clip ref=\"media1\"").count - 1
+        #expect(assetCount == 1)       // one shared asset
+        #expect(compoundCount == 1)    // one shared compound clip
+        #expect(clipCount == 2)        // two ref-clips reference it
+    }
+
+    @Test func visualClipWrapsAssetInFullMediaCompoundClip() throws {
+        // The compound clip must hold the FULL media (here 5s @30fps = 150 frames), independent of the
+        // clip's trim/duration — that runway is what stops Resolve blacking a retimed tail. The ref-clip
+        // also carries adjust-conform=fit to match Resolve.
+        let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
+        let clip = Fixtures.clip(id: "c", mediaRef: "media-v", start: 0, duration: 30, trimStart: 20)
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+
+        let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
+        let compound = xml.components(separatedBy: "<media id=\"media1\"").dropFirst().first?
+            .components(separatedBy: "</media>").first ?? ""
+
+        #expect(compound.contains("<sequence format=\"format1\" duration=\"5s\""))
+        #expect(compound.contains("<clip name=\"media-v\" duration=\"5s\" start=\"0s\" offset=\"0s\" format=\"format1\">"))
+        #expect(compound.contains("<video ref=\"asset1\" duration=\"5s\" start=\"0s\" offset=\"0s\"/>"))
+        #expect(xml.contains("<adjust-conform type=\"fit\"/>"))
     }
 
     @Test func sameMediaRefVideoAndAudioUseSeparateAssets() throws {
@@ -118,9 +149,10 @@ struct FCPXMLExporterTests {
         #expect(!videoAsset.contains("hasAudio"))
         #expect(audioAsset.contains("hasAudio=\"1\""))
         #expect(!audioAsset.contains("hasVideo"))
-        #expect(xml.contains("<asset-clip ref=\"asset1\" name=\"media-v\" lane=\"1\""))
+        // Video routes through a compound clip via <ref-clip>; audio stays a plain <asset-clip>.
+        #expect(xml.contains("<ref-clip ref=\"media1\" name=\"media-v\" lane=\"1\""))
+        #expect(xml.contains("srcEnable=\"video\""))
         #expect(xml.contains("<asset-clip ref=\"asset2\" name=\"media-v\" lane=\"-1\""))
-        #expect(!xml.contains("srcEnable"))
     }
 
     @Test func visualTrackLanesPreserveTopOverBottom() throws {
@@ -140,32 +172,86 @@ struct FCPXMLExporterTests {
 
     // MARK: - Timing & speed
 
-    @Test func videoClipEmitsAssetClipWithOffsetStartAndDuration() throws {
+    @Test func videoClipEmitsRefClipWithOffsetStartAndDuration() throws {
         let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
         let clip = Fixtures.clip(id: "clip-1", mediaRef: "media-v", start: 30, duration: 60, trimStart: 10)
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
 
-        #expect(xml.contains("<asset-clip ref=\"asset1\" name=\"media-v\" lane=\"1\""))
+        // Unspeeded: start is the raw source in-point (trimStart 10 / 30fps = 1/3s), no timeMap.
+        #expect(xml.contains("<ref-clip ref=\"media1\" name=\"media-v\" lane=\"1\""))
         #expect(xml.contains("offset=\"1s\""))
         #expect(xml.contains("start=\"1/3s\""))
         #expect(xml.contains("duration=\"2s\""))
-        #expect(!xml.contains("srcEnable"))
+        #expect(!xml.contains("<timeMap"))
     }
 
-    @Test func speedChangeEmitsRelativeTimeMap() throws {
+    @Test func speedChangeEmitsWholeMediaTimeMap() throws {
+        // 5s media @ 30fps = 150 source frames; 2× speed-up, trimStart 10, 60-frame output.
         let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
         let clip = Fixtures.clip(id: "fast", mediaRef: "media-v", start: 0, duration: 60, trimStart: 10, speed: 2.0)
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
         let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
 
-        // start positions the in-point (trimStart 10 / 30fps); the timeMap is relative to it (0 → span).
-        #expect(xml.contains("offset=\"0s\" start=\"1/3s\" duration=\"2s\""))
+        // start is in the OUTPUT axis (source-in 10 ÷ speed 2 = 5 frames = 1/6s); the timeMap describes
+        // the WHOLE media retimed (output 150/2=75f=5/2s → source 150f=5s), windowed by start/duration.
+        #expect(xml.contains("offset=\"0s\" start=\"1/6s\" duration=\"2s\""))
         #expect(xml.contains("<timeMap frameSampling=\"floor\">"))
         #expect(xml.contains("<timept time=\"0s\" value=\"0s\" interp=\"linear\"/>"))
-        #expect(xml.contains("<timept time=\"2s\" value=\"4s\" interp=\"linear\"/>"))
+        #expect(xml.contains("<timept time=\"5/2s\" value=\"5s\" interp=\"linear\"/>"))
+    }
+
+    @Test func slowMotionEmitsWholeMediaTimeMap() throws {
+        // 0.5× slow-mo: source plays at half rate, so the whole-media ramp's output axis is LONGER than
+        // the source (150 source frames = 5s → output 10s). Exercises the speed < 1 (p<q) path.
+        let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
+        let clip = Fixtures.clip(id: "slow", mediaRef: "media-v", start: 0, duration: 60, trimStart: 30, speed: 0.5)
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+
+        let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        // start = 30 ÷ 0.5 = 60 output frames = 2s; ramp output 150/0.5=300f=10s → source 150f=5s.
+        #expect(xml.contains("start=\"2s\""))
+        #expect(xml.contains("<timept time=\"10s\" value=\"5s\" interp=\"linear\"/>"))
+    }
+
+    @Test func retimedKeyframeTimeIsOffsetByStart() throws {
+        // Resolve measures param keyframe time from the timeMap origin, so it's offset by the clip's
+        // output-axis start (trimStart ÷ speed), not zero-based. 5s media @30fps, 2× speed, trimStart 10.
+        let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
+        var clip = Fixtures.clip(id: "z", mediaRef: "media-v", start: 0, duration: 60, trimStart: 10, speed: 2.0)
+        clip.scaleTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: AnimPair(a: 0.5, b: 0.5), interpolationOut: .linear),
+            Keyframe(frame: 15, value: AnimPair(a: 1, b: 1), interpolationOut: .linear),
+        ])
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+
+        let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        // start = 10/(2×30) = 1/6s; first keyframe sits AT start, second 15 output frames later (1/6+1/2=2/3s).
+        #expect(xml.contains("start=\"1/6s\""))
+        #expect(xml.contains("<keyframe time=\"1/6s\""))
+        #expect(xml.contains("<keyframe time=\"2/3s\""))
+    }
+
+    @Test func unspeededTrimmedKeyframeStaysClipRelative() throws {
+        // With no timeMap there's no output-axis origin, so keyframe time is plain clip-relative — NOT
+        // offset by trimStart. (Guards against over-applying the retimed-clip offset.)
+        let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
+        var clip = Fixtures.clip(id: "t", mediaRef: "media-v", start: 0, duration: 60, trimStart: 10)
+        clip.opacityTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 0.0, interpolationOut: .linear),
+            Keyframe(frame: 30, value: 1.0, interpolationOut: .linear),
+        ])
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+
+        let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        #expect(!xml.contains("<timeMap"))
+        #expect(xml.contains("<keyframe time=\"0s\" curve=\"linear\" value=\"0\"/>"))   // not 1/3s
+        #expect(xml.contains("<keyframe time=\"1s\" curve=\"linear\" value=\"1\"/>"))
     }
 
     // MARK: - Transform, scale, flip
