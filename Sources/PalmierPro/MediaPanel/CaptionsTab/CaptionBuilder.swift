@@ -60,11 +60,8 @@ enum CaptionBuilder {
         return [words[..<mid].joined(separator: " "), words[mid...].joined(separator: " ")]
     }
 
-    /// Time phrases from real word timestamps by aligning on shared text: walk the
-    /// timed runs, consuming each phrase's alphanumeric characters, and take the first
-    /// run's start and last run's end. Matching on characters (not space tokens) stays
-    /// correct when runs don't split on spaces — contractions, split numbers, or
-    /// punctuation runs. Falls back to character distribution only when no run is timed.
+    /// Time phrases from word runs by matching shared characters, so timing holds when
+    /// runs don't split on spaces (contractions, split numbers, punctuation runs).
     private static func time(_ texts: [String], segment: TranscriptionSegment, words: [TranscriptionWord]) -> [Phrase] {
         let timed = words.compactMap { w -> (count: Int, start: Double, end: Double)? in
             guard let s = w.start, let e = w.end else { return nil }
