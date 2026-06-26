@@ -461,6 +461,11 @@ final class EditorViewModel {
         fitTransform(for: asset, canvasWidth: timeline.width, canvasHeight: timeline.height)
     }
 
+    func fitTransform(for clip: Clip) -> Transform {
+        guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }) else { return Transform() }
+        return fitTransform(for: asset)
+    }
+
     func fitTransform(for asset: MediaAsset, canvasWidth: Int, canvasHeight: Int) -> Transform {
         guard let sw = asset.sourceWidth, let sh = asset.sourceHeight,
               sw > 0, sh > 0, canvasWidth > 0, canvasHeight > 0 else {
