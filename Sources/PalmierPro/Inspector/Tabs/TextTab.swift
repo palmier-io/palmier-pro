@@ -12,6 +12,8 @@ struct TextTab: View {
             InspectorSection("Typography") {
                 fontRow
                 sizeSlider
+                outlineRow
+                outlineWidthRow
             }
             InspectorSection("Appearance") {
                 colorRow
@@ -141,6 +143,40 @@ struct TextTab: View {
             .labelsHidden()
             .tint(Color.white.opacity(AppTheme.Opacity.strong))
             .fixedSize()
+        }
+    }
+
+    private var outlineRow: some View {
+        toggleColorRow(
+            icon: "a.magnify",
+            label: "Outline",
+            enabled: style.outline.enabled,
+            color: style.outline.color.swiftUIColor,
+            debounceKey: "outlineColor",
+            setEnabled: { $0.outline.enabled = $1 },
+            setColor: { $0.outline.color = $1 }
+        )
+    }
+
+    @ViewBuilder
+    private var outlineWidthRow: some View {
+        if style.outline.enabled {
+            InspectorRow(icon: "lineweight", label: "Outline Width") {
+                ScrubbableNumberField(
+                    value: style.outline.width,
+                    range: 0.5...20,
+                    format: "%.1f",
+                    valueSuffix: " pt",
+                    fieldWidth: 50,
+                    onChanged: { newVal in
+                        editor.applyTextStyle(clipId: clip.id) { $0.outline.width = newVal }
+                        editor.fitTextClipToContent(clipId: clip.id)
+                    }
+                ) { newVal in
+                    editor.commitTextStyle(clipId: clip.id) { $0.outline.width = newVal }
+                    editor.fitTextClipToContent(clipId: clip.id)
+                }
+            }
         }
     }
 
