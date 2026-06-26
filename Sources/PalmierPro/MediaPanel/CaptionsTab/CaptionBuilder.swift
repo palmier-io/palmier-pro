@@ -10,11 +10,12 @@ enum CaptionBuilder {
     /// Splits a transcript segment into screen-ready phrases and times them.
     static func phrases(
         for segment: TranscriptionSegment,
+        words: [TranscriptionWord] = [],
         fits: (String) -> Bool,
         minDuration: Double
     ) -> [Phrase] {
         let pieces = split(segment.text, fits: fits)
-        let timed = distribute(pieces, start: segment.start, end: segment.end)
+        let timed = time(pieces, segment: segment, words: words)
         return enforceMinDuration(timed, minDuration: minDuration)
     }
 
@@ -57,6 +58,32 @@ enum CaptionBuilder {
         guard words.count > 1 else { return [text] }
         let mid = words.count / 2
         return [words[..<mid].joined(separator: " "), words[mid...].joined(separator: " ")]
+    }
+
+    /// Time phrases from real word timestamps, consuming words in order: each phrase
+    /// spans its first word's start to its last word's end
+    private static func time(_ texts: [String], segment: TranscriptionSegment, words: [TranscriptionWord]) -> [Phrase] {
+        let timed = words.compactMap { w -> (start: Double, end: Double)? in
+            guard let s = w.start, let e = w.end else { return nil }
+            return (s, e)
+        }
+        let needed = texts.reduce(0) { $0 + tokenCount($1) }
+        guard timed.count >= needed else { return distribute(texts, start: segment.start, end: segment.end) }
+
+        var phrases: [Phrase] = []
+        var idx = 0
+        for text in texts {
+            let n = max(tokenCount(text), 1)
+            let slice = timed[idx ..< min(idx + n, timed.count)]
+            guard let first = slice.first, let last = slice.last else { break }
+            phrases.append(Phrase(text: text, start: first.start, end: last.end))
+            idx += n
+        }
+        return phrases.count == texts.count ? phrases : distribute(texts, start: segment.start, end: segment.end)
+    }
+
+    private static func tokenCount(_ text: String) -> Int {
+        text.split(separator: " ").count
     }
 
     /// Share the segment's time across pieces by character count, back to back.
