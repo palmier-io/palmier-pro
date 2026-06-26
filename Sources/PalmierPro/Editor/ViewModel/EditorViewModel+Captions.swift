@@ -166,8 +166,13 @@ extension EditorViewModel {
         for (ref, result) in results {
             let clips = targets.filter { $0.clip.mediaRef == ref }
             guard !clips.isEmpty else { continue }
-            let phrases = result.segments.flatMap {
-                CaptionBuilder.phrases(for: $0, fits: { captionLineFits($0, style: request.style) }, minDuration: AppTheme.Caption.minDisplayDuration)
+            let phrases = result.segments.flatMap { seg in
+                CaptionBuilder.phrases(
+                    for: seg,
+                    words: wordsIn(seg, result.words),
+                    fits: { captionLineFits($0, style: request.style) },
+                    minDuration: AppTheme.Caption.minDisplayDuration
+                )
             }
             for p in phrases {
                 guard let owner = bestClip(for: p, among: clips) else { continue }
@@ -179,6 +184,15 @@ extension EditorViewModel {
             guard let phrases = phrasesByClip[t.id] else { return [] }
             let cased = phrases.map { CaptionBuilder.Phrase(text: request.textCase.apply($0.text), start: $0.start, end: $0.end) }
             return CaptionBuilder.specs(for: cased, sourceClip: t.clip, trackIndex: 0, fps: fps, style: request.style, captionGroupId: groupId, transformFor: transformFor)
+        }
+    }
+
+    // Words whose midpoint lands inside the segment, in transcript order.
+    private func wordsIn(_ seg: TranscriptionSegment, _ words: [TranscriptionWord]) -> [TranscriptionWord] {
+        words.filter { w in
+            guard let s = w.start, let e = w.end else { return false }
+            let mid = (s + e) / 2
+            return mid >= seg.start && mid < seg.end
         }
     }
 
