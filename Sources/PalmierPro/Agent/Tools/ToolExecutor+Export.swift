@@ -37,6 +37,8 @@ extension ToolExecutor {
             return try exportVideo(editor, format: format, resolution: resolution, outputURL: outputURL)
         case .xml:
             return try await exportXML(editor, outputURL: outputURL)
+        case .fcpxml:
+            return try exportFCPXML(editor, outputURL: outputURL)
         case .palmier:
             return try await exportPalmier(editor, outputURL: outputURL)
         }
@@ -115,6 +117,35 @@ extension ToolExecutor {
         return try jsonResult([
             "status": "exported",
             "mode": ExportProjectMode.xml.rawValue,
+            "path": outputURL.path,
+            "width": editor.timeline.width,
+            "height": editor.timeline.height,
+            "durationFrames": editor.timeline.totalFrames,
+            "durationSeconds": Double(editor.timeline.totalFrames) / Double(max(1, editor.timeline.fps)),
+            "fps": editor.timeline.fps,
+            "warnings": [],
+        ])
+    }
+
+    private func exportFCPXML(_ editor: EditorViewModel, outputURL: URL) throws -> ToolResult {
+        if FileManager.default.fileExists(atPath: outputURL.path) {
+            do {
+                try FileManager.default.removeItem(at: outputURL)
+            } catch {
+                throw ToolError("export_project: \(error.localizedDescription)")
+            }
+        }
+        do {
+            try FCPXMLExporter.export(timeline: editor.timeline, resolver: editor.mediaResolver, outputURL: outputURL)
+        } catch {
+            throw ToolError("export_project: FCPXML export failed: \(error.localizedDescription)")
+        }
+        guard FileManager.default.fileExists(atPath: outputURL.path) else {
+            throw ToolError("export_project: FCPXML export failed")
+        }
+        return try jsonResult([
+            "status": "exported",
+            "mode": ExportProjectMode.fcpxml.rawValue,
             "path": outputURL.path,
             "width": editor.timeline.width,
             "height": editor.timeline.height,
@@ -259,6 +290,7 @@ private struct ExportProjectArgs: DecodableToolArgs {
 private enum ExportProjectMode: String {
     case video
     case xml
+    case fcpxml
     case palmier
 
     init(named raw: String?) throws {
@@ -267,7 +299,7 @@ private enum ExportProjectMode: String {
             return
         }
         guard let mode = Self(rawValue: raw.normalizedExportOption) else {
-            throw ToolError("export_project: mode must be video, xml, or palmier")
+            throw ToolError("export_project: mode must be video, xml, fcpxml, or palmier")
         }
         self = mode
     }
@@ -276,6 +308,7 @@ private enum ExportProjectMode: String {
         switch self {
         case .video: format?.fileExtension ?? ExportFormat.h264.fileExtension
         case .xml: "xml"
+        case .fcpxml: "fcpxml"
         case .palmier: Project.fileExtension
         }
     }
@@ -290,6 +323,7 @@ private enum ExportProjectMode: String {
         switch self {
         case .video: format?.displayName ?? "Video"
         case .xml: "XML"
+        case .fcpxml: "FCPXML"
         case .palmier: "Palmier Project"
         }
     }

@@ -1,0 +1,584 @@
+import AppKit
+import Foundation
+
+/// Exports a Timeline as FCPXML 1.14 (for DaVinci Resolve / Final Cut Pro). Companion to
+/// XMLExporter (XMEML, for Premiere). The document is an `FCPXMLNode` tree (defined at the
+/// bottom); `renderFCPXML` owns indentation and escaping. Read `build()` top-down:
+/// `<fcpxml>` → `<resources>` (formats + assets) → `<library>/<event>/<project>/<sequence>`.
+/// The whole timeline is one `<gap>` with every clip connected on a lane.
+///
+/// Encoding facts (reverse-engineered from Resolve round-trips):
+/// - Position: unit = 1% of frame height, square, origin at center, +Y up.
+/// - Scale: multiplier on the conform-fit size, so we divide the aspect-fit out of width/height.
+/// - Rotation: degrees, negated (FCP is counter-clockwise-positive). Flip: negative scale.
+/// - Crop: `<adjust-crop>/<trim-rect>`, a percentage of the source per edge.
+/// - Retime: `start` holds the in-point; the `<timeMap>` is relative (0 → source span).
+/// - Volume: `<adjust-volume amount>` in dB. Keyframes: child `<param>/<keyframeAnimation>`,
+///   `time` in clip-relative seconds, `value` in the param's own unit.
+///
+/// What transports: clip placement/trims, speed, lane order, enabled state; text + font/face/
+/// size/color/alignment; position/scale/rotation/flip (+ position/scale/rotation keyframes);
+/// crop; opacity (+ keyframes); static volume.
+///
+/// What does NOT: keyframed audio volume and audio fades (Resolve drops both itself); text
+/// background/border boxes (no FCPXML form); crop keyframes; title rotation/scale; color &
+/// effects; Lottie clips.
+///
+/// Reference: https://developer.apple.com/documentation/professional-video-applications/fcpxml-reference
+enum FCPXMLExporter {
+    static let version = "1.14"
+
+    static func export(timeline: Timeline, resolver: MediaResolver, outputURL: URL) throws {
+        let xml = Builder(timeline: timeline, resolver: resolver).build()
+        guard let data = xml.data(using: .utf8) else { throw ExportError.xmlEncodingFailed }
+        try data.write(to: outputURL)
+    }
+
+    private final class Builder {
+        private let timeline: Timeline
+        private let resolver: MediaResolver
+        private let fps: Int
+        private let seqWidth: Int
+        private let seqHeight: Int
+        private let sequenceFormatId = "r1"
+        private let titleEffectId = "titleBasic"
+        private var resourceIndex: [MediaResourceKey: Int] = [:]
+        private var resources: [MediaResource] = []
+        private var nextTextStyleId = 1
+
+        private struct EmittableClip {
+            let clip: Clip
+            let lane: Int
+            let enabled: Bool
+        }
+
+        private enum MediaResourceKind: Hashable {
+            case visual
+            case audio
+        }
+
+        private struct MediaResourceKey: Hashable {
+            let mediaRef: String
+            let kind: MediaResourceKind
+        }
+
+        private struct MediaResource {
+            let key: MediaResourceKey
+            let assetId: String
+            let formatId: String?
+            let entry: MediaManifestEntry
+            let url: URL
+            var durationFrames: Int
+            var needsVideo: Bool { key.kind == .visual }
+            var needsAudio: Bool { key.kind == .audio }
+        }
+
+        init(timeline: Timeline, resolver: MediaResolver) {
+            self.timeline = timeline
+            self.resolver = resolver
+            self.fps = max(1, timeline.fps)
+            self.seqWidth = timeline.width
+            self.seqHeight = timeline.height
+        }
+
+        func build() -> String {
+            let clips = emittableClips()
+            collectResources(from: clips)
+            let hasTitles = clips.contains { $0.clip.mediaType == .text }
+            let root = FCPXMLNode(name: "fcpxml", attributes: [("version", FCPXMLExporter.version)], children: [
+                resourcesNode(hasTitles: hasTitles),
+                libraryNode(clips: clips),
+            ])
+            return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE fcpxml>\n" + renderFCPXML(root, indent: 0)
+        }
+
+        private func resourcesNode(hasTitles: Bool) -> FCPXMLNode {
+            var children: [FCPXMLNode] = [
+                FCPXMLNode(name: "format", attributes: [
+                    ("id", sequenceFormatId),
+                    ("name", "Palmier Timeline"),
+                    ("frameDuration", frameDuration(forFPS: Double(fps))),
+                    ("width", "\(seqWidth)"),
+                    ("height", "\(seqHeight)"),
+                ]),
+            ]
+
+            if hasTitles {
+                children.append(FCPXMLNode(name: "effect", attributes: [
+                    ("id", titleEffectId),
+                    ("name", "Basic Title"),
+                    ("uid", ".../Titles.localized/Bumper:Opener.localized/Basic Title.localized/Basic Title.moti"),
+                ]))
+            }
+
+            children += resources.compactMap(formatNode)
+            children += resources.map(assetNode)
+            return FCPXMLNode(name: "resources", children: children)
+        }
+
+        private func libraryNode(clips: [EmittableClip]) -> FCPXMLNode {
+            FCPXMLNode(name: "library", children: [
+                FCPXMLNode(name: "event", attributes: [("name", "Palmier Export")], children: [
+                    projectNode(clips: clips),
+                ]),
+            ])
+        }
+
+        private func projectNode(clips: [EmittableClip]) -> FCPXMLNode {
+            let duration = time(frames: timeline.totalFrames)
+            let spine: FCPXMLNode = timeline.totalFrames > 0
+                ? FCPXMLNode(name: "spine", children: [
+                    FCPXMLNode(name: "gap", attributes: [
+                        ("name", "Timeline"),
+                        ("offset", "0s"),
+                        ("start", "0s"),
+                        ("duration", duration),
+                    ], children: storyNodes(for: clips)),
+                  ])
+                : FCPXMLNode(name: "spine")
+
+            return FCPXMLNode(name: "project", attributes: [("name", "Timeline Export")], children: [
+                FCPXMLNode(name: "sequence", attributes: [
+                    ("format", sequenceFormatId),
+                    ("duration", duration),
+                    ("tcStart", "0s"),
+                    ("tcFormat", "NDF"),
+                    ("audioLayout", "stereo"),
+                    ("audioRate", "48k"),
+                ], children: [spine]),
+            ])
+        }
+
+        private func storyNodes(for clips: [EmittableClip]) -> [FCPXMLNode] {
+            clips
+                .sorted {
+                    if $0.clip.startFrame != $1.clip.startFrame { return $0.clip.startFrame < $1.clip.startFrame }
+                    return $0.lane < $1.lane
+                }
+                .compactMap { item in
+                    switch item.clip.mediaType {
+                    case .text:
+                        return titleNode(for: item)
+                    case .audio, .video, .image:
+                        return assetClipNode(for: item)
+                    case .lottie:
+                        return nil
+                    }
+                }
+        }
+
+        private func assetClipNode(for item: EmittableClip) -> FCPXMLNode? {
+            let clip = item.clip
+            guard let i = resourceIndex[resourceKey(for: clip)] else { return nil }
+            let resource = resources[i]
+            let timeMap = timeMapNode(for: clip)
+            let attrs: [(String, String)] = [
+                ("ref", resource.assetId),
+                ("name", resolver.displayName(for: clip.mediaRef)),
+                ("lane", "\(item.lane)"),
+                ("offset", time(frames: clip.startFrame)),
+                ("start", time(frames: clip.trimStartFrame)),
+                ("duration", time(frames: clip.durationFrames)),
+                ("enabled", item.enabled ? "1" : "0"),
+            ]
+            return FCPXMLNode(
+                name: "asset-clip",
+                attributes: attrs,
+                children: [
+                    timeMap,
+                    cropNode(for: clip),
+                    transformNode(for: clip),
+                    blendNode(for: clip),
+                    volumeNode(for: clip),
+                ].compactMap { $0 }
+            )
+        }
+
+        private func titleNode(for item: EmittableClip) -> FCPXMLNode? {
+            let clip = item.clip
+            guard let content = clip.textContent, !content.isEmpty else { return nil }
+            let style = clip.textStyle ?? TextStyle()
+            let styleId = "textStyle\(nextTextStyleId)"
+            nextTextStyleId += 1
+
+            var textNodes: [FCPXMLNode] = [
+                FCPXMLNode(name: "text", children: [
+                    FCPXMLNode(name: "text-style", attributes: [("ref", styleId)], text: content),
+                ]),
+                FCPXMLNode(name: "text-style-def", attributes: [("id", styleId)], children: [
+                    FCPXMLNode(name: "text-style", attributes: textStyleAttributes(for: style)),
+                ]),
+            ]
+            textNodes += titleTransformNodes(for: clip.transform)
+            if let blend = blendNode(for: clip) { textNodes.append(blend) }
+            return FCPXMLNode(name: "title", attributes: [
+                ("ref", titleEffectId),
+                ("name", content),
+                ("lane", "\(item.lane)"),
+                ("offset", time(frames: clip.startFrame)),
+                ("start", "0s"),
+                ("duration", time(frames: clip.durationFrames)),
+                ("enabled", item.enabled ? "1" : "0"),
+            ], children: textNodes)
+        }
+
+        private func blendNode(for clip: Clip) -> FCPXMLNode? {
+            let frames = clip.keyframeFrames(for: .opacity)
+            guard clip.opacity < 0.9995 || !frames.isEmpty else { return nil }
+            var children: [FCPXMLNode] = []
+            if !frames.isEmpty {
+                children.append(keyframeParam(name: "amount", base: formatNumber(clip.opacity), clip: clip,
+                                              property: .opacity, frames: frames) {
+                    self.formatNumber(clip.rawOpacityAt(frame: $0))
+                })
+            }
+            return FCPXMLNode(name: "adjust-blend", attributes: [("amount", formatNumber(clip.opacity))], children: children)
+        }
+
+        /// Position + scale + rotation (static or keyframed) for a video/image clip.
+        private func transformNode(for clip: Clip) -> FCPXMLNode? {
+            let t = clip.transform
+            let posFrames = clip.keyframeFrames(for: .position)
+            let rotFrames = clip.keyframeFrames(for: .rotation)
+            let scaleFrames = clip.keyframeFrames(for: .scale)
+            let base = scaleValue(width: t.width, height: t.height, for: clip)
+            let moved = abs(t.centerX - 0.5) > 0.0005 || abs(t.centerY - 0.5) > 0.0005
+            let rotated = abs(t.rotation) > 0.005
+            let scaled = base != "1 1"
+            guard moved || rotated || scaled
+                    || !posFrames.isEmpty || !rotFrames.isEmpty || !scaleFrames.isEmpty else { return nil }
+
+            var attrs: [(String, String)] = [("scale", base)]
+            if rotated || !rotFrames.isEmpty { attrs.append(("rotation", formatNumber(-t.rotation))) }
+            attrs.append(("anchor", "0 0"))
+            attrs.append(("position", positionValue(for: t)))
+
+            var params: [FCPXMLNode] = []
+            if !scaleFrames.isEmpty {
+                params.append(keyframeParam(name: "scale", base: base, clip: clip,
+                                            property: .scale, frames: scaleFrames) {
+                    let s = clip.sizeAt(frame: $0)
+                    return self.scaleValue(width: s.width, height: s.height, for: clip)
+                })
+            }
+            if !posFrames.isEmpty {
+                params.append(keyframeParam(name: "position", base: positionValue(for: t), clip: clip,
+                                            property: .position, frames: posFrames) {
+                    self.positionValue(for: clip.transformAt(frame: $0))
+                })
+            }
+            if !rotFrames.isEmpty {
+                params.append(keyframeParam(name: "rotation", base: formatNumber(-t.rotation), clip: clip,
+                                            property: .rotation, frames: rotFrames) {
+                    self.formatNumber(-clip.rotationAt(frame: $0))
+                })
+            }
+            return FCPXMLNode(name: "adjust-transform", attributes: attrs, children: params)
+        }
+
+        /// Divide the aspect-fit out of our frame-fraction width/height so only user scaling remains.
+        private func scaleValue(width: Double, height: Double, for clip: Clip) -> String {
+            var sx = width, sy = height
+            if let entry = resolver.entry(for: clip.mediaRef),
+               let sw = entry.sourceWidth, let sh = entry.sourceHeight, sw > 0, sh > 0 {
+                let sourceAspect = Double(sw) / Double(sh)
+                let frameAspect = Double(seqWidth) / Double(seqHeight)
+                let fitW = sourceAspect >= frameAspect ? 1.0 : sourceAspect / frameAspect
+                let fitH = sourceAspect >= frameAspect ? frameAspect / sourceAspect : 1.0
+                sx = width / fitW
+                sy = height / fitH
+            }
+            if clip.transform.flipHorizontal { sx = -sx }
+            if clip.transform.flipVertical { sy = -sy }
+            return "\(formatNumber(sx)) \(formatNumber(sy))"
+        }
+
+        /// A keyframed `<param>`: time is clip-relative seconds, value uses the param's own unit.
+        private func keyframeParam(name: String, base: String, clip: Clip, property: AnimatableProperty,
+                                   frames: [Int], value: (Int) -> String) -> FCPXMLNode {
+            let keyframes = frames.sorted().map { f -> FCPXMLNode in
+                var attrs: [(String, String)] = [("time", time(frames: f - clip.startFrame))]
+                if clip.interpolation(for: property, atFrame: f) == .linear { attrs.append(("curve", "linear")) }
+                attrs.append(("value", value(f)))
+                return FCPXMLNode(name: "keyframe", attributes: attrs)
+            }
+            return FCPXMLNode(name: "param", attributes: [("name", name), ("value", base)], children: [
+                FCPXMLNode(name: "keyframeAnimation", children: keyframes),
+            ])
+        }
+
+        private func cropNode(for clip: Clip) -> FCPXMLNode? {
+            let c = clip.crop
+            guard !c.isIdentity else { return nil }
+            return FCPXMLNode(name: "adjust-crop", attributes: [("mode", "trim")], children: [
+                FCPXMLNode(name: "trim-rect", attributes: [
+                    ("top", formatNumber(c.top * 100)),
+                    ("right", formatNumber(c.right * 100)),
+                    ("bottom", formatNumber(c.bottom * 100)),
+                    ("left", formatNumber(c.left * 100)),
+                ]),
+            ])
+        }
+
+        private func volumeNode(for clip: Clip) -> FCPXMLNode? {
+            // Keyframed audio volume has no FCPXML form Resolve round-trips (its own export drops it),
+            // so export the static level only.
+            guard abs(clip.volume - 1.0) > 0.0005 else { return nil }
+            return FCPXMLNode(name: "adjust-volume", attributes: [("amount", formatNumber(decibels(clip.volume)))])
+        }
+
+        private func decibels(_ linear: Double) -> Double {
+            linear > 0 ? 20.0 * log10(linear) : -96.0
+        }
+
+        private func timeMapNode(for clip: Clip) -> FCPXMLNode? {
+            guard abs(clip.speed - 1.0) > 0.001 else { return nil }
+            // `start` already positions the in-point; the timeMap describes the retime span relative to it.
+            let sourceSpan = Int((Double(clip.durationFrames) * clip.speed).rounded())
+            return FCPXMLNode(name: "timeMap", attributes: [("frameSampling", "floor")], children: [
+                FCPXMLNode(name: "timept", attributes: [
+                    ("time", "0s"),
+                    ("value", "0s"),
+                    ("interp", "linear"),
+                ]),
+                FCPXMLNode(name: "timept", attributes: [
+                    ("time", time(frames: clip.durationFrames)),
+                    ("value", time(frames: sourceSpan)),
+                    ("interp", "linear"),
+                ]),
+            ])
+        }
+
+        private func collectResources(from clips: [EmittableClip]) {
+            for item in clips {
+                let clip = item.clip
+                guard clip.mediaType != .text, clip.mediaType != .lottie,
+                      let entry = resolver.entry(for: clip.mediaRef),
+                      let url = resolver.resolveURL(for: clip.mediaRef) else { continue }
+
+                let key = resourceKey(for: clip)
+                let duration = sourceDurationFrames(for: entry, clip: clip)
+                if let i = resourceIndex[key] {
+                    resources[i].durationFrames = max(resources[i].durationFrames, duration)
+                    continue
+                }
+
+                let id = resources.count + 1
+                resourceIndex[key] = resources.count
+                resources.append(MediaResource(
+                    key: key,
+                    assetId: "asset\(id)",
+                    formatId: key.kind == .visual ? "format\(id)" : nil,
+                    entry: entry,
+                    url: url,
+                    durationFrames: duration
+                ))
+            }
+        }
+
+        private func resourceKey(for clip: Clip) -> MediaResourceKey {
+            MediaResourceKey(mediaRef: clip.mediaRef, kind: clip.mediaType == .audio ? .audio : .visual)
+        }
+
+        private func formatNode(for resource: MediaResource) -> FCPXMLNode? {
+            guard let formatId = resource.formatId else { return nil }
+            let width = resource.entry.sourceWidth ?? seqWidth
+            let height = resource.entry.sourceHeight ?? seqHeight
+            let rawFPS = resource.entry.sourceFPS ?? Double(fps)
+            return FCPXMLNode(name: "format", attributes: [
+                ("id", formatId),
+                ("name", resource.entry.name),
+                ("frameDuration", frameDuration(forFPS: rawFPS)),
+                ("width", "\(width)"),
+                ("height", "\(height)"),
+            ])
+        }
+
+        private func assetNode(for resource: MediaResource) -> FCPXMLNode {
+            var attrs: [(String, String)] = [
+                ("id", resource.assetId),
+                ("name", resource.entry.name),
+                ("uid", "io.palmier.media.\(resource.assetId)"),
+                ("start", "0s"),
+                ("duration", time(frames: resource.durationFrames)),
+            ]
+            if resource.needsVideo {
+                attrs.append(("hasVideo", "1"))
+                if let formatId = resource.formatId {
+                    attrs.append(("format", formatId))
+                }
+            }
+            if resource.needsAudio {
+                attrs.append(("hasAudio", "1"))
+            }
+            return FCPXMLNode(name: "asset", attributes: attrs, children: [
+                FCPXMLNode(name: "media-rep", attributes: [
+                    ("kind", "original-media"),
+                    ("src", resource.url.absoluteString),
+                ]),
+            ])
+        }
+
+        private func sourceDurationFrames(for entry: MediaManifestEntry, clip: Clip) -> Int {
+            let manifestFrames = max(0, secondsToFrame(seconds: entry.duration, fps: fps))
+            return max(manifestFrames, clip.sourceDurationFrames)
+        }
+
+        private func emittableClips() -> [EmittableClip] {
+            let visualTrackCount = timeline.tracks.filter { $0.type.isVisual }.count
+            var visualOrdinal = 0
+            var audioOrdinal = 0
+            var clips: [EmittableClip] = []
+
+            for track in timeline.tracks {
+                let lane: Int
+                let enabled: Bool
+                if track.type.isVisual {
+                    lane = visualTrackCount - visualOrdinal
+                    enabled = !track.hidden
+                    visualOrdinal += 1
+                } else if track.type == .audio {
+                    lane = -(audioOrdinal + 1)
+                    enabled = !track.muted
+                    audioOrdinal += 1
+                } else {
+                    continue
+                }
+                clips += track.clips
+                    .filter(isEmittable)
+                    .sorted { $0.startFrame < $1.startFrame }
+                    .map { EmittableClip(clip: $0, lane: lane, enabled: enabled) }
+            }
+            return clips
+        }
+
+        private func isEmittable(_ clip: Clip) -> Bool {
+            guard clip.durationFrames > 0 else { return false }
+            switch clip.mediaType {
+            case .text:
+                return clip.textContent?.isEmpty == false
+            case .lottie:
+                return false
+            case .audio, .video, .image:
+                return resolver.resolveURL(for: clip.mediaRef) != nil
+            }
+        }
+
+        private func time(frames: Int) -> String {
+            guard frames != 0 else { return "0s" }
+            let divisor = gcd(abs(frames), fps)
+            let numerator = frames / divisor
+            let denominator = fps / divisor
+            return denominator == 1 ? "\(numerator)s" : "\(numerator)/\(denominator)s"
+        }
+
+        private func frameDuration(forFPS rawFPS: Double) -> String {
+            let rounded = max(1, Int(rawFPS.rounded()))
+            let ntscRate = Double(rounded) * 1000.0 / 1001.0
+            if abs(rawFPS - ntscRate) < abs(rawFPS - Double(rounded)) {
+                return "1001/\(rounded * 1000)s"
+            }
+            return "1/\(rounded)s"
+        }
+
+        private func colorString(_ color: TextStyle.RGBA) -> String {
+            "\(formatNumber(color.r)) \(formatNumber(color.g)) \(formatNumber(color.b)) \(formatNumber(color.a))"
+        }
+
+        private func textStyleAttributes(for style: TextStyle) -> [(String, String)] {
+            let resolvedFont = NSFont(name: style.fontName, size: style.fontSize)
+            let family = resolvedFont?.familyName ?? fontFamilyFallback(style.fontName)
+            let face = (resolvedFont?.fontDescriptor.object(forKey: .face) as? String) ?? fontFaceFallback(style.fontName)
+            let fontSize = style.fontSize * style.fontScale * Double(seqHeight) / Double(TextLayout.referenceCanvasHeight)
+            return [
+                ("font", family),
+                ("fontFace", face),
+                ("fontSize", formatNumber(fontSize)),
+                ("fontColor", colorString(style.color)),
+                ("alignment", style.alignment.rawValue),
+            ]
+        }
+
+        private func titleTransformNodes(for transform: Transform) -> [FCPXMLNode] {
+            [
+                FCPXMLNode(name: "adjust-conform", attributes: [("type", "fit")]),
+                FCPXMLNode(name: "adjust-transform", attributes: [
+                    ("scale", "1 1"),
+                    ("anchor", "0 0"),
+                    ("position", positionValue(for: transform)),
+                ]),
+            ]
+        }
+
+        private func positionValue(for transform: Transform) -> String {
+            let unit = Double(seqHeight) / 100.0
+            let x = (transform.centerX - 0.5) * Double(seqWidth) / unit
+            let y = (0.5 - transform.centerY) * Double(seqHeight) / unit
+            return "\(formatNumber(x)) \(formatNumber(y))"
+        }
+
+        private func fontFamilyFallback(_ fontName: String) -> String {
+            fontName.split(separator: "-", maxSplits: 1).first.map(String.init) ?? fontName
+        }
+
+        private func fontFaceFallback(_ fontName: String) -> String {
+            let lower = fontName.lowercased()
+            switch (lower.contains("bold"), lower.contains("italic") || lower.contains("oblique")) {
+            case (true, true):
+                return "Bold Italic"
+            case (true, false):
+                return "Bold"
+            case (false, true):
+                return "Italic"
+            case (false, false):
+                return "Regular"
+            }
+        }
+
+        private func formatNumber(_ value: Double) -> String {
+            let rounded = value.rounded(toPlaces: 4)
+            if rounded == rounded.rounded() { return "\(Int(rounded))" }
+            var s = String(format: "%.4f", rounded)
+            while s.last == "0" { s.removeLast() }
+            if s.last == "." { s.removeLast() }
+            return s
+        }
+
+        private func gcd(_ a: Int, _ b: Int) -> Int {
+            var x = a, y = b
+            while y != 0 {
+                let r = x % y
+                x = y
+                y = r
+            }
+            return max(1, x)
+        }
+
+    }
+}
+
+private struct FCPXMLNode {
+    let name: String
+    var attributes: [(String, String)] = []
+    var text: String? = nil
+    var children: [FCPXMLNode] = []
+}
+
+private func renderFCPXML(_ node: FCPXMLNode, indent: Int) -> String {
+    let pad = String(repeating: " ", count: indent)
+    let attrs = node.attributes.map { " \($0.0)=\"\(escapeFCPXML($0.1))\"" }.joined()
+    if let text = node.text {
+        return "\(pad)<\(node.name)\(attrs)>\(escapeFCPXML(text))</\(node.name)>"
+    }
+    guard !node.children.isEmpty else { return "\(pad)<\(node.name)\(attrs)/>" }
+    let inner = node.children.map { renderFCPXML($0, indent: indent + 2) }.joined(separator: "\n")
+    return "\(pad)<\(node.name)\(attrs)>\n\(inner)\n\(pad)</\(node.name)>"
+}
+
+private func escapeFCPXML(_ s: String) -> String {
+    s.replacingOccurrences(of: "&", with: "&amp;")
+     .replacingOccurrences(of: "<", with: "&lt;")
+     .replacingOccurrences(of: ">", with: "&gt;")
+     .replacingOccurrences(of: "\"", with: "&quot;")
+     .replacingOccurrences(of: "'", with: "&apos;")
+}

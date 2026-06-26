@@ -44,22 +44,27 @@ final class ExportService {
         progress = 0
         defer { isExporting = false }
 
-        if format == .xml {
+        if format == .xml || format == .fcpxml {
+            let name = format.fileExtension
             Log.export.notice(
-                "export requested format=xml",
+                "export requested format=\(name)",
                 telemetry: "Export started",
-                data: ["format": "xml", "tracks": timeline.tracks.count, "clips": timeline.tracks.reduce(0) { $0 + $1.clips.count }]
+                data: ["format": name, "tracks": timeline.tracks.count, "clips": timeline.tracks.reduce(0) { $0 + $1.clips.count }]
             )
             do {
-                try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
+                if format == .xml {
+                    try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
+                } else {
+                    try FCPXMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
+                }
                 progress = 1.0
-                Log.export.notice("export ok format=xml", telemetry: "Export finished", data: ["format": "xml"])
+                Log.export.notice("export ok format=\(name)", telemetry: "Export finished", data: ["format": name])
             } catch {
                 self.error = Log.detail(error)
                 Log.export.error(
-                    "export failed format=xml: \(Log.detail(error))",
+                    "export failed format=\(name): \(Log.detail(error))",
                     telemetry: "Export failed",
-                    data: ["format": "xml", "error": Log.detail(error)]
+                    data: ["format": name, "error": Log.detail(error)]
                 )
             }
             return
@@ -277,8 +282,8 @@ final class ExportService {
             }
         case .prores:
             AVAssetExportPresetAppleProRes422LPCM
-        case .xml:
-            AVAssetExportPresetPassthrough // unreachable — XML returns early
+        case .xml, .fcpxml:
+            AVAssetExportPresetPassthrough // unreachable — timeline formats return early
         }
     }
 }
