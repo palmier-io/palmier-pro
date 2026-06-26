@@ -301,6 +301,12 @@ final class VideoProject: NSDocument {
             self?.updateChangeCount(.changeDone)
         }
 
+        if let manifest = loadedManifest {
+            editorViewModel.mediaManifest = manifest
+            loadedManifest = nil
+            restoreAssetsFromManifest()
+        }
+
         let editorView = EditorView()
             .environment(editorViewModel)
             .focusEffectDisabled()
@@ -340,11 +346,6 @@ final class VideoProject: NSDocument {
 
         AppState.shared.showEditor(for: self)
 
-        if let manifest = loadedManifest {
-            editorViewModel.mediaManifest = manifest
-            loadedManifest = nil
-            restoreAssetsFromManifest()
-        }
         if let log = loadedGenerationLog {
             editorViewModel.generationLog = log
             loadedGenerationLog = nil
