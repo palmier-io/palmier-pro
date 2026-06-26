@@ -58,7 +58,6 @@ enum ExportResolution: String, CaseIterable, Identifiable {
 enum ExportMode: String, CaseIterable, Identifiable {
     case video = "Video (.mp4)"
     case xml = "Timeline (.xml)"
-    case fcpxml = "Timeline (.fcpxml)"
     case palmierProject = "Palmier Project (.palmier)"
 
     var id: String { rawValue }
@@ -70,6 +69,13 @@ enum VideoCodec: String, CaseIterable, Identifiable {
     case prores = "ProRes"
 
     var id: String { rawValue }
+
+    var containerLabel: String {
+        switch self {
+        case .h264, .h265: "MPEG-4 (.mp4)"
+        case .prores: "QuickTime (.mov)"
+        }
+    }
 
     var exportFormat: ExportFormat {
         switch self {
