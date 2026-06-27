@@ -8,6 +8,7 @@ struct SkillsPane: View {
     @State private var draft = ""
     @State private var originalDraft = ""
     @State private var editSkillId: String?
+    @State private var confirmingDelete = false
 
     private var filtered: [Skill] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
@@ -54,6 +55,21 @@ struct SkillsPane: View {
         .onChange(of: selection) {
             editing = false
             editSkillId = nil
+        }
+        .confirmationDialog(
+            "Delete this skill?",
+            isPresented: $confirmingDelete,
+            titleVisibility: .visible,
+            presenting: selected
+        ) { skill in
+            Button("Delete \u{201C}\(skill.name)\u{201D}", role: .destructive) {
+                store.delete(skill)
+                selection = store.skills.first?.id
+                editing = false
+                editSkillId = nil
+            }
+        } message: { _ in
+            Text("This removes the folder from ~/.palmier/skills.")
         }
     }
 
@@ -147,6 +163,7 @@ struct SkillsPane: View {
             SkillIconButton(systemName: "arrow.up.forward.app", help: "Reveal in Finder", tint: AppTheme.Accent.primary) {
                 store.reveal(skill.path)
             }
+            SkillIconButton(systemName: "trash", help: "Delete skill") { confirmingDelete = true }
         }
         .padding(.horizontal, AppTheme.Spacing.xlXxl)
         .padding(.top, AppTheme.Spacing.md)

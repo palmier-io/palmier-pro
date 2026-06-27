@@ -7,7 +7,7 @@ enum SkillExternalAgent: String, CaseIterable, Sendable {
 
     var label: String {
         switch self {
-        case .claude: "Claude Code"
+        case .claude: "Claude"
         case .codex: "Codex"
         case .cursor: "Cursor"
         }
@@ -92,10 +92,12 @@ final class SkillStore {
         reload()
     }
 
-    /// Copies the skill's folder into an external agent's skills directory
+    /// Copies the skill's folder into an external agent's skills directory under a
+    /// `palmier-` prefix, so we only ever overwrite our own prior copy — never a
+    /// skill the user authored there.
     func copy(_ skill: Skill, to agent: SkillExternalAgent) {
         let source = skill.path.deletingLastPathComponent()
-        let dest = agent.skillsDirectory.appendingPathComponent(skill.id, isDirectory: true)
+        let dest = agent.skillsDirectory.appendingPathComponent("palmier-\(skill.id)", isDirectory: true)
         let fm = FileManager.default
         do {
             try fm.createDirectory(at: agent.skillsDirectory, withIntermediateDirectories: true)
@@ -105,6 +107,12 @@ final class SkillStore {
         } catch {
             Log.agent.error("copy skill to \(agent.rawValue) failed: \(error.localizedDescription)")
         }
+    }
+
+    /// Removes a skill's folder from `~/.palmier/skills/`.
+    func delete(_ skill: Skill) {
+        try? FileManager.default.removeItem(at: skill.path.deletingLastPathComponent())
+        reload()
     }
 
     /// Scaffolds a new skill folder with a template SKILL.md
