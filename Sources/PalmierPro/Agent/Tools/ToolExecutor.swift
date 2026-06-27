@@ -254,6 +254,16 @@ func parseAlignment(_ raw: String?, path: String) throws -> TextStyle.Alignment?
     return a
 }
 
+// Untrusted Double→Int: nil on NaN/Inf/overflow instead of trapping.
+func safeInt(_ d: Double) -> Int? { Int(exactly: d.rounded(.towardZero)) }
+
+// Clamp before converting so the Int(...) can't overflow.
+func clampInt(_ d: Double, min lo: Int, max hi: Int) -> Int {
+    if d.isNaN || d <= Double(lo) { return lo }
+    if d >= Double(hi) { return hi }
+    return Int(d.rounded())
+}
+
 extension Dictionary where Key == String, Value == Any {
     func string(_ key: String) -> String? {
         if let v = self[key] as? String, !v.isEmpty { return v }
@@ -261,7 +271,7 @@ extension Dictionary where Key == String, Value == Any {
     }
     func int(_ key: String) -> Int? {
         if let v = self[key] as? Int { return v }
-        if let v = self[key] as? Double { return Int(v) }
+        if let v = self[key] as? Double { return safeInt(v) }
         if let v = self[key] as? NSNumber { return v.intValue }
         if let v = self[key] as? String { return Int(v) }
         return nil
