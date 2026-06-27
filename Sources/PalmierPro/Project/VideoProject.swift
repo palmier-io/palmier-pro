@@ -333,15 +333,13 @@ final class VideoProject: NSDocument {
         window.titleVisibility = .visible
         window.titlebarAppearsTransparent = true
         window.backgroundColor = NSColor(AppTheme.Background.surfaceColor)
-        if !NSWindow.hasAutosavedFrame(name: autosaveName) {
-            window.fillVisibleScreen()
-        }
+        window.fillVisibleScreen()
 
         window.addTitlebarSwiftUI(TitleBarLeadingView().environment(editorViewModel), side: .leading, width: AppTheme.IconSize.lg + AppTheme.Spacing.sm)
         window.addTitlebarSwiftUI(TitleBarTrailingView().environment(editorViewModel), side: .trailing, width: AppTheme.Window.projectTitlebarTrailingWidth)
 
         let controller = EditorWindowController(editorViewModel: editorViewModel, window: window)
-        controller.shouldCascadeWindows = false
+        controller.shouldCascadeWindows = true
         controller.installKeyMonitor()
         addWindowController(controller)
 
@@ -524,10 +522,6 @@ final class VideoProject: NSDocument {
 // MARK: - NSWindow helper
 
 extension NSWindow {
-    static func hasAutosavedFrame(name: String) -> Bool {
-        UserDefaults.standard.object(forKey: "NSWindow Frame \(name)") != nil
-    }
-
     func fillVisibleScreen(using screen: NSScreen? = nil) {
         let target = screen ?? self.screen ?? NSScreen.main
         guard let frame = target?.visibleFrame else { return }
