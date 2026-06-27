@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct SkillsPane: View {
-    @State private var store = SkillStore.shared
-    @State private var catalog = SkillCatalog.shared
+    @Bindable private var store = SkillStore.shared
+    @Bindable private var catalog = SkillCatalog.shared
     @State private var selection: String?
     @State private var query = ""
     @State private var editing = false
@@ -18,7 +18,44 @@ struct SkillsPane: View {
     @State private var titleSkillId: String?
     @FocusState private var titleFocused: Bool
 
-    enum CommunityState { case upToDate, update, modified }
+    private enum CommunityState {
+        case upToDate, update, modified
+
+        var badge: SkillRowBadge? {
+            switch self {
+            case .update: .update
+            case .modified: .modified
+            case .upToDate: nil
+            }
+        }
+
+        func provenance(sha: String) -> String {
+            switch self {
+            case .modified: "Community · modified locally"
+            case .update: "Community · update available"
+            case .upToDate: "Community · v\(sha)"
+            }
+        }
+    }
+
+    private enum CommunityItem: Identifiable {
+        case installed(Skill)
+        case available(SkillCatalogEntry)
+
+        var id: String {
+            switch self {
+            case .installed(let s): s.id
+            case .available(let e): e.id
+            }
+        }
+
+        var sortName: String {
+            switch self {
+            case .installed(let s): s.name.lowercased()
+            case .available(let e): e.name.lowercased()
+            }
+        }
+    }
 
     private func matches(_ name: String, _ description: String) -> Bool {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
@@ -35,28 +72,7 @@ struct SkillsPane: View {
 
     private var availableEntries: [SkillCatalogEntry] {
         let local = Set(store.skills.map(\.id))
-        return catalog.entries
-            .filter { !local.contains($0.id) }
-            .filter { matches($0.name, $0.description) }
-    }
-
-    /// Community section: installed-from-catalog skills plus not-yet-installed catalog
-    /// entries, merged and sorted by name. (The id sets are disjoint by construction.)
-    enum CommunityItem: Identifiable {
-        case installed(Skill)
-        case available(SkillCatalogEntry)
-        var id: String {
-            switch self {
-            case .installed(let s): s.id
-            case .available(let e): e.id
-            }
-        }
-        var sortName: String {
-            switch self {
-            case .installed(let s): s.name.lowercased()
-            case .available(let e): e.name.lowercased()
-            }
-        }
+        return catalog.entries.filter { !local.contains($0.id) && matches($0.name, $0.description) }
     }
 
     private var communityItems: [CommunityItem] {
@@ -73,12 +89,6 @@ struct SkillsPane: View {
         if store.localSha(skill) != ledger { return .modified }
         if let entry = catalog.entry(id: skill.id), entry.sha != ledger { return .update }
         return .upToDate
-    }
-
-    /// The catalog entry to install when an update is available for a community skill.
-    private func updateEntry(_ skill: Skill) -> SkillCatalogEntry? {
-        guard store.installed[skill.id] != nil, communityState(skill) == .update else { return nil }
-        return catalog.entry(id: skill.id)
     }
 
     var body: some View {
@@ -174,7 +184,7 @@ struct SkillsPane: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: AppTheme.BorderWidth.hairline) {
                     sectionHeader("My Skills", count: mySkills.count, expanded: $showMy)
-                    if showMy { skillRows(mySkills) }
+                    if showMy { skillListRows(mySkills) }
                     sectionHeader("Community", count: communityItems.count, expanded: $showCommunity)
                     if showCommunity { communityRows }
                     if let error = catalog.lastError, catalog.entries.isEmpty {
@@ -191,28 +201,18 @@ struct SkillsPane: View {
         }
     }
 
-    @ViewBuilder private func skillRows(_ items: [Skill]) -> some View {
-        if items.isEmpty {
-            emptyRow
-        } else {
-            ForEach(items) { skill in
-                SkillRow(skill: skill, isSelected: selected?.id == skill.id, badge: badge(for: skill)) {
-                    selection = skill.id
-                }
-            }
-        }
+    @ViewBuilder private func skillListRows(_ items: [Skill]) -> some View {
+        if items.isEmpty { emptyRow }
+        else { ForEach(items) { selectSkillRow($0) } }
     }
 
     @ViewBuilder private var communityRows: some View {
-        if communityItems.isEmpty {
-            emptyRow
-        } else {
+        if communityItems.isEmpty { emptyRow }
+        else {
             ForEach(communityItems) { item in
                 switch item {
                 case .installed(let skill):
-                    SkillRow(skill: skill, isSelected: selected?.id == skill.id, badge: badge(for: skill)) {
-                        selection = skill.id
-                    }
+                    selectSkillRow(skill)
                 case .available(let entry):
                     SkillAvailableRow(entry: entry, installing: installing.contains(entry.id)) {
                         installing.insert(entry.id)
@@ -224,6 +224,13 @@ struct SkillsPane: View {
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder private func selectSkillRow(_ skill: Skill) -> some View {
+        let badge = store.installed[skill.id] != nil ? communityState(skill).badge : nil
+        SkillRow(skill: skill, isSelected: selected?.id == skill.id, badge: badge) {
+            selection = skill.id
         }
     }
 
@@ -259,29 +266,11 @@ struct SkillsPane: View {
         .buttonStyle(.plain)
     }
 
-    private func badge(for skill: Skill) -> SkillRowBadge? {
-        guard store.installed[skill.id] != nil else { return nil }
-        switch communityState(skill) {
-        case .update: return .update
-        case .modified: return .modified
-        case .upToDate: return nil
-        }
-    }
-
     private func commitTitle() {
         guard editingTitle else { return }
         editingTitle = false
         if let skill = store.skills.first(where: { $0.id == titleSkillId }) {
             store.rename(skill, to: draftTitle)
-        }
-    }
-
-    private func provenance(_ skill: Skill) -> String {
-        guard let sha = store.installed[skill.id] else { return "Local skill" }
-        switch communityState(skill) {
-        case .modified: return "Community · modified locally"
-        case .update: return "Community · update available"
-        case .upToDate: return "Community · v\(sha)"
         }
     }
 
@@ -312,6 +301,7 @@ struct SkillsPane: View {
 
     private func toolbar(_ skill: Skill) -> some View {
         let dirty = editing && draft != originalDraft
+        let state = communityState(skill)
         return HStack(spacing: AppTheme.Spacing.md) {
             if editingTitle {
                 TextField("Name", text: $draftTitle)
@@ -354,12 +344,16 @@ struct SkillsPane: View {
                     .foregroundStyle(AppTheme.Text.mutedColor)
             }
             if editing {
-                SkillSaveButton(dirty: dirty) {
-                    store.save(skill, raw: draft)
-                    originalDraft = draft
+                Button { store.save(skill, raw: draft); originalDraft = draft } label: {
+                    Text("Save")
+                        .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
+                        .foregroundStyle(dirty ? AppTheme.Accent.primary : AppTheme.Text.mutedColor)
                 }
+                .buttonStyle(.plain)
+                .keyboardShortcut("s", modifiers: .command)
+                .disabled(!dirty)
             }
-            if !editing, let entry = updateEntry(skill) {
+            if !editing, state == .update, let entry = catalog.entry(id: skill.id) {
                 Button("Update") { Task { await store.install(entry) } }
                     .buttonStyle(.plain)
                     .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
@@ -401,9 +395,15 @@ struct SkillsPane: View {
 
     private func viewContent(_ skill: Skill) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            Text(provenance(skill))
-                .font(.system(size: AppTheme.FontSize.xxs))
-                .foregroundStyle(AppTheme.Text.mutedColor)
+            if let sha = store.installed[skill.id] {
+                Text(communityState(skill).provenance(sha: sha))
+                    .font(.system(size: AppTheme.FontSize.xxs))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+            } else {
+                Text("Local skill")
+                    .font(.system(size: AppTheme.FontSize.xxs))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+            }
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
                 Text("DESCRIPTION")
                     .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
@@ -442,6 +442,24 @@ struct SkillsPane: View {
 
 // MARK: - Hover-aware controls
 
+private struct SkillSegmentButton: View {
+    let systemName: String
+    let active: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(active ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
+                .padding(.horizontal, AppTheme.Spacing.sm)
+                .padding(.vertical, AppTheme.Spacing.xs)
+                .hoverHighlight(cornerRadius: AppTheme.Radius.xs, isActive: active)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 private struct SkillIconButton: View {
     let systemName: String
     let help: String
@@ -462,59 +480,15 @@ private struct SkillIconButton: View {
     }
 }
 
-private struct SkillSegmentButton: View {
-    let systemName: String
-    let active: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(active ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
-                .padding(.horizontal, AppTheme.Spacing.sm)
-                .padding(.vertical, AppTheme.Spacing.xs)
-                .hoverHighlight(cornerRadius: AppTheme.Radius.xs, isActive: active)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct SkillSaveButton: View {
-    let dirty: Bool
-    let action: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            Text("Save")
-                .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
-                .foregroundStyle(dirty ? AppTheme.Accent.primary : AppTheme.Text.mutedColor)
-                .opacity(hovering && dirty ? 0.75 : 1)
-        }
-        .buttonStyle(.plain)
-        .keyboardShortcut("s", modifiers: .command)
-        .disabled(!dirty)
-        .onHover { hovering = $0 }
-    }
-}
-
 private struct SkillCopyMenu: View {
     let skill: Skill
     let store: SkillStore
     @State private var showing = false
 
     var body: some View {
-        Button { showing.toggle() } label: {
-            Image(systemName: "square.and.arrow.up")
-                .font(.system(size: AppTheme.FontSize.md))
-                .foregroundStyle(AppTheme.Accent.primary)
-                .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
-                .padding(AppTheme.Spacing.xs)
-                .hoverHighlight(cornerRadius: AppTheme.Radius.xs)
+        SkillIconButton(systemName: "square.and.arrow.up", help: "Copy to agent", tint: AppTheme.Accent.primary) {
+            showing.toggle()
         }
-        .buttonStyle(.plain)
-        .help("Copy to agent")
         .popover(isPresented: $showing, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 0) {
                 Text("COPY TO")
@@ -525,10 +499,19 @@ private struct SkillCopyMenu: View {
                     .padding(.top, AppTheme.Spacing.smMd)
                     .padding(.bottom, AppTheme.Spacing.xs)
                 ForEach(SkillExternalAgent.allCases, id: \.self) { agent in
-                    SkillPopoverRow(label: agent.label) {
+                    Button {
                         store.copy(skill, to: agent)
                         showing = false
+                    } label: {
+                        Text(agent.label)
+                            .font(.system(size: AppTheme.FontSize.sm))
+                            .foregroundStyle(AppTheme.Text.primaryColor)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, AppTheme.Spacing.md)
+                            .padding(.vertical, AppTheme.Spacing.sm)
+                            .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
                     }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.bottom, AppTheme.Spacing.xs)
@@ -537,25 +520,7 @@ private struct SkillCopyMenu: View {
     }
 }
 
-private struct SkillPopoverRow: View {
-    let label: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(label)
-                .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(AppTheme.Text.primaryColor)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, AppTheme.Spacing.md)
-                .padding(.vertical, AppTheme.Spacing.sm)
-                .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-enum SkillRowBadge { case update, modified }
+private enum SkillRowBadge { case update, modified }
 
 private struct SkillRow: View {
     let skill: Skill
@@ -573,28 +538,24 @@ private struct SkillRow: View {
                 .foregroundStyle(AppTheme.Text.primaryColor)
                 .lineLimit(1)
             Spacer(minLength: AppTheme.Spacing.xs)
-            badgeView
+            switch badge {
+            case .update:
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Accent.primary)
+            case .modified:
+                Text("Modified")
+                    .font(.system(size: AppTheme.FontSize.xxs))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+            case nil:
+                EmptyView()
+            }
         }
         .padding(.horizontal, AppTheme.Spacing.sm)
         .padding(.vertical, AppTheme.Spacing.smMd)
         .frame(maxWidth: .infinity, alignment: .leading)
         .hoverHighlight(cornerRadius: AppTheme.Radius.sm, isActive: isSelected)
         .onTapGesture(perform: action)
-    }
-
-    @ViewBuilder private var badgeView: some View {
-        switch badge {
-        case .update:
-            Image(systemName: "arrow.down.circle.fill")
-                .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(AppTheme.Accent.primary)
-        case .modified:
-            Text("Modified")
-                .font(.system(size: AppTheme.FontSize.xxs))
-                .foregroundStyle(AppTheme.Text.mutedColor)
-        case nil:
-            EmptyView()
-        }
     }
 }
 
