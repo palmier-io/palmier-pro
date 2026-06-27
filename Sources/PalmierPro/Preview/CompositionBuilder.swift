@@ -424,6 +424,15 @@ enum CompositionBuilder {
         return (audioMix, AVVideoComposition(configuration: vcConfig))
     }
 
+    static func addingAnimationTool(
+        _ animationTool: AVVideoCompositionCoreAnimationTool,
+        to videoComposition: AVVideoComposition
+    ) -> AVVideoComposition {
+        var config = videoComposition.palmierConfiguration()
+        config.animationTool = animationTool
+        return AVVideoComposition(configuration: config)
+    }
+
     /// One instruction per segment between clip boundaries, layers bottom → top.
     /// The black-background track is excluded — FrameRenderer fills black itself.
     private static func compositorInstructions(

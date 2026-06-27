@@ -38,7 +38,7 @@ struct CompositorRenderTests {
     ) async throws -> Frame {
         var urls = imageURLs
         if urls["pattern"] == nil { urls["pattern"] = try await CompositorFixtures.patternVideoURL() }
-        nonisolated(unsafe) let resolved = urls
+        let resolved = urls
         let result = try await CompositionBuilder.build(
             timeline: timeline, resolveURL: { resolved[$0] }, renderSize: renderSize
         )
@@ -216,7 +216,7 @@ extension CompositorRenderTests {
 
     @Test func topLayerWinsInStack() async throws {
         // Opaque full-frame top over a flipped bg → top wins everywhere.
-        var top = CompositorFixtures.patternClip(id: "top")
+        let top = CompositorFixtures.patternClip(id: "top")
         var bg = CompositorFixtures.patternClip(id: "bg")
         bg.transform = Transform(flipHorizontal: true)
         let f = try await Self.render(Self.timelineWith(

@@ -111,7 +111,7 @@ struct EffectRenderingTests {
     @Test func exposureChangesRenderedBrightness() async throws {
         let renderSize = CompositorFixtures.renderSize
         let videoURL = try await CompositorFixtures.midtoneVideoURL()
-        nonisolated(unsafe) let urls = ["midtone": videoURL]
+        let urls = ["midtone": videoURL]
 
         func meanLuma(ev: Double?) async throws -> Double {
             var clip = CompositorFixtures.midtoneClip()
@@ -145,7 +145,7 @@ struct EffectRenderingTests {
     @Test func everyCatalogEffectRendersAndChangesPixels() async throws {
         let renderSize = CompositorFixtures.renderSize
         let videoURL = try await CompositorFixtures.midtoneVideoURL()
-        nonisolated(unsafe) let urls = ["midtone": videoURL]
+        let urls = ["midtone": videoURL]
 
         let nonDefault: [String: [String: Double]] = [
             "color.exposure": ["ev": -2],
@@ -203,7 +203,7 @@ struct EffectRenderingTests {
     @Test func curvesEffectAppliesCompiledCube() async throws {
         let renderSize = CompositorFixtures.renderSize
         let videoURL = try await CompositorFixtures.midtoneVideoURL()
-        nonisolated(unsafe) let urls = ["midtone": videoURL]
+        let urls = ["midtone": videoURL]
 
         func meanLuma(_ curve: GradeCurve?) async throws -> Double {
             var clip = CompositorFixtures.midtoneClip()
@@ -256,7 +256,7 @@ struct EffectRenderingTests {
 
         let renderSize = CompositorFixtures.renderSize
         let videoURL = try await CompositorFixtures.patternVideoURL()
-        nonisolated(unsafe) let urls = ["pattern": videoURL]
+        let urls = ["pattern": videoURL]
 
         var effect = Effect.make("color.lut", ["intensity": 1])
         effect.params["path"] = EffectParam(string: cubeURL.path)
@@ -284,7 +284,7 @@ struct EffectRenderingTests {
     @Test func disabledAndUnknownEffectsArePassthrough() async throws {
         let renderSize = CompositorFixtures.renderSize
         let videoURL = try await CompositorFixtures.patternVideoURL()
-        nonisolated(unsafe) let urls = ["pattern": videoURL]
+        let urls = ["pattern": videoURL]
 
         func frame(_ effects: [Effect]?) async throws -> [UInt8] {
             var clip = CompositorFixtures.patternClip()

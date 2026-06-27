@@ -79,11 +79,12 @@ enum VideoTrimExtractor {
         let targetFps: Int32 = nominal >= 24 && nominal <= 60
             ? Int32(Float(nominal).rounded())
             : 30
-        let videoComposition = try await AVMutableVideoComposition.videoComposition(
+        let videoComposition = try await AVVideoComposition.videoComposition(
             withPropertiesOf: composition
         )
-        videoComposition.frameDuration = CMTime(value: 1, timescale: targetFps)
-        session.videoComposition = videoComposition
+        var videoConfig = videoComposition.palmierConfiguration()
+        videoConfig.frameDuration = CMTime(value: 1, timescale: targetFps)
+        session.videoComposition = AVVideoComposition(configuration: videoConfig)
 
         Log.generation.notice("trim-extract start frames=\(trim.trimStartFrame)..<\(trim.trimStartFrame + trim.sourceFramesConsumed) timelineFps=\(trim.fps) sourceFps=\(nominal) outFps=\(targetFps)")
         try await session.export(to: outputURL, as: .mp4)
