@@ -31,12 +31,17 @@ enum TwelveLabsKeychain {
 
 enum TwelveLabsClientError: LocalizedError {
     case missingAPIKey
+    case fileTooLarge(bytes: Int, limit: Int)
     case httpError(status: Int, body: String)
     case decoding(String)
 
     var errorDescription: String? {
         switch self {
         case .missingAPIKey: "No TwelveLabs API key is set. Add one in Settings → Agent."
+        case .fileTooLarge(let bytes, let limit):
+            let mb = { (b: Int) in String(format: "%.0f", Double(b) / 1_048_576) }
+            return "Video is \(mb(bytes)) MB, but TwelveLabs direct upload supports up to \(mb(limit)) MB. "
+                + "Export or trim a smaller clip and retry. (Larger files need TwelveLabs' multipart upload, which isn't wired up yet.)"
         case .httpError(let status, let body): "TwelveLabs API error (\(status)): \(body.prefix(500))"
         case .decoding(let msg): "TwelveLabs response error: \(msg)"
         }
@@ -52,6 +57,10 @@ struct TwelveLabsClient: Sendable {
     /// Large uploads and whole-clip Pegasus analysis routinely run past URLSession's
     /// default 60s request timeout, so give both a generous ceiling.
     private static let requestTimeout: TimeInterval = 300
+    /// TwelveLabs caps direct local-file uploads (`method=direct`) at 200 MB; larger files
+    /// require the separate multipart/chunked upload flow. Guard so callers get a clear
+    /// message instead of an opaque API failure on full-resolution source clips.
+    private static let maxDirectUploadBytes = 200 * 1_048_576
 
     /// Uploads a local video file as a TwelveLabs asset, then asks Pegasus the prompt about it.
     func understand(videoURL: URL, prompt: String) async throws -> String {
@@ -61,6 +70,11 @@ struct TwelveLabsClient: Sendable {
 
     private func uploadAsset(fileURL: URL) async throws -> String {
         guard !apiKey.isEmpty else { throw TwelveLabsClientError.missingAPIKey }
+
+        if let bytes = try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int,
+           bytes > Self.maxDirectUploadBytes {
+            throw TwelveLabsClientError.fileTooLarge(bytes: bytes, limit: Self.maxDirectUploadBytes)
+        }
 
         let boundary = "Boundary-\(UUID().uuidString)"
         var request = URLRequest(url: Self.baseURL.appendingPathComponent("assets"))

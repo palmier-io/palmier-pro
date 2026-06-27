@@ -41,7 +41,11 @@ extension ToolExecutor {
         let client = TwelveLabsClient(apiKey: apiKey)
         let answer: String
         do {
-            answer = try await client.understand(videoURL: url, prompt: prompt)
+            // Run off the main actor: building the multipart upload body streams the whole
+            // source file from disk, which would otherwise block the editor on @MainActor.
+            answer = try await Task.detached(priority: .userInitiated) {
+                try await client.understand(videoURL: url, prompt: prompt)
+            }.value
         } catch {
             Log.agent.warning("analyze_video failed: \(error.localizedDescription)")
             return .error("TwelveLabs analysis failed: \(error.localizedDescription)")
