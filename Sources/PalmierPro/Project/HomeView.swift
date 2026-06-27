@@ -24,7 +24,12 @@ struct HomeView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.black.opacity(AppTheme.Opacity.medium))
         }
-        .frame(minWidth: 760, minHeight: 480)
+        .frame(
+            minWidth: AppTheme.Window.homeMin.width,
+            maxWidth: .infinity,
+            minHeight: AppTheme.Window.homeMin.height,
+            maxHeight: .infinity
+        )
         .background(.ultraThinMaterial)
         .focusEffectDisabled()
         .task { await VisualModelLoader.shared.prepare() }
@@ -51,6 +56,7 @@ struct HomeView: View {
                 .padding(.bottom, AppTheme.Spacing.sm)
             projectGrid
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var header: some View {
@@ -216,11 +222,12 @@ final class HomeWindowController: NSWindowController {
 
     private init() {
         let hostingController = NSHostingController(rootView: HomeView().tint(AppTheme.Accent.primary))
+        hostingController.sizingOptions = .minSize
         let window = NSWindow(contentViewController: hostingController)
         window.setContentSize(AppTheme.Window.homeDefault)
         window.minSize = AppTheme.Window.homeMin
         window.title = "Palmier Pro"
-        window.setFrameAutosaveName("PalmierProHome-v2")
+        window.setFrameAutosaveName("PalmierProHome-v3")
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = AppTheme.Background.base.withAlphaComponent(0.4)
         window.isOpaque = false

@@ -267,13 +267,12 @@ enum AppTheme {
     }
 
     enum Window {
-        static let homeDefault = NSSize(width: 1200, height: 1200)
+        static let homeDefault = NSSize(width: 1200, height: 880)
         static let homeMin = NSSize(width: 760, height: 480)
-        static let projectDefault = NSSize(width: 1600, height: 1000)
         static let projectMin = NSSize(width: 960, height: 600)
         static let projectTitlebarTrailingWidth: CGFloat = 280
-        static let settingsDefault = NSSize(width: 1200, height: 820)
-        static let settingsMin = NSSize(width: 860, height: 560)
+        static let settingsDefault = NSSize(width: 1200, height: 900)
+        static let settingsMin = NSSize(width: 860, height: 640)
     }
 
     enum Caption {

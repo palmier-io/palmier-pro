@@ -58,9 +58,9 @@ struct SettingsView: View {
         }
         .frame(
             minWidth: AppTheme.Window.settingsMin.width,
-            idealWidth: AppTheme.Window.settingsDefault.width,
+            maxWidth: .infinity,
             minHeight: AppTheme.Window.settingsMin.height,
-            idealHeight: AppTheme.Window.settingsDefault.height
+            maxHeight: .infinity
         )
         .background(.ultraThinMaterial)
         .focusEffectDisabled()
@@ -120,29 +120,37 @@ private struct SettingsDetail: View {
             .padding(.top, AppTheme.Spacing.xxl)
             .padding(.bottom, AppTheme.Spacing.lgXl)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
-                    switch tab {
-                    case .account:
-                        AccountPane()
-                    case .general:
-                        NotificationsPane()
-                        PrivacyPane()
-                    case .models:
-                        ModelsPane()
-                    case .agent:
-                        AgentPane()
-                    case .skills:
-                        SkillsPane()
-                    case .storage:
-                        StoragePane()
+            Group {
+                if tab == .skills {
+                    SkillsPane()
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
+                            switch tab {
+                            case .account:
+                                AccountPane()
+                            case .general:
+                                NotificationsPane()
+                                PrivacyPane()
+                            case .models:
+                                ModelsPane()
+                            case .agent:
+                                AgentPane()
+                            case .skills:
+                                EmptyView()
+                            case .storage:
+                                StoragePane()
+                            }
+                        }
+                        .padding(.horizontal, AppTheme.Spacing.xlXxl)
+                        .padding(.bottom, AppTheme.Spacing.xlXxl)
                     }
+                    .scrollEdgeEffectStyle(.soft, for: .top)
                 }
-                .padding(.horizontal, AppTheme.Spacing.xlXxl)
-                .padding(.bottom, AppTheme.Spacing.xlXxl)
             }
-            .scrollEdgeEffectStyle(.soft, for: .top)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
@@ -183,11 +191,12 @@ final class SettingsWindowController: NSWindowController {
     private init() {
         let initialView = SettingsView().tint(AppTheme.Accent.primary)
         let hosting = NSHostingController(rootView: AnyView(initialView))
+        hosting.sizingOptions = .minSize
         let window = NSWindow(contentViewController: hosting)
         window.setContentSize(AppTheme.Window.settingsDefault)
         window.minSize = AppTheme.Window.settingsMin
         window.title = "Settings"
-        window.setFrameAutosaveName("PalmierProSettings-v3")
+        window.setFrameAutosaveName("PalmierProSettings-v4")
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = AppTheme.Background.base.withAlphaComponent(0.4)
         window.isOpaque = false
