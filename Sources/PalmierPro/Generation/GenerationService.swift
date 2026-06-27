@@ -199,7 +199,7 @@ final class GenerationService {
             }
             let destinationURL = asset.url
             try await Task.detached(priority: .utility) {
-                try FileIO.moveReplacingDestination(from: tempURL, to: destinationURL)
+                _ = try FileIO.moveReplacingDestination(from: tempURL, to: destinationURL)
             }.value
 
             asset.pendingDownloadURL = nil
