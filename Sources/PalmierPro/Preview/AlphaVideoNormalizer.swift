@@ -100,13 +100,18 @@ enum AlphaVideoNormalizer {
                 guard !alreadyResumed else { return }
                 cont.resume(with: result)
             }
-            input.requestMediaDataWhenReady(on: queue) {
-                while input.isReadyForMoreMediaData {
-                    guard let sample = readerOutput.copyNextSampleBuffer() else {
-                        if reader.status == .failed {
-                            finish(.failure(reader.error ?? NormalizeError.readFailed))
+            nonisolated(unsafe) let unsafeReader = reader
+            nonisolated(unsafe) let unsafeReaderOutput = readerOutput
+            nonisolated(unsafe) let unsafeWriter = writer
+            nonisolated(unsafe) let unsafeInput = input
+            nonisolated(unsafe) let unsafeAdaptor = adaptor
+            unsafeInput.requestMediaDataWhenReady(on: queue) {
+                while unsafeInput.isReadyForMoreMediaData {
+                    guard let sample = unsafeReaderOutput.copyNextSampleBuffer() else {
+                        if unsafeReader.status == .failed {
+                            finish(.failure(unsafeReader.error ?? NormalizeError.readFailed))
                         } else {
-                            input.markAsFinished()
+                            unsafeInput.markAsFinished()
                             finish(.success(()))
                         }
                         return
@@ -114,8 +119,8 @@ enum AlphaVideoNormalizer {
                     guard let pixelBuffer = CMSampleBufferGetImageBuffer(sample) else { continue }
                     premultiply(pixelBuffer)
                     let pts = CMSampleBufferGetPresentationTimeStamp(sample)
-                    if !adaptor.append(pixelBuffer, withPresentationTime: pts) {
-                        finish(.failure(writer.error ?? NormalizeError.appendFailed))
+                    if !unsafeAdaptor.append(pixelBuffer, withPresentationTime: pts) {
+                        finish(.failure(unsafeWriter.error ?? NormalizeError.appendFailed))
                         return
                     }
                 }
