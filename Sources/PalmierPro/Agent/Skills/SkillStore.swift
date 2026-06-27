@@ -56,7 +56,10 @@ final class SkillStore {
 
     private var reloadGeneration = 0
 
-    private init() { Task { await reloadInBackground() } }
+    private init() {
+        installed = Self.loadLedger()
+        Task { await reloadInBackground() }
+    }
 
     func reload() {
         reloadGeneration += 1
@@ -75,7 +78,6 @@ final class SkillStore {
         skills = scan.skills
         bodyCache = scan.bodies
         shaCache = scan.shas
-        installed = Self.loadLedger()
     }
 
     nonisolated static func scan() -> SkillScan {
@@ -102,9 +104,9 @@ final class SkillStore {
 
     func localSha(_ skill: Skill) -> String? { shaCache[skill.id] }
 
-    /// Downloads a catalog skill into the folder; also used to apply an update.
-    func install(_ entry: SkillCatalogEntry) async {
-        guard let url = SkillCatalog.bodyURL(path: entry.path) else { return }
+    @discardableResult
+    func install(_ entry: SkillCatalogEntry) async -> Bool {
+        guard let url = SkillCatalog.bodyURL(path: entry.path) else { return false }
         do {
             let data = try await SkillCatalog.fetch(url)
             let dir = Self.directory.appendingPathComponent(entry.id, isDirectory: true)
@@ -113,8 +115,10 @@ final class SkillStore {
             installed[entry.id] = entry.sha
             writeLedger()
             reload()
+            return true
         } catch {
             Log.agent.error("install skill \(entry.id) failed: \(error.localizedDescription)")
+            return false
         }
     }
 

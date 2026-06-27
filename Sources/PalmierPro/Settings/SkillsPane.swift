@@ -217,9 +217,9 @@ struct SkillsPane: View {
                     SkillAvailableRow(entry: entry, installing: installing.contains(entry.id)) {
                         installing.insert(entry.id)
                         Task {
-                            await store.install(entry)
+                            let ok = await store.install(entry)
                             installing.remove(entry.id)
-                            selection = entry.id
+                            if ok { selection = entry.id }
                         }
                     }
                 }
@@ -271,7 +271,6 @@ struct SkillsPane: View {
     private func commitTitle() {
         guard editingTitle else { return }
         editingTitle = false
-        // Rename the skill the edit started on (titleSkillId), not the now-selected one.
         if let skill = store.skills.first(where: { $0.id == titleSkillId }) {
             store.rename(skill, to: draftTitle)
         }
