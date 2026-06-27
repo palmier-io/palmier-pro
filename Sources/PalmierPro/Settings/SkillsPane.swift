@@ -130,9 +130,7 @@ struct SkillsPane: View {
             Task { await catalog.refresh() }
         }
         .onChange(of: selection) {
-            if editing, draft != originalDraft, let edited = store.skills.first(where: { $0.id == editSkillId }) {
-                store.save(edited, raw: draft)
-            }
+            commitDraftIfDirty()
             commitTitle()
             editing = false
             editSkillId = nil
@@ -144,6 +142,8 @@ struct SkillsPane: View {
             presenting: selected
         ) { skill in
             Button("Delete \u{201C}\(skill.name)\u{201D}", role: .destructive) {
+                commitDraftIfDirty()
+                commitTitle()
                 store.delete(skill)
                 selection = store.skills.first?.id
                 editing = false
@@ -264,6 +264,14 @@ struct SkillsPane: View {
             .padding(.bottom, AppTheme.Spacing.xxs)
         }
         .buttonStyle(.plain)
+    }
+
+    private func commitDraftIfDirty() {
+        guard draft != originalDraft,
+              let id = editSkillId,
+              let skill = store.skills.first(where: { $0.id == id }) else { return }
+        store.save(skill, raw: draft)
+        originalDraft = draft
     }
 
     private func commitTitle() {
