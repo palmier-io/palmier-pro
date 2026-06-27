@@ -71,7 +71,7 @@ struct TwelveLabsClient: Sendable {
     private func uploadAsset(fileURL: URL) async throws -> String {
         guard !apiKey.isEmpty else { throw TwelveLabsClientError.missingAPIKey }
 
-        if let bytes = try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int,
+        if let bytes = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize,
            bytes > Self.maxDirectUploadBytes {
             throw TwelveLabsClientError.fileTooLarge(bytes: bytes, limit: Self.maxDirectUploadBytes)
         }
