@@ -238,6 +238,10 @@ final class EditorViewModel {
     /// Preview playback bridge.
     var videoEngine: VideoEngine?
 
+    /// Set (via `applyingAgentEdit`) only while an agent/MCP tool applies a synchronous timeline
+    /// mutation, so a rebuild during playback keeps the play intent instead of pausing the preview.
+    @ObservationIgnored var isApplyingAgentEdit = false
+
     @ObservationIgnored
     let playheadState = PreviewPlayheadState()
 
@@ -327,10 +331,21 @@ final class EditorViewModel {
     /// Coalesces rapid rebuild requests so `replaceCurrentItem` doesn't fire per keystroke.
     var pendingRebuildTask: Task<Void, Never>?
 
+    /// Scopes `isApplyingAgentEdit` to a synchronous mutation. Never wrap an `await` — a manual
+    /// edit interleaving at the suspension point would then wrongly skip its pause.
+    func applyingAgentEdit<T>(_ body: () throws -> T) rethrows -> T {
+        let previous = isApplyingAgentEdit
+        isApplyingAgentEdit = true
+        defer { isApplyingAgentEdit = previous }
+        return try body()
+    }
+
     func notifyTimelineChanged() {
         pendingRebuildTask?.cancel()
         pendingRebuildTask = nil
-        if isPlaying {
+        // Agent edits keep playing across the rebuild — rebuild() reseeks and resumes
+        // because isPlaying stays true. Only manual edits halt the preview.
+        if isPlaying, !isApplyingAgentEdit {
             videoEngine?.pause()
         }
         videoEngine?.syncTextLayers()
