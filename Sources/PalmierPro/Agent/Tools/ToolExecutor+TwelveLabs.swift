@@ -24,10 +24,18 @@ extension ToolExecutor {
         }
         let url = asset.url
         guard FileManager.default.fileExists(atPath: url.path) else {
-            if asset.isGenerating {
-                throw ToolError("Asset \(asset.id) isn't on disk yet. Poll get_media and retry once generationStatus becomes 'none'.")
+            switch asset.generationStatus {
+            case .downloading:
+                throw ToolError("Asset \(asset.id) is still downloading. Poll get_media and retry once generationStatus becomes 'none'.")
+            case .generating:
+                throw ToolError("Asset \(asset.id) is still generating. Poll get_media and retry once generationStatus becomes 'none'.")
+            case .rendering:
+                throw ToolError("Asset \(asset.id) is still rendering. Poll get_media and retry once generationStatus becomes 'none'.")
+            case .failed(let msg):
+                throw ToolError("Asset \(asset.id) failed: \(msg)")
+            case .none:
+                throw ToolError("Media file not on disk: \(url.lastPathComponent)")
             }
-            throw ToolError("Media file not on disk: \(url.lastPathComponent)")
         }
 
         let client = TwelveLabsClient(apiKey: apiKey)
