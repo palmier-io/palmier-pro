@@ -82,10 +82,17 @@ struct SkillsPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
-            Text("These skills are available to the in-app agent. For Claude/Codex/Cursor, use the copy button.")
-                .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+                Text("These skills are available to the in-app agent. For Claude/Codex/Cursor, use the copy button.")
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let url = URL(string: "https://github.com/palmier-io/palmier-skills") {
+                    Link("Check out community skills ↗", destination: url)
+                        .font(.system(size: AppTheme.FontSize.sm))
+                        .foregroundStyle(AppTheme.Accent.primary)
+                }
+            }
 
             HStack(spacing: 0) {
                 leftColumn
