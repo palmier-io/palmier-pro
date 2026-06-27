@@ -693,7 +693,7 @@ extension ToolExecutor {
     }
 
     func msToFrames(_ ms: Double, fps: Int) -> Int {
-        safeInt(ms / 1000 * Double(fps)) ?? 0
+        Int((ms / 1000 * Double(fps)).rounded())
     }
 
     /// Maps a clip's transcript words to (text, startFrame, endFrame) in project frames,

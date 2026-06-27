@@ -251,7 +251,7 @@ extension ToolExecutor {
         }
 
         let instrumental = args.bool("instrumental") ?? false
-        let durationSeconds = args.int("duration") ?? spanSeconds.map { max(1, safeInt($0.rounded()) ?? 1) }
+        let durationSeconds = args.int("duration") ?? spanSeconds.map { max(1, Int($0.rounded())) }
         let params = AudioGenerationParams(
             prompt: prompt,
             voice: model.voices != nil ? (args.string("voice") ?? model.defaultVoice) : nil,
