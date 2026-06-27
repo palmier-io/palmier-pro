@@ -20,11 +20,17 @@ enum FrameRenderer {
             guard let buffer = sourceFrame(layer.trackID) else { continue }
             if let image = composedLayer(layer, buffer: buffer, frame: frame,
                                          renderSize: instruction.renderSize) {
-                accum = image.composited(over: accum)
+                accum = composite(image, over: accum, mode: layer.clip.blendMode ?? .normal)
             }
         }
         context.render(accum, to: output, bounds: renderRect, colorSpace: nil)
         tag709(output)
+    }
+
+    /// Composite `image` over `background` using the clip's blend mode (source-over for normal).
+    private static func composite(_ image: CIImage, over background: CIImage, mode: BlendMode) -> CIImage {
+        guard let name = mode.ciFilterName else { return image.composited(over: background) }
+        return image.applyingFilter(name, parameters: [kCIInputBackgroundImageKey: background])
     }
 
     /// Tag output Rec. 709 at the buffer level so downstream reads our bytes correctly.

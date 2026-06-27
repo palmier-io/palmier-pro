@@ -474,6 +474,7 @@ struct InspectorView: View {
                     }
                     cropRow(single: single)
                     flipRow(clips: clips)
+                    blendRow(clips: clips)
                 }
                 .padding(.leading, sectionContentIndent)
             }
@@ -704,6 +705,31 @@ struct InspectorView: View {
     }
 
     // MARK: - Flip
+
+    private func blendRow(clips: [Clip]) -> some View {
+        let current = clips.first?.blendMode ?? .normal
+        let mixed = clips.count > 1 && !clips.allSatisfy { ($0.blendMode ?? .normal) == current }
+        return propertyRow(label: "Blend") {
+            Menu {
+                ForEach(BlendMode.allCases, id: \.self) { m in
+                    Button(m.displayName) {
+                        commitToClips(clips, actionName: "Blend Mode") { c in
+                            editor.commitClipProperty(clipId: c.id) { $0.blendMode = (m == .normal ? nil : m) }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: AppTheme.Spacing.xxs) {
+                    Text(mixed ? "—" : current.displayName)
+                    Image(systemName: "chevron.up.chevron.down").font(.system(size: AppTheme.FontSize.xxs))
+                }
+                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+        }
+        .frame(height: KeyframesMetrics.rowHeight)
+    }
 
     @ViewBuilder
     private func flipRow(clips: [Clip]) -> some View {
