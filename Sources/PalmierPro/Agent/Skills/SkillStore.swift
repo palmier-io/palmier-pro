@@ -24,7 +24,14 @@ enum SkillExternalAgent: String, CaseIterable, Sendable {
     }
 }
 
-/// Reads skills from `~/.palmier/skills/` (the single source of truth)
+/// Result of scanning the skills folder, computed off the main actor.
+struct SkillScan: Sendable {
+    let skills: [Skill]
+    let bodies: [String: String]
+    let shas: [String: String]
+}
+
+/// Reads skills from `~/.palmier/skills/` — the single source of truth.
 @Observable
 @MainActor
 final class SkillStore {
@@ -32,30 +39,43 @@ final class SkillStore {
 
     private(set) var skills: [Skill] = []
 
-    /// Ledger of catalog-installed skills: id → the sha installed
+    /// Catalog-installed skills: id → the sha installed. A skill here is "community"; one
+    /// in the folder but not here is the user's own.
     private(set) var installed: [String: String] = [:]
 
-    // Caches populated by reload() from the file text it already reads, so the body and
-    // content hash don't trigger a fresh disk read on every view render.
+    // Filled by a scan so body and content hash are cache lookups, not per-render disk reads.
     private var bodyCache: [String: String] = [:]
     private var shaCache: [String: String] = [:]
 
-    static var directory: URL {
+    nonisolated static var directory: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".palmier/skills", isDirectory: true)
     }
 
     private static var ledgerURL: URL { directory.appendingPathComponent(".installed.json") }
 
-    private init() { reload() }
+    private init() { Task { await reloadInBackground() } }
 
-    /// Rescans the skills folder and the install ledger, caching each body and content hash.
-    func reload() {
+    func reload() { apply(Self.scan()) }
+
+    func reloadInBackground() async {
+        let scan = await Task.detached(priority: .utility) { Self.scan() }.value
+        apply(scan)
+    }
+
+    private func apply(_ scan: SkillScan) {
+        skills = scan.skills
+        bodyCache = scan.bodies
+        shaCache = scan.shas
+        installed = Self.loadLedger()
+    }
+
+    nonisolated static func scan() -> SkillScan {
         let fm = FileManager.default
         var found: [Skill] = []
         var bodies: [String: String] = [:]
         var shas: [String: String] = [:]
-        if let entries = try? fm.contentsOfDirectory(at: Self.directory, includingPropertiesForKeys: nil) {
+        if let entries = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
             for dir in entries {
                 let md = dir.appendingPathComponent("SKILL.md")
                 guard let text = try? String(contentsOf: md, encoding: .utf8) else { continue }
@@ -64,21 +84,17 @@ final class SkillStore {
                 let id = dir.lastPathComponent
                 found.append(Skill(id: id, name: name, description: description, path: md))
                 bodies[id] = body
-                shas[id] = Self.sha12(Data(text.utf8))
+                shas[id] = sha12(Data(text.utf8))
             }
         }
-        skills = found.sorted { $0.id < $1.id }
-        bodyCache = bodies
-        shaCache = shas
-        installed = Self.loadLedger()
+        return SkillScan(skills: found.sorted { $0.id < $1.id }, bodies: bodies, shas: shas)
     }
 
     // MARK: Catalog install / ledger
 
-    /// Content hash of the skill's SKILL.md
     func localSha(_ skill: Skill) -> String? { shaCache[skill.id] }
 
-    /// Downloads a catalog skill into the folder
+    /// Downloads a catalog skill into the folder; also used to apply an update.
     func install(_ entry: SkillCatalogEntry) async {
         guard let url = SkillCatalog.bodyURL(path: entry.path) else { return }
         do {
@@ -94,7 +110,7 @@ final class SkillStore {
         }
     }
 
-    private static func sha12(_ data: Data) -> String {
+    nonisolated private static func sha12(_ data: Data) -> String {
         String(SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined().prefix(12))
     }
 
@@ -143,9 +159,8 @@ final class SkillStore {
         reload()
     }
 
-    /// Copies the skill's folder into an external agent's skills directory under a
-    /// `palmier-` prefix, so we only ever overwrite our own prior copy — never a
-    /// skill the user authored there.
+    /// Copies under a `palmier-` prefix so we only overwrite our own prior copy, never a
+    /// skill the user authored in the target agent's folder.
     func copy(_ skill: Skill, to agent: SkillExternalAgent) {
         let source = skill.path.deletingLastPathComponent()
         let dest = agent.skillsDirectory.appendingPathComponent("palmier-\(skill.id)", isDirectory: true)
@@ -160,7 +175,6 @@ final class SkillStore {
         }
     }
 
-    /// Removes a skill's folder from `~/.palmier/skills/`.
     func delete(_ skill: Skill) {
         try? FileManager.default.removeItem(at: skill.path.deletingLastPathComponent())
         installed[skill.id] = nil
@@ -168,7 +182,6 @@ final class SkillStore {
         reload()
     }
 
-    /// Scaffolds a new skill folder with a template SKILL.md
     @discardableResult
     func newSkill() -> String? {
         let fm = FileManager.default

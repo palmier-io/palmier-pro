@@ -28,13 +28,10 @@ struct SkillsPane: View {
         store.skills.filter { matches($0.name, $0.description) }
     }
 
-    /// Folder skills with no ledger entry — the user's own.
+    /// No ledger entry → the user's own; in the ledger → installed from the catalog.
     private var mySkills: [Skill] { filtered.filter { store.installed[$0.id] == nil } }
-
-    /// Folder skills installed from the catalog.
     private var communitySkills: [Skill] { filtered.filter { store.installed[$0.id] != nil } }
 
-    /// Catalog entries not present in the folder.
     private var availableEntries: [SkillCatalogEntry] {
         let local = Set(store.skills.map(\.id))
         return catalog.entries
@@ -67,7 +64,7 @@ struct SkillsPane: View {
     }
 
     private var selected: Skill? {
-        store.skills.first { $0.id == selection } ?? store.skills.first
+        filtered.first { $0.id == selection } ?? filtered.first
     }
 
     private func communityState(_ skill: Skill) -> CommunityState {
@@ -110,11 +107,14 @@ struct SkillsPane: View {
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.md))
         }
         .onAppear {
-            store.reload()
             if selection == nil { selection = store.skills.first?.id }
+            Task { await store.reloadInBackground() }
             Task { await catalog.refresh() }
         }
         .onChange(of: selection) {
+            if editing, draft != originalDraft, let edited = store.skills.first(where: { $0.id == editSkillId }) {
+                store.save(edited, raw: draft)
+            }
             editing = false
             editSkillId = nil
             editingTitle = false
