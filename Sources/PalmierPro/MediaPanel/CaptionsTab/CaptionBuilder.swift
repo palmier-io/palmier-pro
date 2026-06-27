@@ -19,6 +19,43 @@ enum CaptionBuilder {
         return enforceMinDuration(timed, minDuration: minDuration)
     }
 
+    /// Group words into phrases of at most `maxWords`, timed from each word's own
+    /// timestamps, starting a new phrase early when there's a long pause.
+    static func phrases(
+        words: [TranscriptionWord],
+        maxWords: Int,
+        minDuration: Double,
+        maxGap: Double = 0.7
+    ) -> [Phrase] {
+        let limit = max(1, maxWords)
+        var timed: [(text: String, start: Double, end: Double)] = []
+        var cursor = 0.0
+        for w in words {
+            let text = w.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            let start = w.start ?? cursor
+            let end = max(w.end ?? start, start)
+            cursor = max(cursor, end)
+            timed.append((text, start, end))
+        }
+        guard !timed.isEmpty else { return [] }
+
+        var phrases: [Phrase] = []
+        var group: [(text: String, start: Double, end: Double)] = []
+        func flush() {
+            guard let first = group.first, let last = group.last else { return }
+            phrases.append(Phrase(text: group.map(\.text).joined(separator: " "), start: first.start, end: last.end))
+            group.removeAll(keepingCapacity: true)
+        }
+        for w in timed {
+            if let last = group.last, w.start - last.end > maxGap { flush() }
+            group.append(w)
+            if group.count >= limit { flush() }
+        }
+        flush()
+        return enforceMinDuration(phrases, minDuration: minDuration)
+    }
+
     private static func split(_ text: String, fits: (String) -> Bool) -> [String] {
         let t = text.trimmingCharacters(in: .whitespaces)
         guard !t.isEmpty else { return [] }

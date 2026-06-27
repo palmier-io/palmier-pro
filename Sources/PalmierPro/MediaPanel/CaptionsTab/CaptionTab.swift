@@ -8,6 +8,7 @@ struct CaptionTab: View {
     @State private var selectedTrackId: String?
     @State private var selectedClipTargets: [String] = []
     @State private var textCase: EditorViewModel.CaptionCase = .auto
+    @State private var wordsPerCaption = 0   // 0 = automatic (segment + width)
     @State private var censorProfanity = false
     @State private var locale: Locale?
     @State private var supportedLocales: [Locale] = []
@@ -198,6 +199,19 @@ struct CaptionTab: View {
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                 }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+            }
+            InspectorRow(
+                icon: "text.word.spacing",
+                label: "Max words / caption",
+                labelHelp: "Auto follows sentences. Set a number to cap each caption at that many words (still splits early on a pause)."
+            ) {
+                ScrubbableNumberField(
+                    value: Double(wordsPerCaption),
+                    range: 0...12,
+                    format: "%.0f",
+                    displayTextOverride: { $0 < 1 ? "Auto" : "\(Int($0)) words" },
+                    onChanged: { wordsPerCaption = max(0, Int($0.rounded())) }
+                ) { wordsPerCaption = max(0, Int($0.rounded())) }
             }
             InspectorRow(icon: "exclamationmark.bubble", label: "Censor profanity") {
                 Toggle("", isOn: $censorProfanity)
@@ -394,7 +408,8 @@ struct CaptionTab: View {
         }
         let request = EditorViewModel.CaptionRequest(
             sourceClipIds: sourceIds, autoDetect: isAutoSource, style: style, center: center,
-            textCase: textCase, censorProfanity: censorProfanity, locale: locale
+            textCase: textCase, censorProfanity: censorProfanity, locale: locale,
+            wordsPerCaption: wordsPerCaption
         )
         Task {
             isGenerating = true

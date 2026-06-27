@@ -10,6 +10,8 @@ extension EditorViewModel {
         var textCase: CaptionCase = .auto
         var censorProfanity: Bool = false
         var locale: Locale? = nil
+        /// 0 = automatic (segment + width). >0 = at most this many words per caption.
+        var wordsPerCaption: Int = 0
     }
 
     enum CaptionCase: String, CaseIterable, Sendable {
@@ -166,10 +168,20 @@ extension EditorViewModel {
         for (ref, result) in results {
             let clips = targets.filter { $0.clip.mediaRef == ref }
             guard !clips.isEmpty else { continue }
-            let phrases = result.segments.flatMap { seg in
-                CaptionBuilder.phrases(
+            let phrases = result.segments.flatMap { seg -> [CaptionBuilder.Phrase] in
+                let segWords = wordsIn(seg, result.words)
+                // Fixed word count per caption (when set and we have word timings); else
+                // fall back to the automatic segment + width split.
+                if request.wordsPerCaption > 0, !segWords.isEmpty {
+                    return CaptionBuilder.phrases(
+                        words: segWords,
+                        maxWords: request.wordsPerCaption,
+                        minDuration: AppTheme.Caption.minDisplayDuration
+                    )
+                }
+                return CaptionBuilder.phrases(
                     for: seg,
-                    words: wordsIn(seg, result.words),
+                    words: segWords,
                     fits: { captionLineFits($0, style: request.style) },
                     minDuration: AppTheme.Caption.minDisplayDuration
                 )
