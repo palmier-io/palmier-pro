@@ -41,6 +41,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case deleteFolder = "delete_folder"
     case sendFeedback = "send_feedback"
     case setProjectSettings = "set_project_settings"
+    case readSkill = "read_skill"
 }
 
 struct AgentTool: @unchecked Sendable {
@@ -808,6 +809,21 @@ enum ToolDefinitions {
             }
             .joined(separator: "\n")
     }
+
+    /// In-app assistant only. Not registered with the MCP server
+    static let readSkill = AgentTool(
+        name: .readSkill,
+        description: "Load the full instructions for one of the skills listed under # Skills in your system prompt. Call this before starting a task that matches a skill's description, then follow the returned procedure. Pass the id exactly as listed.",
+        inputSchema: objectSchema(
+            properties: [
+                "id": ["type": "string", "description": "The skill id, exactly as listed under # Skills."],
+            ],
+            required: ["id"]
+        )
+    )
+
+    /// Tools for the in-app agent: every MCP tool plus read_skill.
+    static var inAppAgent: [AgentTool] { all + [readSkill] }
 
     private static func objectSchema(
         properties: [String: [String: Any]] = [:],

@@ -341,7 +341,8 @@ final class AgentService {
             streamError = .upstream("No backend available.")
             return
         }
-        let tools = ToolDefinitions.all.map {
+        SkillStore.shared.reload()
+        let tools = ToolDefinitions.inAppAgent.map {
             AnthropicToolSchema(name: $0.name.rawValue, description: $0.description, inputSchema: $0.inputSchema)
         }
 
@@ -354,7 +355,7 @@ final class AgentService {
 
             do {
                 let stream = client.stream(
-                    system: AgentInstructions.serverInstructions,
+                    system: AgentInstructions.serverInstructions + SkillStore.shared.promptIndex,
                     tools: tools,
                     messages: apiMsgs
                 )
