@@ -4,14 +4,16 @@ import SwiftUI
 /// AttributedString rendered by one Text view to minimize hosted-text count under LazyVStack.
 struct MarkdownText: View {
     let text: String
+    var proseFont: Font = .body
+    var blockSpacing: CGFloat = AppTheme.Spacing.md
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+        VStack(alignment: .leading, spacing: blockSpacing) {
             ForEach(Array(Self.cachedParse(text).enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .prose(let attr):
                     Text(attr)
-                        .font(.body)
+                        .font(proseFont)
                         .foregroundStyle(AppTheme.Text.primaryColor)
                         .lineSpacing(AppTheme.Spacing.xs)
                         .textSelection(.enabled)

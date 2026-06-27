@@ -5,6 +5,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case general
     case models
     case agent
+    case skills
     case storage
 
     var id: String { rawValue }
@@ -15,6 +16,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .general: return "General"
         case .models: return "Models"
         case .agent: return "Agent"
+        case .skills: return "Skills"
         case .storage: return "Storage"
         }
     }
@@ -25,6 +27,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .general: return "gearshape"
         case .models: return "square.stack.3d.up"
         case .agent: return "paperplane"
+        case .skills: return "book.closed"
         case .storage: return "internaldrive"
         }
     }
@@ -53,7 +56,12 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.black.opacity(AppTheme.Opacity.medium))
         }
-        .frame(minWidth: 760, idealWidth: 980, minHeight: 480, idealHeight: 640)
+        .frame(
+            minWidth: AppTheme.Window.settingsMin.width,
+            idealWidth: AppTheme.Window.settingsDefault.width,
+            minHeight: AppTheme.Window.settingsMin.height,
+            idealHeight: AppTheme.Window.settingsDefault.height
+        )
         .background(.ultraThinMaterial)
         .focusEffectDisabled()
         .onAppear {
@@ -124,6 +132,8 @@ private struct SettingsDetail: View {
                         ModelsPane()
                     case .agent:
                         AgentPane()
+                    case .skills:
+                        SkillsPane()
                     case .storage:
                         StoragePane()
                     }
@@ -174,10 +184,10 @@ final class SettingsWindowController: NSWindowController {
         let initialView = SettingsView().tint(AppTheme.Accent.primary)
         let hosting = NSHostingController(rootView: AnyView(initialView))
         let window = NSWindow(contentViewController: hosting)
-        window.setContentSize(NSSize(width: 980, height: 640))
-        window.minSize = NSSize(width: 760, height: 480)
+        window.setContentSize(AppTheme.Window.settingsDefault)
+        window.minSize = AppTheme.Window.settingsMin
         window.title = "Settings"
-        window.setFrameAutosaveName("PalmierProSettings-v2")
+        window.setFrameAutosaveName("PalmierProSettings-v3")
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = AppTheme.Background.base.withAlphaComponent(0.4)
         window.isOpaque = false
