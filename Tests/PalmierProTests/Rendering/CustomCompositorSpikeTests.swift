@@ -8,7 +8,7 @@ import Testing
 /// blue, the custom compositor ran; if it also contains the text layer's red box, the
 /// animation tool post-processed on top of custom compositor output.
 final class SpikeSolidBlueCompositor: NSObject, AVVideoCompositing {
-    nonisolated(unsafe) static let ciContext = CIContext()
+    static let ciContext = CIContext()
 
     var sourcePixelBufferAttributes: [String: any Sendable]? {
         [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
@@ -74,19 +74,19 @@ struct CustomCompositorSpikeTests {
             renderSize: renderSize
         )
 
-        let mutableVC = result.videoComposition.mutableCopy() as! AVMutableVideoComposition
-        mutableVC.customVideoCompositorClass = SpikeSolidBlueCompositor.self
+        var videoConfig = result.videoComposition.palmierConfiguration()
+        videoConfig.customVideoCompositorClass = SpikeSolidBlueCompositor.self
         let (parent, videoLayer) = TextLayerController.buildForExport(
             timeline: timeline, fps: timeline.fps, renderSize: renderSize
         )
-        mutableVC.animationTool = AVVideoCompositionCoreAnimationTool(
+        videoConfig.animationTool = AVVideoCompositionCoreAnimationTool(
             postProcessingAsVideoLayer: videoLayer, in: parent
         )
 
         let session = try #require(AVAssetExportSession(
             asset: result.composition, presetName: AVAssetExportPreset1280x720
         ))
-        session.videoComposition = mutableVC
+        session.videoComposition = AVVideoComposition(configuration: videoConfig)
 
         let outURL = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("spike-\(UUID().uuidString).mp4")
