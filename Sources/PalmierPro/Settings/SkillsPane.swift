@@ -15,6 +15,7 @@ struct SkillsPane: View {
     @State private var showCommunity = true
     @State private var editingTitle = false
     @State private var draftTitle = ""
+    @State private var titleSkillId: String?
     @FocusState private var titleFocused: Bool
 
     enum CommunityState { case upToDate, update, modified }
@@ -122,9 +123,9 @@ struct SkillsPane: View {
             if editing, draft != originalDraft, let edited = store.skills.first(where: { $0.id == editSkillId }) {
                 store.save(edited, raw: draft)
             }
+            commitTitle()
             editing = false
             editSkillId = nil
-            editingTitle = false
         }
         .confirmationDialog(
             "Delete this skill?",
@@ -267,10 +268,13 @@ struct SkillsPane: View {
         }
     }
 
-    private func commitTitle(_ skill: Skill) {
+    private func commitTitle() {
         guard editingTitle else { return }
         editingTitle = false
-        store.rename(skill, to: draftTitle)
+        // Rename the skill the edit started on (titleSkillId), not the now-selected one.
+        if let skill = store.skills.first(where: { $0.id == titleSkillId }) {
+            store.rename(skill, to: draftTitle)
+        }
     }
 
     private func provenance(_ skill: Skill) -> String {
@@ -327,9 +331,9 @@ struct SkillsPane: View {
                             .strokeBorder(AppTheme.Accent.primary.opacity(AppTheme.Opacity.medium),
                                           lineWidth: AppTheme.BorderWidth.thin)
                     )
-                    .onSubmit { commitTitle(skill) }
+                    .onSubmit { commitTitle() }
                     .onExitCommand { editingTitle = false }
-                    .onChange(of: titleFocused) { if !titleFocused { commitTitle(skill) } }
+                    .onChange(of: titleFocused) { if !titleFocused { commitTitle() } }
             } else {
                 Text(skill.name)
                     .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
@@ -339,6 +343,7 @@ struct SkillsPane: View {
                     .onTapGesture(count: 2) {
                         guard !editing else { return }
                         draftTitle = skill.name
+                        titleSkillId = skill.id
                         editingTitle = true
                         titleFocused = true
                     }
@@ -377,7 +382,7 @@ struct SkillsPane: View {
         HStack(spacing: AppTheme.BorderWidth.hairline) {
             SkillSegmentButton(systemName: "eye", active: !editing) { editing = false }
             SkillSegmentButton(systemName: "chevron.left.forwardslash.chevron.right", active: editing) {
-                editingTitle = false
+                commitTitle()
                 if editSkillId != skill.id {
                     draft = (try? String(contentsOf: skill.path, encoding: .utf8)) ?? ""
                     originalDraft = draft

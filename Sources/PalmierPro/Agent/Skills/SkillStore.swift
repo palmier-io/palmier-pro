@@ -54,12 +54,20 @@ final class SkillStore {
 
     private static var ledgerURL: URL { directory.appendingPathComponent(".installed.json") }
 
+    private var reloadGeneration = 0
+
     private init() { Task { await reloadInBackground() } }
 
-    func reload() { apply(Self.scan()) }
+    func reload() {
+        reloadGeneration += 1
+        apply(Self.scan())
+    }
 
     func reloadInBackground() async {
+        reloadGeneration += 1
+        let generation = reloadGeneration
         let scan = await Task.detached(priority: .utility) { Self.scan() }.value
+        guard generation == reloadGeneration else { return }
         apply(scan)
     }
 
