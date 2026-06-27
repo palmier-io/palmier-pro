@@ -224,9 +224,9 @@ final class SkillStore {
         reload()
     }
 
-    /// Copies under a `palmier-` prefix so we only overwrite our own prior copy, never a
-    /// skill the user authored in the target agent's folder.
-    func copy(_ skill: Skill, to agent: SkillExternalAgent) {
+    /// Copies under a `palmier-` prefix so we only overwrite our own prior copy
+    @discardableResult
+    func copy(_ skill: Skill, to agent: SkillExternalAgent) -> URL? {
         let source = skill.path.deletingLastPathComponent()
         let dest = agent.skillsDirectory.appendingPathComponent("palmier-\(skill.id)", isDirectory: true)
         let fm = FileManager.default
@@ -234,9 +234,10 @@ final class SkillStore {
             try fm.createDirectory(at: agent.skillsDirectory, withIntermediateDirectories: true)
             if fm.fileExists(atPath: dest.path) { try fm.removeItem(at: dest) }
             try fm.copyItem(at: source, to: dest)
-            reveal(dest)
+            return dest
         } catch {
             Log.agent.error("copy skill to \(agent.rawValue) failed: \(error.localizedDescription)")
+            return nil
         }
     }
 

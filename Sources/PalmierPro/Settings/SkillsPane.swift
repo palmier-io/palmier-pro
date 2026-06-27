@@ -16,7 +16,17 @@ struct SkillsPane: View {
     @State private var editingTitle = false
     @State private var draftTitle = ""
     @State private var titleSkillId: String?
+    @State private var copyToast: CopyToast?
     @FocusState private var titleFocused: Bool
+
+    private struct CopyToast: Equatable {
+        let agentLabel: String
+        let url: URL
+
+        var displayPath: String {
+            url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+        }
+    }
 
     private enum CommunityState {
         case upToDate, update, modified
@@ -94,7 +104,7 @@ struct SkillsPane: View {
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-                Text("These skills are available to the in-app agent. For Claude/Codex/Cursor, use the copy button.")
+                Text("These skills are available to the in-app agent once installed. For Claude/Codex/Cursor, add them to their respective directories.")
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)
@@ -112,7 +122,7 @@ struct SkillsPane: View {
                 rightColumn
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-            .frame(height: 600)
+            .frame(minHeight: 480, maxHeight: .infinity)
             .frame(maxWidth: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.md)
@@ -123,7 +133,15 @@ struct SkillsPane: View {
                     .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.thin)
             )
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.md))
+            .overlay(alignment: .top) {
+                if let toast = copyToast {
+                    copyToastBanner(toast)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: copyToast)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
             if selection == nil { selection = store.skills.first?.id }
             Task { await store.reloadInBackground() }
@@ -156,6 +174,51 @@ struct SkillsPane: View {
 
     private func displayPath(_ skill: Skill) -> String {
         skill.path.deletingLastPathComponent().path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+    }
+
+    private func copyToastBanner(_ toast: CopyToast) -> some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: AppTheme.FontSize.smMd, weight: .semibold))
+                .foregroundStyle(AppTheme.Status.successColor)
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+                Text("Added to \(toast.agentLabel)")
+                    .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                Text(toast.displayPath)
+                    .font(.system(size: AppTheme.FontSize.xxs))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: AppTheme.Spacing.md)
+            Button("Open") {
+                store.reveal(toast.url)
+                copyToast = nil
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
+            .foregroundStyle(AppTheme.Accent.primary)
+        }
+        .padding(.horizontal, AppTheme.Spacing.mdLg)
+        .padding(.vertical, AppTheme.Spacing.smMd)
+        .frame(maxWidth: 380)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+                .fill(AppTheme.Background.prominentColor)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+                        .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.hairline)
+                )
+        )
+        .shadow(AppTheme.Shadow.lg)
+        .padding(.top, AppTheme.Spacing.lgXl)
+        .onTapGesture { copyToast = nil }
+        .task(id: toast) {
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            copyToast = nil
+        }
     }
 
     // MARK: Left column (search + list)
@@ -367,8 +430,10 @@ struct SkillsPane: View {
                     .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
                     .foregroundStyle(AppTheme.Accent.primary)
             }
+            SkillCopyMenu(skill: skill, store: store) { agent, url in
+                copyToast = CopyToast(agentLabel: agent.label, url: url)
+            }
             viewEditToggle(skill)
-            SkillCopyMenu(skill: skill, store: store)
             SkillIconButton(systemName: "arrow.up.forward.app", help: "Reveal in Finder", tint: AppTheme.Accent.primary) {
                 store.reveal(skill.path)
             }
@@ -491,27 +556,42 @@ private struct SkillIconButton: View {
 private struct SkillCopyMenu: View {
     let skill: Skill
     let store: SkillStore
+    let onCopied: (SkillExternalAgent, URL) -> Void
     @State private var showing = false
 
     var body: some View {
-        SkillIconButton(systemName: "square.and.arrow.up", help: "Copy to agent", tint: AppTheme.Accent.primary) {
-            showing.toggle()
+        Button { showing.toggle() } label: {
+            HStack(spacing: AppTheme.Spacing.xs) {
+                Text("Add to Claude")
+                    .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
+            }
+            .foregroundStyle(AppTheme.Accent.primary)
+            .padding(.horizontal, AppTheme.Spacing.mdLg)
+            .padding(.vertical, AppTheme.Spacing.xs)
+            .background(
+                Capsule()
+                    .fill(AppTheme.Accent.primary.opacity(AppTheme.Opacity.subtle))
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(AppTheme.Accent.primary.opacity(AppTheme.Opacity.medium),
+                                          lineWidth: AppTheme.BorderWidth.thin)
+                    )
+            )
         }
+        .buttonStyle(.plain)
+        .help("Add this skill to an agent")
         .popover(isPresented: $showing, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 0) {
-                Text("COPY TO")
-                    .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
-                    .tracking(AppTheme.Tracking.tight)
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .padding(.horizontal, AppTheme.Spacing.md)
-                    .padding(.top, AppTheme.Spacing.smMd)
-                    .padding(.bottom, AppTheme.Spacing.xs)
                 ForEach(SkillExternalAgent.allCases, id: \.self) { agent in
                     Button {
-                        store.copy(skill, to: agent)
+                        if let url = store.copy(skill, to: agent) {
+                            onCopied(agent, url)
+                        }
                         showing = false
                     } label: {
-                        Text(agent.label)
+                        Text("Add to \(agent.label)")
                             .font(.system(size: AppTheme.FontSize.sm))
                             .foregroundStyle(AppTheme.Text.primaryColor)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -522,7 +602,7 @@ private struct SkillCopyMenu: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.bottom, AppTheme.Spacing.xs)
+            .padding(.vertical, AppTheme.Spacing.xs)
             .frame(minWidth: 168)
         }
     }
