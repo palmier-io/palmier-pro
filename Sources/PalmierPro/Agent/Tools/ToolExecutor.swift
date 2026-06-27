@@ -76,6 +76,7 @@ final class ToolExecutor {
         case .getTimeline:   return try getTimeline(editor, args)
         case .getMedia:      return try getMedia(editor)
         case .inspectMedia:  return try await inspectMedia(editor, args)
+        case .analyzeVideo:  return try await analyzeVideo(editor, args)
         case .getTranscript: return try await getTranscript(editor, args)
         case .inspectTimeline: return try await inspectTimeline(editor, args)
         case .searchMedia:   return try await searchMedia(editor, args)
