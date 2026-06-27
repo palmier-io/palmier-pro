@@ -80,6 +80,23 @@ final class SkillStore {
         shaCache = scan.shas
     }
 
+    /// Parsed contents of one SKILL.md when it passes the same checks as `scan`.
+    private struct ParsedSkill: Sendable {
+        let skill: Skill
+        let body: String
+        let sha: String
+    }
+
+    nonisolated private static func parseSkill(id: String, path: URL, text: String) -> ParsedSkill? {
+        let (fields, body) = SkillFrontmatter.parse(text)
+        guard let name = fields["name"], let description = fields["description"] else { return nil }
+        return ParsedSkill(
+            skill: Skill(id: id, name: name, description: description, path: path),
+            body: body,
+            sha: sha12(Data(text.utf8))
+        )
+    }
+
     nonisolated static func scan() -> SkillScan {
         let fm = FileManager.default
         var found: [Skill] = []
@@ -89,12 +106,11 @@ final class SkillStore {
             for dir in entries {
                 let md = dir.appendingPathComponent("SKILL.md")
                 guard let text = try? String(contentsOf: md, encoding: .utf8) else { continue }
-                let (fields, body) = SkillFrontmatter.parse(text)
-                guard let name = fields["name"], let description = fields["description"] else { continue }
                 let id = dir.lastPathComponent
-                found.append(Skill(id: id, name: name, description: description, path: md))
-                bodies[id] = body
-                shas[id] = sha12(Data(text.utf8))
+                guard let parsed = parseSkill(id: id, path: md, text: text) else { continue }
+                found.append(parsed.skill)
+                bodies[id] = parsed.body
+                shas[id] = parsed.sha
             }
         }
         return SkillScan(skills: found.sorted { $0.id < $1.id }, bodies: bodies, shas: shas)
@@ -107,19 +123,56 @@ final class SkillStore {
     @discardableResult
     func install(_ entry: SkillCatalogEntry) async -> Bool {
         guard let url = SkillCatalog.bodyURL(path: entry.path) else { return false }
+        guard let dir = Self.skillDirectory(for: entry.id) else {
+            Log.agent.error("install skill \(entry.id) rejected: invalid id")
+            return false
+        }
         do {
             let data = try await SkillCatalog.fetch(url)
-            let dir = Self.directory.appendingPathComponent(entry.id, isDirectory: true)
+            guard let text = String(data: data, encoding: .utf8) else {
+                Log.agent.error("install skill \(entry.id) rejected: invalid UTF-8")
+                return false
+            }
+            let md = dir.appendingPathComponent("SKILL.md")
+            guard Self.parseSkill(id: entry.id, path: md, text: text) != nil else {
+                Log.agent.error("install skill \(entry.id) rejected: missing name or description frontmatter")
+                return false
+            }
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            try data.write(to: dir.appendingPathComponent("SKILL.md"))
+            try data.write(to: md)
+            reload()
+            guard skills.contains(where: { $0.id == entry.id }) else {
+                try? FileManager.default.removeItem(at: dir)
+                Log.agent.error("install skill \(entry.id) rejected: SKILL.md not recognized after install")
+                return false
+            }
             installed[entry.id] = entry.sha
             writeLedger()
-            reload()
             return true
         } catch {
             Log.agent.error("install skill \(entry.id) failed: \(error.localizedDescription)")
             return false
         }
+    }
+
+    /// Resolves `~/.palmier/skills/<id>/` only when `id` is a single safe path component.
+    nonisolated static func skillDirectory(for id: String) -> URL? {
+        guard isValidSkillId(id) else { return nil }
+        let dir = directory.appendingPathComponent(id, isDirectory: true).standardizedFileURL
+        guard isUnderSkillsRoot(dir) else { return nil }
+        return dir
+    }
+
+    nonisolated private static func isValidSkillId(_ id: String) -> Bool {
+        guard !id.isEmpty, id != ".", id != ".." else { return false }
+        guard !id.contains("/"), !id.contains("\\") else { return false }
+        return true
+    }
+
+    nonisolated private static func isUnderSkillsRoot(_ url: URL) -> Bool {
+        let root = directory.standardizedFileURL.path
+        let path = url.standardizedFileURL.path
+        return path == root || path.hasPrefix(root + "/")
     }
 
     nonisolated private static func sha12(_ data: Data) -> String {
