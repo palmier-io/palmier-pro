@@ -170,9 +170,10 @@ extension EditorViewModel {
             guard !clips.isEmpty else { continue }
             let phrases = result.segments.flatMap { seg -> [CaptionBuilder.Phrase] in
                 let segWords = wordsIn(seg, result.words)
-                // Fixed word count per caption (when set and we have word timings); else
-                // fall back to the automatic segment + width split.
-                if request.wordsPerCaption > 0, !segWords.isEmpty {
+                // Fixed word count per caption — only when the timed words actually
+                // cover the segment's text, so we never silently drop untimed speech.
+                // Otherwise fall back to the automatic segment + width split.
+                if request.wordsPerCaption > 0, wordsCover(seg, segWords) {
                     return CaptionBuilder.phrases(
                         words: segWords,
                         maxWords: request.wordsPerCaption,
@@ -197,6 +198,17 @@ extension EditorViewModel {
             let cased = phrases.map { CaptionBuilder.Phrase(text: request.textCase.apply($0.text), start: $0.start, end: $0.end) }
             return CaptionBuilder.specs(for: cased, sourceClip: t.clip, trackIndex: 0, fps: fps, style: request.style, captionGroupId: groupId, transformFor: transformFor)
         }
+    }
+
+    /// True when the timed words reconstruct ~all of the segment's spoken text, so the
+    /// fixed-word-count path won't omit untimed/unmatched words. Compares alphanumerics.
+    private func wordsCover(_ seg: TranscriptionSegment, _ words: [TranscriptionWord]) -> Bool {
+        guard !words.isEmpty else { return false }
+        func alnum(_ s: String) -> Int { s.reduce(0) { $0 + ($1.isLetter || $1.isNumber ? 1 : 0) } }
+        let segCount = alnum(seg.text)
+        guard segCount > 0 else { return false }
+        let wordCount = words.reduce(0) { $0 + alnum($1.text) }
+        return Double(wordCount) >= 0.9 * Double(segCount)
     }
 
     // Words whose midpoint lands inside the segment, in transcript order.
