@@ -28,8 +28,7 @@ final class SkillCatalog {
     private(set) var lastError: String?
 
     private static var cacheURL: URL {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("PalmierPro/skills-catalog.json")
+        DiskCache.rootDirectory.appendingPathComponent("skills-catalog.json")
     }
 
     private init() { loadCache() }

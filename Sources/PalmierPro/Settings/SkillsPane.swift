@@ -137,9 +137,7 @@ struct SkillsPane: View {
     }
 
     private func displayPath(_ skill: Skill) -> String {
-        let folder = skill.path.deletingLastPathComponent().path
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return folder.hasPrefix(home) ? "~" + folder.dropFirst(home.count) : folder
+        skill.path.deletingLastPathComponent().path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
     }
 
     // MARK: Left column (search + list)
