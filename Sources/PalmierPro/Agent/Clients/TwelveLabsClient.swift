@@ -49,6 +49,9 @@ struct TwelveLabsClient: Sendable {
 
     private static let baseURL = URL(string: "https://api.twelvelabs.io/v1.3")!
     private static let pegasusModel = "pegasus1.5"
+    /// Large uploads and whole-clip Pegasus analysis routinely run past URLSession's
+    /// default 60s request timeout, so give both a generous ceiling.
+    private static let requestTimeout: TimeInterval = 300
 
     /// Uploads a local video file as a TwelveLabs asset, then asks Pegasus the prompt about it.
     func understand(videoURL: URL, prompt: String) async throws -> String {
@@ -62,26 +65,57 @@ struct TwelveLabsClient: Sendable {
         let boundary = "Boundary-\(UUID().uuidString)"
         var request = URLRequest(url: Self.baseURL.appendingPathComponent("assets"))
         request.httpMethod = "POST"
+        request.timeoutInterval = Self.requestTimeout
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
-        let fileData = try await Task.detached(priority: .userInitiated) {
-            try Data(contentsOf: fileURL)
-        }.value
-        var body = Data()
-        body.appendFormField("method", value: "direct", boundary: boundary)
-        body.appendFileField(
-            "file", filename: fileURL.lastPathComponent,
-            mimeType: Self.mimeType(for: fileURL), data: fileData, boundary: boundary
+        // Stream the multipart body to a temp file so a multi-GB source clip is never
+        // held in memory all at once; upload(fromFile:) then streams it from disk.
+        let bodyURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tl-upload-\(UUID().uuidString).multipart")
+        try Self.writeMultipartBody(
+            to: bodyURL, fileURL: fileURL,
+            mimeType: Self.mimeType(for: fileURL), boundary: boundary
         )
-        body.appendBoundaryTerminator(boundary)
-        request.httpBody = body
+        defer { try? FileManager.default.removeItem(at: bodyURL) }
 
-        let json = try await send(request)
+        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: bodyURL)
+        let json = try Self.decodeJSON(data, response)
         guard let id = (json["_id"] ?? json["id"]) as? String, !id.isEmpty else {
             throw TwelveLabsClientError.decoding("asset response missing _id")
         }
         return id
+    }
+
+    /// Writes the `method=direct` field and the file part to `bodyURL`, streaming the
+    /// source file in 1 MiB chunks so it is never fully resident in memory.
+    private static func writeMultipartBody(
+        to bodyURL: URL, fileURL: URL, mimeType: String, boundary: String
+    ) throws {
+        FileManager.default.createFile(atPath: bodyURL.path, contents: nil)
+        let out = try FileHandle(forWritingTo: bodyURL)
+        defer { try? out.close() }
+
+        var header = Data()
+        header.appendFormField("method", value: "direct", boundary: boundary)
+        header.append("--\(boundary)\r\n".data(using: .utf8)!)
+        header.append(
+            "Content-Disposition: form-data; name=\"file\"; filename=\"\(fileURL.lastPathComponent)\"\r\n"
+                .data(using: .utf8)!
+        )
+        header.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        try out.write(contentsOf: header)
+
+        let input = try FileHandle(forReadingFrom: fileURL)
+        defer { try? input.close() }
+        while let chunk = try input.read(upToCount: 1 << 20), !chunk.isEmpty {
+            try out.write(contentsOf: chunk)
+        }
+
+        var footer = Data()
+        footer.append("\r\n".data(using: .utf8)!)
+        footer.appendBoundaryTerminator(boundary)
+        try out.write(contentsOf: footer)
     }
 
     private func analyze(assetID: String, prompt: String) async throws -> String {
@@ -89,6 +123,7 @@ struct TwelveLabsClient: Sendable {
 
         var request = URLRequest(url: Self.baseURL.appendingPathComponent("analyze"))
         request.httpMethod = "POST"
+        request.timeoutInterval = Self.requestTimeout
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
@@ -107,6 +142,10 @@ struct TwelveLabsClient: Sendable {
 
     private func send(_ request: URLRequest) async throws -> [String: Any] {
         let (data, response) = try await URLSession.shared.data(for: request)
+        return try Self.decodeJSON(data, response)
+    }
+
+    private static func decodeJSON(_ data: Data, _ response: URLResponse) throws -> [String: Any] {
         if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
             throw TwelveLabsClientError.httpError(
                 status: http.statusCode,
@@ -134,16 +173,6 @@ private extension Data {
         append("--\(boundary)\r\n".data(using: .utf8)!)
         append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
         append("\(value)\r\n".data(using: .utf8)!)
-    }
-
-    mutating func appendFileField(
-        _ name: String, filename: String, mimeType: String, data: Data, boundary: String
-    ) {
-        append("--\(boundary)\r\n".data(using: .utf8)!)
-        append("Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
-        append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
-        append(data)
-        append("\r\n".data(using: .utf8)!)
     }
 
     mutating func appendBoundaryTerminator(_ boundary: String) {
