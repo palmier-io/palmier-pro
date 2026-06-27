@@ -853,7 +853,7 @@ extension ToolExecutor {
     private static func kfInt(_ raw: Any, at path: String) throws -> Int {
         if let v = raw as? Int { return v }
         if let v = raw as? Double, let i = safeInt(v) { return i }
-        if let v = raw as? NSNumber { return v.intValue }
+        if let v = raw as? NSNumber, let i = safeInt(v.doubleValue) { return i }
         throw ToolError("\(path): expected integer")
     }
 

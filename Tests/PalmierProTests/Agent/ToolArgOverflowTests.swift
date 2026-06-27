@@ -72,4 +72,16 @@ struct ToolArgOverflowE2ETests {
         // We only require that it returned (a result, ok or error) rather than crashing the process.
         #expect(result.content.isEmpty == false)
     }
+
+    /// An out-of-range keyframe frame must be rejected, not silently clamped to Int.max.
+    @Test func setKeyframesRejectsOverflowFrame() async {
+        let clip = Fixtures.clip(id: "C1", start: 0, duration: 100)
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])]))
+        let result = await h.runRaw("set_keyframes", args: [
+            "clipId": "C1",
+            "property": "opacity",
+            "keyframes": [[1e19, 0.5]],
+        ])
+        #expect(result.isError == true)
+    }
 }
