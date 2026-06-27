@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import CryptoKit
 
 /// External coding agents that read the same SKILL.md format from their own folders.
 enum SkillExternalAgent: String, CaseIterable, Sendable {
@@ -31,35 +32,85 @@ final class SkillStore {
 
     private(set) var skills: [Skill] = []
 
+    /// Ledger of catalog-installed skills: id → the sha installed
+    private(set) var installed: [String: String] = [:]
+
+    // Caches populated by reload() from the file text it already reads, so the body and
+    // content hash don't trigger a fresh disk read on every view render.
+    private var bodyCache: [String: String] = [:]
+    private var shaCache: [String: String] = [:]
+
     static var directory: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".palmier/skills", isDirectory: true)
     }
 
+    private static var ledgerURL: URL { directory.appendingPathComponent(".installed.json") }
+
     private init() { reload() }
 
-    /// Rescans the skills folder
+    /// Rescans the skills folder and the install ledger, caching each body and content hash.
     func reload() {
         let fm = FileManager.default
         var found: [Skill] = []
+        var bodies: [String: String] = [:]
+        var shas: [String: String] = [:]
         if let entries = try? fm.contentsOfDirectory(at: Self.directory, includingPropertiesForKeys: nil) {
             for dir in entries {
                 let md = dir.appendingPathComponent("SKILL.md")
                 guard let text = try? String(contentsOf: md, encoding: .utf8) else { continue }
-                let (fields, _) = SkillFrontmatter.parse(text)
+                let (fields, body) = SkillFrontmatter.parse(text)
                 guard let name = fields["name"], let description = fields["description"] else { continue }
-                found.append(Skill(id: dir.lastPathComponent, name: name, description: description, path: md))
+                let id = dir.lastPathComponent
+                found.append(Skill(id: id, name: name, description: description, path: md))
+                bodies[id] = body
+                shas[id] = Self.sha12(Data(text.utf8))
             }
         }
         skills = found.sorted { $0.id < $1.id }
+        bodyCache = bodies
+        shaCache = shas
+        installed = Self.loadLedger()
     }
 
-    func body(for id: String) -> String? {
-        guard let skill = skills.first(where: { $0.id == id }),
-              let text = try? String(contentsOf: skill.path, encoding: .utf8)
-        else { return nil }
-        return SkillFrontmatter.parse(text).body
+    // MARK: Catalog install / ledger
+
+    /// Content hash of the skill's SKILL.md
+    func localSha(_ skill: Skill) -> String? { shaCache[skill.id] }
+
+    /// Downloads a catalog skill into the folder
+    func install(_ entry: SkillCatalogEntry) async {
+        guard let url = SkillCatalog.bodyURL(path: entry.path) else { return }
+        do {
+            let data = try await SkillCatalog.fetch(url)
+            let dir = Self.directory.appendingPathComponent(entry.id, isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try data.write(to: dir.appendingPathComponent("SKILL.md"))
+            installed[entry.id] = entry.sha
+            writeLedger()
+            reload()
+        } catch {
+            Log.agent.error("install skill \(entry.id) failed: \(error.localizedDescription)")
+        }
     }
+
+    private static func sha12(_ data: Data) -> String {
+        String(SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined().prefix(12))
+    }
+
+    private static func loadLedger() -> [String: String] {
+        guard let data = try? Data(contentsOf: ledgerURL),
+              let map = try? JSONDecoder().decode([String: String].self, from: data)
+        else { return [:] }
+        return map
+    }
+
+    private func writeLedger() {
+        try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
+        if let data = try? JSONEncoder().encode(installed) { try? data.write(to: Self.ledgerURL) }
+    }
+
+    func body(for id: String) -> String? { bodyCache[id] }
 
     /// The always-on index appended to the in-app assistant's system prompt: one line
     /// per skill so the model knows what's available; full bodies load via read_skill.
@@ -112,6 +163,8 @@ final class SkillStore {
     /// Removes a skill's folder from `~/.palmier/skills/`.
     func delete(_ skill: Skill) {
         try? FileManager.default.removeItem(at: skill.path.deletingLastPathComponent())
+        installed[skill.id] = nil
+        writeLedger()
         reload()
     }
 
@@ -143,7 +196,16 @@ final class SkillStore {
             return nil
         }
         reload()
-        reveal(md)
         return id
+    }
+
+    /// Updates only the `name` frontmatter field, leaving the rest of the SKILL.md intact.
+    func rename(_ skill: Skill, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != skill.name,
+              let text = try? String(contentsOf: skill.path, encoding: .utf8) else { return }
+        let updated = SkillFrontmatter.replacingName(text, name: trimmed)
+        try? updated.write(to: skill.path, atomically: true, encoding: .utf8)
+        reload()
     }
 }

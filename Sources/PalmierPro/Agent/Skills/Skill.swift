@@ -34,4 +34,26 @@ enum SkillFrontmatter {
             : ""
         return (fields, body)
     }
+
+    static func replacingName(_ text: String, name: String) -> String {
+        let lines = text.components(separatedBy: "\n")
+        guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else {
+            return "---\nname: \(name)\n---\n\n" + text
+        }
+        var front: [String] = []
+        var replaced = false
+        var i = 1
+        while i < lines.count, lines[i].trimmingCharacters(in: .whitespaces) != "---" {
+            if let colon = lines[i].firstIndex(of: ":"),
+               lines[i][..<colon].trimmingCharacters(in: .whitespaces) == "name" {
+                front.append("name: \(name)"); replaced = true
+            } else {
+                front.append(lines[i])
+            }
+            i += 1
+        }
+        if !replaced { front.insert("name: \(name)", at: 0) }
+        let rest = i < lines.count ? lines[i...].joined(separator: "\n") : "---"
+        return "---\n" + front.joined(separator: "\n") + "\n" + rest
+    }
 }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SkillsPane: View {
     @State private var store = SkillStore.shared
+    @State private var catalog = SkillCatalog.shared
     @State private var selection: String?
     @State private var query = ""
     @State private var editing = false
@@ -9,17 +10,77 @@ struct SkillsPane: View {
     @State private var originalDraft = ""
     @State private var editSkillId: String?
     @State private var confirmingDelete = false
+    @State private var installing: Set<String> = []
+    @State private var showMy = true
+    @State private var showCommunity = true
+    @State private var editingTitle = false
+    @State private var draftTitle = ""
+    @FocusState private var titleFocused: Bool
+
+    enum CommunityState { case upToDate, update, modified }
+
+    private func matches(_ name: String, _ description: String) -> Bool {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        return q.isEmpty || name.lowercased().contains(q) || description.lowercased().contains(q)
+    }
 
     private var filtered: [Skill] {
-        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !q.isEmpty else { return store.skills }
-        return store.skills.filter {
-            $0.name.lowercased().contains(q) || $0.description.lowercased().contains(q)
+        store.skills.filter { matches($0.name, $0.description) }
+    }
+
+    /// Folder skills with no ledger entry — the user's own.
+    private var mySkills: [Skill] { filtered.filter { store.installed[$0.id] == nil } }
+
+    /// Folder skills installed from the catalog.
+    private var communitySkills: [Skill] { filtered.filter { store.installed[$0.id] != nil } }
+
+    /// Catalog entries not present in the folder.
+    private var availableEntries: [SkillCatalogEntry] {
+        let local = Set(store.skills.map(\.id))
+        return catalog.entries
+            .filter { !local.contains($0.id) }
+            .filter { matches($0.name, $0.description) }
+    }
+
+    /// Community section: installed-from-catalog skills plus not-yet-installed catalog
+    /// entries, merged and sorted by name. (The id sets are disjoint by construction.)
+    enum CommunityItem: Identifiable {
+        case installed(Skill)
+        case available(SkillCatalogEntry)
+        var id: String {
+            switch self {
+            case .installed(let s): s.id
+            case .available(let e): e.id
+            }
         }
+        var sortName: String {
+            switch self {
+            case .installed(let s): s.name.lowercased()
+            case .available(let e): e.name.lowercased()
+            }
+        }
+    }
+
+    private var communityItems: [CommunityItem] {
+        (communitySkills.map { CommunityItem.installed($0) } + availableEntries.map { CommunityItem.available($0) })
+            .sorted { $0.sortName < $1.sortName }
     }
 
     private var selected: Skill? {
         store.skills.first { $0.id == selection } ?? store.skills.first
+    }
+
+    private func communityState(_ skill: Skill) -> CommunityState {
+        let ledger = store.installed[skill.id]
+        if store.localSha(skill) != ledger { return .modified }
+        if let entry = catalog.entry(id: skill.id), entry.sha != ledger { return .update }
+        return .upToDate
+    }
+
+    /// The catalog entry to install when an update is available for a community skill.
+    private func updateEntry(_ skill: Skill) -> SkillCatalogEntry? {
+        guard store.installed[skill.id] != nil, communityState(skill) == .update else { return nil }
+        return catalog.entry(id: skill.id)
     }
 
     var body: some View {
@@ -51,10 +112,12 @@ struct SkillsPane: View {
         .onAppear {
             store.reload()
             if selection == nil { selection = store.skills.first?.id }
+            Task { await catalog.refresh() }
         }
         .onChange(of: selection) {
             editing = false
             editSkillId = nil
+            editingTitle = false
         }
         .confirmationDialog(
             "Delete this skill?",
@@ -68,9 +131,15 @@ struct SkillsPane: View {
                 editing = false
                 editSkillId = nil
             }
-        } message: { _ in
-            Text("This removes the folder from ~/.palmier/skills.")
+        } message: { skill in
+            Text("This permanently removes \(displayPath(skill)).")
         }
+    }
+
+    private func displayPath(_ skill: Skill) -> String {
+        let folder = skill.path.deletingLastPathComponent().path
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return folder.hasPrefix(home) ? "~" + folder.dropFirst(home.count) : folder
     }
 
     // MARK: Left column (search + list)
@@ -87,30 +156,124 @@ struct SkillsPane: View {
                     .foregroundStyle(AppTheme.Text.primaryColor)
                 SkillIconButton(systemName: "plus", help: "New skill") { store.newSkill().map { selection = $0 } }
                 SkillIconButton(systemName: "folder", help: "Open skills folder") { store.openFolder() }
+                SkillIconButton(systemName: "arrow.clockwise", help: "Refresh catalog") {
+                    Task { await catalog.refresh() }
+                }
             }
             .padding(.horizontal, AppTheme.Spacing.md)
             .padding(.vertical, AppTheme.Spacing.smMd)
 
             Divider().overlay(AppTheme.Border.subtleColor)
 
-            if filtered.isEmpty {
-                Text(store.skills.isEmpty ? "No skills yet." : "No matches.")
-                    .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    VStack(spacing: AppTheme.BorderWidth.hairline) {
-                        ForEach(filtered) { skill in
-                            SkillRow(skill: skill, isSelected: selected?.id == skill.id) {
-                                selection = skill.id
-                            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: AppTheme.BorderWidth.hairline) {
+                    sectionHeader("My Skills", count: mySkills.count, expanded: $showMy)
+                    if showMy { skillRows(mySkills) }
+                    sectionHeader("Community", count: communityItems.count, expanded: $showCommunity)
+                    if showCommunity { communityRows }
+                    if let error = catalog.lastError, catalog.entries.isEmpty {
+                        Text("Catalog: \(error)")
+                            .font(.system(size: AppTheme.FontSize.xxs))
+                            .foregroundStyle(AppTheme.Text.mutedColor)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(AppTheme.Spacing.sm)
+                    }
+                }
+                .padding(AppTheme.Spacing.xs)
+            }
+            .frame(maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder private func skillRows(_ items: [Skill]) -> some View {
+        if items.isEmpty {
+            emptyRow
+        } else {
+            ForEach(items) { skill in
+                SkillRow(skill: skill, isSelected: selected?.id == skill.id, badge: badge(for: skill)) {
+                    selection = skill.id
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var communityRows: some View {
+        if communityItems.isEmpty {
+            emptyRow
+        } else {
+            ForEach(communityItems) { item in
+                switch item {
+                case .installed(let skill):
+                    SkillRow(skill: skill, isSelected: selected?.id == skill.id, badge: badge(for: skill)) {
+                        selection = skill.id
+                    }
+                case .available(let entry):
+                    SkillAvailableRow(entry: entry, installing: installing.contains(entry.id)) {
+                        installing.insert(entry.id)
+                        Task {
+                            await store.install(entry)
+                            installing.remove(entry.id)
+                            selection = entry.id
                         }
                     }
-                    .padding(AppTheme.Spacing.xs)
                 }
-                .frame(maxHeight: .infinity)
             }
+        }
+    }
+
+    private var emptyRow: some View {
+        Text("None")
+            .font(.system(size: AppTheme.FontSize.sm))
+            .foregroundStyle(AppTheme.Text.mutedColor)
+            .padding(.horizontal, AppTheme.Spacing.sm)
+            .padding(.vertical, AppTheme.Spacing.xs)
+    }
+
+    private func sectionHeader(_ title: String, count: Int, expanded: Binding<Bool>) -> some View {
+        Button { expanded.wrappedValue.toggle() } label: {
+            HStack(spacing: AppTheme.Spacing.xs) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+                    .rotationEffect(.degrees(expanded.wrappedValue ? 90 : 0))
+                Text(title.uppercased())
+                    .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
+                    .tracking(AppTheme.Tracking.tight)
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+                Text("\(count)")
+                    .font(.system(size: AppTheme.FontSize.xxs))
+                    .foregroundStyle(AppTheme.Text.mutedColor.opacity(AppTheme.Opacity.prominent))
+                Spacer()
+            }
+            .contentShape(Rectangle())
+            .padding(.horizontal, AppTheme.Spacing.sm)
+            .padding(.top, AppTheme.Spacing.smMd)
+            .padding(.bottom, AppTheme.Spacing.xxs)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func badge(for skill: Skill) -> SkillRowBadge? {
+        guard store.installed[skill.id] != nil else { return nil }
+        switch communityState(skill) {
+        case .update: return .update
+        case .modified: return .modified
+        case .upToDate: return nil
+        }
+    }
+
+    private func commitTitle(_ skill: Skill) {
+        guard editingTitle else { return }
+        editingTitle = false
+        store.rename(skill, to: draftTitle)
+    }
+
+    private func provenance(_ skill: Skill) -> String {
+        guard let sha = store.installed[skill.id] else { return "Local skill" }
+        switch communityState(skill) {
+        case .modified: return "Community · modified locally"
+        case .update: return "Community · update available"
+        case .upToDate: return "Community · v\(sha)"
         }
     }
 
@@ -142,10 +305,39 @@ struct SkillsPane: View {
     private func toolbar(_ skill: Skill) -> some View {
         let dirty = editing && draft != originalDraft
         return HStack(spacing: AppTheme.Spacing.md) {
-            Text(skill.name)
-                .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
-                .foregroundStyle(AppTheme.Text.primaryColor)
-                .lineLimit(1)
+            if editingTitle {
+                TextField("Name", text: $draftTitle)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                    .focused($titleFocused)
+                    .padding(.horizontal, AppTheme.Spacing.xs)
+                    .padding(.vertical, AppTheme.Spacing.xxs)
+                    .background(
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.xs)
+                            .fill(Color.white.opacity(AppTheme.Opacity.faint))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.xs)
+                            .strokeBorder(AppTheme.Accent.primary.opacity(AppTheme.Opacity.medium),
+                                          lineWidth: AppTheme.BorderWidth.thin)
+                    )
+                    .onSubmit { commitTitle(skill) }
+                    .onExitCommand { editingTitle = false }
+                    .onChange(of: titleFocused) { if !titleFocused { commitTitle(skill) } }
+            } else {
+                Text(skill.name)
+                    .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                    .lineLimit(1)
+                    .help("Double-click to rename")
+                    .onTapGesture(count: 2) {
+                        guard !editing else { return }
+                        draftTitle = skill.name
+                        editingTitle = true
+                        titleFocused = true
+                    }
+            }
             Spacer(minLength: AppTheme.Spacing.md)
             if editing, dirty {
                 Text("Edited")
@@ -157,6 +349,12 @@ struct SkillsPane: View {
                     store.save(skill, raw: draft)
                     originalDraft = draft
                 }
+            }
+            if !editing, let entry = updateEntry(skill) {
+                Button("Update") { Task { await store.install(entry) } }
+                    .buttonStyle(.plain)
+                    .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
+                    .foregroundStyle(AppTheme.Accent.primary)
             }
             viewEditToggle(skill)
             SkillCopyMenu(skill: skill, store: store)
@@ -174,6 +372,7 @@ struct SkillsPane: View {
         HStack(spacing: AppTheme.BorderWidth.hairline) {
             SkillSegmentButton(systemName: "eye", active: !editing) { editing = false }
             SkillSegmentButton(systemName: "chevron.left.forwardslash.chevron.right", active: editing) {
+                editingTitle = false
                 if editSkillId != skill.id {
                     draft = (try? String(contentsOf: skill.path, encoding: .utf8)) ?? ""
                     originalDraft = draft
@@ -192,18 +391,27 @@ struct SkillsPane: View {
     // MARK: View / edit content
 
     private func viewContent(_ skill: Skill) -> some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            Text(provenance(skill))
+                .font(.system(size: AppTheme.FontSize.xxs))
+                .foregroundStyle(AppTheme.Text.mutedColor)
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
                 Text("DESCRIPTION")
                     .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
                     .tracking(AppTheme.Tracking.tight)
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                 Text(skill.description)
-                    .font(.system(size: AppTheme.FontSize.md))
+                    .font(.system(size: AppTheme.FontSize.smMd))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            MarkdownText(text: store.body(for: skill.id) ?? "")
+            Divider().overlay(AppTheme.Border.subtleColor)
+                .padding(.vertical, AppTheme.Spacing.xs)
+            MarkdownText(
+                text: store.body(for: skill.id) ?? "",
+                proseFont: .system(size: AppTheme.FontSize.smMd),
+                blockSpacing: AppTheme.Spacing.sm
+            )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -230,7 +438,6 @@ private struct SkillIconButton: View {
     let help: String
     var tint: Color = AppTheme.Text.secondaryColor
     let action: () -> Void
-    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
@@ -239,14 +446,9 @@ private struct SkillIconButton: View {
                 .foregroundStyle(tint)
                 .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
                 .padding(AppTheme.Spacing.xs)
-                .background(
-                    RoundedRectangle(cornerRadius: AppTheme.Radius.xs)
-                        .fill(hovering ? Color.white.opacity(AppTheme.Opacity.faint) : .clear)
-                )
-                .contentShape(Rectangle())
+                .hoverHighlight(cornerRadius: AppTheme.Radius.xs)
         }
         .buttonStyle(.plain)
-        .onHover { hovering = $0 }
         .help(help)
     }
 }
@@ -255,7 +457,6 @@ private struct SkillSegmentButton: View {
     let systemName: String
     let active: Bool
     let action: () -> Void
-    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
@@ -264,20 +465,9 @@ private struct SkillSegmentButton: View {
                 .foregroundStyle(active ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
                 .padding(.horizontal, AppTheme.Spacing.sm)
                 .padding(.vertical, AppTheme.Spacing.xs)
-                .background(
-                    RoundedRectangle(cornerRadius: AppTheme.Radius.xs)
-                        .fill(fill)
-                )
-                .contentShape(Rectangle())
+                .hoverHighlight(cornerRadius: AppTheme.Radius.xs, isActive: active)
         }
         .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-    }
-
-    private var fill: Color {
-        if active { return Color.white.opacity(AppTheme.Opacity.faint) }
-        if hovering { return Color.white.opacity(AppTheme.Opacity.subtle) }
-        return .clear
     }
 }
 
@@ -303,7 +493,6 @@ private struct SkillSaveButton: View {
 private struct SkillCopyMenu: View {
     let skill: Skill
     let store: SkillStore
-    @State private var hovering = false
     @State private var showing = false
 
     var body: some View {
@@ -313,14 +502,9 @@ private struct SkillCopyMenu: View {
                 .foregroundStyle(AppTheme.Accent.primary)
                 .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
                 .padding(AppTheme.Spacing.xs)
-                .background(
-                    RoundedRectangle(cornerRadius: AppTheme.Radius.xs)
-                        .fill(hovering ? Color.white.opacity(AppTheme.Opacity.faint) : .clear)
-                )
-                .contentShape(Rectangle())
+                .hoverHighlight(cornerRadius: AppTheme.Radius.xs)
         }
         .buttonStyle(.plain)
-        .onHover { hovering = $0 }
         .help("Copy to agent")
         .popover(isPresented: $showing, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 0) {
@@ -347,7 +531,6 @@ private struct SkillCopyMenu: View {
 private struct SkillPopoverRow: View {
     let label: String
     let action: () -> Void
-    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
@@ -357,19 +540,19 @@ private struct SkillPopoverRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, AppTheme.Spacing.md)
                 .padding(.vertical, AppTheme.Spacing.sm)
-                .background(hovering ? Color.white.opacity(AppTheme.Opacity.subtle) : .clear)
-                .contentShape(Rectangle())
+                .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
         }
         .buttonStyle(.plain)
-        .onHover { hovering = $0 }
     }
 }
+
+enum SkillRowBadge { case update, modified }
 
 private struct SkillRow: View {
     let skill: Skill
     let isSelected: Bool
+    var badge: SkillRowBadge? = nil
     let action: () -> Void
-    @State private var hovering = false
 
     var body: some View {
         HStack(spacing: AppTheme.Spacing.sm) {
@@ -380,23 +563,60 @@ private struct SkillRow: View {
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.primaryColor)
                 .lineLimit(1)
-            Spacer(minLength: 0)
+            Spacer(minLength: AppTheme.Spacing.xs)
+            badgeView
         }
         .padding(.horizontal, AppTheme.Spacing.sm)
         .padding(.vertical, AppTheme.Spacing.smMd)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .fill(fill)
-        )
-        .contentShape(Rectangle())
+        .hoverHighlight(cornerRadius: AppTheme.Radius.sm, isActive: isSelected)
         .onTapGesture(perform: action)
-        .onHover { hovering = $0 }
     }
 
-    private var fill: Color {
-        if isSelected { return Color.white.opacity(AppTheme.Opacity.faint) }
-        if hovering { return Color.white.opacity(AppTheme.Opacity.subtle) }
-        return .clear
+    @ViewBuilder private var badgeView: some View {
+        switch badge {
+        case .update:
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Accent.primary)
+        case .modified:
+            Text("Modified")
+                .font(.system(size: AppTheme.FontSize.xxs))
+                .foregroundStyle(AppTheme.Text.mutedColor)
+        case nil:
+            EmptyView()
+        }
+    }
+}
+
+private struct SkillAvailableRow: View {
+    let entry: SkillCatalogEntry
+    let installing: Bool
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Image(systemName: "doc.text")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.mutedColor)
+            Text(entry.name)
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .lineLimit(1)
+            Spacer(minLength: AppTheme.Spacing.xs)
+            if installing {
+                ProgressView().controlSize(.small)
+            } else {
+                Button("Install", action: action)
+                    .buttonStyle(.plain)
+                    .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
+                    .foregroundStyle(AppTheme.Accent.primary)
+            }
+        }
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.vertical, AppTheme.Spacing.smMd)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+        .help(entry.description)
     }
 }
