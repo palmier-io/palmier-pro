@@ -39,13 +39,16 @@ enum FrameRenderer {
     /// Blend `image` over `background` at full strength, then fade the result back toward
     /// the background by `opacity` — so opacity/fades scale the blend, not the source alpha.
     private static func blend(_ image: CIImage, over background: CIImage, filter name: String, opacity: Double) -> CIImage {
+        // CI blend filters output only the foreground's extent; composite back over the
+        // background so areas outside the clip keep the layers below (no black regions).
         let blended = image.applyingFilter(name, parameters: [kCIInputBackgroundImageKey: background])
+            .composited(over: background)
         guard opacity < 1 else { return blended }
         let f = CIFilter(name: "CIDissolveTransition")
         f?.setValue(background, forKey: kCIInputImageKey)
         f?.setValue(blended, forKey: "inputTargetImage")
         f?.setValue(opacity, forKey: "inputTime")
-        return f?.outputImage ?? blended
+        return (f?.outputImage ?? blended).cropped(to: background.extent)
     }
 
     /// Tag output Rec. 709 at the buffer level so downstream reads our bytes correctly.
