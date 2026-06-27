@@ -323,22 +323,25 @@ final class VideoProject: NSDocument {
                     .environment(editorViewModel)
             }
         let hostingController = NSHostingController(rootView: editorView.tint(AppTheme.Accent.primary))
+        hostingController.sizingOptions = .minSize
 
+        let autosaveName = "PalmierProWindow-v2"
         let window = NSWindow(contentViewController: hostingController)
-        window.setContentSize(AppTheme.Window.projectDefault)
         window.minSize = AppTheme.Window.projectMin
-        window.setFrameAutosaveName("PalmierProWindow")
+        window.setFrameAutosaveName(autosaveName)
         window.appearance = NSAppearance(named: .darkAqua)
         window.titleVisibility = .visible
         window.titlebarAppearsTransparent = true
         window.backgroundColor = NSColor(AppTheme.Background.surfaceColor)
-        window.center()
+        if !NSWindow.hasAutosavedFrame(name: autosaveName) {
+            window.fillVisibleScreen()
+        }
 
         window.addTitlebarSwiftUI(TitleBarLeadingView().environment(editorViewModel), side: .leading, width: AppTheme.IconSize.lg + AppTheme.Spacing.sm)
         window.addTitlebarSwiftUI(TitleBarTrailingView().environment(editorViewModel), side: .trailing, width: AppTheme.Window.projectTitlebarTrailingWidth)
 
         let controller = EditorWindowController(editorViewModel: editorViewModel, window: window)
-        controller.shouldCascadeWindows = true
+        controller.shouldCascadeWindows = false
         controller.installKeyMonitor()
         addWindowController(controller)
 
@@ -521,6 +524,16 @@ final class VideoProject: NSDocument {
 // MARK: - NSWindow helper
 
 extension NSWindow {
+    static func hasAutosavedFrame(name: String) -> Bool {
+        UserDefaults.standard.object(forKey: "NSWindow Frame \(name)") != nil
+    }
+
+    func fillVisibleScreen(using screen: NSScreen? = nil) {
+        let target = screen ?? self.screen ?? NSScreen.main
+        guard let frame = target?.visibleFrame else { return }
+        setFrame(frame, display: true)
+    }
+
     func addTitlebarSwiftUI<V: View>(_ view: V, side: NSLayoutConstraint.Attribute, width: CGFloat) {
         let host = NSHostingController(rootView: view.tint(AppTheme.Accent.primary))
         host.view.translatesAutoresizingMaskIntoConstraints = false

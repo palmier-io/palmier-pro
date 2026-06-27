@@ -141,6 +141,8 @@ struct SkillsPane: View {
             }
             .animation(.easeInOut(duration: 0.2), value: copyToast)
         }
+        .padding(.horizontal, AppTheme.Spacing.xlXxl)
+        .padding(.bottom, AppTheme.Spacing.xlXxl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
             if selection == nil { selection = store.skills.first?.id }
