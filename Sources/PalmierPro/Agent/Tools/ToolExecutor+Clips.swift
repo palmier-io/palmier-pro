@@ -575,7 +575,7 @@ extension ToolExecutor {
             if let v = speed {
                 if durationFrames == nil, v > 0 {
                     let sourceConsumed = Double(clip.durationFrames) * clip.speed
-                    clip.durationFrames = max(1, Int((sourceConsumed / v).rounded()))
+                    clip.durationFrames = max(1, safeInt((sourceConsumed / v).rounded()) ?? clip.durationFrames)
                     clip.clampKeyframesToDuration()
                     clip.clampFadesToDuration()
                     changed.append("durationFrames")
@@ -750,8 +750,8 @@ extension ToolExecutor {
                     : Double(clip.startFrame) + (v * Double(fps) - Double(clip.trimStartFrame)) / max(clip.speed, 0.0001)
             }
             for r in input.ranges {
-                let s = max(clip.startFrame, min(clip.endFrame, Int(toFrame(r[0]).rounded())))
-                let e = max(clip.startFrame, min(clip.endFrame, Int(toFrame(r[1]).rounded())))
+                let s = clampInt(toFrame(r[0]), min: clip.startFrame, max: clip.endFrame)
+                let e = clampInt(toFrame(r[1]), min: clip.startFrame, max: clip.endFrame)
                 if e > s { frameRanges.append(FrameRange(start: s, end: e)) } else { dropped += 1 }
             }
             guard !frameRanges.isEmpty else {
@@ -767,8 +767,8 @@ extension ToolExecutor {
                 throw ToolError("Track index out of range: \(trackIndex)")
             }
             for r in input.ranges {
-                let s = max(0, Int(r[0].rounded()))
-                let e = Int(r[1].rounded())
+                let s = clampInt(r[0], min: 0, max: editor.timeline.totalFrames)
+                let e = clampInt(r[1], min: 0, max: editor.timeline.totalFrames)
                 if e > s { frameRanges.append(FrameRange(start: s, end: e)) } else { dropped += 1 }
             }
             guard !frameRanges.isEmpty else {
@@ -852,8 +852,8 @@ extension ToolExecutor {
 
     private static func kfInt(_ raw: Any, at path: String) throws -> Int {
         if let v = raw as? Int { return v }
-        if let v = raw as? Double { return Int(v) }
-        if let v = raw as? NSNumber { return v.intValue }
+        if let v = raw as? Double, let i = safeInt(v) { return i }
+        if let v = raw as? NSNumber, let i = safeInt(v.doubleValue) { return i }
         throw ToolError("\(path): expected integer")
     }
 

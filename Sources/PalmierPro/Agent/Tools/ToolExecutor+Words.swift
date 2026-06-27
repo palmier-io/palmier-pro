@@ -24,9 +24,12 @@ extension ToolExecutor {
         var selected = Set<Int>(), ignored: [Int] = []
         let maxIndex = allWords.count - 1
         for (a, b) in try Self.parseWordSpans(rawWords) {
-            for idx in min(a, b)...max(a, b) {
-                if (0...maxIndex).contains(idx) { selected.insert(idx) } else { ignored.append(idx) }
-            }
+            let lo = min(a, b), hi = max(a, b)
+            // Clamp to the valid transcript range so an out-of-range span can't iterate billions of times.
+            if hi < 0 || lo > maxIndex { ignored.append(lo); continue }
+            if lo < 0 { ignored.append(lo) }
+            if hi > maxIndex { ignored.append(hi) }
+            for idx in max(0, lo)...min(maxIndex, hi) { selected.insert(idx) }
         }
         guard !selected.isEmpty else {
             throw ToolError("None of the requested word indices are in range 0...\(maxIndex). Re-read get_transcript.")
@@ -107,7 +110,7 @@ extension ToolExecutor {
     private static func intFromAny(_ v: Any) -> Int? {
         if let i = v as? Int { return i }
         if let n = v as? NSNumber { return n.intValue }
-        if let d = v as? Double, d.rounded() == d { return Int(d) }
+        if let d = v as? Double, d.rounded() == d { return safeInt(d) }
         return nil
     }
 }
