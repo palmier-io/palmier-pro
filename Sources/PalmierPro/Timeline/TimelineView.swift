@@ -295,6 +295,21 @@ final class TimelineView: NSView {
             return Set(editor.linkedPartnerIds(of: drag.clipId))
         }()
 
+        // Live ripple-trim layout: downstream clips shift while the edge is dragged.
+        let ripplePlan: EditorViewModel.RippleTrimPlan? = {
+            guard let (drag, isLeft) = trimDrag, drag.isRipple else { return nil }
+            return editor.planRippleTrim(
+                clipId: drag.clipId, edge: isLeft ? .left : .right,
+                deltaFrames: drag.deltaFrames, propagateToLinked: drag.propagateToLinked
+            )
+        }()
+        let rippleShiftByClip: [String: Int] = ripplePlan.map {
+            Dictionary(uniqueKeysWithValues: $0.shifts.map { ($0.clipId, $0.newStartFrame) })
+        } ?? [:]
+        let rippleResizeByClip: [String: EditorViewModel.RippleTrimPlan.Resize] = ripplePlan.map {
+            Dictionary(uniqueKeysWithValues: $0.resizes.map { ($0.clipId, $0) })
+        } ?? [:]
+
         let linkOffsets = editor.linkGroupOffsets()
 
         clipDisplayRects.removeAll(keepingCapacity: true)
@@ -344,16 +359,25 @@ final class TimelineView: NSView {
                 }
 
                 if let (drag, isLeft) = trimDrag,
-                   clip.id == drag.clipId || trimPartnerIds.contains(clip.id) {
+                   clip.id == drag.clipId || trimPartnerIds.contains(clip.id),
+                   // Ripple drags with no resize preview at rest.
+                   !(drag.isRipple && rippleResizeByClip[clip.id] == nil) {
                     var previewClip = clip
-                    let sourceDelta = Int((Double(drag.deltaFrames) * clip.speed).rounded())
-                    if isLeft {
-                        previewClip.startFrame = clip.startFrame + drag.deltaFrames
-                        previewClip.trimStartFrame = clip.trimStartFrame + sourceDelta
-                        previewClip.durationFrames = clip.durationFrames - drag.deltaFrames
+                    if let resize = rippleResizeByClip[clip.id] {
+                        // Ripple: start stays anchored; the plan's resize grows/shrinks the tail.
+                        previewClip.trimStartFrame = resize.trimStart
+                        previewClip.trimEndFrame = resize.trimEnd
+                        previewClip.durationFrames = resize.duration
                     } else {
-                        previewClip.durationFrames = clip.durationFrames + drag.deltaFrames
-                        previewClip.trimEndFrame = clip.trimEndFrame - sourceDelta
+                        let sourceDelta = Int((Double(drag.deltaFrames) * clip.speed).rounded())
+                        if isLeft {
+                            previewClip.startFrame = clip.startFrame + drag.deltaFrames
+                            previewClip.trimStartFrame = clip.trimStartFrame + sourceDelta
+                            previewClip.durationFrames = clip.durationFrames - drag.deltaFrames
+                        } else {
+                            previewClip.durationFrames = clip.durationFrames + drag.deltaFrames
+                            previewClip.trimEndFrame = clip.trimEndFrame - sourceDelta
+                        }
                     }
                     let previewRect = geo.clipRect(for: previewClip, trackIndex: ti)
                     clipDisplayRects[clip.id] = previewRect
@@ -362,6 +386,22 @@ final class TimelineView: NSView {
                                           isSelected: isSelected, context: ctx,
                                           cache: editor.mediaVisualCache,
                                           displayName: editor.clipDisplayLabel(for: clip),
+                                          fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
+                    }
+                    continue
+                }
+
+                if let shiftedStart = rippleShiftByClip[clip.id] {
+                    var shiftedClip = clip
+                    shiftedClip.startFrame = shiftedStart
+                    let shiftedRect = geo.clipRect(for: shiftedClip, trackIndex: ti)
+                    clipDisplayRects[clip.id] = shiftedRect
+                    if shiftedRect.intersects(dirtyRect) {
+                        ClipRenderer.draw(shiftedClip, type: clip.mediaType, in: shiftedRect,
+                                          isSelected: isSelected, context: ctx,
+                                          cache: editor.mediaVisualCache,
+                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          linkOffset: linkOffsets[clip.id],
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
                     continue
@@ -376,6 +416,17 @@ final class TimelineView: NSView {
                                   displayName: editor.clipDisplayLabel(for: clip),
                                   linkOffset: linkOffsets[clip.id],
                                   fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
+            }
+        }
+
+        // Red wall at the obstacle frame — the sync-locked clip edge the ripple butts against.
+        if let wall = ripplePlan?.blockedAtFrame {
+            let x = geo.xForFrame(wall)
+            let line = NSRect(x: x - AppTheme.BorderWidth.thick / 2, y: Double(geo.rulerHeight),
+                              width: AppTheme.BorderWidth.thick, height: Double(max(0, bounds.height - geo.rulerHeight)))
+            if line.intersects(dirtyRect) {
+                ctx.setFillColor(AppTheme.Status.error.cgColor)
+                ctx.fill(line)
             }
         }
     }
