@@ -71,8 +71,7 @@ enum FCPXMLExporter {
         private var resourceIndex: [String: Int] = [:]
         private var resources: [MediaResource] = []
         private var nextTextStyleId = 1
-        // Linked video+audio pairs collapse into one <ref-clip>: the audio partner is dropped and its
-        // volume rides on the video clip. Keeps Resolve from importing a phantom second video track.
+        // A synced A/V pair collapses into one ref-clip; the audio partner is dropped, its volume kept.
         private var linkedAudioForVideo: [String: Clip] = [:]
         private var redundantAudioClipIds: Set<String> = []
 
@@ -82,8 +81,8 @@ enum FCPXMLExporter {
             let enabled: Bool
         }
 
-        // One asset per source file, keyed by mediaRef. A synced A/V source is split into separate
-        // video/audio clips in our model, but FCP/Resolve expect a single asset carrying both streams
+        // One asset per source file (keyed by mediaRef): two assets sharing a media-rep src break
+        // Resolve's relinker.
         private struct MediaResource {
             let mediaRef: String
             let assetId: String
@@ -117,9 +116,8 @@ enum FCPXMLExporter {
             return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE fcpxml>\n" + renderFCPXML(root, indent: 0)
         }
 
-        /// A linkGroup with exactly one video and one audio clip on the same source, perfectly aligned,
-        /// is a synced A/V pair. Collapse it: the video <ref-clip> carries both streams, the audio is
-        /// dropped. Mismatched timing means the user edited them apart, so leave both in place.
+        /// One video + one audio clip sharing a linkGroup, source, and timing is a synced pair the video
+        /// ref-clip can carry whole. Mismatched timing means they were edited apart — leave both.
         private func indexLinkedPairs(_ clips: [EmittableClip]) {
             var byGroup: [String: (videos: [Clip], audios: [Clip])] = [:]
             for item in clips {
@@ -169,8 +167,8 @@ enum FCPXMLExporter {
         private func compoundClipNode(for resource: MediaResource) -> FCPXMLNode? {
             guard let compoundId = resource.compoundId else { return nil }
             let dur = time(frames: resource.durationFrames)
-            // When the source has audio, wrap the whole asset (<asset-clip> = video + audio) so a single
-            // outer <ref-clip> can deliver both streams; the outer srcEnable then gates what plays.
+            // <asset-clip> carries both streams so the outer ref-clip can deliver audio; <clip>/<video>
+            // is video-only. Outer srcEnable gates what actually plays.
             let innerClip: FCPXMLNode
             if resource.hasAudio {
                 innerClip = FCPXMLNode(name: "asset-clip", attributes: [
@@ -265,9 +263,8 @@ enum FCPXMLExporter {
             guard let i = resourceIndex[clip.mediaRef] else { return nil }
             let resource = resources[i]
 
-            // Video/image → <ref-clip> over the compound. A linked audio partner rides along (srcEnable
-            // omitted = both streams, its volume carried here); otherwise pin to video so a source's own
-            // audio doesn't leak in.
+            // Video/image → <ref-clip>. A linked audio partner rides along (srcEnable omitted = both
+            // streams, its volume carried here); otherwise pin to video so the source's audio stays out.
             if clip.mediaType != .audio, let compoundId = resource.compoundId {
                 let linkedAudio = linkedAudioForVideo[clip.id]
                 var attrs: [(String, String)] = [
@@ -290,9 +287,8 @@ enum FCPXMLExporter {
                 ].compactMap { $0 })
             }
 
-            // Audio against an A/V source: a bare <asset-clip srcEnable="audio"> still imports as a video
-            // clip in Resolve (it honors srcEnable on <ref-clip>, not <asset-clip>), so route through the
-            // compound too. A pure-audio source has no compound → plain <asset-clip>.
+            // Audio against an A/V source must go through the compound too: Resolve honors srcEnable on
+            // <ref-clip> but not <asset-clip>, so a bare audio asset-clip imports as a video clip.
             if clip.mediaType == .audio, let compoundId = resource.compoundId {
                 let attrs: [(String, String)] = [
                     ("ref", compoundId),
@@ -598,6 +594,7 @@ enum FCPXMLExporter {
                 }
             }
             if resource.hasAudio {
+                // We don't probe channels/rate; 2ch/48k is FCP's default and doesn't affect relinking.
                 attrs.append(("hasAudio", "1"))
                 attrs.append(("audioSources", "1"))
                 attrs.append(("audioChannels", "2"))
