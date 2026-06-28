@@ -30,14 +30,16 @@ struct FCPXMLExporterTests {
         in dir: String,
         duration: Double = 5,
         sourceWidth: Int = 1920,
-        sourceHeight: Int = 1080
+        sourceHeight: Int = 1080,
+        hasAudio: Bool? = nil
     ) -> MediaManifestEntry {
         MediaManifestEntry(
             id: id, name: id, type: .video,
             source: .external(absolutePath: (dir as NSString).appendingPathComponent("\(id).mp4")),
             duration: duration,
             sourceWidth: sourceWidth,
-            sourceHeight: sourceHeight
+            sourceHeight: sourceHeight,
+            hasAudio: hasAudio
         )
     }
 
@@ -131,8 +133,10 @@ struct FCPXMLExporterTests {
         #expect(xml.contains("<adjust-conform type=\"fit\"/>"))
     }
 
-    @Test func sameMediaRefVideoAndAudioUseSeparateAssets() throws {
-        let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
+    @Test func sameMediaRefVideoAndAudioShareOneAsset() throws {
+        // Unlinked video + audio on the same A/V source (no linkGroup): each stays on its own lane but
+        // both route through the compound so srcEnable is honored (Resolve ignores it on bare asset-clips).
+        let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory(), hasAudio: true)])
         let video = Fixtures.clip(id: "video", mediaRef: "media-v", mediaType: .video, start: 0, duration: 30)
         let audio = Fixtures.clip(id: "audio", mediaRef: "media-v", mediaType: .audio, start: 0, duration: 30)
         let timeline = Fixtures.timeline(tracks: [
@@ -141,18 +145,69 @@ struct FCPXMLExporterTests {
         ])
 
         let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
-        let videoAsset = xml.components(separatedBy: "<asset id=\"asset1\"").dropFirst().first?.components(separatedBy: "</asset>").first ?? ""
-        let audioAsset = xml.components(separatedBy: "<asset id=\"asset2\"").dropFirst().first?.components(separatedBy: "</asset>").first ?? ""
 
-        #expect(videoAsset.contains("hasVideo=\"1\""))
-        #expect(videoAsset.contains("format=\"format1\""))
-        #expect(!videoAsset.contains("hasAudio"))
-        #expect(audioAsset.contains("hasAudio=\"1\""))
-        #expect(!audioAsset.contains("hasVideo"))
-        // Video routes through a compound clip via <ref-clip>; audio stays a plain <asset-clip>.
+        // One asset per source file, carrying both streams — Resolve's relinker fails on two assets
+        // sharing a media-rep src.
+        #expect(!xml.contains("<asset id=\"asset2\""))
+        let asset = xml.components(separatedBy: "<asset id=\"asset1\"").dropFirst().first?.components(separatedBy: "</asset>").first ?? ""
+        #expect(asset.contains("hasVideo=\"1\""))
+        #expect(asset.contains("format=\"format1\""))
+        #expect(asset.contains("videoSources=\"1\""))
+        #expect(asset.contains("hasAudio=\"1\""))
+        #expect(asset.contains("audioSources=\"1\""))
+        #expect(asset.contains("audioChannels=\"2\""))
+        #expect(asset.contains("audioRate=\"48000\""))
+        // Both clips are <ref-clip>s over the compound, gated by srcEnable so neither pulls the other's
+        // stream. The compound itself wraps the asset as an <asset-clip> to carry audio.
         #expect(xml.contains("<ref-clip ref=\"media1\" name=\"media-v\" lane=\"1\""))
         #expect(xml.contains("srcEnable=\"video\""))
-        #expect(xml.contains("<asset-clip ref=\"asset2\" name=\"media-v\" lane=\"-1\""))
+        #expect(xml.contains("<ref-clip ref=\"media1\" name=\"media-v\" lane=\"-1\""))
+        #expect(xml.contains("srcEnable=\"audio\""))
+    }
+
+    @Test func linkedAvPairCollapsesToOneRefClip() throws {
+        // A synced A/V pair (shared linkGroup, aligned) becomes a single <ref-clip> carrying both streams.
+        // The separate audio clip is dropped so Resolve doesn't import a phantom second video track.
+        let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory(), hasAudio: true)])
+        var video = Fixtures.clip(id: "video", mediaRef: "media-v", mediaType: .video, start: 0, duration: 30)
+        var audio = Fixtures.clip(id: "audio", mediaRef: "media-v", mediaType: .audio, start: 0, duration: 30, volume: 0.5)
+        video.linkGroupId = "pair"
+        audio.linkGroupId = "pair"
+        let timeline = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [video]),
+            Fixtures.audioTrack(clips: [audio]),
+        ])
+
+        let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        // One timeline element: the video ref-clip, no srcEnable (both streams play). No audio lane.
+        #expect(xml.contains("<ref-clip ref=\"media1\" name=\"media-v\" lane=\"1\""))
+        #expect(!xml.contains("lane=\"-1\""))
+        #expect(!xml.contains("srcEnable="))
+        // The dropped audio clip's volume rides on the surviving ref-clip.
+        #expect(xml.contains("<adjust-volume amount=\"-6.0206\"/>"))
+    }
+
+    @Test func mutedAudioTrackKeepsLinkedPairSeparate() throws {
+        // A muted audio track under a shown video has divergent enabled state, so the pair must NOT
+        // collapse — else the audio would ride the (enabled) video clip and lose its mute.
+        let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory(), hasAudio: true)])
+        var video = Fixtures.clip(id: "video", mediaRef: "media-v", mediaType: .video, start: 0, duration: 30)
+        var audio = Fixtures.clip(id: "audio", mediaRef: "media-v", mediaType: .audio, start: 0, duration: 30)
+        video.linkGroupId = "pair"
+        audio.linkGroupId = "pair"
+        var audioTrack = Fixtures.audioTrack(clips: [audio])
+        audioTrack.muted = true
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [video]), audioTrack])
+
+        let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        // Both survive on their own lanes; the audio is a disabled ref-clip, video stays enabled video-only.
+        #expect(xml.contains("<ref-clip ref=\"media1\" name=\"media-v\" lane=\"1\""))
+        #expect(xml.contains("srcEnable=\"video\""))
+        #expect(xml.contains("<ref-clip ref=\"media1\" name=\"media-v\" lane=\"-1\""))
+        #expect(xml.contains("srcEnable=\"audio\""))
+        #expect(xml.contains("enabled=\"0\""))
     }
 
     @Test func visualTrackLanesPreserveTopOverBottom() throws {
@@ -460,10 +515,11 @@ struct FCPXMLExporterTests {
 
         let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
 
+        // Pure audio source → no srcEnable (it has no video stream to disambiguate).
         #expect(xml.contains("<asset-clip ref=\"asset1\""))
+        #expect(!xml.contains("srcEnable="))
         #expect(!xml.contains("<fadeIn"))
-        #expect(!xml.contains("audioSources="))
-        #expect(!xml.contains("audioChannels="))
+        #expect(!xml.contains("<audio-channel-source"))
     }
 
     // MARK: - Titles
