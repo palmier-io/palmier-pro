@@ -31,17 +31,20 @@ extension EditorViewModel {
         undoManager?.setActionName(edits.count == 1 ? "Trim Clip" : "Trim Clips")
     }
 
-    /// The resolved layout of a ripple trim: which clips resize, by how much, and how every
-    /// downstream clip shifts. Pure — `rippleTrimClip` applies it, the timeline view previews it.
+    /// The resolved layout of a ripple trim: the resized clip(s) and how every downstream clip
+    /// shifts. Pure — `rippleTrimClip` applies it, the timeline view previews it, so the two
+    /// can't drift.
     struct RippleTrimPlan {
+        struct Resize { let clipId: String; let trimStart: Int; let trimEnd: Int; let duration: Int }
         let durationDelta: Int
-        let targetIds: Set<String>
+        let resizes: [Resize]
         let shifts: [ClipShift]
+        var targetIds: Set<String> { Set(resizes.map(\.clipId)) }
     }
 
     /// Resolve a ripple trim without mutating anything. Binds the edit to the most-constrained
-    /// linked partner so A/V keeps equal durations, then computes the downstream shift on the
-    /// lead's track, linked-partner tracks, and sync-locked followers. Returns nil for a no-op.
+    /// linked partner so A/V keeps equal durations, then resolves each resize and the downstream
+    /// shift on the lead's track, linked-partner tracks, and sync-locked followers. Nil for a no-op.
     func planRippleTrim(clipId: String, edge: TrimEdge, deltaFrames: Int, propagateToLinked: Bool) -> RippleTrimPlan? {
         guard deltaFrames != 0, let leadLoc = findClip(id: clipId) else { return nil }
         let leadEnd = timeline.tracks[leadLoc.trackIndex].clips[leadLoc.clipIndex].endFrame
@@ -49,24 +52,30 @@ extension EditorViewModel {
         var targets: [String] = [clipId]
         if propagateToLinked { targets.append(contentsOf: linkedPartnerIds(of: clipId)) }
         let targetIds = Set(targets)
+        let targetClips = targets.compactMap { findClip(id: $0).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex] } }
 
         // Each target's own source headroom caps how far it can ripple; bind to the smallest.
-        let durationDelta = targets
-            .compactMap { findClip(id: $0).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex] } }
+        let durationDelta = targetClips
             .map { rippleTrimDurationDelta(for: $0, edge: edge, delta: deltaFrames) }
             .min(by: { abs($0) < abs($1) }) ?? 0
         guard durationDelta != 0 else { return nil }
 
+        // A right-edge duration change maps to the same source-frame edge drag; left flips sign.
+        let resizes = targetClips.map { c -> RippleTrimPlan.Resize in
+            let fields = trimValues(for: c, edge: edge, delta: edge == .right ? durationDelta : -durationDelta)
+            return .init(clipId: c.id, trimStart: fields.trimStart, trimEnd: fields.trimEnd,
+                         duration: max(1, c.durationFrames + durationDelta))
+        }
+
         var shifts: [ClipShift] = []
         for ti in timeline.tracks.indices {
             let track = timeline.tracks[ti]
-            let holdsTarget = track.clips.contains { targetIds.contains($0.id) }
-            guard holdsTarget || track.syncLocked else { continue }
+            guard track.clips.contains(where: { targetIds.contains($0.id) }) || track.syncLocked else { continue }
             shifts += RippleEngine.computeRipplePush(
                 clips: track.clips, insertFrame: leadEnd, pushAmount: durationDelta, excludeIds: targetIds
             )
         }
-        return RippleTrimPlan(durationDelta: durationDelta, targetIds: targetIds, shifts: shifts)
+        return RippleTrimPlan(durationDelta: durationDelta, resizes: resizes, shifts: shifts)
     }
 
     /// Ripple trim: resize a clip from the dragged edge and shift every clip after it
@@ -82,19 +91,16 @@ extension EditorViewModel {
             if let reason = validateShifts(trackIndex: ti, shifts: trackShifts) { refuseRipple(reason: reason); return }
         }
 
+        let touched = plan.targetIds.union(plan.shifts.map(\.clipId))
         withTimelineSwap(actionName: "Ripple Trim") {
-            for id in plan.targetIds {
-                guard let l = findClip(id: id) else { continue }
-                let c = timeline.tracks[l.trackIndex].clips[l.clipIndex]
-                // A right-edge duration change maps to the same source-frame edge drag; left flips sign.
-                let fields = trimValues(for: c, edge: edge, delta: edge == .right ? plan.durationDelta : -plan.durationDelta)
-                timeline.tracks[l.trackIndex].clips[l.clipIndex].trimStartFrame = fields.trimStart
-                timeline.tracks[l.trackIndex].clips[l.clipIndex].trimEndFrame = fields.trimEnd
-                timeline.tracks[l.trackIndex].clips[l.clipIndex].setDuration(max(1, c.durationFrames + plan.durationDelta))
+            for r in plan.resizes {
+                guard let l = findClip(id: r.clipId) else { continue }
+                timeline.tracks[l.trackIndex].clips[l.clipIndex].trimStartFrame = r.trimStart
+                timeline.tracks[l.trackIndex].clips[l.clipIndex].trimEndFrame = r.trimEnd
+                timeline.tracks[l.trackIndex].clips[l.clipIndex].setDuration(r.duration)
             }
             applyShifts(plan.shifts)
-            for ti in timeline.tracks.indices where
-                timeline.tracks[ti].clips.contains(where: { plan.targetIds.contains($0.id) }) || timeline.tracks[ti].syncLocked {
+            for ti in timeline.tracks.indices where timeline.tracks[ti].clips.contains(where: { touched.contains($0.id) }) {
                 sortClips(trackIndex: ti)
             }
         }

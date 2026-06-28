@@ -104,6 +104,7 @@ struct RippleTrimTests {
         let plan = e.planRippleTrim(clipId: "c1", edge: .right, deltaFrames: 20, propagateToLinked: false)
         #expect(plan?.durationDelta == 20)
         #expect(plan?.shifts == [ClipShift(clipId: "c2", newStartFrame: 120)])
+        #expect(plan?.resizes.first?.duration == 120)
     }
 
     @Test func planClampsDeltaToConstrainedPartner() {

@@ -306,6 +306,9 @@ final class TimelineView: NSView {
         let rippleShiftByClip: [String: Int] = ripplePlan.map {
             Dictionary(uniqueKeysWithValues: $0.shifts.map { ($0.clipId, $0.newStartFrame) })
         } ?? [:]
+        let rippleResizeByClip: [String: EditorViewModel.RippleTrimPlan.Resize] = ripplePlan.map {
+            Dictionary(uniqueKeysWithValues: $0.resizes.map { ($0.clipId, $0) })
+        } ?? [:]
 
         let linkOffsets = editor.linkGroupOffsets()
 
@@ -358,14 +361,11 @@ final class TimelineView: NSView {
                 if let (drag, isLeft) = trimDrag,
                    clip.id == drag.clipId || trimPartnerIds.contains(clip.id) {
                     var previewClip = clip
-                    if let plan = ripplePlan {
-                        // Ripple: start stays anchored; the duration delta (clamped to the most
-                        // constrained partner) grows/shrinks the tail and ripples downstream.
-                        let edge: EditorViewModel.TrimEdge = isLeft ? .left : .right
-                        let fields = editor.trimValues(for: clip, edge: edge, delta: edge == .right ? plan.durationDelta : -plan.durationDelta)
-                        previewClip.trimStartFrame = fields.trimStart
-                        previewClip.trimEndFrame = fields.trimEnd
-                        previewClip.durationFrames = max(1, clip.durationFrames + plan.durationDelta)
+                    if let resize = rippleResizeByClip[clip.id] {
+                        // Ripple: start stays anchored; the plan's resize grows/shrinks the tail.
+                        previewClip.trimStartFrame = resize.trimStart
+                        previewClip.trimEndFrame = resize.trimEnd
+                        previewClip.durationFrames = resize.duration
                     } else {
                         let sourceDelta = Int((Double(drag.deltaFrames) * clip.speed).rounded())
                         if isLeft {
