@@ -71,6 +71,7 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     let fontSize: Double?
     let color: String?
     let alignment: String?
+    let outlineColor: String?
 
     static let allowedKeys: Set<String> = [
         "clipIds",
@@ -78,6 +79,7 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
         "volume", "opacity",
         "transform",
         "content", "fontName", "fontSize", "color", "alignment",
+        "outlineColor", "outlineWidth",
     ]
 
     var hasAnyProperty: Bool {
@@ -86,6 +88,7 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
             || transform != nil
             || content != nil || fontName != nil || fontSize != nil
             || color != nil || alignment != nil
+            || outlineColor != nil
     }
 }
 
@@ -442,12 +445,13 @@ extension ToolExecutor {
 
     // MARK: set_clip_properties
 
-    private static let textOnlyKeys: Set<String> = ["content", "fontName", "fontSize", "color", "alignment"]
+    private static let textOnlyKeys: Set<String> = ["content", "fontName", "fontSize", "color", "alignment", "outlineColor", "outlineWidth"]
 
     func setClipProperties(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        let outlineWidth = args.double("outlineWidth")
         let input: SetClipPropertiesInput = try decodeToolArgs(args, path: "set_clip_properties")
         guard !input.clipIds.isEmpty else { throw ToolError("Missing or empty 'clipIds' array") }
-        guard input.hasAnyProperty else {
+        guard input.hasAnyProperty || outlineWidth != nil else {
             throw ToolError("set_clip_properties needs at least one property to apply")
         }
         if let df = input.durationFrames, df < 1 {
@@ -470,6 +474,7 @@ extension ToolExecutor {
         }
         let color = try parseColorHex(input.color, path: "set_clip_properties")
         let alignment = try parseAlignment(input.alignment, path: "set_clip_properties")
+        let outlineColor = try parseColorHex(input.outlineColor, path: "set_clip_properties")
 
         // Resolve clipIds + collect types so we can reject text-only fields on non-text clips.
         var clipTypes: [String: ClipType] = [:]
@@ -478,11 +483,13 @@ extension ToolExecutor {
             clipTypes[id] = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].mediaType
         }
         let textOnlyUsed = [
-            input.content   != nil ? "content"   : nil,
-            input.fontName  != nil ? "fontName"  : nil,
-            input.fontSize  != nil ? "fontSize"  : nil,
-            input.color     != nil ? "color"     : nil,
-            input.alignment != nil ? "alignment" : nil,
+            input.content      != nil ? "content"      : nil,
+            input.fontName     != nil ? "fontName"      : nil,
+            input.fontSize     != nil ? "fontSize"      : nil,
+            input.color        != nil ? "color"         : nil,
+            input.alignment    != nil ? "alignment"     : nil,
+            input.outlineColor != nil ? "outlineColor"  : nil,
+            outlineWidth       != nil ? "outlineWidth"  : nil,
         ].compactMap { $0 }
         if !textOnlyUsed.isEmpty {
             let nonText = clipTypes.filter { $0.value != .text }.map { $0.key }.sorted()
@@ -517,11 +524,12 @@ extension ToolExecutor {
                     fontSize: isText ? input.fontSize : nil,
                     color: isText ? color : nil,
                     alignment: isText ? alignment : nil,
+                    outlineColor: isText ? outlineColor : nil,
+                    outlineWidth: isText ? outlineWidth : nil,
                     clipId: id,
                     editor: editor
                 )
-                // Match the inspector: refit bbox after content/font change when caller didn't set a box.
-                if isText && input.transform == nil && (input.content != nil || input.fontName != nil || input.fontSize != nil) {
+                if isText && input.transform == nil && (input.content != nil || input.fontName != nil || input.fontSize != nil || outlineWidth != nil) {
                     editor.fitTextClipToContent(clipId: id)
                 }
                 summaries.append("\(id)\(changed.isEmpty ? " (no-op)" : ": \(changed.joined(separator: ", "))")")
@@ -536,6 +544,7 @@ extension ToolExecutor {
                     speed:          partnerIsText ? nil : input.speed,
                     volume: nil, opacity: nil, transform: nil,
                     content: nil, fontName: nil, fontSize: nil, color: nil, alignment: nil,
+                    outlineColor: nil, outlineWidth: nil,
                     clipId: partnerId,
                     editor: editor
                 )
@@ -560,6 +569,8 @@ extension ToolExecutor {
         fontSize: Double?,
         color: TextStyle.RGBA?,
         alignment: TextStyle.Alignment?,
+        outlineColor: TextStyle.RGBA?,
+        outlineWidth: Double?,
         clipId: String,
         editor: EditorViewModel
     ) -> [String] {
@@ -600,13 +611,16 @@ extension ToolExecutor {
                 clip.transform = next
                 changed.append("transform")
             }
-            if content != nil || fontName != nil || fontSize != nil || color != nil || alignment != nil {
+            if content != nil || fontName != nil || fontSize != nil || color != nil || alignment != nil
+                || outlineColor != nil || outlineWidth != nil {
                 if let c = content { clip.textContent = c; changed.append("content") }
                 var style = clip.textStyle ?? TextStyle()
                 if let f = fontName  { style.fontName = f; changed.append("fontName") }
                 if let s = fontSize  { style.fontSize = s; changed.append("fontSize") }
                 if let c = color     { style.color = c; changed.append("color") }
                 if let a = alignment { style.alignment = a; changed.append("alignment") }
+                if let oc = outlineColor { style.outline.enabled = true; style.outline.color = oc; changed.append("outlineColor") }
+                if let ow = outlineWidth { style.outline.enabled = true; style.outline.width = ow; changed.append("outlineWidth") }
                 clip.textStyle = style
             }
         }

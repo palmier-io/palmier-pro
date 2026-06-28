@@ -4,6 +4,7 @@ import Foundation
 extension ToolExecutor {
     private static let addCaptionsAllowedKeys: Set<String> = [
         "clipIds", "fontName", "fontSize", "color", "centerX", "centerY", "textCase", "censorProfanity", "language",
+        "outlineColor", "outlineWidth",
     ]
 
     func addCaptions(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -15,6 +16,14 @@ extension ToolExecutor {
         if let f = args.string("fontName") { style.fontName = f }
         if let s = args.double("fontSize") { style.fontSize = s }
         if let c = try parseColorHex(args.string("color"), path: "add_captions") { style.color = c }
+        if let oc = try parseColorHex(args.string("outlineColor"), path: "add_captions") {
+            style.outline.enabled = true
+            style.outline.color = oc
+        }
+        if let ow = args.double("outlineWidth") {
+            style.outline.enabled = true
+            style.outline.width = ow
+        }
 
         let locale = try await Self.parseLocale(args, path: "add_captions")
 
