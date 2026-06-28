@@ -1,10 +1,13 @@
 import AppKit
 import SwiftUI
+import Foundation
+import CoreText
 
 struct TextStyle: Codable, Sendable, Equatable {
     var fontName: String = "Helvetica-Bold"
     var fontSize: Double = 96
     var fontScale: Double = 1.0
+    var fontWeight: Double = 400
     var color: RGBA = RGBA()
     var alignment: Alignment = .center
     var shadow: Shadow = Shadow()
@@ -41,7 +44,7 @@ struct TextStyle: Codable, Sendable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case fontName, fontSize, fontScale, color, alignment, shadow, background, border
+        case fontName, fontSize, fontScale, fontWeight, color, alignment, shadow, background, border
     }
 }
 
@@ -53,6 +56,7 @@ extension TextStyle {
             fontName: (try? c.decode(String.self, forKey: .fontName)) ?? "Helvetica-Bold",
             fontSize: (try? c.decode(Double.self, forKey: .fontSize)) ?? 96,
             fontScale: (try? c.decode(Double.self, forKey: .fontScale)) ?? 1.0,
+            fontWeight: (try? c.decode(Double.self, forKey: .fontWeight)) ?? 400,
             color: (try? c.decode(RGBA.self, forKey: .color)) ?? RGBA(),
             alignment: (try? c.decode(Alignment.self, forKey: .alignment)) ?? .center,
             shadow: (try? c.decode(Shadow.self, forKey: .shadow)) ?? Shadow(),
@@ -118,7 +122,43 @@ extension TextStyle.RGBA {
 
 extension TextStyle {
     func resolvedFont(size: CGFloat) -> NSFont {
-        NSFont(name: fontName, size: size) ?? NSFont.boldSystemFont(ofSize: size)
+        // 1. Load the base font, falling back to bold system font if missing
+        let baseFont = NSFont(name: self.fontName, size: size) ?? .boldSystemFont(ofSize: size)
+        
+        // 2. Sanitize the weight to protect against Infinity math crashes
+        var safeWeight = self.fontWeight
+        if safeWeight.isNaN || safeWeight.isInfinite { safeWeight = 400.0 }
+        safeWeight = max(1.0, min(1000.0, safeWeight))
+
+        // 3. AppKit strictly requires NSNumber for variation tags and values
+        let variation: [NSNumber: NSNumber] = [
+            NSNumber(value: 0x77676874): NSNumber(value: safeWeight) // 'wght' axis
+        ]
+        
+        // 4. Inject the variation directly into the font's descriptor
+        let descriptor = baseFont.fontDescriptor.addingAttributes([
+            .variation: variation
+        ])
+        
+        // 5. Ask AppKit to resolve a completely fresh font instance
+        if let variableFont = NSFont(descriptor: descriptor, size: size) {
+            // Safety net: ensure the font resolved with valid geometry
+            let height = variableFont.boundingRectForFont.height
+            if height > 0 && !height.isNaN && !height.isInfinite {
+                return variableFont
+            }
+        }
+        
+        // Fallback if the font doesn't support the variation
+        return baseFont
+    }
+    /// True if `fontName` resolves to a font with a `wght` variation axis.
+    var fontSupportsWeightAxis: Bool {
+    guard let base = NSFont(name: fontName, size: 12) else { return false }
+    guard let axes = CTFontCopyVariationAxes(base) as? [[String: Any]] else { return false }
+    return axes.contains { axis in
+        (axis[kCTFontVariationAxisIdentifierKey as String] as? NSNumber)?.intValue == 0x77676874
+    }
     }
 
     var nsColor: NSColor { color.nsColor }
@@ -130,17 +170,17 @@ extension TextStyle {
         case .center: p.alignment = .center
         case .right: p.alignment = .right
         }
-        p.lineBreakMode = .byWordWrapping
         return p
     }
 
-    /// `includeColor: false` for bounding measurement (color doesn't affect size).
     func attributes(size: CGFloat, includeColor: Bool = true) -> [NSAttributedString.Key: Any] {
         var attrs: [NSAttributedString.Key: Any] = [
             .font: resolvedFont(size: size),
-            .paragraphStyle: paragraphStyle,
+            .paragraphStyle: paragraphStyle
         ]
-        if includeColor { attrs[.foregroundColor] = nsColor }
+        if includeColor {
+            attrs[.foregroundColor] = nsColor
+        }
         return attrs
     }
 }
