@@ -37,6 +37,45 @@ struct ProjectDocumentIOTests {
         #expect(fm.fileExists(atPath: destination.appendingPathComponent(Project.manifestFilename).path))
     }
 
+    @Test func editorMarkerAndBlendModePersistIntoProjectPackage() throws {
+        let root = fm.temporaryDirectory.appendingPathComponent("pp-doc-io-\(UUID().uuidString)", isDirectory: true)
+        let package = root.appendingPathComponent("Project.palmier", isDirectory: true)
+        defer { try? fm.removeItem(at: root) }
+
+        let clipId = "logo-clip"
+        let doc = VideoProject()
+        doc.fileURL = package
+        doc.fileType = VideoProject.typeIdentifier
+        doc.editorViewModel.timeline = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [
+                Fixtures.clip(id: clipId, mediaType: .image, start: 0, duration: 60)
+            ])
+        ])
+        doc.editorViewModel.onDocumentEdited = { [weak doc] in
+            doc?.updateChangeCount(.changeDone)
+        }
+
+        let marker = doc.editorViewModel.addTimelineMarker(
+            frame: 24,
+            label: "Logo beat",
+            color: "#F29933"
+        )
+        doc.editorViewModel.commitClipProperty(clipId: clipId) {
+            $0.blendMode = .difference
+        }
+
+        #expect(doc.isDocumentEdited)
+
+        try doc.write(to: package, ofType: VideoProject.typeIdentifier)
+        let data = try Data(contentsOf: package.appendingPathComponent(Project.timelineFilename))
+        let saved = try JSONDecoder().decode(Timeline.self, from: data)
+        let savedClip = try #require(saved.tracks.first?.clips.first)
+
+        #expect(saved.markers == [marker])
+        #expect(savedClip.id == clipId)
+        #expect(savedClip.blendMode == .difference)
+    }
+
     private func makePackage(at url: URL) throws {
         let media = url.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
         try fm.createDirectory(at: media, withIntermediateDirectories: true)

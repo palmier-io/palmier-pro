@@ -209,12 +209,18 @@ final class EditorViewModel {
 
     weak var undoManager: UndoManager?
     @ObservationIgnored var onDocumentEdited: (@MainActor () -> Void)?
+    /// Coalesce duplicate dirty notifications from a single synchronous edit,
+    /// but keep later edits visible to NSDocument/autosave even while already dirty.
+    @ObservationIgnored private var documentEditNotificationPending = false
     var isDocumentEdited: Bool = false
 
     func markDocumentEdited() {
-        guard !isDocumentEdited else { return }
-        isDocumentEdited = true
+        guard !documentEditNotificationPending else { return }
+        documentEditNotificationPending = true
         onDocumentEdited?()
+        Task { @MainActor [weak self] in
+            self?.documentEditNotificationPending = false
+        }
     }
 
     func telemetrySnapshot() -> [String: Any] {

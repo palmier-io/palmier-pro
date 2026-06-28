@@ -499,6 +499,21 @@ struct ToolExecutorMarkerTests {
         #expect(editNotifications == 1)
     }
 
+    @Test func documentEditNotificationFiresAgainWhileDocumentIsDirty() async {
+        let editor = EditorViewModel()
+        var editNotifications = 0
+        editor.onDocumentEdited = {
+            editNotifications += 1
+            editor.isDocumentEdited = true
+        }
+
+        _ = editor.addTimelineMarker(frame: 48, label: "First")
+        try? await Task.sleep(for: .milliseconds(1))
+        _ = editor.addTimelineMarker(frame: 96, label: "Second")
+
+        #expect(editNotifications == 2)
+    }
+
     @Test func addMarkersCreatesTimelineAnchors() async throws {
         let h = ToolHarness()
         let json = try await h.runOK("add_markers", args: [
