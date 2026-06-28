@@ -89,10 +89,14 @@ extension EditorViewModel {
     }
 
     /// Deletes project-frame ranges from one track (spanning any clips) and closes the gaps; cuts linked A/V partners, shifts sync-locked tracks, refuses if any can't absorb.
-    func rippleDeleteRangesOnTrack(trackIndex: Int, ranges: [FrameRange]) -> RippleRangesOutcome {
+    /// Tracks in `ignoreSyncLockTrackIndices` are treated as unlocked for this call only
+    func rippleDeleteRangesOnTrack(trackIndex: Int, ranges: [FrameRange], ignoreSyncLockTrackIndices: Set<Int> = []) -> RippleRangesOutcome {
         guard timeline.tracks.indices.contains(trackIndex) else {
             return .refused("Track index out of range: \(trackIndex)")
         }
+        let ignoredTrackIds = Set(ignoreSyncLockTrackIndices.compactMap {
+            timeline.tracks.indices.contains($0) ? timeline.tracks[$0].id : nil
+        })
         let merged = RippleEngine.mergeRanges(ranges.filter { $0.length > 0 })
         guard !merged.isEmpty else { return .refused("No non-empty ranges to delete") }
         let totalRemoved = merged.reduce(0) { $0 + $1.length }
@@ -111,7 +115,7 @@ extension EditorViewModel {
         // aren't cleared, so their clips are unchanged when the shift is applied below.
         for ti in timeline.tracks.indices {
             let track = timeline.tracks[ti]
-            guard !clearTrackIds.contains(track.id), track.syncLocked else { continue }
+            guard !clearTrackIds.contains(track.id), track.syncLocked, !ignoredTrackIds.contains(track.id) else { continue }
             let shifts = RippleEngine.computeRippleShiftsForRanges(clips: track.clips, removedRanges: merged)
             if let reason = validateShifts(trackIndex: ti, shifts: shifts) {
                 return .refused(reason)
@@ -130,7 +134,7 @@ extension EditorViewModel {
             }
             for ti in timeline.tracks.indices {
                 let track = timeline.tracks[ti]
-                guard clearTrackIds.contains(track.id) || track.syncLocked else { continue }
+                guard clearTrackIds.contains(track.id) || (track.syncLocked && !ignoredTrackIds.contains(track.id)) else { continue }
                 let shifts = RippleEngine.computeRippleShiftsForRanges(clips: track.clips, removedRanges: merged)
                 shiftedClips += applyShifts(shifts)
                 sortClips(trackIndex: ti)
