@@ -94,6 +94,32 @@ struct RippleTrimTests {
         #expect(spans(e.timeline.tracks[1]) == [[0, 110], [110, 160]])
     }
 
+    @Test func planExposesDownstreamShiftsForPreview() {
+        // The view previews from the same plan the commit applies: c2 shifts forward by 20.
+        let track = Fixtures.videoTrack(clips: [
+            Fixtures.clip(id: "c1", start: 0, duration: 100, trimEnd: 50),
+            Fixtures.clip(id: "c2", start: 100, duration: 50),
+        ])
+        let e = editor([track])
+        let plan = e.planRippleTrim(clipId: "c1", edge: .right, deltaFrames: 20, propagateToLinked: false)
+        #expect(plan?.durationDelta == 20)
+        #expect(plan?.shifts == [ClipShift(clipId: "c2", newStartFrame: 120)])
+    }
+
+    @Test func planClampsDeltaToConstrainedPartner() {
+        // Preview must reflect the same source clamp as the commit (audio caps at 10).
+        var v1 = Fixtures.clip(id: "v1", start: 0, duration: 100, trimEnd: 50)
+        var a1 = Fixtures.clip(id: "a1", mediaType: .audio, start: 0, duration: 100, trimEnd: 10)
+        v1.linkGroupId = "g"
+        a1.linkGroupId = "g"
+        let e = editor([
+            Fixtures.videoTrack(clips: [v1]),
+            Fixtures.audioTrack(clips: [a1]),
+        ])
+        let plan = e.planRippleTrim(clipId: "v1", edge: .right, deltaFrames: 20, propagateToLinked: true)
+        #expect(plan?.durationDelta == 10)
+    }
+
     @Test func unlinkedTrimLeavesPartnerTrackAlone() {
         // propagateToLinked off: only the lead's track ripples.
         var v1 = Fixtures.clip(id: "v1", start: 0, duration: 100, trimEnd: 50)

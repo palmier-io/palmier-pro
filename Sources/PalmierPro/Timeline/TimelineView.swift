@@ -295,6 +295,18 @@ final class TimelineView: NSView {
             return Set(editor.linkedPartnerIds(of: drag.clipId))
         }()
 
+        // Live ripple-trim layout: downstream clips shift while the edge is dragged.
+        let ripplePlan: EditorViewModel.RippleTrimPlan? = {
+            guard let (drag, isLeft) = trimDrag, drag.isRipple else { return nil }
+            return editor.planRippleTrim(
+                clipId: drag.clipId, edge: isLeft ? .left : .right,
+                deltaFrames: drag.deltaFrames, propagateToLinked: drag.propagateToLinked
+            )
+        }()
+        let rippleShiftByClip: [String: Int] = ripplePlan.map {
+            Dictionary(uniqueKeysWithValues: $0.shifts.map { ($0.clipId, $0.newStartFrame) })
+        } ?? [:]
+
         let linkOffsets = editor.linkGroupOffsets()
 
         clipDisplayRects.removeAll(keepingCapacity: true)
@@ -346,14 +358,24 @@ final class TimelineView: NSView {
                 if let (drag, isLeft) = trimDrag,
                    clip.id == drag.clipId || trimPartnerIds.contains(clip.id) {
                     var previewClip = clip
-                    let sourceDelta = Int((Double(drag.deltaFrames) * clip.speed).rounded())
-                    if isLeft {
-                        previewClip.startFrame = clip.startFrame + drag.deltaFrames
-                        previewClip.trimStartFrame = clip.trimStartFrame + sourceDelta
-                        previewClip.durationFrames = clip.durationFrames - drag.deltaFrames
+                    if let plan = ripplePlan {
+                        // Ripple: start stays anchored; the duration delta (clamped to the most
+                        // constrained partner) grows/shrinks the tail and ripples downstream.
+                        let edge: EditorViewModel.TrimEdge = isLeft ? .left : .right
+                        let fields = editor.trimValues(for: clip, edge: edge, delta: edge == .right ? plan.durationDelta : -plan.durationDelta)
+                        previewClip.trimStartFrame = fields.trimStart
+                        previewClip.trimEndFrame = fields.trimEnd
+                        previewClip.durationFrames = max(1, clip.durationFrames + plan.durationDelta)
                     } else {
-                        previewClip.durationFrames = clip.durationFrames + drag.deltaFrames
-                        previewClip.trimEndFrame = clip.trimEndFrame - sourceDelta
+                        let sourceDelta = Int((Double(drag.deltaFrames) * clip.speed).rounded())
+                        if isLeft {
+                            previewClip.startFrame = clip.startFrame + drag.deltaFrames
+                            previewClip.trimStartFrame = clip.trimStartFrame + sourceDelta
+                            previewClip.durationFrames = clip.durationFrames - drag.deltaFrames
+                        } else {
+                            previewClip.durationFrames = clip.durationFrames + drag.deltaFrames
+                            previewClip.trimEndFrame = clip.trimEndFrame - sourceDelta
+                        }
                     }
                     let previewRect = geo.clipRect(for: previewClip, trackIndex: ti)
                     clipDisplayRects[clip.id] = previewRect
@@ -362,6 +384,22 @@ final class TimelineView: NSView {
                                           isSelected: isSelected, context: ctx,
                                           cache: editor.mediaVisualCache,
                                           displayName: editor.clipDisplayLabel(for: clip),
+                                          fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
+                    }
+                    continue
+                }
+
+                if let shiftedStart = rippleShiftByClip[clip.id] {
+                    var shiftedClip = clip
+                    shiftedClip.startFrame = shiftedStart
+                    let shiftedRect = geo.clipRect(for: shiftedClip, trackIndex: ti)
+                    clipDisplayRects[clip.id] = shiftedRect
+                    if shiftedRect.intersects(dirtyRect) {
+                        ClipRenderer.draw(shiftedClip, type: clip.mediaType, in: shiftedRect,
+                                          isSelected: isSelected, context: ctx,
+                                          cache: editor.mediaVisualCache,
+                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          linkOffset: linkOffsets[clip.id],
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
                     continue
