@@ -322,11 +322,14 @@ extension EditorViewModel {
 
     func materialize(plan: DropPlan) -> (visual: Int?, audio: Int?) {
         let visualIdx = plan.visualTarget.map { materializeTrackIndex(target: $0, type: .video) }
-        let audioIdx: Int? = plan.audioTarget.map { audio in
-            let shifted = plan.visualTarget.map { shiftAfterVisualInsertion(audio: audio, visual: $0) } ?? audio
-            return materializeTrackIndex(target: shifted, type: .audio)
-        }
+        let audioIdx = audioTargetAfterVisualInsertion(plan: plan).map { materializeTrackIndex(target: $0, type: .audio) }
         return (visualIdx, audioIdx)
+    }
+
+    func audioTargetAfterVisualInsertion(plan: DropPlan) -> TrackDropTarget? {
+        plan.audioTarget.map { audio in
+            plan.visualTarget.map { shiftAfterVisualInsertion(audio: audio, visual: $0) } ?? audio
+        }
     }
 
     /// Resolve a `TrackDropTarget` into a concrete track index, creating a new track if needed.

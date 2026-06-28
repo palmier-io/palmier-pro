@@ -305,25 +305,38 @@ extension EditorViewModel {
 
     struct RippleInsertPreviewPlan: Equatable {
         let gapRangesByTrackIndex: [Int: FrameRange]
+        let newTrackGapRangesByTarget: [TrackDropTarget: FrameRange]
         let shiftDeltasByClipId: [String: Int]
     }
 
     func planRippleInsertPreview(dropPlan plan: DropPlan, atFrame: Int) -> RippleInsertPreviewPlan? {
         var gapLengthsByTrackIndex: [Int: Int] = [:]
+        var newTrackGapLengthsByTarget: [TrackDropTarget: Int] = [:]
         var shiftDeltasByClipId: [String: Int] = [:]
 
-        func affectedTrackIndexes(for target: TrackDropTarget) -> Set<Int> {
+        func currentTrackIndex(for target: TrackDropTarget, shiftedBy visualTarget: TrackDropTarget?) -> Int? {
+            guard case .existingTrack(var index) = target else { return nil }
+            if case .newTrackAt(let visualInsertIndex) = visualTarget,
+               index > visualInsertIndex {
+                index -= 1
+            }
+            return timeline.tracks.indices.contains(index) ? index : nil
+        }
+
+        func affectedTrackIndexes(for target: TrackDropTarget, shiftedBy visualTarget: TrackDropTarget?) -> Set<Int> {
             var indexes = Set(timeline.tracks.indices.filter { timeline.tracks[$0].syncLocked })
-            if case .existingTrack(let index) = target,
-               timeline.tracks.indices.contains(index) {
+            if let index = currentTrackIndex(for: target, shiftedBy: visualTarget) {
                 indexes.insert(index)
             }
             return indexes
         }
 
-        func addPush(target: TrackDropTarget?, pushAmount: Int) {
+        func addPush(target: TrackDropTarget?, shiftedBy visualTarget: TrackDropTarget?, pushAmount: Int) {
             guard let target, pushAmount > 0 else { return }
-            for trackIndex in affectedTrackIndexes(for: target) {
+            if case .newTrackAt = target {
+                newTrackGapLengthsByTarget[target, default: 0] += pushAmount
+            }
+            for trackIndex in affectedTrackIndexes(for: target, shiftedBy: visualTarget) {
                 let clips = timeline.tracks[trackIndex].clips
                 let startFramesByClipId = Dictionary(uniqueKeysWithValues: clips.map { ($0.id, $0.startFrame) })
                 let shifts = RippleEngine.computeRipplePush(clips: clips, insertFrame: atFrame, pushAmount: pushAmount)
@@ -335,15 +348,19 @@ extension EditorViewModel {
             }
         }
 
-        addPush(target: plan.visualTarget, pushAmount: plan.visualDurationFrames)
-        addPush(target: plan.audioTarget, pushAmount: plan.audioOnlyDurationFrames)
+        addPush(target: plan.visualTarget, shiftedBy: nil, pushAmount: plan.visualDurationFrames)
+        addPush(target: audioTargetAfterVisualInsertion(plan: plan), shiftedBy: plan.visualTarget, pushAmount: plan.audioOnlyDurationFrames)
 
-        guard !gapLengthsByTrackIndex.isEmpty || !shiftDeltasByClipId.isEmpty else { return nil }
+        guard !gapLengthsByTrackIndex.isEmpty || !newTrackGapLengthsByTarget.isEmpty || !shiftDeltasByClipId.isEmpty else { return nil }
         let gapRangesByTrackIndex = gapLengthsByTrackIndex.mapValues {
+            FrameRange(start: atFrame, end: atFrame + $0)
+        }
+        let newTrackGapRangesByTarget = newTrackGapLengthsByTarget.mapValues {
             FrameRange(start: atFrame, end: atFrame + $0)
         }
         return RippleInsertPreviewPlan(
             gapRangesByTrackIndex: gapRangesByTrackIndex,
+            newTrackGapRangesByTarget: newTrackGapRangesByTarget,
             shiftDeltasByClipId: shiftDeltasByClipId
         )
     }

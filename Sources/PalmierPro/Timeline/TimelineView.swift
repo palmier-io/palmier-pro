@@ -621,19 +621,8 @@ final class TimelineView: NSView {
         switch target {
         case .existingTrack(let idx):
             return geo.clipRect(for: probe, trackIndex: idx)
-        case .newTrackAt(let idx):
-            let trackCount = editor.timeline.tracks.count
-            let top = geo.rulerHeight + Layout.dropZoneHeight
-            let y: CGFloat
-            if trackCount == 0 {
-                y = top + CGFloat(idx) * height
-            } else if idx >= trackCount {
-                let last = trackCount - 1
-                let bottom = geo.trackY(at: last) + geo.trackHeight(at: last)
-                y = bottom + CGFloat(idx - trackCount) * height
-            } else {
-                y = geo.trackY(at: idx) - height
-            }
+        case .newTrackAt:
+            guard let y = geo.ghostY(for: target, height: height) else { return .zero }
             return geo.clipRect(for: probe, atY: Double(y), height: height)
         }
     }
@@ -654,20 +643,28 @@ final class TimelineView: NSView {
         ctx.setFillColor(AppTheme.Accent.timecodeNSColor.withAlphaComponent(AppTheme.Opacity.faint).cgColor)
         ctx.setStrokeColor(AppTheme.Accent.timecodeNSColor.withAlphaComponent(AppTheme.Opacity.medium).cgColor)
         ctx.setLineWidth(AppTheme.BorderWidth.thin)
-        for (trackIndex, range) in preview.gapRangesByTrackIndex where editor.timeline.tracks.indices.contains(trackIndex) {
+
+        func drawBand(range: FrameRange, y: CGFloat, height: CGFloat) {
             let minX = geo.xForFrame(range.start)
             let maxX = geo.xForFrame(range.end)
-            guard maxX > minX else { continue }
-            let y = geo.trackY(at: trackIndex)
-            let height = max(CGFloat.zero, geo.trackHeight(at: trackIndex) - AppTheme.Spacing.xs)
+            guard maxX > minX else { return }
             let rect = NSRect(
                 x: minX,
                 y: y + AppTheme.Spacing.xxs,
                 width: maxX - minX,
-                height: height
+                height: max(CGFloat.zero, height - AppTheme.Spacing.xs)
             )
             ctx.addRect(rect.insetBy(dx: AppTheme.BorderWidth.hairline, dy: AppTheme.BorderWidth.hairline))
             ctx.drawPath(using: .fillStroke)
+        }
+
+        for (trackIndex, range) in preview.gapRangesByTrackIndex where editor.timeline.tracks.indices.contains(trackIndex) {
+            drawBand(range: range, y: geo.trackY(at: trackIndex), height: geo.trackHeight(at: trackIndex))
+        }
+
+        for (target, range) in preview.newTrackGapRangesByTarget {
+            guard let y = geo.ghostY(for: target) else { continue }
+            drawBand(range: range, y: y, height: Layout.trackHeight)
         }
     }
 

@@ -67,4 +67,28 @@ struct RippleInsertPreviewTests {
         #expect(preview?.gapRangesByTrackIndex[2] == FrameRange(start: 50, end: 140))
         #expect(preview?.shiftDeltasByClipId["sync-tail"] == 90)
     }
+
+    @Test func newTrackDropShowsShiftedVisualAndAudioTargetGaps() {
+        var videoTrack = Fixtures.videoTrack(clips: [
+            Fixtures.clip(id: "video-tail", start: 100, duration: 30),
+        ])
+        videoTrack.syncLocked = false
+        var audioTrack = Fixtures.audioTrack(clips: [
+            Fixtures.clip(id: "audio-tail", mediaType: .audio, start: 100, duration: 30),
+        ])
+        audioTrack.syncLocked = false
+        let e = previewEditor([videoTrack, audioTrack])
+        let video = asset(id: "video", type: .video, duration: 2)
+        let audio = asset(id: "audio", type: .audio, duration: 1)
+
+        let plan = e.resolveDropPlan(cursor: .newTrackAt(1), assets: [video, audio], atFrame: 50)
+        let preview = e.planRippleInsertPreview(dropPlan: plan, atFrame: 50)
+
+        #expect(plan.visualTarget == .newTrackAt(1))
+        #expect(plan.audioTarget == .newTrackAt(1))
+        #expect(preview?.newTrackGapRangesByTarget[.newTrackAt(1)] == FrameRange(start: 50, end: 110))
+        #expect(preview?.newTrackGapRangesByTarget[.newTrackAt(2)] == FrameRange(start: 50, end: 80))
+        #expect(preview?.gapRangesByTrackIndex.isEmpty == true)
+        #expect(preview?.shiftDeltasByClipId.isEmpty == true)
+    }
 }
