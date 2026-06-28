@@ -70,6 +70,8 @@ struct FCPXMLExporterTests {
         #expect(xml.contains("<fcpxml version=\"1.10\">"))
         #expect(xml.contains("<resources>"))
         #expect(xml.contains("<format id=\"r1\""))
+        #expect(xml.contains("name=\"FFVideoFormat1080p30\""))
+        #expect(xml.contains("colorSpace=\"1-1-1 (Rec. 709)\""))
         #expect(xml.contains("<library>"))
         #expect(xml.contains("<event name=\"Palmier Export\">"))
         #expect(xml.contains("<project name=\"Timeline Export\">"))
@@ -115,6 +117,54 @@ struct FCPXMLExporterTests {
         #expect(clipCount == 2)        // two ref-clips reference it
     }
 
+    @Test func distinctMediaRefsWithSameSourceFileEmitOneAssetResource() throws {
+        let source = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("shared-source-\(UUID().uuidString).mp4")
+        let entryA = MediaManifestEntry(
+            id: "shared-a", name: "A", type: .video,
+            source: .external(absolutePath: source.path),
+            duration: 5,
+            sourceWidth: 1920,
+            sourceHeight: 1080,
+            hasAudio: true
+        )
+        let entryB = MediaManifestEntry(
+            id: "shared-b", name: "B", type: .video,
+            source: .external(absolutePath: source.path),
+            duration: 5,
+            sourceWidth: 1920,
+            sourceHeight: 1080,
+            hasAudio: true
+        )
+        let (resolver, tmpDir) = try makeResolver(entries: [entryA, entryB])
+        let clipA = Fixtures.clip(id: "a", mediaRef: "shared-a", start: 0, duration: 30)
+        let clipB = Fixtures.clip(id: "b", mediaRef: "shared-b", start: 60, duration: 30)
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clipA, clipB])])
+
+        let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        let assetCount = xml.components(separatedBy: "<asset id=\"asset").count - 1
+        let compoundCount = xml.components(separatedBy: "<media id=\"media").count - 1
+        #expect(assetCount == 1)
+        #expect(compoundCount == 1)
+        #expect(xml.contains("<ref-clip ref=\"media1\" name=\"A\""))
+        #expect(xml.contains("<ref-clip ref=\"media1\" name=\"B\""))
+        #expect(!xml.contains("<asset id=\"asset2\""))
+    }
+
+    @Test func assetResourcesOmitSyntheticUID() throws {
+        let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
+        let clip = Fixtures.clip(id: "clip", mediaRef: "media-v", start: 0, duration: 30)
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+
+        let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
+        let asset = xml.components(separatedBy: "<asset id=\"asset1\"").dropFirst().first?
+            .components(separatedBy: "</asset>").first ?? ""
+
+        #expect(!asset.contains("uid="))
+        #expect(!xml.contains("io.palmier.media.asset"))
+    }
+
     @Test func visualClipWrapsAssetInFullMediaCompoundClip() throws {
         // The compound clip must hold the FULL media (here 5s @30fps = 150 frames), independent of the
         // clip's trim/duration — that runway is what stops Resolve blacking a retimed tail. The ref-clip
@@ -127,8 +177,8 @@ struct FCPXMLExporterTests {
         let compound = xml.components(separatedBy: "<media id=\"media1\"").dropFirst().first?
             .components(separatedBy: "</media>").first ?? ""
 
-        #expect(compound.contains("<sequence format=\"format1\" duration=\"5s\""))
-        #expect(compound.contains("<clip name=\"media-v\" duration=\"5s\" start=\"0s\" offset=\"0s\" format=\"format1\">"))
+        #expect(compound.contains("<sequence format=\"r2\" duration=\"5s\""))
+        #expect(compound.contains("<clip name=\"media-v\" duration=\"5s\" start=\"0s\" offset=\"0s\" format=\"r2\">"))
         #expect(compound.contains("<video ref=\"asset1\" duration=\"5s\" start=\"0s\" offset=\"0s\"/>"))
         #expect(xml.contains("<adjust-conform type=\"fit\"/>"))
     }
@@ -151,7 +201,7 @@ struct FCPXMLExporterTests {
         #expect(!xml.contains("<asset id=\"asset2\""))
         let asset = xml.components(separatedBy: "<asset id=\"asset1\"").dropFirst().first?.components(separatedBy: "</asset>").first ?? ""
         #expect(asset.contains("hasVideo=\"1\""))
-        #expect(asset.contains("format=\"format1\""))
+        #expect(asset.contains("format=\"r2\""))
         #expect(asset.contains("videoSources=\"1\""))
         #expect(asset.contains("hasAudio=\"1\""))
         #expect(asset.contains("audioSources=\"1\""))
@@ -321,8 +371,33 @@ struct FCPXMLExporterTests {
 
         let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
 
-        #expect(xml.contains("<format id=\"format1\" name=\"media-v\" frameDuration=\"1/30s\" width=\"3413\" height=\"607\"/>"))
+        #expect(xml.contains("<format id=\"r2\" name=\"FFVideoFormat3413x607p30\" frameDuration=\"1/30s\" width=\"3413\" height=\"607\" colorSpace=\"1-1-1 (Rec. 709)\"/>"))
         #expect(!xml.contains("<adjust-transform"))
+    }
+
+    @Test func ntscSourceFormatUsesFinalCutRateSuffix() throws {
+        var entry = videoEntry(id: "media-v", in: NSTemporaryDirectory())
+        entry.sourceFPS = 29.97
+        let (resolver, tmpDir) = try makeResolver(entries: [entry])
+        let clip = Fixtures.clip(id: "clip-1", mediaRef: "media-v", start: 0, duration: 60)
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+
+        let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        #expect(xml.contains("<format id=\"r2\" name=\"FFVideoFormat1080p2997\" frameDuration=\"1001/30000s\" width=\"1920\" height=\"1080\" colorSpace=\"1-1-1 (Rec. 709)\"/>"))
+    }
+
+    @Test func customTimelineFormatUsesFinalCutGenericPresetName() throws {
+        let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
+        let clip = Fixtures.clip(id: "clip-1", mediaRef: "media-v", start: 0, duration: 60)
+        var timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+        timeline.width = 1080
+        timeline.height = 1920
+
+        let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        #expect(xml.contains("<format id=\"r1\" name=\"FFVideoFormatRateUndefined\" frameDuration=\"1/30s\" width=\"1080\" height=\"1920\" colorSpace=\"1-1-1 (Rec. 709)\"/>"))
+        #expect(xml.contains("<sequence format=\"r1\""))
     }
 
     @Test func centeredUnrotatedVideoOmitsTransform() throws {
