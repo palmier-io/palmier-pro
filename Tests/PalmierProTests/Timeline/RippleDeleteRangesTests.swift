@@ -152,4 +152,23 @@ struct RippleDeleteRangesTests {
         #expect(spans(e.timeline.tracks[0]) == [[0, 100]])
         #expect(starts(e.timeline.tracks[1]) == [0, 100])
     }
+
+    @Test func ignoreSyncLockedTracksLetsCutProceedAndLeavesThemInPlace() {
+        // Same collision as above, but exempting the blocking track lets the cut run;
+        // the anchor closes its gap while the exempted track's clips stay put.
+        let v = Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 100)])
+        let a = Fixtures.audioTrack(clips: [
+            Fixtures.clip(id: "a1", start: 0, duration: 95),
+            Fixtures.clip(id: "a2", start: 100, duration: 50),
+        ])
+        let e = editor([v, a])
+        let outcome = e.rippleDeleteRangesOnTrack(
+            trackIndex: 0,
+            ranges: [FrameRange(start: 40, end: 50)],
+            ignoreSyncLockTrackIndices: [1]
+        )
+        guard case .ok = outcome else { Issue.record("expected .ok"); return }
+        #expect(spans(e.timeline.tracks[0]) == [[0, 40], [40, 90]])
+        #expect(starts(e.timeline.tracks[1]) == [0, 100])
+    }
 }

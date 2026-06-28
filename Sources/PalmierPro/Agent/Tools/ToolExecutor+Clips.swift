@@ -94,7 +94,8 @@ fileprivate struct RippleDeleteRangesInput: DecodableToolArgs {
     let trackIndex: Int?
     let ranges: [[Double]]
     let units: String?
-    static let allowedKeys: Set<String> = ["clipId", "trackIndex", "ranges", "units"]
+    let ignoreSyncLockedTracks: [Int]?
+    static let allowedKeys: Set<String> = ["clipId", "trackIndex", "ranges", "units", "ignoreSyncLockedTracks"]
 }
 
 fileprivate struct SetKeyframesInput: DecodableToolArgs {
@@ -777,7 +778,8 @@ extension ToolExecutor {
             resolvedTrackIndex = trackIndex
         }
 
-        switch editor.rippleDeleteRangesOnTrack(trackIndex: resolvedTrackIndex, ranges: frameRanges) {
+        let ignoreSyncLocked = Set(input.ignoreSyncLockedTracks ?? [])
+        switch editor.rippleDeleteRangesOnTrack(trackIndex: resolvedTrackIndex, ranges: frameRanges, ignoreSyncLockTrackIndices: ignoreSyncLocked) {
         case .refused(let reason):
             throw ToolError(reason)
         case .ok(let report):
