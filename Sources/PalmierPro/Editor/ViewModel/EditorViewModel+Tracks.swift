@@ -50,6 +50,27 @@ extension EditorViewModel {
         removeTracks(ids: [id])
     }
 
+    // MARK: - Reorder
+    /// Instantly move the track with `id` to `targetIndex`, clamped to its track type zone. No undo.
+    func reorderTrackLive(id: String, to targetIndex: Int) {
+        guard let from = timeline.tracks.firstIndex(where: { $0.id == id }) else { return }
+        let z = zones
+        let isAudio = timeline.tracks[from].type == .audio
+        let lower = isAudio ? z.firstAudioIndex : 0
+        let upper = isAudio ? z.trackCount - 1 : z.firstAudioIndex - 1
+        let dest = max(lower, min(upper, targetIndex))
+        guard dest != from else { return }
+        let track = timeline.tracks.remove(at: from)
+        timeline.tracks.insert(track, at: dest)
+    }
+
+    /// Register a single undo step for a completed live reorder.
+    func commitTrackReorder(before: Timeline) {
+        guard before != timeline else { return }
+        registerTimelineSwap(undoState: before, redoState: timeline, actionName: "Reorder Track")
+        notifyTimelineChanged()
+    }
+
     func removeTracks(ids: [String]) {
         let set = Set(ids)
         guard timeline.tracks.contains(where: { set.contains($0.id) }) else { return }
