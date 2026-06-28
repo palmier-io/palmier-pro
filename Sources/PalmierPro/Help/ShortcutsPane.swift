@@ -21,6 +21,7 @@ struct ShortcutsPane: View {
             ("] or W", "Trim End to Playhead"),
             ("Backspace", "Delete"),
             ("Shift + Backspace", "Ripple Delete"),
+            ("Shift + Drag Edge", "Ripple Trim"),
             ("Opt + Drag", "Duplicate Clip"),
         ]),
         ShortcutGroup(title: "Timeline", shortcuts: [
