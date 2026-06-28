@@ -4,6 +4,8 @@ import AppKit
 final class TimelineHeaderView: NSView {
     unowned var editor: EditorViewModel
 
+    var requestCanvasRedraw: (() -> Void)?
+
     private static let headerBg = AppTheme.Background.surface.cgColor
     private static let labelAttrs: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: AppTheme.FontSize.sm, weight: .medium),
@@ -208,6 +210,7 @@ final class TimelineHeaderView: NSView {
             editor.reorderTrackLive(id: drag.id, to: geo.trackAt(y: Double(point.y)))
             NSCursor.closedHand.set()
             needsDisplay = true
+            requestCanvasRedraw?()
             return
         }
 
