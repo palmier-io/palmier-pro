@@ -81,7 +81,7 @@ enum FCPXMLExporter {
             let enabled: Bool
         }
 
-        // One asset per source file (keyed by mediaRef)
+        // One asset per resolved source file.
         private struct MediaResource {
             let mediaRef: String
             let assetId: String
@@ -142,10 +142,11 @@ enum FCPXMLExporter {
             var children: [FCPXMLNode] = [
                 FCPXMLNode(name: "format", attributes: [
                     ("id", sequenceFormatId),
-                    ("name", "Palmier Timeline"),
+                    ("name", sequenceFormatName(width: seqWidth, height: seqHeight, fps: Double(fps))),
                     ("frameDuration", frameDuration(forFPS: Double(fps))),
                     ("width", "\(seqWidth)"),
                     ("height", "\(seqHeight)"),
+                    ("colorSpace", "1-1-1 (Rec. 709)"),
                 ]),
             ]
 
@@ -515,6 +516,7 @@ enum FCPXMLExporter {
 
         private func collectResources(from clips: [EmittableClip]) {
             struct Caps {
+                var mediaRefs: [String]
                 var hasVideo = false
                 var hasAudio = false
                 var duration = 0
@@ -530,28 +532,34 @@ enum FCPXMLExporter {
                       let entry = resolver.entry(for: clip.mediaRef),
                       let url = resolver.resolveURL(for: clip.mediaRef) else { continue }
 
+                let key = sourceKey(for: url)
                 let duration = sourceDurationFrames(for: entry, clip: clip)
                 let isVisual = clip.mediaType != .audio
                 // Audio clip → audio stream; video clip → audio too if the source file carries it.
                 let isAudio = clip.mediaType == .audio || (clip.mediaType == .video && entry.hasAudio == true)
-                var entryCaps = caps[clip.mediaRef] ?? {
-                    order.append(clip.mediaRef)
-                    return Caps(entry: entry, url: url)
+                var entryCaps = caps[key] ?? {
+                    order.append(key)
+                    return Caps(mediaRefs: [], entry: entry, url: url)
                 }()
+                if !entryCaps.mediaRefs.contains(clip.mediaRef) {
+                    entryCaps.mediaRefs.append(clip.mediaRef)
+                }
                 entryCaps.hasVideo = entryCaps.hasVideo || isVisual
                 entryCaps.hasAudio = entryCaps.hasAudio || isAudio
                 entryCaps.duration = max(entryCaps.duration, duration)
-                caps[clip.mediaRef] = entryCaps
+                caps[key] = entryCaps
             }
 
-            for ref in order {
-                guard let c = caps[ref] else { continue }
+            for key in order {
+                guard let c = caps[key] else { continue }
                 let id = resources.count + 1
-                resourceIndex[ref] = resources.count
+                for ref in c.mediaRefs {
+                    resourceIndex[ref] = resources.count
+                }
                 resources.append(MediaResource(
-                    mediaRef: ref,
+                    mediaRef: c.mediaRefs.first ?? c.entry.id,
                     assetId: "asset\(id)",
-                    formatId: c.hasVideo ? "format\(id)" : nil,
+                    formatId: c.hasVideo ? "r\(id + 1)" : nil,
                     compoundId: c.hasVideo ? "media\(id)" : nil,
                     entry: c.entry,
                     url: c.url,
@@ -562,6 +570,10 @@ enum FCPXMLExporter {
             }
         }
 
+        private func sourceKey(for url: URL) -> String {
+            url.standardizedFileURL.resolvingSymlinksInPath().path
+        }
+
         private func formatNode(for resource: MediaResource) -> FCPXMLNode? {
             guard let formatId = resource.formatId else { return nil }
             let width = resource.entry.sourceWidth ?? seqWidth
@@ -569,10 +581,11 @@ enum FCPXMLExporter {
             let rawFPS = resource.entry.sourceFPS ?? Double(fps)
             return FCPXMLNode(name: "format", attributes: [
                 ("id", formatId),
-                ("name", resource.entry.name),
+                ("name", videoFormatName(width: width, height: height, fps: rawFPS)),
                 ("frameDuration", frameDuration(forFPS: rawFPS)),
                 ("width", "\(width)"),
                 ("height", "\(height)"),
+                ("colorSpace", "1-1-1 (Rec. 709)"),
             ])
         }
 
@@ -580,7 +593,6 @@ enum FCPXMLExporter {
             var attrs: [(String, String)] = [
                 ("id", resource.assetId),
                 ("name", resource.entry.name),
-                ("uid", "io.palmier.media.\(resource.assetId)"),
                 ("start", "0s"),
                 ("duration", time(frames: resource.durationFrames)),
             ]
@@ -657,6 +669,41 @@ enum FCPXMLExporter {
             let numerator = frames / divisor
             let denominator = fps / divisor
             return denominator == 1 ? "\(numerator)s" : "\(numerator)/\(denominator)s"
+        }
+
+        private func videoFormatName(width: Int, height: Int, fps rawFPS: Double) -> String {
+            recognizedVideoFormatName(width: width, height: height, fps: rawFPS)
+                ?? "FFVideoFormat\(width)x\(height)p\(formatRateSuffix(forFPS: rawFPS))"
+        }
+
+        private func sequenceFormatName(width: Int, height: Int, fps rawFPS: Double) -> String {
+            recognizedVideoFormatName(width: width, height: height, fps: rawFPS) ?? "FFVideoFormatRateUndefined"
+        }
+
+        private func recognizedVideoFormatName(width: Int, height: Int, fps rawFPS: Double) -> String? {
+            let rate = formatRateSuffix(forFPS: rawFPS)
+            switch (width, height) {
+            case (1280, 720):
+                return "FFVideoFormat720p\(rate)"
+            case (1920, 1080):
+                return "FFVideoFormat1080p\(rate)"
+            case (3840, 2160):
+                return "FFVideoFormat3840x2160p\(rate)"
+            case (4096, 2160):
+                return "FFVideoFormat4096x2160p\(rate)"
+            default:
+                return nil
+            }
+        }
+
+        private func formatRateSuffix(forFPS rawFPS: Double) -> String {
+            let rounded = max(1, Int(rawFPS.rounded()))
+            let ntscRate = Double(rounded) * 1000.0 / 1001.0
+            if abs(rawFPS - ntscRate) < abs(rawFPS - Double(rounded)) {
+                let fps100 = Int((ntscRate * 100.0).rounded())
+                return "\(fps100 / 100)\(String(format: "%02d", fps100 % 100))"
+            }
+            return "\(rounded)"
         }
 
         private func frameDuration(forFPS rawFPS: Double) -> String {
