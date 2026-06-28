@@ -131,7 +131,7 @@ struct FCPXMLExporterTests {
         #expect(xml.contains("<adjust-conform type=\"fit\"/>"))
     }
 
-    @Test func sameMediaRefVideoAndAudioUseSeparateAssets() throws {
+    @Test func sameMediaRefVideoAndAudioShareOneAsset() throws {
         let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
         let video = Fixtures.clip(id: "video", mediaRef: "media-v", mediaType: .video, start: 0, duration: 30)
         let audio = Fixtures.clip(id: "audio", mediaRef: "media-v", mediaType: .audio, start: 0, duration: 30)
@@ -141,18 +141,24 @@ struct FCPXMLExporterTests {
         ])
 
         let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
-        let videoAsset = xml.components(separatedBy: "<asset id=\"asset1\"").dropFirst().first?.components(separatedBy: "</asset>").first ?? ""
-        let audioAsset = xml.components(separatedBy: "<asset id=\"asset2\"").dropFirst().first?.components(separatedBy: "</asset>").first ?? ""
 
-        #expect(videoAsset.contains("hasVideo=\"1\""))
-        #expect(videoAsset.contains("format=\"format1\""))
-        #expect(!videoAsset.contains("hasAudio"))
-        #expect(audioAsset.contains("hasAudio=\"1\""))
-        #expect(!audioAsset.contains("hasVideo"))
-        // Video routes through a compound clip via <ref-clip>; audio stays a plain <asset-clip>.
+        // One asset per source file, carrying both streams — Resolve's relinker fails on two assets
+        // sharing a media-rep src.
+        #expect(!xml.contains("<asset id=\"asset2\""))
+        let asset = xml.components(separatedBy: "<asset id=\"asset1\"").dropFirst().first?.components(separatedBy: "</asset>").first ?? ""
+        #expect(asset.contains("hasVideo=\"1\""))
+        #expect(asset.contains("format=\"format1\""))
+        #expect(asset.contains("videoSources=\"1\""))
+        #expect(asset.contains("hasAudio=\"1\""))
+        #expect(asset.contains("audioSources=\"1\""))
+        #expect(asset.contains("audioChannels=\"2\""))
+        #expect(asset.contains("audioRate=\"48000\""))
+        // Video routes through a compound clip via <ref-clip srcEnable="video">; audio is an
+        // <asset-clip srcEnable="audio"> against the same asset, so neither pulls the other's stream.
         #expect(xml.contains("<ref-clip ref=\"media1\" name=\"media-v\" lane=\"1\""))
         #expect(xml.contains("srcEnable=\"video\""))
-        #expect(xml.contains("<asset-clip ref=\"asset2\" name=\"media-v\" lane=\"-1\""))
+        #expect(xml.contains("<asset-clip ref=\"asset1\" name=\"media-v\" lane=\"-1\""))
+        #expect(xml.contains("srcEnable=\"audio\""))
     }
 
     @Test func visualTrackLanesPreserveTopOverBottom() throws {
@@ -460,10 +466,11 @@ struct FCPXMLExporterTests {
 
         let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
 
+        // Pure audio source → no srcEnable (it has no video stream to disambiguate).
         #expect(xml.contains("<asset-clip ref=\"asset1\""))
+        #expect(!xml.contains("srcEnable="))
         #expect(!xml.contains("<fadeIn"))
-        #expect(!xml.contains("audioSources="))
-        #expect(!xml.contains("audioChannels="))
+        #expect(!xml.contains("<audio-channel-source"))
     }
 
     // MARK: - Titles
