@@ -1789,6 +1789,10 @@ struct SetClipPropertiesTests {
         let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
             Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 60)]),
         ]))
+        var editNotifications = 0
+        h.editor.onDocumentEdited = {
+            editNotifications += 1
+        }
 
         let result = await h.runRaw("set_clip_properties", args: [
             "clipIds": ["c1"],
@@ -1796,6 +1800,7 @@ struct SetClipPropertiesTests {
         ])
 
         #expect(result.isError == false)
+        #expect(editNotifications == 1)
         #expect(h.editor.timeline.tracks[0].clips[0].blendMode == .difference)
 
         let json = try await h.runOK("get_timeline") as? [String: Any]

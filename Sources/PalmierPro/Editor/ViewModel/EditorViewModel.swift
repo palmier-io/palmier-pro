@@ -212,6 +212,8 @@ final class EditorViewModel {
     var isDocumentEdited: Bool = false
 
     func markDocumentEdited() {
+        guard !isDocumentEdited else { return }
+        isDocumentEdited = true
         onDocumentEdited?()
     }
 
@@ -333,6 +335,7 @@ final class EditorViewModel {
     var pendingRebuildTask: Task<Void, Never>?
 
     func notifyTimelineChanged() {
+        markDocumentEdited()
         pendingRebuildTask?.cancel()
         pendingRebuildTask = nil
         if isPlaying {
@@ -344,6 +347,7 @@ final class EditorViewModel {
 
     /// Coalesce rapid rebuilds. An immediate `notifyTimelineChanged` cancels any pending debounced one.
     func notifyTimelineChangedDebounced(debounce: Duration = .milliseconds(120)) {
+        markDocumentEdited()
         pendingRebuildTask?.cancel()
         pendingRebuildTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: debounce)
