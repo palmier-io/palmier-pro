@@ -274,6 +274,22 @@ extension EditorViewModel {
         let visualTarget: TrackDropTarget?
         let audioTarget: TrackDropTarget?
 
+        var visualAssets: [MediaAsset] {
+            placements.filter(\.hasVisual).map(\.asset)
+        }
+
+        var audioOnlyAssets: [MediaAsset] {
+            placements.filter { !$0.hasVisual && $0.hasAudio }.map(\.asset)
+        }
+
+        var visualDurationFrames: Int {
+            placements.filter(\.hasVisual).reduce(0) { $0 + $1.durationFrames }
+        }
+
+        var audioOnlyDurationFrames: Int {
+            placements.filter { !$0.hasVisual && $0.hasAudio }.reduce(0) { $0 + $1.durationFrames }
+        }
+
         struct Placement {
             let asset: MediaAsset
             let startFrame: Int

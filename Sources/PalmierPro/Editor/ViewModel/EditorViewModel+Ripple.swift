@@ -303,6 +303,51 @@ extension EditorViewModel {
         return created
     }
 
+    struct RippleInsertPreviewPlan: Equatable {
+        let gapRangesByTrackIndex: [Int: FrameRange]
+        let shiftDeltasByClipId: [String: Int]
+    }
+
+    func planRippleInsertPreview(dropPlan plan: DropPlan, atFrame: Int) -> RippleInsertPreviewPlan? {
+        var gapLengthsByTrackIndex: [Int: Int] = [:]
+        var shiftDeltasByClipId: [String: Int] = [:]
+
+        func affectedTrackIndexes(for target: TrackDropTarget) -> Set<Int> {
+            var indexes = Set(timeline.tracks.indices.filter { timeline.tracks[$0].syncLocked })
+            if case .existingTrack(let index) = target,
+               timeline.tracks.indices.contains(index) {
+                indexes.insert(index)
+            }
+            return indexes
+        }
+
+        func addPush(target: TrackDropTarget?, pushAmount: Int) {
+            guard let target, pushAmount > 0 else { return }
+            for trackIndex in affectedTrackIndexes(for: target) {
+                let clips = timeline.tracks[trackIndex].clips
+                let startFramesByClipId = Dictionary(uniqueKeysWithValues: clips.map { ($0.id, $0.startFrame) })
+                let shifts = RippleEngine.computeRipplePush(clips: clips, insertFrame: atFrame, pushAmount: pushAmount)
+                for shift in shifts {
+                    guard let originalStartFrame = startFramesByClipId[shift.clipId] else { continue }
+                    shiftDeltasByClipId[shift.clipId, default: 0] += shift.newStartFrame - originalStartFrame
+                }
+                gapLengthsByTrackIndex[trackIndex, default: 0] += pushAmount
+            }
+        }
+
+        addPush(target: plan.visualTarget, pushAmount: plan.visualDurationFrames)
+        addPush(target: plan.audioTarget, pushAmount: plan.audioOnlyDurationFrames)
+
+        guard !gapLengthsByTrackIndex.isEmpty || !shiftDeltasByClipId.isEmpty else { return nil }
+        let gapRangesByTrackIndex = gapLengthsByTrackIndex.mapValues {
+            FrameRange(start: atFrame, end: atFrame + $0)
+        }
+        return RippleInsertPreviewPlan(
+            gapRangesByTrackIndex: gapRangesByTrackIndex,
+            shiftDeltasByClipId: shiftDeltasByClipId
+        )
+    }
+
     struct RippleInsertSpec {
         let asset: MediaAsset
         let durationFrames: Int

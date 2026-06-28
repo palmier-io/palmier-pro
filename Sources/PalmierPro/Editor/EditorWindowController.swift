@@ -53,6 +53,14 @@ final class EditorWindowController: NSWindowController {
         }
 
         switch event.keyCode {
+        case 0: // A key
+            if editorViewModel.focusedPanel == .timeline,
+               mods.intersection([.command, .option, .control]).isEmpty {
+                editorViewModel.selectForwardFromCurrentSelection(scope: shift ? .allTracks : .track)
+                return true
+            }
+            return false
+
         case 49: // Space
             editorViewModel.togglePlayback()
             return true
@@ -209,6 +217,8 @@ extension EditorWindowController: EditorActions {
     @objc func splitAtPlayhead(_ sender: Any?) { editorViewModel.splitAtPlayhead() }
     @objc func trimStartToPlayhead(_ sender: Any?) { editorViewModel.trimStartToPlayhead() }
     @objc func trimEndToPlayhead(_ sender: Any?) { editorViewModel.trimEndToPlayhead() }
+    @objc func selectForwardOnTrack(_ sender: Any?) { editorViewModel.selectForwardFromCurrentSelection(scope: .track) }
+    @objc func selectForwardOnAllTracks(_ sender: Any?) { editorViewModel.selectForwardFromCurrentSelection(scope: .allTracks) }
     @objc func deleteSelectedClips(_ sender: Any?) { editorViewModel.deleteSelectedClips() }
     @objc func rippleDeleteSelected(_ sender: Any?) {
         if editorViewModel.selectedGap != nil {
@@ -299,6 +309,8 @@ extension EditorWindowController: EditorActions {
             return true
         case #selector(copy(_:)), #selector(cut(_:)):
             return canHandleClipboardShortcut() && !editorViewModel.selectedClipIds.isEmpty
+        case #selector(selectForwardOnTrack(_:)), #selector(selectForwardOnAllTracks(_:)):
+            return editorViewModel.focusedPanel == .timeline && !editorViewModel.selectedClipIds.isEmpty
         case #selector(paste(_:)):
             if editorViewModel.focusedPanel == .media {
                 return MediaTab.clipboardHasImportableMedia()
