@@ -296,6 +296,9 @@ final class VideoProject: NSDocument {
         }
         editorViewModel.undoManager = undoManager
         editorViewModel.projectURL = fileURL
+        editorViewModel.onDocumentEdited = { [weak self] in
+            self?.updateChangeCount(.changeDone)
+        }
         editorViewModel.agentService.loadSessions(from: fileURL)
         editorViewModel.agentService.onSessionsChanged = { [weak self] in
             self?.updateChangeCount(.changeDone)

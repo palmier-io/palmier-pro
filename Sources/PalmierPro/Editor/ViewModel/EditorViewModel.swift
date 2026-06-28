@@ -208,7 +208,12 @@ final class EditorViewModel {
     // MARK: - Document bridge
 
     weak var undoManager: UndoManager?
+    @ObservationIgnored var onDocumentEdited: (@MainActor () -> Void)?
     var isDocumentEdited: Bool = false
+
+    func markDocumentEdited() {
+        onDocumentEdited?()
+    }
 
     func telemetrySnapshot() -> [String: Any] {
         var mediaCounts: [String: Int] = [:]

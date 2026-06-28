@@ -246,6 +246,7 @@ extension EditorViewModel {
             vm.registerTimelineSwap(undoState: redoState, redoState: undoState, actionName: actionName)
         }
         undoManager?.setActionName(actionName)
+        markDocumentEdited()
     }
 
     /// Run `work` as a single atomic mutation, registering one timeline-swap undo

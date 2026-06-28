@@ -487,6 +487,18 @@ struct ToolExecutorReadOnlyTests {
 @Suite("ToolExecutor — marker handlers")
 @MainActor
 struct ToolExecutorMarkerTests {
+    @Test func addingMarkerMarksDocumentEdited() {
+        let editor = EditorViewModel()
+        var editNotifications = 0
+        editor.onDocumentEdited = {
+            editNotifications += 1
+        }
+
+        _ = editor.addTimelineMarker(frame: 48, label: "Insert still")
+
+        #expect(editNotifications == 1)
+    }
+
     @Test func addMarkersCreatesTimelineAnchors() async throws {
         let h = ToolHarness()
         let json = try await h.runOK("add_markers", args: [
