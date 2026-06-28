@@ -78,6 +78,22 @@ struct RippleTrimTests {
         #expect(spans(e.timeline.tracks[1]) == [[0, 120], [120, 170]])
     }
 
+    @Test func linkedExtendClampsToMostConstrainedPartner() {
+        // Video has 50 frames of tail headroom, audio only 10. A 20-frame extend binds to the
+        // audio's limit so both grow by 10 and stay the same length.
+        var v1 = Fixtures.clip(id: "v1", start: 0, duration: 100, trimEnd: 50)
+        var a1 = Fixtures.clip(id: "a1", mediaType: .audio, start: 0, duration: 100, trimEnd: 10)
+        v1.linkGroupId = "g"
+        a1.linkGroupId = "g"
+        let e = editor([
+            Fixtures.videoTrack(clips: [v1, Fixtures.clip(id: "v2", start: 100, duration: 50)]),
+            Fixtures.audioTrack(clips: [a1, Fixtures.clip(id: "a2", mediaType: .audio, start: 100, duration: 50)]),
+        ])
+        e.rippleTrimClip(clipId: "v1", edge: .right, deltaFrames: 20, propagateToLinked: true)
+        #expect(spans(e.timeline.tracks[0]) == [[0, 110], [110, 160]])
+        #expect(spans(e.timeline.tracks[1]) == [[0, 110], [110, 160]])
+    }
+
     @Test func unlinkedTrimLeavesPartnerTrackAlone() {
         // propagateToLinked off: only the lead's track ripples.
         var v1 = Fixtures.clip(id: "v1", start: 0, duration: 100, trimEnd: 50)
