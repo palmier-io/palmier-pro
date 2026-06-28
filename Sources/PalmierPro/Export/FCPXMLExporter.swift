@@ -81,8 +81,7 @@ enum FCPXMLExporter {
             let enabled: Bool
         }
 
-        // One asset per source file (keyed by mediaRef): two assets sharing a media-rep src break
-        // Resolve's relinker.
+        // One asset per source file (keyed by mediaRef)
         private struct MediaResource {
             let mediaRef: String
             let assetId: String
@@ -116,9 +115,7 @@ enum FCPXMLExporter {
             return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE fcpxml>\n" + renderFCPXML(root, indent: 0)
         }
 
-        /// One video + one audio clip sharing a linkGroup, source, timing, and enabled state is a synced
-        /// pair the video ref-clip can carry whole. Mismatched timing or enabled (e.g. a muted audio
-        /// track under a shown video) means they're independent — leave both so each keeps its own state.
+        // Video + audio with matching linkGroup, source, timing, and enabled state are a synced pair
         private func indexLinkedPairs(_ clips: [EmittableClip]) {
             var byGroup: [String: (videos: [EmittableClip], audios: [EmittableClip])] = [:]
             for item in clips {
@@ -289,8 +286,7 @@ enum FCPXMLExporter {
                 ].compactMap { $0 })
             }
 
-            // Audio against an A/V source must go through the compound too: Resolve honors srcEnable on
-            // <ref-clip> but not <asset-clip>, so a bare audio asset-clip imports as a video clip.
+            // Audio against an A/V source must go through the compound too
             if clip.mediaType == .audio, let compoundId = resource.compoundId {
                 let attrs: [(String, String)] = [
                     ("ref", compoundId),
