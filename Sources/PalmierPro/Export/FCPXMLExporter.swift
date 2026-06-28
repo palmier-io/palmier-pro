@@ -116,26 +116,28 @@ enum FCPXMLExporter {
             return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE fcpxml>\n" + renderFCPXML(root, indent: 0)
         }
 
-        /// One video + one audio clip sharing a linkGroup, source, and timing is a synced pair the video
-        /// ref-clip can carry whole. Mismatched timing means they were edited apart — leave both.
+        /// One video + one audio clip sharing a linkGroup, source, timing, and enabled state is a synced
+        /// pair the video ref-clip can carry whole. Mismatched timing or enabled (e.g. a muted audio
+        /// track under a shown video) means they're independent — leave both so each keeps its own state.
         private func indexLinkedPairs(_ clips: [EmittableClip]) {
-            var byGroup: [String: (videos: [Clip], audios: [Clip])] = [:]
+            var byGroup: [String: (videos: [EmittableClip], audios: [EmittableClip])] = [:]
             for item in clips {
                 guard let group = item.clip.linkGroupId else { continue }
                 switch item.clip.mediaType {
-                case .video, .image: byGroup[group, default: ([], [])].videos.append(item.clip)
-                case .audio: byGroup[group, default: ([], [])].audios.append(item.clip)
+                case .video, .image: byGroup[group, default: ([], [])].videos.append(item)
+                case .audio: byGroup[group, default: ([], [])].audios.append(item)
                 default: break
                 }
             }
             for (_, pair) in byGroup {
                 guard pair.videos.count == 1, pair.audios.count == 1 else { continue }
                 let v = pair.videos[0], a = pair.audios[0]
-                guard v.mediaRef == a.mediaRef,
-                      v.startFrame == a.startFrame, v.durationFrames == a.durationFrames,
-                      v.trimStartFrame == a.trimStartFrame, abs(v.speed - a.speed) < 0.0001 else { continue }
-                linkedAudioForVideo[v.id] = a
-                redundantAudioClipIds.insert(a.id)
+                guard v.clip.mediaRef == a.clip.mediaRef, v.enabled == a.enabled,
+                      v.clip.startFrame == a.clip.startFrame, v.clip.durationFrames == a.clip.durationFrames,
+                      v.clip.trimStartFrame == a.clip.trimStartFrame, abs(v.clip.speed - a.clip.speed) < 0.0001
+                else { continue }
+                linkedAudioForVideo[v.clip.id] = a.clip
+                redundantAudioClipIds.insert(a.clip.id)
             }
         }
 

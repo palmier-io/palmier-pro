@@ -188,6 +188,28 @@ struct FCPXMLExporterTests {
         #expect(xml.contains("<adjust-volume amount=\"-6.0206\"/>"))
     }
 
+    @Test func mutedAudioTrackKeepsLinkedPairSeparate() throws {
+        // A muted audio track under a shown video has divergent enabled state, so the pair must NOT
+        // collapse — else the audio would ride the (enabled) video clip and lose its mute.
+        let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory(), hasAudio: true)])
+        var video = Fixtures.clip(id: "video", mediaRef: "media-v", mediaType: .video, start: 0, duration: 30)
+        var audio = Fixtures.clip(id: "audio", mediaRef: "media-v", mediaType: .audio, start: 0, duration: 30)
+        video.linkGroupId = "pair"
+        audio.linkGroupId = "pair"
+        var audioTrack = Fixtures.audioTrack(clips: [audio])
+        audioTrack.muted = true
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [video]), audioTrack])
+
+        let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        // Both survive on their own lanes; the audio is a disabled ref-clip, video stays enabled video-only.
+        #expect(xml.contains("<ref-clip ref=\"media1\" name=\"media-v\" lane=\"1\""))
+        #expect(xml.contains("srcEnable=\"video\""))
+        #expect(xml.contains("<ref-clip ref=\"media1\" name=\"media-v\" lane=\"-1\""))
+        #expect(xml.contains("srcEnable=\"audio\""))
+        #expect(xml.contains("enabled=\"0\""))
+    }
+
     @Test func visualTrackLanesPreserveTopOverBottom() throws {
         let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
         let top = Fixtures.clip(id: "top", mediaRef: "media-v", start: 0, duration: 30)
