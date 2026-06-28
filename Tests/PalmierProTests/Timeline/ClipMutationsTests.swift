@@ -104,6 +104,17 @@ struct SplitClipTests {
         #expect(e.timeline.tracks[0].clips.count == 1)
     }
 
+    @Test func splitClipDoesNotCutAnotherClipOnSameTrack() {
+        // c1 = 0..30, c2 = 30..60. Splitting c1 at frame 45 (inside c2, outside c1) must
+        // do nothing — not resolve to c2 and cut it.
+        let e = editor([Fixtures.videoTrack(clips: [
+            Fixtures.clip(id: "c1", start: 0, duration: 30),
+            Fixtures.clip(id: "c2", start: 30, duration: 30),
+        ])])
+        #expect(e.splitClip(clipId: "c1", atFrame: 45).isEmpty)
+        #expect(e.timeline.tracks[0].clips.count == 2)
+    }
+
     @Test func splitWithLinkedPartnerSplitsBothAndRegroupsRightHalves() {
         // video + audio sharing g1. After split at 30, the right halves should share a
         // *new* group id (not the original g1).
@@ -129,6 +140,36 @@ struct SplitClipTests {
         let leftIds: Set<String> = ["v", "a"]
         let leftGroups = Set(allClips.filter { leftIds.contains($0.id) }.compactMap(\.linkGroupId))
         #expect(leftGroups == ["g1"])
+    }
+
+    @Test func splitClipsAtMultiplePointsCutsEachAndSkipsBoundaries() {
+        let clip = Fixtures.clip(id: "c1", start: 0, duration: 90)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        // Two real cuts plus a repeat of the first: the repeat lands on a boundary and is a no-op.
+        let rightIds = e.splitClips(at: [(0, 30), (0, 60), (0, 30)])
+        let clips = e.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(clips.map(\.startFrame) == [0, 30, 60])
+        #expect(clips.map(\.durationFrames) == [30, 30, 30])
+        #expect(rightIds.count == 2)
+    }
+
+    @Test func splitClipKeepsSegmentInterpolationOnRightHalf() {
+        // hold opacity (0→1.0) and linear rotation (0°→20°). Splitting mid-segment must not
+        // turn the right half's opening keyframe smooth: hold stays flat, linear stays straight.
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        clip.opacityTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 1.0, interpolationOut: .hold),
+            Keyframe(frame: 30, value: 0.5),
+        ])
+        clip.rotationTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 0.0, interpolationOut: .linear),
+            Keyframe(frame: 20, value: 20.0),
+        ])
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let rightId = e.splitClip(clipId: "c1", atFrame: 10)[0]
+        let right = e.timeline.tracks[0].clips.first { $0.id == rightId }!
+        #expect(right.opacityTrack?.sample(at: 5, fallback: 0.0) == 1.0)   // hold: still flat
+        #expect(right.rotationTrack?.sample(at: 5, fallback: 0.0) == 15.0) // linear: 10°→20° at halfway
     }
 
     @Test func splitClipZerosOpacityFadesAcrossCut() {

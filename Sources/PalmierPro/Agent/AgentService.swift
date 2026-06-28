@@ -234,6 +234,7 @@ final class AgentService {
         draft = ""
         mentions.removeAll()
         streamError = nil
+        toolExecutor?.resetFeedbackState()
     }
 
     func newChat() {
@@ -249,6 +250,7 @@ final class AgentService {
         currentSessionId = session.id
         messages = []
         streamError = nil
+        toolExecutor?.resetFeedbackState()
         onSessionsChanged?()
     }
 
@@ -302,13 +304,9 @@ final class AgentService {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let referencedMentions = AgentMentionContext.referencedMentions(mentions, in: trimmed)
-        // Snapshot the mention/timeline context
         let contextHint = referencedMentions.isEmpty
             ? nil
-            : AgentMentionContext.hint(
-                referencedMentions, editor: editor,
-                inlined: inlineImageBlocks(for: referencedMentions)
-            )
+            : AgentMentionContext.hint(referencedMentions, editor: editor)
 
         resolveOrphanToolUses()
         messages.append(AgentMessage(
@@ -343,20 +341,21 @@ final class AgentService {
             streamError = .upstream("No backend available.")
             return
         }
-        let tools = ToolDefinitions.all.map {
+        await SkillStore.shared.reloadInBackground()
+        let tools = ToolDefinitions.inAppAgent.map {
             AnthropicToolSchema(name: $0.name.rawValue, description: $0.description, inputSchema: $0.inputSchema)
         }
 
         loop: while !Task.isCancelled {
             resolveOrphanToolUses()
-            let apiMsgs = apiMessages()
+            let apiMsgs = await apiMessages()
             let assistant = AgentMessage(role: .assistant, blocks: [])
             messages.append(assistant)
             let assistantID = assistant.id
 
             do {
                 let stream = client.stream(
-                    system: AgentInstructions.serverInstructions,
+                    system: AgentInstructions.serverInstructions + SkillStore.shared.promptIndex,
                     tools: tools,
                     messages: apiMsgs
                 )
@@ -511,22 +510,24 @@ final class AgentService {
         }
     }
 
-    private func apiMessages() -> [AnthropicMessage] {
-        messages.compactMap { msg in
+    private func apiMessages() async -> [AnthropicMessage] {
+        var result: [AnthropicMessage] = []
+        for msg in messages {
             var content = msg.blocks.compactMap(Self.contentBlockJSON)
             if msg.role == .user, !msg.mentions.isEmpty {
-                let inlined = inlineImageBlocks(for: msg.mentions)
-                let hint = msg.contextHint
-                    ?? AgentMentionContext.hint(msg.mentions, editor: editor, inlined: inlined)
+                let inlined = await inlineImageBlocks(for: msg.mentions)
+                var hint = msg.contextHint ?? AgentMentionContext.hint(msg.mentions, editor: editor)
+                if let note = AgentMentionContext.inlineNote(for: inlined) { hint += " " + note }
                 content.insert(contentsOf: inlined.blocks, at: 0)
                 content.insert(["type": "text", "text": hint], at: 0)
             }
-            guard !content.isEmpty else { return nil }
-            return AnthropicMessage(role: msg.role == .user ? .user : .assistant, content: content)
+            guard !content.isEmpty else { continue }
+            result.append(AnthropicMessage(role: msg.role == .user ? .user : .assistant, content: content))
         }
+        return result
     }
 
-    private func inlineImageBlocks(for mentions: [AgentMention]) -> AgentMentionContext.InlinedMentions {
+    private func inlineImageBlocks(for mentions: [AgentMention]) async -> AgentMentionContext.InlinedMentions {
         var out = AgentMentionContext.InlinedMentions()
         guard let editor else {
             for mention in mentions where mention.type == .image {
@@ -534,19 +535,30 @@ final class AgentService {
             }
             return out
         }
+        // Resolve mention -> URL on the main actor, then encode off it.
+        var pending: [(mediaRef: String, url: URL)] = []
         for mention in mentions where mention.type == .image {
             guard let mediaRef = mention.mediaRef else { continue }
             guard let asset = editor.mediaAssets.first(where: { $0.id == mediaRef }) else {
                 out.failures[mediaRef] = "asset not in media library"
                 continue
             }
-            guard let encoded = ImageEncoder.encode(url: asset.url) else {
+            pending.append((mediaRef, asset.url))
+        }
+        let jobs = pending
+        let encoded = await Task.detached(priority: .userInitiated) {
+            jobs.map { job in
+                (job.mediaRef, ImageEncoder.encode(url: job.url).map { ($0.mime, $0.data.base64EncodedString()) })
+            }
+        }.value
+        for (mediaRef, result) in encoded {
+            guard let (mime, base64) = result else {
                 out.failures[mediaRef] = "could not read or decode image file"
                 continue
             }
             out.blocks.append([
                 "type": "image",
-                "source": ["type": "base64", "media_type": encoded.mime, "data": encoded.data.base64EncodedString()],
+                "source": ["type": "base64", "media_type": mime, "data": base64],
             ])
             out.inlinedIds.insert(mediaRef)
         }

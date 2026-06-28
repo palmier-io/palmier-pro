@@ -17,11 +17,25 @@ final class MediaResolver: @unchecked Sendable {
 
     func expectedURL(for assetId: String) -> URL? {
         guard let entry = entry(for: assetId) else { return nil }
+        return Self.expectedURL(for: entry, projectURL: projectURL())
+    }
+
+    func expectedURLMap() -> [String: URL] {
+        Self.expectedURLMap(entries: manifest().entries, projectURL: projectURL())
+    }
+
+    static func expectedURLMap(entries: [MediaManifestEntry], projectURL: URL?) -> [String: URL] {
+        Dictionary(uniqueKeysWithValues: entries.compactMap { entry in
+            expectedURL(for: entry, projectURL: projectURL).map { (entry.id, $0) }
+        })
+    }
+
+    private static func expectedURL(for entry: MediaManifestEntry, projectURL: URL?) -> URL? {
         switch entry.source {
         case .external(let absolutePath):
             return URL(fileURLWithPath: absolutePath)
         case .project(let relativePath):
-            guard let base = projectURL() else { return nil }
+            guard let base = projectURL else { return nil }
             return base.appendingPathComponent(relativePath)
         }
     }

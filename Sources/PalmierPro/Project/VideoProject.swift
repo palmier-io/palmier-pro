@@ -17,6 +17,12 @@ private struct ProjectPackageSnapshot: Sendable {
     var chatSessionFiles: [(name: String, data: Data)]
 }
 
+private struct RestoredMediaCandidate: Sendable {
+    let id: String
+    let name: String
+    let url: URL
+}
+
 final class VideoProject: NSDocument {
 
     static let typeIdentifier = Project.typeIdentifier
@@ -295,6 +301,12 @@ final class VideoProject: NSDocument {
             self?.updateChangeCount(.changeDone)
         }
 
+        if let manifest = loadedManifest {
+            editorViewModel.mediaManifest = manifest
+            loadedManifest = nil
+            restoreAssetsFromManifest()
+        }
+
         let editorView = EditorView()
             .environment(editorViewModel)
             .focusEffectDisabled()
@@ -311,22 +323,20 @@ final class VideoProject: NSDocument {
                     .environment(editorViewModel)
             }
         let hostingController = NSHostingController(rootView: editorView.tint(AppTheme.Accent.primary))
+        hostingController.sizingOptions = .minSize
 
         let window = NSWindow(contentViewController: hostingController)
-        window.setContentSize(AppTheme.Window.projectDefault)
         window.minSize = AppTheme.Window.projectMin
-        window.setFrameAutosaveName("PalmierProWindow")
         window.appearance = NSAppearance(named: .darkAqua)
         window.titleVisibility = .visible
         window.titlebarAppearsTransparent = true
         window.backgroundColor = NSColor(AppTheme.Background.surfaceColor)
-        window.center()
+        window.fillVisibleScreen()
 
         window.addTitlebarSwiftUI(TitleBarLeadingView().environment(editorViewModel), side: .leading, width: AppTheme.IconSize.lg + AppTheme.Spacing.sm)
         window.addTitlebarSwiftUI(TitleBarTrailingView().environment(editorViewModel), side: .trailing, width: AppTheme.Window.projectTitlebarTrailingWidth)
 
         let controller = EditorWindowController(editorViewModel: editorViewModel, window: window)
-        controller.shouldCascadeWindows = true
         controller.installKeyMonitor()
         addWindowController(controller)
 
@@ -334,11 +344,6 @@ final class VideoProject: NSDocument {
 
         AppState.shared.showEditor(for: self)
 
-        if let manifest = loadedManifest {
-            editorViewModel.mediaManifest = manifest
-            loadedManifest = nil
-            restoreAssetsFromManifest()
-        }
         if let log = loadedGenerationLog {
             editorViewModel.generationLog = log
             loadedGenerationLog = nil
@@ -424,11 +429,10 @@ final class VideoProject: NSDocument {
     // MARK: - Media restore
 
     private func restoreAssetsFromManifest() {
-        let cache = editorViewModel.mediaVisualCache
         let resolver = editorViewModel.mediaResolver
-        var restored = 0
         var missing = 0
         var missingRefs: Set<String> = []
+        var candidates: [RestoredMediaCandidate] = []
         for entry in editorViewModel.mediaManifest.entries {
             guard let url = resolver.expectedURL(for: entry.id) else {
                 Log.project.warning("restore: could not resolve URL for entry id=\(entry.id) name=\(entry.name)")
@@ -438,10 +442,56 @@ final class VideoProject: NSDocument {
             }
             let asset = MediaAsset(entry: entry, resolvedURL: url)
             editorViewModel.mediaAssets.append(asset)
-            guard FileManager.default.fileExists(atPath: url.path) else {
-                Log.project.warning("restore: media file missing id=\(entry.id) name=\(entry.name) path=\(url.path)")
+            candidates.append(RestoredMediaCandidate(id: entry.id, name: entry.name, url: url))
+        }
+        editorViewModel.missingMediaRefs = missingRefs
+
+        let restoreCandidates = candidates
+        let initialMissingRefs = missingRefs
+        let initialMissingCount = missing
+        let manifestEntries = editorViewModel.mediaManifest.entries.count
+        Task { [weak self] in
+            let existingRefs = await Task.detached(priority: .utility) {
+                Self.existingMediaRefs(restoreCandidates)
+            }.value
+            self?.finishRestoredMediaScan(
+                candidates: restoreCandidates,
+                existingRefs: existingRefs,
+                initialMissingRefs: initialMissingRefs,
+                initialMissingCount: initialMissingCount,
+                manifestEntries: manifestEntries
+            )
+        }
+    }
+
+    private nonisolated static func existingMediaRefs(_ candidates: [RestoredMediaCandidate]) -> Set<String> {
+        Set(candidates.compactMap { candidate in
+            FileManager.default.fileExists(atPath: candidate.url.path) ? candidate.id : nil
+        })
+    }
+
+    private func finishRestoredMediaScan(
+        candidates: [RestoredMediaCandidate],
+        existingRefs: Set<String>,
+        initialMissingRefs: Set<String>,
+        initialMissingCount: Int,
+        manifestEntries: Int
+    ) {
+        let cache = editorViewModel.mediaVisualCache
+        var assetsByID: [String: MediaAsset] = [:]
+        for asset in editorViewModel.mediaAssets {
+            assetsByID[asset.id] = asset
+        }
+        var restored = 0
+        var missing = initialMissingCount
+        var missingRefs = initialMissingRefs
+
+        for candidate in candidates {
+            guard let asset = assetsByID[candidate.id] else { continue }
+            guard existingRefs.contains(candidate.id) else {
+                Log.project.warning("restore: media file missing id=\(candidate.id) name=\(candidate.name) path=\(candidate.url.path)")
                 missing += 1
-                missingRefs.insert(entry.id)
+                missingRefs.insert(candidate.id)
                 continue
             }
             restored += 1
@@ -456,11 +506,12 @@ final class VideoProject: NSDocument {
             }
             Task { await asset.loadMetadata() }
         }
+
         editorViewModel.missingMediaRefs = missingRefs
         Log.project.notice(
             "restore ok restored=\(restored) missing=\(missing)",
             telemetry: "Media restored",
-            data: ["restored": restored, "missing": missing, "manifestEntries": editorViewModel.mediaManifest.entries.count]
+            data: ["restored": restored, "missing": missing, "manifestEntries": manifestEntries]
         )
     }
 }
@@ -468,6 +519,12 @@ final class VideoProject: NSDocument {
 // MARK: - NSWindow helper
 
 extension NSWindow {
+    func fillVisibleScreen(using screen: NSScreen? = nil) {
+        let target = screen ?? self.screen ?? NSScreen.main
+        guard let frame = target?.visibleFrame else { return }
+        setFrame(frame, display: true)
+    }
+
     func addTitlebarSwiftUI<V: View>(_ view: V, side: NSLayoutConstraint.Attribute, width: CGFloat) {
         let host = NSHostingController(rootView: view.tint(AppTheme.Accent.primary))
         host.view.translatesAutoresizingMaskIntoConstraints = false

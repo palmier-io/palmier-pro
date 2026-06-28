@@ -2,6 +2,17 @@ import AVFoundation
 import Foundation
 import ImageIO
 
+struct TimelineWord {
+    let index: Int
+    let clipId: String
+    let trackIndex: Int
+    let clipStartFrame: Int
+    let clipEndFrame: Int
+    let text: String
+    let startFrame: Int
+    let endFrame: Int
+}
+
 extension ToolExecutor {
     private static let defaultReadVideoFrames = 6
     private static let readVideoMaxFrames = 12
@@ -251,8 +262,17 @@ extension ToolExecutor {
         return .ok(json)
     }
 
+    static func parseLocale(_ args: [String: Any], path: String) async throws -> Locale? {
+        guard let lang = args.string("language") else { return nil }
+        let candidate = Locale(identifier: lang)
+        guard let match = Transcription.matchLocale(candidates: [candidate], supported: await Transcription.supportedLocales()) else {
+            throw ToolError("\(path): on-device transcription does not support language '\(lang)'.")
+        }
+        return match
+    }
+
     private static let inspectMediaAllowedKeys: Set<String> = [
-        "mediaRef", "clipId", "maxFrames", "startSeconds", "endSeconds", "wordTimestamps", "overview",
+        "mediaRef", "clipId", "maxFrames", "startSeconds", "endSeconds", "wordTimestamps", "overview", "language",
     ]
 
     func inspectMedia(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -287,10 +307,12 @@ extension ToolExecutor {
             mapping = (clip, editor.timeline.fps)
         }
 
+        let preferredLocale = try await Self.parseLocale(args, path: "inspect_media")
+
         switch asset.type {
-        case .image: return try readImage(asset: asset, args: args)
-        case .video: return try await readVideo(editor: editor, asset: asset, args: args, mapping: mapping)
-        case .audio: return try await readAudio(editor: editor, asset: asset, args: args, mapping: mapping)
+        case .image: return try await readImage(asset: asset, args: args)
+        case .video: return try await readVideo(editor: editor, asset: asset, args: args, mapping: mapping, preferredLocale: preferredLocale)
+        case .audio: return try await readAudio(editor: editor, asset: asset, args: args, mapping: mapping, preferredLocale: preferredLocale)
         case .lottie: return try await readLottie(asset: asset, args: args)
         case .text: throw ToolError("Text clips are not stored as media assets.")
         }
@@ -318,17 +340,22 @@ extension ToolExecutor {
         ]
     }
 
-    private func readImage(asset: MediaAsset, args: [String: Any]) throws -> ToolResult {
+    private func readImage(asset: MediaAsset, args: [String: Any]) async throws -> ToolResult {
         let url = asset.url
-        let fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.uint64Value ?? 0
-        guard let encoded = ImageEncoder.encode(url: url) else {
+        let encoded = await Task.detached(priority: .userInitiated) {
+            ImageEncoder.encode(url: url).map {
+                (base64: $0.data.base64EncodedString(), mime: $0.mime, encodedByteSize: $0.data.count)
+            }
+        }.value
+        guard let encoded else {
             throw ToolError("Failed to read or decode image file")
         }
 
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.uint64Value ?? 0
         var meta = Self.baseMeta(for: asset)
         meta["mimeType"] = encoded.mime
         meta["byteSize"] = fileSize
-        meta["encodedByteSize"] = encoded.data.count
+        meta["encodedByteSize"] = encoded.encodedByteSize
         if let props = Self.imagePropertiesSummary(at: url) {
             meta["imageProperties"] = props
         }
@@ -337,12 +364,12 @@ extension ToolExecutor {
             throw ToolError("Failed to encode metadata")
         }
         return ToolResult(
-            content: [.image(base64: encoded.data.base64EncodedString(), mediaType: encoded.mime), .text(metaJSON)],
+            content: [.image(base64: encoded.base64, mediaType: encoded.mime), .text(metaJSON)],
             isError: false
         )
     }
 
-    private func readVideo(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil) async throws -> ToolResult {
+    private func readVideo(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil, preferredLocale: Locale? = nil) async throws -> ToolResult {
         guard asset.duration > 0 else { throw ToolError("Video has zero duration: \(asset.name)") }
 
         let range = try Self.sourceRange(args, duration: asset.duration)
@@ -365,7 +392,7 @@ extension ToolExecutor {
         )
         async let transcriptTask: Result<TranscriptionResult, Error>? = {
             guard hasAudio else { return nil }
-            do { return .success(try await TranscriptCache.shared.transcript(for: url, isVideo: true, range: range)) }
+            do { return .success(try await TranscriptCache.shared.transcript(for: url, isVideo: true, range: range, preferredLocale: preferredLocale)) }
             catch { return .failure(error) }
         }()
 
@@ -477,11 +504,11 @@ extension ToolExecutor {
         return context.makeImage().flatMap { ImageEncoder.encodeJPEG($0, quality: quality) }
     }
 
-    private func readAudio(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil) async throws -> ToolResult {
+    private func readAudio(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil, preferredLocale: Locale? = nil) async throws -> ToolResult {
         let range = try Self.sourceRange(args, duration: asset.duration)
         let transcript: TranscriptionResult
         do {
-            transcript = try await TranscriptCache.shared.transcript(for: asset.url, isVideo: false, range: range)
+            transcript = try await TranscriptCache.shared.transcript(for: asset.url, isVideo: false, range: range, preferredLocale: preferredLocale)
         } catch {
             throw ToolError("Transcription failed: \(error.localizedDescription)")
         }
@@ -541,10 +568,8 @@ extension ToolExecutor {
         return out
     }
 
-    private static let getTranscriptAllowedKeys: Set<String> = ["startFrame", "endFrame", "clipId", "wordTimestamps"]
+    private static let getTranscriptAllowedKeys: Set<String> = ["startFrame", "endFrame", "clipId", "wordTimestamps", "language"]
 
-    /// The live timeline transcript: every audio/video clip's words mapped to project
-    /// frames and concatenated in timeline order
     func getTranscript(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.getTranscriptAllowedKeys, path: "get_transcript")
         let fps = editor.timeline.fps
@@ -554,65 +579,44 @@ extension ToolExecutor {
         if let s = windowStart, let e = windowEnd, s >= e {
             throw ToolError("startFrame (\(s)) must be less than endFrame (\(e))")
         }
-
-        let assetsById = Dictionary(editor.mediaAssets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        struct Frag { let clipId: String; let trackIndex: Int; let clip: Clip; let url: URL; let isVideo: Bool }
-        var frags: [Frag] = []
-        var isVideoByURL: [URL: Bool] = [:]
-        for clip in editor.captionTargets(ids: []) {
-            if let clipFilter, clip.id != clipFilter { continue }
-            guard let loc = editor.findClip(id: clip.id), let asset = assetsById[clip.mediaRef] else { continue }
-            let isVideo = asset.type == .video
-            frags.append(Frag(clipId: clip.id, trackIndex: loc.trackIndex, clip: clip, url: asset.url, isVideo: isVideo))
-            isVideoByURL[asset.url] = isVideo
+        if let clipFilter {
+            guard editor.findClip(id: clipFilter) != nil else {
+                throw ToolError("Clip \(clipFilter) not found.")
+            }
+            guard editor.captionTargets(ids: []).contains(where: { $0.id == clipFilter }) else {
+                throw ToolError("Clip \(clipFilter) has no transcribable audio. If it's a video with linked audio, scope to the linked audio clip instead.")
+            }
         }
-        if let clipFilter, frags.isEmpty {
-            throw ToolError("Clip \(clipFilter) not found, or it has no audio/video to transcribe.")
-        }
+        let preferredLocale = try await Self.parseLocale(args, path: "get_transcript")
 
-        // Transcribe each unique source once (cached); skip — don't fail — on per-asset errors.
-        var transcripts: [URL: TranscriptionResult] = [:]
-        var skipped: [[String: Any]] = []
-        for url in Set(frags.map(\.url)) {
-            do { transcripts[url] = try await TranscriptCache.shared.transcript(for: url, isVideo: isVideoByURL[url] ?? true, range: nil) }
-            catch { skipped.append(["file": url.lastPathComponent, "reason": error.localizedDescription]) }
-        }
+        let (allWords, skipped) = try await timelineWords(editor, preferredLocale: preferredLocale)
 
-        // Words are grouped under each clip as [text, start, end]. Paging is based on timeline order.
         var clipsOut: [[String: Any]] = []
         var totalWords = 0
         var remaining = Self.inspectMaxWords
         var lastEnd: Int?
-        for frag in frags.sorted(by: { $0.clip.startFrame < $1.clip.startFrame }) {
-            guard let transcript = transcripts[frag.url] else { continue }
-            let visStart = Double(frag.clip.trimStartFrame)
-            let visEnd = visStart + Double(frag.clip.durationFrames) * max(frag.clip.speed, 0.0001)
-            var rows: [(start: Int, end: Int, row: [Any])] = []
-            for w in transcript.words {
-                guard let s = w.start, let e = w.end else { continue }
-                // Assign a word to the clip whose visible range contains its midpoint.
-                let midFrame = (s + e) / 2 * Double(fps)
-                guard midFrame >= visStart, midFrame < visEnd,
-                      let f = Self.spanFrames(start: s, end: e, clip: frag.clip, fps: fps) else { continue }
-                if let ws = windowStart, f.end <= ws { continue }
-                if let we = windowEnd, f.start >= we { continue }
-                rows.append((f.start, f.end, [w.text, f.start, f.end]))
+        forEachTimelineClipGroup(in: allWords) { clipId, trackIndex, clipStartFrame, clipEndFrame, clipWords in
+            if let clipFilter, clipId != clipFilter { return }
+
+            var rows: [[Any]] = []
+            for w in clipWords {
+                if let ws = windowStart, w.endFrame <= ws { continue }
+                if let we = windowEnd, w.startFrame >= we { continue }
+                totalWords += 1
+                guard remaining > 0 else { continue }
+                rows.append([w.index, w.text, w.startFrame, w.endFrame])
+                remaining -= 1
+                lastEnd = w.endFrame
             }
-            rows.sort { ($0.start, $0.end) < ($1.start, $1.end) }
-            guard !rows.isEmpty else { continue }
-            totalWords += rows.count
-            guard remaining > 0 else { continue }
-            let slice = rows.prefix(remaining)
-            remaining -= slice.count
-            lastEnd = slice.last?.end ?? lastEnd
-            clipsOut.append(["clipId": frag.clipId, "trackIndex": frag.trackIndex,
-                             "startFrame": frag.clip.startFrame, "endFrame": frag.clip.endFrame,
-                             "words": slice.map(\.row)])
+            guard !rows.isEmpty else { return }
+            clipsOut.append(["clipId": clipId, "trackIndex": trackIndex,
+                             "startFrame": clipStartFrame, "endFrame": clipEndFrame,
+                             "words": rows])
         }
 
         var out: [String: Any] = [
             "fps": fps, "timing": "projectFrames",
-            "wordFormat": ["text", "start", "end"], "clips": clipsOut,
+            "wordFormat": ["index", "text", "start", "end"], "clips": clipsOut,
         ]
         if totalWords > Self.inspectMaxWords {
             out["totalWords"] = totalWords
@@ -625,6 +629,71 @@ extension ToolExecutor {
 
         guard let json = Self.jsonString(out) else { throw ToolError("Failed to encode transcript") }
         return .ok(json)
+    }
+
+    func timelineWords(_ editor: EditorViewModel, preferredLocale: Locale? = nil) async throws -> (words: [TimelineWord], skipped: [[String: Any]]) {
+        let fps = editor.timeline.fps
+        let assetsById = Dictionary(editor.mediaAssets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        struct Frag { let clipId: String; let trackIndex: Int; let clip: Clip; let url: URL; let isVideo: Bool }
+        var frags: [Frag] = []
+        var isVideoByURL: [URL: Bool] = [:]
+        for clip in editor.captionTargets(ids: []) {
+            guard let loc = editor.findClip(id: clip.id), let asset = assetsById[clip.mediaRef] else { continue }
+            let isVideo = asset.type == .video
+            frags.append(Frag(clipId: clip.id, trackIndex: loc.trackIndex, clip: clip, url: asset.url, isVideo: isVideo))
+            isVideoByURL[asset.url] = isVideo
+        }
+
+        // Transcribe each unique source once (cached); skip — don't fail — on per-asset errors.
+        var transcripts: [URL: TranscriptionResult] = [:]
+        var skipped: [[String: Any]] = []
+        for url in Set(frags.map(\.url)) {
+            do { transcripts[url] = try await TranscriptCache.shared.transcript(for: url, isVideo: isVideoByURL[url] ?? true, range: nil, preferredLocale: preferredLocale) }
+            catch { skipped.append(["file": url.lastPathComponent, "reason": error.localizedDescription]) }
+        }
+
+        var words: [TimelineWord] = []
+        for frag in frags.sorted(by: { $0.clip.startFrame < $1.clip.startFrame }) {
+            guard let transcript = transcripts[frag.url] else { continue }
+            let visStart = Double(frag.clip.trimStartFrame)
+            let visEnd = visStart + Double(frag.clip.durationFrames) * max(frag.clip.speed, 0.0001)
+            var rows: [(start: Int, end: Int, text: String)] = []
+            for w in transcript.words {
+                guard let s = w.start, let e = w.end else { continue }
+                // Assign a word to the clip whose visible range contains its midpoint.
+                let midFrame = (s + e) / 2 * Double(fps)
+                guard midFrame >= visStart, midFrame < visEnd,
+                      let f = Self.spanFrames(start: s, end: e, clip: frag.clip, fps: fps) else { continue }
+                rows.append((f.start, f.end, w.text))
+            }
+            rows.sort { ($0.start, $0.end) < ($1.start, $1.end) }
+            for r in rows {
+                words.append(TimelineWord(
+                    index: words.count, clipId: frag.clipId, trackIndex: frag.trackIndex,
+                    clipStartFrame: frag.clip.startFrame, clipEndFrame: frag.clip.endFrame,
+                    text: r.text, startFrame: r.start, endFrame: r.end
+                ))
+            }
+        }
+        return (words, skipped)
+    }
+
+    func forEachTimelineClipGroup(
+        in allWords: [TimelineWord],
+        _ body: (String, Int, Int, Int, ArraySlice<TimelineWord>) -> Void
+    ) {
+        var i = allWords.startIndex
+        while i < allWords.endIndex {
+            let clipId = allWords[i].clipId
+            var j = allWords.index(after: i)
+            while j < allWords.endIndex, allWords[j].clipId == clipId { j = allWords.index(after: j) }
+            body(clipId, allWords[i].trackIndex, allWords[i].clipStartFrame, allWords[i].clipEndFrame, allWords[i..<j])
+            i = j
+        }
+    }
+
+    func msToFrames(_ ms: Double, fps: Int) -> Int {
+        Int((ms / 1000 * Double(fps)).rounded())
     }
 
     /// Maps a clip's transcript words to (text, startFrame, endFrame) in project frames,
