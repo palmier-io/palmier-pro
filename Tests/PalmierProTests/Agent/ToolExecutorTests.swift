@@ -200,7 +200,7 @@ struct ToolExecutorReadOnlyTests {
         #expect(clip?["startFrame"] as? Int == 0)
         #expect(clip?["durationFrames"] as? Int == 50)
         for defaulted in [
-            "mediaType", "sourceClipType", "speed", "volume", "opacity",
+            "mediaType", "sourceClipType", "speed", "volume", "opacity", "blendMode",
             "trimStartFrame", "trimEndFrame", "fadeInFrames", "fadeOutFrames",
             "fadeInInterpolation", "fadeOutInterpolation", "transform", "crop",
         ] {
@@ -1691,5 +1691,38 @@ struct SetClipPropertiesTests {
         let updated = h.editor.timeline.tracks[0].clips[0]
         // Bug: Transform(center:width:height:) defaults rotation to 0, discarding cur.rotation.
         #expect(updated.transform.rotation == 45.0)
+    }
+
+    @Test func setsBlendModeAndGetTimelineReportsIt() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 60)]),
+        ]))
+
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": ["c1"],
+            "blendMode": "Difference",
+        ])
+
+        #expect(result.isError == false)
+        #expect(h.editor.timeline.tracks[0].clips[0].blendMode == .difference)
+
+        let json = try await h.runOK("get_timeline") as? [String: Any]
+        let tracks = json?["tracks"] as? [[String: Any]]
+        let clip = (tracks?.first?["clips"] as? [[String: Any]])?.first
+        #expect(clip?["blendMode"] as? String == "difference")
+    }
+
+    @Test func rejectsBlendModeOnAudioClip() async {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.audioTrack(clips: [Fixtures.clip(id: "a1", mediaType: .audio, start: 0, duration: 60)]),
+        ]))
+
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": ["a1"],
+            "blendMode": "difference",
+        ])
+
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("video/image"))
     }
 }

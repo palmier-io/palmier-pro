@@ -58,6 +58,7 @@ struct CompositorRenderTests {
 private func isRed(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.r > 140 && p.g < 100 && p.b < 100 }
 private func isGreen(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.g > 140 && p.r < 110 && p.b < 110 }
 private func isBlue(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.b > 140 && p.r < 100 && p.g < 100 }
+private func isCyan(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.g > 140 && p.b > 140 && p.r < 100 }
 private func isWhite(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.r > 170 && p.g > 170 && p.b > 170 }
 private func isBlack(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.r < 45 && p.g < 45 && p.b < 45 }
 
@@ -227,6 +228,19 @@ extension CompositorRenderTests {
         #expect(isRed(f.tl), "opaque top layer should win: TL red, not flipped-bg green: \(f.tl)")
     }
 
+    @Test func differenceBlendInvertsOnlyThroughAlpha() async throws {
+        let logoURL = try whiteTopLeftPNG(size: Self.size)
+        var logo = Fixtures.clip(id: "logo", mediaRef: "logo", mediaType: .image, start: 0, duration: 60)
+        logo.blendMode = .difference
+        let f = try await Self.render(Self.timelineWith(
+            Fixtures.videoTrack(clips: [logo]),
+            Fixtures.videoTrack(clips: [CompositorFixtures.patternClip(id: "bg")])
+        ), frame: 15, imageURLs: ["logo": logoURL])
+
+        #expect(isCyan(f.tl), "white logo pixels in Difference mode should invert red bg to cyan: \(f.tl)")
+        #expect(isWhite(f.br), "transparent logo pixels should leave the bg unchanged: \(f.br)")
+    }
+
     @Test func alphaMediaShowsBackgroundThrough() async throws {
         // Half-transparent overlay (top-left filled, rest clear) over an opaque pattern bg.
         let pngURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("render-alpha.png")
@@ -262,6 +276,24 @@ extension CompositorRenderTests {
         #expect(isRed(a.tl), "first clip TL red: \(a.tl)")
         #expect(isGreen(b.tl), "second (flipped) clip TL green: \(b.tl)")
     }
+}
+
+private func whiteTopLeftPNG(size: CGSize) throws -> URL {
+    let url = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("render-alpha-white-\(Int(size.width))x\(Int(size.height)).png")
+    if FileManager.default.fileExists(atPath: url.path) { return url }
+
+    let w = Int(size.width), h = Int(size.height)
+    let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                        space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    ctx.clear(CGRect(x: 0, y: 0, width: w, height: h))
+    ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: h / 2, width: w / 2, height: h / 2))
+    let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)!
+    CGImageDestinationAddImage(dest, ctx.makeImage()!, nil)
+    guard CGImageDestinationFinalize(dest) else { throw NSError(domain: "fixture", code: 1) }
+    return url
 }
 
 // MARK: - Fixture helper

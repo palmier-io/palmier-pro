@@ -65,6 +65,7 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     let speed: Double?
     let volume: Double?
     let opacity: Double?
+    let blendMode: String?
     let transform: ParsedTransform?
     let content: String?
     let fontName: String?
@@ -75,14 +76,14 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     static let allowedKeys: Set<String> = [
         "clipIds",
         "durationFrames", "trimStartFrame", "trimEndFrame", "speed",
-        "volume", "opacity",
+        "volume", "opacity", "blendMode",
         "transform",
         "content", "fontName", "fontSize", "color", "alignment",
     ]
 
     var hasAnyProperty: Bool {
         durationFrames != nil || trimStartFrame != nil || trimEndFrame != nil
-            || speed != nil || volume != nil || opacity != nil
+            || speed != nil || volume != nil || opacity != nil || blendMode != nil
             || transform != nil
             || content != nil || fontName != nil || fontSize != nil
             || color != nil || alignment != nil
@@ -470,6 +471,7 @@ extension ToolExecutor {
         }
         let color = try parseColorHex(input.color, path: "set_clip_properties")
         let alignment = try parseAlignment(input.alignment, path: "set_clip_properties")
+        let blendMode = try Self.parseBlendMode(input.blendMode, path: "set_clip_properties.blendMode")
 
         // Resolve clipIds + collect types so we can reject text-only fields on non-text clips.
         var clipTypes: [String: ClipType] = [:]
@@ -488,6 +490,12 @@ extension ToolExecutor {
             let nonText = clipTypes.filter { $0.value != .text }.map { $0.key }.sorted()
             if !nonText.isEmpty {
                 throw ToolError("text-only fields '\(textOnlyUsed.joined(separator: "', '"))' rejected on non-text clips: \(nonText.joined(separator: ", "))")
+            }
+        }
+        if blendMode != nil {
+            let nonVisual = clipTypes.filter { !($0.value == .video || $0.value == .image) }.map { $0.key }.sorted()
+            if !nonVisual.isEmpty {
+                throw ToolError("blendMode applies only to video/image clips; rejected on: \(nonVisual.joined(separator: ", "))")
             }
         }
 
@@ -511,6 +519,7 @@ extension ToolExecutor {
                     speed: input.speed,
                     volume: input.volume,
                     opacity: input.opacity,
+                    blendMode: blendMode,
                     transform: input.transform,
                     content: isText ? input.content : nil,
                     fontName: isText ? input.fontName : nil,
@@ -534,7 +543,7 @@ extension ToolExecutor {
                     trimStartFrame: partnerIsText ? nil : input.trimStartFrame,
                     trimEndFrame:   partnerIsText ? nil : input.trimEndFrame,
                     speed:          partnerIsText ? nil : input.speed,
-                    volume: nil, opacity: nil, transform: nil,
+                    volume: nil, opacity: nil, blendMode: nil, transform: nil,
                     content: nil, fontName: nil, fontSize: nil, color: nil, alignment: nil,
                     clipId: partnerId,
                     editor: editor
@@ -554,6 +563,7 @@ extension ToolExecutor {
         speed: Double?,
         volume: Double?,
         opacity: Double?,
+        blendMode: ClipBlendMode?,
         transform: ParsedTransform?,
         content: String?,
         fontName: String?,
@@ -587,6 +597,7 @@ extension ToolExecutor {
             // Setting a scalar clears any existing keyframe track on the same property.
             if let v = volume         { clip.volume  = v; clip.volumeTrack  = nil; changed.append("volume") }
             if let v = opacity        { clip.opacity = v; clip.opacityTrack = nil; changed.append("opacity") }
+            if let v = blendMode      { clip.blendMode = v; changed.append("blendMode") }
             if let t = transform {
                 let cur = clip.transform
                 var next = Transform(
@@ -611,6 +622,16 @@ extension ToolExecutor {
             }
         }
         return changed
+    }
+
+    fileprivate static func parseBlendMode(_ raw: String?, path: String) throws -> ClipBlendMode? {
+        guard let raw else { return nil }
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard let mode = ClipBlendMode(rawValue: normalized) else {
+            let valid = ClipBlendMode.allCases.map(\.rawValue).joined(separator: ", ")
+            throw ToolError("\(path): unknown blend mode '\(raw)'. Expected one of: \(valid)")
+        }
+        return mode
     }
 
     // MARK: set_keyframes

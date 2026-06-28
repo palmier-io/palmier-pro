@@ -20,7 +20,8 @@ enum FrameRenderer {
             guard let buffer = sourceFrame(layer.trackID) else { continue }
             if let image = composedLayer(layer, buffer: buffer, frame: frame,
                                          renderSize: instruction.renderSize) {
-                accum = image.composited(over: accum)
+                accum = composite(image, over: accum, blendMode: layer.clip.blendMode)
+                    .cropped(to: renderRect)
             }
         }
         context.render(accum, to: output, bounds: renderRect, colorSpace: nil)
@@ -96,6 +97,15 @@ enum FrameRenderer {
             ])
         }
         return image
+    }
+
+    private static func composite(_ foreground: CIImage, over background: CIImage, blendMode: ClipBlendMode) -> CIImage {
+        guard let filterName = blendMode.coreImageFilterName else {
+            return foreground.composited(over: background)
+        }
+        return foreground.applyingFilter(filterName, parameters: [
+            kCIInputBackgroundImageKey: background,
+        ])
     }
 
     private static func flipY(_ height: CGFloat) -> CGAffineTransform {

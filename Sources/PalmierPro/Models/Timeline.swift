@@ -89,6 +89,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var fadeInInterpolation: Interpolation = .linear
     var fadeOutInterpolation: Interpolation = .linear
     var opacity: Double = 1.0
+    var blendMode: ClipBlendMode = .normal
     var transform: Transform = Transform()
     var crop: Crop = Crop()
     var linkGroupId: String?
@@ -112,7 +113,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         case id, mediaRef, mediaType, sourceClipType, startFrame, durationFrames
         case trimStartFrame, trimEndFrame, speed, volume
         case fadeInFrames, fadeOutFrames, fadeInInterpolation, fadeOutInterpolation
-        case opacity, transform, crop
+        case opacity, blendMode, transform, crop
         case linkGroupId, captionGroupId, textContent, textStyle
         case opacityTrack, positionTrack, scaleTrack, rotationTrack, cropTrack, volumeTrack
         case effects
@@ -348,6 +349,7 @@ extension Clip {
             fadeInInterpolation: (try? c.decode(Interpolation.self, forKey: .fadeInInterpolation)) ?? .linear,
             fadeOutInterpolation: (try? c.decode(Interpolation.self, forKey: .fadeOutInterpolation)) ?? .linear,
             opacity: (try? c.decode(Double.self, forKey: .opacity)) ?? 1.0,
+            blendMode: (try? c.decode(ClipBlendMode.self, forKey: .blendMode)) ?? .normal,
             transform: (try? c.decode(Transform.self, forKey: .transform)) ?? Transform(),
             crop: (try? c.decode(Crop.self, forKey: .crop)) ?? Crop(),
             linkGroupId: try? c.decode(String.self, forKey: .linkGroupId),

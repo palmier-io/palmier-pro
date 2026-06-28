@@ -95,6 +95,7 @@ enum AgentMentionContext {
             "trimStartFrame": clip.trimStartFrame,
             "trimEndFrame": clip.trimEndFrame,
             "speed": clip.speed,
+            "blendMode": clip.blendMode.rawValue,
         ]
     }
 }

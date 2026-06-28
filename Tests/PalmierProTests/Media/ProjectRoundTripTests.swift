@@ -48,6 +48,15 @@ struct ProjectRoundTripTests {
         #expect(dc.opacity == 0.5)
     }
 
+    @Test func clipBlendModeSurvivesRoundTrip() throws {
+        var clip = Fixtures.clip(start: 0, duration: 60)
+        clip.blendMode = .difference
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+
+        let decoded = try roundTrip(timeline)
+        #expect(decoded.tracks[0].clips[0].blendMode == .difference)
+    }
+
     @Test func clipTransformAndCropSurviveRoundTrip() throws {
         var clip = Fixtures.clip(start: 0, duration: 30)
         clip.transform = Transform(centerX: 0.4, centerY: 0.6, width: 0.5, height: 0.5, rotation: 45,
@@ -151,6 +160,7 @@ struct ProjectRoundTripTests {
         #expect(clip.speed == 1.0)
         #expect(clip.volume == 1.0)
         #expect(clip.opacity == 1.0)
+        #expect(clip.blendMode == .normal)
         #expect(clip.fadeInFrames == 0)
         #expect(clip.fadeInInterpolation == .linear)
         #expect(clip.transform == Transform())

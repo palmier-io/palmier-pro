@@ -472,6 +472,7 @@ struct InspectorView: View {
                     animatableRow(label: "Opacity", clipId: single?.id, property: .opacity) {
                         opacityScrubField(clips: clips)
                     }
+                    blendModeRow(clips: clips)
                     cropRow(single: single)
                     flipRow(clips: clips)
                 }
@@ -599,6 +600,51 @@ struct InspectorView: View {
             editor.undoManager?.endUndoGrouping()
             editor.undoManager?.setActionName("Change Scale")
         }
+    }
+
+    @ViewBuilder
+    private func blendModeRow(clips: [Clip]) -> some View {
+        propertyRow(label: "Blend Mode") {
+            blendModeMenu(clips: clips)
+        }
+        .frame(height: KeyframesMetrics.rowHeight)
+    }
+
+    @ViewBuilder
+    private func blendModeMenu(clips: [Clip]) -> some View {
+        let shared = sharedClipValue(clips) { $0.blendMode }
+        Menu {
+            ForEach(ClipBlendMode.allCases) { mode in
+                Button {
+                    commitToClips(clips, actionName: "Change Blend Mode") { c in
+                        editor.commitClipProperty(clipId: c.id) { $0.blendMode = mode }
+                    }
+                } label: {
+                    if shared == mode {
+                        Label(mode.displayName, systemImage: "checkmark")
+                    } else {
+                        Text(mode.displayName)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: AppTheme.Spacing.xs) {
+                Text(shared?.displayName ?? "Mixed")
+                    .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+            }
+            .padding(.horizontal, AppTheme.Spacing.sm)
+            .padding(.vertical, AppTheme.Spacing.xxs)
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Choose how this clip blends with lower tracks")
     }
 
     @ViewBuilder

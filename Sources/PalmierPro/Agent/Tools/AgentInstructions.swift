@@ -13,7 +13,7 @@ enum AgentInstructions {
         - A clip references a media asset and occupies [startFrame, startFrame + durationFrames) \
           on its track.
         - Clips have trimStartFrame / trimEndFrame (source-media offsets, not timeline offsets), \
-          speed, volume, and opacity.
+          speed, volume, opacity, and blendMode.
         - Media assets live in a project library and are referenced by ID. They may be \
           user-imported or AI-generated.
         - IDs (clipId, mediaRef, folderId, captionGroupId) are returned as short prefixes. \
@@ -52,9 +52,11 @@ enum AgentInstructions {
           • move_clips: change track and/or startFrame. Linked partners follow the frame delta; \
             track changes don't propagate.
           • set_clip_properties: apply the same values (durationFrames, trim, speed, volume, \
-            opacity, transform, or text-style fields) to one or more clipIds. For per-clip \
+            opacity, blendMode, transform, or text-style fields) to one or more clipIds. For per-clip \
             differences, make separate calls. Setting volume or opacity here clears any \
             existing keyframes on that property.
+            Use blendMode='difference' on a white logo PNG to make the logo invert the lower \
+            tracks through its alpha; use 'exclusion' for a softer version.
           • set_keyframes: replace the keyframe track for one (clipId, property) pair. Empty \
             array clears. Frames are clip-relative.
           • split_clips: pass one or more cut points (each atFrame strictly inside its clip) in \
