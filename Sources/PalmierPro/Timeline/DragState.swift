@@ -80,6 +80,7 @@ enum DragState {
         let hasNoSourceMedia: Bool
         /// When true, trim applies to link-group partners too.
         let propagateToLinked: Bool
+        let isRipple: Bool
         var deltaFrames: Int = 0
     }
 

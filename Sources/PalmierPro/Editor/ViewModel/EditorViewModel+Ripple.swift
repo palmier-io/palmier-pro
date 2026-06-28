@@ -20,9 +20,7 @@ extension EditorViewModel {
 
     // MARK: - Public API
 
-    /// Trim one or more clips in a single undo group. Overwrite-style: each clip
-    /// resizes in place — no adjacent-clip shift on the same track, no sync-lock
-    /// push to other tracks.
+    /// Trim one or more clips in a single undo group. Overwrite-style
     func trimClips(_ edits: [(clipId: String, trimStartFrame: Int, trimEndFrame: Int)]) {
         guard !edits.isEmpty else { return }
         undoManager?.beginUndoGrouping()
@@ -31,6 +29,67 @@ extension EditorViewModel {
         }
         undoManager?.endUndoGrouping()
         undoManager?.setActionName(edits.count == 1 ? "Trim Clip" : "Trim Clips")
+    }
+
+    /// Ripple trim: resize a clip from the dragged edge and shift every clip after it
+    func rippleTrimClip(clipId: String, edge: TrimEdge, deltaFrames: Int, propagateToLinked: Bool) {
+        guard deltaFrames != 0, let loc = findClip(id: clipId) else { return }
+        let lead = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        let oldEnd = lead.endFrame
+
+        // Clips to resize: the lead, plus linked partners when propagation is on.
+        var targets: [String] = [clipId]
+        if propagateToLinked { targets.append(contentsOf: linkedPartnerIds(of: clipId)) }
+        let targetIds = Set(targets)
+
+        // Linked A/V share start/end/speed, so the lead's delta drives every track uniformly.
+        let durationDelta = rippleTrimValues(for: lead, edge: edge, delta: deltaFrames).durationDelta
+        guard durationDelta != 0 else { return }
+
+        // Pre-validate sync-locked followers (no resized clip of their own, but must absorb the shift).
+        for ti in timeline.tracks.indices {
+            let track = timeline.tracks[ti]
+            guard track.syncLocked, !track.clips.contains(where: { targetIds.contains($0.id) }) else { continue }
+            let shifts = RippleEngine.computeRipplePush(clips: track.clips, insertFrame: oldEnd, pushAmount: durationDelta)
+            if let reason = validateShifts(trackIndex: ti, shifts: shifts) { refuseRipple(reason: reason); return }
+        }
+
+        withTimelineSwap(actionName: "Ripple Trim") {
+            for id in targets {
+                guard let l = findClip(id: id) else { continue }
+                let c = timeline.tracks[l.trackIndex].clips[l.clipIndex]
+                let new = rippleTrimValues(for: c, edge: edge, delta: deltaFrames)
+                timeline.tracks[l.trackIndex].clips[l.clipIndex].trimStartFrame = new.trimStart
+                timeline.tracks[l.trackIndex].clips[l.clipIndex].trimEndFrame = new.trimEnd
+                timeline.tracks[l.trackIndex].clips[l.clipIndex].setDuration(max(1, c.durationFrames + durationDelta))
+            }
+            for ti in timeline.tracks.indices {
+                let track = timeline.tracks[ti]
+                let holdsTarget = track.clips.contains { targetIds.contains($0.id) }
+                guard holdsTarget || track.syncLocked else { continue }
+                applyShifts(RippleEngine.computeRipplePush(
+                    clips: track.clips, insertFrame: oldEnd, pushAmount: durationDelta, excludeIds: targetIds
+                ))
+                sortClips(trackIndex: ti)
+            }
+        }
+    }
+
+    /// New source trim and the resulting timeline-duration delta for a ripple trim of `clip`.
+    /// Mirrors the source↔timeline conversion and clamping in `trimClipInternal`.
+    private func rippleTrimValues(for clip: Clip, edge: TrimEdge, delta: Int) -> (trimStart: Int, trimEnd: Int, durationDelta: Int) {
+        let sourceDelta = Int((Double(delta) * clip.speed).rounded())
+        let unbounded = clip.mediaType == .image || clip.mediaType == .text
+        switch edge {
+        case .left:
+            let newStart = unbounded ? clip.trimStartFrame + sourceDelta : max(0, clip.trimStartFrame + sourceDelta)
+            let deltaTimeline = Int((Double(newStart - clip.trimStartFrame) / clip.speed).rounded())
+            return (newStart, clip.trimEndFrame, -deltaTimeline)
+        case .right:
+            let newEnd = unbounded ? clip.trimEndFrame - sourceDelta : max(0, clip.trimEndFrame - sourceDelta)
+            let deltaTimeline = Int((Double(newEnd - clip.trimEndFrame) / clip.speed).rounded())
+            return (clip.trimStartFrame, newEnd, -deltaTimeline)
+        }
     }
 
     /// Ripple delete: remove selected clips and close the gaps. Sync-locked tracks shift

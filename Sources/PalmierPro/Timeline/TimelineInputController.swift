@@ -85,7 +85,15 @@ final class TimelineInputController {
             // Linked behavior is always on; Option is the per-drag override.
             let linkedOn = !isOption
 
-            if isShift {
+            let localX = point.x - rect.minX
+            let onTrimHandle = !isOption && Self.isOnTrimZone(localX: localX, clipWidth: rect.width)
+            let rippleTrim = isShift && onTrimHandle
+
+            if rippleTrim {
+                if !editor.selectedClipIds.contains(clip.id) {
+                    editor.selectedClipIds = linkedOn ? editor.expandToLinkGroup([clip.id]) : [clip.id]
+                }
+            } else if isShift {
                 if editor.selectedClipIds.contains(clip.id) {
                     if linkedOn {
                         editor.selectedClipIds.subtract(editor.expandToLinkGroup([clip.id]))
@@ -103,7 +111,6 @@ final class TimelineInputController {
                 editor.selectedClipIds = linkedOn ? editor.expandToLinkGroup([clip.id]) : [clip.id]
             }
 
-            let localX = point.x - rect.minX
             let isCommand = event.modifierFlags.contains(.command)
 
             if let edge = fadeKneeHit(at: point, clip: clip, clipRect: rect) {
@@ -141,7 +148,8 @@ final class TimelineInputController {
                     originalStartFrame: clip.startFrame,
                     originalDuration: clip.durationFrames,
                     hasNoSourceMedia: clip.mediaType == .image || clip.mediaType == .text,
-                    propagateToLinked: linkedOn
+                    propagateToLinked: linkedOn,
+                    isRipple: rippleTrim
                 ))
             } else if !isOption, localX >= rect.width - Trim.handleWidth {
                 dragState = .trimRight(DragState.TrimDrag(
@@ -152,7 +160,8 @@ final class TimelineInputController {
                     originalStartFrame: clip.startFrame,
                     originalDuration: clip.durationFrames,
                     hasNoSourceMedia: clip.mediaType == .image || clip.mediaType == .text,
-                    propagateToLinked: linkedOn
+                    propagateToLinked: linkedOn,
+                    isRipple: rippleTrim
                 ))
             } else {
                 let grabFrame = geometry.frameAt(x: point.x)
@@ -439,22 +448,30 @@ final class TimelineInputController {
 
         case .trimLeft(let drag):
             if drag.deltaFrames != 0 {
-                editor.commitTrim(
-                    clipId: drag.clipId,
-                    edge: .left,
-                    deltaFrames: drag.deltaFrames,
-                    propagateToLinked: drag.propagateToLinked
-                )
+                if drag.isRipple {
+                    editor.rippleTrimClip(clipId: drag.clipId, edge: .left, deltaFrames: drag.deltaFrames, propagateToLinked: drag.propagateToLinked)
+                } else {
+                    editor.commitTrim(
+                        clipId: drag.clipId,
+                        edge: .left,
+                        deltaFrames: drag.deltaFrames,
+                        propagateToLinked: drag.propagateToLinked
+                    )
+                }
             }
 
         case .trimRight(let drag):
             if drag.deltaFrames != 0 {
-                editor.commitTrim(
-                    clipId: drag.clipId,
-                    edge: .right,
-                    deltaFrames: drag.deltaFrames,
-                    propagateToLinked: drag.propagateToLinked
-                )
+                if drag.isRipple {
+                    editor.rippleTrimClip(clipId: drag.clipId, edge: .right, deltaFrames: drag.deltaFrames, propagateToLinked: drag.propagateToLinked)
+                } else {
+                    editor.commitTrim(
+                        clipId: drag.clipId,
+                        edge: .right,
+                        deltaFrames: drag.deltaFrames,
+                        propagateToLinked: drag.propagateToLinked
+                    )
+                }
             }
 
         case .audioVolumeKf(let drag):
