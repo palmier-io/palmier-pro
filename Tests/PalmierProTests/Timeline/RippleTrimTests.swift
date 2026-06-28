@@ -121,6 +121,50 @@ struct RippleTrimTests {
         #expect(plan?.durationDelta == 10)
     }
 
+    @Test func outOfSyncPartnerRipplesFromItsOwnEnd() {
+        // Audio partner ends 10 frames before the video lead. Each track's downstream must shift
+        // relative to its own resized clip's end, not the lead's, so neither overlaps.
+        var v1 = Fixtures.clip(id: "v1", start: 0, duration: 100, trimEnd: 50)
+        var a1 = Fixtures.clip(id: "a1", mediaType: .audio, start: 0, duration: 90, trimEnd: 50)
+        v1.linkGroupId = "g"
+        a1.linkGroupId = "g"
+        let e = editor([
+            Fixtures.videoTrack(clips: [v1, Fixtures.clip(id: "v2", start: 100, duration: 50)]),
+            Fixtures.audioTrack(clips: [a1, Fixtures.clip(id: "a2", mediaType: .audio, start: 90, duration: 50)]),
+        ])
+        e.rippleTrimClip(clipId: "v1", edge: .right, deltaFrames: 20, propagateToLinked: true)
+        #expect(spans(e.timeline.tracks[0]) == [[0, 120], [120, 170]])
+        #expect(spans(e.timeline.tracks[1]) == [[0, 110], [110, 160]])
+    }
+
+    @Test func shrinkClampsAtSyncLockedObstacle() {
+        // Lead ends at 100; the follower b1 sits at 120 with b0 ending at 90, so its downstream can
+        // slide left only 30. A 50-frame shrink clamps to 30. The wall is the obstacle b0's edge
+        // (frame 90 on track 1) — NOT the trimmed clip's stopped edge (frame 70 on track 0).
+        let a = Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 100)])
+        let b = Fixtures.videoTrack(clips: [
+            Fixtures.clip(id: "b0", start: 60, duration: 30),
+            Fixtures.clip(id: "b1", start: 120, duration: 50),
+        ])
+        let e = editor([a, b])
+        let plan = e.planRippleTrim(clipId: "c1", edge: .right, deltaFrames: -50, propagateToLinked: false)
+        #expect(plan?.durationDelta == -30)
+        #expect(plan?.blockedAtFrame == 90)
+        e.rippleTrimClip(clipId: "c1", edge: .right, deltaFrames: -50, propagateToLinked: false)
+        #expect(spans(e.timeline.tracks[0]) == [[0, 70]])
+        #expect(spans(e.timeline.tracks[1]) == [[60, 90], [90, 140]])
+    }
+
+    @Test func extendNeverBlocksOnSyncLock() {
+        // Extends push followers right, which is always safe — no clamp, no wall.
+        let a = Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 100, trimEnd: 50)])
+        let b = Fixtures.videoTrack(clips: [Fixtures.clip(id: "b1", start: 100, duration: 50)])
+        let e = editor([a, b])
+        let plan = e.planRippleTrim(clipId: "c1", edge: .right, deltaFrames: 20, propagateToLinked: false)
+        #expect(plan?.durationDelta == 20)
+        #expect(plan?.blockedAtFrame == nil)
+    }
+
     @Test func unlinkedTrimLeavesPartnerTrackAlone() {
         // propagateToLinked off: only the lead's track ripples.
         var v1 = Fixtures.clip(id: "v1", start: 0, duration: 100, trimEnd: 50)

@@ -31,20 +31,17 @@ extension EditorViewModel {
         undoManager?.setActionName(edits.count == 1 ? "Trim Clip" : "Trim Clips")
     }
 
-    /// The resolved layout of a ripple trim: the resized clip(s) and how every downstream clip
-    /// shifts. Pure — `rippleTrimClip` applies it, the timeline view previews it, so the two
-    /// can't drift.
+    /// Ripple trim result: resized clips, shifted clips, and optional obstacle frame if clamped.
     struct RippleTrimPlan {
         struct Resize { let clipId: String; let trimStart: Int; let trimEnd: Int; let duration: Int }
         let durationDelta: Int
         let resizes: [Resize]
         let shifts: [ClipShift]
+        let blockedAtFrame: Int?
         var targetIds: Set<String> { Set(resizes.map(\.clipId)) }
     }
 
-    /// Resolve a ripple trim without mutating anything. Binds the edit to the most-constrained
-    /// linked partner so A/V keeps equal durations, then resolves each resize and the downstream
-    /// shift on the lead's track, linked-partner tracks, and sync-locked followers. Nil for a no-op.
+    /// Plans a non-destructive ripple trim, capped by the strictest linked or sync-locked constraint
     func planRippleTrim(clipId: String, edge: TrimEdge, deltaFrames: Int, propagateToLinked: Bool) -> RippleTrimPlan? {
         guard deltaFrames != 0, let leadLoc = findClip(id: clipId) else { return nil }
         let leadEnd = timeline.tracks[leadLoc.trackIndex].clips[leadLoc.clipIndex].endFrame
@@ -55,10 +52,24 @@ extension EditorViewModel {
         let targetClips = targets.compactMap { findClip(id: $0).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex] } }
 
         // Each target's own source headroom caps how far it can ripple; bind to the smallest.
-        let durationDelta = targetClips
+        let sourceDelta = targetClips
             .map { rippleTrimDurationDelta(for: $0, edge: edge, delta: deltaFrames) }
             .min(by: { abs($0) < abs($1) }) ?? 0
-        guard durationDelta != 0 else { return nil }
+
+        // Shrinking shifts sync-locked followers left; clamp to the tightest available room.
+        var durationDelta = sourceDelta
+        var blockedAtFrame: Int?
+        if sourceDelta < 0 {
+            let limits = timeline.tracks.compactMap { track -> (room: Int, obstacle: Int)? in
+                guard track.syncLocked, !track.clips.contains(where: { targetIds.contains($0.id) }) else { return nil }
+                return syncLockedLeftRoom(track: track, insertFrame: leadEnd)
+            }
+            if let tightest = limits.min(by: { $0.room < $1.room }), sourceDelta < -tightest.room {
+                durationDelta = -tightest.room
+                blockedAtFrame = tightest.obstacle
+            }
+        }
+        guard durationDelta != 0 || blockedAtFrame != nil else { return nil }
 
         // A right-edge duration change maps to the same source-frame edge drag; left flips sign.
         let resizes = targetClips.map { c -> RippleTrimPlan.Resize in
@@ -70,26 +81,25 @@ extension EditorViewModel {
         var shifts: [ClipShift] = []
         for ti in timeline.tracks.indices {
             let track = timeline.tracks[ti]
-            guard track.clips.contains(where: { targetIds.contains($0.id) }) || track.syncLocked else { continue }
+            let targetEnd = track.clips.first { targetIds.contains($0.id) }?.endFrame
+            guard targetEnd != nil || track.syncLocked else { continue }
             shifts += RippleEngine.computeRipplePush(
-                clips: track.clips, insertFrame: leadEnd, pushAmount: durationDelta, excludeIds: targetIds
+                clips: track.clips, insertFrame: targetEnd ?? leadEnd, pushAmount: durationDelta, excludeIds: targetIds
             )
         }
-        return RippleTrimPlan(durationDelta: durationDelta, resizes: resizes, shifts: shifts)
+        return RippleTrimPlan(durationDelta: durationDelta, resizes: resizes, shifts: shifts, blockedAtFrame: blockedAtFrame)
+    }
+
+    /// Max left shift for sync-locked clips before hitting the next obstacle; nil if no shift possible.
+    private func syncLockedLeftRoom(track: Track, insertFrame: Int) -> (room: Int, obstacle: Int)? {
+        guard let first = track.clips.filter({ $0.startFrame >= insertFrame }).map(\.startFrame).min() else { return nil }
+        let prevEnd = track.clips.filter { $0.startFrame < insertFrame }.map(\.endFrame).max() ?? 0
+        return (max(0, first - prevEnd), prevEnd)
     }
 
     /// Ripple trim: resize a clip from the dragged edge and shift every clip after it
     func rippleTrimClip(clipId: String, edge: TrimEdge, deltaFrames: Int, propagateToLinked: Bool) {
         guard let plan = planRippleTrim(clipId: clipId, edge: edge, deltaFrames: deltaFrames, propagateToLinked: propagateToLinked) else { return }
-
-        // Pre-validate sync-locked followers (no resized clip of their own, but must absorb the shift).
-        for ti in timeline.tracks.indices {
-            let track = timeline.tracks[ti]
-            guard track.syncLocked, !track.clips.contains(where: { plan.targetIds.contains($0.id) }) else { continue }
-            let trackIds = Set(track.clips.map(\.id))
-            let trackShifts = plan.shifts.filter { trackIds.contains($0.clipId) }
-            if let reason = validateShifts(trackIndex: ti, shifts: trackShifts) { refuseRipple(reason: reason); return }
-        }
 
         let touched = plan.targetIds.union(plan.shifts.map(\.clipId))
         withTimelineSwap(actionName: "Ripple Trim") {

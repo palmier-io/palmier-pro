@@ -359,7 +359,9 @@ final class TimelineView: NSView {
                 }
 
                 if let (drag, isLeft) = trimDrag,
-                   clip.id == drag.clipId || trimPartnerIds.contains(clip.id) {
+                   clip.id == drag.clipId || trimPartnerIds.contains(clip.id),
+                   // Ripple drags with no resize preview at rest.
+                   !(drag.isRipple && rippleResizeByClip[clip.id] == nil) {
                     var previewClip = clip
                     if let resize = rippleResizeByClip[clip.id] {
                         // Ripple: start stays anchored; the plan's resize grows/shrinks the tail.
@@ -414,6 +416,17 @@ final class TimelineView: NSView {
                                   displayName: editor.clipDisplayLabel(for: clip),
                                   linkOffset: linkOffsets[clip.id],
                                   fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
+            }
+        }
+
+        // Red wall at the obstacle frame — the sync-locked clip edge the ripple butts against.
+        if let wall = ripplePlan?.blockedAtFrame {
+            let x = geo.xForFrame(wall)
+            let line = NSRect(x: x - AppTheme.BorderWidth.thick / 2, y: Double(geo.rulerHeight),
+                              width: AppTheme.BorderWidth.thick, height: Double(max(0, bounds.height - geo.rulerHeight)))
+            if line.intersects(dirtyRect) {
+                ctx.setFillColor(AppTheme.Status.error.cgColor)
+                ctx.fill(line)
             }
         }
     }
