@@ -210,6 +210,13 @@ extension EditorWindowController: EditorActions {
     @objc func trimStartToPlayhead(_ sender: Any?) { editorViewModel.trimStartToPlayhead() }
     @objc func trimEndToPlayhead(_ sender: Any?) { editorViewModel.trimEndToPlayhead() }
     @objc func deleteSelectedClips(_ sender: Any?) { editorViewModel.deleteSelectedClips() }
+    @objc func rippleDeleteSelected(_ sender: Any?) {
+        if editorViewModel.selectedGap != nil {
+            editorViewModel.rippleDeleteSelectedGap()
+        } else {
+            editorViewModel.rippleDeleteSelectedClips()
+        }
+    }
     @objc func playPause(_ sender: Any?) { editorViewModel.togglePlayback() }
     @objc func stepFrameForward(_ sender: Any?) { editorViewModel.stepForward() }
     @objc func stepFrameBackward(_ sender: Any?) { editorViewModel.stepBackward() }

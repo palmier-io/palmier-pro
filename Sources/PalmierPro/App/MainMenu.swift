@@ -93,6 +93,10 @@ enum MainMenuBuilder {
         deleteItem.keyEquivalentModifierMask = []
         menu.addItem(deleteItem)
 
+        let rippleDeleteItem = NSMenuItem(title: "Ripple Delete", action: #selector(EditorActions.rippleDeleteSelected(_:)), keyEquivalent: "\u{8}") // backspace
+        rippleDeleteItem.keyEquivalentModifierMask = [.shift]
+        menu.addItem(rippleDeleteItem)
+
         item.submenu = menu
         return item
     }
@@ -171,6 +175,7 @@ enum MainMenuBuilder {
     func trimStartToPlayhead(_ sender: Any?)
     func trimEndToPlayhead(_ sender: Any?)
     func deleteSelectedClips(_ sender: Any?)
+    func rippleDeleteSelected(_ sender: Any?)
     func importMedia(_ sender: Any?)
     func playPause(_ sender: Any?)
     func stepFrameForward(_ sender: Any?)
