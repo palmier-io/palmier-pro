@@ -16,12 +16,15 @@ struct ShortcutsPane: View {
             ("C", "Razor Tool"),
         ]),
         ShortcutGroup(title: "Editing", shortcuts: [
+            ("A", "Select Forward on Track"),
+            ("Shift + A", "Select Forward on All Tracks"),
             ("Cmd + K", "Split at Playhead"),
             ("[ or Q", "Trim Start to Playhead"),
             ("] or W", "Trim End to Playhead"),
             ("Backspace", "Delete"),
             ("Shift + Backspace", "Ripple Delete"),
             ("Shift + Drag Edge", "Ripple Trim"),
+            ("Cmd + Drag Media", "Ripple Insert"),
             ("Opt + Drag", "Duplicate Clip"),
         ]),
         ShortcutGroup(title: "Timeline", shortcuts: [

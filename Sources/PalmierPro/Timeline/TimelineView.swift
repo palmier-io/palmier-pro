@@ -202,10 +202,14 @@ final class TimelineView: NSView {
         let geo = geometry
         let scrollOffset = enclosingScrollView?.contentView.bounds.origin ?? .zero
         let visibleWidth = enclosingScrollView?.contentView.bounds.width ?? bounds.width
+        let rippleInsertPreview = currentRippleInsertPreview()
 
         drawTrackBackgrounds(geometry: geo, context: ctx)
         drawTimelineRangeSelectionTrackFill(geometry: geo, context: ctx)
-        drawClips(geometry: geo, dirtyRect: dirtyRect, context: ctx)
+        if let rippleInsertPreview {
+            drawRippleInsertGapBand(preview: rippleInsertPreview, geometry: geo, context: ctx)
+        }
+        drawClips(geometry: geo, dirtyRect: dirtyRect, context: ctx, rippleInsertPreview: rippleInsertPreview)
         drawGapSelection(geometry: geo, context: ctx)
         syncGeneratingClipOverlays(geometry: geo)
 
@@ -213,6 +217,7 @@ final class TimelineView: NSView {
             drawExternalDragGhosts(assets: assets, segments: externalDragSegments, target: target, frame: externalDragFrame, geometry: geo, dirtyRect: bounds, context: ctx)
             if externalDragIsRippleInsert {
                 drawRippleInsertIndicator(atFrame: externalDragFrame, geometry: geo, context: ctx)
+                drawRippleInsertBadge(atFrame: externalDragFrame, geometry: geo, scrollOffset: scrollOffset, visibleWidth: visibleWidth, context: ctx)
             }
         }
 
@@ -268,7 +273,12 @@ final class TimelineView: NSView {
 
     // MARK: - Clip drawing with ghost support
 
-    private func drawClips(geometry geo: TimelineGeometry, dirtyRect: NSRect, context ctx: CGContext) {
+    private func drawClips(
+        geometry geo: TimelineGeometry,
+        dirtyRect: NSRect,
+        context ctx: CGContext,
+        rippleInsertPreview: EditorViewModel.RippleInsertPreviewPlan? = nil
+    ) {
         let moveDrag: DragState.MoveClipDrag? = {
             if case .moveClip(let drag) = inputController.dragState { return drag }
             return nil
@@ -318,6 +328,21 @@ final class TimelineView: NSView {
                 let isSelected = editor.selectedClipIds.contains(clip.id)
                 let clipMissing = editor.isClipMediaOffline(clip)
                 let clipGenerating = editor.isClipMediaGenerating(clip)
+
+                if let shiftDelta = rippleInsertPreview?.shiftDeltasByClipId[clip.id] {
+                    var previewClip = clip
+                    previewClip.startFrame += shiftDelta
+                    let previewRect = geo.clipRect(for: previewClip, trackIndex: ti)
+                    clipDisplayRects[clip.id] = previewRect
+                    if previewRect.intersects(dirtyRect) {
+                        ClipRenderer.draw(previewClip, type: clip.mediaType, in: previewRect,
+                                          isSelected: isSelected, opacity: CGFloat(AppTheme.Opacity.prominent), context: ctx,
+                                          cache: editor.mediaVisualCache,
+                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
+                    }
+                    continue
+                }
 
                 if let drag = moveDrag, allDraggedIds.contains(clip.id) {
                     let originalRect = geo.clipRect(for: clip, trackIndex: ti)
@@ -596,45 +621,117 @@ final class TimelineView: NSView {
         switch target {
         case .existingTrack(let idx):
             return geo.clipRect(for: probe, trackIndex: idx)
-        case .newTrackAt(let idx):
-            let trackCount = editor.timeline.tracks.count
-            let top = geo.rulerHeight + Layout.dropZoneHeight
-            let y: CGFloat
-            if trackCount == 0 {
-                y = top + CGFloat(idx) * height
-            } else if idx >= trackCount {
-                let last = trackCount - 1
-                let bottom = geo.trackY(at: last) + geo.trackHeight(at: last)
-                y = bottom + CGFloat(idx - trackCount) * height
-            } else {
-                y = geo.trackY(at: idx) - height
-            }
+        case .newTrackAt:
+            guard let y = geo.ghostY(for: target, height: height) else { return .zero }
             return geo.clipRect(for: probe, atY: Double(y), height: height)
         }
     }
 
-    // MARK: - Ripple-insert indicator
+    // MARK: - Ripple-insert preview
+
+    private func currentRippleInsertPreview() -> EditorViewModel.RippleInsertPreviewPlan? {
+        guard externalDragIsRippleInsert,
+              let assets = externalDragAssets,
+              !assets.isEmpty,
+              let target = externalDropTarget else { return nil }
+
+        let plan = editor.resolveDropPlan(cursor: target, assets: assets, atFrame: externalDragFrame, segments: externalDragSegments)
+        return editor.planRippleInsertPreview(dropPlan: plan, atFrame: externalDragFrame)
+    }
+
+    private func drawRippleInsertGapBand(preview: EditorViewModel.RippleInsertPreviewPlan, geometry geo: TimelineGeometry, context ctx: CGContext) {
+        ctx.setFillColor(AppTheme.Accent.timecodeNSColor.withAlphaComponent(AppTheme.Opacity.faint).cgColor)
+        ctx.setStrokeColor(AppTheme.Accent.timecodeNSColor.withAlphaComponent(AppTheme.Opacity.medium).cgColor)
+        ctx.setLineWidth(AppTheme.BorderWidth.thin)
+
+        func drawBand(range: FrameRange, y: CGFloat, height: CGFloat) {
+            let minX = geo.xForFrame(range.start)
+            let maxX = geo.xForFrame(range.end)
+            guard maxX > minX else { return }
+            let rect = NSRect(
+                x: minX,
+                y: y + AppTheme.Spacing.xxs,
+                width: maxX - minX,
+                height: max(CGFloat.zero, height - AppTheme.Spacing.xs)
+            )
+            ctx.addRect(rect.insetBy(dx: AppTheme.BorderWidth.hairline, dy: AppTheme.BorderWidth.hairline))
+            ctx.drawPath(using: .fillStroke)
+        }
+
+        for (trackIndex, range) in preview.gapRangesByTrackIndex where editor.timeline.tracks.indices.contains(trackIndex) {
+            drawBand(range: range, y: geo.trackY(at: trackIndex), height: geo.trackHeight(at: trackIndex))
+        }
+
+        for (target, range) in preview.newTrackGapRangesByTarget {
+            guard let y = geo.ghostY(for: target) else { continue }
+            drawBand(range: range, y: y, height: Layout.trackHeight)
+        }
+    }
 
     private func drawRippleInsertIndicator(atFrame frame: Int, geometry geo: TimelineGeometry, context ctx: CGContext) {
         let x = geo.xForFrame(frame)
         let top = Double(geo.rulerHeight)
         let bottom = Double(bounds.height)
 
-        let color = NSColor.white.cgColor
+        let color = AppTheme.Accent.timecodeNSColor.cgColor
         ctx.setStrokeColor(color)
         ctx.setFillColor(color)
-        ctx.setLineWidth(2)
+        ctx.setLineWidth(AppTheme.BorderWidth.thick)
         ctx.move(to: CGPoint(x: x, y: top))
         ctx.addLine(to: CGPoint(x: x, y: bottom))
         ctx.strokePath()
 
-        let arrowW: CGFloat = 7
-        let arrowH: CGFloat = 10
+        let arrowW = AppTheme.Spacing.sm
+        let arrowH = AppTheme.Spacing.md
         ctx.move(to: CGPoint(x: x, y: top))
         ctx.addLine(to: CGPoint(x: x + arrowW, y: top + Double(arrowH) / 2))
         ctx.addLine(to: CGPoint(x: x, y: top + Double(arrowH)))
         ctx.closePath()
         ctx.fillPath()
+    }
+
+    private func drawRippleInsertBadge(
+        atFrame frame: Int,
+        geometry geo: TimelineGeometry,
+        scrollOffset: CGPoint,
+        visibleWidth: CGFloat,
+        context ctx: CGContext
+    ) {
+        let text = NSAttributedString(
+            string: "Ripple Insert",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: AppTheme.FontSize.xs),
+                .foregroundColor: AppTheme.Text.primary
+            ]
+        )
+        let textSize = text.size()
+        let width = textSize.width + AppTheme.Spacing.md * 2
+        let height = textSize.height + AppTheme.Spacing.xs * 2
+        let minX = scrollOffset.x + AppTheme.Spacing.xs
+        let maxX = max(minX, scrollOffset.x + visibleWidth - width - AppTheme.Spacing.xs)
+        let proposedX = CGFloat(geo.xForFrame(frame)) + AppTheme.Spacing.md
+        let rect = NSRect(
+            x: min(maxX, max(minX, proposedX)),
+            y: scrollOffset.y + geo.rulerHeight + AppTheme.Spacing.xs,
+            width: width,
+            height: height
+        )
+        let path = CGPath(
+            roundedRect: rect,
+            cornerWidth: AppTheme.Radius.sm,
+            cornerHeight: AppTheme.Radius.sm,
+            transform: nil
+        )
+
+        ctx.setFillColor(AppTheme.Background.prominent.withAlphaComponent(AppTheme.Opacity.prominent).cgColor)
+        ctx.addPath(path)
+        ctx.fillPath()
+        ctx.setStrokeColor(AppTheme.Accent.timecodeNSColor.withAlphaComponent(AppTheme.Opacity.strong).cgColor)
+        ctx.setLineWidth(AppTheme.BorderWidth.thin)
+        ctx.addPath(path)
+        ctx.strokePath()
+
+        text.draw(in: rect.insetBy(dx: AppTheme.Spacing.md, dy: AppTheme.Spacing.xs))
     }
 
     // MARK: - Track drawing
@@ -755,6 +852,16 @@ final class TimelineView: NSView {
 
         // Timeline actions
         var timelineItems: [NSMenuItem] = []
+        let selectForwardTrackItem = NSMenuItem(title: "Select Forward on Track", action: #selector(performSelectForwardOnTrack(_:)), keyEquivalent: "")
+        selectForwardTrackItem.target = self
+        selectForwardTrackItem.representedObject = clip.id
+        timelineItems.append(selectForwardTrackItem)
+
+        let selectForwardAllItem = NSMenuItem(title: "Select Forward on All Tracks", action: #selector(performSelectForwardOnAllTracks(_:)), keyEquivalent: "")
+        selectForwardAllItem.target = self
+        selectForwardAllItem.representedObject = clip.id
+        timelineItems.append(selectForwardAllItem)
+
         let copyItem = NSMenuItem(title: "Copy", action: #selector(performCopyClips(_:)), keyEquivalent: "")
         copyItem.target = self
         timelineItems.append(copyItem)
@@ -862,6 +969,18 @@ final class TimelineView: NSView {
         return editor.timeline.tracks.flatMap(\.clips).compactMap { clip in
             selected.contains(clip.id) ? clip.id : nil
         }
+    }
+
+    @objc private func performSelectForwardOnTrack(_ sender: Any?) {
+        guard let clipId = (sender as? NSMenuItem)?.representedObject as? String else { return }
+        editor.selectForward(from: clipId, scope: .track)
+        needsDisplay = true
+    }
+
+    @objc private func performSelectForwardOnAllTracks(_ sender: Any?) {
+        guard let clipId = (sender as? NSMenuItem)?.representedObject as? String else { return }
+        editor.selectForward(from: clipId, scope: .allTracks)
+        needsDisplay = true
     }
 
     @objc private func performAddClipsToChat(_ sender: Any?) {
@@ -1059,11 +1178,11 @@ final class TimelineView: NSView {
                 }
             }
 
-            let visualAssets = assets.filter { $0.type.isVisual }
+            let visualAssets = plan.visualAssets
             if !visualAssets.isEmpty, let vIdx = visualIdx {
                 insert(visualAssets, vIdx, audioIdx)
             }
-            let audioOnlyAssets = assets.filter { $0.type == .audio }
+            let audioOnlyAssets = plan.audioOnlyAssets
             if !audioOnlyAssets.isEmpty, let aIdx = audioIdx {
                 insert(audioOnlyAssets, aIdx, nil)
             }

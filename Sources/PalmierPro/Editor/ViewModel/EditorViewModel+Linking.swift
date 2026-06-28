@@ -274,6 +274,22 @@ extension EditorViewModel {
         let visualTarget: TrackDropTarget?
         let audioTarget: TrackDropTarget?
 
+        var visualAssets: [MediaAsset] {
+            placements.filter(\.hasVisual).map(\.asset)
+        }
+
+        var audioOnlyAssets: [MediaAsset] {
+            placements.filter { !$0.hasVisual && $0.hasAudio }.map(\.asset)
+        }
+
+        var visualDurationFrames: Int {
+            placements.filter(\.hasVisual).reduce(0) { $0 + $1.durationFrames }
+        }
+
+        var audioOnlyDurationFrames: Int {
+            placements.filter { !$0.hasVisual && $0.hasAudio }.reduce(0) { $0 + $1.durationFrames }
+        }
+
         struct Placement {
             let asset: MediaAsset
             let startFrame: Int
@@ -306,11 +322,14 @@ extension EditorViewModel {
 
     func materialize(plan: DropPlan) -> (visual: Int?, audio: Int?) {
         let visualIdx = plan.visualTarget.map { materializeTrackIndex(target: $0, type: .video) }
-        let audioIdx: Int? = plan.audioTarget.map { audio in
-            let shifted = plan.visualTarget.map { shiftAfterVisualInsertion(audio: audio, visual: $0) } ?? audio
-            return materializeTrackIndex(target: shifted, type: .audio)
-        }
+        let audioIdx = audioTargetAfterVisualInsertion(plan: plan).map { materializeTrackIndex(target: $0, type: .audio) }
         return (visualIdx, audioIdx)
+    }
+
+    func audioTargetAfterVisualInsertion(plan: DropPlan) -> TrackDropTarget? {
+        plan.audioTarget.map { audio in
+            plan.visualTarget.map { shiftAfterVisualInsertion(audio: audio, visual: $0) } ?? audio
+        }
     }
 
     /// Resolve a `TrackDropTarget` into a concrete track index, creating a new track if needed.

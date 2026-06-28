@@ -75,6 +75,16 @@ enum MainMenuBuilder {
         menu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         menu.addItem(.separator())
 
+        let selectForwardTrackItem = NSMenuItem(title: "Select Forward on Track", action: #selector(EditorActions.selectForwardOnTrack(_:)), keyEquivalent: "a")
+        selectForwardTrackItem.keyEquivalentModifierMask = []
+        menu.addItem(selectForwardTrackItem)
+
+        let selectForwardAllItem = NSMenuItem(title: "Select Forward on All Tracks", action: #selector(EditorActions.selectForwardOnAllTracks(_:)), keyEquivalent: "a")
+        selectForwardAllItem.keyEquivalentModifierMask = [.shift]
+        menu.addItem(selectForwardAllItem)
+
+        menu.addItem(.separator())
+
         let splitItem = NSMenuItem(title: "Split at Playhead", action: #selector(EditorActions.splitAtPlayhead(_:)), keyEquivalent: "k")
         splitItem.keyEquivalentModifierMask = [.command]
         menu.addItem(splitItem)
@@ -174,6 +184,8 @@ enum MainMenuBuilder {
     func splitAtPlayhead(_ sender: Any?)
     func trimStartToPlayhead(_ sender: Any?)
     func trimEndToPlayhead(_ sender: Any?)
+    func selectForwardOnTrack(_ sender: Any?)
+    func selectForwardOnAllTracks(_ sender: Any?)
     func deleteSelectedClips(_ sender: Any?)
     func rippleDeleteSelected(_ sender: Any?)
     func importMedia(_ sender: Any?)
