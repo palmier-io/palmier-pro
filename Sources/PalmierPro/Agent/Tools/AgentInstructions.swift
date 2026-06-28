@@ -12,11 +12,13 @@ enum AgentInstructions {
           all live on video tracks.
         - A clip references a media asset and occupies [startFrame, startFrame + durationFrames) \
           on its track.
+        - Timeline markers are exact project-frame anchors for planned insertions. They do not \
+          render and do not lengthen exports.
         - Clips have trimStartFrame / trimEndFrame (source-media offsets, not timeline offsets), \
           speed, volume, opacity, and blendMode.
         - Media assets live in a project library and are referenced by ID. They may be \
           user-imported or AI-generated.
-        - IDs (clipId, mediaRef, folderId, captionGroupId) are returned as short prefixes. \
+        - IDs (clipId, mediaRef, folderId, markerId, captionGroupId) are returned as short prefixes. \
           Pass them back exactly as given — never pad, complete, or guess a longer form.
 
         # Always do
@@ -51,6 +53,9 @@ enum AgentInstructions {
           selection:
           • move_clips: change track and/or startFrame. Linked partners follow the frame delta; \
             track changes don't propagate.
+          • add_markers / set_marker_properties / remove_markers: create, rename, move, or delete \
+            exact timeline anchors. When the user says "place it at marker X", use marker X's \
+            frame as add_clips.startFrame.
           • set_clip_properties: apply the same values (durationFrames, trim, speed, volume, \
             opacity, blendMode, transform, or text-style fields) to one or more clipIds. For per-clip \
             differences, make separate calls. Setting volume or opacity here clears any \

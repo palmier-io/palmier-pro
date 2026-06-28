@@ -330,6 +330,28 @@ struct ToolExecutorReadOnlyTests {
         #expect(result.isError)
     }
 
+    @Test func getTimelineReportsMarkersAndWindowsThem() async throws {
+        var timeline = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 300)]),
+        ])
+        timeline.markers = [
+            TimelineMarker(id: "m1", frame: 25, label: "Intro"),
+            TimelineMarker(id: "m2", frame: 180, label: "Insert image", color: "#F29933"),
+        ]
+        let h = ToolHarness(timeline: timeline)
+
+        let full = try await h.runOK("get_timeline") as? [String: Any]
+        let markers = full?["markers"] as? [[String: Any]]
+        #expect(markers?.count == 2)
+        #expect(markers?.first?["label"] as? String == "Intro")
+
+        let windowed = try await h.runOK("get_timeline", args: ["startFrame": 100, "endFrame": 220]) as? [String: Any]
+        let visible = windowed?["markers"] as? [[String: Any]]
+        #expect(visible?.count == 1)
+        #expect(visible?.first?["id"] as? String == "m2")
+        #expect(windowed?["totalMarkers"] as? Int == 2)
+    }
+
     private static func firstTrack(_ json: [String: Any]?) -> [String: Any]? {
         (json?["tracks"] as? [[String: Any]])?.first
     }
@@ -459,6 +481,64 @@ struct ToolExecutorReadOnlyTests {
         for m in models ?? [] {
             #expect(m["type"] as? String == "image")
         }
+    }
+}
+
+@Suite("ToolExecutor — marker handlers")
+@MainActor
+struct ToolExecutorMarkerTests {
+    @Test func addMarkersCreatesTimelineAnchors() async throws {
+        let h = ToolHarness()
+        let json = try await h.runOK("add_markers", args: [
+            "entries": [
+                ["frame": 48, "label": "Insert still", "color": "#F29933"],
+                ["frame": 120],
+            ],
+        ]) as? [String: Any]
+
+        let out = json?["markers"] as? [[String: Any]]
+        #expect(out?.count == 2)
+        #expect(h.editor.timeline.markers.count == 2)
+        #expect(h.editor.timeline.markers[0].frame == 48)
+        #expect(h.editor.timeline.markers[0].label == "Insert still")
+        #expect(h.editor.timeline.markers[1].label == "Marker 2")
+    }
+
+    @Test func setMarkerPropertiesRenamesAndMovesMarker() async throws {
+        let h = ToolHarness()
+        let marker = h.editor.addTimelineMarker(frame: 10, label: "Draft")
+
+        _ = try await h.runOK("set_marker_properties", args: [
+            "markerIds": [marker.id],
+            "frame": 42,
+            "label": "Final insert",
+            "color": "88CCFF",
+        ])
+
+        let updated = try #require(h.editor.timelineMarker(id: marker.id))
+        #expect(updated.frame == 42)
+        #expect(updated.label == "Final insert")
+        #expect(updated.color == "#88CCFF")
+    }
+
+    @Test func removeMarkersDeletesOnlyMarkers() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "clip-1", start: 0, duration: 30)]),
+        ]))
+        let first = h.editor.addTimelineMarker(frame: 10, label: "A")
+        let second = h.editor.addTimelineMarker(frame: 20, label: "B")
+
+        _ = try await h.runOK("remove_markers", args: ["markerIds": [first.id]])
+
+        #expect(h.editor.timeline.markers.map(\.id) == [second.id])
+        #expect(h.editor.timeline.tracks[0].clips[0].id == "clip-1")
+    }
+
+    @Test func markerToolsRejectUnknownMarkerIds() async {
+        let h = ToolHarness()
+        let result = await h.runRaw("remove_markers", args: ["markerIds": ["missing"]])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("Marker not found"))
     }
 }
 

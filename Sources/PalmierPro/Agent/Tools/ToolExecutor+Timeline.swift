@@ -48,6 +48,25 @@ extension ToolExecutor {
             }
             dict["tracks"] = tracks
         }
+        if let markers = dict["markers"] as? [[String: Any]], !markers.isEmpty {
+            let sortedMarkers = markers.sorted { Self.intValue($0["frame"]) < Self.intValue($1["frame"]) }
+            let visibleMarkers = window.map { w in
+                sortedMarkers.filter { marker in
+                    let frame = Self.intValue(marker["frame"])
+                    return frame >= w.lowerBound && frame < w.upperBound
+                }
+            } ?? sortedMarkers
+            if visibleMarkers.isEmpty {
+                dict.removeValue(forKey: "markers")
+            } else {
+                dict["markers"] = visibleMarkers
+            }
+            if visibleMarkers.count < sortedMarkers.count {
+                dict["totalMarkers"] = sortedMarkers.count
+            }
+        } else {
+            dict.removeValue(forKey: "markers")
+        }
         dict["totalFrames"] = editor.timeline.totalFrames
         if let window {
             dict["window"] = [window.lowerBound, min(window.upperBound, editor.timeline.totalFrames)]

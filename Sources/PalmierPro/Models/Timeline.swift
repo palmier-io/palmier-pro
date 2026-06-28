@@ -12,6 +12,23 @@ struct Timeline: Codable, Sendable, Equatable {
     var height: Int = 1080
     var settingsConfigured: Bool = false
     var tracks: [Track] = []
+    var markers: [TimelineMarker] = []
+
+    private enum CodingKeys: String, CodingKey {
+        case fps, width, height, settingsConfigured, tracks, markers
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        fps = (try? c.decode(Int.self, forKey: .fps)) ?? 30
+        width = (try? c.decode(Int.self, forKey: .width)) ?? 1920
+        height = (try? c.decode(Int.self, forKey: .height)) ?? 1080
+        settingsConfigured = (try? c.decode(Bool.self, forKey: .settingsConfigured)) ?? false
+        tracks = (try? c.decode([Track].self, forKey: .tracks)) ?? []
+        markers = (try? c.decode([TimelineMarker].self, forKey: .markers)) ?? []
+    }
 
     var totalFrames: Int {
         var maxFrame = 0
@@ -19,6 +36,36 @@ struct Timeline: Codable, Sendable, Equatable {
             maxFrame = max(maxFrame, track.endFrame)
         }
         return maxFrame
+    }
+}
+
+struct TimelineMarker: Codable, Sendable, Equatable, Identifiable {
+    var id: String = UUID().uuidString
+    var frame: Int
+    var label: String = ""
+    var color: String?
+
+    init(id: String = UUID().uuidString, frame: Int, label: String = "", color: String? = nil) {
+        self.id = id
+        self.frame = frame
+        self.label = label
+        self.color = color
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, frame, label, color
+    }
+}
+
+extension TimelineMarker {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString,
+            frame: (try? c.decode(Int.self, forKey: .frame)) ?? 0,
+            label: (try? c.decode(String.self, forKey: .label)) ?? "",
+            color: try? c.decode(String.self, forKey: .color)
+        )
     }
 }
 

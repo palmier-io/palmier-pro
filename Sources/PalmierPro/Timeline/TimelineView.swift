@@ -113,7 +113,8 @@ final class TimelineView: NSView {
             }
         }
 
-        let totalFrames = editor.timeline.totalFrames
+        let markerExtent = editor.timeline.markers.map(\.frame).max().map { $0 + 1 } ?? 0
+        let totalFrames = max(editor.timeline.totalFrames, markerExtent)
         let contentWidth = editor.zoomScale * Double(totalFrames) + visibleSize.width * 0.5
         let geo = geometry
         let contentHeight: CGFloat
@@ -267,6 +268,7 @@ final class TimelineView: NSView {
         )
         drawTimelineRangeSelectionRulerFill(geometry: geo, scrollOffset: scrollOffset, context: ctx)
         drawTimelineRangeSelectionEdges(geometry: geo, scrollOffset: scrollOffset, context: ctx)
+        drawTimelineMarkers(geometry: geo, scrollOffset: scrollOffset, visibleWidth: visibleWidth, context: ctx)
     }
 
     func updatePlayheadLayer() { playheadOverlay.update() }
@@ -507,6 +509,59 @@ final class TimelineView: NSView {
             ctx.addLine(to: CGPoint(x: x, y: Double(scrollOffset.y + geo.rulerHeight)))
         }
         ctx.strokePath()
+    }
+
+    private func drawTimelineMarkers(
+        geometry geo: TimelineGeometry,
+        scrollOffset: NSPoint,
+        visibleWidth: CGFloat,
+        context ctx: CGContext
+    ) {
+        guard !editor.timeline.markers.isEmpty else { return }
+        let visibleHeight = enclosingScrollView?.contentView.bounds.height ?? bounds.height
+        let minX = Double(scrollOffset.x) - 48
+        let maxX = Double(scrollOffset.x + visibleWidth) + 160
+        let rulerMinY = Double(scrollOffset.y)
+        let rulerMaxY = rulerMinY + Double(geo.rulerHeight)
+        let bodyMaxY = Double(scrollOffset.y + visibleHeight)
+
+        for marker in editor.timeline.markers {
+            let x = geo.xForFrame(marker.frame)
+            guard x >= minX, x <= maxX else { continue }
+
+            let color = timelineMarkerColor(marker)
+            ctx.setStrokeColor(color.withAlphaComponent(0.68).cgColor)
+            ctx.setLineWidth(AppTheme.BorderWidth.thin)
+            ctx.move(to: CGPoint(x: x, y: rulerMaxY))
+            ctx.addLine(to: CGPoint(x: x, y: bodyMaxY))
+            ctx.strokePath()
+
+            ctx.setFillColor(color.cgColor)
+            let w = 9.0
+            let top = rulerMinY + 4
+            let markerPath = CGMutablePath()
+            markerPath.move(to: CGPoint(x: x, y: top))
+            markerPath.addLine(to: CGPoint(x: x - w * 0.5, y: top + 7))
+            markerPath.addLine(to: CGPoint(x: x, y: top + 14))
+            markerPath.addLine(to: CGPoint(x: x + w * 0.5, y: top + 7))
+            markerPath.closeSubpath()
+            ctx.addPath(markerPath)
+            ctx.fillPath()
+
+            let label = editor.markerDisplayLabel(marker)
+            guard !label.isEmpty, geo.pixelsPerFrame >= 0.75 else { continue }
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 10, weight: .medium),
+                .foregroundColor: color.withAlphaComponent(0.95),
+            ]
+            let labelRect = NSRect(
+                x: x + 7,
+                y: rulerMinY + 4,
+                width: 136,
+                height: 14
+            )
+            (label as NSString).draw(in: labelRect, withAttributes: attrs)
+        }
     }
 
     private func drawGapSelection(geometry geo: TimelineGeometry, context ctx: CGContext) {
@@ -788,9 +843,13 @@ final class TimelineView: NSView {
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
+        let scrollOffsetY = enclosingScrollView?.contentView.bounds.origin.y ?? 0
         let trackIndex = geometry.trackAt(y: point.y)
         let clickFrame = max(0, geometry.frameAt(x: point.x))
         let clickedRange = editor.validSelectedTimelineRange?.contains(frame: clickFrame) ?? false
+        if point.y >= scrollOffsetY && point.y < scrollOffsetY + geometry.rulerHeight {
+            return rulerMenu(frame: clickFrame, marker: markerHit(at: point, geometry: geometry, scrollOffsetY: scrollOffsetY))
+        }
         guard let hit = inputController.hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) else {
             return emptyAreaMenu(trackIndex: trackIndex, frame: clickFrame, clickedRange: clickedRange)
         }
@@ -929,6 +988,90 @@ final class TimelineView: NSView {
         return menu.items.isEmpty ? nil : menu
     }
 
+    private func rulerMenu(frame: Int, marker: TimelineMarker?) -> NSMenu {
+        let menu = NSMenu()
+        if let marker {
+            let goItem = NSMenuItem(title: "Go to Marker", action: #selector(performGoToMarker(_:)), keyEquivalent: "")
+            goItem.target = self
+            goItem.representedObject = marker.id
+            menu.addItem(goItem)
+
+            let renameItem = NSMenuItem(title: "Rename Marker...", action: #selector(performRenameMarker(_:)), keyEquivalent: "")
+            renameItem.target = self
+            renameItem.representedObject = marker.id
+            menu.addItem(renameItem)
+
+            let deleteItem = NSMenuItem(title: "Delete Marker", action: #selector(performDeleteMarker(_:)), keyEquivalent: "")
+            deleteItem.target = self
+            deleteItem.representedObject = marker.id
+            menu.addItem(deleteItem)
+
+            menu.addItem(.separator())
+        }
+
+        let addItem = NSMenuItem(title: "Add Marker Here...", action: #selector(performAddMarker(_:)), keyEquivalent: "")
+        addItem.target = self
+        addItem.representedObject = frame
+        menu.addItem(addItem)
+        return menu
+    }
+
+    private func markerHit(at point: NSPoint, geometry geo: TimelineGeometry, scrollOffsetY: CGFloat) -> TimelineMarker? {
+        guard point.y >= scrollOffsetY, point.y < scrollOffsetY + geo.rulerHeight else { return nil }
+        let slop = max(6.0, min(14.0, 3.0 / geo.pixelsPerFrame))
+        return editor.timeline.markers
+            .map { marker in (marker, abs(geo.xForFrame(marker.frame) - Double(point.x))) }
+            .filter { $0.1 <= slop }
+            .sorted { $0.1 < $1.1 }
+            .first?
+            .0
+    }
+
+    private func timelineMarkerColor(_ marker: TimelineMarker) -> NSColor {
+        guard let color = marker.color.flatMap(Self.colorFromHex(_:)) else {
+            return AppTheme.Accent.timecodeNSColor
+        }
+        return color
+    }
+
+    private static func colorFromHex(_ raw: String) -> NSColor? {
+        let hex = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard hex.count == 6 || hex.count == 8,
+              let value = UInt64(hex, radix: 16) else { return nil }
+        let r: CGFloat
+        let g: CGFloat
+        let b: CGFloat
+        let a: CGFloat
+        if hex.count == 8 {
+            r = CGFloat((value >> 24) & 0xff) / 255.0
+            g = CGFloat((value >> 16) & 0xff) / 255.0
+            b = CGFloat((value >> 8) & 0xff) / 255.0
+            a = CGFloat(value & 0xff) / 255.0
+        } else {
+            r = CGFloat((value >> 16) & 0xff) / 255.0
+            g = CGFloat((value >> 8) & 0xff) / 255.0
+            b = CGFloat(value & 0xff) / 255.0
+            a = 1.0
+        }
+        return NSColor(red: r, green: g, blue: b, alpha: a)
+    }
+
+    private func requestMarkerLabel(title: String, defaultValue: String = "") -> String? {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = "Leave blank to use the default marker name."
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        field.stringValue = defaultValue
+        alert.accessoryView = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        return field.stringValue
+    }
+
     private func emptyAreaMenu(trackIndex: Int, frame: Int, clickedRange: Bool) -> NSMenu? {
         let menu = NSMenu()
         if editor.canPasteClips,
@@ -999,6 +1142,35 @@ final class TimelineView: NSView {
 
     @objc private func performClearTimelineRange(_ sender: Any?) {
         editor.clearTimelineRange()
+        needsDisplay = true
+    }
+
+    @objc private func performAddMarker(_ sender: Any?) {
+        guard let frame = (sender as? NSMenuItem)?.representedObject as? Int else { return }
+        let label = requestMarkerLabel(title: "Add Marker")
+        guard label != nil else { return }
+        _ = editor.addTimelineMarker(frame: frame, label: label)
+        needsDisplay = true
+    }
+
+    @objc private func performRenameMarker(_ sender: Any?) {
+        guard let markerId = (sender as? NSMenuItem)?.representedObject as? String,
+              let marker = editor.timelineMarker(id: markerId),
+              let label = requestMarkerLabel(title: "Rename Marker", defaultValue: marker.label) else { return }
+        editor.updateTimelineMarker(id: markerId, label: label)
+        needsDisplay = true
+    }
+
+    @objc private func performDeleteMarker(_ sender: Any?) {
+        guard let markerId = (sender as? NSMenuItem)?.representedObject as? String else { return }
+        editor.removeTimelineMarkers(ids: [markerId])
+        needsDisplay = true
+    }
+
+    @objc private func performGoToMarker(_ sender: Any?) {
+        guard let markerId = (sender as? NSMenuItem)?.representedObject as? String,
+              let marker = editor.timelineMarker(id: markerId) else { return }
+        editor.seekToFrame(marker.frame)
         needsDisplay = true
     }
 

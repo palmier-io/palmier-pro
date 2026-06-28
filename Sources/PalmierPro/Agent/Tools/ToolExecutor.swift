@@ -75,6 +75,9 @@ final class ToolExecutor {
         switch tool {
         case .getTimeline:   return try getTimeline(editor, args)
         case .getMedia:      return try getMedia(editor)
+        case .addMarkers:    return try addMarkers(editor, args)
+        case .setMarkerProperties: return try setMarkerProperties(editor, args)
+        case .removeMarkers: return try removeMarkers(editor, args)
         case .inspectMedia:  return try await inspectMedia(editor, args)
         case .getTranscript: return try await getTranscript(editor, args)
         case .inspectTimeline: return try await inspectTimeline(editor, args)

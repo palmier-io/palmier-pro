@@ -128,7 +128,32 @@ struct ProjectRoundTripTests {
         #expect(decoded.tracks[1].muted == true)
     }
 
+    @Test func timelineMarkersSurviveRoundTrip() throws {
+        var timeline = Fixtures.timeline()
+        timeline.markers = [
+            TimelineMarker(id: "m1", frame: 42, label: "Insert still", color: "#F29933"),
+            TimelineMarker(id: "m2", frame: 120, label: "Logo beat"),
+        ]
+
+        let decoded = try roundTrip(timeline)
+        #expect(decoded.markers == timeline.markers)
+    }
+
     // MARK: - Legacy / tolerant decode
+
+    @Test func timelineMissingMarkersFieldDecodesWithEmptyMarkers() throws {
+        let json = """
+        {
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "settingsConfigured": true,
+          "tracks": []
+        }
+        """
+        let timeline = try JSONDecoder().decode(Timeline.self, from: Data(json.utf8))
+        #expect(timeline.markers.isEmpty)
+    }
 
     @Test func trackMissingMutedFieldDecodesAsFalse() throws {
         // Older projects didn't have muted/hidden/syncLocked. They must decode with defaults.

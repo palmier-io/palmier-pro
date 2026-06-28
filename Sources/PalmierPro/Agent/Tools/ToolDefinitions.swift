@@ -4,6 +4,9 @@ import MCP
 enum ToolName: String, CaseIterable, Sendable {
     case getTimeline = "get_timeline"
     case getMedia = "get_media"
+    case addMarkers = "add_markers"
+    case setMarkerProperties = "set_marker_properties"
+    case removeMarkers = "remove_markers"
     case addClips = "add_clips"
     case insertClips = "insert_clips"
     case removeClips = "remove_clips"
@@ -54,7 +57,7 @@ enum ToolDefinitions {
     static let all: [AgentTool] = [
         AgentTool(
             name: .getTimeline,
-            description: "Always call at the start of a session. Returns project settings (fps, resolution, totalFrames), track list with types and order, all clips with their frames and properties, and canGenerate (if false, generation/upscale tools will fail — tell the user to sign in to Palmier and subscribe before attempting them). The clipId/trackId values here are what every other tool accepts.\n\nClip and track fields equal to their defaults are omitted: mediaType 'video', sourceClipType = mediaType, speed 1, volume 1, opacity 1, blendMode 'normal', trims/fades 0, identity transform/crop, default textStyle, track muted/hidden false. Text clips never report trims (no source media).\n\nCaption clips (sharing a captionGroupId) come back per track as captionGroups instead of clips entries: properties common to the group are hoisted into 'shared' and each clip is a [clipId, startFrame, durationFrames, text] row (caption box width/height are auto-fit per text and omitted). Rows are capped at 200 per group — when clipCount exceeds the rows shown, page with startFrame/endFrame. Caption clips whose properties deviate from the group appear individually in clips.",
+            description: "Always call at the start of a session. Returns project settings (fps, resolution, totalFrames), timeline markers, track list with types and order, all clips with their frames and properties, and canGenerate (if false, generation/upscale tools will fail — tell the user to sign in to Palmier and subscribe before attempting them). The clipId/trackId/markerId values here are what other tools accept.\n\nMarkers are exact project-frame anchors for placement; use a marker's frame as add_clips.startFrame when placing media at that marker.\n\nClip and track fields equal to their defaults are omitted: mediaType 'video', sourceClipType = mediaType, speed 1, volume 1, opacity 1, blendMode 'normal', trims/fades 0, identity transform/crop, default textStyle, track muted/hidden false. Text clips never report trims (no source media).\n\nCaption clips (sharing a captionGroupId) come back per track as captionGroups instead of clips entries: properties common to the group are hoisted into 'shared' and each clip is a [clipId, startFrame, durationFrames, text] row (caption box width/height are auto-fit per text and omitted). Rows are capped at 200 per group — when clipCount exceeds the rows shown, page with startFrame/endFrame. Caption clips whose properties deviate from the group appear individually in clips.",
             inputSchema: objectSchema(
                 properties: [
                     "startFrame": ["type": "integer", "description": "Optional. Window start (inclusive); only clips intersecting [startFrame, endFrame) are returned. Tracks report totalClips when the window hides some."],
@@ -66,6 +69,59 @@ enum ToolDefinitions {
             name: .getMedia,
             description: "Call before referencing any asset. Every mediaRef/reference ID in other tools comes from the IDs returned here. Also exposes generationStatus (generating | downloading | failed | none) for async-generated and -imported assets.",
             inputSchema: objectSchema()
+        ),
+        AgentTool(
+            name: .addMarkers,
+            description: "Creates one or more timeline markers at exact project frames. Use markers as named placement anchors for later image/video/text insertion. Markers do not render and do not lengthen exports. Frame values are project frames from get_timeline.",
+            inputSchema: objectSchema(
+                properties: [
+                    "entries": [
+                        "type": "array",
+                        "description": "Markers to create.",
+                        "items": [
+                            "type": "object",
+                            "properties": [
+                                "frame": ["type": "integer", "description": "Exact project frame for the marker."],
+                                "label": ["type": "string", "description": "Optional display label, e.g. 'Insert logo frame'."],
+                                "color": ["type": "string", "description": "Optional hex color '#RRGGBB' or '#RRGGBBAA'."],
+                            ],
+                            "required": ["frame"],
+                        ],
+                    ],
+                ],
+                required: ["entries"]
+            )
+        ),
+        AgentTool(
+            name: .setMarkerProperties,
+            description: "Updates one or more timeline markers. Use this to rename markers, move them to another exact frame, or change their color. For different values per marker, make separate calls.",
+            inputSchema: objectSchema(
+                properties: [
+                    "markerIds": [
+                        "type": "array",
+                        "items": ["type": "string"],
+                        "description": "Marker ids from get_timeline or add_markers.",
+                    ],
+                    "frame": ["type": "integer", "description": "Optional new exact project frame."],
+                    "label": ["type": "string", "description": "Optional new label. Empty string clears it."],
+                    "color": ["type": "string", "description": "Optional hex color '#RRGGBB' or '#RRGGBBAA'. Empty string clears it."],
+                ],
+                required: ["markerIds"]
+            )
+        ),
+        AgentTool(
+            name: .removeMarkers,
+            description: "Deletes timeline markers by id. This only removes marker anchors; it never removes clips or media.",
+            inputSchema: objectSchema(
+                properties: [
+                    "markerIds": [
+                        "type": "array",
+                        "items": ["type": "string"],
+                        "description": "Marker ids from get_timeline.",
+                    ],
+                ],
+                required: ["markerIds"]
+            )
         ),
         AgentTool(
             name: .inspectMedia,
