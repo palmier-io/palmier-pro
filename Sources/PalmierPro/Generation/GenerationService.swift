@@ -464,6 +464,16 @@ final class GenerationService {
                 return
             }
         }
+
+        // Stream ended without a terminal update: finish from persisted URLs or fail.
+        let persisted = placeholders.compactMap(\.generationInput?.resultURLs).first ?? []
+        await finalizeSuccess(
+            urlStrings: persisted,
+            placeholders: placeholders,
+            editor: editor,
+            onComplete: onComplete,
+            onFailure: onFailure
+        )
     }
 
     private func backendJobStream<Failure: Error>(
@@ -498,7 +508,7 @@ final class GenerationService {
                 editor.onProjectCheckpointRequired?()
             }
             await finalizeSuccess(
-                job: job,
+                urlStrings: job.resultUrls ?? [],
                 placeholders: placeholders,
                 editor: editor,
                 onComplete: onComplete,
@@ -549,13 +559,12 @@ final class GenerationService {
     }
 
     private func finalizeSuccess(
-        job: BackendGenerationJob,
+        urlStrings: [String],
         placeholders: [MediaAsset],
         editor: EditorViewModel,
         onComplete: (@MainActor (MediaAsset) -> Void)?,
         onFailure: (@MainActor () -> Void)?
     ) async {
-        let urlStrings = job.resultUrls ?? []
         guard !urlStrings.isEmpty else {
             Log.generation.error("backend job succeeded with no resultUrls")
             for placeholder in placeholders {

@@ -518,7 +518,7 @@ final class VideoProject: NSDocument {
                 missingRefs.insert(candidate.id)
                 continue
             }
-            if asset.generationStatus != .none {
+            if asset.generationStatus != .none, !asset.canResumeGeneration {
                 asset.generationStatus = .none
                 editorViewModel.updateManifestMetadata(for: asset)
             }
