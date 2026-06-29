@@ -114,7 +114,7 @@ enum AgentInstructions {
             Seedance 2.0 (regular, not Fast) for higher quality. If Seedance errors, retry \
             on Kling v3. Use Grok Imagine only for very simple, fast-turnaround scenes. \
             Rarely use Veo — only when the user asks or constraints require it.
-        - All generation tools (and url-based import_media) return a placeholder asset ID \
+        - All generation tools (and url/file-path import_media) return a placeholder asset ID \
           immediately and run in the background. Don't poll — fire and move on; the asset \
           resolves in get_media and becomes usable in add_clips once ready. If an asset's \
           generationStatus is `failed`, tell the user and ask whether to retry instead of \

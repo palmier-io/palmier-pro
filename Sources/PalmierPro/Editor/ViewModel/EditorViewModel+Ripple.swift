@@ -20,9 +20,7 @@ extension EditorViewModel {
 
     // MARK: - Public API
 
-    /// Trim one or more clips in a single undo group. Overwrite-style: each clip
-    /// resizes in place — no adjacent-clip shift on the same track, no sync-lock
-    /// push to other tracks.
+    /// Trim one or more clips in a single undo group. Overwrite-style
     func trimClips(_ edits: [(clipId: String, trimStartFrame: Int, trimEndFrame: Int)]) {
         guard !edits.isEmpty else { return }
         undoManager?.beginUndoGrouping()
@@ -31,6 +29,100 @@ extension EditorViewModel {
         }
         undoManager?.endUndoGrouping()
         undoManager?.setActionName(edits.count == 1 ? "Trim Clip" : "Trim Clips")
+    }
+
+    /// Ripple trim result: resized clips, shifted clips, and optional obstacle frame if clamped.
+    struct RippleTrimPlan {
+        struct Resize { let clipId: String; let trimStart: Int; let trimEnd: Int; let duration: Int }
+        let durationDelta: Int
+        let resizes: [Resize]
+        let shifts: [ClipShift]
+        let blockedAtFrame: Int?
+        var targetIds: Set<String> { Set(resizes.map(\.clipId)) }
+    }
+
+    /// Plans a non-destructive ripple trim, capped by the strictest linked or sync-locked constraint
+    func planRippleTrim(clipId: String, edge: TrimEdge, deltaFrames: Int, propagateToLinked: Bool) -> RippleTrimPlan? {
+        guard deltaFrames != 0, let leadLoc = findClip(id: clipId) else { return nil }
+        let leadEnd = timeline.tracks[leadLoc.trackIndex].clips[leadLoc.clipIndex].endFrame
+
+        var targets: [String] = [clipId]
+        if propagateToLinked { targets.append(contentsOf: linkedPartnerIds(of: clipId)) }
+        let targetIds = Set(targets)
+        let targetClips = targets.compactMap { findClip(id: $0).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex] } }
+
+        // Each target's own source headroom caps how far it can ripple; bind to the smallest.
+        let sourceDelta = targetClips
+            .map { rippleTrimDurationDelta(for: $0, edge: edge, delta: deltaFrames) }
+            .min(by: { abs($0) < abs($1) }) ?? 0
+
+        // Shrinking shifts sync-locked followers left; clamp to the tightest available room.
+        var durationDelta = sourceDelta
+        var blockedAtFrame: Int?
+        if sourceDelta < 0 {
+            let limits = timeline.tracks.compactMap { track -> (room: Int, obstacle: Int)? in
+                guard track.syncLocked, !track.clips.contains(where: { targetIds.contains($0.id) }) else { return nil }
+                return syncLockedLeftRoom(track: track, insertFrame: leadEnd)
+            }
+            if let tightest = limits.min(by: { $0.room < $1.room }), sourceDelta < -tightest.room {
+                durationDelta = -tightest.room
+                blockedAtFrame = tightest.obstacle
+            }
+        }
+        guard durationDelta != 0 || blockedAtFrame != nil else { return nil }
+
+        // A right-edge duration change maps to the same source-frame edge drag; left flips sign.
+        let resizes = targetClips.map { c -> RippleTrimPlan.Resize in
+            let fields = trimValues(for: c, edge: edge, delta: edge == .right ? durationDelta : -durationDelta)
+            return .init(clipId: c.id, trimStart: fields.trimStart, trimEnd: fields.trimEnd,
+                         duration: max(1, c.durationFrames + durationDelta))
+        }
+
+        var shifts: [ClipShift] = []
+        for ti in timeline.tracks.indices {
+            let track = timeline.tracks[ti]
+            let targetEnd = track.clips.first { targetIds.contains($0.id) }?.endFrame
+            guard targetEnd != nil || track.syncLocked else { continue }
+            shifts += RippleEngine.computeRipplePush(
+                clips: track.clips, insertFrame: targetEnd ?? leadEnd, pushAmount: durationDelta, excludeIds: targetIds
+            )
+        }
+        return RippleTrimPlan(durationDelta: durationDelta, resizes: resizes, shifts: shifts, blockedAtFrame: blockedAtFrame)
+    }
+
+    /// Max left shift for sync-locked clips before hitting the next obstacle; nil if no shift possible.
+    private func syncLockedLeftRoom(track: Track, insertFrame: Int) -> (room: Int, obstacle: Int)? {
+        guard let first = track.clips.filter({ $0.startFrame >= insertFrame }).map(\.startFrame).min() else { return nil }
+        let prevEnd = track.clips.filter { $0.startFrame < insertFrame }.map(\.endFrame).max() ?? 0
+        return (max(0, first - prevEnd), prevEnd)
+    }
+
+    /// Ripple trim: resize a clip from the dragged edge and shift every clip after it
+    func rippleTrimClip(clipId: String, edge: TrimEdge, deltaFrames: Int, propagateToLinked: Bool) {
+        guard let plan = planRippleTrim(clipId: clipId, edge: edge, deltaFrames: deltaFrames, propagateToLinked: propagateToLinked) else { return }
+
+        let touched = plan.targetIds.union(plan.shifts.map(\.clipId))
+        withTimelineSwap(actionName: "Ripple Trim") {
+            for r in plan.resizes {
+                guard let l = findClip(id: r.clipId) else { continue }
+                timeline.tracks[l.trackIndex].clips[l.clipIndex].trimStartFrame = r.trimStart
+                timeline.tracks[l.trackIndex].clips[l.clipIndex].trimEndFrame = r.trimEnd
+                timeline.tracks[l.trackIndex].clips[l.clipIndex].setDuration(r.duration)
+            }
+            applyShifts(plan.shifts)
+            for ti in timeline.tracks.indices where timeline.tracks[ti].clips.contains(where: { touched.contains($0.id) }) {
+                sortClips(trackIndex: ti)
+            }
+        }
+    }
+
+    /// Achievable timeline-duration delta for a ripple trim of `clip` from a drag of `delta`
+    /// timeline frames. Reuses `trimValues` for the source clamp, then converts the realised
+    /// source-trim change back to a timeline-length delta (positive = longer).
+    private func rippleTrimDurationDelta(for clip: Clip, edge: TrimEdge, delta: Int) -> Int {
+        let fields = trimValues(for: clip, edge: edge, delta: delta)
+        let sourceShift = (fields.trimStart - clip.trimStartFrame) + (fields.trimEnd - clip.trimEndFrame)
+        return -Int((Double(sourceShift) / clip.speed).rounded())
     }
 
     /// Ripple delete: remove selected clips and close the gaps. Sync-locked tracks shift
@@ -89,10 +181,14 @@ extension EditorViewModel {
     }
 
     /// Deletes project-frame ranges from one track (spanning any clips) and closes the gaps; cuts linked A/V partners, shifts sync-locked tracks, refuses if any can't absorb.
-    func rippleDeleteRangesOnTrack(trackIndex: Int, ranges: [FrameRange]) -> RippleRangesOutcome {
+    /// Tracks in `ignoreSyncLockTrackIndices` are treated as unlocked for this call only
+    func rippleDeleteRangesOnTrack(trackIndex: Int, ranges: [FrameRange], ignoreSyncLockTrackIndices: Set<Int> = []) -> RippleRangesOutcome {
         guard timeline.tracks.indices.contains(trackIndex) else {
             return .refused("Track index out of range: \(trackIndex)")
         }
+        let ignoredTrackIds = Set(ignoreSyncLockTrackIndices.compactMap {
+            timeline.tracks.indices.contains($0) ? timeline.tracks[$0].id : nil
+        })
         let merged = RippleEngine.mergeRanges(ranges.filter { $0.length > 0 })
         guard !merged.isEmpty else { return .refused("No non-empty ranges to delete") }
         let totalRemoved = merged.reduce(0) { $0 + $1.length }
@@ -111,7 +207,7 @@ extension EditorViewModel {
         // aren't cleared, so their clips are unchanged when the shift is applied below.
         for ti in timeline.tracks.indices {
             let track = timeline.tracks[ti]
-            guard !clearTrackIds.contains(track.id), track.syncLocked else { continue }
+            guard !clearTrackIds.contains(track.id), track.syncLocked, !ignoredTrackIds.contains(track.id) else { continue }
             let shifts = RippleEngine.computeRippleShiftsForRanges(clips: track.clips, removedRanges: merged)
             if let reason = validateShifts(trackIndex: ti, shifts: shifts) {
                 return .refused(reason)
@@ -130,7 +226,7 @@ extension EditorViewModel {
             }
             for ti in timeline.tracks.indices {
                 let track = timeline.tracks[ti]
-                guard clearTrackIds.contains(track.id) || track.syncLocked else { continue }
+                guard clearTrackIds.contains(track.id) || (track.syncLocked && !ignoredTrackIds.contains(track.id)) else { continue }
                 let shifts = RippleEngine.computeRippleShiftsForRanges(clips: track.clips, removedRanges: merged)
                 shiftedClips += applyShifts(shifts)
                 sortClips(trackIndex: ti)
@@ -205,6 +301,68 @@ extension EditorViewModel {
             sortClips(trackIndex: trackIndex)
         }
         return created
+    }
+
+    struct RippleInsertPreviewPlan: Equatable {
+        let gapRangesByTrackIndex: [Int: FrameRange]
+        let newTrackGapRangesByTarget: [TrackDropTarget: FrameRange]
+        let shiftDeltasByClipId: [String: Int]
+    }
+
+    func planRippleInsertPreview(dropPlan plan: DropPlan, atFrame: Int) -> RippleInsertPreviewPlan? {
+        var gapLengthsByTrackIndex: [Int: Int] = [:]
+        var newTrackGapLengthsByTarget: [TrackDropTarget: Int] = [:]
+        var shiftDeltasByClipId: [String: Int] = [:]
+
+        func currentTrackIndex(for target: TrackDropTarget, shiftedBy visualTarget: TrackDropTarget?) -> Int? {
+            guard case .existingTrack(var index) = target else { return nil }
+            if case .newTrackAt(let visualInsertIndex) = visualTarget,
+               index > visualInsertIndex {
+                index -= 1
+            }
+            return timeline.tracks.indices.contains(index) ? index : nil
+        }
+
+        func affectedTrackIndexes(for target: TrackDropTarget, shiftedBy visualTarget: TrackDropTarget?) -> Set<Int> {
+            var indexes = Set(timeline.tracks.indices.filter { timeline.tracks[$0].syncLocked })
+            if let index = currentTrackIndex(for: target, shiftedBy: visualTarget) {
+                indexes.insert(index)
+            }
+            return indexes
+        }
+
+        func addPush(target: TrackDropTarget?, shiftedBy visualTarget: TrackDropTarget?, pushAmount: Int) {
+            guard let target, pushAmount > 0 else { return }
+            if case .newTrackAt = target {
+                newTrackGapLengthsByTarget[target, default: 0] += pushAmount
+            }
+            for trackIndex in affectedTrackIndexes(for: target, shiftedBy: visualTarget) {
+                let clips = timeline.tracks[trackIndex].clips
+                let startFramesByClipId = Dictionary(uniqueKeysWithValues: clips.map { ($0.id, $0.startFrame) })
+                let shifts = RippleEngine.computeRipplePush(clips: clips, insertFrame: atFrame, pushAmount: pushAmount)
+                for shift in shifts {
+                    guard let originalStartFrame = startFramesByClipId[shift.clipId] else { continue }
+                    shiftDeltasByClipId[shift.clipId, default: 0] += shift.newStartFrame - originalStartFrame
+                }
+                gapLengthsByTrackIndex[trackIndex, default: 0] += pushAmount
+            }
+        }
+
+        addPush(target: plan.visualTarget, shiftedBy: nil, pushAmount: plan.visualDurationFrames)
+        addPush(target: audioTargetAfterVisualInsertion(plan: plan), shiftedBy: plan.visualTarget, pushAmount: plan.audioOnlyDurationFrames)
+
+        guard !gapLengthsByTrackIndex.isEmpty || !newTrackGapLengthsByTarget.isEmpty || !shiftDeltasByClipId.isEmpty else { return nil }
+        let gapRangesByTrackIndex = gapLengthsByTrackIndex.mapValues {
+            FrameRange(start: atFrame, end: atFrame + $0)
+        }
+        let newTrackGapRangesByTarget = newTrackGapLengthsByTarget.mapValues {
+            FrameRange(start: atFrame, end: atFrame + $0)
+        }
+        return RippleInsertPreviewPlan(
+            gapRangesByTrackIndex: gapRangesByTrackIndex,
+            newTrackGapRangesByTarget: newTrackGapRangesByTarget,
+            shiftDeltasByClipId: shiftDeltasByClipId
+        )
     }
 
     struct RippleInsertSpec {

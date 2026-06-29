@@ -2,26 +2,26 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.4.3",
-      "date": "2026-06-26",
+      "version": "0.4.5",
+      "date": "2026-06-28",
       "sections": [
         {
           "heading": "New",
           "items": [
-            "New FCPXML export format - Agent can now export your timeline as FCPXML v1.14 for Davinci Resolve."
+            "Skills: You can now create skills inside palmier pro. Go to settings -> skills to get started."
           ]
         },
         {
-          "heading": "Improved",
+          "heading": "UI",
           "items": [
-            "Agent's split_clips now can do batch operations.",
-            "Agent can specify language for the transcript generation."
+            "Better ripple experience: Ripple insert, delete, trim with live preview while dragging.",
+            "Track reorder: You can now reorder tracks by dragging them"
           ]
         },
         {
           "heading": "Fixed",
           "items": [
-            "Fixed caption phase timing issue."
+            "FCPXML export: more stable export for fcpxml v1.10 - v1.14."
           ]
         }
       ]

@@ -74,6 +74,7 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     let alignment: String?
     let animation: String?
     let highlightColor: String?
+    let blendMode: String?
 
     static let allowedKeys: Set<String> = [
         "clipIds", "captionGroupId",
@@ -81,6 +82,7 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
         "volume", "opacity",
         "transform",
         "content", "fontName", "fontSize", "color", "alignment", "animation", "highlightColor",
+        "blendMode",
     ]
 
     var hasAnyProperty: Bool {
@@ -89,6 +91,7 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
             || transform != nil
             || content != nil || fontName != nil || fontSize != nil
             || color != nil || alignment != nil || animation != nil || highlightColor != nil
+            || blendMode != nil
     }
 }
 
@@ -97,7 +100,8 @@ fileprivate struct RippleDeleteRangesInput: DecodableToolArgs {
     let trackIndex: Int?
     let ranges: [[Double]]
     let units: String?
-    static let allowedKeys: Set<String> = ["clipId", "trackIndex", "ranges", "units"]
+    let ignoreSyncLockedTracks: [Int]?
+    static let allowedKeys: Set<String> = ["clipId", "trackIndex", "ranges", "units", "ignoreSyncLockedTracks"]
 }
 
 fileprivate struct SetKeyframesInput: DecodableToolArgs {
@@ -506,6 +510,22 @@ extension ToolExecutor {
             }
         }
 
+        // blendMode applies only to visual (video/image) clips. "normal" clears it.
+        var blendMode: BlendMode?
+        let setBlendMode = input.blendMode != nil
+        if let raw = input.blendMode {
+            let nonVisual = clipTypes.filter { $0.value == .text || $0.value == .audio }.map(\.key).sorted()
+            if !nonVisual.isEmpty {
+                throw ToolError("blendMode only applies to video/image clips: \(nonVisual.joined(separator: ", "))")
+            }
+            if raw != "normal" {
+                guard let m = BlendMode(rawValue: raw) else {
+                    throw ToolError("invalid blendMode '\(raw)'. Valid: \(BlendMode.allCases.map(\.rawValue).joined(separator: ", "))")
+                }
+                blendMode = m
+            }
+        }
+
         // Expand timing fields to linked partners via the shared model helper.
         // Partners drop trim/speed when they're text — handled per-partner below.
         let propagatesTiming = input.durationFrames != nil || input.trimStartFrame != nil
@@ -534,6 +554,8 @@ extension ToolExecutor {
                     alignment: isText ? alignment : nil,
                     animation: (isText && input.animation != nil) ? .some(animation) : nil,
                     highlight: isText ? highlightOnly : nil,
+                    blendMode: blendMode,
+                    setBlendMode: setBlendMode,
                     clipId: id,
                     editor: editor
                 )
@@ -553,6 +575,7 @@ extension ToolExecutor {
                     speed:          partnerIsText ? nil : input.speed,
                     volume: nil, opacity: nil, transform: nil,
                     content: nil, fontName: nil, fontSize: nil, color: nil, alignment: nil, animation: nil, highlight: nil,
+                    blendMode: nil, setBlendMode: false,
                     clipId: partnerId,
                     editor: editor
                 )
@@ -577,8 +600,10 @@ extension ToolExecutor {
         fontSize: Double?,
         color: TextStyle.RGBA?,
         alignment: TextStyle.Alignment?,
-        animation: TextAnimation??,
-        highlight: TextStyle.RGBA?,
+        animation: TextAnimation??,   // outer nil = leave; .some(nil) = clear; .some(x) = set
+        highlight: TextStyle.RGBA?,   // merges into the existing/new animation without changing the preset
+        blendMode: BlendMode?,
+        setBlendMode: Bool,
         clipId: String,
         editor: EditorViewModel
     ) -> [String] {
@@ -606,6 +631,7 @@ extension ToolExecutor {
             // Setting a scalar clears any existing keyframe track on the same property.
             if let v = volume         { clip.volume  = v; clip.volumeTrack  = nil; changed.append("volume") }
             if let v = opacity        { clip.opacity = v; clip.opacityTrack = nil; changed.append("opacity") }
+            if setBlendMode           { clip.blendMode = blendMode; changed.append("blendMode") }
             if let t = transform {
                 let cur = clip.transform
                 var next = Transform(
@@ -807,7 +833,8 @@ extension ToolExecutor {
             resolvedTrackIndex = trackIndex
         }
 
-        switch editor.rippleDeleteRangesOnTrack(trackIndex: resolvedTrackIndex, ranges: frameRanges) {
+        let ignoreSyncLocked = Set(input.ignoreSyncLockedTracks ?? [])
+        switch editor.rippleDeleteRangesOnTrack(trackIndex: resolvedTrackIndex, ranges: frameRanges, ignoreSyncLockTrackIndices: ignoreSyncLocked) {
         case .refused(let reason):
             throw ToolError(reason)
         case .ok(let report):

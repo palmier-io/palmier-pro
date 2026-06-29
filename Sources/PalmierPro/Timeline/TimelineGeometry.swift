@@ -1,6 +1,6 @@
 import AppKit
 
-enum TrackDropTarget: Equatable {
+enum TrackDropTarget: Equatable, Hashable {
     case existingTrack(Int)
     case newTrackAt(Int) // insert new track before this index
 }

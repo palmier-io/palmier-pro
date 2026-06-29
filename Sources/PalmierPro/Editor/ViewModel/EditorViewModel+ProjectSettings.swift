@@ -51,15 +51,33 @@ extension EditorViewModel {
             }
         }
 
-        // Refit auto-fitted clips to the new canvas aspect
+        // Keep visual scale proportional when the canvas aspect changes.
         if width != prevWidth || height != prevHeight {
             for ti in timeline.tracks.indices {
                 for ci in timeline.tracks[ti].clips.indices {
-                    let clip = timeline.tracks[ti].clips[ci]
-                    guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }) else { continue }
-                    if clip.transform == fitTransform(for: asset, canvasWidth: prevWidth, canvasHeight: prevHeight) {
-                        timeline.tracks[ti].clips[ci].transform = fitTransform(for: asset, canvasWidth: width, canvasHeight: height)
+                    var clip = timeline.tracks[ti].clips[ci]
+                    guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }),
+                          let oldAspect = mediaCanvasAspect(for: asset, canvasWidth: prevWidth, canvasHeight: prevHeight),
+                          let newAspect = mediaCanvasAspect(for: asset, canvasWidth: width, canvasHeight: height) else { continue }
+
+                    let scaleAnimated = clip.scaleTrack?.isActive ?? false
+                    let oldFit = fitTransform(for: asset, canvasWidth: prevWidth, canvasHeight: prevHeight)
+                    if !scaleAnimated,
+                       transformScale(clip.transform, matches: oldFit) {
+                        let newFit = fitTransform(for: asset, canvasWidth: width, canvasHeight: height)
+                        clip.transform.width = newFit.width
+                        clip.transform.height = newFit.height
+                    } else {
+                        let heightScale = oldAspect / newAspect
+                        clip.transform.height *= heightScale
+                        if var track = clip.scaleTrack, track.isActive {
+                            for ki in track.keyframes.indices {
+                                track.keyframes[ki].value.b *= heightScale
+                            }
+                            clip.scaleTrack = track
+                        }
                     }
+                    timeline.tracks[ti].clips[ci] = clip
                 }
             }
         }
@@ -74,6 +92,10 @@ extension EditorViewModel {
         }
         undoManager?.setActionName("Change Project Settings")
         notifyTimelineChanged()
+    }
+
+    private func transformScale(_ transform: Transform, matches other: Transform) -> Bool {
+        abs(transform.width - other.width) < 0.0001 && abs(transform.height - other.height) < 0.0001
     }
 
     func checkProjectSettings(for assets: [MediaAsset]) -> ProjectSettingsAction {

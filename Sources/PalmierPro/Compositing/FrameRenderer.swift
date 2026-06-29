@@ -17,19 +17,43 @@ enum FrameRenderer {
 
         var accum = CIImage(color: .black).cropped(to: renderRect)
         for layer in instruction.layers {
+            let mode = layer.clip.blendMode ?? .normal
+            // Source-over bakes opacity into alpha; blend modes apply it as a fade of
+            // the blend RESULT (Photoshop/Premiere semantics), so don't bake it there.
+            let isNormal = mode.ciFilterName == nil
             let image: CIImage?
             switch layer.source {
             case .track(let id):
                 guard let buffer = sourceFrame(id) else { continue }
                 image = composedLayer(layer, buffer: buffer, frame: frame,
-                                      renderSize: instruction.renderSize)
+                                      renderSize: instruction.renderSize, bakeOpacity: isNormal)
             case .text:
-                image = composedTextLayer(layer, frame: frame, renderSize: instruction.renderSize)
+                image = composedTextLayer(layer, frame: frame, renderSize: instruction.renderSize,
+                                          bakeOpacity: isNormal)
             }
-            if let image { accum = image.composited(over: accum) }
+            guard let image else { continue }
+            if isNormal {
+                accum = image.composited(over: accum)
+            } else {
+                let opacity = min(1.0, max(0.0, layer.clip.opacityAt(frame: frame)))
+                accum = blend(image, over: accum, filter: mode.ciFilterName!, opacity: opacity)
+            }
         }
         context.render(accum, to: output, bounds: renderRect, colorSpace: nil)
         tag709(output)
+    }
+
+    /// Blend `image` over `background`, then fade the blend to background by `opacity`.
+    private static func blend(_ image: CIImage, over background: CIImage, filter name: String, opacity: Double) -> CIImage {
+        // Ensure blend covers entire frame; avoid black borders.
+        let blended = image.applyingFilter(name, parameters: [kCIInputBackgroundImageKey: background])
+            .composited(over: background)
+        guard opacity < 1 else { return blended }
+        let f = CIFilter(name: "CIDissolveTransition")
+        f?.setValue(background, forKey: kCIInputImageKey)
+        f?.setValue(blended, forKey: "inputTargetImage")
+        f?.setValue(opacity, forKey: "inputTime")
+        return (f?.outputImage ?? blended).cropped(to: background.extent)
     }
 
     /// Tag output Rec. 709 at the buffer level so downstream reads our bytes correctly.
@@ -46,14 +70,15 @@ enum FrameRenderer {
         _ layer: LayerPlan,
         buffer: CVPixelBuffer,
         frame: Int,
-        renderSize: CGSize
+        renderSize: CGSize,
+        bakeOpacity: Bool = true
     ) -> CIImage? {
         let clip = layer.clip
         let alpha = min(1.0, max(0.0, clip.opacityAt(frame: frame)))
         guard alpha > 0 else { return nil }
 
-        // CI (color management off) treats pixels as unpremultiplied; sources are
-        // premultiplied, so undo it or the composite double-darkens edges.
+        // Undo premultiplied alpha to avoid dark edges.
+
         var image = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
             .unpremultiplyingAlpha()
         let srcHeight = CGFloat(CVPixelBufferGetHeight(buffer))
@@ -93,9 +118,8 @@ enum FrameRenderer {
         let ci = flipY(srcHeight).concatenating(av).concatenating(flipY(renderSize.height))
         image = image.transformed(by: ci)
 
-        if alpha < 1 {
-            // Alpha only — CIColorMatrix re-premultiplies by the result's alpha, so
-            // scaling RGB too would double the fade.
+        if bakeOpacity, alpha < 1 {
+            // Fade alpha only; scaling RGB would double-fade
             image = image.applyingFilter("CIColorMatrix", parameters: [
                 "inputAVector": CIVector(x: 0, y: 0, z: 0, w: alpha),
             ])
@@ -107,7 +131,8 @@ enum FrameRenderer {
     private static func composedTextLayer(
         _ layer: LayerPlan,
         frame: Int,
-        renderSize: CGSize
+        renderSize: CGSize,
+        bakeOpacity: Bool = true
     ) -> CIImage? {
         let clip = layer.clip
         let alpha = min(1.0, max(0.0, clip.opacityAt(frame: frame)))
@@ -123,7 +148,7 @@ enum FrameRenderer {
             }
         }
 
-        if alpha < 1 {
+        if bakeOpacity, alpha < 1 {
             image = image.applyingFilter("CIColorMatrix", parameters: [
                 "inputAVector": CIVector(x: 0, y: 0, z: 0, w: alpha),
             ])

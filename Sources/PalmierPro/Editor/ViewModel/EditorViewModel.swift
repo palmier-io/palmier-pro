@@ -208,6 +208,7 @@ final class EditorViewModel {
     // MARK: - Document bridge
 
     weak var undoManager: UndoManager?
+    @ObservationIgnored var onProjectCheckpointRequired: (() -> Void)?
     var isDocumentEdited: Bool = false
 
     func telemetrySnapshot() -> [String: Any] {
@@ -467,28 +468,31 @@ final class EditorViewModel {
     }
 
     func fitTransform(for asset: MediaAsset, canvasWidth: Int, canvasHeight: Int) -> Transform {
-        guard let sw = asset.sourceWidth, let sh = asset.sourceHeight,
-              sw > 0, sh > 0, canvasWidth > 0, canvasHeight > 0 else {
+        guard let relativeAspect = mediaCanvasAspect(for: asset, canvasWidth: canvasWidth, canvasHeight: canvasHeight) else {
             return Transform()
         }
         let canvasAspect = Double(canvasWidth) / Double(canvasHeight)
-        let sourceAspect = Double(sw) / Double(sh)
+        let sourceAspect = relativeAspect * canvasAspect
         if abs(canvasAspect - sourceAspect) < Defaults.aspectTolerance {
             return Transform()
         }
-        if sourceAspect > canvasAspect {
-            return Transform(width: 1.0, height: canvasAspect / sourceAspect)
+        if relativeAspect > 1 {
+            return Transform(width: 1.0, height: 1.0 / relativeAspect)
         }
-        return Transform(width: sourceAspect / canvasAspect, height: 1.0)
+        return Transform(width: relativeAspect, height: 1.0)
+    }
+
+    func mediaCanvasAspect(for asset: MediaAsset, canvasWidth: Int, canvasHeight: Int) -> Double? {
+        guard let sw = asset.sourceWidth, let sh = asset.sourceHeight,
+              sw > 0, sh > 0, canvasWidth > 0, canvasHeight > 0 else { return nil }
+        let canvasAspect = Double(canvasWidth) / Double(canvasHeight)
+        return (Double(sw) / Double(sh)) / canvasAspect
     }
 
     /// Source aspect ratio relative to canvas; nil when source dimensions are unknown.
     func mediaCanvasAspect(for clip: Clip) -> Double? {
-        guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }),
-              let sw = asset.sourceWidth, let sh = asset.sourceHeight,
-              sw > 0, sh > 0 else { return nil }
-        let canvasAspect = Double(timeline.width) / Double(timeline.height)
-        return (Double(sw) / Double(sh)) / canvasAspect
+        guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }) else { return nil }
+        return mediaCanvasAspect(for: asset, canvasWidth: timeline.width, canvasHeight: timeline.height)
     }
 
     /// Largest centered crop of `target` aspect inside the source.
