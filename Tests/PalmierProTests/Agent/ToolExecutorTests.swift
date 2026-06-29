@@ -104,6 +104,49 @@ struct ToolExecutorImportMediaTests {
         #expect(FileManager.default.fileExists(atPath: asset.url.path))
         #expect(h.editor.mediaManifest.entries.first?.name == "Imported Still")
     }
+
+    @Test func importPathCreatesPlaceholderAndCopiesIntoProject() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp-import-path-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let source = root.appendingPathComponent("source.png")
+        try Data("fake-png".utf8).write(to: source)
+
+        let h = ToolHarness()
+        h.editor.projectURL = root.appendingPathComponent("Import.palmier", isDirectory: true)
+
+        let result = await h.runRaw("import_media", args: [
+            "source": ["path": source.path],
+            "name": "Copied Still",
+        ])
+
+        #expect(result.isError == false)
+        #expect(ToolHarness.textOf(result).contains("Import started"))
+        let asset = try #require(h.editor.mediaAssets.first)
+        #expect(asset.name == "Copied Still")
+        #expect(asset.type == .image)
+        #expect(asset.url.path.contains("/Import.palmier/media/imported-"))
+        #expect(h.editor.mediaManifest.entries.first?.importInput?.sourcePath == source.path)
+
+        try await waitForImportCompletion(in: h.editor, assetId: asset.id)
+
+        #expect(asset.generationStatus == .none)
+        #expect(asset.importInput == nil)
+        #expect(FileManager.default.fileExists(atPath: asset.url.path))
+        #expect(h.editor.mediaManifest.entries.first?.importInput == nil)
+    }
+
+    private func waitForImportCompletion(in editor: EditorViewModel, assetId: String) async throws {
+        for _ in 0..<100 {
+            if let status = editor.mediaAssets.first(where: { $0.id == assetId })?.generationStatus,
+               status == .none {
+                return
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        Issue.record("import did not complete")
+    }
 }
 
 @Suite("ToolExecutor — read-only handlers")

@@ -6,7 +6,7 @@ enum FileIOError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .fileTooLarge(let size, let maxBytes):
-            "downloaded file exceeds max size (\(size) > \(maxBytes) bytes)"
+            "file exceeds max size (\(size) > \(maxBytes) bytes)"
         }
     }
 }
@@ -36,5 +36,25 @@ enum FileIO {
         }
         try fm.moveItem(at: tempURL, to: destinationURL)
         return downloadedSize
+    }
+
+    @discardableResult
+    nonisolated static func copyReplacingDestination(
+        from sourceURL: URL,
+        to destinationURL: URL,
+        maxBytes: Int64? = nil
+    ) throws -> Int64 {
+        let fm = FileManager.default
+        try fm.createDirectory(at: destinationURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+
+        let sourceSize = (try? fm.attributesOfItem(atPath: sourceURL.path)[.size] as? NSNumber)?.int64Value ?? 0
+        if let maxBytes, sourceSize > maxBytes {
+            throw FileIOError.fileTooLarge(size: sourceSize, maxBytes: maxBytes)
+        }
+        if fm.fileExists(atPath: destinationURL.path) {
+            try fm.removeItem(at: destinationURL)
+        }
+        try fm.copyItem(at: sourceURL, to: destinationURL)
+        return sourceSize
     }
 }

@@ -42,7 +42,7 @@ final class VideoProject: NSDocument {
     private nonisolated(unsafe) var snapshotChatSessionFiles: [(name: String, data: Data)] = []
     private nonisolated(unsafe) var snapshotSourceProjectURL: URL?
     private nonisolated(unsafe) var snapshotPreparedForWrite = false
-    private var generationCheckpointAutosaveScheduled = false
+    private var projectCheckpointAutosaveScheduled = false
 
     // MARK: - Persistence
 
@@ -258,16 +258,16 @@ final class VideoProject: NSDocument {
         editorViewModel.isDocumentEdited = isDocumentEdited
     }
 
-    private func scheduleGenerationCheckpointAutosave() {
-        guard fileURL != nil, !generationCheckpointAutosaveScheduled else { return }
-        generationCheckpointAutosaveScheduled = true
+    private func scheduleProjectCheckpointAutosave() {
+        guard fileURL != nil, !projectCheckpointAutosaveScheduled else { return }
+        projectCheckpointAutosaveScheduled = true
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.generationCheckpointAutosaveScheduled = false
+            self.projectCheckpointAutosaveScheduled = false
             guard self.fileURL != nil else { return }
             self.autosave(withImplicitCancellability: false) { error in
                 if let error {
-                    Log.project.error("generation checkpoint autosave failed: \(error.localizedDescription)")
+                    Log.project.error("project checkpoint autosave failed: \(error.localizedDescription)")
                 }
             }
         }
@@ -317,7 +317,7 @@ final class VideoProject: NSDocument {
             self?.updateChangeCount(.changeDone)
         }
         editorViewModel.onProjectCheckpointRequired = { [weak self] in
-            self?.scheduleGenerationCheckpointAutosave()
+            self?.scheduleProjectCheckpointAutosave()
         }
 
         if let manifest = loadedManifest {
@@ -508,6 +508,16 @@ final class VideoProject: NSDocument {
         for candidate in candidates {
             guard let asset = assetsByID[candidate.id] else { continue }
             guard existingRefs.contains(candidate.id) else {
+                if asset.importInput != nil {
+                    switch asset.generationStatus {
+                    case .failed:
+                        break
+                    default:
+                        asset.generationStatus = .failed("Import interrupted")
+                        editorViewModel.updateManifestMetadata(for: asset)
+                    }
+                    continue
+                }
                 if asset.isRecoveringGeneration {
                     asset.generationStatus = .generating
                     editorViewModel.updateManifestMetadata(for: asset)
@@ -517,6 +527,14 @@ final class VideoProject: NSDocument {
                 missing += 1
                 missingRefs.insert(candidate.id)
                 continue
+            }
+            if asset.importInput != nil {
+                if case .failed = asset.generationStatus {
+                    continue
+                }
+                asset.importInput = nil
+                asset.generationStatus = .none
+                editorViewModel.updateManifestMetadata(for: asset)
             }
             if asset.generationStatus != .none, !asset.canResumeGeneration {
                 asset.generationStatus = .none

@@ -15,6 +15,7 @@ final class MediaAsset: Identifiable {
     var sourceFPS: Double?
     var hasAudio: Bool = false
     var generationInput: GenerationInput?
+    var importInput: MediaImportInput?
     var generationStatus: GenerationStatus = .none
     var folderId: String?
     var pendingDownloadURL: URL?
@@ -114,6 +115,7 @@ final class MediaAsset: Identifiable {
         self.folderId = entry.folderId
         self.cachedRemoteURL = entry.cachedRemoteURL
         self.cachedRemoteURLExpiresAt = entry.cachedRemoteURLExpiresAt
+        self.importInput = entry.importInput
         let restoredStatus = GenerationStatus(serialized: entry.generationStatus)
         self.generationStatus = restoredStatus == .preparing && !canResumeGeneration ? .none : restoredStatus
     }
@@ -136,6 +138,7 @@ final class MediaAsset: Identifiable {
             cachedRemoteURL: fresh,
             cachedRemoteURLExpiresAt: fresh == nil ? nil : cachedRemoteURLExpiresAt,
             generationStatus: generationStatus.manifestValue,
+            importInput: importInput,
         )
     }
 

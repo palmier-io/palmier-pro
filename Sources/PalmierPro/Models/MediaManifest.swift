@@ -32,6 +32,13 @@ struct MediaManifestEntry: Codable, Sendable, Equatable, Identifiable {
     var cachedRemoteURL: String?
     var cachedRemoteURLExpiresAt: Date?
     var generationStatus: String?
+    var importInput: MediaImportInput?
+}
+
+struct MediaImportInput: Codable, Sendable, Equatable {
+    var sourceURL: String? = nil
+    var sourcePath: String? = nil
+    var createdAt: Date? = nil
 }
 
 struct GenerationInput: Codable, Sendable, Equatable {
