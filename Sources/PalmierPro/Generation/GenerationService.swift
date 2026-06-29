@@ -280,7 +280,15 @@ final class GenerationService {
             }
         }
 
-        let pending = editor.mediaAssets.filter { $0.isGenerating && $0.canResumeGeneration }
+        let pending = editor.mediaAssets.filter { asset in
+            guard asset.canResumeGeneration else { return false }
+            if asset.isGenerating { return true }
+            // Download failed after results were persisted: re-subscribe to retry.
+            if case .failed = asset.generationStatus {
+                return asset.generationInput?.resultURLs?.isEmpty == false
+            }
+            return false
+        }
 
         let byBackendJob = Dictionary(grouping: pending.compactMap { asset -> (String, MediaAsset)? in
             guard let backendJobId = asset.generationInput?.backendJobId, !backendJobId.isEmpty else { return nil }
@@ -546,7 +554,8 @@ final class GenerationService {
     ) -> Bool {
         var changed = false
         for placeholder in placeholders {
-            guard placeholder.generationStatus != .generating ||
+            guard placeholder.generationStatus != .downloading,
+                    placeholder.generationStatus != .generating ||
                     placeholder.generationInput?.backendJobId != backendJobId else {
                 continue
             }
