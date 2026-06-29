@@ -240,8 +240,7 @@ extension ToolExecutor {
             _ = try await Task.detached(priority: .userInitiated) {
                 try FileIO.copyReplacingDestination(
                     from: sourceURL,
-                    to: destinationURL,
-                    maxBytes: importDownloadMaxBytes
+                    to: destinationURL
                 )
             }.value
             await finishImportedAsset(asset, editor: editor)
