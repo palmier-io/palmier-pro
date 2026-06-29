@@ -373,7 +373,7 @@ extension EditorViewModel {
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 guard let self else { return }
-                let recovering = Set(self.mediaAssets.lazy.filter(\.isGenerating).map(\.id))
+                let recovering = Set(self.mediaAssets.lazy.filter { $0.isGenerating || $0.isRecoveringGeneration }.map(\.id))
                 let resolved = missing.subtracting(recovering)
                 if self.missingMediaRefs != resolved {
                     self.missingMediaRefs = resolved

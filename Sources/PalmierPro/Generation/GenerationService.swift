@@ -280,15 +280,7 @@ final class GenerationService {
             }
         }
 
-        let pending = editor.mediaAssets.filter { asset in
-            guard asset.canResumeGeneration else { return false }
-            if asset.isGenerating { return true }
-            // Download failed after results were persisted: re-subscribe to retry.
-            if case .failed = asset.generationStatus {
-                return asset.generationInput?.resultURLs?.isEmpty == false
-            }
-            return false
-        }
+        let pending = editor.mediaAssets.filter(\.isRecoveringGeneration)
 
         let byBackendJob = Dictionary(grouping: pending.compactMap { asset -> (String, MediaAsset)? in
             guard let backendJobId = asset.generationInput?.backendJobId, !backendJobId.isEmpty else { return nil }
@@ -473,8 +465,10 @@ final class GenerationService {
             }
         }
 
-        // Stream ended without a terminal update: finish from persisted URLs or fail.
+        // Stream ended without a terminal update: finish from persisted URLs if we
+        // have them, otherwise leave placeholders generating to retry on reopen.
         let persisted = placeholders.compactMap(\.generationInput?.resultURLs).first ?? []
+        guard !persisted.isEmpty else { return }
         await finalizeSuccess(
             urlStrings: persisted,
             placeholders: placeholders,

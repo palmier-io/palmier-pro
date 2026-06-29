@@ -78,6 +78,13 @@ final class MediaAsset: Identifiable {
     var isGenerating: Bool {
         generationStatus == .preparing || generationStatus == .generating || generationStatus == .downloading || generationStatus == .rendering
     }
+    /// In-flight, or a failed download that can retry from persisted results.
+    var isRecoveringGeneration: Bool {
+        guard canResumeGeneration else { return false }
+        if isGenerating { return true }
+        if case .failed = generationStatus { return generationInput?.resultURLs?.isEmpty == false }
+        return false
+    }
     var generatingLabel: String {
         switch generationStatus {
         case .preparing: "Preparing..."
