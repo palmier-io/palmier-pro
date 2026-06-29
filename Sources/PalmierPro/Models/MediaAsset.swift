@@ -32,18 +32,55 @@ final class MediaAsset: Identifiable {
 
     enum GenerationStatus: Equatable {
         case none
+        case preparing
         case generating
         case downloading
         case rendering
         case failed(String)
+
+        var serialized: String {
+            switch self {
+            case .none: "none"
+            case .preparing: "preparing"
+            case .generating: "generating"
+            case .downloading: "downloading"
+            case .rendering: "rendering"
+            case .failed(let message): "failed: \(message)"
+            }
+        }
+
+        // .none/.preparing are transient and must not restore as in-progress.
+        var manifestValue: String? {
+            switch self {
+            case .none, .preparing: nil
+            default: serialized
+            }
+        }
+
+        init(serialized value: String?) {
+            switch value {
+            case "preparing": self = .preparing
+            case "generating": self = .generating
+            case "downloading": self = .downloading
+            case "rendering": self = .rendering
+            case let value? where value.hasPrefix("failed: "):
+                self = .failed(String(value.dropFirst("failed: ".count)))
+            default: self = .none
+            }
+        }
     }
 
     var isGenerated: Bool { generationInput != nil }
+    var canResumeGeneration: Bool {
+        guard let generationInput else { return false }
+        return generationInput.backendJobId?.isEmpty == false
+    }
     var isGenerating: Bool {
-        generationStatus == .generating || generationStatus == .downloading || generationStatus == .rendering
+        generationStatus == .preparing || generationStatus == .generating || generationStatus == .downloading || generationStatus == .rendering
     }
     var generatingLabel: String {
         switch generationStatus {
+        case .preparing: "Preparing..."
         case .downloading: "Downloading..."
         case .rendering: "Rendering..."
         default: "Generating..."
@@ -71,6 +108,8 @@ final class MediaAsset: Identifiable {
         self.folderId = entry.folderId
         self.cachedRemoteURL = entry.cachedRemoteURL
         self.cachedRemoteURLExpiresAt = entry.cachedRemoteURLExpiresAt
+        let restoredStatus = GenerationStatus(serialized: entry.generationStatus)
+        self.generationStatus = restoredStatus == .preparing && !canResumeGeneration ? .none : restoredStatus
     }
 
     /// Produce a serializable manifest entry from this asset.
@@ -90,6 +129,7 @@ final class MediaAsset: Identifiable {
             hasAudio: hasAudio, folderId: folderId,
             cachedRemoteURL: fresh,
             cachedRemoteURLExpiresAt: fresh == nil ? nil : cachedRemoteURLExpiresAt,
+            generationStatus: generationStatus.manifestValue,
         )
     }
 

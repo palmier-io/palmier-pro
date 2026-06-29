@@ -42,6 +42,7 @@ final class VideoProject: NSDocument {
     private nonisolated(unsafe) var snapshotChatSessionFiles: [(name: String, data: Data)] = []
     private nonisolated(unsafe) var snapshotSourceProjectURL: URL?
     private nonisolated(unsafe) var snapshotPreparedForWrite = false
+    private var generationCheckpointAutosaveScheduled = false
 
     // MARK: - Persistence
 
@@ -257,6 +258,21 @@ final class VideoProject: NSDocument {
         editorViewModel.isDocumentEdited = isDocumentEdited
     }
 
+    private func scheduleGenerationCheckpointAutosave() {
+        guard fileURL != nil, !generationCheckpointAutosaveScheduled else { return }
+        generationCheckpointAutosaveScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.generationCheckpointAutosaveScheduled = false
+            guard self.fileURL != nil else { return }
+            self.autosave(withImplicitCancellability: false) { error in
+                if let error {
+                    Log.project.error("generation checkpoint autosave failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
     override var displayName: String! {
         get { fileURL?.deletingPathExtension().lastPathComponent ?? Project.defaultProjectName }
         set { super.displayName = newValue }
@@ -299,6 +315,9 @@ final class VideoProject: NSDocument {
         editorViewModel.agentService.loadSessions(from: fileURL)
         editorViewModel.agentService.onSessionsChanged = { [weak self] in
             self?.updateChangeCount(.changeDone)
+        }
+        editorViewModel.onProjectCheckpointRequired = { [weak self] in
+            self?.scheduleGenerationCheckpointAutosave()
         }
 
         if let manifest = loadedManifest {
@@ -489,10 +508,19 @@ final class VideoProject: NSDocument {
         for candidate in candidates {
             guard let asset = assetsByID[candidate.id] else { continue }
             guard existingRefs.contains(candidate.id) else {
+                if asset.canResumeGeneration {
+                    asset.generationStatus = .generating
+                    editorViewModel.updateManifestMetadata(for: asset)
+                    continue
+                }
                 Log.project.warning("restore: media file missing id=\(candidate.id) name=\(candidate.name) path=\(candidate.url.path)")
                 missing += 1
                 missingRefs.insert(candidate.id)
                 continue
+            }
+            if asset.generationStatus != .none {
+                asset.generationStatus = .none
+                editorViewModel.updateManifestMetadata(for: asset)
             }
             restored += 1
             if asset.type == .audio || asset.type == .video {
@@ -508,6 +536,7 @@ final class VideoProject: NSDocument {
         }
 
         editorViewModel.missingMediaRefs = missingRefs
+        editorViewModel.generationService.resumePendingGenerations(editor: editorViewModel)
         Log.project.notice(
             "restore ok restored=\(restored) missing=\(missing)",
             telemetry: "Media restored",
