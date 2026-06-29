@@ -1,9 +1,9 @@
 import Foundation
 
 extension ToolExecutor {
-    nonisolated static let importDownloadMaxBytes: Int64 = 1024 * 1024 * 1024
+    nonisolated static let remoteImportMaxBytes: Int64 = 5 * 1024 * 1024 * 1024
     nonisolated static let importBytesMaxBase64Length = 15 * 1024 * 1024
-    nonisolated static let importDownloadTimeout: TimeInterval = 120
+    nonisolated static let remoteImportRequestTimeout: TimeInterval = 15 * 60
 
     private static let importMediaAllowedKeys: Set<String> = ["source", "name", "folderId"]
     private static let importSourceAllowedKeys: Set<String> = ["url", "path", "bytes", "mimeType"]
@@ -206,8 +206,8 @@ extension ToolExecutor {
     private static func downloadImportedAsset(asset: MediaAsset, remoteURL: URL, editor: EditorViewModel) async {
         do {
             var request = URLRequest(url: remoteURL)
-            request.timeoutInterval = importDownloadTimeout
-            let delegate = ImportDownloadDelegate(maxBytes: importDownloadMaxBytes)
+            request.timeoutInterval = remoteImportRequestTimeout
+            let delegate = ImportDownloadDelegate(maxBytes: remoteImportMaxBytes)
             let (tempURL, response) = try await URLSession.shared.download(for: request, delegate: delegate)
 
             if let httpResp = response as? HTTPURLResponse, !(200..<300).contains(httpResp.statusCode) {
@@ -222,7 +222,7 @@ extension ToolExecutor {
                 try FileIO.moveReplacingDestination(
                     from: tempURL,
                     to: destinationURL,
-                    maxBytes: importDownloadMaxBytes
+                    maxBytes: remoteImportMaxBytes
                 )
             }.value
             await finishImportedAsset(asset, editor: editor)
