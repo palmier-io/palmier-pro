@@ -1434,6 +1434,22 @@ struct ToolExecutorTextFolderTests {
         #expect(clip.textStyle?.fontSize == 48)
     }
 
+    @Test func addTextsAcceptsCreatorConnectFontName() async throws {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+        let result = await h.runRaw("add_texts", args: [
+            "entries": [[
+                "trackIndex": 0,
+                "startFrame": 0,
+                "durationFrames": 60,
+                "content": "Creator Connect",
+                "fontName": "Space Grotesk",
+            ]]
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        #expect(h.editor.timeline.tracks[0].clips[0].textStyle?.fontName == "Space Grotesk")
+    }
+
     @Test func addTextsRejectsAudioTargetTrack() async throws {
         let h = ToolHarness()
         _ = h.editor.insertTrack(at: 0, type: .audio)

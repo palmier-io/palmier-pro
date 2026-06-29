@@ -42,6 +42,8 @@ for APP in "/Applications/PalmierPro.app" "$HOME/Applications/PalmierPro-BlendMo
   test -d "$APP" || continue
   DEST="$APP/Contents/MacOS/PalmierPro"
   cp "$SRC" "$DEST"
+  rm -rf "$APP/Contents/Resources/Fonts"
+  cp -R "$RES_BUNDLE/Fonts" "$APP/Contents/Resources/"
   cp "$RES_BUNDLE"/*.metallib "$APP/Contents/Resources/"
   if ! otool -l "$DEST" | grep -q '@executable_path/../Frameworks'; then
     install_name_tool -add_rpath '@executable_path/../Frameworks' "$DEST"
@@ -153,6 +155,16 @@ Markers are exact project-frame anchors. They do not render and do not lengthen 
 - Tests: `LumaKeyKernelTests`, `CompositorRenderTests`, `EffectTests`, `ToolExecutorTests`.
 
 Use this for simple white-background removal. Start with `threshold: 0.85` and `softness: 0.08`; lower the threshold to remove more near-white pixels, raise it to preserve bright subject details.
+
+### Creator Connect Fonts
+
+- Bundled font families: `Space Grotesk` and `IBM Plex Mono`.
+- Resource paths: `Sources/PalmierPro/Resources/Fonts/SpaceGrotesk/` and `Sources/PalmierPro/Resources/Fonts/IBMPlexMono/`.
+- Registration: `BundledFonts.register()` scans `Resources/Fonts` at launch and exposes families in the text inspector's Featured font list.
+- Agent usage: `add_texts`, `add_captions`, and `set_clip_properties` accept `fontName: "Space Grotesk"` or `fontName: "IBM Plex Mono"`.
+- Style convention: use Space Grotesk for Creator Connect titles/body; use IBM Plex Mono for status labels, small uppercase metadata, numbers, and technical UI text.
+- Persistence: text clips store `TextStyle.fontName` in the project package, so these choices persist on save/reopen.
+- Install caveat: copying only the executable is not enough when fonts change; copy `PalmierPro_PalmierPro.bundle/Fonts` into the app bundle resources and reopen the app.
 
 ## Feature Checklist
 

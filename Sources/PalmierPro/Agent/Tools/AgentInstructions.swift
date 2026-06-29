@@ -62,6 +62,8 @@ enum AgentInstructions {
             existing keyframes on that property.
             Use blendMode='difference' on a white logo PNG to make the logo invert the lower \
             tracks through its alpha; use 'exclusion' for a softer version.
+            For Creator Connect-style text, use fontName='Space Grotesk' for titles/body and \
+            fontName='IBM Plex Mono' for small labels, status text, numbers, and technical text.
           • set_keyframes: replace the keyframe track for one (clipId, property) pair. Empty \
             array clears. Frames are clip-relative.
           • apply_effect: use key.luma for simple white-background removal on video/image clips. \
