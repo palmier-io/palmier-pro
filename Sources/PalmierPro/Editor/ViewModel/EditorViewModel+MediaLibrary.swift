@@ -119,11 +119,10 @@ private enum MediaImportScanner {
 extension EditorViewModel {
 
     func importMediaAsset(_ asset: MediaAsset, skipAppend: Bool = false) {
-        if !skipAppend {
+        if !skipAppend, !mediaAssets.contains(where: { $0.id == asset.id }) {
             mediaAssets.append(asset)
         }
-        let entry = asset.toManifestEntry(projectURL: projectURL)
-        mediaManifest.entries.append(entry)
+        updateManifestMetadata(for: asset)
         Log.project.notice(
             "media imported asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)",
             telemetry: "Media asset imported",
@@ -374,8 +373,10 @@ extension EditorViewModel {
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 guard let self else { return }
-                if self.missingMediaRefs != missing {
-                    self.missingMediaRefs = missing
+                let recovering = Set(self.mediaAssets.lazy.filter { $0.isGenerating || $0.isRecoveringGeneration }.map(\.id))
+                let resolved = missing.subtracting(recovering)
+                if self.missingMediaRefs != resolved {
+                    self.missingMediaRefs = resolved
                 }
                 self.missingMediaRefreshTask = nil
             }
@@ -458,12 +459,11 @@ extension EditorViewModel {
     }
 
     func updateManifestMetadata(for asset: MediaAsset) {
+        let entry = asset.toManifestEntry(projectURL: projectURL)
         if let idx = mediaManifest.entries.firstIndex(where: { $0.id == asset.id }) {
-            mediaManifest.entries[idx].duration = asset.duration
-            mediaManifest.entries[idx].sourceWidth = asset.sourceWidth
-            mediaManifest.entries[idx].sourceHeight = asset.sourceHeight
-            mediaManifest.entries[idx].sourceFPS = asset.sourceFPS
-            mediaManifest.entries[idx].hasAudio = asset.hasAudio
+            mediaManifest.entries[idx] = entry
+        } else {
+            mediaManifest.entries.append(entry)
         }
     }
 

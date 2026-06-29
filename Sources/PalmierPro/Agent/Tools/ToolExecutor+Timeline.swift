@@ -282,6 +282,8 @@ extension ToolExecutor {
         let url = asset.url
         guard FileManager.default.fileExists(atPath: url.path) else {
             switch asset.generationStatus {
+            case .preparing:
+                throw ToolError("Asset \(asset.id) is still preparing. Poll get_media and retry once generationStatus becomes 'none'.")
             case .downloading:
                 throw ToolError("Asset \(asset.id) is still downloading. Poll get_media and retry once generationStatus becomes 'none'.")
             case .generating:
@@ -730,7 +732,7 @@ extension ToolExecutor {
             "id": asset.id, "name": asset.name,
             "type": asset.type.rawValue, "duration": asset.duration.jsonRounded(toPlaces: 3),
             "fileName": asset.url.lastPathComponent,
-            "generationStatus": generationStatusString(asset.generationStatus),
+            "generationStatus": asset.generationStatus.serialized,
         ]
         if let w = asset.sourceWidth { meta["sourceWidth"] = w }
         if let h = asset.sourceHeight { meta["sourceHeight"] = h }
@@ -746,16 +748,6 @@ extension ToolExecutor {
               let obj = try? JSONSerialization.jsonObject(with: data)
         else { return nil }
         return obj
-    }
-
-    private static func generationStatusString(_ status: MediaAsset.GenerationStatus) -> String {
-        switch status {
-        case .none: "none"
-        case .generating: "generating"
-        case .downloading: "downloading"
-        case .rendering: "rendering"
-        case .failed(let message): "failed: \(message)"
-        }
     }
 
     private static func imagePropertiesSummary(at url: URL) -> [String: Any]? {

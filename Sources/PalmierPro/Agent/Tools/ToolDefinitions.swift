@@ -64,7 +64,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .getMedia,
-            description: "Call before referencing any asset. Every mediaRef/reference ID in other tools comes from the IDs returned here. Also exposes generationStatus (generating | downloading | failed | none) for async-generated and -imported assets.",
+            description: "Call before referencing any asset. Every mediaRef/reference ID in other tools comes from the IDs returned here. Also exposes generationStatus (preparing | generating | downloading | failed | none) for async-generated and async-imported assets.",
             inputSchema: objectSchema()
         ),
         AgentTool(
