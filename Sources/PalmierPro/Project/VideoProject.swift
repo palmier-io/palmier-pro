@@ -164,6 +164,8 @@ final class VideoProject: NSDocument {
             to: url,
             sourceURL: snapshotSourceProjectURL
         )
+        // A real manifest was just written, so the unreadable original is gone; stop preserving it.
+        if snapshotManifest != nil { manifestLoadFailed = false }
     }
 
     private func captureSaveSnapshot() {

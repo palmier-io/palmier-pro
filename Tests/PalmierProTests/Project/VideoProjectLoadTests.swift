@@ -145,4 +145,27 @@ struct VideoProjectLoadTests {
         let after = try Data(contentsOf: bundle.appendingPathComponent(Project.manifestFilename))
         #expect(after == original)
     }
+
+    @MainActor
+    @Test func emptyingTheLibraryPersistsOnceAManifestHasBeenRewritten() async throws {
+        // After opening a corrupt-manifest project, rebuilding the library and saving writes a real
+        // manifest. Emptying the library and saving again must persist as empty, not resurrect the
+        // rebuilt entries from the no-longer-relevant load failure.
+        let bundle = try makeBundle()
+        defer { try? fm.removeItem(at: bundle) }
+        try Data("{ corrupt ".utf8).write(to: bundle.appendingPathComponent(Project.manifestFilename))
+
+        let doc = try await VideoProject.load(from: bundle)   // manifestLoadFailed = true
+
+        doc.editorViewModel.mediaManifest = sampleManifest()
+        try doc.write(to: bundle, ofType: VideoProject.typeIdentifier)
+        #expect(try VideoProject.readProjectPackage(at: bundle).manifest?.entries.count == 1)
+
+        doc.editorViewModel.mediaManifest = MediaManifest()
+        try doc.write(to: bundle, ofType: VideoProject.typeIdentifier)
+
+        let reopened = try VideoProject.readProjectPackage(at: bundle)
+        #expect(reopened.manifest?.entries.isEmpty == true)   // emptied library sticks
+        #expect(reopened.manifestUnreadable == false)         // valid (empty) manifest now
+    }
 }
