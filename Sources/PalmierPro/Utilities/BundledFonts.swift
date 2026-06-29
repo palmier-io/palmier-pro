@@ -6,6 +6,7 @@ import Foundation
 @MainActor
 enum BundledFonts {
     private static var registered = false
+    static let creatorConnectFamilies = ["Space Grotesk", "IBM Plex Mono"]
 
     private(set) static var families: [String] = []
 
@@ -43,6 +44,7 @@ enum BundledFonts {
                 }
             }
         }
+        insertKnownFamiliesIfPresent(in: fontsRoot, into: &familySet)
 
         guard !urls.isEmpty else {
             Log.app.warning("BundledFonts: no TTF/OTF files under \(fontsRoot.path)")
@@ -66,6 +68,12 @@ enum BundledFonts {
 
         families = familySet.sorted()
         Log.app.notice("BundledFonts: registered \(urls.count) files across \(families.count) families")
+    }
+
+    static var featuredFamiliesForPicker: [String] {
+        let available = Set(families)
+        let pinned = creatorConnectFamilies.filter { available.contains($0) }
+        return pinned + families.filter { !creatorConnectFamilies.contains($0) }
     }
 
     // MARK: - System fonts (for picker)
@@ -93,6 +101,19 @@ enum BundledFonts {
             resourceURL.appendingPathComponent("PalmierPro_PalmierPro.bundle/Fonts"),
         ]
         return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    private static func insertKnownFamiliesIfPresent(in fontsRoot: URL, into familySet: inout Set<String>) {
+        let knownFolders = [
+            "SpaceGrotesk": "Space Grotesk",
+            "IBMPlexMono": "IBM Plex Mono",
+        ]
+        for (folder, family) in knownFolders {
+            let url = fontsRoot.appendingPathComponent(folder)
+            if FileManager.default.fileExists(atPath: url.path) {
+                familySet.insert(family)
+            }
+        }
     }
 
     /// False for symbol/emoji/dingbat fonts — they'd render the family name

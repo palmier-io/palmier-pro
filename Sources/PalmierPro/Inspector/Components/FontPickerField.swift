@@ -50,10 +50,10 @@ struct FontPickerField: View {
         menu.autoenablesItems = false
 
         if !BundledFonts.families.isEmpty {
-            let header = NSMenuItem(title: "Featured", action: nil, keyEquivalent: "")
+            let header = NSMenuItem(title: "Creator Connect + Featured", action: nil, keyEquivalent: "")
             header.isEnabled = false
             menu.addItem(header)
-            for family in BundledFonts.families {
+            for family in BundledFonts.featuredFamiliesForPicker {
                 menu.addItem(makeItem(name: family, previewFamily: family, handler: handler))
             }
             menu.addItem(.separator())

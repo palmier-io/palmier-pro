@@ -160,7 +160,8 @@ Use this for simple white-background removal. Start with `threshold: 0.85` and `
 
 - Bundled font families: `Space Grotesk` and `IBM Plex Mono`.
 - Resource paths: `Sources/PalmierPro/Resources/Fonts/SpaceGrotesk/` and `Sources/PalmierPro/Resources/Fonts/IBMPlexMono/`.
-- Registration: `BundledFonts.register()` scans `Resources/Fonts` at launch and exposes families in the text inspector's Featured font list.
+- Registration: `BundledFonts.register()` scans `Resources/Fonts` at launch and exposes families in the text inspector's Creator Connect + Featured font list.
+- Picker behavior: `BundledFonts.featuredFamiliesForPicker` pins `Space Grotesk` and `IBM Plex Mono` above the rest of the bundled fonts when their folders are present.
 - Agent usage: `add_texts`, `add_captions`, and `set_clip_properties` accept `fontName: "Space Grotesk"` or `fontName: "IBM Plex Mono"`.
 - Style convention: use Space Grotesk for Creator Connect titles/body; use IBM Plex Mono for status labels, small uppercase metadata, numbers, and technical UI text.
 - Persistence: text clips store `TextStyle.fontName` in the project package, so these choices persist on save/reopen.
