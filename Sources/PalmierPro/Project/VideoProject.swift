@@ -529,6 +529,9 @@ final class VideoProject: NSDocument {
                 continue
             }
             if asset.importInput != nil {
+                if case .failed = asset.generationStatus {
+                    continue
+                }
                 asset.importInput = nil
                 asset.generationStatus = .none
                 editorViewModel.updateManifestMetadata(for: asset)
