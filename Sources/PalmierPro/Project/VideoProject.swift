@@ -508,7 +508,7 @@ final class VideoProject: NSDocument {
         for candidate in candidates {
             guard let asset = assetsByID[candidate.id] else { continue }
             guard existingRefs.contains(candidate.id) else {
-                if asset.canResumeGeneration {
+                if asset.isGenerating, asset.canResumeGeneration {
                     asset.generationStatus = .generating
                     editorViewModel.updateManifestMetadata(for: asset)
                     continue
