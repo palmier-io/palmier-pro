@@ -373,8 +373,10 @@ extension EditorViewModel {
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 guard let self else { return }
-                if self.missingMediaRefs != missing {
-                    self.missingMediaRefs = missing
+                let recovering = Set(self.mediaAssets.lazy.filter(\.isGenerating).map(\.id))
+                let resolved = missing.subtracting(recovering)
+                if self.missingMediaRefs != resolved {
+                    self.missingMediaRefs = resolved
                 }
                 self.missingMediaRefreshTask = nil
             }
