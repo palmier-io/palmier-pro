@@ -10,6 +10,7 @@ extension EditorViewModel {
         var textCase: CaptionCase = .auto
         var censorProfanity: Bool = false
         var locale: Locale? = nil
+        var maxWords: Int? = nil
         /// Animation applied to every generated caption clip (timed from the transcript).
         var animation: TextAnimation = TextAnimation()
     }
@@ -187,6 +188,7 @@ extension EditorViewModel {
                     for: seg,
                     words: wordsIn(seg, result.words),
                     fits: { captionLineFits($0, style: request.style) },
+                    maxWords: request.maxWords,
                     minDuration: AppTheme.Caption.minDisplayDuration
                 )
             }

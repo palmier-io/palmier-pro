@@ -425,6 +425,7 @@ enum ToolDefinitions {
                     "centerY": ["type": "number", "description": "Optional vertical center 0–1 (default 0.9, near the bottom)."],
                     "textCase": ["type": "string", "enum": ["auto", "upper", "lower"], "description": "Optional letter case (default auto)."],
                     "censorProfanity": ["type": "boolean", "description": "Optional. Mask profanity (default false)."],
+                    "maxWords": ["type": "integer", "description": "Optional cap on words per caption clip (e.g. 1–4 for punchy social captions). Omit to fit each caption to the box only."],
                     "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Optional caption animation. Per-word presets (wordReveal/wordSlide/wordPop/wordCycle/highlightPop/highlightBlock) reveal word-by-word, timed to the transcript automatically; whole-caption ones (fadeIn/popIn/slideUp/typewriter) animate the line. Default off."],
                     "highlightColor": ["type": "string", "description": "Optional hex '#RRGGBB'/'#RRGGBBAA' for the active word, used by the per-word presets."],
                 ]

@@ -20,11 +20,23 @@ enum CaptionBuilder {
         for segment: TranscriptionSegment,
         words: [TranscriptionWord] = [],
         fits: (String) -> Bool,
+        maxWords: Int? = nil,
         minDuration: Double
     ) -> [Phrase] {
-        let pieces = split(segment.text, fits: fits)
+        // Only phrases that fit visually and within the word cap are accepted; else, keep splitting.
+        let pieces: [String]
+        if let limit = maxWords {
+            let cap = max(1, limit)
+            pieces = split(segment.text, fits: { fits($0) && wordCount($0) <= cap })
+        } else {
+            pieces = split(segment.text, fits: fits)
+        }
         let timed = time(pieces, segment: segment, words: words)
         return enforceMinDuration(timed, minDuration: minDuration)
+    }
+
+    private static func wordCount(_ text: String) -> Int {
+        text.split(whereSeparator: \.isWhitespace).count
     }
 
     private static func split(_ text: String, fits: (String) -> Bool) -> [String] {

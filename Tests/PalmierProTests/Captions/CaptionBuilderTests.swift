@@ -30,6 +30,19 @@ struct CaptionBuilderTests {
         #expect(phrases.map(\.text) == ["a b", "c d"])
     }
 
+    @Test func capsWordsPerCaption() {
+        let phrases = CaptionBuilder.phrases(for: segment("one two three four five six", 0, 6),
+                                             fits: { _ in true }, maxWords: 2, minDuration: 0)
+        #expect(phrases.allSatisfy { $0.text.split(separator: " ").count <= 2 })
+        #expect(phrases.map(\.text).joined(separator: " ") == "one two three four five six")
+    }
+
+    @Test func maxWordsStillPrefersSentenceBoundary() {
+        let phrases = CaptionBuilder.phrases(for: segment("Hi there. How are you", 0, 6),
+                                             fits: { _ in true }, maxWords: 3, minDuration: 0)
+        #expect(phrases.map(\.text) == ["Hi there.", "How are you"])
+    }
+
     @Test func keepsPunctuatedTokensIntact() {
         let phrases = CaptionBuilder.phrases(for: segment("U.S. army here", 0, 6), fits: { $0.count <= 6 }, minDuration: 0)
         #expect(phrases.map(\.text) == ["U.S.", "army", "here"])

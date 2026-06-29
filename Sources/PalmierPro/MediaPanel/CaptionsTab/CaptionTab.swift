@@ -15,6 +15,7 @@ struct CaptionTab: View {
     @State private var animationPreset: TextAnimation.Preset = .none
     @State private var animationHighlight: TextStyle.RGBA = TextAnimation.defaultHighlight
     @State private var censorProfanity = false
+    @State private var maxWords: Int?
     @State private var locale: Locale?
     @State private var supportedLocales: [Locale] = []
     @State private var isGenerating = false
@@ -116,6 +117,15 @@ struct CaptionTab: View {
                         }
                     }
                 } label: { menuValueLabel(locale.map(languageName) ?? "Auto") }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+            }
+            InspectorRow(icon: "number", label: "Max words", labelHelp: "Cap the words shown per caption. None fits each line to the box.") {
+                Menu {
+                    Button("None") { maxWords = nil }
+                    ForEach(1...8, id: \.self) { n in
+                        Button("\(n)") { maxWords = n }
+                    }
+                } label: { menuValueLabel(maxWords.map(String.init) ?? "None") }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
             }
             InspectorRow(icon: "exclamationmark.bubble", label: "Censor profanity") {
@@ -222,15 +232,17 @@ struct CaptionTab: View {
                 }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
             }
-            InspectorRow(icon: "highlighter", label: "Highlight", labelHelp: "Active-word color for the per-word animation presets.") {
-                ColorField(displayColor: animationHighlight.swiftUIColor, onUserChange: { animationHighlight = TextStyle.RGBA($0) })
-            }
         }
     }
 
     private var animationSection: some View {
         InspectorSection("Animation") {
             CaptionPresetGallery(selection: $animationPreset, highlight: animationHighlight)
+            if animationPreset.usesHighlight {
+                InspectorRow(icon: "highlighter", label: "Highlight", labelHelp: "Color for the active word.") {
+                    ColorField(displayColor: animationHighlight.swiftUIColor, onUserChange: { animationHighlight = TextStyle.RGBA($0) })
+                }
+            }
         }
     }
 
@@ -403,7 +415,7 @@ struct CaptionTab: View {
         }
         let request = EditorViewModel.CaptionRequest(
             sourceClipIds: sourceIds, autoDetect: isAutoSource, style: style, center: center,
-            textCase: textCase, censorProfanity: censorProfanity, locale: locale,
+            textCase: textCase, censorProfanity: censorProfanity, locale: locale, maxWords: maxWords,
             animation: TextAnimation(preset: animationPreset, highlight: animationHighlight)
         )
         Task {
