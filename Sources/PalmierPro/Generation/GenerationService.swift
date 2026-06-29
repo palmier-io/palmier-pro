@@ -465,8 +465,7 @@ final class GenerationService {
             }
         }
 
-        // Stream ended without a terminal update: finish from persisted URLs if we
-        // have them, otherwise leave placeholders generating to retry on reopen.
+        // Stream ended without a terminal update: finish from persisted URLs, else retry on reopen.
         let persisted = placeholders.compactMap(\.generationInput?.resultURLs).first ?? []
         guard !persisted.isEmpty else { return }
         await finalizeSuccess(
