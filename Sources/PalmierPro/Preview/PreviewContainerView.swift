@@ -20,6 +20,7 @@ struct PreviewContainerView: View {
                 let fitSize = fitSize(in: geo.size, aspect: aspect)
                 let scaledWidth = fitSize.width * editor.canvasZoom
                 let scaledHeight = fitSize.height * editor.canvasZoom
+                let timelineState = timelineFrameState
                 ZStack {
                     PreviewView()
                     if isImage {
@@ -30,8 +31,10 @@ struct PreviewContainerView: View {
                     }
                     if let asset = activeMediaAsset, asset.isGenerating {
                         generatingPreview(label: asset.generatingLabel)
+                    } else if let label = timelineGeneratingLabel(timelineState: timelineState) {
+                        generatingPreview(label: label)
                     }
-                    if let overlay = offlineOverlay {
+                    if let overlay = offlineOverlay(timelineState: timelineState) {
                         offlinePreview(assetId: overlay.assetId, path: overlay.path, isUnprocessable: overlay.isUnprocessable)
                     }
                     if editor.cropEditingActive {
@@ -241,39 +244,64 @@ struct PreviewContainerView: View {
         return editor.isMediaOffline(asset.id)
     }
 
-    /// The offline clip blacking out the current timeline frame, or nil when an online clip covers it.
-    private var timelineOfflineClip: Clip? {
-        guard isTimeline else { return nil }
-        guard !editor.offlineMediaRefs.isEmpty || !editor.unprocessableMediaRefs.isEmpty else { return nil }
+    private enum TimelineFrameState {
+        /// An online clip covers the frame; no overlay needed.
+        case covered
+        /// A clip whose media is still generating covers the frame.
+        case generating(String)
+        /// Only offline clip(s) cover the frame.
+        case offline(Clip)
+        case none
+    }
+
+    /// Classifies the clip(s) under the timeline playhead. A generating clip's
+    /// source file doesn't exist on disk yet, so it must report as generating —
+    /// not offline — exactly like its timeline track does.
+    private var timelineFrameState: TimelineFrameState {
+        guard isTimeline else { return .none }
+        let hasOffline = !editor.offlineMediaRefs.isEmpty
+            || !editor.unprocessableMediaRefs.isEmpty
+            || !editor.missingMediaRefs.isEmpty
+        let hasGenerating = editor.mediaAssets.contains(where: \.isGenerating)
+        guard hasOffline || hasGenerating else { return .none }
         let frame = editor.playheadState.timelineFrame
         var offline: Clip?
+        var generatingLabel: String?
         for track in editor.timeline.tracks where track.type != .audio && !track.hidden {
             for clip in track.clips where clip.mediaType != .text {
                 guard clip.contains(timelineFrame: frame) else { continue }
-                if editor.isMediaOffline(clip.mediaRef) {
+                if let asset = editor.mediaAssets.first(where: { $0.id == clip.mediaRef }), asset.isGenerating {
+                    generatingLabel = generatingLabel ?? asset.generatingLabel
+                } else if editor.isMediaOffline(clip.mediaRef) {
                     offline = offline ?? clip
                 } else {
-                    return nil
+                    return .covered
                 }
             }
         }
-        return offline
+        if let generatingLabel { return .generating(generatingLabel) }
+        if let offline { return .offline(offline) }
+        return .none
     }
 
     private struct OfflineOverlay { let assetId: String?; let path: String?; let isUnprocessable: Bool }
 
-    /// Resolved once per render so the timeline scan runs at most once.
-    private var offlineOverlay: OfflineOverlay? {
+    private func offlineOverlay(timelineState: TimelineFrameState) -> OfflineOverlay? {
         if activeMediaMissing, let id = activeMediaAsset?.id {
             return OfflineOverlay(assetId: id, path: activeMediaAsset?.url.path, isUnprocessable: editor.isMediaUnprocessable(id))
         }
-        if let clip = timelineOfflineClip {
+        if case .offline(let clip) = timelineState {
             return OfflineOverlay(
                 assetId: clip.mediaRef,
                 path: editor.mediaResolver.expectedURL(for: clip.mediaRef)?.path,
                 isUnprocessable: editor.isMediaUnprocessable(clip.mediaRef)
             )
         }
+        return nil
+    }
+
+    private func timelineGeneratingLabel(timelineState: TimelineFrameState) -> String? {
+        if case .generating(let label) = timelineState { return label }
         return nil
     }
 
