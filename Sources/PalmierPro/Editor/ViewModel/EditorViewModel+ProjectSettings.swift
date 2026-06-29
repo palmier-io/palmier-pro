@@ -51,15 +51,32 @@ extension EditorViewModel {
             }
         }
 
-        // Refit auto-fitted clips to the new canvas aspect
+        // Reflow clips to the new canvas aspect. Untouched auto-fit clips re-fit to fill;
+        // manually adjusted or keyframed clips keep their scale handle (width) and have their
+        // height recomputed so the image stays undistorted against the new canvas.
         if width != prevWidth || height != prevHeight {
             for ti in timeline.tracks.indices {
                 for ci in timeline.tracks[ti].clips.indices {
-                    let clip = timeline.tracks[ti].clips[ci]
-                    guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }) else { continue }
-                    if clip.transform == fitTransform(for: asset, canvasWidth: prevWidth, canvasHeight: prevHeight) {
-                        timeline.tracks[ti].clips[ci].transform = fitTransform(for: asset, canvasWidth: width, canvasHeight: height)
+                    var clip = timeline.tracks[ti].clips[ci]
+                    guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }),
+                          let sw = asset.sourceWidth, let sh = asset.sourceHeight,
+                          sw > 0, sh > 0, width > 0, height > 0 else { continue }
+
+                    let scaleAnimated = clip.scaleTrack?.isActive ?? false
+                    if !scaleAnimated,
+                       clip.transform == fitTransform(for: asset, canvasWidth: prevWidth, canvasHeight: prevHeight) {
+                        clip.transform = fitTransform(for: asset, canvasWidth: width, canvasHeight: height)
+                    } else {
+                        let newAspect = (Double(sw) / Double(sh)) / (Double(width) / Double(height))
+                        clip.transform.height = clip.transform.width / newAspect
+                        if var track = clip.scaleTrack, track.isActive {
+                            for ki in track.keyframes.indices {
+                                track.keyframes[ki].value.b = track.keyframes[ki].value.a / newAspect
+                            }
+                            clip.scaleTrack = track
+                        }
                     }
+                    timeline.tracks[ti].clips[ci] = clip
                 }
             }
         }
