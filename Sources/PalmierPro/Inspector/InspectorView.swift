@@ -22,7 +22,7 @@ struct InspectorView: View {
     @State private var transformExpanded = true
     @State var collapsedAdjustSections: Set<String> = ["Curves", "Color Wheels", "Hue Curves", "LUTs", "Effects"]
     @State var collapsedAdjustSubgroups: Set<String> = [
-        "Detail", "Blur", "Motion Blur", "Vignette", "Film Grain", "Glow", "Chroma Key",
+        "Detail", "Blur", "Motion Blur", "Vignette", "Film Grain", "Glow", "Luma Key", "Chroma Key",
     ]
 
     var body: some View {

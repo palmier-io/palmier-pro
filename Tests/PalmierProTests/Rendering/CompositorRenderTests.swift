@@ -241,6 +241,21 @@ extension CompositorRenderTests {
         #expect(isWhite(f.br), "transparent logo pixels should leave the bg unchanged: \(f.br)")
     }
 
+    @Test func lumaKeyRevealsBackgroundThroughWhite() async throws {
+        var top = CompositorFixtures.patternClip(id: "top")
+        top.effects = [Effect.make("key.luma", ["threshold": 0.7, "softness": 0])]
+        var bg = CompositorFixtures.patternClip(id: "bg")
+        bg.transform = Transform(flipHorizontal: true)
+
+        let f = try await Self.render(Self.timelineWith(
+            Fixtures.videoTrack(clips: [top]),
+            Fixtures.videoTrack(clips: [bg])
+        ), frame: 15)
+
+        #expect(isRed(f.tl), "non-white top pixels should stay visible: \(f.tl)")
+        #expect(isBlue(f.br), "white top pixels should key out and reveal flipped bg: \(f.br)")
+    }
+
     @Test func alphaMediaShowsBackgroundThrough() async throws {
         // Half-transparent overlay (top-left filled, rest clear) over an opaque pattern bg.
         let pngURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("render-alpha.png")

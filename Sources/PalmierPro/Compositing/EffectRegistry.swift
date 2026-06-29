@@ -326,6 +326,16 @@ enum EffectRegistry {
 
     private static let key: [EffectDescriptor] = [
         EffectDescriptor(
+            id: "key.luma", displayName: "Luma Key", category: "Key",
+            params: [
+                EffectParamSpec(key: "threshold", label: "Threshold", range: 0...1, defaultValue: 1, unit: ""),
+                EffectParamSpec(key: "softness", label: "Softness", range: 0...1, defaultValue: 0.08, unit: ""),
+            ],
+            apply: { image, p, _ in
+                LumaKeyKernel.apply(image, threshold: p.value("threshold"), softness: p.value("softness"))
+            }
+        ),
+        EffectDescriptor(
             id: "key.chroma", displayName: "Chroma Key", category: "Key",
             params: [
                 EffectParamSpec(key: "keyHue", label: "Key Hue", range: 0...1, defaultValue: 0.333, unit: ""),
@@ -350,8 +360,8 @@ enum EffectRegistry {
     static let canonicalOrder: [String] = [
         "color.exposure", "color.contrast", "color.highlightsShadows", "color.blacksWhites",
         "color.temperature", "color.vibrance", "color.saturation", "color.wheels", "color.curves",
-        "color.hueCurves", "color.lut", "detail.clarity", "key.chroma", "blur.gaussian", "blur.sharpen",
-        "blur.noiseReduction", "blur.motion", "stylize.grain", "stylize.vignette", "stylize.glow",
+        "color.hueCurves", "color.lut", "detail.clarity", "key.luma", "key.chroma", "blur.gaussian",
+        "blur.sharpen", "blur.noiseReduction", "blur.motion", "stylize.grain", "stylize.vignette", "stylize.glow",
     ]
 
     static func insertIndex(_ effects: [Effect], for id: String) -> Int {

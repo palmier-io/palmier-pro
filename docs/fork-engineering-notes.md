@@ -29,11 +29,13 @@ Install the current debug binary into the local patched app bundles:
 ```bash
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift build
 SRC="$PWD/.build/arm64-apple-macosx/debug/PalmierPro"
+RES_BUNDLE="$PWD/.build/arm64-apple-macosx/debug/PalmierPro_PalmierPro.bundle"
 
 for APP in "/Applications/PalmierPro.app" "$HOME/Applications/PalmierPro-BlendModes.app"; do
   test -d "$APP" || continue
   DEST="$APP/Contents/MacOS/PalmierPro"
   cp "$SRC" "$DEST"
+  cp "$RES_BUNDLE"/*.metallib "$APP/Contents/Resources/"
   if ! otool -l "$DEST" | grep -q '@executable_path/../Frameworks'; then
     install_name_tool -add_rpath '@executable_path/../Frameworks' "$DEST"
   fi
@@ -126,6 +128,17 @@ Use `difference` with a white logo PNG to invert the background through the logo
 
 Markers are exact project-frame anchors. They do not render and do not lengthen exports.
 
+### Luma Key
+
+- Effect id: `key.luma`
+- Metal kernel: `Metal/LumaKey.metal`
+- Swift wrapper: `Sources/PalmierPro/Compositing/Kernels/LumaKeyKernel.swift`
+- Registry/UI: `EffectRegistry.swift`, `Inspector/Tabs/AdjustTab.swift`
+- Agent tool: `apply_effect` accepts `type: "key.luma"` with `threshold` and `softness`.
+- Tests: `LumaKeyKernelTests`, `EffectTests`, `ToolExecutorTests`.
+
+Use this for simple white-background removal. Start with `threshold: 0.85` and `softness: 0.08`; lower the threshold to remove more near-white pixels, raise it to preserve bright subject details.
+
 ## Feature Checklist
 
 Before calling a feature complete:
@@ -139,4 +152,3 @@ Before calling a feature complete:
 - Focused tests pass.
 - Full `swift test` passes.
 - Patched app bundle is installed, signed, and reopened.
-

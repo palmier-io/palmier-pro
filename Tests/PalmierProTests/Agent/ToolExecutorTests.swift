@@ -80,6 +80,36 @@ struct ToolExecutorSmokeTests {
     }
 }
 
+@Suite("ToolExecutor — apply_effect")
+@MainActor
+struct ToolExecutorApplyEffectTests {
+
+    @Test func applyEffectSetsLumaKey() async throws {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+        let asset = h.addAsset(type: .video)
+        let clipId = h.editor.placeClip(asset: asset, trackIndex: 0, startFrame: 0, durationFrames: 60)[0]
+        try? await Task.sleep(for: .milliseconds(1))
+        var editNotifications = 0
+        h.editor.onDocumentEdited = { editNotifications += 1 }
+
+        let result = await h.runRaw("apply_effect", args: [
+            "clipIds": [clipId],
+            "effects": [[
+                "type": "key.luma",
+                "params": ["threshold": 0.9, "softness": 0.08],
+            ]],
+        ])
+
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let clip = try #require(h.editor.clipFor(id: clipId))
+        let effect = try #require(clip.effects?.first { $0.type == "key.luma" })
+        #expect(effect.params["threshold"]?.value == 0.9)
+        #expect(effect.params["softness"]?.value == 0.08)
+        #expect(editNotifications == 1)
+    }
+}
+
 @Suite("ToolExecutor — import_media")
 @MainActor
 struct ToolExecutorImportMediaTests {

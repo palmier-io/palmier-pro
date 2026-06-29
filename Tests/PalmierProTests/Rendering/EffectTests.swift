@@ -161,6 +161,7 @@ struct EffectRenderingTests {
             "stylize.vignette": ["amount": -1, "midpoint": 0.2],
             "stylize.grain": ["amount": 1, "size": 1.5],
             "detail.clarity": ["clarity": 1, "dehaze": 0],
+            "key.luma": ["threshold": 0.5, "softness": 0.1],
             "key.chroma": ["keyHue": 0.333, "tolerance": 0.5],
             "stylize.glow": ["intensity": 1, "radius": 20, "threshold": 0],
             "blur.noiseReduction": ["amount": 1],
@@ -182,9 +183,8 @@ struct EffectRenderingTests {
             return ColorProbeHelpers.srgbBytes(cg, size: renderSize)
         }
 
-        // Vibrance's delta is the least predictable across renderers, so render it
-        // (catches a bad filter key) but don't assert a pixel change.
-        let noOpOnSaturated: Set<String> = ["color.vibrance"]
+        // Some effects can render without changing this single flattened source frame.
+        let noVisibleDeltaInThisFixture: Set<String> = ["color.vibrance", "key.luma"]
         // color.curves / color.hueCurves carry JSON curves, not Double params — covered by their own tests.
         let jsonCurveEffects: Set<String> = ["color.curves", "color.hueCurves"]
         let base = try await frame(nil)
@@ -192,7 +192,7 @@ struct EffectRenderingTests {
             let params = nonDefault[descriptor.id]
             #expect(params != nil, "add non-default params for \(descriptor.id) to this test")
             let rendered = try await frame([Effect.make(descriptor.id, params ?? [:])])
-            if noOpOnSaturated.contains(descriptor.id) { continue }
+            if noVisibleDeltaInThisFixture.contains(descriptor.id) { continue }
             let changed = zip(base, rendered).contains { abs(Int($0) - Int($1)) > 8 }
             #expect(changed, "\(descriptor.id) produced an unchanged frame")
         }

@@ -71,6 +71,13 @@ extension InspectorView {
         ]
     }
 
+    private var lumaKeyControls: [EffectControl] {
+        [
+            EffectControl(effectId: "key.luma", paramKey: "threshold", label: "White Threshold"),
+            EffectControl(effectId: "key.luma", paramKey: "softness", label: "Softness"),
+        ]
+    }
+
     private var chromaKeyControls: [EffectControl] {
         [
             EffectControl(effectId: "key.chroma", paramKey: "keyHue", label: "Key Hue"),
@@ -101,7 +108,7 @@ extension InspectorView {
     }
 
     private var effectsEffectIds: Set<String> {
-        Set((detailControls + blurControls + motionBlurControls + vignetteControls + grainControls + glowControls + chromaKeyControls).map(\.effectId))
+        Set((detailControls + blurControls + motionBlurControls + vignetteControls + grainControls + glowControls + lumaKeyControls + chromaKeyControls).map(\.effectId))
     }
 
     @ViewBuilder
@@ -132,6 +139,7 @@ extension InspectorView {
                 adjustSubgroup(title: "Vignette", controls: vignetteControls, clips: clips)
                 adjustSubgroup(title: "Film Grain", controls: grainControls, clips: clips)
                 adjustSubgroup(title: "Glow", controls: glowControls, clips: clips)
+                adjustSubgroup(title: "Luma Key", controls: lumaKeyControls, clips: clips)
                 adjustSubgroup(title: "Chroma Key", controls: chromaKeyControls, clips: clips)
             }
         }

@@ -64,6 +64,10 @@ enum AgentInstructions {
             tracks through its alpha; use 'exclusion' for a softer version.
           • set_keyframes: replace the keyframe track for one (clipId, property) pair. Empty \
             array clears. Frames are clip-relative.
+          • apply_effect: use key.luma for simple white-background removal on video/image clips. \
+            Start around threshold=0.85 and softness=0.08, then lower threshold to remove more \
+            white or raise it to preserve bright subject details. Use key.chroma for colored \
+            green/blue screens instead.
           • split_clips: pass one or more cut points (each atFrame strictly inside its clip) in \
             one call — multiple cuts on the same clip are fine. Splits only insert boundaries; \
             nothing shifts. Use ripple_delete_ranges instead when you need to remove a span.
