@@ -13,7 +13,9 @@ enum TextAnimator {
     struct WordState: Equatable {
         var opacity: Float = 1
         var scale: CGFloat = 1
+        var dy: CGFloat = 0
         var color: TextStyle.RGBA
+        var bgColor: TextStyle.RGBA?
     }
 
     /// Whole-clip entrance. Non-entrance presets return identity.
@@ -32,34 +34,61 @@ enum TextAnimator {
         }
     }
 
-    /// Per-word karaoke state. `base` is the clip's static text color.
+    /// Per-word state. `base` is the clip's static text color.
     static func wordState(_ anim: TextAnimation, word: WordTiming, rel: Int, base: TextStyle.RGBA) -> WordState {
         let highlight = anim.highlight ?? TextAnimation.defaultHighlight
         let hand = max(1, anim.perWordFrames)
         switch anim.preset {
-        case .wordPop:
-            let t = progress(rel, start: word.startFrame, dur: hand)
-            return WordState(opacity: Float(t), scale: 0.6 + 0.4 * CGFloat(t), color: base)
         case .wordReveal:
-            return WordState(opacity: rel >= word.startFrame ? 1 : 0, color: base)
+            let t = progress(rel, start: word.startFrame, dur: hand)
+            return WordState(opacity: Float(t), color: activeTint(anim, word, rel, base))
+        case .wordSlide:
+            let t = progress(rel, start: word.startFrame, dur: hand)
+            return WordState(opacity: Float(t), dy: 0.5 * (1 - CGFloat(t)), color: activeTint(anim, word, rel, base))
+        case .wordPop:
+            let u = linear(rel, start: word.startFrame, dur: hand)
+            return WordState(opacity: Float(smoothstep(u)), scale: 0.6 + 0.4 * overshoot(u),
+                             color: activeTint(anim, word, rel, base))
+        case .wordCycle:
+            let on = activeRamp(rel, word: word, ramp: hand)
+            return WordState(opacity: Float(on), color: activeTint(anim, word, rel, base))
         case .highlightPop:
             let on = activeRamp(rel, word: word, ramp: min(hand, 4))
             return WordState(scale: 1 + 0.15 * CGFloat(on), color: lerp(base, highlight, CGFloat(on)))
-        case .karaokeFill:
-            let on = activeRamp(rel, word: word, ramp: min(hand, 3))
-            return WordState(color: lerp(base, highlight, CGFloat(on)))
+        case .highlightBlock:
+            let on = activeRamp(rel, word: word, ramp: min(hand, 4))
+            var bg = highlight; bg.a *= Double(on)
+            return WordState(color: base, bgColor: bg)
         default:
             return WordState(color: base)
         }
+    }
+
+    /// Tints the active word if a highlight is set.
+    private static func activeTint(_ anim: TextAnimation, _ word: WordTiming, _ rel: Int, _ base: TextStyle.RGBA) -> TextStyle.RGBA {
+        guard let hl = anim.highlight else { return base }
+        let on = activeRamp(rel, word: word, ramp: max(1, anim.perWordFrames))
+        return lerp(base, hl, CGFloat(on))
     }
 
     // MARK: - Helpers
 
     /// Eased 0→1 ramp across `dur` frames starting at `start`.
     private static func progress(_ rel: Int, start: Int, dur: Int) -> Double {
+        smoothstep(linear(rel, start: start, dur: dur))
+    }
+
+    /// Raw (un-eased) 0→1 ramp across `dur` frames starting at `start`.
+    private static func linear(_ rel: Int, start: Int, dur: Int) -> Double {
         guard rel > start else { return 0 }
         guard rel < start + dur else { return 1 }
-        return smoothstep(Double(rel - start) / Double(dur))
+        return Double(rel - start) / Double(dur)
+    }
+
+    /// Back-ease that overshoots past 1 before settling — a spring/bounce on the way in.
+    private static func overshoot(_ t: Double) -> CGFloat {
+        let s = 1.70158, p = t - 1
+        return CGFloat(1 + (s + 1) * p * p * p + s * p * p)
     }
 
     /// 0 outside the word's active span, ramping to 1 inside (eased at both edges).

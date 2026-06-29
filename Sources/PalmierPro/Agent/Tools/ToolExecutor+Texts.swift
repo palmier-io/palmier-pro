@@ -20,7 +20,7 @@ extension ToolExecutor {
     func parseTextAnimation(preset raw: String?, highlightColor: String?, path: String) throws -> TextAnimation? {
         guard let raw, raw != "off" else { return nil }
         guard let preset = TextAnimation.Preset(rawValue: raw), preset != .none else {
-            throw ToolError("\(path): animation must be one of off, fadeIn, popIn, slideUp, wordPop, wordReveal, highlightPop, karaokeFill")
+            throw ToolError("\(path): animation must be one of \(TextAnimation.Preset.agentValues.joined(separator: ", "))")
         }
         var anim = TextAnimation(preset: preset)
         if let hex = try parseColorHex(highlightColor, path: path) { anim.highlight = hex }

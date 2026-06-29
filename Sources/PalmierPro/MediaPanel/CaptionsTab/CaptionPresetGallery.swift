@@ -6,15 +6,26 @@ struct CaptionPresetGallery: View {
     @Binding var selection: TextAnimation.Preset
     var highlight: TextStyle.RGBA? = nil
 
-    private static let presets: [TextAnimation.Preset] =
-        [.none] + TextAnimation.Preset.entrance + TextAnimation.Preset.karaoke
     private let columns = [GridItem(.adaptive(minimum: 84), spacing: AppTheme.Spacing.sm)]
 
     var body: some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            ForEach(Self.presets, id: \.self) { preset in
-                CaptionPresetCell(preset: preset, selected: selection == preset, highlight: highlight)
-                    .onTapGesture { selection = preset }
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
+            section("Per line", [.none] + TextAnimation.Preset.perLine)
+            section("Per word", TextAnimation.Preset.perWord)
+        }
+    }
+
+    @ViewBuilder
+    private func section(_ title: String, _ presets: [TextAnimation.Preset]) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            Text(title)
+                .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            LazyVGrid(columns: columns, alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                ForEach(presets, id: \.self) { preset in
+                    CaptionPresetCell(preset: preset, selected: selection == preset, highlight: highlight)
+                        .onTapGesture { selection = preset }
+                }
             }
         }
     }

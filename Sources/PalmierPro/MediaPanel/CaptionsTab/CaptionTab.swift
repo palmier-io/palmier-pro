@@ -3,7 +3,11 @@ import SwiftUI
 struct CaptionTab: View {
     @Environment(EditorViewModel.self) var editor
 
-    @State private var style = TextStyle(fontSize: AppTheme.Caption.defaultFontSize)
+    @State private var style: TextStyle = {
+        var s = TextStyle(fontSize: AppTheme.Caption.defaultFontSize)
+        s.shadow.enabled = false
+        return s
+    }()
     @State private var center = AppTheme.Caption.defaultCenter
     @State private var selectedTrackId: String?
     @State private var selectedClipTargets: [String] = []
@@ -58,8 +62,11 @@ struct CaptionTab: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.mdLg) {
                         sourceSection
+                        sectionDivider
                         styleSection
+                        sectionDivider
                         animationSection
+                        sectionDivider
                         placementSection
                     }
                     .padding(.horizontal, AppTheme.Spacing.lgXl)
@@ -84,6 +91,12 @@ struct CaptionTab: View {
         }
         .onAppear { rememberSelectedClipTargets() }
         .onChange(of: editor.selectedClipIds) { _, _ in rememberSelectedClipTargets() }
+    }
+
+    private var sectionDivider: some View {
+        Rectangle()
+            .fill(AppTheme.Border.subtleColor)
+            .frame(height: AppTheme.BorderWidth.hairline)
     }
 
     private var sourceSection: some View {
@@ -209,7 +222,7 @@ struct CaptionTab: View {
                 }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
             }
-            InspectorRow(icon: "highlighter", label: "Highlight", labelHelp: "Active-word color for karaoke presets (Highlight, Karaoke Fill).") {
+            InspectorRow(icon: "highlighter", label: "Highlight", labelHelp: "Active-word color for the per-word animation presets.") {
                 ColorField(displayColor: animationHighlight.swiftUIColor, onUserChange: { animationHighlight = TextStyle.RGBA($0) })
             }
         }

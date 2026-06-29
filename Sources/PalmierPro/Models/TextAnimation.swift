@@ -13,24 +13,24 @@ struct TextAnimation: Codable, Sendable, Equatable {
 
     enum Preset: String, Codable, CaseIterable, Sendable {
         case none
-        // Whole-clip entrance.
-        case fadeIn, popIn, slideUp
-        // Karaoke (per word).
-        case wordPop, wordReveal, highlightPop, karaokeFill
+        // Whole-clip / per-line.
+        case fadeIn, popIn, slideUp, typewriter
+        // Per word.
+        case wordReveal, wordSlide, wordPop, wordCycle, highlightPop, highlightBlock
 
-        var isPerWord: Bool {
+        enum RenderMode { case entrance, perWord, typewriter }
+
+        var renderMode: RenderMode {
             switch self {
-            case .wordPop, .wordReveal, .highlightPop, .karaokeFill: true
-            default: false
+            case .none, .fadeIn, .popIn, .slideUp: .entrance
+            case .typewriter: .typewriter
+            case .wordReveal, .wordSlide, .wordPop, .wordCycle,
+                 .highlightPop, .highlightBlock: .perWord
             }
         }
 
-        var usesHighlight: Bool {
-            switch self {
-            case .highlightPop, .karaokeFill: true
-            default: false
-            }
-        }
+        var isPerWord: Bool { renderMode == .perWord }
+        var usesHighlight: Bool { isPerWord }
 
         var displayName: String {
             switch self {
@@ -38,15 +38,21 @@ struct TextAnimation: Codable, Sendable, Equatable {
             case .fadeIn: "Fade In"
             case .popIn: "Pop In"
             case .slideUp: "Slide Up"
-            case .wordPop: "Word Pop"
+            case .typewriter: "Typewriter"
             case .wordReveal: "Word Reveal"
+            case .wordSlide: "Word Slide"
+            case .wordPop: "Word Pop"
+            case .wordCycle: "Word Cycle"
             case .highlightPop: "Highlight"
-            case .karaokeFill: "Karaoke Fill"
+            case .highlightBlock: "Highlight Block"
             }
         }
 
-        static let entrance: [Preset] = [.fadeIn, .popIn, .slideUp]
-        static let karaoke: [Preset] = [.wordPop, .wordReveal, .highlightPop, .karaokeFill]
+        static let agentValues: [String] = ["off"] + allCases.filter { $0 != .none }.map(\.rawValue)
+
+        static let perLine: [Preset] = [.fadeIn, .popIn, .slideUp, .typewriter]
+        static let perWord: [Preset] = [.wordReveal, .wordSlide, .wordPop, .wordCycle,
+                                        .highlightPop, .highlightBlock]
     }
 
     var isActive: Bool { preset != .none }

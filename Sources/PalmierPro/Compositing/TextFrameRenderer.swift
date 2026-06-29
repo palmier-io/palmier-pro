@@ -16,9 +16,17 @@ enum TextFrameRenderer {
         let fontSize = CGFloat(style.fontSize * style.fontScale) * (renderSize.height / TextLayout.referenceCanvasHeight)
         let anim = clip.textAnimation
 
-        if let anim, anim.isActive, anim.preset.isPerWord {
-            return renderPerWord(clip: clip, content: content, style: style, box: box,
-                                 fontSize: fontSize, anim: anim, frame: frame, renderSize: renderSize)
+        if let anim, anim.isActive {
+            switch anim.preset.renderMode {
+            case .perWord:
+                return renderPerWord(clip: clip, content: content, style: style, box: box,
+                                     fontSize: fontSize, anim: anim, frame: frame, renderSize: renderSize)
+            case .typewriter:
+                return renderTypewriter(clip: clip, content: content, style: style, box: box,
+                                        fontSize: fontSize, frame: frame, renderSize: renderSize)
+            case .entrance:
+                break
+            }
         }
 
         // Static base is frame-independent → cache it. Entrance reuses it under a transform.
@@ -103,7 +111,7 @@ enum TextFrameRenderer {
         return img
     }
 
-    // MARK: - Karaoke (per-word)
+    // MARK: - Per-word
 
     private static func renderPerWord(clip: Clip, content: String, style: TextStyle, box: CGRect,
                                       fontSize: CGFloat, anim: TextAnimation, frame: Int, renderSize: CGSize) -> CIImage? {
@@ -119,6 +127,7 @@ enum TextFrameRenderer {
         let timings = tokenTimings(tokens, clip.wordTimings, duration: clip.durationFrames)
         let rel = frame - clip.startFrame
         let baseAttrs = style.attributes(size: fontSize)
+        let font = baseAttrs[.font] as? NSFont
 
         for (li, line) in lines.enumerated() {
             let lineRange = CTLineGetStringRange(line)
@@ -132,6 +141,8 @@ enum TextFrameRenderer {
                 let endOff = CTLineGetOffsetForStringIndex(line, tok.range.location + tok.range.length, nil)
                 let penX = box.minX + origins[li].x + startOff
                 let penY = origins[li].y
+                let wWidth = endOff - startOff
+
                 var attrs = baseAttrs
                 attrs[.foregroundColor] = st.color.nsColor
                 let wordLine = CTLineCreateWithAttributedString(
@@ -139,15 +150,73 @@ enum TextFrameRenderer {
 
                 ctx.saveGState()
                 ctx.setAlpha(CGFloat(st.opacity))
-                let cx = penX + (endOff - startOff) / 2, cy = penY + fontSize * 0.35
+                let cx = penX + wWidth / 2, cy = penY + fontSize * 0.35
+                ctx.translateBy(x: 0, y: -st.dy * fontSize)
                 ctx.translateBy(x: cx, y: cy)
                 ctx.scaleBy(x: st.scale, y: st.scale)
                 ctx.translateBy(x: -cx, y: -cy)
+                if let bg = st.bgColor, bg.a > 0.001 {
+                    drawWordBackground(ctx, color: bg, penX: penX, penY: penY,
+                                       width: wWidth, fontSize: fontSize, font: font)
+                }
                 ctx.textPosition = CGPoint(x: penX, y: penY)
                 CTLineDraw(wordLine, ctx)
                 ctx.restoreGState()
             }
         }
+        return finish(ctx)
+    }
+
+    /// Rounded highlight block behind a word.
+    private static func drawWordBackground(_ ctx: CGContext, color: TextStyle.RGBA,
+                                           penX: CGFloat, penY: CGFloat, width: CGFloat,
+                                           fontSize: CGFloat, font: NSFont?) {
+        let ascent = font?.ascender ?? fontSize * 0.8
+        let descent = abs(font?.descender ?? fontSize * 0.2)
+        let padX = fontSize * 0.18, padY = fontSize * 0.10
+        let rect = CGRect(x: penX - padX, y: penY - descent - padY,
+                          width: width + padX * 2, height: ascent + descent + padY * 2)
+        ctx.addPath(CGPath(roundedRect: rect, cornerWidth: fontSize * 0.12,
+                           cornerHeight: fontSize * 0.12, transform: nil))
+        ctx.setFillColor(cgColor(color))
+        ctx.fillPath()
+    }
+
+    // MARK: - Typewriter (whole-clip character reveal)
+
+    private static func renderTypewriter(clip: Clip, content: String, style: TextStyle, box: CGRect,
+                                         fontSize: CGFloat, frame: Int, renderSize: CGSize) -> CIImage? {
+        guard let ctx = beginContext(style: style, box: box, renderSize: renderSize) else { return nil }
+        let rel = frame - clip.startFrame
+        let ns = content as NSString
+
+        let tokens = words(in: content)
+        let timings = tokenTimings(tokens, clip.wordTimings, duration: clip.durationFrames)
+        var visLen = 0
+        for (i, tok) in tokens.enumerated() {
+            let t = timings[i]
+            if rel >= t.endFrame {
+                visLen = tok.range.location + tok.range.length
+            } else if rel >= t.startFrame {
+                let p = Double(rel - t.startFrame) / Double(max(1, t.endFrame - t.startFrame))
+                visLen = tok.range.location + Int((Double(tok.range.length) * p).rounded(.down))
+                break
+            } else {
+                break
+            }
+        }
+        var visible = ns.substring(to: min(visLen, ns.length))
+        // Caret blinks (~0.5s) until shortly after the last word finishes.
+        let doneAt = timings.last?.endFrame ?? clip.durationFrames
+        if rel <= doneAt + 18, (rel / 15) % 2 == 0 { visible += "|" }
+        guard !visible.isEmpty else { return finish(ctx) }
+        // Left-anchor so the text reveals rightward in place rather than re-centering as it grows.
+        var attrs = style.attributes(size: fontSize)
+        let para = NSMutableParagraphStyle()
+        para.alignment = .left
+        para.lineBreakMode = .byWordWrapping
+        attrs[.paragraphStyle] = para
+        CTFrameDraw(layoutFrame(NSAttributedString(string: visible, attributes: attrs), box: box), ctx)
         return finish(ctx)
     }
 

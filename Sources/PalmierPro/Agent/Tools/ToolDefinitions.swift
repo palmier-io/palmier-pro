@@ -254,8 +254,8 @@ enum ToolDefinitions {
                     "fontSize": ["type": "number", "description": "Text clips only. Font size in canvas points."],
                     "color": ["type": "string", "description": "Text clips only. Hex '#RRGGBB' or '#RRGGBBAA'."],
                     "alignment": ["type": "string", "enum": ["left", "center", "right"], "description": "Text clips only."],
-                    "animation": ["type": "string", "enum": ["off", "fadeIn", "popIn", "slideUp", "wordPop", "wordReveal", "highlightPop", "karaokeFill"], "description": "Text clips only. Entrance (fadeIn/popIn/slideUp) or karaoke (wordPop/wordReveal/highlightPop/karaokeFill); 'off' clears it. Use this to restyle a caption's animation."],
-                    "highlightColor": ["type": "string", "description": "Text clips only. Hex '#RRGGBB'/'#RRGGBBAA' for the active word (highlightPop/karaokeFill)."],
+                    "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Text clips only. A whole-caption preset (fadeIn/popIn/slideUp/typewriter) or a per-word one (wordReveal/wordSlide/wordPop/wordCycle/highlightPop/highlightBlock); 'off' clears it. Use this to restyle a caption's animation."],
+                    "highlightColor": ["type": "string", "description": "Text clips only. Hex '#RRGGBB'/'#RRGGBBAA' for the active word, used by the per-word presets (motion presets tint it; Highlight/Highlight Block use it as the emphasis color)."],
                     "blendMode": [
                         "type": "string",
                         "enum": BlendMode.allCases.map(\.rawValue),
@@ -401,8 +401,8 @@ enum ToolDefinitions {
                                 "fontSize": ["type": "number", "description": "Font size in canvas points (default 96). On a 1080p canvas ~50 is a caption, ~120 is a title."],
                                 "color": ["type": "string", "description": "Hex '#RRGGBB' or '#RRGGBBAA' (default '#FFFFFF')"],
                                 "alignment": ["type": "string", "enum": ["left", "center", "right"], "description": "Text alignment (default 'center')"],
-                                "animation": ["type": "string", "enum": ["off", "fadeIn", "popIn", "slideUp", "wordPop", "wordReveal", "highlightPop", "karaokeFill"], "description": "Optional. Entrance (fadeIn/popIn/slideUp) or karaoke word-by-word (wordPop/wordReveal/highlightPop/karaokeFill). Karaoke words use even spacing here — for audio-timed karaoke use add_captions. Default off."],
-                                "highlightColor": ["type": "string", "description": "Optional hex '#RRGGBB'/'#RRGGBBAA' for the active word (highlightPop/karaokeFill only)."],
+                                "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Optional. A whole-caption preset (fadeIn/popIn/slideUp/typewriter) or a per-word one (wordReveal/wordSlide/wordPop/wordCycle/highlightPop/highlightBlock). Per-word presets use even spacing here — for audio-timed karaoke use add_captions. Default off."],
+                                "highlightColor": ["type": "string", "description": "Optional hex '#RRGGBB'/'#RRGGBBAA' for the active word, used by the per-word presets."],
                             ],
                             "required": ["startFrame", "durationFrames", "content"],
                         ],
@@ -425,8 +425,8 @@ enum ToolDefinitions {
                     "centerY": ["type": "number", "description": "Optional vertical center 0–1 (default 0.9, near the bottom)."],
                     "textCase": ["type": "string", "enum": ["auto", "upper", "lower"], "description": "Optional letter case (default auto)."],
                     "censorProfanity": ["type": "boolean", "description": "Optional. Mask profanity (default false)."],
-                    "animation": ["type": "string", "enum": ["off", "fadeIn", "popIn", "slideUp", "wordPop", "wordReveal", "highlightPop", "karaokeFill"], "description": "Optional caption animation. Karaoke presets (wordPop/wordReveal/highlightPop/karaokeFill) reveal word-by-word, timed to the transcript automatically. Default off."],
-                    "highlightColor": ["type": "string", "description": "Optional hex '#RRGGBB'/'#RRGGBBAA' for the active word (highlightPop/karaokeFill only)."],
+                    "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Optional caption animation. Per-word presets (wordReveal/wordSlide/wordPop/wordCycle/highlightPop/highlightBlock) reveal word-by-word, timed to the transcript automatically; whole-caption ones (fadeIn/popIn/slideUp/typewriter) animate the line. Default off."],
+                    "highlightColor": ["type": "string", "description": "Optional hex '#RRGGBB'/'#RRGGBBAA' for the active word, used by the per-word presets."],
                 ]
             )
         ),

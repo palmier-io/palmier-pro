@@ -5,8 +5,7 @@ import CoreImage
 enum CaptionPreviewRender {
     nonisolated(unsafe) private static let ciContext = CIContext(options: [.workingColorSpace: NSNull()])
 
-    /// Loop length for the looping previews (karaoke needs longer to reveal every word).
-    static func loopFrames(_ preset: TextAnimation.Preset) -> Int { preset.isPerWord ? 96 : 45 }
+    static func loopFrames(_ preset: TextAnimation.Preset) -> Int { preset.renderMode == .entrance ? 28 : 54 }
 
     /// A synthetic text clip for preview rendering.
     static func clip(content: String, style: TextStyle, transform: Transform,
