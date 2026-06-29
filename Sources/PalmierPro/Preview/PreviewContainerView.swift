@@ -31,7 +31,7 @@ struct PreviewContainerView: View {
                     }
                     if let asset = activeMediaAsset, asset.isGenerating {
                         generatingPreview(label: asset.generatingLabel)
-                    } else if let label = timelineGeneratingLabel(timelineState: timelineState) {
+                    } else if case .generating(let label) = timelineState {
                         generatingPreview(label: label)
                     }
                     if let overlay = offlineOverlay(timelineState: timelineState) {
@@ -245,18 +245,12 @@ struct PreviewContainerView: View {
     }
 
     private enum TimelineFrameState {
-        /// An online clip covers the frame; no overlay needed.
         case covered
-        /// A clip whose media is still generating covers the frame.
         case generating(String)
-        /// Only offline clip(s) cover the frame.
         case offline(Clip)
         case none
     }
 
-    /// Classifies the clip(s) under the timeline playhead. A generating clip's
-    /// source file doesn't exist on disk yet, so it must report as generating —
-    /// not offline — exactly like its timeline track does.
     private var timelineFrameState: TimelineFrameState {
         guard isTimeline else { return .none }
         let hasOffline = !editor.offlineMediaRefs.isEmpty
@@ -269,8 +263,8 @@ struct PreviewContainerView: View {
         var generatingLabel: String?
         for track in editor.timeline.tracks where track.type != .audio && !track.hidden {
             for clip in track.clips where clip.mediaType != .text {
-                guard clip.contains(timelineFrame: frame) else { continue }
-                if let asset = editor.mediaAssets.first(where: { $0.id == clip.mediaRef }), asset.isGenerating {
+                guard clip.contains(timelineFrame: frame), clip.opacityAt(frame: frame) > 0.01 else { continue }
+                if let asset = generatingAsset(for: clip) {
                     generatingLabel = generatingLabel ?? asset.generatingLabel
                 } else if editor.isMediaOffline(clip.mediaRef) {
                     offline = offline ?? clip
@@ -282,6 +276,10 @@ struct PreviewContainerView: View {
         if let generatingLabel { return .generating(generatingLabel) }
         if let offline { return .offline(offline) }
         return .none
+    }
+
+    private func generatingAsset(for clip: Clip) -> MediaAsset? {
+        editor.mediaAssets.first { $0.id == clip.mediaRef && $0.isGenerating }
     }
 
     private struct OfflineOverlay { let assetId: String?; let path: String?; let isUnprocessable: Bool }
@@ -297,11 +295,6 @@ struct PreviewContainerView: View {
                 isUnprocessable: editor.isMediaUnprocessable(clip.mediaRef)
             )
         }
-        return nil
-    }
-
-    private func timelineGeneratingLabel(timelineState: TimelineFrameState) -> String? {
-        if case .generating(let label) = timelineState { return label }
         return nil
     }
 
