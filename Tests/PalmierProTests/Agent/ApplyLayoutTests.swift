@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import PalmierPro
 
-/// Records action names; `registerTimelineSwap` names a swap only when it registers, so suppressed
-/// (nested) swaps leave no entry — letting a test count real swaps.
 private final class SpyUndoManager: UndoManager {
     var actionNames: [String] = []
     override func setActionName(_ actionName: String) {
@@ -26,8 +24,6 @@ struct ApplyLayoutTests {
         return a
     }
 
-    /// Configured timeline at `w`×`h` with one pre-existing clip, so the agent path keeps the
-    /// canvas instead of adopting the first placed clip's resolution.
     private func configured(_ w: Int, _ h: Int) -> ToolHarness {
         var t = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [Fixtures.clip(id: "existing", start: 0, duration: 30)])])
         t.width = w; t.height = h; t.settingsConfigured = true
@@ -42,10 +38,7 @@ struct ApplyLayoutTests {
         h.editor.timeline.tracks.flatMap(\.clips).first { $0.id == id }
     }
 
-    // MARK: Placement
-
     @Test func placementAdoptsLayoutSlotOrderForSettings() async throws {
-        // Unconfigured timeline: canvas follows the layout's canonical slot order, not input.slots order.
         let h = ToolHarness()
         videoAsset(h, id: "landscape", w: 1920, ht: 1080)
         videoAsset(h, id: "portrait", w: 1080, ht: 1920)
@@ -59,7 +52,7 @@ struct ApplyLayoutTests {
     }
 
     @Test func sideBySideFillsWithoutStretch() async throws {
-        let h = ToolHarness() // 1920x1080
+        let h = ToolHarness()
         videoAsset(h, id: "a"); videoAsset(h, id: "b")
         let r = await h.runRaw("apply_layout", args: [
             "layout": "side_by_side", "durationFrames": 120,
@@ -75,7 +68,6 @@ struct ApplyLayoutTests {
         for c in [left, right] {
             #expect(approx(c.crop.left, 0.25))
             #expect(approx(c.crop.right, 0.25))
-            // No stretch: drawn box keeps source aspect; visible crop exactly fills the slot.
             #expect(approx((c.transform.width / c.transform.height) * canvasAspect, 16.0 / 9.0, tol: 1e-3))
             #expect(approx(c.transform.width * c.crop.visibleWidthFraction, 0.5))
             #expect(approx(c.transform.height * c.crop.visibleHeightFraction, 1.0))
@@ -99,7 +91,7 @@ struct ApplyLayoutTests {
             }
         }
         #expect(insetIdx >= 0 && mainIdx >= 0)
-        #expect(insetIdx < mainIdx) // lower index renders on top
+        #expect(insetIdx < mainIdx)
         let inset = clips(h, mediaRef: "cam")!
         #expect(inset.transform.topLeft.x > 0.6 && inset.transform.topLeft.y > 0.6)
     }
@@ -137,7 +129,6 @@ struct ApplyLayoutTests {
     }
 
     @Test func placementIsSingleUndoStep() async throws {
-        // Nested insertTrack/placeClip swaps must stay suppressed: one swap, one undo to revert.
         let h = configured(1920, 1080)
         for id in ["a", "b", "c", "d"] { videoAsset(h, id: id, hasAudio: true) }
         let um = SpyUndoManager()
@@ -150,7 +141,7 @@ struct ApplyLayoutTests {
             ],
         ])
         #expect(r.isError == false)
-        #expect(um.actionNames == ["Apply Layout (Agent)"]) // no leaked "Add Track" swaps
+        #expect(um.actionNames == ["Apply Layout (Agent)"])
 
         let tracksAfter = h.editor.timeline.tracks.count
         #expect(tracksAfter > 1)
@@ -159,8 +150,6 @@ struct ApplyLayoutTests {
         #expect(h.editor.timeline.tracks.flatMap(\.clips).allSatisfy { $0.id == "existing" })
         #expect(um.canUndo == false)
     }
-
-    // MARK: Existing clips / single full
 
     @Test func reLayoutsExistingClipsByClipId() async throws {
         let timeline = Fixtures.timeline(tracks: [
@@ -175,14 +164,13 @@ struct ApplyLayoutTests {
             "slots": [["slot": "left", "clipId": "ca"], ["slot": "right", "clipId": "cb"]],
         ])
         #expect(r.isError == false)
-        #expect(h.editor.timeline.tracks.count == before) // no new tracks, timing untouched
+        #expect(h.editor.timeline.tracks.count == before)
         #expect(approx(clip(h, id: "ca")!.transform.centerX, 0.25))
         #expect(approx(clip(h, id: "cb")!.transform.centerX, 0.75))
         #expect(clip(h, id: "ca")!.startFrame == 0)
     }
 
     @Test func reLayoutClearsAnimationTracks() async throws {
-        // Renderer samples keyframe tracks over static transform/crop, so re-layout must drop them.
         var t = Fixtures.timeline(tracks: [
             Fixtures.videoTrack(clips: [Fixtures.clip(id: "ca", mediaRef: "a", start: 0, duration: 60)]),
             Fixtures.videoTrack(clips: [Fixtures.clip(id: "cb", mediaRef: "b", start: 0, duration: 60)]),
@@ -210,11 +198,10 @@ struct ApplyLayoutTests {
         let c = clip(h, id: "ca")!
         #expect(c.positionTrack == nil && c.scaleTrack == nil && c.cropTrack == nil)
         #expect(approx(c.transformAt(frame: 0).centerX, 0.25))
-        #expect(approx(c.transformAt(frame: 60).centerX, 0.25)) // static layout, not animated
+        #expect(approx(c.transformAt(frame: 60).centerX, 0.25))
     }
 
     @Test func reLayoutRejectsSameTrackOverlap() async throws {
-        // Overlapping clips on one track: compositor renders only the first, so reject.
         var t = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [
             Fixtures.clip(id: "ca", mediaRef: "a", start: 0, duration: 60),
             Fixtures.clip(id: "cb", mediaRef: "b", start: 30, duration: 60),
@@ -227,11 +214,10 @@ struct ApplyLayoutTests {
             "slots": [["slot": "left", "clipId": "ca"], ["slot": "right", "clipId": "cb"]],
         ])
         #expect(r.isError)
-        #expect(approx(clip(h, id: "ca")!.transform.centerX, 0.5)) // untouched
+        #expect(approx(clip(h, id: "ca")!.transform.centerX, 0.5))
     }
 
     @Test func reLayoutRejectsClipsThatNeverCoincide() async throws {
-        // Disjoint in time on separate tracks: no playhead shows both, so reject.
         var t = Fixtures.timeline(tracks: [
             Fixtures.videoTrack(clips: [Fixtures.clip(id: "ca", mediaRef: "a", start: 0, duration: 60)]),
             Fixtures.videoTrack(clips: [Fixtures.clip(id: "cb", mediaRef: "b", start: 120, duration: 60)]),
@@ -244,12 +230,10 @@ struct ApplyLayoutTests {
             "slots": [["slot": "left", "clipId": "ca"], ["slot": "right", "clipId": "cb"]],
         ])
         #expect(r.isError)
-        #expect(approx(clip(h, id: "ca")!.transform.centerX, 0.5)) // untouched
+        #expect(approx(clip(h, id: "ca")!.transform.centerX, 0.5))
     }
 
     @Test func fullRefitsSingleClipToCanvasAspect() async throws {
-        // Vertical project, one landscape clip → 'full' covers the frame (no stretch, no bars),
-        // anchorX biases the horizontal crop. No new tracks, timing untouched.
         var t = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", mediaRef: "wide", start: 0, duration: 60)])])
         t.width = 1080; t.height = 1920; t.settingsConfigured = true
         let h = ToolHarness(timeline: t)
@@ -264,15 +248,11 @@ struct ApplyLayoutTests {
         #expect(approx(c.transform.width * c.crop.visibleWidthFraction, 1.0))
         #expect(approx(c.transform.height * c.crop.visibleHeightFraction, 1.0))
         #expect(approx((c.transform.width / c.transform.height) * (1080.0 / 1920.0), 16.0 / 9.0, tol: 1e-3))
-        #expect(approx(c.crop.top, 0)) // landscape into portrait crops the sides only
-        #expect(approx(c.crop.left, (c.crop.left + c.crop.right) * 0.3)) // anchorX bias
+        #expect(approx(c.crop.top, 0))
+        #expect(approx(c.crop.left, (c.crop.left + c.crop.right) * 0.3))
     }
 
-    // MARK: Framing anchor
-
     @Test func anchorBiasesCropContinuously() async throws {
-        // Portrait sources into wider slots crop top/bottom. Ordering must be strict:
-        // top (0) < partial nudge (anchorY 0.2) < center (even split); 'top' aligns to slot top.
         let h = configured(1920, 1080)
         for id in ["c", "p", "t"] { videoAsset(h, id: id, w: 1080, ht: 1920) }
         let r = await h.runRaw("apply_layout", args: [
@@ -291,10 +271,8 @@ struct ApplyLayoutTests {
         #expect(approx(top.crop.top, 0))
         #expect(top.crop.top < partial.crop.top && partial.crop.top < center.crop.top)
         #expect(approx(center.crop.top, center.crop.bottom))
-        #expect(approx(top.transform.topLeft.y, 0)) // kept-top region aligns to slot top
+        #expect(approx(top.transform.topLeft.y, 0))
     }
-
-    // MARK: Validation
 
     @Test func rejectsInvalidInput() async {
         let t = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [Fixtures.clip(id: "cx", mediaRef: "a", start: 0, duration: 30)])])

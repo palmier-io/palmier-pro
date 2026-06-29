@@ -495,8 +495,6 @@ final class EditorViewModel {
         return mediaCanvasAspect(for: asset, canvasWidth: timeline.width, canvasHeight: timeline.height)
     }
 
-    /// Largest crop of `target` aspect inside the source. `anchorX`/`anchorY` (0–1) bias which
-    /// part survives on the cropped axis (0.5 centers; anchorY 0 keeps the top).
     func cropFittingAspect(
         for clip: Clip,
         targetPixelAspect target: Double,

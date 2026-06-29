@@ -20,14 +20,12 @@ fileprivate struct ApplyLayoutInput: DecodableToolArgs {
 
 extension ToolExecutor {
 
-    /// Named anchors → normalized (anchorX, anchorY); y grows downward so "top" is y 0.
     static let layoutAnchors: [String: (x: Double, y: Double)] = [
         "center": (0.5, 0.5),
         "top": (0.5, 0), "bottom": (0.5, 1), "left": (0, 0.5), "right": (1, 0.5),
         "top_left": (0, 0), "top_right": (1, 0), "bottom_left": (0, 1), "bottom_right": (1, 1),
     ]
 
-    /// Named `anchor` sets coarse framing; numeric `anchorX`/`anchorY` (0–1) override per axis.
     private func resolveAnchor(_ e: ApplyLayoutInput.SlotEntry, path: String) throws -> (x: Double, y: Double) {
         var anchor = Self.layoutAnchors["center"]!
         if let raw = e.anchor {
@@ -88,7 +86,6 @@ extension ToolExecutor {
             throw ToolError("apply_layout: don't mix 'mediaRef' and 'clipId' — either place new clips (all mediaRef) or re-layout existing clips (all clipId).")
         }
 
-        // Resolve sources up front so the mutation below can't fail partway.
         let startFrame = input.startFrame ?? 0
         let duration = input.durationFrames ?? 0
         var assetBySlot: [String: MediaAsset] = [:]
@@ -108,8 +105,6 @@ extension ToolExecutor {
                 assets: layout.slots.compactMap { assetBySlot[$0.id] }
             )
         } else {
-            // Layout shows every clip at once, so reject same-track overlaps (only the first renders)
-            // and clips that never share a frame.
             var rangesByTrack: [String: [(slot: String, start: Int, end: Int)]] = [:]
             var commonStart = Int.min, commonEnd = Int.max
             for e in entries {
@@ -137,7 +132,6 @@ extension ToolExecutor {
         editor.withTimelineSwap(actionName: "Apply Layout (Agent)") {
             var clipBySlot: [String: String] = [:]
             if usesMedia {
-                // Insert lowest-z first so the highest-z slot (a PIP inset) lands on top (index 0).
                 var trackBySlot: [String: String] = [:]
                 for slot in layout.slots.sorted(by: { $0.z < $1.z }) {
                     let idx = editor.insertTrack(at: 0, type: .video)
@@ -165,7 +159,6 @@ extension ToolExecutor {
                 let p = editor.layoutPlacement(for: clip, in: e.slot.rect, fit: fit, anchorX: e.anchor.x, anchorY: e.anchor.y)
                 editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].transform = p.transform
                 editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].crop = p.crop
-                // Drop animation tracks; the renderer samples them over the static transform/crop.
                 editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].positionTrack = nil
                 editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].scaleTrack = nil
                 editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].rotationTrack = nil

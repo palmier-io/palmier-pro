@@ -2,9 +2,6 @@ import Foundation
 
 extension EditorViewModel {
 
-    /// Transform + crop placing `clip` into `rect` without distorting it: `.fill` covers the slot
-    /// (crops to its aspect), `.fit` letterboxes the source inside it. `anchorX`/`anchorY` (0–1)
-    /// bias which part survives — anchorY 0 keeps the top (a face).
     func layoutPlacement(
         for clip: Clip,
         in rect: LayoutRect,
@@ -17,8 +14,6 @@ extension EditorViewModel {
 
         switch fit {
         case .fill:
-            // Renderer maps the whole frame into transform.w×h, so expand it by the crop's
-            // visible fraction (and shift by the inset) or the crop just floats in a stretched box.
             let crop = cropFittingAspect(for: clip, targetPixelAspect: slotPixelAspect, anchorX: anchorX, anchorY: anchorY)
             let vw = crop.visibleWidthFraction
             let vh = crop.visibleHeightFraction

@@ -1,6 +1,5 @@
 import Foundation
 
-/// Normalized (0–1) top-left rectangle in canvas space (same coords as `Transform.topLeft`).
 struct LayoutRect: Equatable, Sendable {
     var x: Double
     var y: Double
@@ -8,20 +7,17 @@ struct LayoutRect: Equatable, Sendable {
     var h: Double
 }
 
-/// A named region of a layout; higher `z` renders on top (a PIP inset).
 struct LayoutSlot: Equatable, Sendable {
     let id: String
     let rect: LayoutRect
     var z: Int = 0
 }
 
-/// `fill` covers the slot (crops the source); `fit` letterboxes the source inside it.
 enum LayoutFit: String, Sendable {
     case fill
     case fit
 }
 
-/// Hardcoded multi-clip frame layouts; each names its slots.
 enum VideoLayout: String, CaseIterable, Sendable {
     case full
     case sideBySide = "side_by_side"
@@ -34,7 +30,6 @@ enum VideoLayout: String, CaseIterable, Sendable {
     case mainSidebar = "main_sidebar"
     case threeUp = "three_up"
 
-    // A square normalized inset reads as the canvas aspect in pixels (same-aspect source = no crop).
     private static let pipInset = 0.28
     private static let pipMargin = 0.035
 
