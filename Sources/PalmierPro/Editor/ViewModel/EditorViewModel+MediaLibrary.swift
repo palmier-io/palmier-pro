@@ -635,6 +635,8 @@ extension EditorViewModel {
         /// When nil the box is auto-fit to content and centered on the canvas.
         let transform: Transform?
         var captionGroupId: String? = nil
+        var captionWordAnimation: CaptionWordAnimation? = nil
+        var captionWords: [CaptionWordTiming]? = nil
     }
 
     /// Batch variant of `addTextClip` for agent flows.
@@ -678,6 +680,8 @@ extension EditorViewModel {
                 clip.textContent = spec.content
                 clip.textStyle = spec.style
                 clip.captionGroupId = spec.captionGroupId
+                clip.captionWordAnimation = spec.captionWordAnimation
+                clip.captionWords = spec.captionWords
                 timeline.tracks[spec.trackIndex].clips.append(clip)
                 createdIds[i] = clip.id
             }

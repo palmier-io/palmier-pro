@@ -10,6 +10,7 @@ extension EditorViewModel {
         var textCase: CaptionCase = .auto
         var censorProfanity: Bool = false
         var locale: Locale? = nil
+        var wordAnimation: CaptionWordAnimation = .pop
     }
 
     enum CaptionCase: String, CaseIterable, Sendable {
@@ -182,8 +183,30 @@ extension EditorViewModel {
 
         return targets.flatMap { t -> [TextClipSpec] in
             guard let phrases = phrasesByClip[t.id] else { return [] }
-            let cased = phrases.map { CaptionBuilder.Phrase(text: request.textCase.apply($0.text), start: $0.start, end: $0.end) }
-            return CaptionBuilder.specs(for: cased, sourceClip: t.clip, trackIndex: 0, fps: fps, style: request.style, captionGroupId: groupId, transformFor: transformFor)
+            let cased = phrases.map { phrase in
+                CaptionBuilder.Phrase(
+                    text: request.textCase.apply(phrase.text),
+                    start: phrase.start,
+                    end: phrase.end,
+                    words: phrase.words.map {
+                        CaptionBuilder.WordTiming(
+                            text: request.textCase.apply($0.text),
+                            start: $0.start,
+                            end: $0.end
+                        )
+                    }
+                )
+            }
+            return CaptionBuilder.specs(
+                for: cased,
+                sourceClip: t.clip,
+                trackIndex: 0,
+                fps: fps,
+                style: request.style,
+                captionGroupId: groupId,
+                wordAnimation: request.wordAnimation,
+                transformFor: transformFor
+            )
         }
     }
 

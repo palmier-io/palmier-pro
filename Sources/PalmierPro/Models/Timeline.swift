@@ -97,6 +97,8 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     // Text clips only.
     var textContent: String?
     var textStyle: TextStyle?
+    var captionWordAnimation: CaptionWordAnimation?
+    var captionWords: [CaptionWordTiming]?
 
     // Keyframe tracks for each animatable property. Nil when no animation exists.
     var opacityTrack: KeyframeTrack<Double>?
@@ -113,13 +115,22 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         case trimStartFrame, trimEndFrame, speed, volume
         case fadeInFrames, fadeOutFrames, fadeInInterpolation, fadeOutInterpolation
         case opacity, transform, crop
-        case linkGroupId, captionGroupId, textContent, textStyle
+        case linkGroupId, captionGroupId, textContent, textStyle, captionWordAnimation, captionWords
         case opacityTrack, positionTrack, scaleTrack, rotationTrack, cropTrack, volumeTrack
         case effects
     }
 
     /// Frame where this clip ends on the timeline
     var endFrame: Int { startFrame + durationFrames }
+
+    mutating func reconcileCaptionWords(to newContent: String) {
+        guard let words = captionWords, !words.isEmpty else { return }
+        let tokens = newContent.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        guard tokens.count == words.count else { captionWords = nil; return }
+        captionWords = zip(tokens, words).map {
+            CaptionWordTiming(text: $0.0, startFrame: $0.1.startFrame, endFrame: $0.1.endFrame)
+        }
+    }
 
     /// Source frames consumed by the visible portion
     var sourceFramesConsumed: Int { Int((Double(durationFrames) * speed).rounded()) }
@@ -354,6 +365,8 @@ extension Clip {
             captionGroupId: try? c.decode(String.self, forKey: .captionGroupId),
             textContent: try? c.decode(String.self, forKey: .textContent),
             textStyle: try? c.decode(TextStyle.self, forKey: .textStyle),
+            captionWordAnimation: try? c.decode(CaptionWordAnimation.self, forKey: .captionWordAnimation),
+            captionWords: try? c.decode([CaptionWordTiming].self, forKey: .captionWords),
             opacityTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .opacityTrack),
             positionTrack: try? c.decode(KeyframeTrack<AnimPair>.self, forKey: .positionTrack),
             scaleTrack: try? c.decode(KeyframeTrack<AnimPair>.self, forKey: .scaleTrack),

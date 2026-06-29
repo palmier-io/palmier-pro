@@ -1,10 +1,17 @@
 import Foundation
 
 enum CaptionBuilder {
+    struct WordTiming: Equatable {
+        var text: String
+        var start: Double
+        var end: Double
+    }
+
     struct Phrase: Equatable {
         var text: String
         var start: Double
         var end: Double
+        var words: [WordTiming] = []
     }
 
     /// Splits a transcript segment into screen-ready phrases and times them.
@@ -63,10 +70,10 @@ enum CaptionBuilder {
     /// Time phrases from word runs by matching shared characters, so timing holds when
     /// runs don't split on spaces (contractions, split numbers, punctuation runs).
     private static func time(_ texts: [String], segment: TranscriptionSegment, words: [TranscriptionWord]) -> [Phrase] {
-        let timed = words.compactMap { w -> (count: Int, start: Double, end: Double)? in
+        let timed = words.compactMap { w -> (text: String, count: Int, start: Double, end: Double)? in
             guard let s = w.start, let e = w.end else { return nil }
             let count = alphanumericCount(w.text)
-            return count > 0 ? (count, s, e) : nil
+            return count > 0 ? (w.text, count, s, e) : nil
         }
         guard !timed.isEmpty else { return distribute(texts, start: segment.start, end: segment.end) }
 
@@ -77,17 +84,44 @@ enum CaptionBuilder {
             var got = 0
             var first: (start: Double, end: Double)?
             var last: (start: Double, end: Double)?
+            var wordTimings: [WordTiming] = []
             while idx < timed.count, got < want {
                 let run = timed[idx]
                 if first == nil { first = (run.start, run.end) }
                 last = (run.start, run.end)
+                wordTimings.append(WordTiming(text: run.text, start: run.start, end: run.end))
                 got += run.count
                 idx += 1
             }
             guard let f = first, let l = last else { break }
-            phrases.append(Phrase(text: text, start: f.start, end: l.end))
+            let merged = mergeWordTimings(wordTimings, phraseText: text)
+            phrases.append(Phrase(text: text, start: f.start, end: l.end, words: merged))
         }
         return phrases.count == texts.count ? phrases : distribute(texts, start: segment.start, end: segment.end)
+    }
+
+    private static func mergeWordTimings(_ runs: [WordTiming], phraseText: String) -> [WordTiming] {
+        let tokens = phraseText.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        guard !tokens.isEmpty, !runs.isEmpty else { return [] }
+
+        var merged: [WordTiming] = []
+        var idx = 0
+        for token in tokens {
+            let want = alphanumericCount(token)
+            var got = 0
+            var first: WordTiming?
+            var last: WordTiming?
+            while idx < runs.count, got < want {
+                let run = runs[idx]
+                if first == nil { first = run }
+                last = run
+                got += alphanumericCount(run.text)
+                idx += 1
+            }
+            guard let f = first, let l = last else { return [] }
+            merged.append(WordTiming(text: token, start: f.start, end: l.end))
+        }
+        return merged.count == tokens.count ? merged : []
     }
 
     private static func alphanumericCount(_ text: String) -> Int {
@@ -120,9 +154,24 @@ enum CaptionBuilder {
                 let shift = out[i].end - out[i + 1].start
                 out[i + 1].start += shift
                 out[i + 1].end += shift
+                for j in out[i + 1].words.indices {
+                    out[i + 1].words[j].start += shift
+                    out[i + 1].words[j].end += shift
+                }
             }
         }
         return out
+    }
+
+    private static func relativeFrame(sourceSeconds t: Double, clip: Clip, startFrame s: Int, fps: Int) -> Int {
+        let sourceFrame = t * Double(fps)
+        let offsetFromTrim = sourceFrame - Double(clip.trimStartFrame)
+        let frame = Double(clip.startFrame) + offsetFromTrim / max(clip.speed, 0.0001)
+        return Int(frame.rounded()) - s
+    }
+
+    private static func clamp(_ value: Int, _ low: Int, _ high: Int) -> Int {
+        min(max(value, low), max(low, high))
     }
 
     static func specs(
@@ -132,6 +181,7 @@ enum CaptionBuilder {
         fps: Int,
         style: TextStyle,
         captionGroupId: String?,
+        wordAnimation: CaptionWordAnimation = .none,
         transformFor: (String) -> Transform? = { _ in nil },
         minDurationFrames: Int = 1
     ) -> [EditorViewModel.TextClipSpec] {
@@ -146,14 +196,29 @@ enum CaptionBuilder {
             let mappedEnd = sourceClip.timelineFrame(sourceSeconds: p.end, fps: fps)
             let s = mappedStart ?? sourceClip.startFrame
             let e = mappedEnd ?? sourceClip.endFrame
+            let duration = max(minDurationFrames, min(sourceClip.endFrame, e) - max(sourceClip.startFrame, s))
+
+            var captionWords: [CaptionWordTiming]? = nil
+            let tokenTimings = mergeWordTimings(p.words, phraseText: p.text)
+            if wordAnimation.isAnimated, !tokenTimings.isEmpty {
+                captionWords = tokenTimings.map { w in
+                    let relStart = clamp(relativeFrame(sourceSeconds: w.start, clip: sourceClip, startFrame: s, fps: fps), 0, duration - 1)
+                    let relEnd = clamp(relativeFrame(sourceSeconds: w.end, clip: sourceClip, startFrame: s, fps: fps), relStart + 1, duration)
+                    return CaptionWordTiming(text: w.text, startFrame: relStart, endFrame: relEnd)
+                }
+            }
+            let animated = captionWords?.isEmpty == false
+
             return EditorViewModel.TextClipSpec(
                 trackIndex: trackIndex,
                 startFrame: s,
-                durationFrames: max(minDurationFrames, min(sourceClip.endFrame, e) - max(sourceClip.startFrame, s)),
+                durationFrames: duration,
                 content: p.text,
                 style: style,
                 transform: transformFor(p.text),
-                captionGroupId: captionGroupId
+                captionGroupId: captionGroupId,
+                captionWordAnimation: animated ? wordAnimation : nil,
+                captionWords: animated ? captionWords : nil
             )
         }
     }

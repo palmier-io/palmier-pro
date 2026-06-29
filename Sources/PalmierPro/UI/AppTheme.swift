@@ -286,6 +286,10 @@ enum AppTheme {
         static let defaultCenterY: CGFloat = 0.9
         static let defaultCenter = CGPoint(x: centerSnapValue, y: defaultCenterY)
         static let minDisplayDuration: Double = 0.7
+        static let wordAnimationDurationFrames: Int = 8
+        static let wordPopStartScale: Double = 0.55
+        static let wordFadeUpOffset: Double = 0.35
+        static let previewWordStaggerSeconds: Double = 0.28
     }
 
     enum GenerationPanel {

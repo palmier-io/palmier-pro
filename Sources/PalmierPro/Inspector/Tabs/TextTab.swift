@@ -19,6 +19,7 @@ struct TextTab: View {
                 backgroundRow
                 borderRow
                 shadowRow
+                animationRow
             }
             InspectorSection("Layout") {
                 alignmentRow
@@ -36,12 +37,18 @@ struct TextTab: View {
                 text: Binding(
                     get: { clip.textContent ?? "" },
                     set: { new in
-                        editor.applyClipProperty(clipId: clip.id, rebuild: true) { $0.textContent = new }
+                        editor.applyClipProperty(clipId: clip.id, rebuild: true) {
+                            $0.textContent = new
+                            $0.reconcileCaptionWords(to: new)
+                        }
                         editor.fitTextClipToContent(clipId: clip.id)
                     }
                 ),
                 onCommit: { new in
-                    editor.commitClipProperty(clipId: clip.id) { $0.textContent = new }
+                    editor.commitClipProperty(clipId: clip.id) {
+                        $0.textContent = new
+                        $0.reconcileCaptionWords(to: new)
+                    }
                     editor.fitTextClipToContent(clipId: clip.id)
                 }
             )
@@ -154,6 +161,32 @@ struct TextTab: View {
             setEnabled: { $0.background.enabled = $1 },
             setColor: { $0.background.color = $1 }
         )
+    }
+
+    @ViewBuilder private var animationRow: some View {
+        if clip.captionWords?.isEmpty == false {
+            InspectorRow(icon: "sparkles", label: "Animation") {
+                Picker(
+                    "",
+                    selection: Binding(
+                        get: { clip.captionWordAnimation ?? .none },
+                        set: { new in
+                            editor.commitClipProperty(clipId: clip.id) {
+                                $0.captionWordAnimation = new.isAnimated ? new : nil
+                            }
+                        }
+                    )
+                ) {
+                    ForEach(CaptionWordAnimation.allCases, id: \.self) { kind in
+                        Text(kind.label).tag(kind)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .fixedSize()
+                .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
+            }
+        }
     }
 
     private var borderRow: some View {

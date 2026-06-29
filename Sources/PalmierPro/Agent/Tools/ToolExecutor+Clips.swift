@@ -71,13 +71,15 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     let fontSize: Double?
     let color: String?
     let alignment: String?
+    let captionWordAnimation: String?
 
     static let allowedKeys: Set<String> = [
         "clipIds",
         "durationFrames", "trimStartFrame", "trimEndFrame", "speed",
         "volume", "opacity",
         "transform",
-        "content", "fontName", "fontSize", "color", "alignment",
+        "content", "fontName", "fontSize", "color", "alignment", "captionWordAnimation",
+        "background", "border", "shadow",
     ]
 
     var hasAnyProperty: Bool {
@@ -85,7 +87,7 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
             || speed != nil || volume != nil || opacity != nil
             || transform != nil
             || content != nil || fontName != nil || fontSize != nil
-            || color != nil || alignment != nil
+            || color != nil || alignment != nil || captionWordAnimation != nil
     }
 }
 
@@ -442,12 +444,16 @@ extension ToolExecutor {
 
     // MARK: set_clip_properties
 
-    private static let textOnlyKeys: Set<String> = ["content", "fontName", "fontSize", "color", "alignment"]
+    private static let textOnlyKeys: Set<String> = ["content", "fontName", "fontSize", "color", "alignment", "captionWordAnimation", "background", "border", "shadow"]
 
     func setClipProperties(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let input: SetClipPropertiesInput = try decodeToolArgs(args, path: "set_clip_properties")
         guard !input.clipIds.isEmpty else { throw ToolError("Missing or empty 'clipIds' array") }
-        guard input.hasAnyProperty else {
+        let backgroundPatch = try parseFillPatch(args["background"] as? [String: Any], path: "set_clip_properties.background")
+        let borderPatch = try parseFillPatch(args["border"] as? [String: Any], path: "set_clip_properties.border")
+        let shadowPatch = try parseShadowPatch(args["shadow"] as? [String: Any], path: "set_clip_properties.shadow")
+        let hasStylePatch = backgroundPatch != nil || borderPatch != nil || shadowPatch != nil
+        guard input.hasAnyProperty || hasStylePatch else {
             throw ToolError("set_clip_properties needs at least one property to apply")
         }
         if let df = input.durationFrames, df < 1 {
@@ -470,6 +476,7 @@ extension ToolExecutor {
         }
         let color = try parseColorHex(input.color, path: "set_clip_properties")
         let alignment = try parseAlignment(input.alignment, path: "set_clip_properties")
+        let captionWordAnimation = try Self.parseWordAnimation(input.captionWordAnimation, path: "set_clip_properties.captionWordAnimation")
 
         // Resolve clipIds + collect types so we can reject text-only fields on non-text clips.
         var clipTypes: [String: ClipType] = [:]
@@ -483,6 +490,10 @@ extension ToolExecutor {
             input.fontSize  != nil ? "fontSize"  : nil,
             input.color     != nil ? "color"     : nil,
             input.alignment != nil ? "alignment" : nil,
+            input.captionWordAnimation != nil ? "captionWordAnimation" : nil,
+            backgroundPatch != nil ? "background" : nil,
+            borderPatch     != nil ? "border"     : nil,
+            shadowPatch     != nil ? "shadow"     : nil,
         ].compactMap { $0 }
         if !textOnlyUsed.isEmpty {
             let nonText = clipTypes.filter { $0.value != .text }.map { $0.key }.sorted()
@@ -517,11 +528,16 @@ extension ToolExecutor {
                     fontSize: isText ? input.fontSize : nil,
                     color: isText ? color : nil,
                     alignment: isText ? alignment : nil,
+                    captionWordAnimation: isText ? captionWordAnimation : nil,
+                    background: isText ? backgroundPatch : nil,
+                    border: isText ? borderPatch : nil,
+                    shadow: isText ? shadowPatch : nil,
                     clipId: id,
                     editor: editor
                 )
-                // Match the inspector: refit bbox after content/font change when caller didn't set a box.
-                if isText && input.transform == nil && (input.content != nil || input.fontName != nil || input.fontSize != nil) {
+                let needsTextRefit = input.content != nil || input.fontName != nil || input.fontSize != nil
+                    || backgroundPatch != nil || borderPatch != nil || shadowPatch != nil
+                if isText && input.transform == nil && needsTextRefit {
                     editor.fitTextClipToContent(clipId: id)
                 }
                 summaries.append("\(id)\(changed.isEmpty ? " (no-op)" : ": \(changed.joined(separator: ", "))")")
@@ -536,6 +552,8 @@ extension ToolExecutor {
                     speed:          partnerIsText ? nil : input.speed,
                     volume: nil, opacity: nil, transform: nil,
                     content: nil, fontName: nil, fontSize: nil, color: nil, alignment: nil,
+                    captionWordAnimation: nil,
+                    background: nil, border: nil, shadow: nil,
                     clipId: partnerId,
                     editor: editor
                 )
@@ -560,6 +578,10 @@ extension ToolExecutor {
         fontSize: Double?,
         color: TextStyle.RGBA?,
         alignment: TextStyle.Alignment?,
+        captionWordAnimation: CaptionWordAnimation?,
+        background: ((inout TextStyle.Fill) -> Void)?,
+        border: ((inout TextStyle.Fill) -> Void)?,
+        shadow: ((inout TextStyle.Shadow) -> Void)?,
         clipId: String,
         editor: EditorViewModel
     ) -> [String] {
@@ -600,14 +622,27 @@ extension ToolExecutor {
                 clip.transform = next
                 changed.append("transform")
             }
-            if content != nil || fontName != nil || fontSize != nil || color != nil || alignment != nil {
-                if let c = content { clip.textContent = c; changed.append("content") }
+            if let c = content {
+                clip.textContent = c
+                clip.reconcileCaptionWords(to: c)
+                changed.append("content")
+            }
+            let touchesStyle = fontName != nil || fontSize != nil || color != nil || alignment != nil
+                || background != nil || border != nil || shadow != nil
+            if touchesStyle {
                 var style = clip.textStyle ?? TextStyle()
                 if let f = fontName  { style.fontName = f; changed.append("fontName") }
                 if let s = fontSize  { style.fontSize = s; changed.append("fontSize") }
                 if let c = color     { style.color = c; changed.append("color") }
                 if let a = alignment { style.alignment = a; changed.append("alignment") }
+                if let background { background(&style.background); changed.append("background") }
+                if let border     { border(&style.border); changed.append("border") }
+                if let shadow      { shadow(&style.shadow); changed.append("shadow") }
                 clip.textStyle = style
+            }
+            if let animation = captionWordAnimation {
+                clip.captionWordAnimation = animation.isAnimated ? animation : nil
+                changed.append("captionWordAnimation")
             }
         }
         return changed

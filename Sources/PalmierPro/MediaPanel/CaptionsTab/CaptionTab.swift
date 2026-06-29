@@ -11,10 +11,11 @@ struct CaptionTab: View {
     @State private var censorProfanity = false
     @State private var locale: Locale?
     @State private var supportedLocales: [Locale] = []
+    @State private var wordAnimation: CaptionWordAnimation = .pop
     @State private var isGenerating = false
     @State private var note: String?
 
-    private static let previewText = "Captions will look like this"
+    private static let previewWords = ["Captions", "will", "pop", "in"]
 
     private var aspect: CGFloat { CGFloat(editor.timeline.width) / CGFloat(max(1, editor.timeline.height)) }
 
@@ -206,6 +207,16 @@ struct CaptionTab: View {
                     .controlSize(.mini)
                     .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
             }
+            InspectorRow(icon: "sparkles", label: "Animation") {
+                Menu {
+                    ForEach(CaptionWordAnimation.allCases, id: \.self) { kind in
+                        Button(kind.label) { wordAnimation = kind }
+                    }
+                } label: {
+                    menuValueLabel(wordAnimation.label)
+                }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+            }
         }
     }
 
@@ -284,8 +295,9 @@ struct CaptionTab: View {
             GeometryReader { geo in
                 let canvasW = CGFloat(max(1, editor.timeline.width))
                 let canvasH = CGFloat(max(1, editor.timeline.height))
+                let previewText = Self.previewWords.joined(separator: " ")
                 let natural = TextLayout.naturalSize(
-                    content: Self.previewText,
+                    content: previewText,
                     style: style,
                     maxWidth: canvasW * AppTheme.ComponentSize.captionPreviewMaxTextWidthRatio,
                     canvasHeight: canvasH
@@ -293,9 +305,7 @@ struct CaptionTab: View {
                 let scale = geo.size.height / TextLayout.referenceCanvasHeight
                 let boxWidth = natural.width / canvasW * geo.size.width
                 let boxHeight = natural.height / canvasH * geo.size.height
-                Text(Self.previewText)
-                    .font(Font(style.resolvedFont(size: CGFloat(style.fontSize * style.fontScale) * scale)))
-                    .foregroundStyle(style.color.swiftUIColor)
+                AnimatedCaptionPreview(words: Self.previewWords, style: style, animation: wordAnimation, scale: scale)
                     .frame(width: boxWidth, height: boxHeight)
                     .background(style.background.enabled ? style.background.color.swiftUIColor : Color.clear)
                     .overlay {
@@ -394,7 +404,8 @@ struct CaptionTab: View {
         }
         let request = EditorViewModel.CaptionRequest(
             sourceClipIds: sourceIds, autoDetect: isAutoSource, style: style, center: center,
-            textCase: textCase, censorProfanity: censorProfanity, locale: locale
+            textCase: textCase, censorProfanity: censorProfanity, locale: locale,
+            wordAnimation: wordAnimation
         )
         Task {
             isGenerating = true
@@ -404,6 +415,41 @@ struct CaptionTab: View {
                 if ids.isEmpty { note = "No speech detected." }
             } catch {
                 note = error.localizedDescription
+            }
+        }
+    }
+}
+
+private struct AnimatedCaptionPreview: View {
+    let words: [String]
+    let style: TextStyle
+    let animation: CaptionWordAnimation
+    let scale: CGFloat
+
+    var body: some View {
+        SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 30)) { timeline in
+            let phase = timeline.date.timeIntervalSinceReferenceDate
+                .truncatingRemainder(dividingBy: previewCycleLength)
+            wordRow(at: phase)
+        }
+    }
+
+    private var previewCycleLength: Double {
+        AppTheme.Caption.previewWordStaggerSeconds * Double(words.count + 3)
+    }
+
+    private func wordRow(at phase: Double) -> some View {
+        let fontSize = CGFloat(style.fontSize * style.fontScale) * scale
+        let stagger = AppTheme.Caption.previewWordStaggerSeconds
+        return HStack(spacing: AppTheme.Spacing.xs) {
+            ForEach(Array(words.enumerated()), id: \.offset) { index, word in
+                let relFrame = Int(max(0, (phase - Double(index) * stagger) * 30))
+                let appearance = animation.appearance(at: relFrame, wordStartFrame: 0)
+                let offsetY = animation.verticalOffset(at: relFrame, wordStartFrame: 0) * fontSize
+                Text(AttributedString(style.fillAttributedString(content: word, size: fontSize)))
+                    .scaleEffect(appearance.scale)
+                    .opacity(Double(appearance.opacity))
+                    .offset(y: offsetY)
             }
         }
     }

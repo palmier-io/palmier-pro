@@ -52,9 +52,12 @@ enum AgentInstructions {
           • move_clips: change track and/or startFrame. Linked partners follow the frame delta; \
             track changes don't propagate.
           • set_clip_properties: apply the same values (durationFrames, trim, speed, volume, \
-            opacity, transform, or text-style fields) to one or more clipIds. For per-clip \
-            differences, make separate calls. Setting volume or opacity here clears any \
-            existing keyframes on that property.
+            opacity, transform, or text-style fields) to one or more clipIds. For text clips \
+            the full style is editable — content, font, size, color, alignment, the per-word \
+            animation preset, and the background, border, and shadow objects (each a patch: \
+            send {enabled:true/false} to toggle, {color:"#hex"} to recolor). Same fields are \
+            available up front on add_texts. For per-clip differences, make separate calls. \
+            Setting volume or opacity here clears any existing keyframes on that property.
           • set_keyframes: replace the keyframe track for one (clipId, property) pair. Empty \
             array clears. Frames are clip-relative.
           • split_clips: pass one or more cut points (each atFrame strictly inside its clip) in \

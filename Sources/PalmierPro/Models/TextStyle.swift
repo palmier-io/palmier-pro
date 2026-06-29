@@ -134,14 +134,32 @@ extension TextStyle {
         return p
     }
 
-    /// `includeColor: false` for bounding measurement (color doesn't affect size).
-    func attributes(size: CGFloat, includeColor: Bool = true) -> [NSAttributedString.Key: Any] {
-        var attrs: [NSAttributedString.Key: Any] = [
+    func fillAttributes(size: CGFloat) -> [NSAttributedString.Key: Any] {
+        [
             .font: resolvedFont(size: size),
             .paragraphStyle: paragraphStyle,
+            .foregroundColor: nsColor,
         ]
-        if includeColor { attrs[.foregroundColor] = nsColor }
+    }
+
+    /// Left-aligned attributed string for a single animated caption word.
+    func wordFillString(content: String, size: CGFloat) -> NSAttributedString {
+        var attrs = fillAttributes(size: size)
+        let paragraph = (attrs[.paragraphStyle] as? NSParagraphStyle)?.mutableCopy() as! NSMutableParagraphStyle
+        paragraph.alignment = .left
+        attrs[.paragraphStyle] = paragraph
+        return NSAttributedString(string: content, attributes: attrs)
+    }
+
+    /// `includeColor: false` for bounding measurement (color doesn't affect size).
+    func attributes(size: CGFloat, includeColor: Bool = true) -> [NSAttributedString.Key: Any] {
+        var attrs = fillAttributes(size: size)
+        if !includeColor { attrs.removeValue(forKey: .foregroundColor) }
         return attrs
+    }
+
+    func fillAttributedString(content: String, size: CGFloat) -> NSAttributedString {
+        NSAttributedString(string: content, attributes: fillAttributes(size: size))
     }
 }
 

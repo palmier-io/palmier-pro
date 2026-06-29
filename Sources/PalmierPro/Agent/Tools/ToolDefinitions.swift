@@ -222,7 +222,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .setClipProperties,
-            description: "Apply the same property values to one or more clips in a single undoable action. Pass any combination of durationFrames, trimStartFrame, trimEndFrame, speed, volume, opacity, transform, or — for text clips only — content, fontName, fontSize, color, alignment. All values are applied to every clip in clipIds; for per-clip differences, make separate calls. trimStartFrame/trimEndFrame are offsets from the source media, not the timeline. speed 1.0 is normal, <1.0 slows (clip gets longer on the timeline), >1.0 speeds up. volume and opacity are 0.0–1.0. transform uses 0–1 normalized canvas coords, partial merge (pass only centerY to reposition vertically); flipHorizontal/flipVertical mirror the clip across the corresponding axis (no effect on text clips). When a text clip's content or font changes without an explicit transform, the bounding box auto-refits. Text-only fields with any non-text clip in clipIds are rejected.\n\nFor moves and start-frame changes, use move_clips. For animated values (keyframes), use set_keyframes — setting volume or opacity here clears any existing keyframe track on that property.\n\nTiming changes (durationFrames, trimStartFrame, trimEndFrame, speed) on a linked clip carry over to its linked partner so audio/video stay in sync — same as the timeline UI. Per-clip fields (volume, opacity, transform, text*) don't propagate. trim and speed are skipped for text partners.",
+            description: "Apply the same property values to one or more clips in a single undoable action. Pass any combination of durationFrames, trimStartFrame, trimEndFrame, speed, volume, opacity, transform, or — for text clips only — content, fontName, fontSize, color, alignment, captionWordAnimation, and the background/border/shadow style objects. All values are applied to every clip in clipIds; for per-clip differences, make separate calls. trimStartFrame/trimEndFrame are offsets from the source media, not the timeline. speed 1.0 is normal, <1.0 slows (clip gets longer on the timeline), >1.0 speeds up. volume and opacity are 0.0–1.0. transform uses 0–1 normalized canvas coords, partial merge (pass only centerY to reposition vertically); flipHorizontal/flipVertical mirror the clip across the corresponding axis (no effect on text clips). When a text clip's content or font changes without an explicit transform, the bounding box auto-refits. Text-only fields with any non-text clip in clipIds are rejected.\n\nFor moves and start-frame changes, use move_clips. For animated values (keyframes), use set_keyframes — setting volume or opacity here clears any existing keyframe track on that property.\n\nTiming changes (durationFrames, trimStartFrame, trimEndFrame, speed) on a linked clip carry over to its linked partner so audio/video stay in sync — same as the timeline UI. Per-clip fields (volume, opacity, transform, text*) don't propagate. trim and speed are skipped for text partners.",
             inputSchema: objectSchema(
                 properties: [
                     "clipIds": [
@@ -253,6 +253,14 @@ enum ToolDefinitions {
                     "fontSize": ["type": "number", "description": "Text clips only. Font size in canvas points."],
                     "color": ["type": "string", "description": "Text clips only. Hex '#RRGGBB' or '#RRGGBBAA'."],
                     "alignment": ["type": "string", "enum": ["left", "center", "right"], "description": "Text clips only."],
+                    "captionWordAnimation": [
+                        "type": "string",
+                        "enum": CaptionWordAnimation.allCases.map(\.rawValue),
+                        "description": "Text/caption clips only. Per-word animation preset (pop/bounce/fadeUp, or none to disable). Word timings are baked at caption generation — changing the preset reuses existing timings; to re-time words, regenerate with add_captions.",
+                    ],
+                    "background": textFillSchema(thing: "solid box drawn behind the text"),
+                    "border": textFillSchema(thing: "outline drawn around the text box"),
+                    "shadow": textShadowSchema(),
                 ],
                 required: ["clipIds"]
             )
@@ -366,7 +374,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addTexts,
-            description: "Adds one or more text clips (titles, captions, lower-thirds) in a single undoable action. Text renders as an overlay on top of visual media. Transform uses 0–1 normalized canvas coords: (0.5,0.5) is center, (0.5,0.1) top-center, (0.5,0.9) bottom-center. Omit transform to center + auto-fit. Pass only centerX/centerY to reposition with auto-fit size (common for lower-thirds). Pass all four fields to override the box entirely. Colors are hex '#RRGGBB' or '#RRGGBBAA'.\n\ntrackIndex is optional. Omit it on all entries and the tool auto-creates one new video track at the top and places all text clips there — the common case for captions. To target existing tracks, set trackIndex on every entry (audio tracks rejected). Mixing (some entries specify, others omit) is rejected — split into two calls.\n\nTracks work as layers: clips on the SAME track are sequential — if a new clip's range overlaps an existing (or earlier-batch) clip on that track, the existing clip is trimmed/split/removed to make room, matching the UI's drag-onto-track overwrite behavior. To show multiple text clips at the same time (stacked titles, simultaneous labels), put each on a DIFFERENT trackIndex so they layer instead of trimming each other.\n\nFor captioning spoken audio, prefer add_captions — it transcribes and places styled caption clips in one call. Use add_texts only for bespoke text (titles, lower-thirds) or captioning a custom range by hand. Unknown fields are rejected.",
+            description: "Adds one or more text clips (titles, captions, lower-thirds) in a single undoable action. Text renders as an overlay on top of visual media. Transform uses 0–1 normalized canvas coords: (0.5,0.5) is center, (0.5,0.1) top-center, (0.5,0.9) bottom-center. Omit transform to center + auto-fit. Pass only centerX/centerY to reposition with auto-fit size (common for lower-thirds). Pass all four fields to override the box entirely. Colors are hex '#RRGGBB' or '#RRGGBBAA'.\n\ntrackIndex is optional. Omit it on all entries and the tool auto-creates one new video track at the top and places all text clips there — the common case for captions. To target existing tracks, set trackIndex on every entry (audio tracks rejected). Mixing (some entries specify, others omit) is rejected — split into two calls.\n\nTracks work as layers: clips on the SAME track are sequential — if a new clip's range overlaps an existing (or earlier-batch) clip on that track, the existing clip is trimmed/split/removed to make room, matching the UI's drag-onto-track overwrite behavior. To show multiple text clips at the same time (stacked titles, simultaneous labels), put each on a DIFFERENT trackIndex so they layer instead of trimming each other.\n\nStyle each clip with fontName, fontSize, color, alignment, and the optional background, border, and shadow objects (each {enabled, color}; shadow also takes offsetX/offsetY/blur). Background and border are off by default; shadow is on.\n\nFor captioning spoken audio, prefer add_captions — it transcribes and places styled caption clips in one call. Use add_texts only for bespoke text (titles, lower-thirds) or captioning a custom range by hand. Unknown fields are rejected.",
             inputSchema: objectSchema(
                 properties: [
                     "entries": [
@@ -393,6 +401,9 @@ enum ToolDefinitions {
                                 "fontSize": ["type": "number", "description": "Font size in canvas points (default 96). On a 1080p canvas ~50 is a caption, ~120 is a title."],
                                 "color": ["type": "string", "description": "Hex '#RRGGBB' or '#RRGGBBAA' (default '#FFFFFF')"],
                                 "alignment": ["type": "string", "enum": ["left", "center", "right"], "description": "Text alignment (default 'center')"],
+                                "background": textFillSchema(thing: "solid box drawn behind the text (off by default)"),
+                                "border": textFillSchema(thing: "outline drawn around the text box (off by default)"),
+                                "shadow": textShadowSchema(),
                             ],
                             "required": ["startFrame", "durationFrames", "content"],
                         ],
@@ -403,7 +414,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addCaptions,
-            description: "Auto-caption spoken audio: transcribes on-device and places styled caption clips on a new track — the same pipeline as the editor's Captions tab. This is the reliable path for 'caption this'; prefer it over hand-placing add_texts from a transcript. Omit clipIds to auto-pick the track with the most speech; pass clipIds to caption specific clips (e.g. only the interview).",
+            description: "Auto-caption spoken audio: transcribes on-device and places styled caption clips on a new track — the same pipeline as the editor's Captions tab. This is the reliable path for 'caption this'; prefer it over hand-placing add_texts from a transcript. Omit clipIds to auto-pick the track with the most speech; pass clipIds to caption specific clips (e.g. only the interview). Words pop in per-word by default (wordAnimation), synced to speech timing.",
             inputSchema: objectSchema(
                 properties: [
                     "clipIds": ["type": "array", "items": ["type": "string"], "description": "Optional. Audio/video clips to caption. Omit to auto-detect the primary spoken track."],
@@ -415,6 +426,11 @@ enum ToolDefinitions {
                     "centerY": ["type": "number", "description": "Optional vertical center 0–1 (default 0.9, near the bottom)."],
                     "textCase": ["type": "string", "enum": ["auto", "upper", "lower"], "description": "Optional letter case (default auto)."],
                     "censorProfanity": ["type": "boolean", "description": "Optional. Mask profanity (default false)."],
+                    "wordAnimation": [
+                        "type": "string",
+                        "enum": CaptionWordAnimation.allCases.map(\.rawValue),
+                        "description": "Optional per-word animation preset synced to speech (default pop). Use none for static captions.",
+                    ],
                 ]
             )
         ),
@@ -842,6 +858,34 @@ enum ToolDefinitions {
             dict["required"] = required
         }
         return dict
+    }
+
+    /// Shared `{enabled?, color?}` schema for the text background and border fills. Patch
+    /// semantics: omitted sub-fields keep their current value.
+    private static func textFillSchema(thing: String) -> [String: Any] {
+        [
+            "type": "object",
+            "description": "Text clips only. A \(thing). Patch — omitted sub-fields keep their current value.",
+            "properties": [
+                "enabled": ["type": "boolean", "description": "Toggle it on or off."],
+                "color": ["type": "string", "description": "Hex '#RRGGBB' or '#RRGGBBAA'."],
+            ],
+        ]
+    }
+
+    /// Shared schema for the text drop shadow.
+    private static func textShadowSchema() -> [String: Any] {
+        [
+            "type": "object",
+            "description": "Text clips only. Drop shadow behind the glyphs. Patch — omitted sub-fields keep their current value.",
+            "properties": [
+                "enabled": ["type": "boolean", "description": "Toggle the shadow on or off."],
+                "color": ["type": "string", "description": "Hex '#RRGGBB' or '#RRGGBBAA'; the alpha sets shadow strength."],
+                "offsetX": ["type": "number", "description": "Horizontal offset in canvas points (positive = right)."],
+                "offsetY": ["type": "number", "description": "Vertical offset in canvas points (negative = up)."],
+                "blur": ["type": "number", "description": "Blur radius in canvas points (>= 0)."],
+            ],
+        ]
     }
 }
 

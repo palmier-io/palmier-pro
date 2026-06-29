@@ -13,6 +13,7 @@ extension ToolExecutor {
     private static let addTextsAllowedKeys: Set<String> = [
         "trackIndex", "startFrame", "durationFrames", "content",
         "transform", "fontName", "fontSize", "color", "alignment",
+        "background", "border", "shadow",
     ]
 
     private func parseAddTextTransform(
@@ -81,6 +82,9 @@ extension ToolExecutor {
             if let s = entry.double("fontSize") { style.fontSize = s }
             if let c = try parseColorHex(entry.string("color"), path: path) { style.color = c }
             if let a = try parseAlignment(entry.string("alignment"), path: path) { style.alignment = a }
+            if let bg = try parseFillPatch(entry["background"] as? [String: Any], path: "\(path).background") { bg(&style.background) }
+            if let bd = try parseFillPatch(entry["border"] as? [String: Any], path: "\(path).border") { bd(&style.border) }
+            if let sh = try parseShadowPatch(entry["shadow"] as? [String: Any], path: "\(path).shadow") { sh(&style.shadow) }
 
             let transform = try parseAddTextTransform(
                 entry["transform"] as? [String: Any],

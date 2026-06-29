@@ -48,6 +48,17 @@ struct CaptionBuilderTests {
         #expect(phrases.map(\.end) == [3.0, 7.0])
     }
 
+    @Test func minDurationShiftMovesWordTimingsWithPhrase() {
+        let seg = TranscriptionSegment(text: "aa bbbb", start: 0, end: 6)
+        let words = [
+            TranscriptionWord(text: "aa", start: 0, end: 1),
+            TranscriptionWord(text: "bbbb", start: 2, end: 6),
+        ]
+        let phrases = CaptionBuilder.phrases(for: seg, words: words, fits: { $0.count <= 4 }, minDuration: 3)
+        #expect(phrases[1].words.map(\.start) == [3.0])
+        #expect(phrases[1].words.map(\.end) == [7.0])
+    }
+
     @Test func keepsOverlongSingleWord() {
         let phrases = CaptionBuilder.phrases(for: segment("supercalifragilistic", 0, 1), fits: { _ in false }, minDuration: 0)
         #expect(phrases.map(\.text) == ["supercalifragilistic"])

@@ -7,16 +7,16 @@ import Testing
 @MainActor
 struct TextLayerOpacityAnimationTests {
 
-    private func animation(for clip: Clip, fps: Int = 30) -> (anim: CAKeyframeAnimation?, layer: CATextLayer?) {
+    private func animation(for clip: Clip, fps: Int = 30) -> (anim: CAKeyframeAnimation?, layer: CALayer?) {
         let track = Fixtures.videoTrack(clips: [clip])
         let timeline = Fixtures.timeline(fps: fps, tracks: [track])
         let (parent, videoLayer) = TextLayerController.buildForExport(
             timeline: timeline, fps: fps, renderSize: CGSize(width: 1920, height: 1080)
         )
         _ = videoLayer
-        let textLayer = parent.sublayers?.dropFirst().first as? CATextLayer
-        let anim = textLayer?.animation(forKey: "opacity") as? CAKeyframeAnimation
-        return (anim, textLayer)
+        let clipLayer = parent.sublayers?.dropFirst().first
+        let anim = clipLayer?.animation(forKey: "opacity") as? CAKeyframeAnimation
+        return (anim, clipLayer)
     }
 
     private func textClip(start: Int, duration: Int, fadeIn: Int = 0, fadeOut: Int = 0) -> Clip {
@@ -86,5 +86,16 @@ struct TextLayerOpacityAnimationTests {
         let (_, layer) = animation(for: clip)
         #expect(layer?.borderColor != nil)
         #expect(layer?.borderWidth == AppTheme.BorderWidth.thin)
+    }
+
+    @Test func staticCaptionWordsUsePerWordLayers() {
+        var clip = textClip(start: 0, duration: 60)
+        clip.textContent = "hello world"
+        clip.captionWords = [
+            CaptionWordTiming(text: "hello", startFrame: 0, endFrame: 10),
+            CaptionWordTiming(text: "world", startFrame: 10, endFrame: 20),
+        ]
+        let (_, layer) = animation(for: clip)
+        #expect(layer?.sublayers?.count == 2)
     }
 }

@@ -1339,6 +1339,130 @@ struct ToolExecutorTextFolderTests {
         #expect(result.isError)
     }
 
+    @Test func setClipPropertiesUpdatesCaptionWordAnimation() async throws {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+        var clip = Clip(mediaRef: "", mediaType: .text, startFrame: 0, durationFrames: 30)
+        clip.textContent = "hi"
+        clip.captionWordAnimation = .pop
+        h.editor.timeline.tracks[0].clips.append(clip)
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clip.id],
+            "captionWordAnimation": "bounce",
+        ])
+        #expect(result.isError == false)
+        #expect(h.editor.timeline.tracks[0].clips[0].captionWordAnimation == .bounce)
+    }
+
+    @Test func addTextsAppliesBackgroundBorderShadow() async throws {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+        let result = await h.runRaw("add_texts", args: [
+            "entries": [[
+                "trackIndex": 0,
+                "startFrame": 0,
+                "durationFrames": 30,
+                "content": "Styled",
+                "background": ["enabled": true, "color": "#112233"],
+                "border": ["enabled": true],
+                "shadow": ["enabled": false, "offsetX": 4, "blur": 10],
+            ]]
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let style = try #require(h.editor.timeline.tracks[0].clips[0].textStyle)
+        #expect(style.background.enabled)
+        #expect(style.background.color.r == Double(0x11) / 255.0)
+        #expect(style.border.enabled)
+        #expect(style.shadow.enabled == false)
+        #expect(style.shadow.offsetX == 4)
+        #expect(style.shadow.blur == 10)
+    }
+
+    @Test func setClipPropertiesTogglesBackgroundAndPatchesColorOnly() async throws {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+        var clip = Clip(mediaRef: "", mediaType: .text, startFrame: 0, durationFrames: 30)
+        clip.textContent = "hi"
+        clip.textStyle = TextStyle()
+        h.editor.timeline.tracks[0].clips.append(clip)
+
+        // Toggle background on.
+        var result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clip.id],
+            "background": ["enabled": true, "color": "#FF0000"],
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        var style = try #require(h.editor.timeline.tracks[0].clips[0].textStyle)
+        #expect(style.background.enabled)
+        #expect(style.background.color.r == 1)
+
+        // Color-only patch must leave enabled untouched.
+        result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clip.id],
+            "background": ["color": "#00FF00"],
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        style = try #require(h.editor.timeline.tracks[0].clips[0].textStyle)
+        #expect(style.background.enabled)
+        #expect(style.background.color.g == 1)
+    }
+
+    @Test func setClipPropertiesShadowToggleRefitsBoundingBox() async throws {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+        var result = await h.runRaw("add_texts", args: [
+            "entries": [[
+                "trackIndex": 0,
+                "startFrame": 0,
+                "durationFrames": 30,
+                "content": "hello",
+            ]]
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let clipId = h.editor.timeline.tracks[0].clips[0].id
+
+        result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId],
+            "shadow": ["enabled": false],
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let withoutShadowW = h.editor.timeline.tracks[0].clips[0].transform.width
+
+        result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clipId],
+            "shadow": ["enabled": true, "blur": 8],
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let withShadowW = h.editor.timeline.tracks[0].clips[0].transform.width
+        #expect(withShadowW > withoutShadowW)
+    }
+
+    @Test func setClipPropertiesRejectsBackgroundOnNonTextClip() async throws {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+        let clip = Clip(mediaRef: "vid", mediaType: .video, startFrame: 0, durationFrames: 30)
+        h.editor.timeline.tracks[0].clips.append(clip)
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clip.id],
+            "background": ["enabled": true],
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("background"))
+    }
+
+    @Test func setClipPropertiesRejectsInvalidShadowColor() async throws {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+        var clip = Clip(mediaRef: "", mediaType: .text, startFrame: 0, durationFrames: 30)
+        clip.textContent = "hi"
+        h.editor.timeline.tracks[0].clips.append(clip)
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [clip.id],
+            "shadow": ["color": "nope"],
+        ])
+        #expect(result.isError)
+    }
+
     // MARK: - create_folder + move_to_folder
 
     @Test func createFolderAddsRootLevelFolder() async throws {

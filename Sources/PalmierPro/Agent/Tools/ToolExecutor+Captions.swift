@@ -3,8 +3,16 @@ import Foundation
 
 extension ToolExecutor {
     private static let addCaptionsAllowedKeys: Set<String> = [
-        "clipIds", "fontName", "fontSize", "color", "centerX", "centerY", "textCase", "censorProfanity", "language",
+        "clipIds", "fontName", "fontSize", "color", "centerX", "centerY", "textCase", "censorProfanity", "language", "wordAnimation",
     ]
+
+    static func parseWordAnimation(_ raw: String?, path: String) throws -> CaptionWordAnimation? {
+        guard let raw else { return nil }
+        guard let parsed = CaptionWordAnimation(rawValue: raw) else {
+            throw ToolError("\(path): must be one of \(CaptionWordAnimation.allCases.map(\.rawValue).joined(separator: ", ")) (got \(raw))")
+        }
+        return parsed
+    }
 
     func addCaptions(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.addCaptionsAllowedKeys, path: "add_captions")
@@ -30,6 +38,8 @@ extension ToolExecutor {
             textCase = parsed
         }
 
+        let wordAnimation = try Self.parseWordAnimation(args.string("wordAnimation"), path: "add_captions.wordAnimation") ?? .pop
+
         let request = EditorViewModel.CaptionRequest(
             sourceClipIds: clipIds,
             autoDetect: clipIds.isEmpty,
@@ -37,7 +47,8 @@ extension ToolExecutor {
             center: center,
             textCase: textCase,
             censorProfanity: args.bool("censorProfanity") ?? false,
-            locale: locale
+            locale: locale,
+            wordAnimation: wordAnimation
         )
 
         let ids = try await editor.generateCaptions(for: request)
