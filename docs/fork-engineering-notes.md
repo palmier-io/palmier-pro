@@ -2,6 +2,13 @@
 
 This is a living note for the BrowningL fork. Keep it focused on details that help an agent make correct edits, build the local app, and avoid breaking persistence.
 
+## How Agents Should Use This File
+
+- Read this file before changing editor models, timeline UI, inspector controls, render/compositing code, effects, project persistence, or agent/MCP tools.
+- Update this file in the same commit when adding or changing a custom fork feature.
+- Keep entries factual and compact: feature id/model field, where the user finds it, how the agent uses it, how it persists, what tests cover it, and any install caveats.
+- Treat persistence as a first-class requirement. A feature is not complete just because it appears in the UI during the current app session.
+
 ## Local Workflow
 
 - Main working branch for the current custom editor work: `feature/clip-blend-modes`.
@@ -75,6 +82,10 @@ For any feature that should survive save, quit, and reopen:
 5. Call the document dirty path for every persistent edit.
 6. Add a model round-trip test and a `VideoProject.write(...)` package test when the feature affects project files.
 
+If the feature can be controlled from the inspector and from the agent, both paths should hit the same model/editing API. Do not keep a parallel UI-only representation.
+
+For effects, prefer the existing `Clip.effects` model and `EffectRegistry` descriptor path. That makes inspector controls, rendering, persistence, and `apply_effect` validation share one effect id and parameter schema. A new effect usually should not need a bespoke tool unless it has behavior beyond setting effect parameters.
+
 The dirty path is:
 
 ```text
@@ -104,6 +115,8 @@ If the Palmier AI or MCP clients need to use a new feature, update all relevant 
 - `Tests/PalmierProTests/Agent/ToolExecutorTests.swift`: accepted input, rejected input, state changes, and dirty notification.
 
 The app exposes the same tool definitions to the in-app agent and MCP service, so correct tool wiring is what lets external agents and Palmier's own AI recognize the feature.
+
+Effects are the main exception to hand-editing every tool schema: `apply_effect` is driven by `EffectRegistry.all`, and `ToolExecutor` validates effect ids and params against that registry. For a normal effect, add the descriptor, inspector controls if needed, render implementation, agent instructions, and an `apply_effect` test.
 
 ## Current Custom Features
 
@@ -135,7 +148,9 @@ Markers are exact project-frame anchors. They do not render and do not lengthen 
 - Swift wrapper: `Sources/PalmierPro/Compositing/Kernels/LumaKeyKernel.swift`
 - Registry/UI: `EffectRegistry.swift`, `Inspector/Tabs/AdjustTab.swift`
 - Agent tool: `apply_effect` accepts `type: "key.luma"` with `threshold` and `softness`.
-- Tests: `LumaKeyKernelTests`, `EffectTests`, `ToolExecutorTests`.
+- Persistence: stored as a normal `Clip.effects` entry, so it saves with the clip rather than inspector-local state.
+- Install caveat: `LumaKey.metallib` must be copied from `PalmierPro_PalmierPro.bundle` into the app bundle resources when installing a patched binary.
+- Tests: `LumaKeyKernelTests`, `CompositorRenderTests`, `EffectTests`, `ToolExecutorTests`.
 
 Use this for simple white-background removal. Start with `threshold: 0.85` and `softness: 0.08`; lower the threshold to remove more near-white pixels, raise it to preserve bright subject details.
 
@@ -146,9 +161,12 @@ Before calling a feature complete:
 - Model field is persisted with a backward-compatible decode default.
 - UI edits, agent edits, and undo/redo all go through shared editor mutation APIs.
 - Persistent edits mark the document dirty.
+- Save/reopen behavior is covered when the feature stores new project state.
 - Preview and export share the same rendering path or both are updated deliberately.
+- Custom Metal kernels are included in installed app resources and verified in the patched app bundle.
 - The inspector uses `AppTheme` constants rather than hardcoded design values.
 - The agent can inspect and mutate the feature if the user expects AI control.
+- `docs/fork-engineering-notes.md` is updated with the final implementation shape.
 - Focused tests pass.
 - Full `swift test` passes.
 - Patched app bundle is installed, signed, and reopened.

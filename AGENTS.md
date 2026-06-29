@@ -11,7 +11,9 @@ swift run
 
 ## Fork Notes
 
-For this fork's local build/install loop, persistence rules, and custom feature wiring, read `docs/fork-engineering-notes.md` before making editor, timeline, renderer, or agent-tool changes.
+For this fork's local build/install loop, persistence rules, and custom feature wiring, read `docs/fork-engineering-notes.md` before making editor, timeline, renderer, effect, inspector, or agent-tool changes.
+
+When adding or changing a custom fork feature, update `docs/fork-engineering-notes.md` in the same change. Keep it short and specific: feature id/model fields, UI entry point, agent/MCP wiring, persistence behavior, tests, and any install/resource steps. This is especially important for features that must survive save/reopen or be visible to Palmier's AI.
 
 ## Code style
 
