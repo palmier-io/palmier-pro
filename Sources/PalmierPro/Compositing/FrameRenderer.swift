@@ -18,13 +18,37 @@ enum FrameRenderer {
         var accum = CIImage(color: .black).cropped(to: renderRect)
         for layer in instruction.layers {
             guard let buffer = sourceFrame(layer.trackID) else { continue }
-            if let image = composedLayer(layer, buffer: buffer, frame: frame,
-                                         renderSize: instruction.renderSize) {
+            let mode = layer.clip.blendMode ?? .normal
+            // Source-over bakes opacity into alpha; blend modes apply it as a fade of
+            // the blend RESULT (Photoshop/Premiere semantics), so don't bake it there.
+            let isNormal = mode.ciFilterName == nil
+            guard let image = composedLayer(layer, buffer: buffer, frame: frame,
+                                            renderSize: instruction.renderSize,
+                                            bakeOpacity: isNormal) else { continue }
+            if isNormal {
                 accum = image.composited(over: accum)
+            } else {
+                let opacity = min(1.0, max(0.0, layer.clip.opacityAt(frame: frame)))
+                accum = blend(image, over: accum, filter: mode.ciFilterName!, opacity: opacity)
             }
         }
         context.render(accum, to: output, bounds: renderRect, colorSpace: nil)
         tag709(output)
+    }
+
+    /// Blend `image` over `background` at full strength, then fade the result back toward
+    /// the background by `opacity` — so opacity/fades scale the blend, not the source alpha.
+    private static func blend(_ image: CIImage, over background: CIImage, filter name: String, opacity: Double) -> CIImage {
+        // CI blend filters output only the foreground's extent; composite back over the
+        // background so areas outside the clip keep the layers below (no black regions).
+        let blended = image.applyingFilter(name, parameters: [kCIInputBackgroundImageKey: background])
+            .composited(over: background)
+        guard opacity < 1 else { return blended }
+        let f = CIFilter(name: "CIDissolveTransition")
+        f?.setValue(background, forKey: kCIInputImageKey)
+        f?.setValue(blended, forKey: "inputTargetImage")
+        f?.setValue(opacity, forKey: "inputTime")
+        return (f?.outputImage ?? blended).cropped(to: background.extent)
     }
 
     /// Tag output Rec. 709 at the buffer level so downstream reads our bytes correctly.
@@ -41,7 +65,8 @@ enum FrameRenderer {
         _ layer: LayerPlan,
         buffer: CVPixelBuffer,
         frame: Int,
-        renderSize: CGSize
+        renderSize: CGSize,
+        bakeOpacity: Bool = true
     ) -> CIImage? {
         let clip = layer.clip
         let alpha = min(1.0, max(0.0, clip.opacityAt(frame: frame)))
@@ -88,7 +113,7 @@ enum FrameRenderer {
         let ci = flipY(srcHeight).concatenating(av).concatenating(flipY(renderSize.height))
         image = image.transformed(by: ci)
 
-        if alpha < 1 {
+        if bakeOpacity, alpha < 1 {
             // Alpha only — CIColorMatrix re-premultiplies by the result's alpha, so
             // scaling RGB too would double the fade.
             image = image.applyingFilter("CIColorMatrix", parameters: [

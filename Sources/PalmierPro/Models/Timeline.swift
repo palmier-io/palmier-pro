@@ -108,6 +108,9 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
 
     var effects: [Effect]?
 
+    /// How this clip composites over the tracks below it. nil = normal (source-over).
+    var blendMode: BlendMode?
+
     private enum CodingKeys: String, CodingKey {
         case id, mediaRef, mediaType, sourceClipType, startFrame, durationFrames
         case trimStartFrame, trimEndFrame, speed, volume
@@ -115,7 +118,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         case opacity, transform, crop
         case linkGroupId, captionGroupId, textContent, textStyle
         case opacityTrack, positionTrack, scaleTrack, rotationTrack, cropTrack, volumeTrack
-        case effects
+        case effects, blendMode
     }
 
     /// Frame where this clip ends on the timeline
@@ -360,7 +363,8 @@ extension Clip {
             rotationTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .rotationTrack),
             cropTrack: try? c.decode(KeyframeTrack<Crop>.self, forKey: .cropTrack),
             volumeTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .volumeTrack),
-            effects: try? c.decode([Effect].self, forKey: .effects)
+            effects: try? c.decode([Effect].self, forKey: .effects),
+            blendMode: try? c.decode(BlendMode.self, forKey: .blendMode)
         )
     }
 }
