@@ -9,12 +9,13 @@ enum Telemetry {
 
     static var isEnabled: Bool {
         get {
+            guard AppFeaturePolicy.allowsAnonymousReports else { return false }
             let defaults = UserDefaults.standard
             if defaults.object(forKey: enabledKey) == nil { return true }
             return defaults.bool(forKey: enabledKey)
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: enabledKey)
+            UserDefaults.standard.set(AppFeaturePolicy.allowsAnonymousReports && newValue, forKey: enabledKey)
         }
     }
 
@@ -23,6 +24,10 @@ enum Telemetry {
     nonisolated(unsafe) private static var didStart = false
 
     static func start() {
+        guard AppFeaturePolicy.allowsAnonymousReports else {
+            UserDefaults.standard.set(false, forKey: enabledKey)
+            return
+        }
         guard enabledForCurrentLaunch else { return }
         guard !dsn.isEmpty else { return }
 

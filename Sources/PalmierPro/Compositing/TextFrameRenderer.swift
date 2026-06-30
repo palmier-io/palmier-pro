@@ -383,21 +383,7 @@ enum TextFrameRenderer {
     }
 
     private static func words(in content: String) -> [(range: NSRange, text: String)] {
-        let ns = content as NSString
-        let ws = CharacterSet.whitespacesAndNewlines
-        // A surrogate half (emoji etc.) maps to no scalar — treat it as part of a word, not whitespace.
-        func isSpace(_ u: unichar) -> Bool { Unicode.Scalar(u).map(ws.contains) ?? false }
-        var result: [(NSRange, String)] = []
-        var i = 0
-        while i < ns.length {
-            while i < ns.length, isSpace(ns.character(at: i)) { i += 1 }
-            guard i < ns.length else { break }
-            let start = i
-            while i < ns.length, !isSpace(ns.character(at: i)) { i += 1 }
-            let r = NSRange(location: start, length: i - start)
-            result.append((r, ns.substring(with: r)))
-        }
-        return result
+        DisplayTextTokenizer.nsWordTokens(in: content)
     }
 
     // MARK: - Shared drawing

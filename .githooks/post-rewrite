@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! swift scripts/sync-agent-tool-docs.swift; then
+  cat >&2 <<'MSG'
+Agent tool documentation drifted after rewrite/upstream rebase.
+Run: swift scripts/sync-agent-tool-docs.swift --write
+Then review and commit docs/agent-tools/agent-tool-contract.md.
+MSG
+  exit 1
+fi
+
+scripts/check-customizations-doc.sh

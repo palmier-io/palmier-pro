@@ -51,7 +51,7 @@ enum CaptionBuilder {
     }
 
     private static func wordCount(_ text: String) -> Int {
-        text.split(whereSeparator: \.isWhitespace).count
+        DisplayTextTokenizer.wordCount(text)
     }
 
     private static func split(_ text: String, fits: (String) -> Bool, maxCharacters: Int?) -> [String] {
@@ -66,20 +66,19 @@ enum CaptionBuilder {
         return parts.flatMap { split($0, fits: fits, maxCharacters: maxCharacters) }
     }
 
-    /// Break once at the best boundary present: sentence, then clause, then midpoint word.
     private static func breakOnce(_ text: String) -> [String] {
-        breakOn(text, delimiters: ".!?") ?? breakOn(text, delimiters: ",;:") ?? breakAtMidWord(text)
+        breakOn(text, delimiters: ".!?。！？") ?? breakOn(text, delimiters: ",;:，、；：") ?? breakAtMidToken(text)
     }
 
-    /// Split after delimiters followed by a space, so "U.S." and "3.14" stay intact.
     private static func breakOn(_ text: String, delimiters: String) -> [String]? {
         let set = Set(delimiters)
+        let ascii = Set(".!?,;:")
         let chars = Array(text)
         var pieces: [String] = []
         var current = ""
         for (i, c) in chars.enumerated() {
             current.append(c)
-            let nextIsBreak = i + 1 >= chars.count || chars[i + 1] == " "
+            let nextIsBreak = i + 1 >= chars.count || chars[i + 1].isWhitespace || !ascii.contains(c)
             if set.contains(c), nextIsBreak {
                 let piece = current.trimmingCharacters(in: .whitespaces)
                 if !piece.isEmpty { pieces.append(piece) }
@@ -91,18 +90,19 @@ enum CaptionBuilder {
         return pieces.count > 1 ? pieces : nil
     }
 
-    private static func breakAtMidWord(_ text: String) -> [String] {
-        let words = text.split(separator: " ").map(String.init)
-        guard words.count > 1 else { return [text] }
-        let mid = words.count / 2
-        return [words[..<mid].joined(separator: " "), words[mid...].joined(separator: " ")]
+    private static func breakAtMidToken(_ text: String) -> [String] {
+        DisplayTextTokenizer.splitAtBalancedWordBoundary(text) ?? [text]
     }
 
     static func visibleCharacterCount(_ text: String) -> Int {
-        text.reduce(0) { $0 + ($1.isWhitespace ? 0 : 1) }
+        DisplayTextTokenizer.visibleCharacterCount(text)
     }
 
     private static func breakAtCharacterLimit(_ text: String, maxCharacters: Int) -> [String] {
+        if let pieces = DisplayTextTokenizer.splitByVisibleCharacterLimit(text, maxVisibleCharacters: maxCharacters) {
+            return pieces
+        }
+
         var pieces: [String] = []
         var current = ""
         var count = 0

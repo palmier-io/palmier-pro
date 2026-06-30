@@ -28,6 +28,12 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
+      - name: Check agent tool docs
+        run: swift scripts/sync-agent-tool-docs.swift
+
+      - name: Check customization docs
+        run: scripts/check-customizations-doc.sh
+
       - name: Build
         run: swift build
 

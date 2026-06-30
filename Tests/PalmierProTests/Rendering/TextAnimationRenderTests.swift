@@ -98,4 +98,10 @@ struct TextAnimationRenderTests {
             WordTiming(text: "NewYork", startFrame: 10, endFrame: 50),
         ])
     }
+
+    @Test func tokenizerFindsChineseAnimationTokens() {
+        let tokens = DisplayTextTokenizer.nsWordTokens(in: "你好世界").map(\.text)
+        #expect(tokens.count > 1)
+        #expect(tokens.joined() == "你好世界")
+    }
 }

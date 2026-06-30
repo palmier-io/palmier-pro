@@ -14,8 +14,13 @@ struct PrivacyPane: View {
                 subtitle: "Helps us find and fix issues. Crash reports go to Sentry. Your media and project content are never collected.",
                 isOn: $telemetryEnabled
             )
+            .disabled(!AppFeaturePolicy.allowsAnonymousReports)
+            .onAppear {
+                telemetryEnabled = Telemetry.isEnabled
+            }
             .onChange(of: telemetryEnabled) { _, newValue in
                 Telemetry.isEnabled = newValue
+                telemetryEnabled = Telemetry.isEnabled
             }
 
             if didChange {

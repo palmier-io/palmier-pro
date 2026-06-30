@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+doc_path="docs/agent-tools/agent-tool-contract.md"
+tools_path="Sources/PalmierPro/Agent/Tools/"
+custom_doc_path="docs/customizations.md"
+
+swift scripts/sync-agent-tool-docs.swift
+scripts/check-customizations-doc.sh
+
+staged_files="$(git diff --cached --name-only --diff-filter=ACMR)"
+
+if printf '%s\n' "$staged_files" | grep -q "^${tools_path}"; then
+  if ! printf '%s\n' "$staged_files" | grep -qx "$doc_path"; then
+    if [ "${ALLOW_AGENT_TOOL_DOC_UNCHANGED:-}" != "1" ]; then
+      cat >&2 <<MSG
+Agent tools changed, but ${doc_path} is not staged.
+Run: swift scripts/sync-agent-tool-docs.swift --write
+Then stage ${doc_path}, or set ALLOW_AGENT_TOOL_DOC_UNCHANGED=1 for non-semantic tool changes.
+MSG
+      exit 1
+    fi
+  fi
+fi
+
+requires_custom_doc=0
+while IFS= read -r file; do
+  case "$file" in
+    "$custom_doc_path") ;;
+    AGENTS.md|CLAUDE.md|.github/workflows/ci.yml|.githooks/*|docs/agent-tools/*|scripts/install-hooks.sh|scripts/sync-agent-tool-docs.swift|scripts/check-customizations-doc.sh|Sources/PalmierPro/Agent/*|Sources/PalmierPro/Agent/**/*|Sources/PalmierPro/Settings/AgentPane.swift|Sources/PalmierPro/Transcription/TranscriptCache.swift|Sources/PalmierPro/Models/DisplayTextTokenizer.swift|Sources/PalmierPro/MediaPanel/CaptionsTab/CaptionBuilder.swift|Sources/PalmierPro/Editor/ViewModel/EditorViewModel+Captions.swift|Sources/PalmierPro/Compositing/TextFrameRenderer.swift|Sources/PalmierPro/UI/AppTheme.swift|Tests/PalmierProTests/Captions/*|Tests/PalmierProTests/Rendering/TextAnimationRenderTests.swift)
+      requires_custom_doc=1
+      ;;
+  esac
+done <<< "$staged_files"
+
+if [ "$requires_custom_doc" = "1" ]; then
+  if ! printf '%s\n' "$staged_files" | grep -qx "$custom_doc_path"; then
+    if [ "${ALLOW_CUSTOMIZATIONS_DOC_UNCHANGED:-}" != "1" ]; then
+      cat >&2 <<MSG
+Fork customization-sensitive files changed, but ${custom_doc_path} is not staged.
+Update ${custom_doc_path}, or set ALLOW_CUSTOMIZATIONS_DOC_UNCHANGED=1 for non-semantic changes.
+MSG
+      exit 1
+    fi
+  fi
+fi

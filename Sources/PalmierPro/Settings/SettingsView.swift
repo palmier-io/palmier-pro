@@ -31,6 +31,13 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .storage: return "internaldrive"
         }
     }
+
+    var isVisible: Bool {
+        switch self {
+        case .models: return AppFeaturePolicy.showsModelSettings
+        default: return true
+        }
+    }
 }
 
 struct SettingsView: View {
@@ -43,8 +50,12 @@ struct SettingsView: View {
 
     private var visibleTabs: [SettingsTab] {
         SettingsTab.allCases.filter { tab in
-            !(tab == .account && account.isMisconfigured)
+            tab.isVisible && !(tab == .account && account.isMisconfigured)
         }
+    }
+
+    private var effectiveSelectedTab: SettingsTab {
+        visibleTabs.contains(selectedTab) ? selectedTab : visibleTabs.first ?? .general
     }
 
     var body: some View {
@@ -52,7 +63,7 @@ struct SettingsView: View {
             SettingsSidebar(selectedTab: $selectedTab, visibleTabs: visibleTabs)
                 .frame(width: 220)
 
-            SettingsDetail(tab: selectedTab)
+            SettingsDetail(tab: effectiveSelectedTab)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.black.opacity(AppTheme.Opacity.medium))
         }
@@ -65,9 +76,16 @@ struct SettingsView: View {
         .background(.ultraThinMaterial)
         .focusEffectDisabled()
         .onAppear {
-            if !visibleTabs.contains(selectedTab) {
-                selectedTab = visibleTabs.first ?? .general
-            }
+            reconcileSelectedTab()
+        }
+        .onChange(of: visibleTabs) { _, _ in
+            reconcileSelectedTab()
+        }
+    }
+
+    private func reconcileSelectedTab() {
+        if !visibleTabs.contains(selectedTab) {
+            selectedTab = visibleTabs.first ?? .general
         }
     }
 }
@@ -214,8 +232,9 @@ final class SettingsWindowController: NSWindowController {
 
     func show(tab: SettingsTab? = nil) {
         if let tab {
+            let initialTab = tab.isVisible ? tab : .account
             hosting?.rootView = AnyView(
-                SettingsView(initialTab: tab)
+                SettingsView(initialTab: initialTab)
                     .id(UUID())
                     .tint(AppTheme.Accent.primary)
             )

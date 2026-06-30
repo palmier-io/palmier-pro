@@ -17,6 +17,23 @@ swift run
 
 - 不要给模型的工具调用错误做兜底、补参、静默修正或自动改写。按原样返回工具错误，让模型根据错误自动重试。
 
+## Agent tool docs
+
+- Agent tool contract lives in `docs/agent-tools/agent-tool-contract.md` and is generated from `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift`.
+- When changing anything under `Sources/PalmierPro/Agent/Tools/`, update the tool description if semantics changed, run `swift scripts/sync-agent-tool-docs.swift --write`, and commit the document.
+- After syncing upstream, run `swift scripts/sync-agent-tool-docs.swift` and fix drift before continuing.
+- Install tracked hooks with `scripts/install-hooks.sh`.
+
+## Fork customization docs
+
+- Fork-specific behavior that diverges from upstream lives in `docs/customizations.md`.
+- When resolving upstream conflicts or changing customization-sensitive paths, update `docs/customizations.md` in the same commit and run `scripts/check-customizations-doc.sh`.
+
+## Upstream updates
+
+- If `upstream/main` has new commits, tell the user and summarize the update.
+- Do not merge, rebase, cherry-pick, or otherwise apply upstream changes unless the user explicitly asks for that operation.
+
 ## Design System
 
 All UI styling MUST use `AppTheme` constants from `Sources/PalmierPro/UI/AppTheme.swift`. Never use hardcoded numeric values for:

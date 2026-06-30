@@ -3,3 +3,8 @@
 ## Agent behavior
 
 - 不要给模型的工具调用错误做兜底、补参、静默修正或自动改写。按原样返回工具错误，让模型根据错误自动重试。
+
+## Upstream updates
+
+- If `upstream/main` has new commits, tell the user and summarize the update.
+- Do not merge, rebase, cherry-pick, or otherwise apply upstream changes unless the user explicitly asks for that operation.

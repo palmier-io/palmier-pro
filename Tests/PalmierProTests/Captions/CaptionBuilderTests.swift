@@ -73,8 +73,23 @@ struct CaptionBuilderTests {
             minDuration: 0,
             maxCharacters: 10
         )
-        #expect(phrases.map(\.text) == ["这个输入不对生成字幕", "太长了"])
+        #expect(phrases.map(\.text) == ["这个输入不对", "生成字幕太长了"])
         #expect(phrases.allSatisfy { CaptionBuilder.visibleCharacterCount($0.text) <= 10 })
+    }
+
+    @Test func splitsChineseAtTokenizerWordBoundaries() {
+        let phrases = CaptionBuilder.phrases(
+            for: segment("你好世界", 0, 4),
+            fits: { CaptionBuilder.visibleCharacterCount($0) <= 2 },
+            minDuration: 0,
+            maxCharacters: 2
+        )
+        #expect(phrases.map(\.text) == ["你好", "世界"])
+    }
+
+    @Test func respectsChinesePunctuationWithoutSpaces() {
+        let phrases = CaptionBuilder.phrases(for: segment("你好。世界", 0, 4), fits: { CaptionBuilder.visibleCharacterCount($0) <= 3 }, minDuration: 0)
+        #expect(phrases.map(\.text) == ["你好。", "世界"])
     }
 
     private let clip = Clip(mediaRef: "m", startFrame: 30, durationFrames: 120)
