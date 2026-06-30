@@ -159,7 +159,7 @@ struct TextTab: View {
     private var borderRow: some View {
         toggleColorRow(
             icon: "a.square",
-            label: "Border",
+            label: "Outline",
             enabled: style.border.enabled,
             color: style.border.color.swiftUIColor,
             debounceKey: "borderColor",

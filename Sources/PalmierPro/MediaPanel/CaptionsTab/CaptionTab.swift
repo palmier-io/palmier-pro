@@ -217,6 +217,20 @@ struct CaptionTab: View {
                         .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
                 }
             }
+            InspectorRow(icon: "a.square", label: "Outline") {
+                HStack(spacing: AppTheme.Spacing.sm) {
+                    ColorField(displayColor: style.border.color.swiftUIColor) {
+                        style.border.color = TextStyle.RGBA($0)
+                    }
+                    .opacity(style.border.enabled ? AppTheme.Opacity.opaque : AppTheme.Opacity.medium)
+                    .disabled(!style.border.enabled)
+                    Toggle("", isOn: $style.border.enabled)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
+                }
+            }
             InspectorRow(icon: "textformat", label: "Case") {
                 Menu {
                     ForEach(EditorViewModel.CaptionCase.allCases, id: \.self) { c in

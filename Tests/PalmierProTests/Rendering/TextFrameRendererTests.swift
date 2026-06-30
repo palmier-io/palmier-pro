@@ -29,6 +29,14 @@ struct TextFrameRendererTests {
         return px
     }
 
+    private func rawPixels(_ text: CIImage, size: CGSize) -> [UInt8] {
+        let w = Int(size.width), h = Int(size.height)
+        var px = [UInt8](repeating: 0, count: w * h * 4)
+        ctx.render(text, toBitmap: &px, rowBytes: w * 4,
+                   bounds: CGRect(origin: .zero, size: size), format: .RGBA8, colorSpace: nil)
+        return px
+    }
+
     @Test func whiteTextIsBrightAndColorMatches() {
         let size = CGSize(width: 640, height: 360)
         var style = TextStyle()
@@ -73,5 +81,49 @@ struct TextFrameRendererTests {
         }
         #expect(brightCount(rows: 0..<(h / 2)) > brightCount(rows: (h / 2)..<h) * 4,
                 "text placed at top should render at top")
+    }
+
+    @Test func borderOutlinesGlyphsWithoutBoxStroke() {
+        let size = CGSize(width: 640, height: 360)
+        let w = Int(size.width)
+        var style = TextStyle()
+        style.fontSize = 200
+        style.color = .init(r: 1, g: 1, b: 1, a: 1)
+        style.border = .init(enabled: true, color: .init(r: 1, g: 0, b: 0, a: 1))
+        style.shadow.enabled = false
+        let transform = Transform(topLeft: (0.2, 0.25), width: 0.6, height: 0.35)
+        let clip = textClip(content: "A", style: style, transform: transform)
+        let img = TextFrameRenderer.image(clip: clip, frame: 0, renderSize: size)!
+        let px = rawPixels(img, size: size)
+
+        func isRed(_ x: Int, _ y: Int) -> Bool {
+            let i = (y * w + x) * 4
+            return px[i] > 96 && px[i + 1] < 80 && px[i + 2] < 80 && px[i + 3] > 32
+        }
+
+        let left = Int((transform.topLeft.x * size.width).rounded())
+        let right = Int(((transform.topLeft.x + transform.width) * size.width).rounded())
+        let top = Int((transform.topLeft.y * size.height).rounded())
+        let bottom = Int(((transform.topLeft.y + transform.height) * size.height).rounded())
+
+        var totalRed = 0
+        for y in 0..<Int(size.height) {
+            for x in 0..<w where isRed(x, y) {
+                totalRed += 1
+            }
+        }
+
+        var edgeRed = 0
+        for x in left...right {
+            if isRed(x, top) { edgeRed += 1 }
+            if isRed(x, bottom) { edgeRed += 1 }
+        }
+        for y in top...bottom {
+            if isRed(left, y) { edgeRed += 1 }
+            if isRed(right, y) { edgeRed += 1 }
+        }
+
+        #expect(totalRed > 10, "expected visible red glyph outline")
+        #expect(edgeRed < 50, "border should not render a rectangular clip box")
     }
 }

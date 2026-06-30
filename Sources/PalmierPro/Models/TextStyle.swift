@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 
 struct TextStyle: Codable, Sendable, Equatable, Hashable {
+    static let glyphBorderStrokeWidth: Double = -4
+
     var fontName: String = "Helvetica-Bold"
     var fontSize: Double = 96
     var fontScale: Double = 1.0
@@ -34,7 +36,7 @@ struct TextStyle: Codable, Sendable, Equatable, Hashable {
         var blur: Double = 6
     }
 
-    /// Toggleable solid color — used for the text box background and border.
+    /// Toggleable solid color for text box fill and glyph outline.
     struct Fill: Codable, Sendable, Equatable, Hashable {
         var enabled: Bool = false
         var color: RGBA = RGBA()
@@ -141,7 +143,15 @@ extension TextStyle {
             .paragraphStyle: paragraphStyle,
         ]
         if includeColor { attrs[.foregroundColor] = nsColor }
+        if border.enabled {
+            attrs[.strokeWidth] = NSNumber(value: Self.glyphBorderStrokeWidth)
+            if includeColor { attrs[.strokeColor] = border.color.nsColor }
+        }
         return attrs
+    }
+
+    static func glyphBorderPadding(fontSize: CGFloat) -> CGFloat {
+        ceil(fontSize * CGFloat(abs(glyphBorderStrokeWidth)) / 100)
     }
 }
 

@@ -47,14 +47,14 @@ enum TextFrameRenderer {
                       width: max(1, t.width * size.width), height: h)
     }
 
-    /// A render-sized context with the box fill/border and shadow already applied.
+    /// A render-sized context with the box fill and shadow already applied.
     private static func beginContext(style: TextStyle, box: CGRect, renderSize: CGSize) -> CGContext? {
         guard let ctx = CGContext(
             data: nil, width: Int(renderSize.width.rounded()), height: Int(renderSize.height.rounded()),
             bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
-        drawBox(ctx, style: style, box: box, renderSize: renderSize)
+        drawBox(ctx, style: style, box: box)
         applyShadow(ctx, style: style, renderSize: renderSize)
         return ctx
     }
@@ -250,16 +250,10 @@ enum TextFrameRenderer {
 
     // MARK: - Shared drawing
 
-    private static func drawBox(_ ctx: CGContext, style: TextStyle, box: CGRect, renderSize: CGSize) {
-        let scale = renderSize.height / TextLayout.referenceCanvasHeight
+    private static func drawBox(_ ctx: CGContext, style: TextStyle, box: CGRect) {
         if style.background.enabled {
             ctx.setFillColor(cgColor(style.background.color))
             ctx.fill(box)
-        }
-        if style.border.enabled {
-            ctx.setStrokeColor(cgColor(style.border.color))
-            ctx.setLineWidth(AppTheme.BorderWidth.thin * scale)
-            ctx.stroke(box)
         }
     }
 
