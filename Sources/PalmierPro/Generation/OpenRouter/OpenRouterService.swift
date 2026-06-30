@@ -183,6 +183,7 @@ final class OpenRouterService {
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.reloadAPIKey()
+                await self?.refreshModels()
             }
         }
         Task { await refreshModels() }
@@ -191,6 +192,7 @@ final class OpenRouterService {
     func saveAPIKey(_ key: String) {
         OpenRouterKeychain.save(key.trimmingCharacters(in: .whitespacesAndNewlines))
         reloadAPIKey()
+        Task { await refreshModels() }
     }
 
     func removeAPIKey() {
@@ -199,16 +201,31 @@ final class OpenRouterService {
     }
 
     func refreshModels() async {
+        guard hasAPIKey else {
+            image = []
+            video = []
+            isLoaded = false
+            isLoading = false
+            lastError = nil
+            return
+        }
         isLoading = true
         lastError = nil
         defer { isLoading = false }
         do {
-            async let imageEntries = Self.fetchImageModels()
-            async let videoEntries = Self.fetchVideoModels()
-            image = try await imageEntries.map(OpenRouterImageModelConfig.init)
-            video = try await videoEntries.map(OpenRouterVideoModelConfig.init)
+            let key = apiKey
+            async let imageEntries = Self.fetchImageModels(apiKey: key)
+            async let videoEntries = Self.fetchVideoModels(apiKey: key)
+            let loadedImages = try await imageEntries.map(OpenRouterImageModelConfig.init)
+            let loadedVideos = try await videoEntries.map(OpenRouterVideoModelConfig.init)
+            guard hasAPIKey, apiKey == key else { return }
+            image = loadedImages
+            video = loadedVideos
             isLoaded = true
         } catch {
+            image = []
+            video = []
+            isLoaded = false
             lastError = error.localizedDescription
         }
     }
@@ -316,6 +333,12 @@ final class OpenRouterService {
     private func reloadAPIKey() {
         apiKey = OpenRouterKeychain.load() ?? ""
         hasAPIKey = !apiKey.isEmpty
+        if !hasAPIKey {
+            image = []
+            video = []
+            isLoaded = false
+            lastError = nil
+        }
     }
 
     private func pollVideo(jobId: String) async throws -> OpenRouterVideoGenerationResponse {
@@ -365,21 +388,21 @@ final class OpenRouterService {
         return [temp]
     }
 
-    private static func fetchImageModels() async throws -> [OpenRouterImageModelListItem] {
+    private static func fetchImageModels(apiKey: String) async throws -> [OpenRouterImageModelListItem] {
         try await request(
             path: "images/models",
             method: "GET",
-            apiKey: nil,
+            apiKey: apiKey,
             body: nil,
             response: OpenRouterImageModelsListResponse.self
         ).data
     }
 
-    private static func fetchVideoModels() async throws -> [OpenRouterVideoModelListItem] {
+    private static func fetchVideoModels(apiKey: String) async throws -> [OpenRouterVideoModelListItem] {
         try await request(
             path: "videos/models",
             method: "GET",
-            apiKey: nil,
+            apiKey: apiKey,
             body: nil,
             response: OpenRouterVideoModelsListResponse.self
         ).data

@@ -3,19 +3,24 @@ import Foundation
 extension ToolExecutor {
     func generate(_ editor: EditorViewModel, _ args: [String: Any], type: ClipType) throws -> ToolResult {
         let prompt = try args.requireString("prompt")
-        guard AccountService.shared.isSignedIn else {
-            throw ToolError("Generation requires signing in to Palmier. Tell the user to sign in.")
-        }
-        guard AccountService.shared.hasCredits else {
-            throw ToolError("Out of credits. Tell the user to add credits or subscribe to keep generating.")
-        }
         switch type {
         case .video:
-            guard let modelId = args.string("model") ?? VideoModelConfig.allModels.first?.id else {
+            guard let modelId = args.string("model")
+                ?? VideoModelConfig.allModels.first?.id
+                ?? OpenRouterService.shared.video.first.map({ OpenRouterModelId.stored($0.id) }) else {
                 throw ToolError("Model catalog not loaded yet. Try again in a moment.")
             }
+            if let raw = OpenRouterModelId.raw(modelId) {
+                guard let model = OpenRouterService.shared.videoModel(rawId: raw) else {
+                    throw ToolError("Unknown OpenRouter video model '\(raw)'. Available: \(OpenRouterService.shared.video.map { OpenRouterModelId.stored($0.id) }.joined(separator: ", "))")
+                }
+                return try generateOpenRouterVideo(editor, args, prompt: prompt, model: model)
+            }
             guard let model = VideoModelConfig.allModels.first(where: { $0.id == modelId }) else {
-                throw ToolError("Unknown model '\(modelId)'. Available: \(VideoModelConfig.allModels.map(\.id).joined(separator: ", "))")
+                let available = (VideoModelConfig.allModels.map(\.id)
+                    + OpenRouterService.shared.video.map { OpenRouterModelId.stored($0.id) })
+                    .joined(separator: ", ")
+                throw ToolError("Unknown model '\(modelId)'. Available: \(available)")
             }
             return model.requiresSourceVideo
                 ? try generateVideoEdit(editor, args, prompt: prompt, model: model)
@@ -124,6 +129,7 @@ extension ToolExecutor {
             prompt: prompt, model: model.id, duration: duration,
             aspectRatio: aspectRatio, resolution: resolution
         )
+        let generateAudio = args.bool("generateAudio") ?? true
 
         let folderId = try resolveFolderId(
             args, editor: editor, fallbackReferences: inputAssets.textToVideoReferences
@@ -135,7 +141,7 @@ extension ToolExecutor {
             placeholderDuration: Double(max(1, duration)),
             name: args.string("name"),
             folderId: folderId,
-            generateAudio: true
+            generateAudio: generateAudio
         ).submit(
             service: editor.generationService,
             projectURL: editor.projectURL,
@@ -147,15 +153,89 @@ extension ToolExecutor {
         return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), duration: \(duration)s, aspect: \(aspectRatio)\(refSummary)")
     }
 
+    private func generateOpenRouterVideo(
+        _ editor: EditorViewModel, _ args: [String: Any],
+        prompt: String, model: OpenRouterVideoModelConfig
+    ) throws -> ToolResult {
+        guard !prompt.isEmpty else { throw ToolError("Empty prompt") }
+        if args.string("sourceVideoMediaRef") != nil
+            || !args.stringArray("referenceImageMediaRefs").isEmpty
+            || !args.stringArray("referenceVideoMediaRefs").isEmpty
+            || !args.stringArray("referenceAudioMediaRefs").isEmpty {
+            throw ToolError("OpenRouter video models currently accept startFrameMediaRef and endFrameMediaRef only.")
+        }
+
+        let duration = args.int("duration") ?? model.durations.first ?? 5
+        let aspectRatio = args.string("aspectRatio") ?? model.aspectRatios.first ?? ""
+        let resolution = args.string("resolution") ?? model.resolutions?.first
+        if let err = model.validate(duration: duration, aspectRatio: aspectRatio, resolution: resolution) {
+            throw ToolError(err)
+        }
+
+        let firstFrame = try optionalImageAsset(args.string("startFrameMediaRef"), editor: editor, label: "Start frame")
+        let lastFrame = try optionalImageAsset(args.string("endFrameMediaRef"), editor: editor, label: "End frame")
+        if firstFrame != nil, !model.supportsFirstFrame {
+            throw ToolError("\(model.displayName) does not accept a first frame.")
+        }
+        if lastFrame != nil, !model.supportsLastFrame {
+            throw ToolError("\(model.displayName) does not accept a last frame.")
+        }
+
+        let genInput = GenerationInput(
+            prompt: prompt,
+            model: OpenRouterModelId.stored(model.id),
+            duration: duration,
+            aspectRatio: aspectRatio,
+            resolution: resolution,
+            generateAudio: model.canGenerateAudio ? (args.bool("generateAudio") ?? true) : nil
+        )
+        let folderId = try resolveFolderId(
+            args,
+            editor: editor,
+            fallbackReferences: [firstFrame, lastFrame].compactMap { $0 }
+        )
+        let placeholderId = editor.generationService.generateOpenRouterVideo(
+            genInput: genInput,
+            model: model,
+            firstFrame: firstFrame,
+            lastFrame: lastFrame,
+            folderId: folderId,
+            name: args.string("name"),
+            projectURL: editor.projectURL,
+            editor: editor
+        )
+        return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), duration: \(duration)s, aspect: \(aspectRatio)")
+    }
+
+    private func optionalImageAsset(_ id: String?, editor: EditorViewModel, label: String) throws -> MediaAsset? {
+        guard let id else { return nil }
+        let media = try asset(id, editor: editor, label: label)
+        guard media.type == .image else {
+            throw ToolError("\(label) must be an image asset (got \(media.type.rawValue)).")
+        }
+        return media
+    }
+
     private func generateImage(
         _ editor: EditorViewModel, _ args: [String: Any], prompt: String
     ) throws -> ToolResult {
         guard !prompt.isEmpty else { throw ToolError("Empty prompt") }
-        guard let modelId = args.string("model") ?? ImageModelConfig.allModels.first?.id else {
+        guard let modelId = args.string("model")
+            ?? ImageModelConfig.allModels.first?.id
+            ?? OpenRouterService.shared.image.first.map({ OpenRouterModelId.stored($0.id) }) else {
             throw ToolError("Model catalog not loaded yet. Try again in a moment.")
         }
+        if let raw = OpenRouterModelId.raw(modelId) {
+            guard let model = OpenRouterService.shared.imageModel(rawId: raw) else {
+                throw ToolError("Unknown OpenRouter image model '\(raw)'. Available: \(OpenRouterService.shared.image.map { OpenRouterModelId.stored($0.id) }.joined(separator: ", "))")
+            }
+            return try generateOpenRouterImage(editor, args, prompt: prompt, model: model)
+        }
         guard let model = ImageModelConfig.allModels.first(where: { $0.id == modelId }) else {
-            throw ToolError("Unknown model '\(modelId)'. Available: \(ImageModelConfig.allModels.map(\.id).joined(separator: ", "))")
+            let available = (ImageModelConfig.allModels.map(\.id)
+                + OpenRouterService.shared.image.map { OpenRouterModelId.stored($0.id) })
+                .joined(separator: ", ")
+            throw ToolError("Unknown model '\(modelId)'. Available: \(available)")
         }
         let aspectRatio = args.string("aspectRatio") ?? model.aspectRatios.first ?? ""
         let resolution = args.string("resolution") ?? model.resolutions?.first
@@ -194,13 +274,53 @@ extension ToolExecutor {
         return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), aspect: \(aspectRatio)")
     }
 
+    private func generateOpenRouterImage(
+        _ editor: EditorViewModel, _ args: [String: Any],
+        prompt: String, model: OpenRouterImageModelConfig
+    ) throws -> ToolResult {
+        guard !prompt.isEmpty else { throw ToolError("Empty prompt") }
+        let aspectRatio = args.string("aspectRatio") ?? model.aspectRatios.first ?? ""
+        let resolution = args.string("resolution") ?? model.resolutions?.first
+        let quality = args.string("quality") ?? model.qualities?.last
+        let refs: [MediaAsset] = try args.stringArray("referenceMediaRefs").map { id in
+            let media = try asset(id, editor: editor, label: "Reference image")
+            guard media.type == .image else {
+                throw ToolError("referenceMediaRefs entry '\(id)' must be an image asset (got \(media.type.rawValue))")
+            }
+            return media
+        }
+        if let err = model.validate(
+            aspectRatio: aspectRatio,
+            resolution: resolution,
+            quality: quality,
+            imageRefCount: refs.count,
+            numImages: 1
+        ) {
+            throw ToolError(err)
+        }
+        let genInput = GenerationInput(
+            prompt: prompt,
+            model: OpenRouterModelId.stored(model.id),
+            duration: 0,
+            aspectRatio: aspectRatio,
+            resolution: resolution,
+            quality: quality
+        )
+        let folderId = try resolveFolderId(args, editor: editor, fallbackReferences: refs)
+        let placeholderId = editor.generationService.generateOpenRouterImage(
+            genInput: genInput,
+            model: model,
+            references: refs,
+            numImages: 1,
+            folderId: folderId,
+            name: args.string("name"),
+            projectURL: editor.projectURL,
+            editor: editor
+        )
+        return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), aspect: \(aspectRatio)")
+    }
+
     func generateAudio(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
-        guard AccountService.shared.isSignedIn else {
-            throw ToolError("Generation requires signing in to Palmier. Tell the user to sign in.")
-        }
-        guard AccountService.shared.hasCredits else {
-            throw ToolError("Out of credits. Tell the user to add credits or subscribe to keep generating.")
-        }
         guard let modelId = args.string("model") ?? AudioModelConfig.allModels.first?.id else {
             throw ToolError("Model catalog not loaded yet. Try again in a moment.")
         }
@@ -317,12 +437,6 @@ extension ToolExecutor {
         guard asset.type == .video || asset.type == .image else {
             throw ToolError("Upscale supports video and image assets only (got \(asset.type.rawValue))")
         }
-        guard AccountService.shared.isSignedIn else {
-            throw ToolError("Upscale requires signing in to Palmier. Tell the user to sign in.")
-        }
-        guard AccountService.shared.hasCredits else {
-            throw ToolError("Out of credits. Tell the user to add credits or subscribe to keep generating.")
-        }
 
         let available = UpscaleModelConfig.models(for: asset.type)
         let model: UpscaleModelConfig
@@ -376,9 +490,11 @@ extension ToolExecutor {
         var out: [[String: Any]] = []
         if filter == nil || filter == "video" {
             out += VideoModelConfig.allModels.map { Self.videoModelInfo($0, includeType: true) }
+            out += OpenRouterService.shared.video.map { Self.openRouterVideoModelInfo($0, includeType: true) }
         }
         if filter == nil || filter == "image" {
             out += ImageModelConfig.allModels.map { Self.imageModelInfo($0, includeType: true) }
+            out += OpenRouterService.shared.image.map { Self.openRouterImageModelInfo($0, includeType: true) }
         }
         if filter == nil || filter == "audio" {
             out += AudioModelConfig.allModels.map { Self.audioModelInfo($0) }
@@ -386,9 +502,19 @@ extension ToolExecutor {
         if filter == nil || filter == "upscale" {
             out += UpscaleModelConfig.allModels.map { Self.upscaleModelInfo($0) }
         }
+        let loaded: Bool = {
+            switch filter {
+            case "video", "image":
+                return ModelCatalog.shared.isLoaded || OpenRouterService.shared.isLoaded
+            case "audio", "upscale":
+                return ModelCatalog.shared.isLoaded
+            default:
+                return ModelCatalog.shared.isLoaded || OpenRouterService.shared.isLoaded
+            }
+        }()
         let body: [String: Any] = [
             "models": out,
-            "loaded": ModelCatalog.shared.isLoaded,
+            "loaded": loaded,
         ]
         guard let json = Self.jsonString(roundJSONFloatingPointNumbers(body, toPlaces: 3)) else {
             return .error("Failed to encode model list")
@@ -428,6 +554,39 @@ extension ToolExecutor {
         if includeType { info["type"] = "image" }
         if let r = m.resolutions { info["resolutions"] = r }
         if let q = m.qualities { info["qualities"] = q }
+        return info
+    }
+
+    nonisolated static func openRouterVideoModelInfo(_ m: OpenRouterVideoModelConfig, includeType: Bool = false) -> [String: Any] {
+        var info: [String: Any] = [
+            "id": OpenRouterModelId.stored(m.id),
+            "displayName": m.displayName,
+            "provider": "OpenRouter",
+            "durations": m.durations,
+            "aspectRatios": m.aspectRatios,
+            "supportsFirstFrame": m.supportsFirstFrame,
+            "supportsLastFrame": m.supportsLastFrame,
+            "supportsReferences": false,
+            "canGenerateAudio": m.canGenerateAudio,
+        ]
+        if includeType { info["type"] = "video" }
+        if let resolutions = m.resolutions { info["resolutions"] = resolutions }
+        return info
+    }
+
+    nonisolated static func openRouterImageModelInfo(_ m: OpenRouterImageModelConfig, includeType: Bool = false) -> [String: Any] {
+        var info: [String: Any] = [
+            "id": OpenRouterModelId.stored(m.id),
+            "displayName": m.displayName,
+            "provider": "OpenRouter",
+            "aspectRatios": m.aspectRatios,
+            "supportsImageReference": m.supportsImageReference,
+            "maxImages": m.maxImages,
+            "maxReferences": m.maxReferences,
+        ]
+        if includeType { info["type"] = "image" }
+        if let resolutions = m.resolutions { info["resolutions"] = resolutions }
+        if let qualities = m.qualities { info["qualities"] = qualities }
         return info
     }
 

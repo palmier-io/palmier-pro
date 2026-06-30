@@ -373,15 +373,21 @@ final class EditorViewModel {
         // sourceSegment (source seconds) and explicit trim frames are mutually exclusive; callers pass one.
         let applyTrim: (inout Clip) -> Void = { clip in
             if sourceSegment != nil {
-                // trimStartFrame/trimEndFrame are amounts trimmed off the head/tail
-                // (sourceDurationFrames = consumed + trimStart + trimEnd), so the tail
-                // trim is whatever source remains after the head trim and visible span.
+                // tail trim is what's left after head trim and visible span
                 let consumed = Int((Double(durationFrames) * clip.speed).rounded())
                 clip.trimStartFrame = trimStart
                 clip.trimEndFrame = max(0, totalSourceFrames - trimStart - consumed)
             } else {
-                if let t = trimStartFrame { clip.trimStartFrame = t }
-                if let t = trimEndFrame { clip.trimEndFrame = t }
+                let start = max(0, trimStartFrame ?? 0)
+                clip.trimStartFrame = start
+                if totalSourceFrames > 0 {
+                    // Use actual remaining source for tail trim if not set; clamp to available.
+                    let consumed = Int((Double(durationFrames) * clip.speed).rounded())
+                    let remainingTail = max(0, totalSourceFrames - start - consumed)
+                    clip.trimEndFrame = min(trimEndFrame ?? remainingTail, remainingTail)
+                } else if let t = trimEndFrame {
+                    clip.trimEndFrame = t
+                }
             }
         }
 

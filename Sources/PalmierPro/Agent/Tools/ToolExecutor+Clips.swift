@@ -11,7 +11,7 @@ fileprivate struct AddClipsInput: DecodableToolArgs {
         let mediaRef: String
         let trackIndex: Int?
         let startFrame: Int
-        let durationFrames: Int
+        let durationFrames: Int?
         let trimStartFrame: Int?
         let trimEndFrame: Int?
         static let allowedKeys: Set<String> = ["mediaRef", "trackIndex", "startFrame", "durationFrames", "trimStartFrame", "trimEndFrame"]
@@ -148,6 +148,38 @@ extension ToolExecutor {
             .sorted()
     }
 
+    /// Resolves (trimStart, duration, trimEnd) for a clip placement
+    fileprivate func resolvePlacement(
+        _ asset: MediaAsset, fps: Int,
+        durationFrames: Int?, trimStartFrame: Int?, trimEndFrame: Int?, path: String
+    ) throws -> (trimStart: Int, duration: Int, trimEnd: Int?) {
+        let trimStart = trimStartFrame ?? 0
+        guard trimStart >= 0 else { throw ToolError("\(path): trimStartFrame must be >= 0 (got \(trimStart))") }
+        if let t = trimEndFrame, t < 0 { throw ToolError("\(path): trimEndFrame must be >= 0 (got \(t))") }
+        if let d = durationFrames, d < 1 { throw ToolError("\(path): durationFrames must be >= 1 (got \(d))") }
+        guard durationFrames == nil || trimEndFrame == nil else {
+            throw ToolError("\(path): set durationFrames OR trimEndFrame, not both — both define the clip's end. Use durationFrames for an explicit length, trimEndFrame to trim the tail.")
+        }
+
+        let sourceLen = secondsToFrame(seconds: asset.duration, fps: fps)
+        if let d = durationFrames {
+            if sourceLen > 0, trimStart + d > sourceLen {
+                throw ToolError("\(path): trimStartFrame \(trimStart) + durationFrames \(d) exceed the source length (\(sourceLen) frames). Use a shorter durationFrames or smaller trimStartFrame.")
+            }
+            return (trimStart, d, nil)
+        }
+        // Length derived from the trimmed source window [trimStart, sourceLen - trimEnd].
+        guard sourceLen > 0 else {
+            throw ToolError("\(path): durationFrames is required for this asset — its source length is unknown.")
+        }
+        let trimEnd = trimEndFrame ?? 0
+        let duration = sourceLen - trimStart - trimEnd
+        guard duration >= 1 else {
+            throw ToolError("\(path): trimStartFrame \(trimStart) + trimEndFrame \(trimEnd) leave no frames (source is \(sourceLen)).")
+        }
+        return (trimStart, duration, trimEndFrame)
+    }
+
     // MARK: add_clips
 
     func addClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
@@ -162,9 +194,9 @@ extension ToolExecutor {
             }
         }
 
-        var specs: [AddClipSpec] = []
-        specs.reserveCapacity(input.entries.count)
         let includeCaptions = input.includeCaptions ?? false
+        var prepared: [(entry: AddClipsInput.Entry, asset: MediaAsset, trackId: String?)] = []
+        prepared.reserveCapacity(input.entries.count)
         for (idx, entry) in input.entries.enumerated() {
             let asset = try asset(entry.mediaRef, editor: editor)
             var trackId: String? = nil
@@ -181,28 +213,30 @@ extension ToolExecutor {
                 }
                 trackId = editor.timeline.tracks[ti].id
             }
-            guard entry.durationFrames >= 1 else {
-                throw ToolError("entries[\(idx)]: durationFrames must be >= 1 (got \(entry.durationFrames))")
-            }
             guard entry.startFrame >= 0 else {
                 throw ToolError("entries[\(idx)]: startFrame must be >= 0 (got \(entry.startFrame))")
             }
-            if let t = entry.trimStartFrame, t < 0 {
-                throw ToolError("entries[\(idx)]: trimStartFrame must be >= 0 (got \(t))")
-            }
-            if let t = entry.trimEndFrame, t < 0 {
-                throw ToolError("entries[\(idx)]: trimEndFrame must be >= 0 (got \(t))")
-            }
-            specs.append(.init(asset: asset, trackId: trackId, startFrame: entry.startFrame, durationFrames: entry.durationFrames, trimStartFrame: entry.trimStartFrame, trimEndFrame: entry.trimEndFrame))
+            prepared.append((entry, asset, trackId))
         }
 
         // All-or-none for trackIndex: a new track at index 0 would shift any explicit indices.
-        let omittedCount = specs.filter { $0.trackId == nil }.count
-        guard omittedCount == 0 || omittedCount == specs.count else {
-            throw ToolError("Mixed trackIndex: \(omittedCount) of \(specs.count) entries omitted trackIndex. Either set it on every entry or omit it on every entry (to auto-create shared tracks).")
+        let omittedCount = prepared.filter { $0.trackId == nil }.count
+        guard omittedCount == 0 || omittedCount == prepared.count else {
+            throw ToolError("Mixed trackIndex: \(omittedCount) of \(prepared.count) entries omitted trackIndex. Either set it on every entry or omit it on every entry (to auto-create shared tracks).")
         }
 
-        let settingsNote = applySettingsIfNeededForAgent(editor, assets: specs.map(\.asset))
+        let settingsNote = applySettingsIfNeededForAgent(editor, assets: prepared.map(\.asset))
+
+        var specs: [AddClipSpec] = []
+        specs.reserveCapacity(prepared.count)
+        for (idx, p) in prepared.enumerated() {
+            let place = try resolvePlacement(p.asset, fps: editor.timeline.fps,
+                                             durationFrames: p.entry.durationFrames,
+                                             trimStartFrame: p.entry.trimStartFrame,
+                                             trimEndFrame: p.entry.trimEndFrame, path: "entries[\(idx)]")
+            specs.append(.init(asset: p.asset, trackId: p.trackId, startFrame: p.entry.startFrame,
+                               durationFrames: place.duration, trimStartFrame: place.trimStart, trimEndFrame: place.trimEnd))
+        }
 
         let actionName = specs.count == 1 ? "Add Clip (Agent)" : "Add Clips (Agent)"
         let (createdTracks, summaries) = try withUndoGroup(editor, actionName: actionName) { () -> ([String], [String]) in
@@ -319,12 +353,6 @@ extension ToolExecutor {
             guard asset.type.isCompatible(with: targetType) else {
                 throw ToolError("entries[\(idx)]: asset type \(asset.type.rawValue) is not compatible with \(targetType.rawValue) track at index \(input.trackIndex)")
             }
-            if let t = entry.trimStartFrame, t < 0 {
-                throw ToolError("entries[\(idx)]: trimStartFrame must be >= 0 (got \(t))")
-            }
-            if let t = entry.trimEndFrame, t < 0 {
-                throw ToolError("entries[\(idx)]: trimEndFrame must be >= 0 (got \(t))")
-            }
             resolvedAssets.append(asset)
         }
 
@@ -333,12 +361,12 @@ extension ToolExecutor {
         var specs: [EditorViewModel.RippleInsertSpec] = []
         specs.reserveCapacity(input.entries.count)
         for (idx, entry) in input.entries.enumerated() {
-            let asset = resolvedAssets[idx]
-            let duration = entry.durationFrames ?? editor.clipDurationFrames(for: asset, segment: nil)
-            guard duration >= 1 else {
-                throw ToolError("entries[\(idx)]: durationFrames must be >= 1 (got \(duration))")
-            }
-            specs.append(.init(asset: asset, durationFrames: duration, trimStartFrame: entry.trimStartFrame, trimEndFrame: entry.trimEndFrame))
+            let place = try resolvePlacement(resolvedAssets[idx], fps: editor.timeline.fps,
+                                             durationFrames: entry.durationFrames,
+                                             trimStartFrame: entry.trimStartFrame,
+                                             trimEndFrame: entry.trimEndFrame, path: "entries[\(idx)]")
+            specs.append(.init(asset: resolvedAssets[idx], durationFrames: place.duration,
+                               trimStartFrame: place.trimStart, trimEndFrame: place.trimEnd))
         }
 
         let totalPush = specs.reduce(0) { $0 + $1.durationFrames }

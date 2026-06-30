@@ -98,7 +98,7 @@ extension EditorViewModel {
         abs(transform.width - other.width) < 0.0001 && abs(transform.height - other.height) < 0.0001
     }
 
-    func checkProjectSettings(for assets: [MediaAsset]) -> ProjectSettingsAction {
+    func checkProjectSettings(for assets: [MediaAsset], adoptFPS: Bool = true) -> ProjectSettingsAction {
         guard let firstVideo = assets.first(where: { $0.type == .video }) else {
             return .proceed
         }
@@ -107,7 +107,7 @@ extension EditorViewModel {
 
         if !timeline.settingsConfigured {
             // First clip ever — auto-detect settings silently
-            let fps = firstVideo.sourceFPS.flatMap { Int($0.rounded()) } ?? timeline.fps
+            let fps = adoptFPS ? (firstVideo.sourceFPS.flatMap { Int($0.rounded()) } ?? timeline.fps) : timeline.fps
             let width = firstVideo.sourceWidth ?? timeline.width
             let height = firstVideo.sourceHeight ?? timeline.height
             applyTimelineSettings(fps: fps, width: width, height: height)
@@ -123,13 +123,13 @@ extension EditorViewModel {
         let clipWidth = firstVideo.sourceWidth
         let clipHeight = firstVideo.sourceHeight
 
-        let fpsMismatch = clipFPS != nil && clipFPS != timeline.fps
+        let fpsMismatch = adoptFPS && clipFPS != nil && clipFPS != timeline.fps
         let resMismatch = (clipWidth != nil && clipWidth != timeline.width) ||
                           (clipHeight != nil && clipHeight != timeline.height)
 
         if fpsMismatch || resMismatch {
             return .mismatch(
-                clipFPS: clipFPS ?? timeline.fps,
+                clipFPS: adoptFPS ? (clipFPS ?? timeline.fps) : timeline.fps,
                 clipWidth: clipWidth ?? timeline.width,
                 clipHeight: clipHeight ?? timeline.height
             )

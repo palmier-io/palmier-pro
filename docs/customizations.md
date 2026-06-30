@@ -133,7 +133,7 @@ Upstream sync note: keep the local Apple Speech backend as the default and keep 
 
 ## Palmier UI Feature Policy
 
-Intent: the Gitnapp build exposes model-management settings for local provider configuration, while anonymous crash/error reporting is forced off.
+Intent: the Gitnapp build exposes local provider configuration, hides Palmier account/subscription as a required setup path, and forces anonymous crash/error reporting off.
 
 Primary paths:
 
@@ -143,12 +143,14 @@ Primary paths:
 - `Sources/PalmierPro/Settings/ModelsPane.swift`
 - `Sources/PalmierPro/Settings/PrivacyPane.swift`
 - `Sources/PalmierPro/Telemetry/Telemetry.swift`
+- `Sources/PalmierPro/Project/HomeView.swift`
+- `Sources/PalmierPro/Project/WelcomeOverlay.swift`
 
-Upstream sync note: keep model-management and provider settings visible unless the fork intentionally removes local provider configuration. If upstream adds new model-settings or provider entry points, wire them through `AppFeaturePolicy`.
+Upstream sync note: keep local provider settings visible and keep Account/Providers/Models legacy settings routes redirected to the fork's credential tabs. If upstream adds new model-settings or provider entry points, wire them through `AppFeaturePolicy` or the fork's generation settings tabs.
 
 ## OpenRouter Visual Generation Endpoint
 
-Intent: route optional BYOK image and video generation through OpenRouter, while keeping Palmier responsible for audio and upscale.
+Intent: route optional BYOK image and video generation through OpenRouter. OpenRouter model catalogs are loaded only after an API key is configured, and the key is sent to the corresponding model endpoints.
 
 Primary paths:
 
@@ -157,6 +159,43 @@ Primary paths:
 - `Sources/PalmierPro/Generation/UI/GenerationView.swift`
 - `Sources/PalmierPro/Settings/ProvidersPane.swift`
 - `Sources/PalmierPro/Settings/ModelsPane.swift`
+- `Sources/PalmierPro/Agent/Tools/ToolExecutor+Generate.swift`
+- `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift`
 - `Sources/PalmierPro/App/main.swift`
 
-Upstream sync note: preserve the `openrouter:` stored model-id prefix, keep API-key management under Settings > Providers, and keep OpenRouter out of audio and upscale paths.
+Upstream sync note: preserve the `openrouter:` stored model-id prefix, keep API-key management under Settings > Video Generation, and do not add fallback/default OpenRouter models when no key is configured or the endpoint fails.
+
+## Generation Auth Gate Removal
+
+Intent: generation, upscale, AI edit, and Agent tool surfaces should not require Palmier sign-in or Palmier subscription credits before attempting provider-backed work. Provider/backend errors should surface directly instead of being rewritten into login or billing instructions.
+
+Primary paths:
+
+- `Sources/PalmierPro/Agent/AgentService.swift`
+- `Sources/PalmierPro/Agent/Clients/PalmierClient.swift`
+- `Sources/PalmierPro/Agent/Tools/AgentInstructions.swift`
+- `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift`
+- `Sources/PalmierPro/Agent/Tools/ToolExecutor+Generate.swift`
+- `Sources/PalmierPro/Agent/Tools/ToolExecutor+Timeline.swift`
+- `Sources/PalmierPro/Editor/ViewModel/EditorViewModel+AIEdit.swift`
+- `Sources/PalmierPro/Generation/Edit/EditSubmitter.swift`
+- `Sources/PalmierPro/Generation/UI/GenerationView.swift`
+- `Sources/PalmierPro/Inspector/Tabs/AIEditTab.swift`
+- `Sources/PalmierPro/MediaPanel/MediaTab/MediaTab.swift`
+- `Sources/PalmierPro/MediaPanel/MusicTab.swift`
+
+Upstream sync note: reject sign-in/credits preflight checks around generation tools or UI controls. It is acceptable for a provider client to return its real unauthenticated or not-configured error.
+
+## Generation Credential Settings
+
+Intent: Settings groups model credentials into Agent, Video Generation, and Audio Generation tabs. Users configure provider keys there; model lists are loaded from provider endpoints only after the relevant key exists.
+
+Primary paths:
+
+- `Sources/PalmierPro/Settings/SettingsView.swift`
+- `Sources/PalmierPro/Settings/ProvidersPane.swift`
+- `Sources/PalmierPro/Settings/ModelsPane.swift`
+- `Sources/PalmierPro/Generation/OpenRouter/OpenRouterService.swift`
+- `Sources/PalmierPro/Agent/Tools/ToolExecutor+Generate.swift`
+
+Upstream sync note: do not restore Account as the default Settings tab. Do not reintroduce a static default model catalog to mask missing provider credentials.

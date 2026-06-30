@@ -293,12 +293,12 @@ struct AgentPanelView: View {
         guard let error else { return nil }
         switch error {
         case .unauthenticated:
-            return ErrorCTA(title: "Sign in") {
-                SettingsWindowController.shared.show(tab: .account)
+            return ErrorCTA(title: "Agent settings") {
+                SettingsWindowController.shared.show(tab: .agent)
             }
         case .insufficientCredits:
-            return ErrorCTA(title: "View plans") {
-                SettingsWindowController.shared.show(tab: .account)
+            return ErrorCTA(title: "Agent settings") {
+                SettingsWindowController.shared.show(tab: .agent)
             }
         case .upstream:
             return nil
@@ -328,32 +328,15 @@ struct AgentPanelView: View {
 
     @ViewBuilder
     private var missingKeyState: some View {
-        let account = AccountService.shared
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Button(action: { SettingsWindowController.shared.show(tab: .account) }) {
-                Text(missingKeyPrimaryAction(account: account))
-                    .underline()
-                    .foregroundStyle(AppTheme.Accent.primary)
-            }
-            .buttonStyle(.plain)
-
-            Text("or use")
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-
+        HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.xs) {
             Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
-                Text("your own API key")
+                Text("Configure Agent")
                     .underline()
                     .foregroundStyle(AppTheme.Accent.primary)
             }
             .buttonStyle(.plain)
         }
         .font(.system(size: AppTheme.FontSize.md, weight: .medium))
-    }
-
-    private func missingKeyPrimaryAction(account: AccountService) -> String {
-        if !account.isSignedIn { return "Sign in" }
-        if !account.isPaid { return "Subscribe" }
-        return "Open Settings"
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {

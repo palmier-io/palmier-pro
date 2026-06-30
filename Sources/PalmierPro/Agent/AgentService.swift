@@ -108,8 +108,7 @@ final class AgentService {
         case .openAICompatible:
             return hasOpenAICompatibleEndpoint
         case .palmier:
-            let account = AccountService.shared
-            return account.isSignedIn && account.hasCredits
+            return true
         }
     }
 
@@ -120,7 +119,7 @@ final class AgentService {
         case .openAICompatible:
             return []
         case .palmier:
-            return AccountService.shared.isPaid ? [.sonnet46] : [.haiku45]
+            return AnthropicModel.allCases
         }
     }
 
@@ -134,10 +133,7 @@ final class AgentService {
             guard let openAICompatibleSettings else { return nil }
             return OpenAICompatibleClient(settings: openAICompatibleSettings)
         case .palmier:
-            if AccountService.shared.isSignedIn {
-                return PalmierClient(model: chosen)
-            }
-            return nil
+            return PalmierClient(model: chosen)
         }
     }
 
@@ -407,7 +403,7 @@ final class AgentService {
         case .openAICompatible:
             return "Add an OpenAI-compatible base URL and model to start."
         case .palmier:
-            return "Sign in to a paid plan or add your own API key to start."
+            return "Add your own API key or configure the Palmier backend to start."
         }
     }
 

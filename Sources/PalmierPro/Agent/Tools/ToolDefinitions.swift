@@ -57,7 +57,7 @@ enum ToolDefinitions {
     static let all: [AgentTool] = [
         AgentTool(
             name: .getTimeline,
-            description: "Always call at the start of a session. Returns project settings (fps, resolution, totalFrames), track list with types and order, all clips with their frames and properties, and canGenerate (if false, generation/upscale tools will fail — tell the user to sign in to Palmier and subscribe before attempting them). The clipId/trackId values here are what every other tool accepts.\n\nClip and track fields equal to their defaults are omitted: mediaType 'video', sourceClipType = mediaType, speed 1, volume 1, opacity 1, trims/fades 0, identity transform/crop, default textStyle, track muted/hidden false. Text clips never report trims (no source media).\n\nCaption clips (sharing a captionGroupId) come back per track as captionGroups instead of clips entries: properties common to the group are hoisted into 'shared' and each clip is a [clipId, startFrame, durationFrames, text] row (caption box width/height are auto-fit per text and omitted). Rows are capped at 200 per group — when clipCount exceeds the rows shown, page with startFrame/endFrame. Caption clips whose properties deviate from the group appear individually in clips.",
+            description: "Always call at the start of a session. Returns project settings (fps, resolution, totalFrames), track list with types and order, all clips with their frames and properties, and canGenerate. Generation/upscale tools may still fail if the selected provider or model endpoint is not configured; report that tool error directly. The clipId/trackId values here are what every other tool accepts.\n\nClip and track fields equal to their defaults are omitted: mediaType 'video', sourceClipType = mediaType, speed 1, volume 1, opacity 1, trims/fades 0, identity transform/crop, default textStyle, track muted/hidden false. Text clips never report trims (no source media).\n\nCaption clips (sharing a captionGroupId) come back per track as captionGroups instead of clips entries: properties common to the group are hoisted into 'shared' and each clip is a [clipId, startFrame, durationFrames, text] row (caption box width/height are auto-fit per text and omitted). Rows are capped at 200 per group — when clipCount exceeds the rows shown, page with startFrame/endFrame. Caption clips whose properties deviate from the group appear individually in clips.",
             inputSchema: objectSchema(
                 properties: [
                     "startFrame": ["type": "integer", "description": "Optional. Window start (inclusive); only clips intersecting [startFrame, endFrame) are returned. Tracks report totalClips when the window hides some."],
@@ -137,11 +137,11 @@ enum ToolDefinitions {
                                 "mediaRef": ["type": "string", "description": "ID of the media asset from get_media"],
                                 "trackIndex": ["type": "integer", "description": "Optional. Track index (0-based). Omit on every entry to auto-create one shared track per asset zone (video/audio)."],
                                 "startFrame": ["type": "integer", "description": "Timeline frame position to place the clip (project frames)."],
-                                "durationFrames": ["type": "integer", "description": "Clip length on the timeline, in project frames."],
-                                "trimStartFrame": ["type": "integer", "description": "Optional. Frames skipped from the START of the source media before the clip begins — a SOURCE offset, NOT a timeline position, but measured in PROJECT frames (the timeline's fps, same units as startFrame/durationFrames — never the source's own fps). 0 (default) starts at the source's first frame. Set this to trim on placement instead of a follow-up set_clip_properties call; semantics are identical to set_clip_properties."],
-                                "trimEndFrame": ["type": "integer", "description": "Optional. Frames trimmed off the END of the source media, in PROJECT frames — same units as trimStartFrame. 0 (default) trims nothing off the end."],
+                                "durationFrames": ["type": "integer", "description": "Optional. Clip length on the timeline, in project frames. Omit to derive it from the source: the clip spans from trimStartFrame to the source end minus trimEndFrame. Mutually exclusive with trimEndFrame — both pin the clip's end."],
+                                "trimStartFrame": ["type": "integer", "description": "Optional. Frames trimmed off the START of the source media (the clip's in-point) — a SOURCE offset, NOT a timeline position, but measured in PROJECT frames (the timeline's fps, same units as startFrame/durationFrames — never the source's own fps). 0 (default) starts at the source's first frame."],
+                                "trimEndFrame": ["type": "integer", "description": "Optional. Frames trimmed off the END of the source media (the clip's out-point), in PROJECT frames — same units as trimStartFrame. Mutually exclusive with durationFrames. Omit both to run to the source end. Untrimmed source on each side stays as headroom, so the clip can later be extended to reveal it."],
                             ],
-                            "required": ["mediaRef", "startFrame", "durationFrames"],
+                            "required": ["mediaRef", "startFrame"],
                         ],
                     ],
                     "includeCaptions": ["type": "boolean", "description": "Optional. Default false. Only set true when the user explicitly asked to replace or overwrite existing caption clips."],
@@ -163,9 +163,9 @@ enum ToolDefinitions {
                             "type": "object",
                             "properties": [
                                 "mediaRef": ["type": "string", "description": "ID of the media asset from get_media."],
-                                "durationFrames": ["type": "integer", "description": "Optional. Timeline length in project frames. Omit to use the asset's full source duration."],
-                                "trimStartFrame": ["type": "integer", "description": "Optional. Frames skipped from the START of the source media — a SOURCE offset in PROJECT frames (same units as atFrame/durationFrames, never the source's own fps). 0 (default) starts at the source's first frame."],
-                                "trimEndFrame": ["type": "integer", "description": "Optional. Frames trimmed off the END of the source media, in PROJECT frames. 0 (default) trims nothing."],
+                                "durationFrames": ["type": "integer", "description": "Optional. Timeline length in project frames. Omit to derive it from the source: the clip spans from trimStartFrame to the source end minus trimEndFrame (the full source when neither trim is set). Mutually exclusive with trimEndFrame — both pin the clip's end."],
+                                "trimStartFrame": ["type": "integer", "description": "Optional. Frames trimmed off the START of the source media (the clip's in-point) — a SOURCE offset in PROJECT frames (same units as atFrame/durationFrames, never the source's own fps). 0 (default) starts at the source's first frame."],
+                                "trimEndFrame": ["type": "integer", "description": "Optional. Frames trimmed off the END of the source media (the clip's out-point), in PROJECT frames. Mutually exclusive with durationFrames. Omit both to run to the source end. Untrimmed source on each side stays as headroom, so the clip can later be extended to reveal it."],
                             ],
                             "required": ["mediaRef"],
                         ],
@@ -535,6 +535,7 @@ enum ToolDefinitions {
                     "referenceImageMediaRefs": ["type": "array", "items": ["type": "string"], "description": "Media asset IDs of image references. Covers both reference-to-video generation (Seedance, Kling V3/O3 elements, Grok — refer as @Image1/@Element1 in prompt) and the single-image ref used by video-to-video edit models (Kling V3 Motion Control). See list_models maxReferenceImages for per-model cap."],
                     "referenceVideoMediaRefs": ["type": "array", "items": ["type": "string"], "description": "Media asset IDs of video references (Seedance only). Refer to them as @Video1, @Video2. See maxReferenceVideos and maxCombinedVideoRefSeconds."],
                     "referenceAudioMediaRefs": ["type": "array", "items": ["type": "string"], "description": "Media asset IDs of audio references (Seedance only). Refer to them as @Audio1, @Audio2. See maxReferenceAudios and maxCombinedAudioRefSeconds."],
+                    "generateAudio": ["type": "boolean", "description": "Whether the video should include generated audio when the selected model supports it. Defaults to true."],
                     "folderId": ["type": "string", "description": "Optional. Folder id (from list_folders or create_folder) to place the result in. Omit for the project root."],
                 ],
                 required: ["prompt"]
@@ -742,7 +743,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .listModels,
-            description: "Lists AI models with their capabilities (durations, aspect ratios, resolutions, first/last frame support, reference support, voices/category for audio, upscaler speed). Always call before generate_video, generate_image, generate_audio, or upscale_media so the model you pick actually supports the constraints you need. Returns { models, loaded } — if loaded=false the catalog hasn't synced yet (e.g. user not signed in); the models array may be empty even when models exist, so do not conclude no models are available. Retry after the user signs in.",
+            description: "Lists AI models with their capabilities (durations, aspect ratios, resolutions, first/last frame support, reference support, voices/category for audio, upscaler speed). Always call before generate_video, generate_image, generate_audio, or upscale_media so the model you pick actually supports the constraints you need. Returns { models, loaded } — if loaded=false, no configured provider has supplied a model catalog yet. Ask the user to configure the relevant provider credential, then retry.",
             inputSchema: objectSchema(
                 properties: [
                     "type": ["type": "string", "enum": ["video", "image", "audio", "upscale"], "description": "Filter by type. Omit to list all models."],

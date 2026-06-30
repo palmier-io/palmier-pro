@@ -11,6 +11,7 @@ struct ViewSkillsButton: View {
         .buttonStyle(.plain)
         .focusable(false)
         .help("View Skills")
+        .tourAnchor(.skillsButton)
     }
 
     private func openSkills() {
