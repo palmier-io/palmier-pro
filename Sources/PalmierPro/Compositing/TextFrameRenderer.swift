@@ -54,6 +54,12 @@ enum TextFrameRenderer {
             bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
+        ctx.setAllowsAntialiasing(true)
+        ctx.setShouldAntialias(true)
+        ctx.setAllowsFontSmoothing(true)
+        ctx.setShouldSmoothFonts(true)
+        ctx.setAllowsFontSubpixelPositioning(true)
+        ctx.setShouldSubpixelPositionFonts(true)
         drawBox(ctx, style: style, box: box)
         applyShadow(ctx, style: style, renderSize: renderSize)
         return ctx
