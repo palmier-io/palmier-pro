@@ -277,6 +277,7 @@ struct TextAnimateTab: View {
         var a = clip.textAnimation ?? TextAnimation()
         modify(&a)
         let value: TextAnimation? = a.preset == .none ? nil : a
+        editor.cancelDebouncedCommit(key: "textHighlight")
         editor.commitClipProperties(clipIds: targetIds) { $0.textAnimation = value }
     }
 
@@ -286,7 +287,7 @@ struct TextAnimateTab: View {
                 displayColor: (anim.highlight ?? TextAnimation.defaultHighlight).swiftUIColor,
                 onUserChange: { new in
                     editor.debouncedCommitClipProperties(clipIds: targetIds, key: "textHighlight") {
-                        var a = $0.textAnimation ?? TextAnimation()
+                        guard var a = $0.textAnimation, a.preset.usesHighlight else { return }
                         a.highlight = TextStyle.RGBA(new)
                         $0.textAnimation = a
                     }
