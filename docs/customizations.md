@@ -82,6 +82,9 @@ Intent: generated captions should respect user character limits, language, aspec
 
 Primary paths:
 
+- `Package.swift`
+- `Sources/PalmierPro/Agent/Skills/SkillStore.swift`
+- `Sources/PalmierPro/Agent/Skills/SkillCatalog.swift`
 - `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift`
 - `Sources/PalmierPro/Agent/Tools/AgentInstructions.swift`
 - `Sources/PalmierPro/Agent/Tools/ToolExecutor+Captions.swift`
@@ -89,8 +92,10 @@ Primary paths:
 - `Sources/PalmierPro/MediaPanel/CaptionsTab/CaptionBuilder.swift`
 - `Sources/PalmierPro/UI/AppTheme.swift`
 - `Tests/PalmierProTests/Captions/CaptionLayoutTests.swift`
+- `Tests/PalmierProTests/Agent/SkillStoreTests.swift`
+- `Gitnapp/palmier-skill` (`PalmierSkillBundle`, `caption-readability`)
 
-Upstream sync note: keep `maxCharacters` visible to the agent and keep generated caption boxes inside the safe canvas area.
+Upstream sync note: keep `maxCharacters` visible to the agent, keep generated caption boxes inside the safe canvas area, and preserve the bundled editable `caption-readability` skill as the default caption-generation guidance.
 
 ## NaturalLanguage Tokenizer Caption Splitting
 

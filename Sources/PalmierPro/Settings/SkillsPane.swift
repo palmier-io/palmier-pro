@@ -108,7 +108,7 @@ struct SkillsPane: View {
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)
-                if let url = URL(string: "https://github.com/palmier-io/palmier-skills") {
+                if let url = URL(string: "https://github.com/Gitnapp/palmier-skill") {
                     Link("Check out community skills ↗", destination: url)
                         .font(.system(size: AppTheme.FontSize.sm))
                         .foregroundStyle(AppTheme.Accent.primary)
