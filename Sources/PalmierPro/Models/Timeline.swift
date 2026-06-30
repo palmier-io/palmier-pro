@@ -304,6 +304,16 @@ extension Clip {
         fadeOutFrames = max(0, min(fadeOutFrames, durationFrames - fadeInFrames))
     }
 
+    mutating func rescaleWordTimings(from oldDuration: Int) {
+        guard mediaType == .text, let timings = wordTimings, oldDuration > 0, durationFrames > 0 else { return }
+        let scale = Double(durationFrames) / Double(oldDuration)
+        wordTimings = timings.map { timing in
+            let start = min(max(0, Int((Double(timing.startFrame) * scale).rounded())), max(0, durationFrames - 1))
+            let end = min(max(start + 1, Int((Double(timing.endFrame) * scale).rounded())), durationFrames)
+            return WordTiming(text: timing.text, startFrame: start, endFrame: end)
+        }
+    }
+
     /// Set the fade length for one edge and clamp to fit.
     mutating func setFade(_ edge: FadeEdge, frames: Int) {
         let v = max(0, frames)
@@ -330,7 +340,9 @@ extension Clip {
     }
 
     mutating func setDuration(_ newDuration: Int) {
+        let oldDuration = durationFrames
         durationFrames = newDuration
+        rescaleWordTimings(from: oldDuration)
         clampKeyframesToDuration()
         clampFadesToDuration()
     }

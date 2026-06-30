@@ -550,9 +550,7 @@ extension ToolExecutor {
         var changed: [String] = []
         editor.commitClipProperty(clipId: clipId) { clip in
             if let v = durationFrames {
-                clip.durationFrames = v
-                clip.clampKeyframesToDuration()
-                clip.clampFadesToDuration()
+                clip.setDuration(v)
                 changed.append("durationFrames")
             }
             if let v = trimStartFrame { clip.trimStartFrame = v; changed.append("trimStartFrame") }
@@ -560,9 +558,7 @@ extension ToolExecutor {
             if let v = speed {
                 if durationFrames == nil, v > 0 {
                     let sourceConsumed = Double(clip.durationFrames) * clip.speed
-                    clip.durationFrames = max(1, safeInt((sourceConsumed / v).rounded()) ?? clip.durationFrames)
-                    clip.clampKeyframesToDuration()
-                    clip.clampFadesToDuration()
+                    clip.setDuration(max(1, safeInt((sourceConsumed / v).rounded()) ?? clip.durationFrames))
                     changed.append("durationFrames")
                 }
                 clip.speed = v
