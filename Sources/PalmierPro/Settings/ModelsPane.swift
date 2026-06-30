@@ -3,41 +3,57 @@ import SwiftUI
 struct ModelsPane: View {
     private var prefs = ModelPreferences.shared
     private var catalog = ModelCatalog.shared
+    @Bindable private var openRouter = OpenRouterService.shared
 
     @State private var query = ""
+    @State private var apiKeyDraft = ""
 
     private struct Row: Identifiable {
         let id: String
         let displayName: String
+        let detail: String
     }
 
-    private struct Section: Identifiable {
+    private struct ModelSection: Identifiable {
         let id: String
         let title: String
         let rows: [Row]
     }
 
-    private var sections: [Section] {
+    private var sections: [ModelSection] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         func filtered(_ rows: [Row]) -> [Row] {
-            q.isEmpty ? rows : rows.filter { $0.displayName.lowercased().contains(q) }
+            q.isEmpty ? rows : rows.filter {
+                $0.displayName.lowercased().contains(q)
+                    || $0.detail.lowercased().contains(q)
+                    || $0.id.lowercased().contains(q)
+            }
         }
         return [
-            Section(id: "image", title: "Image",
-                    rows: filtered(catalog.image.map { Row(id: $0.id, displayName: $0.displayName) })),
-            Section(id: "video", title: "Video",
-                    rows: filtered(catalog.video.map { Row(id: $0.id, displayName: $0.displayName) })),
-            Section(id: "audio", title: "Audio",
-                    rows: filtered(catalog.audio.map { Row(id: $0.id, displayName: $0.displayName) })),
+            ModelSection(id: "palmier-image", title: "Palmier Image",
+                         rows: filtered(catalog.image.map { Row(id: $0.id, displayName: $0.displayName, detail: "Palmier") })),
+            ModelSection(id: "palmier-video", title: "Palmier Video",
+                         rows: filtered(catalog.video.map { Row(id: $0.id, displayName: $0.displayName, detail: "Palmier") })),
+            ModelSection(id: "palmier-audio", title: "Palmier Audio",
+                         rows: filtered(catalog.audio.map { Row(id: $0.id, displayName: $0.displayName, detail: "Palmier") })),
+            ModelSection(id: "openrouter-image", title: "OpenRouter Image",
+                         rows: filtered(openRouter.image.map {
+                             Row(id: OpenRouterModelId.stored($0.id), displayName: $0.displayName, detail: $0.id)
+                         })),
+            ModelSection(id: "openrouter-video", title: "OpenRouter Video",
+                         rows: filtered(openRouter.video.map {
+                             Row(id: OpenRouterModelId.stored($0.id), displayName: $0.displayName, detail: $0.id)
+                         })),
         ].filter { !$0.rows.isEmpty }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
+            openRouterKeySection
             searchBar
 
             if sections.isEmpty {
-                Text(catalog.isLoaded ? "No models match \"\(query)\"." : "Loading models…")
+                Text(emptyStateText)
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .padding(.top, AppTheme.Spacing.lg)
@@ -47,6 +63,107 @@ struct ModelsPane: View {
                 }
             }
         }
+    }
+
+    private var emptyStateText: String {
+        if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+            return "No models match \"\(query)\"."
+        }
+        if !catalog.isLoaded || !openRouter.isLoaded {
+            return "Loading models…"
+        }
+        return "No models available."
+    }
+
+    private var openRouterKeySection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            HStack(spacing: AppTheme.Spacing.sm) {
+                Image(systemName: "network")
+                    .font(.system(size: AppTheme.FontSize.smMd))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+                    Text("OpenRouter")
+                        .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+                        .foregroundStyle(AppTheme.Text.primaryColor)
+                    Text(openRouter.hasAPIKey ? "API key saved in Keychain." : "Set an API key for OpenRouter image and video models.")
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
+                Spacer(minLength: AppTheme.Spacing.lg)
+                statusPill
+            }
+
+            HStack(spacing: AppTheme.Spacing.sm) {
+                SecureField(openRouter.hasAPIKey ? "Replace API key" : "OpenRouter API key", text: $apiKeyDraft)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                    .padding(.horizontal, AppTheme.Spacing.md)
+                    .padding(.vertical, AppTheme.Spacing.smMd)
+                    .background(
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+                            .fill(Color.white.opacity(AppTheme.Opacity.subtle))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+                            .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.thin)
+                    )
+
+                Button("Save") {
+                    openRouter.saveAPIKey(apiKeyDraft)
+                    apiKeyDraft = ""
+                }
+                .disabled(apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                Button("Remove") {
+                    openRouter.removeAPIKey()
+                    apiKeyDraft = ""
+                }
+                .disabled(!openRouter.hasAPIKey)
+
+                Button {
+                    Task { await openRouter.refreshModels() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .disabled(openRouter.isLoading)
+                .help("Refresh OpenRouter models")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+
+            if let error = openRouter.lastError {
+                Text(error)
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Status.errorColor)
+            }
+        }
+        .padding(AppTheme.Spacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+                .fill(Color.white.opacity(AppTheme.Opacity.subtle))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+                .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.thin)
+        )
+    }
+
+    private var statusPill: some View {
+        HStack(spacing: AppTheme.Spacing.xs) {
+            Circle()
+                .fill(openRouter.hasAPIKey ? AppTheme.Status.successColor : AppTheme.Text.mutedColor)
+                .frame(width: AppTheme.Spacing.sm, height: AppTheme.Spacing.sm)
+            Text(openRouter.hasAPIKey ? "Ready" : "No key")
+                .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+        }
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.vertical, AppTheme.Spacing.xs)
+        .background(
+            Capsule()
+                .fill(Color.white.opacity(AppTheme.Opacity.subtle))
+        )
     }
 
     private var searchBar: some View {
@@ -71,7 +188,7 @@ struct ModelsPane: View {
         )
     }
 
-    private func sectionView(_ section: Section) -> some View {
+    private func sectionView(_ section: ModelSection) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             Text(section.title.uppercased())
                 .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
@@ -101,9 +218,16 @@ struct ModelsPane: View {
 
     private func modelRow(_ row: Row) -> some View {
         HStack(spacing: AppTheme.Spacing.md) {
-            Text(row.displayName)
-                .font(.system(size: AppTheme.FontSize.md))
-                .foregroundStyle(AppTheme.Text.primaryColor)
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+                Text(row.displayName)
+                    .font(.system(size: AppTheme.FontSize.md))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                    .lineLimit(1)
+                Text(row.detail)
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .lineLimit(1)
+            }
             Spacer(minLength: AppTheme.Spacing.lg)
             Toggle("", isOn: Binding(
                 get: { prefs.isEnabled(row.id) },
