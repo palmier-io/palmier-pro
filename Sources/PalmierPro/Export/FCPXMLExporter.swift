@@ -723,7 +723,7 @@ enum FCPXMLExporter {
             let resolvedFont = NSFont(name: style.fontName, size: style.fontSize)
             let family = resolvedFont?.familyName ?? fontFamilyFallback(style.fontName)
             let face = (resolvedFont?.fontDescriptor.object(forKey: .face) as? String) ?? fontFaceFallback(style.fontName)
-            let fontSize = style.fontSize * style.fontScale * Double(seqHeight) / Double(TextLayout.referenceCanvasHeight)
+            let fontSize = style.fontSize * style.fontScale
             return [
                 ("font", family),
                 ("fontFace", face),
