@@ -29,9 +29,9 @@ enum AgentProviderPreference: String, CaseIterable, Identifiable, Sendable {
 
     var usesOpenAICompatibleProtocol: Bool {
         switch self {
-        case .openAICompatible, .zhipu, .codexOAuth:
+        case .openAICompatible, .zhipu:
             return true
-        case .anthropic, .palmier:
+        case .anthropic, .palmier, .codexOAuth:
             return false
         }
     }

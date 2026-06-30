@@ -156,7 +156,7 @@ struct AgentPanelView: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
-        } else if service.activeProvider.usesOpenAICompatibleProtocol && service.canStream {
+        } else if (service.activeProvider.usesOpenAICompatibleProtocol || service.activeProvider == .codexOAuth) && service.canStream {
             Text(service.effectiveModelLabel)
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .foregroundStyle(AppTheme.Text.secondaryColor)

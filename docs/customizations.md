@@ -19,7 +19,7 @@ Upstream sync note: preserve this as a project-level operating rule for both Cod
 
 ## OpenAI-Compatible BYOK Agent Runtime
 
-Intent: keep independent non-Palmier agent backends for user-provided keys and local OAuth credentials instead of patching the Anthropic backend. Zhipu GLM uses its OpenAI-compatible endpoint with a Keychain API key. Codex OAuth signs in through the official ChatGPT PKCE browser flow, stores tokens in the local Codex auth file, refreshes access tokens before streaming, and keeps only the selected model in Palmier settings.
+Intent: keep independent non-Palmier agent backends for user-provided keys and local OAuth credentials instead of patching the Anthropic backend. Zhipu GLM uses its OpenAI-compatible endpoint with a Keychain API key. Codex OAuth signs in through the official ChatGPT PKCE browser flow, stores tokens in the local Codex auth file, refreshes access tokens before streaming, and calls the official ChatGPT Codex backend `https://chatgpt.com/backend-api/codex/responses` with the Codex account header instead of the OpenAI-compatible Chat Completions path.
 
 Primary paths:
 
@@ -32,10 +32,11 @@ Primary paths:
 - `Sources/PalmierPro/Agent/AgentService.swift`
 - `Sources/PalmierPro/Settings/AgentPane.swift`
 - `Sources/PalmierPro/Agent/Panel/AgentPanelView.swift`
+- `Tests/PalmierProTests/Agent/CodexResponsesClientTests.swift`
 - `Tests/PalmierProTests/Agent/CodexOAuthStoreTests.swift`
 - `Tests/PalmierProTests/Agent/OpenAICompatibleClientTests.swift`
 
-Upstream sync note: preserve the provider boundary. Anthropic-specific request/streaming behavior should stay in the Anthropic path; OpenAI-compatible request/streaming behavior should stay in the independent client. Do not remove the Zhipu GLM or Codex OAuth options from Settings > Agent.
+Upstream sync note: preserve the provider boundary. Anthropic-specific request/streaming behavior should stay in the Anthropic path; OpenAI-compatible request/streaming behavior should stay in the independent client. Codex OAuth must remain on the ChatGPT Codex Responses backend, not `api.openai.com/v1/chat/completions`. Do not remove the Zhipu GLM or Codex OAuth options from Settings > Agent.
 
 ## Tool Error Pass-Through
 
