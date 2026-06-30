@@ -322,6 +322,28 @@ extension ToolExecutor {
         default: return nil
         }
     }
+
+    func createMatte(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
+        try validateUnknownKeys(args, allowed: ["hex", "aspectRatio", "name", "folderId"], path: "create_matte")
+        guard let hex = args.string("hex")?.trimmingCharacters(in: .whitespacesAndNewlines), !hex.isEmpty
+        else { throw ToolError("create_matte requires 'hex'.") }
+        let aspect: MatteAspect
+        if let raw = args.string("aspectRatio") {
+            guard let parsed = MatteAspect.parse(raw) else {
+                throw ToolError("create_matte: unknown aspectRatio '\(raw)'. Use one of \(MatteAspect.allCases.map(\.rawValue).joined(separator: ", ")).")
+            }
+            aspect = parsed
+        } else {
+            aspect = .project
+        }
+        let asset = try await editor.createMatte(
+            hex: hex,
+            aspect: aspect,
+            folderId: try resolveFolderId(args, editor: editor),
+            name: args.string("name")
+        )
+        return .ok(Self.jsonString(["mediaRef": asset.id, "name": asset.name]) ?? asset.id)
+    }
 }
 
 fileprivate final class ImportDownloadDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
