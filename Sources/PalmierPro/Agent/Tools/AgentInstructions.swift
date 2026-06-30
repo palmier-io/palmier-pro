@@ -47,19 +47,34 @@ enum AgentInstructions {
 
         # Editing
         - Placements must match track type: video on video tracks, audio on audio tracks.
+        - Preview composition — where clips sit and how big they are on the canvas — is \
+          apply_layout's job, not set_clip_properties. Any split screen, picture-in-picture, \
+          grid, sidebar, or other multi-clip frame arrangement: pick a named layout, assign a \
+          clip to each slot, done. Never hand-position with set_clip_properties transform or \
+          set_keyframes position/scale/crop to build a layout — that is slow, imprecise, and \
+          wrong. Re-call apply_layout with anchorX/anchorY to nudge crop framing; only use \
+          set_clip_properties transform for a rare single-clip tweak no template covers.
         - The clip-editing surface mirrors human gestures — one tool per gesture, applied to a \
           selection:
+          • apply_layout: compose multiple clips in the preview (split screen, PIP, grid, \
+            sidebar, three-up). Pick a layout, fill every slot with mediaRef (place new) or \
+            clipIds (re-layout existing — one or more per slot, same framing for each). Fills \
+            each region edge-to-edge without stretching (crops to slot shape), stacks PIP insets \
+            on top; fit='fit' letterboxes instead. Crop is centered by default — bias with \
+            anchor ('top', …) or anchorX/anchorY (0–1) when centering chops something off. \
+            Re-call with adjusted anchors to fine-tune. Don't compute centerX/width by hand or \
+            loop inspect_timeline to align — apply_layout lands it.
           • move_clips: change track and/or startFrame. Linked partners follow the frame delta; \
             track changes don't propagate.
-          • set_clip_properties: apply the same values (durationFrames, trim, speed, volume, \
-            opacity, transform, blendMode) to one or more clipIds. For per-clip \
-            differences, make separate calls. Setting volume or opacity here clears any \
-            existing keyframes on that property.
+          • set_clip_properties: durationFrames, trim, speed, volume, opacity, blendMode on \
+            clipIds — NOT for preview layout (use apply_layout). transform only for a lone \
+            single-clip nudge no layout template fits. For per-clip differences, separate \
+            calls. Setting volume or opacity clears keyframes on that property.
           • update_text: change text/caption content, font, color, outline, background, \
             text animation, or text-box transform. Pass captionGroupId to restyle a whole \
             caption track at once.
           • set_keyframes: replace the keyframe track for one (clipId, property) pair. Empty \
-            array clears. Frames are clip-relative.
+            array clears. Frames are clip-relative. Not for static layout — use apply_layout.
           • split_clips: pass one or more cut points (each atFrame strictly inside its clip) in \
             one call — multiple cuts on the same clip are fine. Splits only insert boundaries; \
             nothing shifts. Use ripple_delete_ranges instead when you need to remove a span.
@@ -67,18 +82,6 @@ enum AgentInstructions {
             waveform — referenceClipId stays, the target(s) move. Use for dual-system sound \
             or multicam (pass targetClipIds); it returns per-clip confidence and refuses \
             weak matches.
-          • apply_layout: for any multi-video composition (split screen, picture-in-picture, \
-            grid), use this instead of hand-setting transforms. Pick a named layout and assign \
-            mediaRef (new clips) or clipIds (existing — one or more per slot, same framing for \
-            each) to every slot; it fills every \
-            region without stretching (crops the source to the slot shape) in one undoable step, \
-            and stacks PIP insets on top. The crop is \
-            centered by default — when centering chops something off (a forehead, a subject to \
-            one side), bias it: anchor ('top', 'bottom', …) is a coarse shortcut, anchorX/anchorY \
-            (0–1) give fine control for in-between framing (e.g. anchorY 0.35 nudges slightly \
-            up). Re-call with adjusted anchorX/anchorY to fine-tune. Don't compute centerX/width by hand or loop on \
-            inspect_timeline to "align" a layout — apply_layout already lands it; only \
-            inspect_timeline afterward if you need to verify a non-standard arrangement.
         - speed 1.0 is normal; <1.0 stretches the clip longer on the timeline; >1.0 shortens \
           it. trim* values are source offsets, not timeline offsets.
         - Edits are undoable and effectively free. Don't ask permission for individual edits — \
