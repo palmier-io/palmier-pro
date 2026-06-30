@@ -3,7 +3,7 @@ import Foundation
 
 extension ToolExecutor {
     private static let addCaptionsAllowedKeys: Set<String> = [
-        "clipIds", "fontName", "fontSize", "color", "centerX", "centerY", "textCase", "censorProfanity", "language", "animation", "highlightColor", "maxWords",
+        "clipIds", "fontName", "fontSize", "isBold", "isItalic", "color", "centerX", "centerY", "textCase", "censorProfanity", "language", "animation", "highlightColor", "maxWords",
     ]
 
     func addCaptions(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -14,6 +14,8 @@ extension ToolExecutor {
         var style = TextStyle(fontSize: AppTheme.Caption.defaultFontSize)
         if let f = args.string("fontName") { style.fontName = f }
         if let s = args.double("fontSize") { style.fontSize = s }
+        if let b = args.bool("isBold") { style.isBold = b }
+        if let i = args.bool("isItalic") { style.isItalic = i }
         if let c = try parseColorHex(args.string("color"), path: "add_captions") { style.color = c }
 
         let locale = try await Self.parseLocale(args, path: "add_captions")

@@ -191,6 +191,14 @@ struct CaptionTab: View {
             InspectorRow(icon: "character", label: "Font") {
                 FontPickerField(current: style.fontName, onPreview: { style.fontName = $0 }, onChange: { style.fontName = $0 }, onCancel: {})
             }
+            InspectorRow(icon: "textformat", label: "Style") {
+                TextStyleTraitButtons(
+                    isBold: style.isBold,
+                    isItalic: style.isItalic,
+                    onBold: { style.isBold = $0 },
+                    onItalic: { style.isItalic = $0 }
+                )
+            }
             InspectorRow(icon: "textformat.size", label: "Size") {
                 ScrubbableNumberField(
                     value: style.fontSize,

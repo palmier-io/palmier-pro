@@ -70,6 +70,8 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     let content: String?
     let fontName: String?
     let fontSize: Double?
+    let isBold: Bool?
+    let isItalic: Bool?
     let color: String?
     let alignment: String?
     let animation: String?
@@ -81,7 +83,7 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
         "durationFrames", "trimStartFrame", "trimEndFrame", "speed",
         "volume", "opacity",
         "transform",
-        "content", "fontName", "fontSize", "color", "alignment", "animation", "highlightColor",
+        "content", "fontName", "fontSize", "isBold", "isItalic", "color", "alignment", "animation", "highlightColor",
         "blendMode",
     ]
 
@@ -90,6 +92,7 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
             || speed != nil || volume != nil || opacity != nil
             || transform != nil
             || content != nil || fontName != nil || fontSize != nil
+            || isBold != nil || isItalic != nil
             || color != nil || alignment != nil || animation != nil || highlightColor != nil
             || blendMode != nil
     }
@@ -448,7 +451,7 @@ extension ToolExecutor {
 
     // MARK: set_clip_properties
 
-    private static let textOnlyKeys: Set<String> = ["content", "fontName", "fontSize", "color", "alignment"]
+    private static let textOnlyKeys: Set<String> = ["content", "fontName", "fontSize", "isBold", "isItalic", "color", "alignment"]
 
     func setClipProperties(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let input: SetClipPropertiesInput = try decodeToolArgs(args, path: "set_clip_properties")
@@ -498,6 +501,8 @@ extension ToolExecutor {
             input.content        != nil ? "content"        : nil,
             input.fontName       != nil ? "fontName"       : nil,
             input.fontSize       != nil ? "fontSize"       : nil,
+            input.isBold         != nil ? "isBold"         : nil,
+            input.isItalic       != nil ? "isItalic"       : nil,
             input.color          != nil ? "color"          : nil,
             input.alignment      != nil ? "alignment"      : nil,
             input.animation      != nil ? "animation"      : nil,
@@ -550,6 +555,8 @@ extension ToolExecutor {
                     content: isText ? input.content : nil,
                     fontName: isText ? input.fontName : nil,
                     fontSize: isText ? input.fontSize : nil,
+                    isBold: isText ? input.isBold : nil,
+                    isItalic: isText ? input.isItalic : nil,
                     color: isText ? color : nil,
                     alignment: isText ? alignment : nil,
                     animation: (isText && input.animation != nil) ? .some(animation) : nil,
@@ -560,7 +567,7 @@ extension ToolExecutor {
                     editor: editor
                 )
                 // Match the inspector: refit bbox after content/font change when caller didn't set a box.
-                if isText && input.transform == nil && (input.content != nil || input.fontName != nil || input.fontSize != nil) {
+                if isText && input.transform == nil && (input.content != nil || input.fontName != nil || input.fontSize != nil || input.isBold != nil || input.isItalic != nil) {
                     editor.fitTextClipToContent(clipId: id)
                 }
                 summaries.append("\(id)\(changed.isEmpty ? " (no-op)" : ": \(changed.joined(separator: ", "))")")
@@ -574,7 +581,7 @@ extension ToolExecutor {
                     trimEndFrame:   partnerIsText ? nil : input.trimEndFrame,
                     speed:          partnerIsText ? nil : input.speed,
                     volume: nil, opacity: nil, transform: nil,
-                    content: nil, fontName: nil, fontSize: nil, color: nil, alignment: nil, animation: nil, highlight: nil,
+                    content: nil, fontName: nil, fontSize: nil, isBold: nil, isItalic: nil, color: nil, alignment: nil, animation: nil, highlight: nil,
                     blendMode: nil, setBlendMode: false,
                     clipId: partnerId,
                     editor: editor
@@ -598,6 +605,8 @@ extension ToolExecutor {
         content: String?,
         fontName: String?,
         fontSize: Double?,
+        isBold: Bool?,
+        isItalic: Bool?,
         color: TextStyle.RGBA?,
         alignment: TextStyle.Alignment?,
         animation: TextAnimation??,   // outer nil = leave; .some(nil) = clear; .some(x) = set
@@ -645,11 +654,13 @@ extension ToolExecutor {
                 clip.transform = next
                 changed.append("transform")
             }
-            if content != nil || fontName != nil || fontSize != nil || color != nil || alignment != nil {
+            if content != nil || fontName != nil || fontSize != nil || isBold != nil || isItalic != nil || color != nil || alignment != nil {
                 if let c = content { clip.textContent = c; changed.append("content") }
                 var style = clip.textStyle ?? TextStyle()
                 if let f = fontName  { style.fontName = f; changed.append("fontName") }
                 if let s = fontSize  { style.fontSize = s; changed.append("fontSize") }
+                if let b = isBold    { style.isBold = b; changed.append("isBold") }
+                if let i = isItalic  { style.isItalic = i; changed.append("isItalic") }
                 if let c = color     { style.color = c; changed.append("color") }
                 if let a = alignment { style.alignment = a; changed.append("alignment") }
                 clip.textStyle = style

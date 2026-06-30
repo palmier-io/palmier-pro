@@ -1,4 +1,5 @@
 import AppKit
+import CoreText
 import SwiftUI
 
 struct TextStyle: Codable, Sendable, Equatable, Hashable {
@@ -7,6 +8,8 @@ struct TextStyle: Codable, Sendable, Equatable, Hashable {
     var fontName: String = "Helvetica-Bold"
     var fontSize: Double = 96
     var fontScale: Double = 1.0
+    var isBold: Bool = true
+    var isItalic: Bool = false
     var color: RGBA = RGBA()
     var alignment: Alignment = .center
     var shadow: Shadow = Shadow()
@@ -43,7 +46,7 @@ struct TextStyle: Codable, Sendable, Equatable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case fontName, fontSize, fontScale, color, alignment, shadow, background, border
+        case fontName, fontSize, fontScale, isBold, isItalic, color, alignment, shadow, background, border
     }
 }
 
@@ -51,10 +54,15 @@ extension TextStyle {
     /// Missing-key-tolerant decode — older files pick up defaults for fields added later.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        let fontName = (try? c.decode(String.self, forKey: .fontName)) ?? "Helvetica-Bold"
+        let fontSize = (try? c.decode(Double.self, forKey: .fontSize)) ?? 96
+        let inferredTraits = Self.symbolicTraits(fontName: fontName, size: CGFloat(fontSize))
         self.init(
-            fontName: (try? c.decode(String.self, forKey: .fontName)) ?? "Helvetica-Bold",
-            fontSize: (try? c.decode(Double.self, forKey: .fontSize)) ?? 96,
+            fontName: fontName,
+            fontSize: fontSize,
             fontScale: (try? c.decode(Double.self, forKey: .fontScale)) ?? 1.0,
+            isBold: (try? c.decode(Bool.self, forKey: .isBold)) ?? inferredTraits.contains(.traitBold),
+            isItalic: (try? c.decode(Bool.self, forKey: .isItalic)) ?? inferredTraits.contains(.traitItalic),
             color: (try? c.decode(RGBA.self, forKey: .color)) ?? RGBA(),
             alignment: (try? c.decode(Alignment.self, forKey: .alignment)) ?? .center,
             shadow: (try? c.decode(Shadow.self, forKey: .shadow)) ?? Shadow(),
@@ -120,7 +128,8 @@ extension TextStyle.RGBA {
 
 extension TextStyle {
     func resolvedFont(size: CGFloat) -> NSFont {
-        NSFont(name: fontName, size: size) ?? NSFont.boldSystemFont(ofSize: size)
+        let base = NSFont(name: fontName, size: size) ?? NSFont.systemFont(ofSize: size)
+        return Self.font(base, size: size, bold: isBold, italic: isItalic)
     }
 
     var nsColor: NSColor { color.nsColor }
@@ -152,6 +161,24 @@ extension TextStyle {
 
     static func glyphBorderPadding(fontSize: CGFloat) -> CGFloat {
         ceil(fontSize * CGFloat(abs(glyphBorderStrokeWidth)) / 100)
+    }
+
+    private static func font(_ font: NSFont, size: CGFloat, bold: Bool, italic: Bool) -> NSFont {
+        var traits = CTFontGetSymbolicTraits(font as CTFont)
+        if bold { traits.insert(.traitBold) } else { traits.remove(.traitBold) }
+        if italic { traits.insert(.traitItalic) } else { traits.remove(.traitItalic) }
+
+        let mask: CTFontSymbolicTraits = [.traitBold, .traitItalic]
+        let descriptor = CTFontCopyFontDescriptor(font as CTFont)
+        guard let resolvedDescriptor = CTFontDescriptorCreateCopyWithSymbolicTraits(descriptor, traits, mask) else {
+            return font
+        }
+        return CTFontCreateWithFontDescriptor(resolvedDescriptor, size, nil) as NSFont
+    }
+
+    private static func symbolicTraits(fontName: String, size: CGFloat) -> CTFontSymbolicTraits {
+        guard let font = NSFont(name: fontName, size: size) else { return [] }
+        return CTFontGetSymbolicTraits(font as CTFont)
     }
 }
 

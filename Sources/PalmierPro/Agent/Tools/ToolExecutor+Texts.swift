@@ -13,7 +13,7 @@ fileprivate struct PartialTextSpec {
 extension ToolExecutor {
     private static let addTextsAllowedKeys: Set<String> = [
         "trackIndex", "startFrame", "durationFrames", "content",
-        "transform", "fontName", "fontSize", "color", "alignment", "animation", "highlightColor",
+        "transform", "fontName", "fontSize", "isBold", "isItalic", "color", "alignment", "animation", "highlightColor",
     ]
 
     /// Returns a TextAnimation for an agent 'animation' spec, or nil if 'off' or not set.
@@ -91,6 +91,8 @@ extension ToolExecutor {
             var style = TextStyle()
             if let f = entry.string("fontName") { style.fontName = f }
             if let s = entry.double("fontSize") { style.fontSize = s }
+            if let b = entry.bool("isBold") { style.isBold = b }
+            if let i = entry.bool("isItalic") { style.isItalic = i }
             if let c = try parseColorHex(entry.string("color"), path: path) { style.color = c }
             if let a = try parseAlignment(entry.string("alignment"), path: path) { style.alignment = a }
 

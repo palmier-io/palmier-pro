@@ -11,6 +11,7 @@ struct TextTab: View {
             contentField
             InspectorSection("Typography") {
                 fontRow
+                styleRow
                 sizeSlider
             }
             InspectorSection("Appearance") {
@@ -67,6 +68,23 @@ struct TextTab: View {
                 },
                 onCancel: {
                     editor.revertClipProperty(clipId: clip.id)
+                }
+            )
+        }
+    }
+
+    private var styleRow: some View {
+        InspectorRow(icon: "textformat", label: "Style") {
+            TextStyleTraitButtons(
+                isBold: style.isBold,
+                isItalic: style.isItalic,
+                onBold: { new in
+                    editor.commitTextStyle(clipId: clip.id) { $0.isBold = new }
+                    editor.fitTextClipToContent(clipId: clip.id)
+                },
+                onItalic: { new in
+                    editor.commitTextStyle(clipId: clip.id) { $0.isItalic = new }
+                    editor.fitTextClipToContent(clipId: clip.id)
                 }
             )
         }
