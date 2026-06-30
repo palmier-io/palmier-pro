@@ -59,6 +59,26 @@ final class AppState {
         }
     }
 
+    func setMCPHost(_ host: String) {
+        let normalizedHost = MCPHTTPServer.normalizedBindHost(host)
+        guard MCPService.bindHostPreference != normalizedHost else { return }
+        MCPService.bindHostPreference = normalizedHost
+        restartMCPServiceIfNeeded()
+    }
+
+    @discardableResult
+    func regenerateMCPToken() -> String {
+        let token = MCPService.regenerateBearerTokenPreference()
+        restartMCPServiceIfNeeded()
+        return token
+    }
+
+    private func restartMCPServiceIfNeeded() {
+        guard MCPService.isEnabledPreference, mcpService != nil else { return }
+        stopMCPService()
+        startMCPService()
+    }
+
     func showHome() {
         guard let project = activeProject else {
             HomeWindowController.shared.showWindow(nil)

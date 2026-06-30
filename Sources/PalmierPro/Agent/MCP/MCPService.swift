@@ -1,5 +1,6 @@
 import Foundation
 import MCP
+import Security
 
 /// HTTP adapter. Tool handling lives in `ToolExecutor`.
 @Observable
@@ -7,8 +8,12 @@ import MCP
 final class MCPService {
 
     static let port: UInt16 = 19789
+    static let loopbackBindHost = MCPHTTPServer.loopbackHost
+    static let lanBindHost = "0.0.0.0"
 
     private static let enabledKey = "io.palmier.pro.mcp.enabled"
+    private static let bindHostKey = "io.palmier.pro.mcp.bindHost"
+    private static let bearerTokenKey = "io.palmier.pro.mcp.bearerToken"
 
     static var isEnabledPreference: Bool {
         get {
@@ -19,6 +24,40 @@ final class MCPService {
         set {
             UserDefaults.standard.set(newValue, forKey: enabledKey)
         }
+    }
+
+    static var bindHostPreference: String {
+        get {
+            MCPHTTPServer.normalizedBindHost(UserDefaults.standard.string(forKey: bindHostKey) ?? loopbackBindHost)
+        }
+        set {
+            UserDefaults.standard.set(MCPHTTPServer.normalizedBindHost(newValue), forKey: bindHostKey)
+        }
+    }
+
+    static var bearerTokenPreference: String {
+        let defaults = UserDefaults.standard
+        if let token = defaults.string(forKey: bearerTokenKey), !token.isEmpty {
+            return token
+        }
+        return regenerateBearerTokenPreference()
+    }
+
+    static func regenerateBearerTokenPreference() -> String {
+        let token = makeBearerToken()
+        UserDefaults.standard.set(token, forKey: bearerTokenKey)
+        return token
+    }
+
+    static var connectionHost: String {
+        let bindHost = bindHostPreference
+        guard bindHost == lanBindHost else { return bindHost }
+        let hostName = ProcessInfo.processInfo.hostName
+        return hostName.isEmpty ? bindHost : hostName
+    }
+
+    static var connectionURL: String {
+        "http://\(connectionHost):\(port)/mcp"
     }
 
     private(set) var isRunning: Bool = false
@@ -33,7 +72,9 @@ final class MCPService {
     }
 
     func start() {
-        let httpServer = MCPHTTPServer(port: Self.port) { [weak self] in
+        let bindHost = Self.bindHostPreference
+        let bearerToken = MCPHTTPServer.requiresBearerToken(bindHost: bindHost) ? Self.bearerTokenPreference : ""
+        let httpServer = MCPHTTPServer(port: Self.port, bindHost: bindHost, bearerToken: bearerToken) { [weak self] in
             let server = Server(
                 name: "palmier-pro",
                 version: "1.0.0",
@@ -51,7 +92,7 @@ final class MCPService {
         Task { @MainActor [weak self] in
             do {
                 try await httpServer.start()
-                Log.mcp.notice("http server started port=\(Self.port)")
+                Log.mcp.notice("http server started host=\(bindHost) port=\(Self.port)")
                 self?.isRunning = true
             } catch {
                 Log.mcp.error("http server failed to start: \(error.localizedDescription)")
@@ -130,6 +171,21 @@ final class MCPService {
         default:
             return .init(contents: [.text("Unknown resource: \(uri)", uri: uri)])
         }
+    }
+
+    private static func makeBearerToken() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        let status = bytes.withUnsafeMutableBytes { buffer in
+            SecRandomCopyBytes(kSecRandomDefault, bytes.count, buffer.baseAddress!)
+        }
+        guard status == errSecSuccess else {
+            return (0..<4).map { _ in UUID().uuidString.replacingOccurrences(of: "-", with: "") }.joined()
+        }
+        return Data(bytes)
+            .base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
     }
 
 }
