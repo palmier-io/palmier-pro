@@ -29,6 +29,20 @@ final class ExportService {
     var error: String?
     var lastReport: ExportRunReport?
 
+    /// Cancel an export whose progress has been frozen this long. Turns the
+    /// indefinite AVAssetExportSession hang on deep seeks into high-frame-rate
+    /// sources inside a lower-frame-rate timeline (#68) into a surfaced error.
+    static let exportStallLimit: Duration = .seconds(120)
+    static let exportStalledMessage = """
+        Export stalled — no progress for two minutes and was cancelled. \
+        This can happen when exporting clips that seek deep into a high-frame-rate \
+        (e.g. 60 fps) source inside a lower-frame-rate timeline (a known AVFoundation \
+        limitation). Converting those sources to proxies at the project's frame rate \
+        avoids it.
+        """
+    private var stallWatcher = ExportStallWatcher()
+    private var stallCancelled = false
+
     func export(
         timeline: Timeline,
         resolver: MediaResolver,
@@ -102,11 +116,28 @@ final class ExportService {
             try? FileManager.default.removeItem(at: outputURL)
 
             nonisolated(unsafe) let unsafeSession = session
+            let exportStart = ContinuousClock.now
+            stallWatcher = ExportStallWatcher()
+            stallCancelled = false
             let progressTask = Task { @MainActor in
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .milliseconds(200))
                     let p = Double(unsafeSession.progress)
                     if p != self.progress { self.progress = p }
+                    guard !self.stallCancelled else { continue }
+                    if self.stallWatcher.update(
+                        progress: p,
+                        now: exportStart.duration(to: .now),
+                        stallLimit: Self.exportStallLimit
+                    ) {
+                        self.stallCancelled = true
+                        Log.export.warning(
+                            "export stalled — no progress for \(Self.exportStallLimit.components.seconds)s; cancelling",
+                            telemetry: "Export stalled",
+                            data: ["format": String(describing: format), "resolution": resolution.rawValue, "progress": p]
+                        )
+                        unsafeSession.cancelExport()
+                    }
                 }
             }
 
@@ -125,7 +156,14 @@ final class ExportService {
                     data: ["format": String(describing: format), "resolution": resolution.rawValue]
                 )
             } catch {
-                if (error as NSError).domain == NSCocoaErrorDomain && (error as NSError).code == NSUserCancelledError {
+                if stallCancelled {
+                    self.error = Self.exportStalledMessage
+                    Log.export.warning(
+                        "export cancelled after stall",
+                        telemetry: "Export cancelled after stall",
+                        data: ["format": String(describing: format), "resolution": resolution.rawValue]
+                    )
+                } else if (error as NSError).domain == NSCocoaErrorDomain && (error as NSError).code == NSUserCancelledError {
                     self.error = "Export was cancelled"
                     Log.export.notice(
                         "export cancelled",
