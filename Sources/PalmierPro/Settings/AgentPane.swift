@@ -18,6 +18,16 @@ struct AgentPane: View {
     @State private var openAIMaskedKey: String = ""
     @State private var openAIKeyDraft: String = ""
 
+    @State private var zhipuModel: String = ""
+    @State private var savedZhipuModel: String = ""
+    @State private var zhipuHasKey: Bool = false
+    @State private var zhipuMaskedKey: String = ""
+    @State private var zhipuKeyDraft: String = ""
+
+    @State private var codexOAuthModel: String = ""
+    @State private var savedCodexOAuthModel: String = ""
+    @State private var codexOAuthStatus = CodexOAuthStatus(hasAccessToken: false, accountID: nil, authMode: nil, lastRefresh: nil)
+
     @FocusState private var focusedField: FocusedField?
 
     private enum FocusedField: Hashable {
@@ -25,16 +35,24 @@ struct AgentPane: View {
         case openAIBaseURL
         case openAIModel
         case openAIKey
+        case zhipuModel
+        case zhipuKey
+        case codexOAuthModel
     }
 
     private let anthropicConsoleURL = URL(string: "https://console.anthropic.com/settings/keys")!
     private let openAIKeysURL = URL(string: "https://platform.openai.com/api-keys")!
+    private let zhipuKeysURL = URL(string: "https://bigmodel.cn/usercenter/proj-mgmt/apikeys")!
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
             providerSection
             Divider().overlay(AppTheme.Border.subtleColor)
             anthropicSection
+            Divider().overlay(AppTheme.Border.subtleColor)
+            zhipuSection
+            Divider().overlay(AppTheme.Border.subtleColor)
+            codexOAuthSection
             Divider().overlay(AppTheme.Border.subtleColor)
             openAICompatibleSection
             Divider().overlay(AppTheme.Border.subtleColor)
@@ -57,7 +75,7 @@ struct AgentPane: View {
                     Text(provider.displayName).tag(provider)
                 }
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
             .labelsHidden()
             .onChange(of: provider) { _, newValue in
                 AgentProviderPreference.save(newValue)
@@ -134,6 +152,269 @@ struct AgentPane: View {
                 AnthropicKeychain.delete()
             }.value
             applyAnthropicKey("")
+        }
+    }
+
+    // MARK: - Zhipu
+
+    private var zhipuSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            sectionHeader(
+                title: "Zhipu GLM",
+                subtitle: "Use Zhipu's OpenAI-compatible GLM endpoint. API keys are stored in your macOS Keychain.",
+                linkTitle: "Zhipu API keys",
+                linkURL: zhipuKeysURL
+            )
+
+            textField(
+                label: "Base URL",
+                placeholder: ZhipuAgentSettings.baseURL,
+                text: .constant(ZhipuAgentSettings.baseURL),
+                focused: .zhipuModel,
+                monospaced: true,
+                onSubmit: {}
+            )
+            .disabled(true)
+
+            textField(
+                label: "Model",
+                placeholder: "GLM model ID",
+                text: $zhipuModel,
+                focused: .zhipuModel,
+                monospaced: true,
+                onSubmit: saveZhipu
+            )
+
+            HStack(spacing: AppTheme.Spacing.sm) {
+                secureField(
+                    placeholder: zhipuKeyPlaceholder,
+                    text: $zhipuKeyDraft,
+                    focused: .zhipuKey,
+                    onSubmit: saveZhipu
+                )
+                zhipuTrailingControls
+            }
+        }
+    }
+
+    private var zhipuKeyPlaceholder: String {
+        zhipuHasKey ? zhipuMaskedKey : "Zhipu API key"
+    }
+
+    private var zhipuIsDirty: Bool {
+        zhipuModel.trimmingCharacters(in: .whitespacesAndNewlines) != savedZhipuModel ||
+        !zhipuKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var zhipuHasSavedConfig: Bool {
+        !savedZhipuModel.isEmpty || zhipuHasKey
+    }
+
+    @ViewBuilder
+    private var zhipuTrailingControls: some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            if zhipuIsDirty {
+                Button("Save", action: saveZhipu)
+                    .buttonStyle(.capsule(.prominent, size: .regular))
+                    .controlSize(.large)
+            }
+            if zhipuHasKey && zhipuKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Button(action: removeZhipuKey) {
+                    Image(systemName: "trash")
+                        .font(.system(size: AppTheme.FontSize.md))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                        .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
+                }
+                .buttonStyle(.capsule(.secondary, size: .regular))
+                .controlSize(.large)
+                .help("Remove API key")
+            }
+            if zhipuHasSavedConfig {
+                Button("Clear", action: clearZhipu)
+                    .buttonStyle(.capsule(.secondary, size: .regular))
+                    .controlSize(.large)
+            }
+        }
+    }
+
+    private func saveZhipu() {
+        let model = zhipuModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = zhipuKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        focusedField = nil
+        Task { @MainActor in
+            await Task.detached(priority: .userInitiated) {
+                ZhipuAgentSettings.save(model: model)
+                if !key.isEmpty {
+                    ZhipuAgentKeychain.save(key)
+                }
+                if !model.isEmpty && (!key.isEmpty || ZhipuAgentKeychain.load() != nil) {
+                    AgentProviderPreference.save(.zhipu)
+                }
+            }.value
+            savedZhipuModel = model
+            zhipuModel = model
+            zhipuKeyDraft = ""
+            if !key.isEmpty { applyZhipuKey(key) }
+            if !model.isEmpty && zhipuHasKey {
+                provider = .zhipu
+            }
+        }
+    }
+
+    private func removeZhipuKey() {
+        zhipuKeyDraft = ""
+        Task { @MainActor in
+            await Task.detached(priority: .userInitiated) {
+                ZhipuAgentKeychain.delete()
+            }.value
+            applyZhipuKey("")
+        }
+    }
+
+    private func clearZhipu() {
+        zhipuModel = ""
+        zhipuKeyDraft = ""
+        Task { @MainActor in
+            await Task.detached(priority: .userInitiated) {
+                ZhipuAgentSettings.clear()
+                if AgentProviderPreference.stored == .zhipu {
+                    AgentProviderPreference.save(.palmier)
+                }
+            }.value
+            savedZhipuModel = ""
+            applyZhipuKey("")
+            if provider == .zhipu {
+                provider = .palmier
+            }
+        }
+    }
+
+    // MARK: - Codex OAuth
+
+    private var codexOAuthSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            sectionHeader(
+                title: "Codex OAuth",
+                subtitle: "Use the local ~/.codex OAuth session. Palmier reads the access token at request time and does not copy it."
+            )
+
+            codexOAuthStatusRow
+
+            textField(
+                label: "Model",
+                placeholder: "Codex OAuth model ID",
+                text: $codexOAuthModel,
+                focused: .codexOAuthModel,
+                monospaced: true,
+                onSubmit: saveCodexOAuth
+            )
+
+            HStack(spacing: AppTheme.Spacing.sm) {
+                Button("Save", action: saveCodexOAuth)
+                    .buttonStyle(.capsule(.prominent, size: .regular))
+                    .controlSize(.large)
+                    .disabled(!codexOAuthIsDirty)
+
+                Button("Refresh", action: refreshCodexOAuthStatus)
+                    .buttonStyle(.capsule(.secondary, size: .regular))
+                    .controlSize(.large)
+
+                if codexOAuthHasSavedConfig {
+                    Button("Clear", action: clearCodexOAuth)
+                        .buttonStyle(.capsule(.secondary, size: .regular))
+                        .controlSize(.large)
+                }
+            }
+        }
+    }
+
+    private var codexOAuthStatusRow: some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Circle()
+                .fill(codexOAuthStatus.hasAccessToken ? AppTheme.Status.successColor : AppTheme.Text.mutedColor)
+                .frame(width: AppTheme.Spacing.smMd, height: AppTheme.Spacing.smMd)
+
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+                Text(codexOAuthStatus.hasAccessToken ? "OAuth session detected" : "No Codex OAuth session")
+                    .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+
+                Text(codexOAuthDetail)
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, AppTheme.Spacing.md)
+        .padding(.vertical, AppTheme.Spacing.smMd)
+        .background(inputBackground(isFocused: false))
+        .overlay(inputBorder(isFocused: false))
+    }
+
+    private var codexOAuthDetail: String {
+        if let accountID = codexOAuthStatus.accountID {
+            return "Account \(mask(accountID))"
+        }
+        if let mode = codexOAuthStatus.authMode {
+            return "Auth mode \(mode)"
+        }
+        return "Run Codex sign in, then refresh."
+    }
+
+    private var codexOAuthIsDirty: Bool {
+        codexOAuthModel.trimmingCharacters(in: .whitespacesAndNewlines) != savedCodexOAuthModel
+    }
+
+    private var codexOAuthHasSavedConfig: Bool {
+        !savedCodexOAuthModel.isEmpty
+    }
+
+    private func saveCodexOAuth() {
+        let model = codexOAuthModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        focusedField = nil
+        Task { @MainActor in
+            let status = await Task.detached(priority: .userInitiated) {
+                CodexOAuthAgentSettings.save(model: model)
+                let status = CodexOAuthStore.status()
+                if !model.isEmpty && status.hasAccessToken {
+                    AgentProviderPreference.save(.codexOAuth)
+                }
+                return status
+            }.value
+            savedCodexOAuthModel = model
+            codexOAuthModel = model
+            codexOAuthStatus = status
+            if !model.isEmpty && status.hasAccessToken {
+                provider = .codexOAuth
+            }
+        }
+    }
+
+    private func refreshCodexOAuthStatus() {
+        Task { @MainActor in
+            codexOAuthStatus = await Task.detached(priority: .utility) {
+                CodexOAuthStore.status()
+            }.value
+            NotificationCenter.default.post(name: .codexOAuthAgentSettingsChanged, object: nil)
+        }
+    }
+
+    private func clearCodexOAuth() {
+        codexOAuthModel = ""
+        Task { @MainActor in
+            await Task.detached(priority: .userInitiated) {
+                CodexOAuthAgentSettings.clearModel()
+                if AgentProviderPreference.stored == .codexOAuth {
+                    AgentProviderPreference.save(.palmier)
+                }
+            }.value
+            savedCodexOAuthModel = ""
+            refreshCodexOAuthStatus()
+            if provider == .codexOAuth {
+                provider = .palmier
+            }
         }
     }
 
@@ -375,15 +656,23 @@ struct AgentPane: View {
             let snapshot = await Task.detached(priority: .utility) {
                 let anthropicKey = AnthropicKeychain.load() ?? ""
                 let openAIKey = OpenAICompatibleKeychain.load() ?? ""
+                let zhipuKey = ZhipuAgentKeychain.load() ?? ""
                 let baseURL = OpenAICompatibleSettings.savedBaseURLString
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 let model = OpenAICompatibleSettings.savedModel
                     .trimmingCharacters(in: .whitespacesAndNewlines)
+                let zhipuModel = ZhipuAgentSettings.savedModel
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let codexOAuthModel = CodexOAuthAgentSettings.savedModel
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let codexOAuthStatus = CodexOAuthStore.status()
                 let provider = AgentProviderPreference.defaultProvider(
                     hasAnthropicKey: !anthropicKey.isEmpty,
-                    hasOpenAICompatibleConfig: OpenAICompatibleEndpoint.normalizedURL(from: baseURL) != nil && !model.isEmpty
+                    hasOpenAICompatibleConfig: OpenAICompatibleEndpoint.normalizedURL(from: baseURL) != nil && !model.isEmpty,
+                    hasZhipuConfig: !zhipuKey.isEmpty && !zhipuModel.isEmpty,
+                    hasCodexOAuthConfig: codexOAuthStatus.hasAccessToken && !codexOAuthModel.isEmpty
                 )
-                return (anthropicKey, openAIKey, baseURL, model, provider)
+                return (anthropicKey, openAIKey, baseURL, model, zhipuKey, zhipuModel, codexOAuthModel, codexOAuthStatus, provider)
             }.value
             applyAnthropicKey(snapshot.0)
             applyOpenAIKey(snapshot.1)
@@ -391,7 +680,13 @@ struct AgentPane: View {
             openAIBaseURL = snapshot.2
             savedOpenAIModel = snapshot.3
             openAIModel = snapshot.3
-            provider = snapshot.4
+            applyZhipuKey(snapshot.4)
+            savedZhipuModel = snapshot.5
+            zhipuModel = snapshot.5
+            savedCodexOAuthModel = snapshot.6
+            codexOAuthModel = snapshot.6
+            codexOAuthStatus = snapshot.7
+            provider = snapshot.8
         }
     }
 
@@ -403,6 +698,11 @@ struct AgentPane: View {
     private func applyOpenAIKey(_ key: String) {
         openAIHasKey = !key.isEmpty
         openAIMaskedKey = mask(key)
+    }
+
+    private func applyZhipuKey(_ key: String) {
+        zhipuHasKey = !key.isEmpty
+        zhipuMaskedKey = mask(key)
     }
 
     private func mask(_ key: String) -> String {

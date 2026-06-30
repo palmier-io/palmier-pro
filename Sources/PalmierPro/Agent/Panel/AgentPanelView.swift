@@ -156,12 +156,12 @@ struct AgentPanelView: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
-        } else if service.activeProvider == .openAICompatible && service.hasOpenAICompatibleEndpoint {
+        } else if service.activeProvider.usesOpenAICompatibleProtocol && service.canStream {
             Text(service.effectiveModelLabel)
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .lineLimit(1)
-                .help("Streaming through an OpenAI-compatible endpoint")
+                .help("Streaming through \(service.providerStatusLabel)")
         }
     }
 
@@ -172,11 +172,16 @@ struct AgentPanelView: View {
                 .font(.system(size: AppTheme.FontSize.xs).italic())
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .help("Streaming through your own API key (BYOK)")
-        } else if service.activeProvider == .openAICompatible && service.hasOpenAICompatibleEndpoint {
+        } else if service.activeProvider == .openAICompatible && service.canStream {
             Text("custom endpoint")
                 .font(.system(size: AppTheme.FontSize.xs).italic())
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .help("Streaming through an OpenAI-compatible endpoint")
+        } else if service.activeProvider == .codexOAuth && service.canStream {
+            Text("using Codex OAuth")
+                .font(.system(size: AppTheme.FontSize.xs).italic())
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .help("Streaming through the local Codex OAuth session")
         }
     }
 

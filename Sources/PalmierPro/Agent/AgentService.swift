@@ -7,6 +7,8 @@ final class AgentService {
 
     private var anthropicAPIKey: String = ""
     private var openAICompatibleSettings: OpenAICompatibleSettings?
+    private var zhipuSettings: OpenAICompatibleSettings?
+    private var codexOAuthSettings: OpenAICompatibleSettings?
     private var providerPreference: AgentProviderPreference = .palmier
     private var providerObservers: [NSObjectProtocol] = []
 
@@ -15,6 +17,8 @@ final class AgentService {
         for name in [
             Notification.Name.anthropicAPIKeyChanged,
             .openAICompatibleSettingsChanged,
+            .zhipuAgentSettingsChanged,
+            .codexOAuthAgentSettingsChanged,
             .agentProviderChanged,
         ] {
             let observer = NotificationCenter.default.addObserver(
@@ -35,18 +39,26 @@ final class AgentService {
             let config = await Task.detached(priority: .utility) {
                 let anthropicKey = AnthropicKeychain.load() ?? ""
                 let openAISettings = OpenAICompatibleSettings.load()
+                let zhipuSettings = ZhipuAgentSettings.load()
+                let codexOAuthSettings = CodexOAuthAgentSettings.load()
                 return (
                     anthropicKey,
                     openAISettings,
+                    zhipuSettings,
+                    codexOAuthSettings,
                     AgentProviderPreference.defaultProvider(
                         hasAnthropicKey: !anthropicKey.isEmpty,
-                        hasOpenAICompatibleConfig: openAISettings != nil
+                        hasOpenAICompatibleConfig: openAISettings != nil,
+                        hasZhipuConfig: zhipuSettings != nil,
+                        hasCodexOAuthConfig: codexOAuthSettings != nil
                     )
                 )
             }.value
             self?.anthropicAPIKey = config.0
             self?.openAICompatibleSettings = config.1
-            self?.providerPreference = config.2
+            self?.zhipuSettings = config.2
+            self?.codexOAuthSettings = config.3
+            self?.providerPreference = config.4
         }
     }
 
@@ -59,12 +71,19 @@ final class AgentService {
     var activeProvider: AgentProviderPreference { providerPreference }
 
     var hasApiKey: Bool {
-        hasAnthropicAPIKey || (openAICompatibleSettings?.hasAPIKey ?? false)
+        hasAnthropicAPIKey ||
+        (openAICompatibleSettings?.hasAPIKey ?? false) ||
+        (zhipuSettings?.hasAPIKey ?? false) ||
+        (codexOAuthSettings?.hasAPIKey ?? false)
     }
 
     var hasAnthropicAPIKey: Bool { !anthropicAPIKey.isEmpty }
 
     var hasOpenAICompatibleEndpoint: Bool { openAICompatibleSettings != nil }
+
+    var hasZhipuEndpoint: Bool { zhipuSettings != nil }
+
+    var hasCodexOAuthEndpoint: Bool { codexOAuthSettings != nil }
 
     var isUsingBYOK: Bool {
         switch activeProvider {
@@ -72,6 +91,10 @@ final class AgentService {
             return hasAnthropicAPIKey
         case .openAICompatible:
             return openAICompatibleSettings?.hasAPIKey == true
+        case .zhipu:
+            return zhipuSettings?.hasAPIKey == true
+        case .codexOAuth:
+            return false
         case .palmier:
             return false
         }
@@ -85,6 +108,10 @@ final class AgentService {
             return "Anthropic"
         case .openAICompatible:
             return "OpenAI compatible"
+        case .zhipu:
+            return "Zhipu GLM"
+        case .codexOAuth:
+            return "Codex OAuth"
         }
     }
 
@@ -92,6 +119,10 @@ final class AgentService {
         switch activeProvider {
         case .openAICompatible:
             return openAICompatibleSettings?.model ?? "No model"
+        case .zhipu:
+            return zhipuSettings?.model ?? "No model"
+        case .codexOAuth:
+            return codexOAuthSettings?.model ?? "No model"
         case .anthropic, .palmier:
             return effectiveModel.displayName
         }
@@ -107,6 +138,10 @@ final class AgentService {
             return hasAnthropicAPIKey
         case .openAICompatible:
             return hasOpenAICompatibleEndpoint
+        case .zhipu:
+            return hasZhipuEndpoint
+        case .codexOAuth:
+            return hasCodexOAuthEndpoint
         case .palmier:
             return true
         }
@@ -116,7 +151,7 @@ final class AgentService {
         switch activeProvider {
         case .anthropic:
             return hasAnthropicAPIKey ? AnthropicModel.allCases : []
-        case .openAICompatible:
+        case .openAICompatible, .zhipu, .codexOAuth:
             return []
         case .palmier:
             return AnthropicModel.allCases
@@ -132,6 +167,12 @@ final class AgentService {
         case .openAICompatible:
             guard let openAICompatibleSettings else { return nil }
             return OpenAICompatibleClient(settings: openAICompatibleSettings)
+        case .zhipu:
+            guard let zhipuSettings else { return nil }
+            return OpenAICompatibleClient(settings: zhipuSettings)
+        case .codexOAuth:
+            guard let settings = CodexOAuthAgentSettings.load() else { return nil }
+            return OpenAICompatibleClient(settings: settings)
         case .palmier:
             return PalmierClient(model: chosen)
         }
@@ -402,6 +443,10 @@ final class AgentService {
             return "Add an Anthropic API key to start."
         case .openAICompatible:
             return "Add an OpenAI-compatible base URL and model to start."
+        case .zhipu:
+            return "Add a Zhipu API key and model to start."
+        case .codexOAuth:
+            return "Sign in with Codex OAuth and set a model to start."
         case .palmier:
             return "Add your own API key or configure the Palmier backend to start."
         }
