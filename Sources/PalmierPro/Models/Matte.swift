@@ -56,22 +56,14 @@ enum Matte {
     }
 
     static func png(hex: String, width: Int, height: Int) throws -> Data {
-        var s = hex.trimmingCharacters(in: .whitespacesAndNewlines)
-        if s.hasPrefix("#") { s.removeFirst() }
-        if s.count == 3 { s = s.map { String(repeating: $0, count: 2) }.joined() }
-        guard s.count == 6, let v = UInt32(s, radix: 16) else { throw Error.renderFailed }
+        guard let color = TextStyle.RGBA(hex: hex) else { throw Error.renderFailed }
         let (ew, eh) = even(width, height)
         guard let ctx = CGContext(
             data: nil, width: ew, height: eh, bitsPerComponent: 8, bytesPerRow: 0,
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { throw Error.renderFailed }
-        ctx.setFillColor(
-            red: CGFloat((v >> 16) & 0xFF) / 255,
-            green: CGFloat((v >> 8) & 0xFF) / 255,
-            blue: CGFloat(v & 0xFF) / 255,
-            alpha: 1
-        )
+        ctx.setFillColor(red: CGFloat(color.r), green: CGFloat(color.g), blue: CGFloat(color.b), alpha: 1)
         ctx.fill(CGRect(x: 0, y: 0, width: ew, height: eh))
         guard let image = ctx.makeImage() else { throw Error.renderFailed }
         let buf = NSMutableData()
@@ -88,32 +80,5 @@ extension Color {
     var matteHex: String {
         let c = NSColor(self).usingColorSpace(.sRGB) ?? .black
         return String(format: "#%02X%02X%02X", Int(c.redComponent * 255), Int(c.greenComponent * 255), Int(c.blueComponent * 255))
-    }
-}
-
-extension EditorViewModel {
-    func createMatte(
-        hex: String,
-        aspect: MatteAspect = .project,
-        folderId: String? = nil,
-        name: String? = nil
-    ) async throws -> MediaAsset {
-        guard let projectURL else { throw Matte.Error.noProject }
-        let d = aspect.pixelSize(timelineWidth: timeline.width, timelineHeight: timeline.height)
-        let dest = projectURL
-            .appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-            .appendingPathComponent("matte-\(UUID().uuidString.prefix(8)).png")
-        try FileManager.default.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let data = try Matte.png(hex: hex, width: d.width, height: d.height)
-        try await Task.detached(priority: .userInitiated) { try FileIO.writeData(data, to: dest) }.value
-        let asset = MediaAsset(
-            url: dest, type: .image,
-            name: name ?? (aspect == .project ? "Matte · \(d.width)×\(d.height)" : "Matte · \(aspect.rawValue)")
-        )
-        asset.folderId = folderId
-        importMediaAsset(asset)
-        await finalizeImportedAsset(asset)
-        onProjectCheckpointRequired?()
-        return asset
     }
 }

@@ -306,6 +306,11 @@ enum AppTheme {
         static let sheetHeight: CGFloat = 520
     }
 
+    enum Matte {
+        static let sheetWidth: CGFloat = 280
+        static let controlWidth: CGFloat = 116
+    }
+
     // MARK: - Shadows
 
     struct ShadowStyle {

@@ -77,7 +77,7 @@ struct ToolbarView: View {
             Image(systemName: "square.fill")
                 .font(.system(size: AppTheme.FontSize.md))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
-                .frame(width: 24, height: 24)
+                .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
@@ -187,8 +187,6 @@ private struct MatteSheet: View {
         aspect.pixelSize(timelineWidth: editor.timeline.width, timelineHeight: editor.timeline.height)
     }
 
-    private let controlWidth: CGFloat = 116
-
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
             row(icon: "paintpalette", label: "Color") {
@@ -224,7 +222,7 @@ private struct MatteSheet: View {
             .padding(.top, AppTheme.Spacing.xs)
         }
         .padding(AppTheme.Spacing.lgXl)
-        .frame(width: 280)
+        .frame(width: AppTheme.Matte.sheetWidth)
     }
 
     private func row<Control: View>(icon: String, label: String, @ViewBuilder control: () -> Control) -> some View {
@@ -238,7 +236,7 @@ private struct MatteSheet: View {
                 .foregroundStyle(AppTheme.Text.primaryColor)
             Spacer(minLength: AppTheme.Spacing.md)
             control()
-                .frame(width: controlWidth, alignment: .trailing)
+                .frame(width: AppTheme.Matte.controlWidth, alignment: .trailing)
         }
     }
 
