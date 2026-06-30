@@ -5,6 +5,14 @@ enum CaptionBuilder {
         var text: String
         var start: Double
         var end: Double
+        /// Member words with their own timings (seconds); empty when word timing is unavailable.
+        var words: [WordSpan] = []
+    }
+
+    struct WordSpan: Equatable {
+        var text: String
+        var start: Double
+        var end: Double
     }
 
     /// Splits a transcript segment into screen-ready phrases and times them.
@@ -12,11 +20,23 @@ enum CaptionBuilder {
         for segment: TranscriptionSegment,
         words: [TranscriptionWord] = [],
         fits: (String) -> Bool,
+        maxWords: Int? = nil,
         minDuration: Double
     ) -> [Phrase] {
-        let pieces = split(segment.text, fits: fits)
+        // Only phrases that fit visually and within the word cap are accepted; else, keep splitting.
+        let pieces: [String]
+        if let limit = maxWords {
+            let cap = max(1, limit)
+            pieces = split(segment.text, fits: { fits($0) && wordCount($0) <= cap })
+        } else {
+            pieces = split(segment.text, fits: fits)
+        }
         let timed = time(pieces, segment: segment, words: words)
         return enforceMinDuration(timed, minDuration: minDuration)
+    }
+
+    private static func wordCount(_ text: String) -> Int {
+        text.split(whereSeparator: \.isWhitespace).count
     }
 
     private static func split(_ text: String, fits: (String) -> Bool) -> [String] {
@@ -63,10 +83,10 @@ enum CaptionBuilder {
     /// Time phrases from word runs by matching shared characters, so timing holds when
     /// runs don't split on spaces (contractions, split numbers, punctuation runs).
     private static func time(_ texts: [String], segment: TranscriptionSegment, words: [TranscriptionWord]) -> [Phrase] {
-        let timed = words.compactMap { w -> (count: Int, start: Double, end: Double)? in
+        let timed = words.compactMap { w -> (text: String, count: Int, start: Double, end: Double)? in
             guard let s = w.start, let e = w.end else { return nil }
             let count = alphanumericCount(w.text)
-            return count > 0 ? (count, s, e) : nil
+            return count > 0 ? (w.text, count, s, e) : nil
         }
         guard !timed.isEmpty else { return distribute(texts, start: segment.start, end: segment.end) }
 
@@ -77,15 +97,17 @@ enum CaptionBuilder {
             var got = 0
             var first: (start: Double, end: Double)?
             var last: (start: Double, end: Double)?
+            var spans: [WordSpan] = []
             while idx < timed.count, got < want {
                 let run = timed[idx]
                 if first == nil { first = (run.start, run.end) }
                 last = (run.start, run.end)
+                spans.append(WordSpan(text: run.text.trimmingCharacters(in: .whitespaces), start: run.start, end: run.end))
                 got += run.count
                 idx += 1
             }
             guard let f = first, let l = last else { break }
-            phrases.append(Phrase(text: text, start: f.start, end: l.end))
+            phrases.append(Phrase(text: text, start: f.start, end: l.end, words: spans))
         }
         return phrases.count == texts.count ? phrases : distribute(texts, start: segment.start, end: segment.end)
     }
@@ -132,6 +154,7 @@ enum CaptionBuilder {
         fps: Int,
         style: TextStyle,
         captionGroupId: String?,
+        animation: TextAnimation? = nil,
         transformFor: (String) -> Transform? = { _ in nil },
         minDurationFrames: Int = 1
     ) -> [EditorViewModel.TextClipSpec] {
@@ -142,18 +165,42 @@ enum CaptionBuilder {
             let phraseEndSource = p.end * Double(fps)
             guard phraseEndSource > visibleStartSource, phraseStartSource < visibleEndSource else { return nil }
 
+            func clampedTimelineFrame(sourceSeconds: Double) -> Int {
+                let sourceFrame = sourceSeconds * Double(fps)
+                let offsetFromTrim = sourceFrame - visibleStartSource
+                let frame = Int((Double(sourceClip.startFrame) + offsetFromTrim / max(sourceClip.speed, 0.0001)).rounded())
+                return min(max(frame, sourceClip.startFrame), sourceClip.endFrame)
+            }
+
             let mappedStart = sourceClip.timelineFrame(sourceSeconds: p.start, fps: fps)
             let mappedEnd = sourceClip.timelineFrame(sourceSeconds: p.end, fps: fps)
             let s = mappedStart ?? sourceClip.startFrame
             let e = mappedEnd ?? sourceClip.endFrame
+            let duration = max(minDurationFrames, min(sourceClip.endFrame, e) - max(sourceClip.startFrame, s))
+
+            // Map word spans to clip-relative frames, clamped to the clip's own span.
+            let words: [WordTiming] = p.words.compactMap { w in
+                let wordStartSource = w.start * Double(fps)
+                let wordEndSource = w.end * Double(fps)
+                guard wordEndSource > visibleStartSource, wordStartSource < visibleEndSource else { return nil }
+                let ws = clampedTimelineFrame(sourceSeconds: w.start)
+                let we = clampedTimelineFrame(sourceSeconds: w.end)
+                let rs = min(max(0, ws - s), duration)
+                let re = min(max(rs, we - s), duration)
+                guard re > rs else { return nil }
+                return WordTiming(text: w.text, startFrame: rs, endFrame: re)
+            }
+
             return EditorViewModel.TextClipSpec(
                 trackIndex: trackIndex,
                 startFrame: s,
-                durationFrames: max(minDurationFrames, min(sourceClip.endFrame, e) - max(sourceClip.startFrame, s)),
+                durationFrames: duration,
                 content: p.text,
                 style: style,
                 transform: transformFor(p.text),
-                captionGroupId: captionGroupId
+                captionGroupId: captionGroupId,
+                words: words.isEmpty ? nil : words,
+                animation: animation
             )
         }
     }

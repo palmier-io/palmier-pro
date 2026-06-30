@@ -5,7 +5,8 @@ struct InspectorView: View {
     @Environment(EditorViewModel.self) var editor
 
     enum ClipTab: String, Hashable {
-        case text = "Text"
+        case text = "Content"
+        case textAnimate = "Animate"
         case video = "Video"
         case effects = "Adjust"
         case audio = "Audio"
@@ -237,14 +238,13 @@ struct InspectorView: View {
     // MARK: - Clip Inspector
 
     private var availableTabs: [ClipTab] {
-        let visuals = selectedVisualClips
         let audios = selectedAudioClips
+        let texts = selectedTextClips
         let nonText = nonTextVisualClips
-        let isSingle = visuals.count + audios.count == 1
-        let isSingleText = isSingle && visuals.first?.mediaType == .text
+        let isTextOnly = !texts.isEmpty && nonText.isEmpty && audios.isEmpty
 
         var tabs: [ClipTab] = []
-        if isSingleText { tabs.append(.text) }
+        if isTextOnly { tabs.append(.text); tabs.append(.textAnimate) }
         if !nonText.isEmpty {
             tabs.append(.video)
             tabs.append(.effects)
@@ -281,6 +281,10 @@ struct InspectorView: View {
         selectedVisualClips.filter { $0.mediaType != .text }
     }
 
+    private var selectedTextClips: [Clip] {
+        selectedVisualClips.filter { $0.mediaType == .text }
+    }
+
     @ViewBuilder
     private func clipInspectorContent() -> some View {
         let tabs = availableTabs
@@ -298,7 +302,9 @@ struct InspectorView: View {
                         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
                             switch activeTab {
                             case .text:
-                                if let v = selectedVisualClip, v.mediaType == .text { TextTab(clip: v) }
+                                if !selectedTextClips.isEmpty { TextTab(clips: selectedTextClips) }
+                            case .textAnimate:
+                                if !selectedTextClips.isEmpty { TextAnimateTab(clips: selectedTextClips) }
                             case .video:
                                 videoTabContent()
                             case .audio:

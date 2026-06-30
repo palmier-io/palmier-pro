@@ -4,9 +4,8 @@ import Testing
 @testable import PalmierPro
 
 /// Regression: text GLYPHS (not just layer background fills) must render in exports.
-/// The export layer tree is never attached to a display cycle, so CATextLayer backing
-/// stores stay empty unless buildForExport forces display — background colors composite
-/// regardless, which masked this in background-fill-based tests.
+/// Text now composites through CustomVideoCompositor (TextFrameRenderer), so this also
+/// guards the Path B export path end to end.
 @Suite("Export — text glyph rendering")
 @MainActor
 struct TextExportGlyphTests {

@@ -125,8 +125,7 @@ struct TransformOverlayView: View {
 
                 if let startScale = resizeStartFontScale {
                     let newScale = textScale(from: value.translation, corner: corner, start: start, startScale: startScale, videoRect: videoRect)
-                    editor.applyTextStyle(clipId: clip.id) { $0.fontScale = newScale }
-                    editor.fitTextClipToContent(clipId: clip.id)
+                    editor.applyTextStyle(clipId: clip.id, fitToContent: true) { $0.fontScale = newScale }
                 } else {
                     let resized = resizedTransform(start, corner: corner, by: value.translation, in: videoRect, mediaCanvasAspect: mediaCanvasAspect, rotated: start.rotation != 0)
                     editor.applyTransform(clipId: clip.id, newTransform: resized)
@@ -140,8 +139,7 @@ struct TransformOverlayView: View {
 
                 if let startScale {
                     let newScale = textScale(from: value.translation, corner: corner, start: start, startScale: startScale, videoRect: videoRect)
-                    editor.commitTextStyle(clipId: clip.id) { $0.fontScale = newScale }
-                    editor.fitTextClipToContent(clipId: clip.id)
+                    editor.commitTextStyle(clipId: clip.id, fitToContent: true) { $0.fontScale = newScale }
                 } else {
                     let resized = resizedTransform(start, corner: corner, by: value.translation, in: videoRect, mediaCanvasAspect: mediaCanvasAspect, rotated: start.rotation != 0)
                     editor.commitTransform(clipId: clip.id, newTransform: resized, actionName: "Change Scale")

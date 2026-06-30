@@ -46,20 +46,7 @@ enum TimelineRenderer {
             }
         }
 
-        // Bake text clips in via the animation tool, same as ExportService.
-        let (parent, videoLayer) = TextLayerController.buildForExport(
-            timeline: timeline,
-            fps: timeline.fps,
-            renderSize: renderSize
-        )
-        let animationTool = AVVideoCompositionCoreAnimationTool(
-            postProcessingAsVideoLayer: videoLayer,
-            in: parent
-        )
-        session.videoComposition = CompositionBuilder.addingAnimationTool(
-            animationTool,
-            to: result.videoComposition
-        )
+        session.videoComposition = result.videoComposition
 
         let timescale = CMTimeScale(timeline.fps)
         session.timeRange = CMTimeRange(

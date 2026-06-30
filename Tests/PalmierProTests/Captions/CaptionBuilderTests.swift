@@ -30,6 +30,19 @@ struct CaptionBuilderTests {
         #expect(phrases.map(\.text) == ["a b", "c d"])
     }
 
+    @Test func capsWordsPerCaption() {
+        let phrases = CaptionBuilder.phrases(for: segment("one two three four five six", 0, 6),
+                                             fits: { _ in true }, maxWords: 2, minDuration: 0)
+        #expect(phrases.allSatisfy { $0.text.split(separator: " ").count <= 2 })
+        #expect(phrases.map(\.text).joined(separator: " ") == "one two three four five six")
+    }
+
+    @Test func maxWordsStillPrefersSentenceBoundary() {
+        let phrases = CaptionBuilder.phrases(for: segment("Hi there. How are you", 0, 6),
+                                             fits: { _ in true }, maxWords: 3, minDuration: 0)
+        #expect(phrases.map(\.text) == ["Hi there.", "How are you"])
+    }
+
     @Test func keepsPunctuatedTokensIntact() {
         let phrases = CaptionBuilder.phrases(for: segment("U.S. army here", 0, 6), fits: { $0.count <= 6 }, minDuration: 0)
         #expect(phrases.map(\.text) == ["U.S.", "army", "here"])
@@ -54,6 +67,39 @@ struct CaptionBuilderTests {
     }
 
     private let clip = Clip(mediaRef: "m", startFrame: 30, durationFrames: 120)
+
+    @Test func carriesWordTimingsAndAnimation() {
+        let p = CaptionBuilder.Phrase(text: "hi there", start: 1.0, end: 2.0, words: [
+            CaptionBuilder.WordSpan(text: "hi", start: 1.0, end: 1.4),
+            CaptionBuilder.WordSpan(text: "there", start: 1.5, end: 2.0),
+        ])
+        let specs = CaptionBuilder.specs(
+            for: [p], sourceClip: clip, trackIndex: 0, fps: 30,
+            style: TextStyle(), captionGroupId: "g1", animation: TextAnimation(preset: .wordPop))
+        #expect(specs[0].animation?.preset == .wordPop)
+        let words = try! #require(specs[0].words)
+        #expect(words.map(\.text) == ["hi", "there"])
+        #expect(words[0].startFrame == 0 && words[0].endFrame == 12)   // clip-relative
+        #expect(words[1].startFrame == 15 && words[1].endFrame == 30)
+    }
+
+    @Test func mapsWordEndingAtClipBoundary() {
+        let source = Clip(mediaRef: "m", startFrame: 0, durationFrames: 30)
+        let p = CaptionBuilder.Phrase(text: "hi there", start: 0.0, end: 1.0, words: [
+            CaptionBuilder.WordSpan(text: "hi", start: 0.0, end: 0.5),
+            CaptionBuilder.WordSpan(text: "there", start: 0.5, end: 1.0),
+        ])
+
+        let specs = CaptionBuilder.specs(
+            for: [p], sourceClip: source, trackIndex: 0, fps: 30,
+            style: TextStyle(), captionGroupId: nil, animation: TextAnimation(preset: .wordPop))
+
+        let words = try! #require(specs[0].words)
+        #expect(words == [
+            WordTiming(text: "hi", startFrame: 0, endFrame: 15),
+            WordTiming(text: "there", startFrame: 15, endFrame: 30),
+        ])
+    }
 
     @Test func mapsSecondsThroughClipPlacement() {
         let p = CaptionBuilder.Phrase(text: "hi", start: 1.0, end: 2.0)

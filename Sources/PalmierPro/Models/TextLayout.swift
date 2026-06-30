@@ -26,9 +26,10 @@ enum TextLayout {
         // +4px slack absorbs canvas→preview scale rounding.
         let slack: CGFloat = 4
         let shadowPad = style.shadow.enabled ? shadowPadding * 2 : 0
+        let borderPad = style.border.enabled ? TextStyle.glyphBorderPadding(fontSize: renderSize) * 2 : 0
         return CGSize(
-            width: max(1, ceil(bounding.width) + shadowPad + slack),
-            height: max(1, ceil(bounding.height) + slack)
+            width: max(1, ceil(bounding.width) + shadowPad + borderPad + slack),
+            height: max(1, ceil(bounding.height) + borderPad + slack)
         )
     }
 }

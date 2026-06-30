@@ -1,4 +1,5 @@
 import AppKit
+import CoreText
 import Foundation
 
 /// The `version` attribute Resolve/FCP gate import on (a literal allow-list), so it's the only thing
@@ -720,10 +721,10 @@ enum FCPXMLExporter {
         }
 
         private func textStyleAttributes(for style: TextStyle) -> [(String, String)] {
-            let resolvedFont = NSFont(name: style.fontName, size: style.fontSize)
-            let family = resolvedFont?.familyName ?? fontFamilyFallback(style.fontName)
-            let face = (resolvedFont?.fontDescriptor.object(forKey: .face) as? String) ?? fontFaceFallback(style.fontName)
-            let fontSize = style.fontSize * style.fontScale * Double(seqHeight) / Double(TextLayout.referenceCanvasHeight)
+            let resolvedFont = style.resolvedFont(size: CGFloat(style.fontSize))
+            let family = resolvedFont.familyName ?? fontFamilyFallback(style.fontName)
+            let face = fontFace(for: style, resolvedFont: resolvedFont)
+            let fontSize = style.fontSize * style.fontScale
             return [
                 ("font", family),
                 ("fontFace", face),
@@ -755,9 +756,20 @@ enum FCPXMLExporter {
             fontName.split(separator: "-", maxSplits: 1).first.map(String.init) ?? fontName
         }
 
-        private func fontFaceFallback(_ fontName: String) -> String {
-            let lower = fontName.lowercased()
-            switch (lower.contains("bold"), lower.contains("italic") || lower.contains("oblique")) {
+        private func fontFace(for style: TextStyle, resolvedFont: NSFont) -> String {
+            let traits = CTFontGetSymbolicTraits(resolvedFont as CTFont)
+            let matchesRequestedTraits =
+                traits.contains(.traitBold) == style.isBold &&
+                traits.contains(.traitItalic) == style.isItalic
+            if matchesRequestedTraits,
+               let face = resolvedFont.fontDescriptor.object(forKey: .face) as? String {
+                return face
+            }
+            return fontFaceFallback(isBold: style.isBold, isItalic: style.isItalic)
+        }
+
+        private func fontFaceFallback(isBold: Bool, isItalic: Bool) -> String {
+            switch (isBold, isItalic) {
             case (true, true):
                 return "Bold Italic"
             case (true, false):

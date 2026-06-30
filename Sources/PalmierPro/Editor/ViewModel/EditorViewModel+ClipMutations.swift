@@ -275,6 +275,7 @@ extension EditorViewModel {
         timeline.tracks[ti].clips[loc.clipIndex].speed = newSpeed
         timeline.tracks[ti].clips[loc.clipIndex].durationFrames = newDuration
         // Keyframe offsets are clip-relative, so retime them before the clamp drops them.
+        timeline.tracks[ti].clips[loc.clipIndex].rescaleWordTimings(from: oldDuration)
         timeline.tracks[ti].clips[loc.clipIndex].rescaleKeyframes(by: Double(newDuration) / Double(oldDuration))
         timeline.tracks[ti].clips[loc.clipIndex].clampKeyframesToDuration()
         timeline.tracks[ti].clips[loc.clipIndex].clampFadesToDuration()
@@ -340,9 +341,8 @@ extension EditorViewModel {
         }
         modify(&clip)
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
-        // Text renders via CATextLayer overlay — skip the composition path.
         if clip.mediaType == .text {
-            videoEngine?.syncTextLayers()
+            videoEngine?.refreshVisuals()
             return
         }
         if rebuild {
@@ -369,7 +369,7 @@ extension EditorViewModel {
                 touchedVisual = true
             }
         }
-        if touchedText { videoEngine?.syncTextLayers() }
+        if touchedText { videoEngine?.refreshVisuals() }
         if touchedVisual {
             if rebuild {
                 notifyTimelineChangedDebounced()
@@ -384,7 +384,7 @@ extension EditorViewModel {
               let loc = findClip(id: clipId) else { return }
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = original
         if original.mediaType == .text {
-            videoEngine?.syncTextLayers()
+            videoEngine?.refreshVisuals()
         } else {
             notifyTimelineChanged()
         }
@@ -409,21 +409,78 @@ extension EditorViewModel {
         }
     }
 
+    func debouncedCommitClipProperties(
+        clipIds: [String],
+        key: String,
+        debounce: Duration = .milliseconds(400),
+        _ modify: @escaping (inout Clip) -> Void
+    ) {
+        applyClipProperties(clipIds: clipIds, rebuild: true, modify)
+        pendingDebouncedCommits[key]?.cancel()
+        pendingDebouncedCommits[key] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: debounce)
+            guard !Task.isCancelled, let self else { return }
+            self.commitClipProperties(clipIds: clipIds, modify)
+            self.pendingDebouncedCommits.removeValue(forKey: key)
+        }
+    }
+
+    func cancelDebouncedCommit(key: String) {
+        pendingDebouncedCommits[key]?.cancel()
+        pendingDebouncedCommits.removeValue(forKey: key)
+    }
+
     // MARK: - Text-style mutation helpers
 
-    func applyTextStyle(clipId: String, _ modify: @escaping (inout TextStyle) -> Void) {
+    func applyTextStyle(clipId: String, fitToContent: Bool = false, _ modify: @escaping (inout TextStyle) -> Void) {
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
         applyClipProperty(clipId: clipId, rebuild: true) { clip in
             var style = clip.textStyle ?? TextStyle()
             modify(&style)
             clip.textStyle = style
+            if fitToContent {
+                _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
+            }
         }
     }
 
-    func commitTextStyle(clipId: String, _ modify: @escaping (inout TextStyle) -> Void) {
+    func applyTextStyles(clipIds: [String], fitToContent: Bool = false, _ modify: @escaping (inout TextStyle) -> Void) {
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
+        applyClipProperties(clipIds: clipIds, rebuild: true) { clip in
+            var style = clip.textStyle ?? TextStyle()
+            modify(&style)
+            clip.textStyle = style
+            if fitToContent {
+                _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
+            }
+        }
+    }
+
+    func commitTextStyle(clipId: String, fitToContent: Bool = false, _ modify: @escaping (inout TextStyle) -> Void) {
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
         commitClipProperty(clipId: clipId) { clip in
             var style = clip.textStyle ?? TextStyle()
             modify(&style)
             clip.textStyle = style
+            if fitToContent {
+                _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
+            }
+        }
+    }
+
+    func commitTextStyles(clipIds: [String], fitToContent: Bool = false, _ modify: @escaping (inout TextStyle) -> Void) {
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
+        commitClipProperties(clipIds: clipIds) { clip in
+            var style = clip.textStyle ?? TextStyle()
+            modify(&style)
+            clip.textStyle = style
+            if fitToContent {
+                _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
+            }
         }
     }
 
@@ -439,15 +496,31 @@ extension EditorViewModel {
         }
     }
 
+    func debouncedCommitTextStyles(
+        clipIds: [String],
+        key: String,
+        _ modify: @escaping (inout TextStyle) -> Void
+    ) {
+        debouncedCommitClipProperties(clipIds: clipIds, key: key) { clip in
+            var style = clip.textStyle ?? TextStyle()
+            modify(&style)
+            clip.textStyle = style
+        }
+    }
+
     func commitClipProperty(clipId: String, _ modify: (inout Clip) -> Void) {
         guard let loc = findClip(id: clipId) else { return }
-        var clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        let before = dragBefore.removeValue(forKey: clipId) ?? clip
+        let current = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        var clip = current
+        let before = dragBefore.removeValue(forKey: clipId) ?? current
         modify(&clip)
+        guard current != clip || before != clip else { return }
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
-        registerClipPropertySwap(clipId: clipId, undoTarget: before, redoTarget: clip)
+        if before != clip {
+            registerClipPropertySwap(clipId: clipId, undoTarget: before, redoTarget: clip)
+        }
         if clip.mediaType == .text {
-            videoEngine?.syncTextLayers()
+            videoEngine?.refreshVisuals()
         } else {
             notifyTimelineChanged()
         }
@@ -456,20 +529,30 @@ extension EditorViewModel {
     func commitClipProperties(clipIds: [String], _ modify: (inout Clip) -> Void) {
         var touchedText = false
         var touchedVisual = false
+        var before: [(id: String, clip: Clip)] = []
+        var after: [(id: String, clip: Clip)] = []
         for clipId in clipIds {
             guard let loc = findClip(id: clipId) else { continue }
-            var clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-            let before = dragBefore.removeValue(forKey: clipId) ?? clip
+            let current = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            var clip = current
+            let undoTarget = dragBefore.removeValue(forKey: clipId) ?? current
             modify(&clip)
+            guard current != clip || undoTarget != clip else { continue }
             timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
-            registerClipPropertySwap(clipId: clipId, undoTarget: before, redoTarget: clip)
+            if undoTarget != clip {
+                before.append((clipId, undoTarget))
+                after.append((clipId, clip))
+            }
             if clip.mediaType == .text {
                 touchedText = true
             } else {
                 touchedVisual = true
             }
         }
-        if touchedText { videoEngine?.syncTextLayers() }
+        if !before.isEmpty {
+            registerClipStateSwap(undoTarget: before, redoTarget: after, actionName: "Change Clip Property")
+        }
+        if touchedText { videoEngine?.refreshVisuals() }
         if touchedVisual { notifyTimelineChanged() }
     }
 
@@ -481,7 +564,7 @@ extension EditorViewModel {
             }
             vm.registerClipPropertySwap(clipId: clipId, undoTarget: redoTarget, redoTarget: undoTarget)
             if undoTarget.mediaType == .text {
-                vm.videoEngine?.syncTextLayers()
+                vm.videoEngine?.refreshVisuals()
             } else {
                 vm.notifyTimelineChanged()
             }
