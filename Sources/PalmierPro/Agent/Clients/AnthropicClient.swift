@@ -38,9 +38,9 @@ struct AnthropicClient: AgentClient {
 
     func stream(
         system: String,
-        tools: [AnthropicToolSchema],
-        messages: [AnthropicMessage]
-    ) -> AsyncThrowingStream<AnthropicStreamEvent, Error> {
+        tools: [AgentToolSchema],
+        messages: [AgentClientMessage]
+    ) -> AsyncThrowingStream<AgentStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -56,9 +56,9 @@ struct AnthropicClient: AgentClient {
 
     private func run(
         system: String,
-        tools: [AnthropicToolSchema],
-        messages: [AnthropicMessage],
-        continuation: AsyncThrowingStream<AnthropicStreamEvent, Error>.Continuation
+        tools: [AgentToolSchema],
+        messages: [AgentClientMessage],
+        continuation: AsyncThrowingStream<AgentStreamEvent, Error>.Continuation
     ) async throws {
         guard !apiKey.isEmpty else { throw AnthropicClientError.missingAPIKey }
 

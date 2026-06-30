@@ -5,57 +5,140 @@ import Observation
 @MainActor
 final class AgentService {
 
-    private var apiKey: String = ""
-    private var apiKeyObserver: NSObjectProtocol?
+    private var anthropicAPIKey: String = ""
+    private var openAICompatibleSettings: OpenAICompatibleSettings?
+    private var providerPreference: AgentProviderPreference = .palmier
+    private var providerObservers: [NSObjectProtocol] = []
 
     init() {
-        reloadAPIKey()
-        apiKeyObserver = NotificationCenter.default.addObserver(
-            forName: .anthropicAPIKeyChanged,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.reloadAPIKey()
+        reloadProviderConfiguration()
+        for name in [
+            Notification.Name.anthropicAPIKeyChanged,
+            .openAICompatibleSettingsChanged,
+            .agentProviderChanged,
+        ] {
+            let observer = NotificationCenter.default.addObserver(
+                forName: name,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.reloadProviderConfiguration()
+                }
             }
+            providerObservers.append(observer)
         }
     }
 
-    private func reloadAPIKey() {
+    private func reloadProviderConfiguration() {
         Task { [weak self] in
-            let key = await Task.detached(priority: .utility) {
-                AnthropicKeychain.load() ?? ""
+            let config = await Task.detached(priority: .utility) {
+                let anthropicKey = AnthropicKeychain.load() ?? ""
+                let openAISettings = OpenAICompatibleSettings.load()
+                return (
+                    anthropicKey,
+                    openAISettings,
+                    AgentProviderPreference.defaultProvider(
+                        hasAnthropicKey: !anthropicKey.isEmpty,
+                        hasOpenAICompatibleConfig: openAISettings != nil
+                    )
+                )
             }.value
-            self?.apiKey = key
+            self?.anthropicAPIKey = config.0
+            self?.openAICompatibleSettings = config.1
+            self?.providerPreference = config.2
         }
     }
 
     isolated deinit {
-        if let token = apiKeyObserver {
+        for token in providerObservers {
             NotificationCenter.default.removeObserver(token)
         }
     }
 
-    var hasApiKey: Bool { !apiKey.isEmpty }
+    var activeProvider: AgentProviderPreference { providerPreference }
+
+    var hasApiKey: Bool {
+        hasAnthropicAPIKey || (openAICompatibleSettings?.hasAPIKey ?? false)
+    }
+
+    var hasAnthropicAPIKey: Bool { !anthropicAPIKey.isEmpty }
+
+    var hasOpenAICompatibleEndpoint: Bool { openAICompatibleSettings != nil }
+
+    var isUsingBYOK: Bool {
+        switch activeProvider {
+        case .anthropic:
+            return hasAnthropicAPIKey
+        case .openAICompatible:
+            return openAICompatibleSettings?.hasAPIKey == true
+        case .palmier:
+            return false
+        }
+    }
+
+    var providerStatusLabel: String {
+        switch activeProvider {
+        case .palmier:
+            return "Palmier"
+        case .anthropic:
+            return "Anthropic"
+        case .openAICompatible:
+            return "OpenAI compatible"
+        }
+    }
+
+    var effectiveModelLabel: String {
+        switch activeProvider {
+        case .openAICompatible:
+            return openAICompatibleSettings?.model ?? "No model"
+        case .anthropic, .palmier:
+            return effectiveModel.displayName
+        }
+    }
+
+    var canPickModel: Bool {
+        activeProvider == .anthropic && hasAnthropicAPIKey
+    }
 
     var canStream: Bool {
-        if hasApiKey { return true }
-        let account = AccountService.shared
-        return account.isSignedIn && account.hasCredits
+        switch activeProvider {
+        case .anthropic:
+            return hasAnthropicAPIKey
+        case .openAICompatible:
+            return hasOpenAICompatibleEndpoint
+        case .palmier:
+            let account = AccountService.shared
+            return account.isSignedIn && account.hasCredits
+        }
     }
 
     var availableModels: [AnthropicModel] {
-        if hasApiKey { return AnthropicModel.allCases }
-        return AccountService.shared.isPaid ? [.sonnet46] : [.haiku45]
+        switch activeProvider {
+        case .anthropic:
+            return hasAnthropicAPIKey ? AnthropicModel.allCases : []
+        case .openAICompatible:
+            return []
+        case .palmier:
+            return AccountService.shared.isPaid ? [.sonnet46] : [.haiku45]
+        }
     }
 
     private func selectClient() -> (any AgentClient)? {
         let chosen = effectiveModel
-        if hasApiKey { return AnthropicClient(apiKey: apiKey, model: chosen) }
-        if AccountService.shared.isSignedIn {
-            return PalmierClient(model: chosen)
+        switch activeProvider {
+        case .anthropic:
+            guard hasAnthropicAPIKey else { return nil }
+            return AnthropicClient(apiKey: anthropicAPIKey, model: chosen)
+        case .openAICompatible:
+            guard let openAICompatibleSettings else { return nil }
+            return OpenAICompatibleClient(settings: openAICompatibleSettings)
+        case .palmier:
+            if AccountService.shared.isSignedIn {
+                return PalmierClient(model: chosen)
+            }
+            return nil
         }
-        return nil
     }
 
     var effectiveModel: AnthropicModel {
@@ -298,7 +381,7 @@ final class AgentService {
 
     func send(text: String, mentions: [AgentMention]) {
         guard canStream else {
-            streamError = .upstream("Sign in to a paid plan or add an Anthropic API key to start.")
+            streamError = .upstream(missingProviderConfigurationMessage)
             return
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -315,6 +398,17 @@ final class AgentService {
         ))
         streamError = nil
         kickOffStream()
+    }
+
+    private var missingProviderConfigurationMessage: String {
+        switch activeProvider {
+        case .anthropic:
+            return "Add an Anthropic API key to start."
+        case .openAICompatible:
+            return "Add an OpenAI-compatible base URL and model to start."
+        case .palmier:
+            return "Sign in to a paid plan or add your own API key to start."
+        }
     }
 
     func cancel() {
@@ -343,7 +437,7 @@ final class AgentService {
         }
         await SkillStore.shared.reloadInBackground()
         let tools = ToolDefinitions.inAppAgent.map {
-            AnthropicToolSchema(name: $0.name.rawValue, description: $0.description, inputSchema: $0.inputSchema)
+            AgentToolSchema(name: $0.name.rawValue, description: $0.description, inputSchema: $0.inputSchema)
         }
 
         loop: while !Task.isCancelled {
@@ -360,7 +454,7 @@ final class AgentService {
                     messages: apiMsgs
                 )
 
-                var stopReason: AnthropicStopReason = .endTurn
+                var stopReason: AgentStopReason = .endTurn
 
                 for try await event in stream {
                     try Task.checkCancellation()
@@ -510,8 +604,8 @@ final class AgentService {
         }
     }
 
-    private func apiMessages() async -> [AnthropicMessage] {
-        var result: [AnthropicMessage] = []
+    private func apiMessages() async -> [AgentClientMessage] {
+        var result: [AgentClientMessage] = []
         for msg in messages {
             var content = msg.blocks.compactMap(Self.contentBlockJSON)
             if msg.role == .user, !msg.mentions.isEmpty {
@@ -522,7 +616,7 @@ final class AgentService {
                 content.insert(["type": "text", "text": hint], at: 0)
             }
             guard !content.isEmpty else { continue }
-            result.append(AnthropicMessage(role: msg.role == .user ? .user : .assistant, content: content))
+            result.append(AgentClientMessage(role: msg.role == .user ? .user : .assistant, content: content))
         }
         return result
     }
