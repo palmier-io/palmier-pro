@@ -161,7 +161,7 @@ struct ApplyLayoutTests {
         let before = h.editor.timeline.tracks.count
         let r = await h.runRaw("apply_layout", args: [
             "layout": "side_by_side",
-            "slots": [["slot": "left", "clipId": "ca"], ["slot": "right", "clipId": "cb"]],
+            "slots": [["slot": "left", "clipIds": ["ca"]], ["slot": "right", "clipIds": ["cb"]]],
         ])
         #expect(r.isError == false)
         #expect(h.editor.timeline.tracks.count == before)
@@ -184,7 +184,7 @@ struct ApplyLayoutTests {
         let before = h.editor.timeline.tracks.count
         let r = await h.runRaw("apply_layout", args: [
             "layout": "side_by_side",
-            "slots": [["slot": "left", "clipIds": ["ca", "cb"]], ["slot": "right", "clipId": "cc"]],
+            "slots": [["slot": "left", "clipIds": ["ca", "cb"]], ["slot": "right", "clipIds": ["cc"]]],
         ])
         #expect(r.isError == false)
         #expect(h.editor.timeline.tracks.count == before)
@@ -219,12 +219,12 @@ struct ApplyLayoutTests {
         videoAsset(h, id: "a"); videoAsset(h, id: "b")
         let empty = await h.runRaw("apply_layout", args: [
             "layout": "side_by_side",
-            "slots": [["slot": "left", "clipIds": [String]()], ["slot": "right", "clipId": "cb"]],
+            "slots": [["slot": "left", "clipIds": [String]()], ["slot": "right", "clipIds": ["cb"]]],
         ])
         #expect(empty.isError)
         let dup = await h.runRaw("apply_layout", args: [
             "layout": "side_by_side",
-            "slots": [["slot": "left", "clipIds": ["ca", "ca"]], ["slot": "right", "clipId": "cb"]],
+            "slots": [["slot": "left", "clipIds": ["ca", "ca"]], ["slot": "right", "clipIds": ["cb"]]],
         ])
         #expect(dup.isError)
     }
@@ -251,7 +251,7 @@ struct ApplyLayoutTests {
         ])
         let r = await h.runRaw("apply_layout", args: [
             "layout": "side_by_side",
-            "slots": [["slot": "left", "clipId": "ca"], ["slot": "right", "clipId": "cb"]],
+            "slots": [["slot": "left", "clipIds": ["ca"]], ["slot": "right", "clipIds": ["cb"]]],
         ])
         #expect(r.isError == false)
         let c = clip(h, id: "ca")!
@@ -270,7 +270,7 @@ struct ApplyLayoutTests {
         videoAsset(h, id: "a"); videoAsset(h, id: "b")
         let r = await h.runRaw("apply_layout", args: [
             "layout": "side_by_side",
-            "slots": [["slot": "left", "clipId": "ca"], ["slot": "right", "clipId": "cb"]],
+            "slots": [["slot": "left", "clipIds": ["ca"]], ["slot": "right", "clipIds": ["cb"]]],
         ])
         #expect(r.isError)
         #expect(approx(clip(h, id: "ca")!.transform.centerX, 0.5))
@@ -286,7 +286,7 @@ struct ApplyLayoutTests {
         videoAsset(h, id: "a"); videoAsset(h, id: "b")
         let r = await h.runRaw("apply_layout", args: [
             "layout": "side_by_side",
-            "slots": [["slot": "left", "clipId": "ca"], ["slot": "right", "clipId": "cb"]],
+            "slots": [["slot": "left", "clipIds": ["ca"]], ["slot": "right", "clipIds": ["cb"]]],
         ])
         #expect(r.isError)
         #expect(approx(clip(h, id: "ca")!.transform.centerX, 0.5))
@@ -299,7 +299,7 @@ struct ApplyLayoutTests {
         videoAsset(h, id: "wide", w: 1920, ht: 1080)
         let before = h.editor.timeline.tracks.count
         let r = await h.runRaw("apply_layout", args: [
-            "layout": "full", "slots": [["slot": "main", "clipId": "c1", "anchorX": 0.3]],
+            "layout": "full", "slots": [["slot": "main", "clipIds": ["c1"], "anchorX": 0.3]],
         ])
         #expect(r.isError == false)
         #expect(h.editor.timeline.tracks.count == before)
@@ -341,12 +341,13 @@ struct ApplyLayoutTests {
             ("unknown layout", ["layout": "hexagon", "durationFrames": 30, "slots": [["slot": "left", "mediaRef": "a"]]]),
             ("unknown slot", ["layout": "side_by_side", "durationFrames": 30, "slots": [["slot": "left", "mediaRef": "a"], ["slot": "mid", "mediaRef": "b"]]]),
             ("missing slot", ["layout": "side_by_side", "durationFrames": 30, "slots": [["slot": "left", "mediaRef": "a"]]]),
-            ("mixed sources", ["layout": "side_by_side", "durationFrames": 30, "slots": [["slot": "left", "clipId": "cx"], ["slot": "right", "mediaRef": "b"]]]),
+            ("mixed sources", ["layout": "side_by_side", "durationFrames": 30, "slots": [["slot": "left", "clipIds": ["cx"]], ["slot": "right", "mediaRef": "b"]]]),
             ("no duration", ["layout": "side_by_side", "slots": [["slot": "left", "mediaRef": "a"], ["slot": "right", "mediaRef": "b"]]]),
-            ("both source + clip", ["layout": "full", "durationFrames": 30, "slots": [["slot": "main", "mediaRef": "a", "clipId": "cx"]]]),
+            ("both source + clip", ["layout": "full", "durationFrames": 30, "slots": [["slot": "main", "mediaRef": "a", "clipIds": ["cx"]]]]),
             ("invalid anchor", ["layout": "full", "durationFrames": 30, "slots": [["slot": "main", "mediaRef": "a", "anchor": "diagonal"]]]),
             ("anchor out of range", ["layout": "full", "durationFrames": 30, "slots": [["slot": "main", "mediaRef": "a", "anchorY": 1.5]]]),
-            ("duplicate clipId", ["layout": "side_by_side", "slots": [["slot": "left", "clipId": "cx"], ["slot": "right", "clipId": "cx"]]]),
+            ("duplicate clipIds", ["layout": "side_by_side", "slots": [["slot": "left", "clipIds": ["cx"]], ["slot": "right", "clipIds": ["cx"]]]]),
+            ("deprecated clipId", ["layout": "side_by_side", "slots": [["slot": "left", "clipId": "cx"], ["slot": "right", "clipIds": ["b"]]]]),
         ]
         for (label, args) in bad {
             let r = await h.runRaw("apply_layout", args: args)

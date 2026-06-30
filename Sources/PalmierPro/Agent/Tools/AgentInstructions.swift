@@ -69,8 +69,8 @@ enum AgentInstructions {
             weak matches.
           • apply_layout: for any multi-video composition (split screen, picture-in-picture, \
             grid), use this instead of hand-setting transforms. Pick a named layout and assign \
-            a clip to each slot (or a batch of clips via clipIds — every clip in a slot gets the \
-            same framing, handy when a track holds several sequential takes); it fills every \
+            mediaRef (new clips) or clipIds (existing — one or more per slot, same framing for \
+            each) to every slot; it fills every \
             region without stretching (crops the source to the slot shape) in one undoable step, \
             and stacks PIP insets on top. The crop is \
             centered by default — when centering chops something off (a forehead, a subject to \

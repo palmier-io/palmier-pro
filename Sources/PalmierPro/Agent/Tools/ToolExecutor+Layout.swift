@@ -4,17 +4,11 @@ fileprivate struct ApplyLayoutInput: DecodableToolArgs {
     struct SlotEntry: Decodable {
         let slot: String
         let mediaRef: String?
-        let clipId: String?
         let clipIds: [String]?
         let anchor: String?
         let anchorX: Double?
         let anchorY: Double?
-        static let allowedKeys: Set<String> = ["slot", "mediaRef", "clipId", "clipIds", "anchor", "anchorX", "anchorY"]
-
-        var clipIdList: [String]? {
-            if let clipId { return [clipId] }
-            return clipIds
-        }
+        static let allowedKeys: Set<String> = ["slot", "mediaRef", "clipIds", "anchor", "anchorX", "anchorY"]
     }
     let layout: String
     let slots: [SlotEntry]
@@ -74,18 +68,17 @@ extension ToolExecutor {
                 throw ToolError("slots[\(i)]: '\(e.slot)' is not a slot of layout '\(layout.rawValue)'. Slots: \(layout.slots.map(\.id).joined(separator: ", "))")
             }
             guard seen.insert(e.slot).inserted else { throw ToolError("slots[\(i)]: duplicate slot '\(e.slot)'") }
-            let sourceCount = [e.mediaRef != nil, e.clipId != nil, e.clipIds != nil].filter { $0 }.count
-            guard sourceCount == 1 else {
-                throw ToolError("slots[\(i)]: provide exactly one of 'mediaRef', 'clipId', or 'clipIds'")
+            guard (e.mediaRef != nil) != (e.clipIds != nil) else {
+                throw ToolError("slots[\(i)]: provide exactly one of 'mediaRef' or 'clipIds'")
             }
-            if let cids = e.clipIds, cids.isEmpty {
-                throw ToolError("slots[\(i)]: 'clipIds' must not be empty")
-            }
-            for cid in e.clipIdList ?? [] where !seenClips.insert(cid).inserted {
-                throw ToolError("slots[\(i)]: clip '\(cid)' is assigned to more than one slot; each clip can fill only one.")
+            if let cids = e.clipIds {
+                guard !cids.isEmpty else { throw ToolError("slots[\(i)]: 'clipIds' must not be empty") }
+                for cid in cids where !seenClips.insert(cid).inserted {
+                    throw ToolError("slots[\(i)]: clip '\(cid)' is assigned to more than one slot; each clip can fill only one.")
+                }
             }
             usesMedia = usesMedia || e.mediaRef != nil
-            usesClip = usesClip || e.clipIdList != nil
+            usesClip = usesClip || e.clipIds != nil
             entries.append((slot, e, try resolveAnchor(e, path: "slots[\(i)]")))
         }
         let missing = Set(slotById.keys).subtracting(seen)
@@ -93,7 +86,7 @@ extension ToolExecutor {
             throw ToolError("layout '\(layout.rawValue)' needs every slot filled. Missing: \(missing.sorted().joined(separator: ", "))")
         }
         guard !(usesMedia && usesClip) else {
-            throw ToolError("apply_layout: don't mix 'mediaRef' with 'clipId'/'clipIds' — either place new clips (all mediaRef) or re-layout existing clips (all clipId/clipIds).")
+            throw ToolError("apply_layout: don't mix 'mediaRef' and 'clipIds' — either place new clips (all mediaRef) or re-layout existing clips (all clipIds).")
         }
 
         let startFrame = input.startFrame ?? 0
@@ -118,7 +111,7 @@ extension ToolExecutor {
             var rangesByTrack: [String: [(slot: String, start: Int, end: Int)]] = [:]
             var intervalsBySlot: [String: [(start: Int, end: Int)]] = [:]
             for e in entries {
-                for cid in e.entry.clipIdList! {
+                for cid in e.entry.clipIds! {
                     guard let loc = editor.findClip(id: cid) else { throw ToolError("slot '\(e.slot.id)': clip not found: \(cid)") }
                     let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
                     guard clip.mediaType == .video || clip.mediaType == .image else {
@@ -166,7 +159,7 @@ extension ToolExecutor {
                 }
             } else {
                 for e in entries {
-                    let cids = e.entry.clipIdList!
+                    let cids = e.entry.clipIds!
                     clipsBySlot[e.slot.id] = cids
                     summaries.append("\(e.slot.id) → \(cids.joined(separator: ", "))")
                 }
