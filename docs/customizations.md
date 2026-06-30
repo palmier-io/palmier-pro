@@ -19,11 +19,12 @@ Upstream sync note: preserve this as a project-level operating rule for both Cod
 
 ## OpenAI-Compatible BYOK Agent Runtime
 
-Intent: keep an independent OpenAI-compatible backend for user-provided keys instead of patching the Anthropic backend.
+Intent: keep independent non-Palmier agent backends for user-provided keys and local OAuth credentials instead of patching the Anthropic backend. Zhipu GLM uses its OpenAI-compatible endpoint with a Keychain API key. Codex OAuth reads the local `~/.codex/auth.json` access token before streaming and keeps only the selected model in Palmier settings.
 
 Primary paths:
 
 - `Sources/PalmierPro/Agent/Clients/OpenAICompatibleClient.swift`
+- `Sources/PalmierPro/Agent/Clients/AgentProviderCredentials.swift`
 - `Sources/PalmierPro/Agent/Clients/AnthropicProtocol.swift`
 - `Sources/PalmierPro/Agent/Clients/AgentClientTypes.swift`
 - `Sources/PalmierPro/Agent/AgentService.swift`
@@ -31,7 +32,7 @@ Primary paths:
 - `Sources/PalmierPro/Agent/Panel/AgentPanelView.swift`
 - `Tests/PalmierProTests/Agent/OpenAICompatibleClientTests.swift`
 
-Upstream sync note: preserve the provider boundary. Anthropic-specific request/streaming behavior should stay in the Anthropic path; OpenAI-compatible request/streaming behavior should stay in the independent client.
+Upstream sync note: preserve the provider boundary. Anthropic-specific request/streaming behavior should stay in the Anthropic path; OpenAI-compatible request/streaming behavior should stay in the independent client. Do not remove the Zhipu GLM or Codex OAuth options from Settings > Agent.
 
 ## Tool Error Pass-Through
 
