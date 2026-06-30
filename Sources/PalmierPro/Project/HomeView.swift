@@ -83,6 +83,7 @@ struct HomeView: View {
                         ProjectCard(
                             entry: entry,
                             onOpen: { AppState.shared.openProject(at: $0) },
+                            onDuplicate: { AppState.shared.duplicateProject(at: $0) },
                             onRemove: { ProjectRegistry.shared.remove($0) }
                         )
                     }
