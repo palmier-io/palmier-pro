@@ -180,7 +180,7 @@ extension EditorViewModel {
         return rippleDeleteRangesOnTrack(trackIndex: anchorLoc.trackIndex, ranges: ranges)
     }
 
-    /// Deletes project-frame ranges from one track (spanning any clips) and closes the gaps; cuts linked A/V partners, shifts sync-locked tracks, refuses if any can't absorb.
+    /// Deletes project-frame ranges from one track (spanning any clips) and closes the gaps; cuts linked A/V partners and sync-locked tracks, refuses if any can't absorb.
     /// Tracks in `ignoreSyncLockTrackIndices` are treated as unlocked for this call only
     func rippleDeleteRangesOnTrack(trackIndex: Int, ranges: [FrameRange], ignoreSyncLockTrackIndices: Set<Int> = []) -> RippleRangesOutcome {
         guard timeline.tracks.indices.contains(trackIndex) else {
@@ -202,9 +202,11 @@ extension EditorViewModel {
                 if let l = findClip(id: pid) { clearTrackIds.insert(timeline.tracks[l.trackIndex].id) }
             }
         }
+        for track in timeline.tracks where track.syncLocked && !ignoredTrackIds.contains(track.id) {
+            clearTrackIds.insert(track.id)
+        }
 
-        // Refuse up front if a sync-locked follower can't absorb the shift. These tracks
-        // aren't cleared, so their clips are unchanged when the shift is applied below.
+        // Refuse up front if a sync-locked follower can't absorb the shift after clearing.
         for ti in timeline.tracks.indices {
             let track = timeline.tracks[ti]
             guard !clearTrackIds.contains(track.id), track.syncLocked, !ignoredTrackIds.contains(track.id) else { continue }
