@@ -8,7 +8,11 @@ struct DiskCache: Sendable {
     let directory: URL
 
     init(named name: String) {
-        directory = Self.rootDirectory.appendingPathComponent(name, isDirectory: true)
+        self.init(directory: Self.rootDirectory.appendingPathComponent(name, isDirectory: true))
+    }
+
+    init(directory: URL) {
+        self.directory = directory
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 

@@ -467,10 +467,10 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addCaptions,
-            description: "Transcribes spoken audio and creates styled caption text clips. Omit clipIds to auto-pick speech; pass clipIds to caption specific audio/video clips. Per-word animations are timed from transcript.",
+            description: "Transcribes spoken audio and creates styled caption text clips. By default — clipIds omitted — captions the timeline's main spoken audio; prefer this, it's the most consistent. Only pass clipIds to caption a specific clip or part. Per-word animations are timed from transcript.",
             inputSchema: objectSchema(
                 properties: mergedProperties([
-                    "clipIds": ["type": "array", "items": ["type": "string"], "description": "Audio/video clips to caption."],
+                    "clipIds": ["type": "array", "items": ["type": "string"], "description": "Optional. Scope captioning to these audio/video clips. Omit (default) to caption the timeline's main spoken audio."],
                     "language": ["type": "string", "description": "BCP-47 speech language."],
                     "centerX": ["type": "number", "description": "0-1 horizontal center."],
                     "centerY": ["type": "number", "description": "0-1 vertical center."],
