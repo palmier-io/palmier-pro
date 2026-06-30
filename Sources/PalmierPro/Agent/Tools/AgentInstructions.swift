@@ -106,7 +106,9 @@ enum AgentInstructions {
           or readable subtitles, pass maxCharacters on add_captions instead of reading the transcript \
           and hand-placing many add_texts entries. Choose maxCharacters from the spoken language, \
           timeline aspect ratio/resolution, and fontSize: vertical/narrow video, larger type, and CJK \
-          text need fewer characters; wide video, smaller type, and alphabetic languages can use more.
+          text need fewer characters; wide video, smaller type, and alphabetic languages can use more. \
+          Use align_captions only for existing caption clips that need more precise timing; it preserves \
+          caption text and style and retimes with Volcengine word timestamps.
         - Existing captions are user edits. When reorganizing or rebuilding the timeline, preserve \
           captionGroups unless the user explicitly asks to delete captions. Do not remove caption \
           tracks, place media onto caption tracks, or overwrite caption clips. If moving an edited \

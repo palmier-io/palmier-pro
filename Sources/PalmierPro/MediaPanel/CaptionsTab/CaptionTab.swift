@@ -17,6 +17,7 @@ struct CaptionTab: View {
     @State private var censorProfanity = false
     @State private var maxWords: Int?
     @State private var locale: Locale?
+    @State private var transcriptionProvider: CaptionTranscriptionProvider = CaptionTranscriptionProviderPreference.stored
     @State private var supportedLocales: [Locale] = []
     @State private var isGenerating = false
     @State private var note: String?
@@ -111,6 +112,25 @@ struct CaptionTab: View {
                 label: "Source",
                 labelHelp: "Uses selected clips when available, otherwise all captionable audio. Choose a track to limit captions."
             ) { sourceMenu }
+            InspectorRow(
+                icon: "server.rack",
+                label: "Backend",
+                labelHelp: "Local runs on-device. Volcengine uses your configured Speech API key."
+            ) {
+                Menu {
+                    ForEach(CaptionTranscriptionProvider.allCases) { provider in
+                        Button {
+                            transcriptionProvider = provider
+                            CaptionTranscriptionProviderPreference.save(provider)
+                        } label: {
+                            Label(provider.displayName, systemImage: transcriptionProvider == provider ? "checkmark" : "")
+                        }
+                    }
+                } label: {
+                    menuValueLabel(transcriptionProvider.displayName)
+                }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+            }
             InspectorRow(icon: "globe", label: "Language") {
                 Menu {
                     Button("Auto") { locale = nil }
@@ -442,7 +462,8 @@ struct CaptionTab: View {
         let request = EditorViewModel.CaptionRequest(
             sourceClipIds: sourceIds, autoDetect: isAutoSource, style: style, center: center,
             textCase: textCase, censorProfanity: censorProfanity, locale: locale, maxWords: maxWords,
-            animation: TextAnimation(preset: animationPreset, highlight: animationHighlight)
+            animation: TextAnimation(preset: animationPreset, highlight: animationHighlight),
+            transcriptionProvider: transcriptionProvider
         )
         Task {
             isGenerating = true

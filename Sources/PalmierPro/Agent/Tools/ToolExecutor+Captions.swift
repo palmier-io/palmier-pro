@@ -3,8 +3,12 @@ import Foundation
 
 extension ToolExecutor {
     private static let addCaptionsAllowedKeys: Set<String> = Set([
-        "clipIds", "centerX", "centerY", "textCase", "censorProfanity", "language", "animation", "highlightColor", "maxCharacters", "maxWords",
+        "clipIds", "centerX", "centerY", "textCase", "censorProfanity", "language", "animation", "highlightColor", "maxCharacters", "maxWords", "transcriptionProvider",
     ]).union(agentTextStylePatchAllowedKeys)
+
+    private static let alignCaptionsAllowedKeys: Set<String> = [
+        "captionGroupId", "captionClipIds", "sourceClipIds", "language",
+    ]
 
     func addCaptions(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.addCaptionsAllowedKeys, path: "add_captions")
@@ -49,6 +53,16 @@ extension ToolExecutor {
             maxWords = n
         }
 
+        let transcriptionProvider: CaptionTranscriptionProvider
+        if let raw = args.string("transcriptionProvider") {
+            guard let parsed = CaptionTranscriptionProvider(rawValue: raw) else {
+                throw ToolError("add_captions: transcriptionProvider must be local or volcengine (got \(raw))")
+            }
+            transcriptionProvider = parsed
+        } else {
+            transcriptionProvider = CaptionTranscriptionProviderPreference.stored
+        }
+
         let request = EditorViewModel.CaptionRequest(
             sourceClipIds: clipIds,
             autoDetect: clipIds.isEmpty,
@@ -59,12 +73,31 @@ extension ToolExecutor {
             locale: locale,
             maxCharacters: maxCharacters,
             maxWords: maxWords,
-            animation: animation
+            animation: animation,
+            transcriptionProvider: transcriptionProvider
         )
 
         let ids = try await editor.generateCaptions(for: request)
         guard !ids.isEmpty else { throw ToolError("No speech detected to caption.") }
         let suffix = animation.isActive ? " (\(animation.preset.rawValue))" : ""
         return .ok("Added \(ids.count) caption\(ids.count == 1 ? "" : "s")\(suffix).")
+    }
+
+    func alignCaptions(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
+        try validateUnknownKeys(args, allowed: Self.alignCaptionsAllowedKeys, path: "align_captions")
+        guard VolcengineSpeechAvailability.canExposeCaptionAlignment else {
+            throw ToolError("align_captions: Volcengine Speech API key is not configured.")
+        }
+        let sourceClipIds = (args["sourceClipIds"] as? [Any])?.compactMap { $0 as? String } ?? []
+        let captionClipIds = (args["captionClipIds"] as? [Any])?.compactMap { $0 as? String } ?? []
+        let locale = try await Self.parseLocale(args, path: "align_captions")
+        let ids = try await editor.alignCaptionsWithVolcengine(
+            sourceClipIds: sourceClipIds,
+            captionGroupId: args.string("captionGroupId"),
+            captionClipIds: captionClipIds,
+            locale: locale
+        )
+        guard !ids.isEmpty else { throw ToolError("align_captions: no captions were aligned.") }
+        return .ok("Aligned \(ids.count) caption\(ids.count == 1 ? "" : "s").")
     }
 }

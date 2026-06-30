@@ -150,7 +150,14 @@ func parseTools(from source: String) throws -> [ToolDoc] {
             throw DocError.parse("Missing description for \(rawName)")
         }
         let (description, descEnd) = try parseDescription(in: source, from: descLabel.upperBound)
-        let availability = rawName == "read_skill" ? "In-app agent only" : "In-app agent and MCP"
+        let availability: String
+        if rawName == "read_skill" {
+            availability = "In-app agent only"
+        } else if rawName == "align_captions" {
+            availability = "In-app agent and MCP when Volcengine Speech is configured"
+        } else {
+            availability = "In-app agent and MCP"
+        }
         docs.append(ToolDoc(
             caseName: caseName,
             rawName: rawName,

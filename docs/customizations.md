@@ -106,6 +106,25 @@ Primary paths:
 
 Upstream sync note: preserve deterministic local tokenization as the default. AI-based semantic regrouping can be layered later, but it should not replace the local tokenizer or rewrite transcript text.
 
+## Volcengine Speech Captions
+
+Intent: users can choose Volcengine Seed ASR as an independent caption transcription backend, store their own API key in Keychain, and expose precise caption alignment tools only when that backend is configured.
+
+Primary paths:
+
+- `Sources/PalmierPro/Transcription/TranscriptionProvider.swift`
+- `Sources/PalmierPro/Transcription/VolcengineSpeechClient.swift`
+- `Sources/PalmierPro/Transcription/Transcription.swift`
+- `Sources/PalmierPro/Transcription/TranscriptCache.swift`
+- `Sources/PalmierPro/Editor/ViewModel/EditorViewModel+Captions.swift`
+- `Sources/PalmierPro/MediaPanel/CaptionsTab/CaptionTab.swift`
+- `Sources/PalmierPro/Settings/VolcengineSpeechPane.swift`
+- `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift`
+- `Sources/PalmierPro/Agent/MCP/MCPService.swift`
+- `Tests/PalmierProTests/Agent/ToolDefinitionAvailabilityTests.swift`
+
+Upstream sync note: keep the local Apple Speech backend as the default and keep Volcengine as a separate provider. `align_captions` must remain hidden unless the Volcengine Speech API key and resource configuration are available.
+
 ## Palmier UI Feature Policy
 
 Intent: the Gitnapp build hides model-management settings, while anonymous crash/error reporting is forced off.

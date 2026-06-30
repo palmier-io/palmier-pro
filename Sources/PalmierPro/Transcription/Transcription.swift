@@ -44,6 +44,8 @@ enum TranscriptionError: LocalizedError {
     case decodeFailed
     case audioExtractionFailed(String)
     case analysisFailed(String)
+    case missingAPIKey(String)
+    case httpError(status: Int, body: String)
 
     var errorDescription: String? {
         switch self {
@@ -57,15 +59,34 @@ enum TranscriptionError: LocalizedError {
             return "Audio extraction failed: \(reason)"
         case .analysisFailed(let reason):
             return "Transcription failed: \(reason)"
+        case .missingAPIKey(let reason):
+            return reason
+        case .httpError(let status, let body):
+            return "Transcription API error (\(status)): \(body.prefix(500))"
         }
     }
 }
 
 enum Transcription {
-    static func transcribeVideoAudio(videoURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil, sourceRange: ClosedRange<Double>? = nil) async throws -> TranscriptionResult {
-        let tempAudioURL = try await extractAudioTrack(from: videoURL, range: sourceRange)
+    static func transcribeVideoAudio(
+        videoURL: URL,
+        censorProfanity: Bool = false,
+        preferredLocale: Locale? = nil,
+        sourceRange: ClosedRange<Double>? = nil,
+        provider: CaptionTranscriptionProvider = .local
+    ) async throws -> TranscriptionResult {
+        let tempAudioURL = try await extractAudioTrack(
+            from: videoURL,
+            range: sourceRange,
+            fileExtension: provider == .volcengine ? "wav" : "caf"
+        )
         defer { try? FileManager.default.removeItem(at: tempAudioURL) }
-        let result = try await transcribe(fileURL: tempAudioURL, censorProfanity: censorProfanity, preferredLocale: preferredLocale)
+        let result = try await transcribe(
+            fileURL: tempAudioURL,
+            censorProfanity: censorProfanity,
+            preferredLocale: preferredLocale,
+            provider: provider
+        )
         return result.offsetting(by: sourceRange?.lowerBound ?? 0)
     }
 
@@ -89,7 +110,24 @@ enum Transcription {
         return nil
     }
 
-    static func transcribe(fileURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil, sourceRange: ClosedRange<Double>? = nil) async throws -> TranscriptionResult {
+    static func transcribe(
+        fileURL: URL,
+        censorProfanity: Bool = false,
+        preferredLocale: Locale? = nil,
+        sourceRange: ClosedRange<Double>? = nil,
+        provider: CaptionTranscriptionProvider = .local
+    ) async throws -> TranscriptionResult {
+        if provider == .volcengine {
+            let tempURL = try await extractAudioTrack(from: fileURL, range: sourceRange, fileExtension: "wav")
+            defer { try? FileManager.default.removeItem(at: tempURL) }
+            guard let settings = VolcengineSpeechSettings.load() else {
+                throw TranscriptionError.analysisFailed("Volcengine Speech endpoint is not configured.")
+            }
+            let result = try await VolcengineSpeechClient(settings: settings)
+                .transcribe(audioURL: tempURL, preferredLocale: preferredLocale)
+            return result.offsetting(by: sourceRange?.lowerBound ?? 0)
+        }
+
         if let sourceRange {
             let tempURL = try await extractAudioTrack(from: fileURL, range: sourceRange)
             defer { try? FileManager.default.removeItem(at: tempURL) }
@@ -200,9 +238,13 @@ enum Transcription {
     }
 
     /// Decode the asset's audio track to a PCM file with AVAssetReader
-    private static func extractAudioTrack(from videoURL: URL, range: ClosedRange<Double>? = nil) async throws -> URL {
+    private static func extractAudioTrack(
+        from videoURL: URL,
+        range: ClosedRange<Double>? = nil,
+        fileExtension: String = "caf"
+    ) async throws -> URL {
         let outURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("palmier-stt-\(UUID().uuidString).caf")
+            .appendingPathComponent("palmier-stt-\(UUID().uuidString).\(fileExtension)")
         Log.transcription.notice(
             "extract start video=\(videoURL.lastPathComponent)",
             telemetry: "Transcription audio extraction started",

@@ -149,6 +149,7 @@ private struct SettingsDetail: View {
                                 AccountPane()
                             case .general:
                                 NotificationsPane()
+                                VolcengineSpeechPane()
                                 PrivacyPane()
                             case .models:
                                 ModelsPane()
