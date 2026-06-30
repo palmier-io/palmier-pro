@@ -53,6 +53,17 @@ struct CaptionBuilderTests {
         #expect(phrases.map(\.text) == ["supercalifragilistic"])
     }
 
+    @Test func splitsContinuousTextByMaxCharacters() {
+        let phrases = CaptionBuilder.phrases(
+            for: segment("这个输入不对生成字幕太长了", 0, 10),
+            fits: { CaptionBuilder.visibleCharacterCount($0) <= 10 },
+            minDuration: 0,
+            maxCharacters: 10
+        )
+        #expect(phrases.map(\.text) == ["这个输入不对生成字幕", "太长了"])
+        #expect(phrases.allSatisfy { CaptionBuilder.visibleCharacterCount($0.text) <= 10 })
+    }
+
     private let clip = Clip(mediaRef: "m", startFrame: 30, durationFrames: 120)
 
     @Test func mapsSecondsThroughClipPlacement() {

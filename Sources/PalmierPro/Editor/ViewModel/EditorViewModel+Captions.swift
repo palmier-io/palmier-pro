@@ -10,6 +10,7 @@ extension EditorViewModel {
         var textCase: CaptionCase = .auto
         var censorProfanity: Bool = false
         var locale: Locale? = nil
+        var maxCharacters: Int? = nil
     }
 
     enum CaptionCase: String, CaseIterable, Sendable {
@@ -170,8 +171,15 @@ extension EditorViewModel {
                 CaptionBuilder.phrases(
                     for: seg,
                     words: wordsIn(seg, result.words),
-                    fits: { captionLineFits($0, style: request.style) },
-                    minDuration: AppTheme.Caption.minDisplayDuration
+                    fits: { line in
+                        if let maxCharacters = request.maxCharacters,
+                           CaptionBuilder.visibleCharacterCount(line) > maxCharacters {
+                            return false
+                        }
+                        return captionLineFits(line, style: request.style)
+                    },
+                    minDuration: AppTheme.Caption.minDisplayDuration,
+                    maxCharacters: request.maxCharacters
                 )
             }
             for p in phrases {

@@ -192,11 +192,13 @@ struct OpenAICompatibleClient: AgentClient {
             ),
             options: [.sortedKeys]
         )
+        AgentDebugLog.trace("openai request host=\(settings.endpoint.host ?? "-") model=\(settings.model) messages=\(messages.count) tools=\(tools.count)")
 
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
             var body = ""
             for try await line in bytes.lines { body += line + "\n" }
+            AgentDebugLog.trace("openai http error status=\(http.statusCode) bodyBytes=\(body.utf8.count)")
             throw OpenAICompatibleClientError.httpError(status: http.statusCode, body: body)
         }
 
@@ -412,6 +414,7 @@ enum OpenAICompatibleSSE {
                 continuation.yield(event)
             }
         }
+        AgentDebugLog.trace("openai sse eof pending=\(pendingTools.count)")
         for event in finishStream(pendingTools: &pendingTools) {
             continuation.yield(event)
         }
@@ -420,7 +423,10 @@ enum OpenAICompatibleSSE {
     static func events(fromDataLine line: String, pendingTools: inout [Int: PendingToolCall]) throws -> [AgentStreamEvent] {
         guard line.hasPrefix("data:") else { return [] }
         let payload = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
-        guard payload != "[DONE]" else { return finishStream(pendingTools: &pendingTools) }
+        guard payload != "[DONE]" else {
+            AgentDebugLog.trace("openai sse done pending=\(pendingTools.count)")
+            return finishStream(pendingTools: &pendingTools)
+        }
         guard let data = payload.data(using: .utf8),
               let event = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
 
@@ -436,6 +442,7 @@ enum OpenAICompatibleSSE {
                 appendDeltaEvents(delta, pendingTools: &pendingTools, output: &out)
             }
             if let finishReason = choice["finish_reason"] as? String {
+                AgentDebugLog.trace("openai sse finish reason=\(finishReason) pending=\(pendingTools.count)")
                 appendFinishEvents(finishReason, pendingTools: &pendingTools, output: &out)
             }
         }
@@ -445,6 +452,7 @@ enum OpenAICompatibleSSE {
     static func finishStream(pendingTools: inout [Int: PendingToolCall]) -> [AgentStreamEvent] {
         var out: [AgentStreamEvent] = []
         if flushPendingToolEvents(pendingTools: &pendingTools, output: &out) {
+            AgentDebugLog.trace("openai sse finishStream flushedTools=\(out.count)")
             out.append(.messageStop(stopReason: .toolUse))
         }
         return out
@@ -465,7 +473,12 @@ enum OpenAICompatibleSSE {
                 var pending = pendingTools[index] ?? PendingToolCall(id: "", name: "", arguments: "")
                 if let id = call["id"] as? String, !id.isEmpty { pending.id = id }
                 if let function = call["function"] as? [String: Any] {
-                    if let name = function["name"] as? String, !name.isEmpty { pending.name = name }
+                    if let name = function["name"] as? String, !name.isEmpty {
+                        if pending.name != name {
+                            AgentDebugLog.trace("openai sse tool_delta start index=\(index) name=\(name)")
+                        }
+                        pending.name = name
+                    }
                     if let arguments = function["arguments"] as? String { pending.arguments += arguments }
                 }
                 pendingTools[index] = pending
@@ -474,7 +487,12 @@ enum OpenAICompatibleSSE {
 
         if let function = delta["function_call"] as? [String: Any] {
             var pending = pendingTools[0] ?? PendingToolCall(id: "", name: "", arguments: "")
-            if let name = function["name"] as? String, !name.isEmpty { pending.name = name }
+            if let name = function["name"] as? String, !name.isEmpty {
+                if pending.name != name {
+                    AgentDebugLog.trace("openai sse function_delta start name=\(name)")
+                }
+                pending.name = name
+            }
             if let arguments = function["arguments"] as? String { pending.arguments += arguments }
             pendingTools[0] = pending
         }
@@ -518,6 +536,7 @@ enum OpenAICompatibleSSE {
                 name: pending.name,
                 inputJSON: pending.arguments.isEmpty ? "{}" : pending.arguments
             ))
+            AgentDebugLog.trace("openai sse flush tool name=\(pending.name) id=\(pending.id.isEmpty ? "call_\(index)" : pending.id) argBytes=\(pending.arguments.utf8.count)")
             emittedTool = true
         }
         pendingTools.removeAll()

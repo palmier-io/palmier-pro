@@ -13,6 +13,10 @@ swift run
 
 - Keep comments minimal. Only write one when the *why* is non-obvious. Don't restate what the code does, don't narrate the current change, don't leave `// removed X` breadcrumbs. One short line max — no multi-line comment blocks or paragraph docstrings.
 
+## Agent behavior
+
+- 不要给模型的工具调用错误做兜底、补参、静默修正或自动改写。按原样返回工具错误，让模型根据错误自动重试。
+
 ## Design System
 
 All UI styling MUST use `AppTheme` constants from `Sources/PalmierPro/UI/AppTheme.swift`. Never use hardcoded numeric values for:
@@ -41,4 +45,3 @@ Rule: **any drop target that spans an area containing other drop targets must us
 Palmier Pro speaks like a quietly capable native Mac app for filmmakers: direct, technical, calm, and 
 confident. Prefer Apple HIG-style terseness over warmth. Never chatty or cute. Never marketing. When the
 product needs to ask for action, lead with the action verb; when it reports state, name the thing.
-

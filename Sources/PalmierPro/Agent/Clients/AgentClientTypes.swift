@@ -93,3 +93,12 @@ enum AgentUsageLog {
         #endif
     }
 }
+
+enum AgentDebugLog {
+    static func trace(_ message: @autoclosure () -> String) {
+        #if DEBUG
+        guard ProcessInfo.processInfo.environment["PALMIER_AGENT_DEBUG"] == "1" else { return }
+        print("[agent-debug] \(message())")
+        #endif
+    }
+}

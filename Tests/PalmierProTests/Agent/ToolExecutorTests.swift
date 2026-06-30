@@ -517,6 +517,12 @@ struct ToolExecutorClipTests {
         return (h, asset)
     }
 
+    private func captionClip(id: String = "caption-1", start: Int = 0, duration: Int = 60) -> Clip {
+        var clip = Fixtures.clip(id: id, mediaType: .text, start: start, duration: duration)
+        clip.captionGroupId = "captions-1"
+        return clip
+    }
+
     // MARK: - set_clip_properties speed
 
     @Test func setSpeedRescalesDurationToPreserveSource() async throws {
@@ -616,6 +622,24 @@ struct ToolExecutorClipTests {
         ])
         #expect(result.isError)
         #expect(ToolHarness.textOf(result).contains("not compatible"))
+    }
+
+    @Test func addClipsRejectsCaptionTrackByDefault() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [captionClip()]),
+        ]))
+        let asset = h.addAsset(type: .video)
+        let result = await h.runRaw("add_clips", args: [
+            "entries": [[
+                "mediaRef": asset.id,
+                "trackIndex": 0,
+                "startFrame": 0,
+                "durationFrames": 30,
+            ]]
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("contains captions"))
+        #expect(h.editor.timeline.tracks[0].clips.contains { $0.captionGroupId != nil })
     }
 
     @Test func addClipsRejectsZeroDuration() async throws {
@@ -741,6 +765,20 @@ struct ToolExecutorClipTests {
         #expect(ToolHarness.textOf(result).contains("Mixed trackIndex"))
     }
 
+    @Test func insertClipsRejectsCaptionTrackByDefault() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [captionClip()]),
+        ]))
+        let asset = h.addAsset(type: .video)
+        let result = await h.runRaw("insert_clips", args: [
+            "trackIndex": 0,
+            "atFrame": 0,
+            "entries": [["mediaRef": asset.id, "durationFrames": 30]],
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("contains captions"))
+    }
+
     // MARK: - remove_clips
 
     @Test func removeClipsDropsClipsByIds() async throws {
@@ -807,6 +845,25 @@ struct ToolExecutorClipTests {
         let h = ToolHarness()
         let result = await h.runRaw("remove_clips", args: ["clipIds": ["does-not-exist"]])
         #expect(result.isError)
+    }
+
+    @Test func removeClipsRejectsCaptionClipByDefault() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [captionClip(id: "cap")]),
+        ]))
+        let result = await h.runRaw("remove_clips", args: ["clipIds": ["cap"]])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("caption clips"))
+        #expect(h.editor.timeline.tracks[0].clips.contains { $0.id == "cap" })
+    }
+
+    @Test func removeClipsAllowsCaptionClipWhenExplicit() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [captionClip(id: "cap")]),
+        ]))
+        let result = await h.runRaw("remove_clips", args: ["clipIds": ["cap"], "includeCaptions": true])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        #expect(h.editor.timeline.tracks.flatMap(\.clips).isEmpty)
     }
 
     // MARK: - split_clips
@@ -900,6 +957,18 @@ struct ToolExecutorClipTests {
         #expect(h.editor.timeline.tracks[0].clips.count == 2)
     }
 
+    @Test func splitClipsRejectsCaptionClipByDefault() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [captionClip(id: "cap", start: 0, duration: 60)]),
+        ]))
+        let result = await h.runRaw("split_clips", args: [
+            "splits": [["clipId": "cap", "atFrame": 30]]
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("is a caption"))
+        #expect(h.editor.timeline.tracks[0].clips.count == 1)
+    }
+
     // MARK: - move_clips
 
     /// Add a video clip and return its id, for tests that need an existing clip.
@@ -969,6 +1038,29 @@ struct ToolExecutorClipTests {
         let h = ToolHarness()
         let result = await h.runRaw("move_clips", args: ["moves": []])
         #expect(result.isError)
+    }
+
+    @Test func moveClipsRejectsCaptionClipByDefault() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [captionClip(id: "cap")]),
+        ]))
+        let result = await h.runRaw("move_clips", args: [
+            "moves": [["clipId": "cap", "toFrame": 30]]
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("is a caption"))
+    }
+
+    @Test func moveClipsRejectsCaptionDestinationTrackByDefault() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [captionClip(id: "cap")]),
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "v1", start: 120, duration: 30)]),
+        ]))
+        let result = await h.runRaw("move_clips", args: [
+            "moves": [["clipId": "v1", "toTrack": 0, "toFrame": 30]]
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("contains captions"))
     }
 
     // MARK: - move_clips: linked-partner propagation

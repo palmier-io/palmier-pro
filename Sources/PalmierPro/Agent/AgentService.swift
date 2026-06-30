@@ -433,8 +433,10 @@ final class AgentService {
     private func runLoop() async {
         guard let client = selectClient() else {
             streamError = .upstream("No backend available.")
+            AgentDebugLog.trace("runLoop no backend")
             return
         }
+        AgentDebugLog.trace("runLoop start provider=\(activeProvider.rawValue) messages=\(messages.count)")
         await SkillStore.shared.reloadInBackground()
         let tools = ToolDefinitions.inAppAgent.map {
             AgentToolSchema(name: $0.name.rawValue, description: $0.description, inputSchema: $0.inputSchema)
@@ -446,6 +448,7 @@ final class AgentService {
             let assistant = AgentMessage(role: .assistant, blocks: [])
             messages.append(assistant)
             let assistantID = assistant.id
+            AgentDebugLog.trace("turn request provider=\(activeProvider.rawValue) apiMessages=\(apiMsgs.count) tools=\(tools.count)")
 
             do {
                 let stream = client.stream(
@@ -455,34 +458,46 @@ final class AgentService {
                 )
 
                 var stopReason: AgentStopReason = .endTurn
+                var textChars = 0
+                var toolUseCount = 0
 
                 for try await event in stream {
                     try Task.checkCancellation()
                     switch event {
                     case .textDelta(let chunk):
+                        textChars += chunk.count
                         appendTextDelta(chunk, toAssistant: assistantID)
                     case .toolUseComplete(let id, let name, let inputJSON):
+                        toolUseCount += 1
+                        AgentDebugLog.trace("stream tool_use name=\(name) id=\(id) inputBytes=\(inputJSON.utf8.count)")
                         appendToolUse(id: id, name: name, inputJSON: inputJSON, toAssistant: assistantID)
                     case .messageStop(let reason):
                         stopReason = reason
+                        AgentDebugLog.trace("stream stop reason=\(reason.rawValue)")
                     }
                 }
+                AgentDebugLog.trace("turn stream complete stop=\(stopReason.rawValue) textChars=\(textChars) toolUses=\(toolUseCount)")
 
                 if stopReason == .toolUse {
                     await runPendingToolUses(assistantID: assistantID)
+                    AgentDebugLog.trace("turn continue after tool results")
                     continue loop
                 }
+                AgentDebugLog.trace("runLoop end stop=\(stopReason.rawValue)")
                 break loop
             } catch is CancellationError {
                 dropEmptyAssistantTurn(id: assistantID)
+                AgentDebugLog.trace("runLoop cancelled")
                 break loop
             } catch let err as PalmierClientError {
                 dropEmptyAssistantTurn(id: assistantID)
                 streamError = err
+                AgentDebugLog.trace("runLoop palmier error=\(err.localizedDescription)")
                 break loop
             } catch {
                 dropEmptyAssistantTurn(id: assistantID)
                 streamError = .upstream(error.localizedDescription)
+                AgentDebugLog.trace("runLoop error=\(error.localizedDescription)")
                 break loop
             }
         }
@@ -516,6 +531,7 @@ final class AgentService {
         guard let assistantIndex = assistantMessageIndex(id: assistantID) else { return }
         guard let executor = toolExecutor else {
             messages.append(AgentMessage(role: .user, blocks: [.text("Tool executor unavailable.")]))
+            AgentDebugLog.trace("tool executor unavailable")
             return
         }
 
@@ -524,18 +540,26 @@ final class AgentService {
             return nil
         }
         let alreadyResolved = resolvedToolUseIds(afterAssistantAt: assistantIndex)
+        AgentDebugLog.trace("tool batch start count=\(toolUses.count) alreadyResolved=\(alreadyResolved.count)")
 
         var resultBlocks: [AgentContentBlock] = []
         for use in toolUses where !alreadyResolved.contains(use.id) {
             if Task.isCancelled {
                 resultBlocks.append(.toolResult(toolUseId: use.id, content: [.text("Cancelled")], isError: true))
+                AgentDebugLog.trace("tool cancelled name=\(use.name) id=\(use.id)")
                 continue
             }
+            AgentDebugLog.trace("tool execute start name=\(use.name) id=\(use.id) inputBytes=\(use.input.utf8.count)")
             let result = await executor.execute(name: use.name, args: Self.parseJSONObject(use.input))
+            let errorPreview = result.isError ? " error=\(Self.toolResultPreview(result))" : ""
+            AgentDebugLog.trace("tool execute end name=\(use.name) id=\(use.id) isError=\(result.isError) blocks=\(result.content.count)\(errorPreview)")
             resultBlocks.append(.toolResult(toolUseId: use.id, content: result.content, isError: result.isError))
         }
         if !resultBlocks.isEmpty {
             messages.append(AgentMessage(role: .user, blocks: resultBlocks))
+            AgentDebugLog.trace("tool batch appended results=\(resultBlocks.count) totalMessages=\(messages.count)")
+        } else {
+            AgentDebugLog.trace("tool batch no new results")
         }
     }
 
@@ -591,6 +615,15 @@ final class AgentService {
         guard let data = json.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
         return obj
+    }
+
+    private static func toolResultPreview(_ result: ToolResult) -> String {
+        let text = result.content.compactMap {
+            if case let .text(s) = $0 { return s }
+            return nil
+        }.joined(separator: " ")
+        let compact = text.replacingOccurrences(of: "\n", with: " ")
+        return String(compact.prefix(300))
     }
 
     private func syncMessagesIntoCurrentSession() {

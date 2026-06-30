@@ -84,6 +84,16 @@ enum AgentInstructions {
           says transcription looks wrong, ask for the spoken language and retry with language set. \
           When you then cut with remove_words, pass the SAME language — the indices are only valid \
           against the transcription that produced them, so a mismatch cuts the wrong words.
+        - For captions, use add_captions. When the user asks for a character limit, short captions, \
+          or readable subtitles, pass maxCharacters on add_captions instead of reading the transcript \
+          and hand-placing many add_texts entries. Choose maxCharacters from the spoken language, \
+          timeline aspect ratio/resolution, and fontSize: vertical/narrow video, larger type, and CJK \
+          text need fewer characters; wide video, smaller type, and alphabetic languages can use more.
+        - Existing captions are user edits. When reorganizing or rebuilding the timeline, preserve \
+          captionGroups unless the user explicitly asks to delete captions. Do not remove caption \
+          tracks, place media onto caption tracks, or overwrite caption clips. If moving an edited \
+          speech section requires captions to stay aligned, move the relevant caption clip IDs too \
+          and set includeCaptions=true for that intentional timing move.
 
         # Export
         - When the user asks to export/render/save, call export_project. It matches the Export \

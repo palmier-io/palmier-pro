@@ -4,6 +4,7 @@ import Foundation
 extension ToolExecutor {
     private static let addCaptionsAllowedKeys: Set<String> = [
         "clipIds", "fontName", "fontSize", "color", "centerX", "centerY", "textCase", "censorProfanity", "language",
+        "maxCharacters",
     ]
 
     func addCaptions(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -30,6 +31,19 @@ extension ToolExecutor {
             textCase = parsed
         }
 
+        let maxCharacters: Int?
+        if args.keys.contains("maxCharacters") {
+            guard let value = args.int("maxCharacters") else {
+                throw ToolError("add_captions: maxCharacters must be an integer")
+            }
+            guard (1...120).contains(value) else {
+                throw ToolError("add_captions: maxCharacters must be between 1 and 120")
+            }
+            maxCharacters = value
+        } else {
+            maxCharacters = nil
+        }
+
         let request = EditorViewModel.CaptionRequest(
             sourceClipIds: clipIds,
             autoDetect: clipIds.isEmpty,
@@ -37,7 +51,8 @@ extension ToolExecutor {
             center: center,
             textCase: textCase,
             censorProfanity: args.bool("censorProfanity") ?? false,
-            locale: locale
+            locale: locale,
+            maxCharacters: maxCharacters
         )
 
         let ids = try await editor.generateCaptions(for: request)
