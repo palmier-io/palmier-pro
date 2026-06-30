@@ -320,6 +320,7 @@ final class AgentService {
     func postSystemNotice(_ text: String) {
         messages.append(AgentMessage(role: .system, blocks: [.text(text)]))
         syncMessagesIntoCurrentSession()
+        onSessionsChanged?()
     }
 
     func cancel() {
