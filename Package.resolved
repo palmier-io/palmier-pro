@@ -1,5 +1,5 @@
 {
-  "originHash" : "806aa29ab163d9ddd0a263c12468e03f6dc0cc679d156fc54fb46aeab0640103",
+  "originHash" : "bcdc411617e85067059fa09bd28e751dee67f79f377c1891cbefa25b42df777f",
   "pins" : [
     {
       "identity" : "clerk-convex-swift",
@@ -53,6 +53,15 @@
       "state" : {
         "revision" : "63a8fcbd6621340a2410bc3e9575ac97058615f4",
         "version" : "13.0.6"
+      }
+    },
+    {
+      "identity" : "palmier-skill",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Gitnapp/palmier-skill.git",
+      "state" : {
+        "revision" : "3792935e24f350824ba7c6d3f7b843101c3f5918",
+        "version" : "0.1.0"
       }
     },
     {

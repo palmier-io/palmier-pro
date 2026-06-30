@@ -10,17 +10,17 @@ struct SkillCatalogEntry: Codable, Identifiable, Sendable {
     let path: String
 }
 
-/// Fetches the community skill catalog from the palmier-skills repo (raw GitHub CDN)
+/// Fetches the community skill catalog from the palmier-skill repo (raw GitHub CDN)
 @Observable
 @MainActor
 final class SkillCatalog {
     static let shared = SkillCatalog()
 
     /// Catalog source. Override with the PALMIER_SKILLS_BASE env var to test against a
-    /// local clone, e.g. file:///path/to/palmier-skills.
+    /// local clone, e.g. file:///path/to/palmier-skill.
     static var base: String {
         ProcessInfo.processInfo.environment["PALMIER_SKILLS_BASE"]
-            ?? "https://raw.githubusercontent.com/palmier-io/palmier-skills/main"
+            ?? "https://raw.githubusercontent.com/Gitnapp/palmier-skill/main"
     }
 
     private(set) var entries: [SkillCatalogEntry] = []

@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import CryptoKit
+import PalmierSkillBundle
 
 /// External coding agents that read the same SKILL.md format from their own folders.
 enum SkillExternalAgent: String, CaseIterable, Sendable {
@@ -52,12 +53,14 @@ final class SkillStore {
             .appendingPathComponent(".palmier/skills", isDirectory: true)
     }
 
-    private static var ledgerURL: URL { directory.appendingPathComponent(".installed.json") }
+    nonisolated private static var ledgerURL: URL { directory.appendingPathComponent(".installed.json") }
+    nonisolated private static var bundledLedgerURL: URL { directory.appendingPathComponent(".bundled.json") }
 
     private var reloadGeneration = 0
 
     private init() {
-        installed = Self.loadLedger()
+        installed = Self.loadLedger(from: Self.ledgerURL)
+        Self.installBundledSkillsIfNeeded()
         Task { await reloadInBackground() }
     }
 
@@ -157,9 +160,13 @@ final class SkillStore {
 
     /// Resolves `~/.palmier/skills/<id>/` only when `id` is a single safe path component.
     nonisolated static func skillDirectory(for id: String) -> URL? {
+        skillDirectory(for: id, root: directory)
+    }
+
+    nonisolated private static func skillDirectory(for id: String, root: URL) -> URL? {
         guard isValidSkillId(id) else { return nil }
-        let dir = directory.appendingPathComponent(id, isDirectory: true).standardizedFileURL
-        guard isUnderSkillsRoot(dir) else { return nil }
+        let dir = root.appendingPathComponent(id, isDirectory: true).standardizedFileURL
+        guard isUnderSkillsRoot(dir, root: root) else { return nil }
         return dir
     }
 
@@ -169,8 +176,8 @@ final class SkillStore {
         return true
     }
 
-    nonisolated private static func isUnderSkillsRoot(_ url: URL) -> Bool {
-        let root = directory.standardizedFileURL.path
+    nonisolated private static func isUnderSkillsRoot(_ url: URL, root: URL = directory) -> Bool {
+        let root = root.standardizedFileURL.path
         let path = url.standardizedFileURL.path
         return path == root || path.hasPrefix(root + "/")
     }
@@ -179,8 +186,8 @@ final class SkillStore {
         String(SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined().prefix(12))
     }
 
-    private static func loadLedger() -> [String: String] {
-        guard let data = try? Data(contentsOf: ledgerURL),
+    nonisolated private static func loadLedger(from url: URL) -> [String: String] {
+        guard let data = try? Data(contentsOf: url),
               let map = try? JSONDecoder().decode([String: String].self, from: data)
         else { return [:] }
         return map
@@ -189,6 +196,63 @@ final class SkillStore {
     private func writeLedger() {
         try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
         if let data = try? JSONEncoder().encode(installed) { try? data.write(to: Self.ledgerURL) }
+    }
+
+    nonisolated private static func writeLedger(_ ledger: [String: String], to url: URL) {
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let data = try? JSONEncoder().encode(ledger) { try? data.write(to: url) }
+    }
+
+    @discardableResult
+    nonisolated static func installBundledSkillsIfNeeded(
+        from sourceRoot: URL? = PalmierSkillBundle.skillsDirectory,
+        skillsRoot: URL = directory,
+        ledgerURL: URL = bundledLedgerURL
+    ) -> Bool {
+        guard let sourceRoot else { return false }
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(at: sourceRoot, includingPropertiesForKeys: nil) else { return false }
+
+        var ledger = loadLedger(from: ledgerURL)
+        var didWriteSkill = false
+        var didChangeLedger = false
+
+        for sourceDir in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            let id = sourceDir.lastPathComponent
+            guard let destDir = skillDirectory(for: id, root: skillsRoot) else { continue }
+
+            let sourceMD = sourceDir.appendingPathComponent("SKILL.md")
+            let destMD = destDir.appendingPathComponent("SKILL.md")
+            guard let data = try? Data(contentsOf: sourceMD),
+                  let text = String(data: data, encoding: .utf8),
+                  parseSkill(id: id, path: destMD, text: text) != nil else { continue }
+
+            let bundleSha = sha12(data)
+            if let current = try? Data(contentsOf: destMD) {
+                let currentSha = sha12(current)
+                if currentSha == bundleSha {
+                    if ledger[id] != bundleSha {
+                        ledger[id] = bundleSha
+                        didChangeLedger = true
+                    }
+                    continue
+                }
+                guard ledger[id] == currentSha else { continue }
+            }
+
+            do {
+                try fm.createDirectory(at: destDir, withIntermediateDirectories: true)
+                try data.write(to: destMD)
+                ledger[id] = bundleSha
+                didWriteSkill = true
+                didChangeLedger = true
+            } catch {
+                Log.agent.error("install bundled skill \(id) failed: \(error.localizedDescription)")
+            }
+        }
+
+        if didChangeLedger { writeLedger(ledger, to: ledgerURL) }
+        return didWriteSkill
     }
 
     func body(for id: String) -> String? { bodyCache[id] }
