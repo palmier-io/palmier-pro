@@ -16,12 +16,17 @@ enum ModelRegistry {
 
 
     @MainActor static func displayName(for id: String) -> String {
+        if let raw = OpenRouterModelId.raw(id) {
+            return OpenRouterService.shared.imageModel(rawId: raw)?.displayName
+                ?? OpenRouterService.shared.videoModel(rawId: raw)?.displayName
+                ?? raw
+        }
         switch byId[id] {
-        case .video(let m): m.displayName
-        case .image(let m): m.displayName
-        case .audio(let m): m.displayName
-        case .upscale(let m): m.displayName
-        case .none: id
+        case .video(let m): return m.displayName
+        case .image(let m): return m.displayName
+        case .audio(let m): return m.displayName
+        case .upscale(let m): return m.displayName
+        case .none: return id
         }
     }
 }

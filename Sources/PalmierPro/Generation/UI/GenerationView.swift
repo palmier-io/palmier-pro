@@ -5,11 +5,16 @@ struct GenerationView: View {
 
     @Environment(EditorViewModel.self) var editor
     @Bindable private var account = AccountService.shared
+    @Bindable private var openRouter = OpenRouterService.shared
     @State private var prompt = ""
     @State private var selectedType: GenerationType = .video
     @State private var selectedVideoModelIndex = 0
     @State private var selectedImageModelIndex = 0
     @State private var selectedAudioModelIndex = 0
+    @State private var selectedVideoOpenRouterModelIndex = 0
+    @State private var selectedImageOpenRouterModelIndex = 0
+    @State private var selectedVideoModelSource: VisualModelSource = .palmier
+    @State private var selectedImageModelSource: VisualModelSource = .palmier
     @State private var selectedDuration = 5
     @State private var selectedAspectRatio = "16:9"
     @State private var selectedResolution = "1080p"
@@ -103,6 +108,11 @@ struct GenerationView: View {
         var id: String { label }
     }
 
+    enum VisualModelSource: Hashable {
+        case palmier
+        case openRouter
+    }
+
     enum GenerationType: String, CaseIterable {
         case image = "Image"
         case video = "Video"
@@ -131,14 +141,43 @@ struct GenerationView: View {
     private var videoModels: [VideoModelConfig] { ModelCatalog.shared.video }
     private var imageModels: [ImageModelConfig] { ModelCatalog.shared.image }
     private var audioModels: [AudioModelConfig] { ModelCatalog.shared.audio }
+    private var openRouterVideoModels: [OpenRouterVideoModelConfig] { openRouter.video }
+    private var openRouterImageModels: [OpenRouterImageModelConfig] { openRouter.image }
 
     private var videoModel: VideoModelConfig { selectedModel(videoModels, at: selectedVideoModelIndex) }
     private var imageModel: ImageModelConfig { selectedModel(imageModels, at: selectedImageModelIndex) }
     private var audioModel: AudioModelConfig { selectedModel(audioModels, at: selectedAudioModelIndex) }
 
+    private var openRouterVideoModel: OpenRouterVideoModelConfig? {
+        selectedOptionalModel(openRouterVideoModels, at: selectedVideoOpenRouterModelIndex)
+    }
+
+    private var openRouterImageModel: OpenRouterImageModelConfig? {
+        selectedOptionalModel(openRouterImageModels, at: selectedImageOpenRouterModelIndex)
+    }
+
     private func selectedModel<T>(_ models: [T], at index: Int) -> T {
         let safeIndex = models.indices.contains(index) ? index : models.startIndex
         return models[safeIndex]
+    }
+
+    private func selectedOptionalModel<T>(_ models: [T], at index: Int) -> T? {
+        guard !models.isEmpty else { return nil }
+        let safeIndex = models.indices.contains(index) ? index : models.startIndex
+        return models[safeIndex]
+    }
+
+    private var usesOpenRouter: Bool {
+        selectedType == .video && selectedVideoModelSource == .openRouter
+            || selectedType == .image && selectedImageModelSource == .openRouter
+    }
+
+    private var usesOpenRouterVideo: Bool {
+        selectedType == .video && selectedVideoModelSource == .openRouter
+    }
+
+    private var usesOpenRouterImage: Bool {
+        selectedType == .image && selectedImageModelSource == .openRouter
     }
 
     private var enabledVideoModels: [(index: Int, model: VideoModelConfig)] {
@@ -156,6 +195,16 @@ struct GenerationView: View {
             .filter { ModelPreferences.shared.isEnabled($0.element.id) }
             .map { (index: $0.offset, model: $0.element) }
     }
+    private var enabledOpenRouterVideoModels: [(index: Int, model: OpenRouterVideoModelConfig)] {
+        openRouterVideoModels.enumerated()
+            .filter { ModelPreferences.shared.isEnabled(OpenRouterModelId.stored($0.element.id)) }
+            .map { (index: $0.offset, model: $0.element) }
+    }
+    private var enabledOpenRouterImageModels: [(index: Int, model: OpenRouterImageModelConfig)] {
+        openRouterImageModels.enumerated()
+            .filter { ModelPreferences.shared.isEnabled(OpenRouterModelId.stored($0.element.id)) }
+            .map { (index: $0.offset, model: $0.element) }
+    }
     private var enabledAudioModelsByCategory: [AudioModelConfig.Category: [(index: Int, model: AudioModelConfig)]] {
         var grouped: [AudioModelConfig.Category: [(index: Int, model: AudioModelConfig)]] = [:]
         grouped.reserveCapacity(AudioModelConfig.Category.allCases.count)
@@ -167,8 +216,28 @@ struct GenerationView: View {
 
     private func normalizeModelSelection() {
         switch selectedType {
-        case .video: selectedVideoModelIndex = enabledIndex(selectedVideoModelIndex, in: videoModels.map(\.id))
-        case .image: selectedImageModelIndex = enabledIndex(selectedImageModelIndex, in: imageModels.map(\.id))
+        case .video:
+            selectedVideoModelIndex = enabledIndex(selectedVideoModelIndex, in: videoModels.map(\.id))
+            selectedVideoOpenRouterModelIndex = enabledIndex(
+                selectedVideoOpenRouterModelIndex,
+                in: openRouterVideoModels.map { OpenRouterModelId.stored($0.id) }
+            )
+            if selectedVideoModelSource == .palmier, enabledVideoModels.isEmpty, !enabledOpenRouterVideoModels.isEmpty {
+                selectedVideoModelSource = .openRouter
+            } else if selectedVideoModelSource == .openRouter, enabledOpenRouterVideoModels.isEmpty, !enabledVideoModels.isEmpty {
+                selectedVideoModelSource = .palmier
+            }
+        case .image:
+            selectedImageModelIndex = enabledIndex(selectedImageModelIndex, in: imageModels.map(\.id))
+            selectedImageOpenRouterModelIndex = enabledIndex(
+                selectedImageOpenRouterModelIndex,
+                in: openRouterImageModels.map { OpenRouterModelId.stored($0.id) }
+            )
+            if selectedImageModelSource == .palmier, enabledImageModels.isEmpty, !enabledOpenRouterImageModels.isEmpty {
+                selectedImageModelSource = .openRouter
+            } else if selectedImageModelSource == .openRouter, enabledOpenRouterImageModels.isEmpty, !enabledImageModels.isEmpty {
+                selectedImageModelSource = .palmier
+            }
         case .audio: selectedAudioModelIndex = enabledIndex(selectedAudioModelIndex, in: audioModels.map(\.id))
         }
     }
@@ -185,6 +254,12 @@ struct GenerationView: View {
 
     private var canSubmit: Bool {
         guard canAffordGeneration else { return false }
+        if usesOpenRouterVideo {
+            return openRouter.hasAPIKey && openRouterVideoModel != nil && !isPromptEmpty
+        }
+        if usesOpenRouterImage {
+            return openRouter.hasAPIKey && openRouterImageModel != nil && !isPromptEmpty
+        }
         if selectedType == .video && videoModel.requiresSourceVideo {
             guard sourceVideo != nil else { return false }
             if videoModel.requiresReferenceImage && imageReferences.isEmpty { return false }
@@ -209,6 +284,7 @@ struct GenerationView: View {
     private var totalRefCount: Int { allRefs.count }
 
     private var isRefCapReached: Bool {
+        guard !usesOpenRouterVideo else { return false }
         if let total = videoModel.maxTotalReferences, totalRefCount >= total { return true }
         let imgFull = videoModel.maxReferenceImages == 0 || refImages.count >= videoModel.maxReferenceImages
         let vidFull = videoModel.maxReferenceVideos == 0 || refVideos.count >= videoModel.maxReferenceVideos
@@ -217,6 +293,7 @@ struct GenerationView: View {
     }
 
     private var showsRefSections: Bool {
+        guard !usesOpenRouterVideo else { return false }
         guard selectedType == .video, videoModel.supportsReferences else { return false }
         if videoModel.requiresSourceVideo { return false }
         if videoModel.framesAndReferencesExclusive {
@@ -226,6 +303,9 @@ struct GenerationView: View {
     }
 
     private var showsFrameStrip: Bool {
+        if usesOpenRouterVideo {
+            return openRouterVideoModel?.supportsFirstFrame == true
+        }
         guard selectedType == .video, videoModel.supportsFirstFrame else { return false }
         if videoModel.requiresSourceVideo { return false }
         if videoModel.framesAndReferencesExclusive {
@@ -236,41 +316,81 @@ struct GenerationView: View {
 
     private var hasAnySettings: Bool {
         switch selectedType {
-        case .video: return !videoModel.durations.isEmpty || !videoModel.aspectRatios.isEmpty || videoModel.resolutions != nil || videoModel.audioDiscountRate != nil
-        case .image: return !imageModel.aspectRatios.isEmpty || imageModel.resolutions != nil || imageModel.qualities != nil || imageModel.maxImages > 1
+        case .video:
+            if let model = openRouterVideoModel, selectedVideoModelSource == .openRouter {
+                return !model.durations.isEmpty || !model.aspectRatios.isEmpty || model.resolutions != nil || model.canGenerateAudio
+            }
+            return !videoModel.durations.isEmpty || !videoModel.aspectRatios.isEmpty || videoModel.resolutions != nil || videoModel.audioDiscountRate != nil
+        case .image:
+            if let model = openRouterImageModel, selectedImageModelSource == .openRouter {
+                return !model.aspectRatios.isEmpty || model.resolutions != nil || model.qualities != nil || model.maxImages > 1
+            }
+            return !imageModel.aspectRatios.isEmpty || imageModel.resolutions != nil || imageModel.qualities != nil || imageModel.maxImages > 1
         case .audio: return audioModel.supportsInstrumental || audioModel.durations != nil
         }
     }
 
     private var currentModelName: String {
         switch selectedType {
-        case .video: videoModel.displayName
-        case .image: imageModel.displayName
-        case .audio: audioModel.displayName
+        case .video:
+            if selectedVideoModelSource == .openRouter {
+                return openRouterVideoModel?.displayName ?? "OpenRouter Video"
+            }
+            return videoModel.displayName
+        case .image:
+            if selectedImageModelSource == .openRouter {
+                return openRouterImageModel?.displayName ?? "OpenRouter Image"
+            }
+            return imageModel.displayName
+        case .audio: return audioModel.displayName
         }
     }
 
     private var currentModelId: String {
         switch selectedType {
-        case .video: videoModel.id
-        case .image: imageModel.id
-        case .audio: audioModel.id
+        case .video:
+            if selectedVideoModelSource == .openRouter, let id = openRouterVideoModel?.id {
+                return OpenRouterModelId.stored(id)
+            }
+            return videoModel.id
+        case .image:
+            if selectedImageModelSource == .openRouter, let id = openRouterImageModel?.id {
+                return OpenRouterModelId.stored(id)
+            }
+            return imageModel.id
+        case .audio: return audioModel.id
         }
     }
 
     private var currentAspectRatios: [String] {
         switch selectedType {
-        case .video: videoModel.aspectRatios
-        case .image: imageModel.aspectRatios
-        case .audio: []
+        case .video:
+            if selectedVideoModelSource == .openRouter {
+                return openRouterVideoModel?.aspectRatios ?? []
+            }
+            return videoModel.aspectRatios
+        case .image:
+            if selectedImageModelSource == .openRouter {
+                return openRouterImageModel?.aspectRatios ?? []
+            }
+            return imageModel.aspectRatios
+        case .audio: return []
         }
     }
 
     private var currentResolutions: [String]? {
         switch selectedType {
-        case .video: videoModel.resolutions
-        case .image: imageModel.resolutions
-        case .audio: nil
+        case .video:
+            if selectedVideoModelSource == .openRouter {
+                return openRouterVideoModel?.resolutions
+            }
+            return videoModel.resolutions
+        case .image:
+            if selectedImageModelSource == .openRouter {
+                return openRouterImageModel?.resolutions
+            }
+            return imageModel.resolutions
+        case .audio: return nil
         }
     }
 
@@ -279,7 +399,11 @@ struct GenerationView: View {
     }
 
     private var currentQualities: [String]? {
-        selectedType == .image ? imageModel.qualities : nil
+        guard selectedType == .image else { return nil }
+        if selectedImageModelSource == .openRouter {
+            return openRouterImageModel?.qualities
+        }
+        return imageModel.qualities
     }
 
     private var audioPromptHint: String {
@@ -287,11 +411,17 @@ struct GenerationView: View {
     }
 
     private var supportsAudioToggle: Bool {
-        selectedType == .video && videoModel.audioDiscountRate != nil
+        if usesOpenRouterVideo {
+            return openRouterVideoModel?.canGenerateAudio == true
+        }
+        return selectedType == .video && videoModel.audioDiscountRate != nil
     }
 
     private var effectiveGenerateAudio: Bool {
-        supportsAudioToggle ? generateAudio : true
+        if usesOpenRouterVideo {
+            return supportsAudioToggle ? generateAudio : false
+        }
+        return supportsAudioToggle ? generateAudio : true
     }
 
     private var promptPlaceholder: String {
@@ -308,6 +438,7 @@ struct GenerationView: View {
     }
 
     private var effectiveVideoSeconds: Int {
+        if usesOpenRouterVideo { return selectedDuration }
         guard videoModel.requiresSourceVideo else { return selectedDuration }
         if let trim = editor.pendingEditTrimmedSource,
            let sv = sourceVideo,
@@ -336,6 +467,7 @@ struct GenerationView: View {
 
     /// Live credit estimate for the current form state.
     private var estimatedCost: Int? {
+        if usesOpenRouter { return nil }
         switch selectedType {
         case .video:
             return CostEstimator.videoCost(
@@ -368,17 +500,22 @@ struct GenerationView: View {
     }
 
     private var hasInsufficientCredits: Bool {
+        if usesOpenRouter { return false }
         guard let cost = estimatedCost, let left = remainingCredits else { return false }
         return cost > left
     }
 
     private var canAffordGeneration: Bool {
+        if usesOpenRouter { return true }
         guard let left = remainingCredits else { return true }
         if let cost = estimatedCost { return cost <= left }
         return left > 0
     }
 
     private var costHelpText: String {
+        if usesOpenRouter {
+            return "OpenRouter bills this request directly."
+        }
         guard let cost = estimatedCost else {
             return "Estimated cost. Actual billing may differ slightly."
         }
@@ -404,10 +541,50 @@ struct GenerationView: View {
         if !selectedAspectRatio.isEmpty, !currentAspectRatios.isEmpty {
             parts.append(selectedAspectRatio)
         }
-        if selectedType == .image, imageModel.maxImages > 1, selectedNumImages > 1 {
+        if selectedType == .image, currentImageMaxImages > 1, selectedNumImages > 1 {
             parts.append("×\(selectedNumImages)")
         }
         return parts.joined(separator: " \u{00B7} ")
+    }
+
+    private var currentImageMaxImages: Int {
+        guard selectedType == .image else { return 1 }
+        if selectedImageModelSource == .openRouter {
+            return openRouterImageModel?.maxImages ?? 1
+        }
+        return imageModel.maxImages
+    }
+
+    private var currentImageSupportsReferences: Bool {
+        guard selectedType == .image else { return false }
+        if selectedImageModelSource == .openRouter {
+            return openRouterImageModel?.supportsImageReference == true
+        }
+        return imageModel.supportsImageReference
+    }
+
+    private var currentImageMaxReferences: Int {
+        guard selectedType == .image else { return 0 }
+        if selectedImageModelSource == .openRouter {
+            return openRouterImageModel?.maxReferences ?? 0
+        }
+        return Int.max
+    }
+
+    private var currentVideoSupportsLastFrame: Bool {
+        guard selectedType == .video else { return false }
+        if selectedVideoModelSource == .openRouter {
+            return openRouterVideoModel?.supportsLastFrame == true
+        }
+        return videoModel.supportsLastFrame
+    }
+
+    private var currentVideoDurations: [Int] {
+        guard selectedType == .video else { return [] }
+        if selectedVideoModelSource == .openRouter {
+            return openRouterVideoModel?.durations ?? []
+        }
+        return videoModel.durations
     }
 
     private func resolutionLabel(_ id: String) -> String {
@@ -437,6 +614,10 @@ struct GenerationView: View {
     }
 
     private var aiAllowed: Bool { account.aiAllowed }
+
+    private var generationAllowed: Bool {
+        usesOpenRouter ? openRouter.hasAPIKey : aiAllowed
+    }
 
     private var catalogLoadingView: some View {
         VStack(spacing: AppTheme.Spacing.md) {
@@ -582,7 +763,7 @@ struct GenerationView: View {
         }
         .onChange(of: selectedVideoModelIndex) { _, _ in
             guard !isPopulatingPanel else { return }
-            if selectedType == .video {
+            if selectedType == .video && selectedVideoModelSource == .palmier {
                 resetSettings()
                 if !videoModel.requiresSourceVideo {
                     sourceVideo = nil
@@ -593,8 +774,37 @@ struct GenerationView: View {
         }
         .onChange(of: selectedImageModelIndex) { _, _ in
             guard !isPopulatingPanel else { return }
+            if selectedType == .image && selectedImageModelSource == .palmier {
+                resetSettings()
+            }
+        }
+        .onChange(of: selectedVideoOpenRouterModelIndex) { _, _ in
+            guard !isPopulatingPanel else { return }
+            if selectedType == .video && selectedVideoModelSource == .openRouter {
+                resetSettings()
+                sourceVideo = nil
+                framesRefsMode = .firstLast
+                resetRefPools()
+            }
+        }
+        .onChange(of: selectedImageOpenRouterModelIndex) { _, _ in
+            guard !isPopulatingPanel else { return }
+            if selectedType == .image && selectedImageModelSource == .openRouter {
+                resetSettings()
+            }
+        }
+        .onChange(of: selectedVideoModelSource) { _, _ in
+            guard !isPopulatingPanel else { return }
+            if selectedType == .video {
+                resetSettings()
+                clearReferences()
+            }
+        }
+        .onChange(of: selectedImageModelSource) { _, _ in
+            guard !isPopulatingPanel else { return }
             if selectedType == .image {
                 resetSettings()
+                clearReferences()
             }
         }
         .onChange(of: selectedAudioModelIndex) { _, _ in
@@ -605,14 +815,14 @@ struct GenerationView: View {
 
     @ViewBuilder
     private var referencesContent: some View {
-        if selectedType == .video && videoModel.requiresSourceVideo {
+        if selectedType == .video && !usesOpenRouterVideo && videoModel.requiresSourceVideo {
             editVideoStrip
         } else if selectedType == .video {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
                 if showsFrameStrip { videoFrameStrip }
                 if showsRefSections { videoReferenceSections }
             }
-        } else if selectedType == .image && imageModel.supportsImageReference {
+        } else if selectedType == .image && currentImageSupportsReferences {
             imageReferenceStrip
         } else if selectedType == .audio && audioModel.inputs.contains(.video) {
             audioVideoStrip
@@ -884,7 +1094,7 @@ struct GenerationView: View {
         HStack(spacing: AppTheme.Spacing.xs) {
             frameSlot(label: "First Frame", asset: firstFrame, isTargeted: $firstFrameTargeted,
                       onDrop: { firstFrame = $0 }, onClear: { firstFrame = nil })
-            if videoModel.supportsLastFrame {
+            if currentVideoSupportsLastFrame {
                 frameSlot(label: "Last Frame", asset: lastFrame, isTargeted: $lastFrameTargeted,
                           onDrop: { lastFrame = $0 }, onClear: { lastFrame = nil })
             }
@@ -1182,6 +1392,8 @@ struct GenerationView: View {
                 ) { asset in
                     if imageReferences.contains(where: { $0.id == asset.id }) {
                         flashDropError("\(asset.name) is already a reference")
+                    } else if imageReferences.count >= currentImageMaxReferences {
+                        flashDropError("\(currentModelName) accepts at most \(currentImageMaxReferences) reference image\(currentImageMaxReferences == 1 ? "" : "s").")
                     } else {
                         imageReferences.append(asset)
                     }
@@ -1296,10 +1508,11 @@ struct GenerationView: View {
 
     private var submitButton: some View {
         Button {
-            if aiAllowed { submitGeneration() }
+            if generationAllowed { submitGeneration() }
+            else if usesOpenRouter { SettingsWindowController.shared.show(tab: .models) }
             else if !account.isMisconfigured { Task { await account.signInWithGoogle() } }
         } label: {
-            Image(systemName: aiAllowed ? "arrow.up" : "person.crop.circle")
+            Image(systemName: generationAllowed ? "arrow.up" : (usesOpenRouter ? "key" : "person.crop.circle"))
                 .font(.system(size: AppTheme.FontSize.sm, weight: .bold))
                 .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
         }
@@ -1307,15 +1520,21 @@ struct GenerationView: View {
         .buttonBorderShape(.circle)
         .controlSize(.regular)
         .tint(AppTheme.Accent.primary)
-        .disabled(aiAllowed ? !canSubmit : account.isMisconfigured || account.isSigningIn)
-        .opacity((aiAllowed ? canSubmit : !account.isMisconfigured && !account.isSigningIn) ? AppTheme.Opacity.opaque : AppTheme.Opacity.strong)
-        .help(aiAllowed ? "" : (account.isMisconfigured ? "AI is unavailable" : account.isSigningIn ? "Opening Google" : "Sign in to generate"))
+        .disabled(generationAllowed ? !canSubmit : (!usesOpenRouter && (account.isMisconfigured || account.isSigningIn)))
+        .opacity((generationAllowed ? canSubmit : (usesOpenRouter || (!account.isMisconfigured && !account.isSigningIn))) ? AppTheme.Opacity.opaque : AppTheme.Opacity.strong)
+        .help(submitHelpText)
+    }
+
+    private var submitHelpText: String {
+        if generationAllowed { return "" }
+        if usesOpenRouter { return "Set an OpenRouter API key" }
+        return account.isMisconfigured ? "AI is unavailable" : account.isSigningIn ? "Opening Google" : "Sign in to generate"
     }
 
     // MARK: - Type picker
 
     private var showsFramesRefsPicker: Bool {
-        selectedType == .video && videoModel.framesAndReferencesExclusive
+        selectedType == .video && !usesOpenRouterVideo && videoModel.framesAndReferencesExclusive
     }
 
     private var typeTabs: some View {
@@ -1356,12 +1575,46 @@ struct GenerationView: View {
         Menu {
             switch selectedType {
             case .video:
-                ForEach(enabledVideoModels, id: \.index) { item in
-                    Button(item.model.displayName) { selectedVideoModelIndex = item.index }
+                if !enabledVideoModels.isEmpty {
+                    Section("Palmier") {
+                        ForEach(enabledVideoModels, id: \.index) { item in
+                            Button(item.model.displayName) {
+                                selectedVideoModelSource = .palmier
+                                selectedVideoModelIndex = item.index
+                            }
+                        }
+                    }
+                }
+                if !enabledOpenRouterVideoModels.isEmpty {
+                    Section("OpenRouter") {
+                        ForEach(enabledOpenRouterVideoModels, id: \.index) { item in
+                            Button(item.model.displayName) {
+                                selectedVideoModelSource = .openRouter
+                                selectedVideoOpenRouterModelIndex = item.index
+                            }
+                        }
+                    }
                 }
             case .image:
-                ForEach(enabledImageModels, id: \.index) { item in
-                    Button(item.model.displayName) { selectedImageModelIndex = item.index }
+                if !enabledImageModels.isEmpty {
+                    Section("Palmier") {
+                        ForEach(enabledImageModels, id: \.index) { item in
+                            Button(item.model.displayName) {
+                                selectedImageModelSource = .palmier
+                                selectedImageModelIndex = item.index
+                            }
+                        }
+                    }
+                }
+                if !enabledOpenRouterImageModels.isEmpty {
+                    Section("OpenRouter") {
+                        ForEach(enabledOpenRouterImageModels, id: \.index) { item in
+                            Button(item.model.displayName) {
+                                selectedImageModelSource = .openRouter
+                                selectedImageOpenRouterModelIndex = item.index
+                            }
+                        }
+                    }
                 }
             case .audio:
                 ForEach(AudioModelConfig.Category.allCases, id: \.self) { category in
@@ -1378,7 +1631,7 @@ struct GenerationView: View {
             Button {
                 SettingsWindowController.shared.show(tab: .models)
             } label: {
-                Label("Add models…", systemImage: "plus")
+                Label("Models…", systemImage: "square.stack.3d.up")
             }
         } label: {
             HStack(spacing: AppTheme.Spacing.xs) {
@@ -1427,8 +1680,8 @@ struct GenerationView: View {
 
     private var settingsPopoverContent: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            if selectedType == .video {
-                settingsPicker("Duration", selection: $selectedDuration, options: videoModel.durations) { "\($0)s" }
+            if selectedType == .video, !currentVideoDurations.isEmpty {
+                settingsPicker("Duration", selection: $selectedDuration, options: currentVideoDurations) { "\($0)s" }
             }
             if selectedType == .audio, let durations = audioModel.durations {
                 settingsPicker("Duration", selection: $selectedAudioDuration, options: durations) { "\($0)s" }
@@ -1442,11 +1695,11 @@ struct GenerationView: View {
             if let qualities = currentQualities {
                 settingsPicker("Quality", selection: $selectedQuality, options: qualities) { $0.capitalized }
             }
-            if selectedType == .image, imageModel.maxImages > 1 {
+            if selectedType == .image, currentImageMaxImages > 1 {
                 settingsPicker(
                     "Count",
                     selection: $selectedNumImages,
-                    options: Array(1...imageModel.maxImages)
+                    options: Array(1...currentImageMaxImages)
                 ) { "\($0)" }
             }
             if selectedType == .audio && audioModel.supportsInstrumental {
@@ -1455,9 +1708,10 @@ struct GenerationView: View {
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
-            if selectedType == .video, videoModel.audioDiscountRate != nil {
-                let discount = videoModel.audioDiscount(for: effectiveResolution)
-                let savings = discount.map { Int(((1 - $0) * 100).rounded()) }
+            if supportsAudioToggle {
+                let savings = selectedVideoModelSource == .palmier
+                    ? videoModel.audioDiscount(for: effectiveResolution).map { Int(((1 - $0) * 100).rounded()) }
+                    : nil
                 Toggle("Generate audio", isOn: $generateAudio)
                     .controlSize(.small)
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
@@ -1530,6 +1784,24 @@ struct GenerationView: View {
     private func preflightValidation(audioDuration: Int) -> String? {
         switch selectedType {
         case .video:
+            if selectedVideoModelSource == .openRouter, openRouterVideoModel == nil {
+                return "Choose an OpenRouter video model."
+            }
+            if let model = openRouterVideoModel, selectedVideoModelSource == .openRouter {
+                let modelError = model.validate(
+                    duration: selectedDuration,
+                    aspectRatio: selectedAspectRatio,
+                    resolution: effectiveResolution
+                )
+                if let modelError { return modelError }
+                if firstFrame != nil, !model.supportsFirstFrame {
+                    return "\(model.displayName) does not accept a first frame."
+                }
+                if lastFrame != nil, !model.supportsLastFrame {
+                    return "\(model.displayName) does not accept a last frame."
+                }
+                return nil
+            }
             let inputAssets = videoInputAssets(for: videoModel)
             let modelError: String?
             if videoModel.requiresSourceVideo {
@@ -1543,9 +1815,21 @@ struct GenerationView: View {
             }
             return modelError ?? inputAssets.validate(for: videoModel)
         case .image:
-            let quality = imageModel.qualities != nil ? selectedQuality : nil
-            let imageCount = imageModel.maxImages > 1
-                ? min(imageModel.maxImages, max(1, selectedNumImages)) : 1
+            let quality = currentQualities != nil ? selectedQuality : nil
+            let imageCount = currentImageMaxImages > 1
+                ? min(currentImageMaxImages, max(1, selectedNumImages)) : 1
+            if selectedImageModelSource == .openRouter, openRouterImageModel == nil {
+                return "Choose an OpenRouter image model."
+            }
+            if let model = openRouterImageModel, selectedImageModelSource == .openRouter {
+                return model.validate(
+                    aspectRatio: selectedAspectRatio,
+                    resolution: effectiveResolution,
+                    quality: quality,
+                    imageRefCount: imageReferences.count,
+                    numImages: imageCount
+                )
+            }
             return imageModel.validate(
                 aspectRatio: selectedAspectRatio,
                 resolution: effectiveResolution,
@@ -1591,7 +1875,7 @@ struct GenerationView: View {
             duration: selectedType == .video ? effectiveVideoSeconds : audioDuration,
             aspectRatio: selectedAspectRatio,
             resolution: effectiveResolution,
-            quality: selectedType == .image && imageModel.qualities != nil ? selectedQuality : nil,
+            quality: selectedType == .image && currentQualities != nil ? selectedQuality : nil,
             voice: selectedType == .audio && audioModel.voices != nil && !selectedVoice.isEmpty
                 ? selectedVoice : nil,
             lyrics: selectedType == .audio && audioModel.supportsLyrics && !lyrics.isEmpty
@@ -1600,11 +1884,12 @@ struct GenerationView: View {
                 ? styleInstructions : nil,
             instrumental: selectedType == .audio && audioModel.supportsInstrumental
                 ? instrumental : nil,
-            generateAudio: supportsAudioToggle ? generateAudio : nil
+            generateAudio: selectedType == .video && (supportsAudioToggle || usesOpenRouterVideo)
+                ? effectiveGenerateAudio : nil
         )
         let imageCount: Int = {
-            guard selectedType == .image, imageModel.maxImages > 1 else { return 1 }
-            return min(imageModel.maxImages, max(1, selectedNumImages))
+            guard selectedType == .image, currentImageMaxImages > 1 else { return 1 }
+            return min(currentImageMaxImages, max(1, selectedNumImages))
         }()
         if imageCount > 1 {
             genInput.numImages = imageCount
@@ -1641,63 +1926,100 @@ struct GenerationView: View {
 
         switch selectedType {
         case .video:
-            let model = videoModel
-            let inputAssets = videoInputAssets(for: model)
-            let trimmedSource: TrimmedSource? = {
-                guard model.requiresSourceVideo,
-                      let trim = editor.pendingEditTrimmedSource,
-                      let sv = sourceVideo,
-                      trim.sourceURL == sv.url else { return nil }
-                return trim
-            }()
-            editor.pendingEditTrimmedSource = nil
-            let placeholderDuration: Double
-            if model.requiresSourceVideo {
-                if let trim = trimmedSource, trim.hasTrim {
-                    placeholderDuration = trim.durationSeconds
-                } else {
-                    placeholderDuration = sourceVideo?.duration ?? 5
-                }
+            if selectedVideoModelSource == .openRouter, let model = openRouterVideoModel {
+                let frames = [firstFrame, lastFrame].compactMap { $0 }
+                genInput.imageURLAssetIds = frames.isEmpty ? nil : frames.map(\.id)
+                let folderId = editFolderId
+                    ?? lastFrame?.folderId
+                    ?? firstFrame?.folderId
+                    ?? editor.mediaPanelCurrentFolderId
+                let videoAssetId = editor.generationService.generateOpenRouterVideo(
+                    genInput: genInput,
+                    model: model,
+                    firstFrame: firstFrame,
+                    lastFrame: lastFrame,
+                    folderId: folderId,
+                    projectURL: editor.projectURL,
+                    editor: editor,
+                    onComplete: makeOnComplete(false),
+                    onFailure: onFailure
+                )
+                autoOpenPreview(videoAssetId)
             } else {
-                placeholderDuration = Double(selectedDuration)
+                let model = videoModel
+                let inputAssets = videoInputAssets(for: model)
+                let trimmedSource: TrimmedSource? = {
+                    guard model.requiresSourceVideo,
+                          let trim = editor.pendingEditTrimmedSource,
+                          let sv = sourceVideo,
+                          trim.sourceURL == sv.url else { return nil }
+                    return trim
+                }()
+                editor.pendingEditTrimmedSource = nil
+                let placeholderDuration: Double
+                if model.requiresSourceVideo {
+                    if let trim = trimmedSource, trim.hasTrim {
+                        placeholderDuration = trim.durationSeconds
+                    } else {
+                        placeholderDuration = sourceVideo?.duration ?? 5
+                    }
+                } else {
+                    placeholderDuration = Double(selectedDuration)
+                }
+                let videoFolderId: String? = editFolderId ?? (
+                    model.requiresSourceVideo
+                        ? (inputAssets.sourceVideo?.folderId ?? inputAssets.imageRefs.last?.folderId)
+                        : inputAssets.textToVideoReferences.last?.folderId
+                ) ?? editor.mediaPanelCurrentFolderId
+                let videoAssetId = VideoGenerationSubmission.make(
+                    genInput: genInput,
+                    model: model,
+                    inputAssets: inputAssets,
+                    placeholderDuration: placeholderDuration,
+                    trimmedSourceOverride: trimmedSource,
+                    folderId: videoFolderId,
+                    generateAudio: effectiveGenerateAudio
+                ).submit(
+                    service: editor.generationService,
+                    projectURL: editor.projectURL,
+                    editor: editor,
+                    onComplete: makeOnComplete(trimmedSource?.hasTrim == true),
+                    onFailure: onFailure
+                )
+                autoOpenPreview(videoAssetId)
             }
-            let videoFolderId: String? = editFolderId ?? (
-                model.requiresSourceVideo
-                    ? (inputAssets.sourceVideo?.folderId ?? inputAssets.imageRefs.last?.folderId)
-                    : inputAssets.textToVideoReferences.last?.folderId
-            ) ?? editor.mediaPanelCurrentFolderId
-            let videoAssetId = VideoGenerationSubmission.make(
-                genInput: genInput,
-                model: model,
-                inputAssets: inputAssets,
-                placeholderDuration: placeholderDuration,
-                trimmedSourceOverride: trimmedSource,
-                folderId: videoFolderId,
-                generateAudio: effectiveGenerateAudio
-            ).submit(
-                service: editor.generationService,
-                projectURL: editor.projectURL,
-                editor: editor,
-                onComplete: makeOnComplete(trimmedSource?.hasTrim == true),
-                onFailure: onFailure
-            )
-            autoOpenPreview(videoAssetId)
         case .image:
-            let model = imageModel
-            let imageAssetId = ImageGenerationSubmission.make(
-                genInput: genInput,
-                model: model,
-                references: imageReferences,
-                numImages: imageCount,
-                folderId: editFolderId ?? imageReferences.last?.folderId ?? editor.mediaPanelCurrentFolderId
-            ).submit(
-                service: editor.generationService,
-                projectURL: editor.projectURL,
-                editor: editor,
-                onComplete: makeOnComplete(false),
-                onFailure: onFailure
-            )
-            autoOpenPreview(imageAssetId)
+            if selectedImageModelSource == .openRouter, let model = openRouterImageModel {
+                genInput.imageURLAssetIds = imageReferences.isEmpty ? nil : imageReferences.map(\.id)
+                let imageAssetId = editor.generationService.generateOpenRouterImage(
+                    genInput: genInput,
+                    model: model,
+                    references: imageReferences,
+                    numImages: imageCount,
+                    folderId: editFolderId ?? imageReferences.last?.folderId ?? editor.mediaPanelCurrentFolderId,
+                    projectURL: editor.projectURL,
+                    editor: editor,
+                    onComplete: makeOnComplete(false),
+                    onFailure: onFailure
+                )
+                autoOpenPreview(imageAssetId)
+            } else {
+                let model = imageModel
+                let imageAssetId = ImageGenerationSubmission.make(
+                    genInput: genInput,
+                    model: model,
+                    references: imageReferences,
+                    numImages: imageCount,
+                    folderId: editFolderId ?? imageReferences.last?.folderId ?? editor.mediaPanelCurrentFolderId
+                ).submit(
+                    service: editor.generationService,
+                    projectURL: editor.projectURL,
+                    editor: editor,
+                    onComplete: makeOnComplete(false),
+                    onFailure: onFailure
+                )
+                autoOpenPreview(imageAssetId)
+            }
         case .audio:
             let model = audioModel
             let onCompleteAudio = makeOnComplete(false)
@@ -1775,16 +2097,33 @@ struct GenerationView: View {
     }
 
     private func populatePanel(asset: MediaAsset, stored: GenerationInput) {
-        switch ModelRegistry.byId[stored.model] {
+        if let raw = OpenRouterModelId.raw(stored.model) {
+            if let idx = openRouterVideoModels.firstIndex(where: { $0.id == raw }) {
+                isPopulatingPanel = true
+                selectedType = .video
+                selectedVideoModelSource = .openRouter
+                selectedVideoOpenRouterModelIndex = idx
+            } else if let idx = openRouterImageModels.firstIndex(where: { $0.id == raw }) {
+                isPopulatingPanel = true
+                selectedType = .image
+                selectedImageModelSource = .openRouter
+                selectedImageOpenRouterModelIndex = idx
+            } else {
+                return
+            }
+        } else {
+            switch ModelRegistry.byId[stored.model] {
         case .video:
             guard let idx = videoModels.firstIndex(where: { $0.id == stored.model }) else { return }
             isPopulatingPanel = true
             selectedType = .video
+            selectedVideoModelSource = .palmier
             selectedVideoModelIndex = idx
         case .image:
             guard let idx = imageModels.firstIndex(where: { $0.id == stored.model }) else { return }
             isPopulatingPanel = true
             selectedType = .image
+            selectedImageModelSource = .palmier
             selectedImageModelIndex = idx
         case .audio:
             guard let idx = audioModels.firstIndex(where: { $0.id == stored.model }) else { return }
@@ -1793,6 +2132,7 @@ struct GenerationView: View {
             selectedAudioModelIndex = idx
         case .upscale, .none:
             return
+            }
         }
         defer { DispatchQueue.main.async { isPopulatingPanel = false } }
 
@@ -1819,7 +2159,14 @@ struct GenerationView: View {
 
         switch selectedType {
         case .video:
-            if videoModel.requiresSourceVideo {
+            if selectedVideoModelSource == .openRouter {
+                if openRouterVideoModel?.supportsFirstFrame == true {
+                    firstFrame = primary.first
+                    if openRouterVideoModel?.supportsLastFrame == true, primary.count > 1 {
+                        lastFrame = primary[1]
+                    }
+                }
+            } else if videoModel.requiresSourceVideo {
                 sourceVideo = primary.first
                 if videoModel.supportsReferences, primary.count > 1 {
                     imageReferences = [primary[1]]
@@ -1873,12 +2220,12 @@ struct GenerationView: View {
         if let qualities = currentQualities, !qualities.contains(selectedQuality) {
             selectedQuality = qualities.last ?? "high"
         }
-        if selectedType == .video, !videoModel.durations.contains(selectedDuration) {
-            selectedDuration = videoModel.durations.first ?? 5
+        if selectedType == .video, !currentVideoDurations.contains(selectedDuration) {
+            selectedDuration = currentVideoDurations.first ?? 5
         }
         if selectedType == .video { generateAudio = true }
         if selectedType == .image {
-            selectedNumImages = min(max(1, selectedNumImages), imageModel.maxImages)
+            selectedNumImages = min(max(1, selectedNumImages), currentImageMaxImages)
         }
     }
 }
