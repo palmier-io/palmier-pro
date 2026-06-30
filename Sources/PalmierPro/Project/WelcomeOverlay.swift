@@ -5,7 +5,6 @@ import SwiftUI
 struct WelcomeOverlay: View {
     let onDismiss: () -> Void
 
-    @Bindable private var account = AccountService.shared
     @State private var startingTutorial = false
     private static let hero: NSImage? = loadHero()
 
@@ -67,18 +66,9 @@ struct WelcomeOverlay: View {
 
     @ViewBuilder
     private var signInButton: some View {
-        if account.aiAllowed || account.isMisconfigured {
-            Button("Get started") { onDismiss() }
-                .buttonStyle(.capsule(.prominent, size: .regular))
-                .keyboardShortcut(.defaultAction)
-        } else {
-            Button(account.isSigningIn ? "Opening Google…" : "Sign In") {
-                Task { await account.signInWithGoogle() }
-            }
-                .buttonStyle(.capsule(.prominent, size: .regular))
-                .keyboardShortcut(.defaultAction)
-                .disabled(account.isSigningIn)
-        }
+        Button("Get started") { onDismiss() }
+            .buttonStyle(.capsule(.prominent, size: .regular))
+            .keyboardShortcut(.defaultAction)
     }
 
     /// Open the first sample (downloading if needed); it auto-starts the tutorial.

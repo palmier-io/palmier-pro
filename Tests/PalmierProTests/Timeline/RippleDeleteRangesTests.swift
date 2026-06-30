@@ -89,6 +89,18 @@ struct RippleDeleteRangesTests {
         #expect(starts(e.timeline.tracks[1]) == [110])
     }
 
+    @Test func syncLockedFollowerCutInSync() {
+        // Master audio spanning the same span as video gets the cut, not just a shift.
+        let v = Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 100)])
+        let a = Fixtures.audioTrack(clips: [Fixtures.clip(id: "a1", start: 0, duration: 100)])
+        let e = editor([v, a])
+        let outcome = e.rippleDeleteRanges(anchorClipId: "c1", ranges: [FrameRange(start: 40, end: 50)])
+        guard case .ok(let report) = outcome else { Issue.record("expected .ok"); return }
+        #expect(report.clearedTracks == 2)
+        #expect(spans(e.timeline.tracks[0]) == [[0, 40], [40, 90]])
+        #expect(spans(e.timeline.tracks[1]) == [[0, 40], [40, 90]])
+    }
+
     @Test func trackWideCutSpansMultipleClips() {
         // Two contiguous clips on one track; one call removes a range from each and closes both gaps.
         let track = Fixtures.videoTrack(clips: [
@@ -139,8 +151,8 @@ struct RippleDeleteRangesTests {
         #expect(s.contains([80, 130]))
     }
 
-    @Test func refusesWhenSyncLockedFollowerWouldCollide() {
-        // a2 would slide left onto a1 → whole edit refused, nothing moves.
+    @Test func syncLockedFollowerCutAvoidsShiftCollision() {
+        // a1 is trimmed by the cut so a2 can shift left without overlapping.
         let v = Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 100)])
         let a = Fixtures.audioTrack(clips: [
             Fixtures.clip(id: "a1", start: 0, duration: 95),
@@ -148,9 +160,9 @@ struct RippleDeleteRangesTests {
         ])
         let e = editor([v, a])
         let outcome = e.rippleDeleteRanges(anchorClipId: "c1", ranges: [FrameRange(start: 40, end: 50)])
-        guard case .refused = outcome else { Issue.record("expected .refused"); return }
-        #expect(spans(e.timeline.tracks[0]) == [[0, 100]])
-        #expect(starts(e.timeline.tracks[1]) == [0, 100])
+        guard case .ok = outcome else { Issue.record("expected .ok"); return }
+        #expect(spans(e.timeline.tracks[0]) == [[0, 40], [40, 90]])
+        #expect(spans(e.timeline.tracks[1]) == [[0, 40], [40, 85], [90, 140]])
     }
 
     @Test func ignoreSyncLockedTracksLetsCutProceedAndLeavesThemInPlace() {

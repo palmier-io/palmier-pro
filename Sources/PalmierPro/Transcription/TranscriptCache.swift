@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-/// Disk + memory cache for full-file transcripts, keyed by file identity and locale.
+/// Disk + memory cache for full-file transcripts, keyed by file identity, provider, and locale.
 /// Only full transcripts are cached. Windowed requests are served by filtering a cached full transcript.
 actor TranscriptCache {
     static let shared = TranscriptCache()
@@ -21,19 +21,16 @@ actor TranscriptCache {
             localeCacheID: preferredLocale.map(Self.localeCacheID),
             providerCacheID: provider.rawValue
         )
-        if let key, let full = cached(key) {
-            return range.map { Self.filter(full, to: $0) } ?? full
+        let full: TranscriptionResult
+        if let key, let cached = cached(key) {
+            full = cached
+        } else {
+            full = isVideo
+                ? try await Transcription.transcribeVideoAudio(videoURL: url, preferredLocale: preferredLocale, provider: provider)
+                : try await Transcription.transcribe(fileURL: url, preferredLocale: preferredLocale, provider: provider)
+            if let key { store(full, key: key) }
         }
-        if let range {
-            return isVideo
-                ? try await Transcription.transcribeVideoAudio(videoURL: url, preferredLocale: preferredLocale, sourceRange: range, provider: provider)
-                : try await Transcription.transcribe(fileURL: url, preferredLocale: preferredLocale, sourceRange: range, provider: provider)
-        }
-        let full = isVideo
-            ? try await Transcription.transcribeVideoAudio(videoURL: url, preferredLocale: preferredLocale, provider: provider)
-            : try await Transcription.transcribe(fileURL: url, preferredLocale: preferredLocale, provider: provider)
-        if let key { store(full, key: key) }
-        return full
+        return range.map { Self.filter(full, to: $0) } ?? full
     }
 
     static func filter(_ r: TranscriptionResult, to range: ClosedRange<Double>) -> TranscriptionResult {
@@ -69,7 +66,10 @@ actor TranscriptCache {
         memory[key] = result
     }
 
-    private static let directory = FileManager.default
+    /// Drop in-memory entries so a disk clear isn't shadowed by the memory cache.
+    func clearMemory() { memory.removeAll() }
+
+    static let directory = FileManager.default
         .urls(for: .cachesDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("\(Log.subsystem)/Transcripts", isDirectory: true)
 

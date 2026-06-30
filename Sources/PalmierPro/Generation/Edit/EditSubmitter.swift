@@ -15,8 +15,6 @@ enum EditSubmitter {
         onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
         onFailure: (@MainActor () -> Void)? = nil
     ) -> String? {
-        guard AccountService.shared.isSignedIn else { return nil }
-
         let effectiveDuration: Int = {
             if let trim = trimmedSource, trim.hasTrim {
                 return max(1, Int(trim.durationSeconds.rounded()))
@@ -75,7 +73,6 @@ enum EditSubmitter {
         case unknownModel(String)
         case missingSource
         case invalid(String)
-        case unauthorized
 
         var errorDescription: String? {
             switch self {
@@ -83,7 +80,6 @@ enum EditSubmitter {
             case .unknownModel(let id): "Model no longer available: \(id)"
             case .missingSource: "Cannot rerun: source not recorded"
             case .invalid(let msg): msg
-            case .unauthorized: "Subscribe to Palmier to rerun generations"
             }
         }
     }
@@ -95,9 +91,6 @@ enum EditSubmitter {
         onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
         onFailure: (@MainActor () -> Void)? = nil
     ) throws -> String {
-        guard AccountService.shared.isSignedIn else {
-            throw RerunError.unauthorized
-        }
         guard let stored = asset.generationInput else { throw RerunError.notGenerated }
         var gen = stored
         gen.createdAt = nil

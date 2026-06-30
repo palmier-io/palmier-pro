@@ -53,7 +53,7 @@ extension ToolExecutor {
             dict["window"] = [window.lowerBound, min(window.upperBound, editor.timeline.totalFrames)]
         }
         dict["currentFrame"] = editor.currentFrame
-        dict["canGenerate"] = AccountService.shared.isSignedIn && AccountService.shared.hasCredits
+        dict["canGenerate"] = true
         guard let json = Self.jsonString(roundJSONFloatingPointNumbers(dict, toPlaces: 3)) else {
             throw ToolError("Failed to encode timeline")
         }

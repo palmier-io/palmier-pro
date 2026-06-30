@@ -8,8 +8,6 @@ struct AIEditMenu: View {
     var body: some View {
         if availableActions.isEmpty {
             EmptyView()
-        } else if !aiAllowed {
-            Button("AI Edit") {}.disabled(true)
         } else {
             Menu("AI Edit") {
                 if availableActions.contains(.upscale) {
@@ -39,11 +37,6 @@ struct AIEditMenu: View {
                 }
             }
         }
-    }
-
-    private var aiAllowed: Bool {
-        let account = AccountService.shared
-        return account.isSignedIn && !account.isMisconfigured
     }
 
     private var availableActions: [EditAction] {

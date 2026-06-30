@@ -66,7 +66,7 @@ Tool count: 43 in-app agent tools, 42 MCP-exposed tools.
 - Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:58`
 - Availability: In-app agent and MCP
 
-Always call at the start of a session. Returns project settings (fps, resolution, totalFrames), track list with types and order, all clips with their frames and properties, and canGenerate (if false, generation/upscale tools will fail — tell the user to sign in to Palmier and subscribe before attempting them). The clipId/trackId values here are what every other tool accepts.
+Always call at the start of a session. Returns project settings (fps, resolution, totalFrames), track list with types and order, all clips with their frames and properties, and canGenerate. Generation/upscale tools may still fail if the selected provider or model endpoint is not configured; report that tool error directly. The clipId/trackId values here are what every other tool accepts.
 
 Clip and track fields equal to their defaults are omitted: mediaType 'video', sourceClipType = mediaType, speed 1, volume 1, opacity 1, trims/fades 0, identity transform/crop, default textStyle, track muted/hidden false. Text clips never report trims (no source media).
 
@@ -346,7 +346,7 @@ Starts an async AI video generation. Returns a placeholder asset ID immediately;
 ### `generate_image`
 
 - Source case: `ToolName.generateImage`
-- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:543`
+- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:544`
 - Availability: In-app agent and MCP
 
 Starts an async AI image generation. Returns a placeholder asset ID immediately; generation runs in the background. Costs real money and is not undoable.
@@ -354,7 +354,7 @@ Starts an async AI image generation. Returns a placeholder asset ID immediately;
 ### `generate_audio`
 
 - Source case: `ToolName.generateAudio`
-- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:560`
+- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:561`
 - Availability: In-app agent and MCP
 
 Starts an async AI audio generation: text-to-speech, text-to-music, or video-to-music (scoring a video). Returns a placeholder asset ID immediately; the asset appears in get_media and becomes usable in add_clips once ready. TTS models (elevenlabs-tts-v3, gemini-3.1-flash-tts) convert the prompt into speech and accept a 'voice'. Music models (lyria3-pro, minimax-music-v2.6, elevenlabs-music, sonilo-v1.1-video-to-music) generate tracks from a prompt; include lyrics/tempo/vocal style in the prompt for Lyria 3 Pro, pass 'lyrics' for MiniMax vocals, or set 'instrumental' true when the selected model supports it. Video-to-audio models (inputs include 'video' — see list_models, e.g. sonilo-v1.1-video-to-music, mirelo-sfx-v1.5-video-to-audio) generate audio that matches a VIDEO: provide a timeline span via videoSourceStartFrame+videoSourceEndFrame (e.g. to score the timeline), or a video asset via videoSourceMediaRef; the prompt is then an optional style guide. PLACEMENT: when you pass a timeline span, the result is placed on the timeline automatically at that span (no add_clips needed); for a media-asset source or a plain text-to-speech/music result, the asset lands in the library and you place it with add_clips. Use list_models with type='audio' to see each model's 'inputs', category, and voices. Costs real money and is not undoable.
@@ -362,7 +362,7 @@ Starts an async AI audio generation: text-to-speech, text-to-music, or video-to-
 ### `upscale_media`
 
 - Source case: `ToolName.upscaleMedia`
-- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:581`
+- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:582`
 - Availability: In-app agent and MCP
 
 Upscales an existing video or image asset to higher resolution using an AI upscaler. Returns a placeholder asset ID immediately; the upscaled asset appears in get_media once ready. Use list_models with type='upscale' to pick a model that supports the asset's type. Costs real money and is not undoable.
@@ -370,7 +370,7 @@ Upscales an existing video or image asset to higher resolution using an AI upsca
 ### `import_media`
 
 - Source case: `ToolName.importMedia`
-- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:593`
+- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:594`
 - Availability: In-app agent and MCP
 
 Imports external media into the project's library — the bridge for assets coming from other MCP servers (stock libraries, music services, web search) or local files the user already has. The 'source' object must set exactly one of: url (HTTPS only — downloaded in the background, the dominant case; max 1 GB), path (absolute local file path — copied into the project in the background; may also be a directory, which is imported recursively, mirroring its subfolder structure as media folders), or bytes (base64-encoded inline data — max ~15 MB of base64 ≈ 11 MB binary; use url/path for anything larger). For url, type is inferred from the URL path's file extension unless source.mimeType is set as an override (needed for signed URLs whose path has no usable extension). For bytes, source.mimeType is required.
@@ -382,7 +382,7 @@ Returns a placeholder asset id immediately for URL and file-path imports; the as
 ### `list_folders`
 
 - Source case: `ToolName.listFolders`
-- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:614`
+- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:615`
 - Availability: In-app agent and MCP
 
 Lists every folder in the media panel as {id, name, parentFolderId}. Folders are nested (parentFolderId is nil for top-level). Use to find an existing folder by name before generating new media.
@@ -390,7 +390,7 @@ Lists every folder in the media panel as {id, name, parentFolderId}. Folders are
 ### `create_folder`
 
 - Source case: `ToolName.createFolder`
-- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:619`
+- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:620`
 - Availability: In-app agent and MCP
 
 Creates folders in the media panel. Pass either name/parentFolderId for one folder or entries for multiple folders, not both. Direct form returns one folder; entries returns { folders }. Undoable. Use to organize related generations (e.g. 'Hero shot variations'). Don't create folders for unrelated concepts.
@@ -398,7 +398,7 @@ Creates folders in the media panel. Pass either name/parentFolderId for one fold
 ### `move_to_folder`
 
 - Source case: `ToolName.moveToFolder`
-- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:641`
+- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:642`
 - Availability: In-app agent and MCP
 
 Moves media assets to folders. Pass either assetIds/folderId for one destination or entries for multiple destinations, not both. Omit folderId to move to root. Undoable.
@@ -406,7 +406,7 @@ Moves media assets to folders. Pass either assetIds/folderId for one destination
 ### `rename_media`
 
 - Source case: `ToolName.renameMedia`
-- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:671`
+- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:672`
 - Availability: In-app agent and MCP
 
 Renames media assets in the library. Pass either mediaRef/name for one asset or entries for multiple assets, not both. Undoable.
@@ -414,7 +414,7 @@ Renames media assets in the library. Pass either mediaRef/name for one asset or 
 ### `rename_folder`
 
 - Source case: `ToolName.renameFolder`
-- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:693`
+- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:694`
 - Availability: In-app agent and MCP
 
 Renames folders in the media panel. Pass either folderId/name for one folder or entries for multiple folders, not both. Undoable.
@@ -422,7 +422,7 @@ Renames folders in the media panel. Pass either folderId/name for one folder or 
 ### `delete_media`
 
 - Source case: `ToolName.deleteMedia`
-- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:715`
+- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:716`
 - Availability: In-app agent and MCP
 
 Deletes media assets from the library. Any clips referencing them are removed from the timeline in the same undoable action.
@@ -430,7 +430,7 @@ Deletes media assets from the library. Any clips referencing them are removed fr
 ### `delete_folder`
 
 - Source case: `ToolName.deleteFolder`
-- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:729`
+- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:730`
 - Availability: In-app agent and MCP
 
 Deletes folders and everything inside them (subfolders and assets). Clips referencing any deleted asset are removed from the timeline in the same undoable action.
@@ -438,15 +438,15 @@ Deletes folders and everything inside them (subfolders and assets). Clips refere
 ### `list_models`
 
 - Source case: `ToolName.listModels`
-- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:743`
+- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:744`
 - Availability: In-app agent and MCP
 
-Lists AI models with their capabilities (durations, aspect ratios, resolutions, first/last frame support, reference support, voices/category for audio, upscaler speed). Always call before generate_video, generate_image, generate_audio, or upscale_media so the model you pick actually supports the constraints you need. Returns { models, loaded } — if loaded=false the catalog hasn't synced yet (e.g. user not signed in); the models array may be empty even when models exist, so do not conclude no models are available. Retry after the user signs in.
+Lists AI models with their capabilities (durations, aspect ratios, resolutions, first/last frame support, reference support, voices/category for audio, upscaler speed). Always call before generate_video, generate_image, generate_audio, or upscale_media so the model you pick actually supports the constraints you need. Returns { models, loaded } — if loaded=false, no configured provider has supplied a model catalog yet. Ask the user to configure the relevant provider credential, then retry.
 
 ### `apply_effect`
 
 - Source case: `ToolName.applyEffect`
-- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:752`
+- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:753`
 - Availability: In-app agent and MCP
 
 Apply non-color effects (blur, sharpen, stylize, detail, key) to video/image clips as a live, editable effect stack — the looks/FX path, distinct from apply_color (grading). MERGES: each effect you pass is added or updated by type; effects you don't mention are left in place. Pass enabled:false to bypass one without removing it, or list its type in `remove` to delete it. Out-of-range params are clamped; params you omit keep their current (or default) value. Effects render in a fixed canonical order regardless of the order you pass them. Undoable. Verify with inspect_timeline.
@@ -457,7 +457,7 @@ Available effects — type: param (range, default):
 ### `apply_color`
 
 - Source case: `ToolName.applyColor`
-- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:785`
+- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:786`
 - Availability: In-app agent and MCP
 
 Author/refine a color grade on video/image clips with named controls — the colorist path, distinct from apply_effect (looks/FX). MERGES with the clip's current grade: only the params you pass change, the rest are preserved, so you can nudge one knob at a time (pass reset:true to start from neutral). Applies as live, editable color.* effects; non-color effects untouched. Iterate: apply_color → inspect_color(clipId, reference) → read the gap → adjust → repeat. Undoable. All knobs optional. Color WHEELS use HUE (0–360°, standard) + AMOUNT per tonal zone — to push shadows teal, set shadowsHue 180 and shadowsAmount ~0.15. CURVES (master + per-channel R/G/B) give precise tone shaping — per-channel curves are tone-selective (e.g. pull the blue curve down in the highlights to tame a bright sky). HUE CURVES do secondary/qualified correction — target a source hue and shift its hue/saturation/lightness (e.g. desaturate greens, warm the skin) without a mask; pair with inspect_color's hueHistogram to find which hues are present. LUT applies a .cube film-look pack on top of the grade.
@@ -465,7 +465,7 @@ Author/refine a color grade on video/image clips with named controls — the col
 ### `inspect_color`
 
 - Source case: `ToolName.inspectColor`
-- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:850`
+- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:851`
 - Availability: In-app agent and MCP
 
 Measure color scopes of a timeline clip's current graded look (clipId) OR a raw media asset (mediaRef) — black/white points, % clipping, mean & per-channel levels, shadow/mid/highlight color tilt, saturation, warm-cool / green-magenta balance, and a saturation-weighted hueHistogram (12 bins of 30° from 0°/red — shows which hues are present, e.g. an orange cluster = skin, a cyan/blue cluster = sky) — and return the rendered frame too. Use this to grade by the numbers instead of eyeballing, to find hues to target with apply_color's hueCurves, or to measure footage/references before grading. clipId applies the clip's effects (graded look); mediaRef measures the raw asset. Pass a reference image/video id to also measure it and get the subject−reference GAP plus hints that map onto apply_color knobs. The loop: apply_color → inspect_color(clipId, reference) → read the gap → adjust → repeat until the gap is small.
@@ -473,7 +473,7 @@ Measure color scopes of a timeline clip's current graded look (clipId) OR a raw 
 ### `set_project_settings`
 
 - Source case: `ToolName.setProjectSettings`
-- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:862`
+- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:863`
 - Availability: In-app agent and MCP
 
 Change the project's frame rate, resolution, or aspect ratio. Pass any combination of fps, explicit width+height, aspectRatio, and quality. aspectRatio and explicit width/height are mutually exclusive; quality scales the current aspect ratio (or the selected preset when combined with aspectRatio). The timeline's existing clips are re-fitted automatically: auto-fit transforms recalculate for the new canvas size, and all frame positions/durations rescale when fps changes. Undoable.
@@ -481,7 +481,7 @@ Change the project's frame rate, resolution, or aspect ratio. Pass any combinati
 ### `send_feedback`
 
 - Source case: `ToolName.sendFeedback`
-- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:875`
+- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:876`
 - Availability: In-app agent and MCP
 
 Report an agent limitation or bug to the Palmier team so they can improve the product. Use when you can't do what the user asked because a capability or tool is missing or behaves wrong, the result is clearly off, or the user is plainly hitting a rough edge. This sends directly — there is no user confirmation step — so PARAPHRASE in your own words: never include verbatim user messages, prompts, file paths, media, transcript text, or any project content. App/OS version and your recent tool names are attached automatically. Use sparingly: at most once per distinct issue.
@@ -489,7 +489,7 @@ Report an agent limitation or bug to the Palmier team so they can improve the pr
 ### `read_skill`
 
 - Source case: `ToolName.readSkill`
-- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:905`
+- Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:906`
 - Availability: In-app agent only
 
 Load the full instructions for one of the skills listed under # Skills in your system prompt. Call this before starting a task that matches a skill's description, then follow the returned procedure. Pass the id exactly as listed.

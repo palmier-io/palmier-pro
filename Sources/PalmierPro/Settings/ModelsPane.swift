@@ -1,11 +1,23 @@
 import SwiftUI
 
 struct ModelsPane: View {
+    enum Scope: Equatable {
+        case all
+        case visual
+        case audio
+    }
+
+    let scope: Scope
+
     private var prefs = ModelPreferences.shared
     private var catalog = ModelCatalog.shared
     @Bindable private var openRouter = OpenRouterService.shared
 
     @State private var query = ""
+
+    init(scope: Scope = .all) {
+        self.scope = scope
+    }
 
     private struct Row: Identifiable {
         let id: String
@@ -28,22 +40,30 @@ struct ModelsPane: View {
                     || $0.id.lowercased().contains(q)
             }
         }
-        return [
-            ModelSection(id: "palmier-image", title: "Palmier Image",
-                         rows: filtered(catalog.image.map { Row(id: $0.id, displayName: $0.displayName, detail: "Palmier") })),
-            ModelSection(id: "palmier-video", title: "Palmier Video",
-                         rows: filtered(catalog.video.map { Row(id: $0.id, displayName: $0.displayName, detail: "Palmier") })),
-            ModelSection(id: "palmier-audio", title: "Palmier Audio",
-                         rows: filtered(catalog.audio.map { Row(id: $0.id, displayName: $0.displayName, detail: "Palmier") })),
-            ModelSection(id: "openrouter-image", title: "OpenRouter Image",
-                         rows: filtered(openRouter.image.map {
-                             Row(id: OpenRouterModelId.stored($0.id), displayName: $0.displayName, detail: $0.id)
-                         })),
-            ModelSection(id: "openrouter-video", title: "OpenRouter Video",
-                         rows: filtered(openRouter.video.map {
-                             Row(id: OpenRouterModelId.stored($0.id), displayName: $0.displayName, detail: $0.id)
-                         })),
-        ].filter { !$0.rows.isEmpty }
+        var sections: [ModelSection] = []
+        if scope == .all || scope == .visual {
+            sections.append(contentsOf: [
+                ModelSection(id: "palmier-image", title: "Palmier Image",
+                             rows: filtered(catalog.image.map { Row(id: $0.id, displayName: $0.displayName, detail: "Palmier") })),
+                ModelSection(id: "palmier-video", title: "Palmier Video",
+                             rows: filtered(catalog.video.map { Row(id: $0.id, displayName: $0.displayName, detail: "Palmier") })),
+                ModelSection(id: "openrouter-image", title: "OpenRouter Image",
+                             rows: filtered(openRouter.image.map {
+                                 Row(id: OpenRouterModelId.stored($0.id), displayName: $0.displayName, detail: $0.id)
+                             })),
+                ModelSection(id: "openrouter-video", title: "OpenRouter Video",
+                             rows: filtered(openRouter.video.map {
+                                 Row(id: OpenRouterModelId.stored($0.id), displayName: $0.displayName, detail: $0.id)
+                             })),
+            ])
+        }
+        if scope == .all || scope == .audio {
+            sections.append(
+                ModelSection(id: "palmier-audio", title: "Palmier Audio",
+                             rows: filtered(catalog.audio.map { Row(id: $0.id, displayName: $0.displayName, detail: "Palmier") }))
+            )
+        }
+        return sections.filter { !$0.rows.isEmpty }
     }
 
     var body: some View {
@@ -67,7 +87,16 @@ struct ModelsPane: View {
         if !query.trimmingCharacters(in: .whitespaces).isEmpty {
             return "No models match \"\(query)\"."
         }
-        if !catalog.isLoaded || !openRouter.isLoaded {
+        if scope == .visual, openRouter.hasAPIKey && openRouter.isLoading {
+            return "Loading models…"
+        }
+        if scope == .visual {
+            return "Configure a video generation provider to load models."
+        }
+        if scope == .audio {
+            return "Configure an audio generation provider to load models."
+        }
+        if !catalog.isLoaded || (openRouter.hasAPIKey && !openRouter.isLoaded) {
             return "Loading models…"
         }
         return "No models available."

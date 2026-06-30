@@ -6,8 +6,14 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case providers
     case models
     case agent
+    case videoGeneration
+    case audioGeneration
     case skills
     case storage
+
+    static var allCases: [SettingsTab] {
+        [.agent, .videoGeneration, .audioGeneration, .general, .skills, .storage]
+    }
 
     var id: String { rawValue }
 
@@ -18,6 +24,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .providers: return "Providers"
         case .models: return "Models"
         case .agent: return "Agent"
+        case .videoGeneration: return "Video Generation"
+        case .audioGeneration: return "Audio Generation"
         case .skills: return "Skills"
         case .storage: return "Storage"
         }
@@ -30,6 +38,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .providers: return "key"
         case .models: return "square.stack.3d.up"
         case .agent: return "paperplane"
+        case .videoGeneration: return "video"
+        case .audioGeneration: return "waveform"
         case .skills: return "book.closed"
         case .storage: return "internaldrive"
         }
@@ -37,28 +47,26 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
     var isVisible: Bool {
         switch self {
-        case .models: return AppFeaturePolicy.showsModelSettings
+        case .account, .providers, .models:
+            return false
         default: return true
         }
     }
 }
 
 struct SettingsView: View {
-    @Bindable private var account = AccountService.shared
     @State private var selectedTab: SettingsTab
 
-    init(initialTab: SettingsTab = .account) {
+    init(initialTab: SettingsTab = .agent) {
         _selectedTab = State(initialValue: initialTab)
     }
 
     private var visibleTabs: [SettingsTab] {
-        SettingsTab.allCases.filter { tab in
-            tab.isVisible && !(tab == .account && account.isMisconfigured)
-        }
+        SettingsTab.allCases.filter(\.isVisible)
     }
 
     private var effectiveSelectedTab: SettingsTab {
-        visibleTabs.contains(selectedTab) ? selectedTab : visibleTabs.first ?? .general
+        visibleTabs.contains(selectedTab) ? selectedTab : visibleTabs.first ?? .agent
     }
 
     var body: some View {
@@ -88,7 +96,7 @@ struct SettingsView: View {
 
     private func reconcileSelectedTab() {
         if !visibleTabs.contains(selectedTab) {
-            selectedTab = visibleTabs.first ?? .general
+            selectedTab = visibleTabs.first ?? .agent
         }
     }
 }
@@ -96,13 +104,9 @@ struct SettingsView: View {
 private struct SettingsSidebar: View {
     @Binding var selectedTab: SettingsTab
     let visibleTabs: [SettingsTab]
-    @Bindable private var account = AccountService.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if !account.isMisconfigured {
-                IdentityStrip()
-            }
             tabList
             Spacer(minLength: 0)
         }
@@ -149,16 +153,20 @@ private struct SettingsDetail: View {
                         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
                             switch tab {
                             case .account:
-                                AccountPane()
+                                AgentPane()
                             case .general:
                                 NotificationsPane()
                                 PrivacyPane()
                             case .providers:
-                                ProvidersPane()
+                                VideoGenerationPane()
                             case .models:
-                                ModelsPane()
+                                VideoGenerationPane()
                             case .agent:
                                 AgentPane()
+                            case .videoGeneration:
+                                VideoGenerationPane()
+                            case .audioGeneration:
+                                AudioGenerationPane()
                             case .skills:
                                 EmptyView()
                             case .storage:
@@ -237,7 +245,7 @@ final class SettingsWindowController: NSWindowController {
 
     func show(tab: SettingsTab? = nil) {
         if let tab {
-            let initialTab = tab.isVisible ? tab : .account
+            let initialTab = tab.isVisible ? tab : .agent
             hosting?.rootView = AnyView(
                 SettingsView(initialTab: initialTab)
                     .id(UUID())

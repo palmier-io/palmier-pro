@@ -128,6 +128,7 @@ final class GenerationService {
         references: [MediaAsset],
         numImages: Int,
         folderId: String?,
+        name: String? = nil,
         projectURL: URL?,
         editor: EditorViewModel,
         onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
@@ -136,7 +137,7 @@ final class GenerationService {
         let count = max(1, min(model.maxImages, numImages))
         var placeholders: [MediaAsset] = []
         let destDir = Self.destinationDirectory(for: projectURL)
-        let baseName = String(genInput.prompt.prefix(30))
+        let baseName = name ?? String(genInput.prompt.prefix(30))
         let resolvedFolderId = folderId.flatMap { editor.folder(id: $0) != nil ? $0 : nil }
 
         for outputIndex in 0..<count {
@@ -194,13 +195,14 @@ final class GenerationService {
         firstFrame: MediaAsset?,
         lastFrame: MediaAsset?,
         folderId: String?,
+        name: String? = nil,
         projectURL: URL?,
         editor: EditorViewModel,
         onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
         onFailure: (@MainActor () -> Void)? = nil
-    ) -> String {
+        ) -> String {
         let destDir = Self.destinationDirectory(for: projectURL)
-        let baseName = String(genInput.prompt.prefix(30))
+        let baseName = name ?? String(genInput.prompt.prefix(30))
         let resolvedFolderId = folderId.flatMap { editor.folder(id: $0) != nil ? $0 : nil }
         let placeholder = createPlaceholder(
             type: .video,

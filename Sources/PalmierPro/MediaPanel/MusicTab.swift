@@ -2,7 +2,6 @@ import SwiftUI
 
 struct MusicTab: View {
     @Environment(EditorViewModel.self) var editor
-    @Bindable private var account = AccountService.shared
 
     @State private var selectedModelId: String?
     @State private var mode: MusicGenerationSubmission.Mode = .videoToMusic
@@ -65,10 +64,6 @@ struct MusicTab: View {
                 return "Add video to the timeline, then mark a range to score only part of it."
             }
             if let issue = model.validate(spanSeconds: spanSeconds) { return issue }
-        }
-        if let cost = estimatedCost, cost > AccountService.shared.remainingCredits,
-           AccountService.shared.budgetCredits != nil {
-            return "\(cost) credits needed. Only \(AccountService.shared.remainingCredits.formatted()) remaining."
         }
         return nil
     }
@@ -223,11 +218,10 @@ struct MusicTab: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, AppTheme.Spacing.smMd)
                         .background(RoundedRectangle(cornerRadius: AppTheme.Radius.sm).fill(AppTheme.Accent.primary))
-                        .opacity((canGenerate && account.aiAllowed) ? AppTheme.Opacity.opaque : AppTheme.Opacity.medium)
+                        .opacity(canGenerate ? AppTheme.Opacity.opaque : AppTheme.Opacity.medium)
                 }
                 .buttonStyle(.plain).focusable(false)
-                .disabled(!canGenerate || !account.aiAllowed)
-                .help(account.aiAllowed ? "" : "Sign in to generate")
+                .disabled(!canGenerate)
 
                 agentMenu
             }
