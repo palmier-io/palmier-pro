@@ -37,7 +37,7 @@ final class MCPService {
             let server = Server(
                 name: "palmier-pro",
                 version: "1.0.0",
-                instructions: AgentInstructions.serverInstructions,
+                instructions: AgentInstructions.serverInstructions + AgentInstructions.projectNavigation,
                 capabilities: .init(
                     resources: .init(subscribe: false, listChanged: false),
                     tools: .init(listChanged: false)
@@ -70,7 +70,7 @@ final class MCPService {
     }
 
     private func registerTools(on server: Server) async {
-        let tools: [Tool] = ToolDefinitions.all.map { def in
+        let tools: [Tool] = ToolDefinitions.mcpServer.map { def in
             Tool(name: def.name.rawValue, description: def.description, inputSchema: def.mcpSchemaValue)
         }
 

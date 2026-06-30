@@ -193,19 +193,9 @@ final class SkillStore {
 
     func body(for id: String) -> String? { bodyCache[id] }
 
-    /// The always-on index appended to the in-app assistant's system prompt: one line
-    /// per skill so the model knows what's available; full bodies load via read_skill.
-    var promptIndex: String {
-        guard !skills.isEmpty else { return "" }
-        let lines = skills.map { "- \($0.id): \($0.description)" }.joined(separator: "\n")
-        return """
-
-
-            # Skills
-            Playbooks for specific tasks. Before a task that matches one, call read_skill(id) \
-            to load its full procedure, then follow it.
-            \(lines)
-            """
+    /// One-line list of skills; full content loads on demand.
+    var skillIndex: String {
+        skills.map { "- \($0.id): \($0.description)" }.joined(separator: "\n")
     }
 
     func openFolder() {

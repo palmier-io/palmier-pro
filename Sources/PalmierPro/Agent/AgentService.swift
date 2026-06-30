@@ -317,6 +317,11 @@ final class AgentService {
         kickOffStream()
     }
 
+    func postSystemNotice(_ text: String) {
+        messages.append(AgentMessage(role: .system, blocks: [.text(text)]))
+        syncMessagesIntoCurrentSession()
+    }
+
     func cancel() {
         currentTask?.cancel()
         currentTask = nil
@@ -355,7 +360,7 @@ final class AgentService {
 
             do {
                 let stream = client.stream(
-                    system: AgentInstructions.serverInstructions + SkillStore.shared.promptIndex,
+                    system: AgentInstructions.serverInstructions + AgentInstructions.skillsSection(SkillStore.shared.skillIndex),
                     tools: tools,
                     messages: apiMsgs
                 )
@@ -513,6 +518,7 @@ final class AgentService {
     private func apiMessages() async -> [AnthropicMessage] {
         var result: [AnthropicMessage] = []
         for msg in messages {
+            if msg.role == .system { continue }
             var content = msg.blocks.compactMap(Self.contentBlockJSON)
             if msg.role == .user, !msg.mentions.isEmpty {
                 let inlined = await inlineImageBlocks(for: msg.mentions)
@@ -602,7 +608,7 @@ final class AgentService {
 }
 
 struct AgentMessage: Identifiable, Codable {
-    enum Role: String, Codable { case user, assistant }
+    enum Role: String, Codable { case user, assistant, system }
     let id: UUID
     let role: Role
     var blocks: [AgentContentBlock]
