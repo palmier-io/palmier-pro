@@ -64,6 +64,16 @@ enum AgentInstructions {
             waveform — referenceClipId stays, the target(s) move. Use for dual-system sound \
             or multicam (pass targetClipIds); it returns per-clip confidence and refuses \
             weak matches.
+          • apply_layout: for any multi-video composition (split screen, picture-in-picture, \
+            grid), use this instead of hand-setting transforms. Pick a named layout and assign \
+            a clip to each slot; it fills every region without stretching (crops the source to \
+            the slot shape) in one undoable step, and stacks PIP insets on top. The crop is \
+            centered by default — when centering chops something off (a forehead, a subject to \
+            one side), bias it: anchor ('top', 'bottom', …) is a coarse shortcut, anchorX/anchorY \
+            (0–1) give fine control for in-between framing (e.g. anchorY 0.35 nudges slightly \
+            up). Re-call with adjusted anchorX/anchorY to fine-tune. Don't compute centerX/width by hand or loop on \
+            inspect_timeline to "align" a layout — apply_layout already lands it; only \
+            inspect_timeline afterward if you need to verify a non-standard arrangement.
         - speed 1.0 is normal; <1.0 stretches the clip longer on the timeline; >1.0 shortens \
           it. trim* values are source offsets, not timeline offsets.
         - Edits are undoable and effectively free. Don't ask permission for individual edits — \

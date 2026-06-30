@@ -495,21 +495,27 @@ final class EditorViewModel {
         return mediaCanvasAspect(for: asset, canvasWidth: timeline.width, canvasHeight: timeline.height)
     }
 
-    /// Largest centered crop of `target` aspect inside the source.
-    func cropFittingAspect(for clip: Clip, targetPixelAspect target: Double) -> Crop {
+    func cropFittingAspect(
+        for clip: Clip,
+        targetPixelAspect target: Double,
+        anchorX: Double = 0.5,
+        anchorY: Double = 0.5
+    ) -> Crop {
         guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }),
               let sw = asset.sourceWidth, let sh = asset.sourceHeight,
               sw > 0, sh > 0, target > 0 else { return Crop() }
         let sourceAspect = Double(sw) / Double(sh)
         if abs(sourceAspect - target) < 0.0001 { return Crop() }
+        let ax = min(1, max(0, anchorX))
+        let ay = min(1, max(0, anchorY))
         if sourceAspect > target {
-            let visibleWidthFrac = target / sourceAspect
-            let inset = (1 - visibleWidthFrac) / 2
-            return Crop(left: inset, top: 0, right: inset, bottom: 0)
+            let total = 1 - target / sourceAspect
+            let left = total * ax
+            return Crop(left: left, top: 0, right: total - left, bottom: 0)
         } else {
-            let visibleHeightFrac = sourceAspect / target
-            let inset = (1 - visibleHeightFrac) / 2
-            return Crop(left: 0, top: inset, right: 0, bottom: inset)
+            let total = 1 - sourceAspect / target
+            let top = total * ay
+            return Crop(left: 0, top: top, right: 0, bottom: total - top)
         }
     }
 

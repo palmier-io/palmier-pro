@@ -9,6 +9,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case removeClips = "remove_clips"
     case removeTracks = "remove_tracks"
     case moveClips = "move_clips"
+    case applyLayout = "apply_layout"
     case setClipProperties = "set_clip_properties"
     case setKeyframes = "set_keyframes"
     case splitClips = "split_clips"
@@ -218,6 +219,46 @@ enum ToolDefinitions {
                     ],
                 ],
                 required: ["moves"]
+            )
+        ),
+        AgentTool(
+            name: .applyLayout,
+            description: "Arrange multiple clips into a common multi-video layout (split screen, picture-in-picture, grid) in one undoable action — the fast path for composing several videos in one frame. Use this instead of hand-setting transforms and screenshot-checking alignment with inspect_timeline.\n\nYou pick a named layout and assign a clip to each of its slots; the tool computes every transform and crop so each clip FILLS its region edge-to-edge WITHOUT stretching — the source is cropped to the slot's shape (cover), like a layout template the videos are dropped into. Pass fit='fit' to letterbox the whole source inside its slot instead (no crop, may leave bars) — use only when the full frame must stay visible (e.g. a screen recording).\n\nThe crop is centered by default. When that chops off something important (a face cropped at the forehead, a subject off to one side), bias which part survives: 'anchor' is a coarse shortcut ('top' keeps the top, etc.), while anchorX/anchorY (0–1) give continuous control for in-between framing — e.g. anchorY 0.35 moves the crop only slightly toward the top, not all the way. To nudge framing after the fact, call apply_layout again with adjusted anchorX/anchorY (clipId mode re-crops in place).\n\nTwo modes (don't mix across slots):\n• Place new clips: give each slot a 'mediaRef' (from get_media) plus top-level startFrame (default 0) and durationFrames. Creates one stacked video track per slot at that time range; for PIP the inset is placed on top automatically. Video clips bring their linked audio.\n• Re-layout existing clips: give each slot a 'clipId'. Only transforms/crop change — timing and tracks are untouched (so existing track order decides stacking).\n\nEvery slot of the chosen layout must be filled. Layouts and their slot names:\n  • full — main\n  • side_by_side — left, right\n  • top_bottom — top, bottom\n  • pip_bottom_right / pip_bottom_left / pip_top_right / pip_top_left — main, inset\n  • grid_2x2 — top_left, top_right, bottom_left, bottom_right\n  • main_sidebar — main (70%), sidebar (30%)\n  • three_up — left, center, right",
+            inputSchema: objectSchema(
+                properties: [
+                    "layout": [
+                        "type": "string",
+                        "enum": VideoLayout.allCases.map(\.rawValue),
+                        "description": "Which layout template to apply.",
+                    ],
+                    "slots": [
+                        "type": "array",
+                        "description": "One entry per slot of the chosen layout. Each entry names a 'slot' and gives exactly one of 'mediaRef' (place a new clip) or 'clipId' (re-layout an existing clip). Don't mix the two across slots.",
+                        "items": objectSchema(
+                            properties: [
+                                "slot": ["type": "string", "description": "Slot name for the chosen layout (e.g. 'left', 'inset', 'top_right')."],
+                                "mediaRef": ["type": "string", "description": "Asset ID from get_media to place into this slot. Use this OR clipId."],
+                                "clipId": ["type": "string", "description": "Existing clip to move into this slot (transform/crop only). Use this OR mediaRef."],
+                                "anchor": [
+                                    "type": "string",
+                                    "enum": ["center", "top", "bottom", "left", "right", "top_left", "top_right", "bottom_left", "bottom_right"],
+                                    "description": "Coarse shortcut for which part of the source to keep when cover-cropping (default center). For in-between framing use anchorX/anchorY instead — the named values are just shortcuts for them.",
+                                ],
+                                "anchorX": ["type": "number", "description": "Fine horizontal framing, 0–1: 0 keeps the left edge, 0.5 centers (default), 1 keeps the right. Only affects slots cropped horizontally. Overrides anchor's x."],
+                                "anchorY": ["type": "number", "description": "Fine vertical framing, 0–1: 0 keeps the top (e.g. a forehead), 0.5 centers (default), 1 keeps the bottom. Nudge by small amounts (e.g. 0.35) to move the crop gradually. Only affects slots cropped vertically. Overrides anchor's y."],
+                            ],
+                            required: ["slot"]
+                        ),
+                    ],
+                    "startFrame": ["type": "integer", "description": "Placement mode only (mediaRef slots). Project frame where the layout begins. Default 0."],
+                    "durationFrames": ["type": "integer", "description": "Placement mode only (mediaRef slots). Length of the placed clips in project frames. Required when placing new clips."],
+                    "fit": [
+                        "type": "string",
+                        "enum": [LayoutFit.fill.rawValue, LayoutFit.fit.rawValue],
+                        "description": "How each clip fills its slot. 'fill' (default) covers the slot and center-crops the source (no stretch). 'fit' letterboxes the whole source inside the slot.",
+                    ],
+                ],
+                required: ["layout", "slots"]
             )
         ),
         AgentTool(
