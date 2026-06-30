@@ -95,24 +95,28 @@ extension ToolExecutor {
         return .ok("Updated: \(changes.joined(separator: ", ")). Now \(newWidth)×\(newHeight) @ \(newFPS)fps.")
     }
 
-    /// Mirrors the UI's first-clip settings check: auto-applies timeline settings to match
-    /// the first video asset when the timeline is empty or unconfigured.
-    /// Returns a note string if settings changed, nil otherwise.
+    /// Syncs timeline resolution with the first clip if needed; returns a note if changed, nil otherwise.
     func applySettingsIfNeededForAgent(_ editor: EditorViewModel, assets: [MediaAsset]) -> String? {
-        let prevFPS = editor.timeline.fps
         let prevWidth = editor.timeline.width
         let prevHeight = editor.timeline.height
 
-        switch editor.checkProjectSettings(for: assets) {
+        // adoptFPS: false — only resolution syncs, fps stays unchanged.
+        var notes: [String] = []
+        switch editor.checkProjectSettings(for: assets, adoptFPS: false) {
         case .proceed:
-            // checkProjectSettings silently auto-applied on the first-ever clip when !settingsConfigured
-            guard editor.timeline.fps != prevFPS
-                    || editor.timeline.width != prevWidth
-                    || editor.timeline.height != prevHeight else { return nil }
-            return "Set timeline to \(editor.timeline.width)×\(editor.timeline.height) @ \(editor.timeline.fps)fps to match clip."
-        case .mismatch(let fps, let width, let height):
-            editor.applyTimelineSettings(fps: fps, width: width, height: height)
-            return "Matched timeline to clip: \(width)×\(height) @ \(fps)fps."
+            if editor.timeline.width != prevWidth || editor.timeline.height != prevHeight {
+                notes.append("Set timeline to \(editor.timeline.width)×\(editor.timeline.height) to match clip.")
+            }
+        case .mismatch(_, let width, let height):
+            editor.applyTimelineSettings(fps: editor.timeline.fps, width: width, height: height)
+            notes.append("Matched timeline resolution to clip: \(width)×\(height).")
         }
+
+        if let clipFPS = assets.first(where: { $0.type == .video })?.sourceFPS.flatMap({ Int($0.rounded()) }),
+           clipFPS != editor.timeline.fps {
+            notes.append("Clip is \(clipFPS)fps but project is \(editor.timeline.fps)fps; clips placed at \(editor.timeline.fps)fps and frame counts are interpreted at \(editor.timeline.fps)fps. To conform, call set_project_settings then re-read get_timeline.")
+        }
+
+        return notes.isEmpty ? nil : notes.joined(separator: " ")
     }
 }
