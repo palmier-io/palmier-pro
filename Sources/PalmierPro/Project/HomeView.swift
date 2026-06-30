@@ -202,14 +202,11 @@ private struct HomeSidebar: View {
 
             Spacer(minLength: 0)
 
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-                ViewSkillsButton(style: .sidebar)
-                SidebarRowButton(
-                    label: "Settings",
-                    systemImage: "gearshape",
-                    action: { SettingsWindowController.shared.show() }
-                )
-            }
+            SidebarRowButton(
+                label: "Settings",
+                systemImage: "gearshape",
+                action: { SettingsWindowController.shared.show() }
+            )
             .padding(.horizontal, AppTheme.Spacing.smMd)
             .padding(.bottom, AppTheme.Spacing.md)
         }

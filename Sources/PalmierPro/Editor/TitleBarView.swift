@@ -15,8 +15,6 @@ struct TitleBarLeadingView: View {
             }
             .buttonStyle(.plain)
             .help("Toggle Agent Panel")
-
-            ViewSkillsButton(style: .titleBar)
         }
     }
 }
