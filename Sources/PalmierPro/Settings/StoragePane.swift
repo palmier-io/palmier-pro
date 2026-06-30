@@ -114,6 +114,7 @@ struct StoragePane: View {
         isClearing = true
         Task.detached {
             for cache in Self.caches { cache.clear() }
+            await TranscriptCache.shared.clearMemory()
             await MainActor.run { isClearing = false }
             await refresh()
         }

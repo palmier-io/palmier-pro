@@ -62,6 +62,9 @@ actor TranscriptCache {
         memory[key] = result
     }
 
+    /// Drop in-memory entries so a disk clear isn't shadowed by the memory cache.
+    func clearMemory() { memory.removeAll() }
+
     static let directory = FileManager.default
         .urls(for: .cachesDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("\(Log.subsystem)/Transcripts", isDirectory: true)
