@@ -426,19 +426,55 @@ extension EditorViewModel {
 
     // MARK: - Text-style mutation helpers
 
-    func applyTextStyle(clipId: String, _ modify: @escaping (inout TextStyle) -> Void) {
+    func applyTextStyle(clipId: String, fitToContent: Bool = false, _ modify: @escaping (inout TextStyle) -> Void) {
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
         applyClipProperty(clipId: clipId, rebuild: true) { clip in
             var style = clip.textStyle ?? TextStyle()
             modify(&style)
             clip.textStyle = style
+            if fitToContent {
+                _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
+            }
         }
     }
 
-    func commitTextStyle(clipId: String, _ modify: @escaping (inout TextStyle) -> Void) {
+    func applyTextStyles(clipIds: [String], fitToContent: Bool = false, _ modify: @escaping (inout TextStyle) -> Void) {
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
+        applyClipProperties(clipIds: clipIds, rebuild: true) { clip in
+            var style = clip.textStyle ?? TextStyle()
+            modify(&style)
+            clip.textStyle = style
+            if fitToContent {
+                _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
+            }
+        }
+    }
+
+    func commitTextStyle(clipId: String, fitToContent: Bool = false, _ modify: @escaping (inout TextStyle) -> Void) {
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
         commitClipProperty(clipId: clipId) { clip in
             var style = clip.textStyle ?? TextStyle()
             modify(&style)
             clip.textStyle = style
+            if fitToContent {
+                _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
+            }
+        }
+    }
+
+    func commitTextStyles(clipIds: [String], fitToContent: Bool = false, _ modify: @escaping (inout TextStyle) -> Void) {
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
+        commitClipProperties(clipIds: clipIds) { clip in
+            var style = clip.textStyle ?? TextStyle()
+            modify(&style)
+            clip.textStyle = style
+            if fitToContent {
+                _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
+            }
         }
     }
 
@@ -448,6 +484,18 @@ extension EditorViewModel {
         _ modify: @escaping (inout TextStyle) -> Void
     ) {
         debouncedCommitClipProperty(clipId: clipId, key: key) { clip in
+            var style = clip.textStyle ?? TextStyle()
+            modify(&style)
+            clip.textStyle = style
+        }
+    }
+
+    func debouncedCommitTextStyles(
+        clipIds: [String],
+        key: String,
+        _ modify: @escaping (inout TextStyle) -> Void
+    ) {
+        debouncedCommitClipProperties(clipIds: clipIds, key: key) { clip in
             var style = clip.textStyle ?? TextStyle()
             modify(&style)
             clip.textStyle = style

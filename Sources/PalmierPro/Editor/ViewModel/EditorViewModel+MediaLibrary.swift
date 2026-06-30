@@ -301,11 +301,21 @@ extension EditorViewModel {
     }
 
     func fitTextClipToContent(clipId: String) {
-        guard let loc = findClip(id: clipId) else { return }
-        let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        guard clip.mediaType == .text else { return }
         let canvasW = Double(timeline.width)
         let canvasH = Double(timeline.height)
+        guard let loc = findClip(id: clipId) else { return }
+        let original = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        var fitted = original
+        guard fitTextClipToContentIfNeeded(&fitted, canvasW: canvasW, canvasH: canvasH) else { return }
+        if dragBefore[clipId] == nil {
+            dragBefore[clipId] = original
+        }
+        timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = fitted
+        videoEngine?.refreshVisuals()
+    }
+
+    func fitTextClipToContentIfNeeded(_ clip: inout Clip, canvasW: Double, canvasH: Double) -> Bool {
+        guard clip.mediaType == .text else { return false }
         let natural = TextLayout.naturalSize(
             content: clip.textContent ?? " ",
             style: clip.textStyle ?? TextStyle(),
@@ -316,7 +326,7 @@ extension EditorViewModel {
         let needH = Double(natural.height) / canvasH
         let currentW = clip.transform.width
         let currentH = clip.transform.height
-        if abs(needW - currentW) < 0.0001 && abs(needH - currentH) < 0.0001 { return }
+        if abs(needW - currentW) < 0.0001 && abs(needH - currentH) < 0.0001 { return false }
         let tl = clip.transform.topLeft
         let cy = tl.y + currentH / 2
         let alignment = (clip.textStyle ?? TextStyle()).alignment
@@ -329,9 +339,8 @@ extension EditorViewModel {
         case .center:
             cx = tl.x + currentW / 2
         }
-        applyClipProperty(clipId: clipId, rebuild: false) {
-            $0.transform = Transform(center: (cx, cy), width: needW, height: needH)
-        }
+        clip.transform = Transform(center: (cx, cy), width: needW, height: needH)
+        return true
     }
 
     func clipDisplayLabel(for clip: Clip) -> String {

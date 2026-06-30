@@ -288,40 +288,41 @@ extension ToolExecutor {
         }
 
         let actionName = clipIds.count == 1 ? "Update Text (Agent)" : "Update Texts (Agent)"
+        let shouldFitToContent = transform == nil && (hasContent || textStylePatch.affectsLayout)
+        let canvasW = Double(editor.timeline.width)
+        let canvasH = Double(editor.timeline.height)
         withUndoGroup(editor, actionName: actionName) {
-            for id in clipIds {
-                editor.commitClipProperty(clipId: id) { clip in
-                    if let content {
-                        clip.textContent = content
-                    }
-                    if textStylePatch.hasAnyField {
-                        var style = clip.textStyle ?? TextStyle()
-                        _ = Self.applyTextStylePatch(textStylePatch, to: &style)
-                        clip.textStyle = style
-                    }
-                    if let t = transform {
-                        let cur = clip.transform
-                        var next = Transform(
-                            center: (t.centerX ?? cur.center.x, t.centerY ?? cur.center.y),
-                            width: t.width ?? cur.width,
-                            height: t.height ?? cur.height
-                        )
-                        next.rotation = cur.rotation
-                        next.flipHorizontal = cur.flipHorizontal
-                        next.flipVertical = cur.flipVertical
-                        clip.transform = next
-                    }
-                    if shouldSetAnimation {
-                        clip.textAnimation = animation
-                    }
-                    if let hl = highlightOnly {
-                        var a = clip.textAnimation ?? TextAnimation()
-                        a.highlight = hl
-                        clip.textAnimation = a
-                    }
+            editor.commitClipProperties(clipIds: clipIds) { clip in
+                if let content {
+                    clip.textContent = content
                 }
-                if transform == nil && (hasContent || textStylePatch.affectsLayout) {
-                    editor.fitTextClipToContent(clipId: id)
+                if textStylePatch.hasAnyField {
+                    var style = clip.textStyle ?? TextStyle()
+                    _ = Self.applyTextStylePatch(textStylePatch, to: &style)
+                    clip.textStyle = style
+                }
+                if let t = transform {
+                    let cur = clip.transform
+                    var next = Transform(
+                        center: (t.centerX ?? cur.center.x, t.centerY ?? cur.center.y),
+                        width: t.width ?? cur.width,
+                        height: t.height ?? cur.height
+                    )
+                    next.rotation = cur.rotation
+                    next.flipHorizontal = cur.flipHorizontal
+                    next.flipVertical = cur.flipVertical
+                    clip.transform = next
+                }
+                if shouldSetAnimation {
+                    clip.textAnimation = animation
+                }
+                if let hl = highlightOnly {
+                    var a = clip.textAnimation ?? TextAnimation()
+                    a.highlight = hl
+                    clip.textAnimation = a
+                }
+                if shouldFitToContent {
+                    _ = editor.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
                 }
             }
         }

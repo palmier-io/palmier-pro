@@ -372,6 +372,26 @@ struct WritePositionTests {
         #expect(updated.transform.centerX == 0.5)
         #expect(updated.transform.centerY == 0.5)
     }
+
+    @Test func batchPositionUpdatesAllClips() {
+        var a = Fixtures.clip(id: "a", start: 0, duration: 60)
+        var b = Fixtures.clip(id: "b", start: 10, duration: 60)
+        a.transform.width = 0.2
+        a.transform.height = 0.2
+        b.transform.width = 0.4
+        b.transform.height = 0.4
+
+        let e = editor([Fixtures.videoTrack(clips: [a, b])])
+        e.currentFrame = 0
+
+        e.commitPositions(clipIds: ["a", "b"], setX: 0.3, setY: 0.4)
+
+        let updated = e.timeline.tracks[0].clips
+        #expect(abs(updated[0].topLeftAt(frame: 0).x - 0.3) < 0.000001)
+        #expect(abs(updated[0].topLeftAt(frame: 0).y - 0.4) < 0.000001)
+        #expect(abs(updated[1].topLeftAt(frame: 0).x - 0.3) < 0.000001)
+        #expect(abs(updated[1].topLeftAt(frame: 0).y - 0.4) < 0.000001)
+    }
 }
 
 @Suite("EditorViewModel — clearRegion")

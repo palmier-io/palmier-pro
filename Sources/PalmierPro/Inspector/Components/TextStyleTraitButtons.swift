@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct TextStyleTraitButtons: View {
-    let isBold: Bool
-    let isItalic: Bool
+    let isBold: Bool?
+    let isItalic: Bool?
     let onBold: (Bool) -> Void
     let onItalic: (Bool) -> Void
 
@@ -11,14 +11,14 @@ struct TextStyleTraitButtons: View {
             traitButton(
                 systemName: "bold",
                 label: "Bold",
-                isActive: isBold,
-                action: { onBold(!isBold) }
+                state: isBold,
+                action: { onBold(!(isBold ?? false)) }
             )
             traitButton(
                 systemName: "italic",
                 label: "Italic",
-                isActive: isItalic,
-                action: { onItalic(!isItalic) }
+                state: isItalic,
+                action: { onItalic(!(isItalic ?? false)) }
             )
         }
     }
@@ -26,11 +26,13 @@ struct TextStyleTraitButtons: View {
     private func traitButton(
         systemName: String,
         label: String,
-        isActive: Bool,
+        state: Bool?,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
+        let isActive = state == true
+        let isMixed = state == nil
+        return Button(action: action) {
+            Image(systemName: isMixed ? "minus" : systemName)
                 .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.semibold))
                 .foregroundStyle(isActive ? AppTheme.Background.baseColor : AppTheme.Text.tertiaryColor)
                 .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.md)
