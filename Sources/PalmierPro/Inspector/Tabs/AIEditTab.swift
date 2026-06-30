@@ -22,13 +22,13 @@ struct AIEditTab: View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
                 if hasScopeToggles {
-                    aiSection(title: "Scope") {
+                    InspectorSection("Scope", contentSpacing: AppTheme.Spacing.smMd) {
                         if clipId != nil { replaceToggle }
                         if trimmedClipAvailable { trimmedClipToggle }
                     }
                 }
 
-                collapsibleAISection(title: "AI Enhance", isExpanded: $aiEnhanceExpanded) {
+                InspectorSection("AI Enhance", isExpanded: $aiEnhanceExpanded, contentSpacing: AppTheme.Spacing.smMd) {
                     actionRow(
                         action: .upscale,
                         icon: "sparkles.rectangle.stack",
@@ -58,7 +58,7 @@ struct AIEditTab: View {
                 }
 
                 if asset.type == .video {
-                    collapsibleAISection(title: "AI Audio", isExpanded: $aiAudioExpanded) {
+                    InspectorSection("AI Audio", isExpanded: $aiAudioExpanded, contentSpacing: AppTheme.Spacing.smMd) {
                         if showsAudioOutputOptions {
                             audioPlacementToggle
                         }
@@ -95,55 +95,6 @@ struct AIEditTab: View {
             return "Regenerate with the same parameters"
         }
         return "Regenerate · \(CostEstimator.format(cost))"
-    }
-
-    private func aiSection<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
-            Text(title.uppercased())
-                .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
-                .tracking(AppTheme.Tracking.wide)
-                .foregroundStyle(AppTheme.Text.mutedColor)
-            VStack(spacing: AppTheme.Spacing.smMd) {
-                content()
-            }
-        }
-    }
-
-    private func collapsibleAISection<Content: View>(
-        title: String,
-        isExpanded: Binding<Bool>,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
-            Button {
-                withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
-                    isExpanded.wrappedValue.toggle()
-                }
-            } label: {
-                HStack(spacing: AppTheme.Spacing.xs) {
-                    Image(systemName: isExpanded.wrappedValue ? "chevron.down" : "chevron.right")
-                        .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
-                        .foregroundStyle(AppTheme.Text.mutedColor)
-                        .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
-                    Text(title.uppercased())
-                        .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
-                        .tracking(AppTheme.Tracking.wide)
-                        .foregroundStyle(AppTheme.Text.mutedColor)
-                    Spacer(minLength: AppTheme.Spacing.xs)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            if isExpanded.wrappedValue {
-                VStack(spacing: AppTheme.Spacing.smMd) {
-                    content()
-                }
-            }
-        }
     }
 
     // MARK: - Replace toggle

@@ -9,6 +9,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case removeClips = "remove_clips"
     case removeTracks = "remove_tracks"
     case moveClips = "move_clips"
+    case applyLayout = "apply_layout"
     case setClipProperties = "set_clip_properties"
     case setKeyframes = "set_keyframes"
     case splitClips = "split_clips"
@@ -17,6 +18,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case syncAudio = "sync_audio"
     case undo = "undo"
     case addTexts = "add_texts"
+    case updateText = "update_text"
     case addCaptions = "add_captions"
     case exportProject = "export_project"
     case generateVideo = "generate_video"
@@ -226,8 +228,52 @@ enum ToolDefinitions {
             )
         ),
         AgentTool(
+            name: .applyLayout,
+            description: "Arrange multiple clips into a common multi-video layout (split screen, picture-in-picture, grid) in one undoable action — the fast path for composing several videos in one frame. Use this instead of hand-setting transforms and screenshot-checking alignment with inspect_timeline.\n\nYou pick a named layout and assign a clip to each of its slots; the tool computes every transform and crop so each clip FILLS its region edge-to-edge WITHOUT stretching — the source is cropped to the slot's shape (cover), like a layout template the videos are dropped into. Pass fit='fit' to letterbox the whole source inside its slot instead (no crop, may leave bars) — use only when the full frame must stay visible (e.g. a screen recording).\n\nThe crop is centered by default. When that chops off something important (a face cropped at the forehead, a subject off to one side), bias which part survives: 'anchor' is a coarse shortcut ('top' keeps the top, etc.), while anchorX/anchorY (0–1) give continuous control for in-between framing — e.g. anchorY 0.35 moves the crop only slightly toward the top, not all the way. To nudge framing after the fact, call apply_layout again with adjusted anchorX/anchorY (clipIds mode re-crops in place).\n\nTwo modes (don't mix across slots):\n• Place new clips: give each slot a 'mediaRef' (from get_media) plus top-level startFrame (default 0) and durationFrames. Creates one stacked video track per slot at that time range; for PIP the inset is placed on top automatically. Video clips bring their linked audio.\n• Re-layout existing clips: give each slot 'clipIds' — one or more existing clips, all framed into that slot (handy when a track holds several sequential takes). Only transforms/crop change — timing and tracks are untouched (so existing track order decides stacking).\n\nEvery slot of the chosen layout must be filled. Layouts and their slot names:\n  • full — main\n  • side_by_side — left, right\n  • top_bottom — top, bottom\n  • pip_bottom_right / pip_bottom_left / pip_top_right / pip_top_left — main, inset\n  • grid_2x2 — top_left, top_right, bottom_left, bottom_right\n  • main_sidebar — main (70%), sidebar (30%)\n  • three_up — left, center, right",
+            inputSchema: objectSchema(
+                properties: [
+                    "layout": [
+                        "type": "string",
+                        "enum": VideoLayout.allCases.map(\.rawValue),
+                        "description": "Which layout template to apply.",
+                    ],
+                    "slots": [
+                        "type": "array",
+                        "description": "One entry per slot of the chosen layout. Each entry names a 'slot' and gives exactly one of 'mediaRef' (place a new clip) or 'clipIds' (re-layout existing clip(s) into that slot). Don't mix placement (mediaRef) with re-layout (clipIds) across slots.",
+                        "items": objectSchema(
+                            properties: [
+                                "slot": ["type": "string", "description": "Slot name for the chosen layout (e.g. 'left', 'inset', 'top_right')."],
+                                "mediaRef": ["type": "string", "description": "Asset ID from get_media to place into this slot. Use this OR clipIds."],
+                                "clipIds": [
+                                    "type": "array",
+                                    "items": ["type": "string"],
+                                    "description": "Existing clip(s) to frame into this slot — every listed clip gets this slot's transform/crop (pass one id for a single clip, or several when a track holds sequential takes). Use this OR mediaRef. Clips sharing a slot may sit on the same track; clips in DIFFERENT slots still must not overlap on one track.",
+                                ],
+                                "anchor": [
+                                    "type": "string",
+                                    "enum": ["center", "top", "bottom", "left", "right", "top_left", "top_right", "bottom_left", "bottom_right"],
+                                    "description": "Coarse shortcut for which part of the source to keep when cover-cropping (default center). For in-between framing use anchorX/anchorY instead — the named values are just shortcuts for them.",
+                                ],
+                                "anchorX": ["type": "number", "description": "Fine horizontal framing, 0–1: 0 keeps the left edge, 0.5 centers (default), 1 keeps the right. Only affects slots cropped horizontally. Overrides anchor's x."],
+                                "anchorY": ["type": "number", "description": "Fine vertical framing, 0–1: 0 keeps the top (e.g. a forehead), 0.5 centers (default), 1 keeps the bottom. Nudge by small amounts (e.g. 0.35) to move the crop gradually. Only affects slots cropped vertically. Overrides anchor's y."],
+                            ],
+                            required: ["slot"]
+                        ),
+                    ],
+                    "startFrame": ["type": "integer", "description": "Placement mode only (mediaRef slots). Project frame where the layout begins. Default 0."],
+                    "durationFrames": ["type": "integer", "description": "Placement mode only (mediaRef slots). Length of the placed clips in project frames. Required when placing new clips."],
+                    "fit": [
+                        "type": "string",
+                        "enum": [LayoutFit.fill.rawValue, LayoutFit.fit.rawValue],
+                        "description": "How each clip fills its slot. 'fill' (default) covers the slot and center-crops the source (no stretch). 'fit' letterboxes the whole source inside the slot.",
+                    ],
+                ],
+                required: ["layout", "slots"]
+            )
+        ),
+        AgentTool(
             name: .setClipProperties,
-            description: "Apply the same property values to one or more clips in a single undoable action. Pass any combination of durationFrames, trimStartFrame, trimEndFrame, speed, volume, opacity, transform, blendMode (video/image clips only), or — for text clips only — content, fontName, fontSize, color, alignment. All values are applied to every clip in clipIds; for per-clip differences, make separate calls. trimStartFrame/trimEndFrame are offsets from the source media, not the timeline. speed 1.0 is normal, <1.0 slows (clip gets longer on the timeline), >1.0 speeds up. volume and opacity are 0.0–1.0. transform uses 0–1 normalized canvas coords, partial merge (pass only centerY to reposition vertically); flipHorizontal/flipVertical mirror the clip across the corresponding axis (no effect on text clips). When a text clip's content or font changes without an explicit transform, the bounding box auto-refits. Text-only fields with any non-text clip in clipIds are rejected.\n\nFor moves and start-frame changes, use move_clips. For animated values (keyframes), use set_keyframes — setting volume or opacity here clears any existing keyframe track on that property.\n\nTiming changes (durationFrames, trimStartFrame, trimEndFrame, speed) on a linked clip carry over to its linked partner so audio/video stay in sync — same as the timeline UI. Per-clip fields (volume, opacity, transform, text*) don't propagate. trim and speed are skipped for text partners.",
+            description: "Apply the same generic clip property values to one or more clips in a single undoable action. Pass any combination of durationFrames, trimStartFrame, trimEndFrame, speed, volume, opacity, transform, or blendMode (video/image clips only). For text content, typography, captions, and text animation, use update_text.\n\nNOT for preview layout — split screen, picture-in-picture, grid, sidebar, and any multi-clip canvas arrangement belong to apply_layout, which sets transform and crop together. Do not use transform here (or set_keyframes position/scale/crop) to build those layouts.\n\nAll values apply to every clip in clipIds; for per-clip differences, make separate calls. trimStartFrame/trimEndFrame are offsets from the source media, not the timeline. speed 1.0 is normal, <1.0 slows (clip gets longer on the timeline), >1.0 speeds up. volume and opacity are 0.0–1.0. transform is for rare single-clip tweaks only — 0–1 normalized canvas coords, partial merge; flipHorizontal/flipVertical mirror across the axis.\n\nFor moves and start-frame changes, use move_clips. For animated values (keyframes), use set_keyframes — setting volume or opacity here clears any existing keyframe track on that property.\n\nTiming changes (durationFrames, trimStartFrame, trimEndFrame, speed) on a linked clip carry over to its linked partner so audio/video stay in sync — same as the timeline UI. Per-clip fields (volume, opacity, transform, blendMode) don't propagate. trim and speed are skipped for text partners.",
             inputSchema: objectSchema(
                 properties: [
                     "clipIds": [
@@ -243,7 +289,7 @@ enum ToolDefinitions {
                     "opacity": ["type": "number", "description": "Opacity 0.0-1.0. Clears any existing opacity keyframes."],
                     "transform": [
                         "type": "object",
-                        "description": "Partial transform. Any combination of centerX, centerY, width, height, flipHorizontal, flipVertical; omitted fields keep their current value.",
+                        "description": "Single-clip only — not for split screen, PIP, or grid (use apply_layout). Partial transform: centerX, centerY, width, height, flipHorizontal, flipVertical; omitted fields keep current value.",
                         "properties": [
                             "centerX": ["type": "number"],
                             "centerY": ["type": "number"],
@@ -253,11 +299,6 @@ enum ToolDefinitions {
                             "flipVertical": ["type": "boolean", "description": "Mirror across the horizontal axis."],
                         ],
                     ],
-                    "content": ["type": "string", "description": "Text clips only. New text content."],
-                    "fontName": ["type": "string", "description": "Text clips only. Font PostScript or family name."],
-                    "fontSize": ["type": "number", "description": "Text clips only. Font size in canvas points."],
-                    "color": ["type": "string", "description": "Text clips only. Hex '#RRGGBB' or '#RRGGBBAA'."],
-                    "alignment": ["type": "string", "enum": ["left", "center", "right"], "description": "Text clips only."],
                     "blendMode": [
                         "type": "string",
                         "enum": BlendMode.allCases.map(\.rawValue),
@@ -382,29 +423,23 @@ enum ToolDefinitions {
                 properties: [
                     "entries": [
                         "type": "array",
-                        "description": "Text clips to add. Each entry is independent.",
+                        "description": "Text clips to add.",
                         "items": [
                             "type": "object",
-                            "properties": [
-                                "trackIndex": ["type": "integer", "description": "Optional. Track index (0-based) for an existing non-audio track. Omit on every entry to auto-create one new track for the batch."],
-                                "startFrame": ["type": "integer", "description": "Frame position to place the clip"],
-                                "durationFrames": ["type": "integer", "description": "Duration in frames (>= 1)"],
-                                "content": ["type": "string", "description": "Text to display. Supports \\n for line breaks."],
+                            "properties": mergedProperties([
+                                "trackIndex": ["type": "integer", "description": "Existing non-audio track. Omit on all entries to create a new top track."],
+                                "startFrame": ["type": "integer", "description": "Timeline start frame."],
+                                "durationFrames": ["type": "integer", "description": "Duration in frames."],
+                                "content": ["type": "string", "description": "Text. Supports \\n."],
                                 "transform": [
                                     "type": "object",
-                                    "description": "Optional position/size. Omit for center + auto-fit. Pass centerX+centerY only for a specific position with auto-fit size. Pass all four for full override.",
-                                    "properties": [
-                                        "centerX": ["type": "number", "description": "Horizontal center 0–1 (0=left edge, 1=right edge)"],
-                                        "centerY": ["type": "number", "description": "Vertical center 0–1 (0=top, 1=bottom)"],
-                                        "width": ["type": "number", "description": "Width 0–1 (optional; omit for auto-fit)"],
-                                        "height": ["type": "number", "description": "Height 0–1 (optional; omit for auto-fit)"],
-                                    ],
+                                    "description": "Text box. Omit for centered auto-fit; center only auto-fits size; all four override.",
+                                    "properties": textBoxTransformProperties(),
                                 ],
-                                "fontName": ["type": "string", "description": "Font PostScript or family name, e.g. 'Helvetica-Bold', 'Georgia-Bold'. Default 'Helvetica-Bold'. Falls back to bold system font if not found."],
-                                "fontSize": ["type": "number", "description": "Font size in canvas points (default 96). On a 1080p canvas ~50 is a caption, ~120 is a title."],
-                                "color": ["type": "string", "description": "Hex '#RRGGBB' or '#RRGGBBAA' (default '#FFFFFF')"],
-                                "alignment": ["type": "string", "enum": ["left", "center", "right"], "description": "Text alignment (default 'center')"],
-                            ],
+                            ], textStyleProperties(), [
+                                "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Animation preset; off clears."],
+                                "highlightColor": ["type": "string", "description": "Active-word hex."],
+                            ]),
                             "required": ["startFrame", "durationFrames", "content"],
                         ],
                     ],
@@ -413,21 +448,46 @@ enum ToolDefinitions {
             )
         ),
         AgentTool(
-            name: .addCaptions,
-            description: "Auto-caption spoken audio: transcribes on-device and places styled caption clips on a new track — the same pipeline as the editor's Captions tab. This is the reliable path for 'caption this'; prefer it over hand-placing add_texts from a transcript. Use maxCharacters for requests like 'at most 10 characters per caption' instead of splitting captions manually. When the user asks for short/readable captions but gives no exact limit, choose maxCharacters from the spoken language, the timeline aspect ratio/resolution, and fontSize: narrow vertical video or larger text needs fewer characters; wide landscape video or smaller text can use more; CJK text generally fits fewer visible characters than alphabetic text. Omit clipIds to auto-pick the track with the most speech; pass clipIds to caption specific clips (e.g. only the interview).",
+            name: .updateText,
+            description: "Updates text clips or a captionGroupId. Use for content, typography, color, outline color, background color, animation, or text-box transform. Content/typography changes auto-fit the box unless transform is passed. Unknown fields are rejected.",
             inputSchema: objectSchema(
-                properties: [
+                properties: mergedProperties([
+                    "clipIds": [
+                        "type": "array",
+                        "items": ["type": "string"],
+                        "description": "Text clip IDs. Optional if captionGroupId is given.",
+                    ],
+                    "captionGroupId": ["type": "string", "description": "Caption group id from get_timeline."],
+                    "content": ["type": "string", "description": "Replacement text. Supports \\n."],
+                    "transform": [
+                        "type": "object",
+                        "description": "Partial text-box transform; omitted fields keep current values.",
+                        "properties": textBoxTransformProperties(),
+                    ],
+                ], textStyleProperties(), [
+                    "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Animation preset; off clears."],
+                    "highlightColor": ["type": "string", "description": "Active-word hex."],
+                ]),
+                required: []
+            )
+        ),
+        AgentTool(
+            name: .addCaptions,
+            description: "Auto-caption spoken audio: transcribes on-device and places styled caption clips on a new track — the same pipeline as the editor's Captions tab. This is the reliable path for 'caption this'; prefer it over hand-placing add_texts from a transcript. Use maxCharacters for requests like 'at most 10 characters per caption' instead of splitting captions manually. When the user asks for short/readable captions but gives no exact limit, choose maxCharacters from the spoken language, the timeline aspect ratio/resolution, and fontSize: narrow vertical video or larger text needs fewer characters; wide landscape video or smaller text can use more; CJK text generally fits fewer visible characters than alphabetic text. Use maxWords for word-count style constraints. Per-word animations are timed from transcript. Omit clipIds to auto-pick the track with the most speech; pass clipIds to caption specific clips.",
+            inputSchema: objectSchema(
+                properties: mergedProperties([
                     "clipIds": ["type": "array", "items": ["type": "string"], "description": "Optional. Audio/video clips to caption. Omit to auto-detect the primary spoken track."],
                     "language": ["type": "string", "description": "Optional BCP-47 language of the speech (e.g. 'es', 'ja', 'en-GB'). Defaults to the system language — set this when the footage is in another language, or transcription will be garbage."],
-                    "fontName": ["type": "string", "description": "Optional font PostScript or family name (default 'Helvetica-Bold'). Falls back to bold system font if not found."],
-                    "fontSize": ["type": "number", "description": "Optional font size in canvas points (default 48)."],
-                    "color": ["type": "string", "description": "Optional hex '#RRGGBB' or '#RRGGBBAA' (default white)."],
                     "centerX": ["type": "number", "description": "Optional horizontal center 0–1 (default 0.5)."],
                     "centerY": ["type": "number", "description": "Optional vertical center 0–1 (default 0.9, near the bottom)."],
                     "textCase": ["type": "string", "enum": ["auto", "upper", "lower"], "description": "Optional letter case (default auto)."],
-                    "maxCharacters": ["type": "integer", "description": "Optional maximum visible non-whitespace characters per caption phrase. Pass this when the user gives a limit or asks for short/readable captions. Choose the value from language, timeline aspect ratio/resolution, and fontSize: smaller for vertical/narrow video, larger fonts, and CJK; larger for wide video, smaller fonts, and alphabetic languages."],
                     "censorProfanity": ["type": "boolean", "description": "Optional. Mask profanity (default false)."],
-                ]
+                    "maxCharacters": ["type": "integer", "description": "Optional maximum visible non-whitespace characters per caption phrase. Pass this when the user gives a limit or asks for short/readable captions. Choose the value from language, timeline aspect ratio/resolution, and fontSize: smaller for vertical/narrow video, larger fonts, and CJK; larger for wide video, smaller fonts, and alphabetic languages."],
+                    "maxWords": ["type": "integer", "description": "Optional maximum words per caption phrase."],
+                ], textStyleProperties(), [
+                    "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Caption animation preset."],
+                    "highlightColor": ["type": "string", "description": "Active-word hex."],
+                ])
             )
         ),
         AgentTool(
@@ -841,6 +901,34 @@ enum ToolDefinitions {
 
     /// Tools for the in-app agent: every MCP tool plus read_skill.
     static var inAppAgent: [AgentTool] { all + [readSkill] }
+
+    private static func textBoxTransformProperties() -> [String: [String: Any]] {
+        [
+            "centerX": ["type": "number", "description": "0-1 horizontal center."],
+            "centerY": ["type": "number", "description": "0-1 vertical center."],
+            "width": ["type": "number", "description": "0-1 width."],
+            "height": ["type": "number", "description": "0-1 height."],
+        ]
+    }
+
+    private static func textStyleProperties() -> [String: [String: Any]] {
+        [
+            "fontName": ["type": "string", "description": "Font name."],
+            "fontSize": ["type": "number", "description": "Canvas points."],
+            "isBold": ["type": "boolean", "description": "Bold."],
+            "isItalic": ["type": "boolean", "description": "Italic."],
+            "color": ["type": "string", "description": "Text color hex."],
+            "alignment": ["type": "string", "enum": ["left", "center", "right"], "description": "Text alignment."],
+            "borderColor": ["type": "string", "description": "Text outline hex; enables outline."],
+            "backgroundColor": ["type": "string", "description": "Text box fill hex; enables fill."],
+        ]
+    }
+
+    private static func mergedProperties(_ chunks: [String: [String: Any]]...) -> [String: [String: Any]] {
+        chunks.reduce(into: [:]) { merged, chunk in
+            merged.merge(chunk) { _, new in new }
+        }
+    }
 
     private static func objectSchema(
         properties: [String: [String: Any]] = [:],

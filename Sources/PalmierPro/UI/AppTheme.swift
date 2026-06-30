@@ -279,8 +279,11 @@ enum AppTheme {
         static let defaultFontSize: Double = 48
         static let minFontSize: Double = 12
         static let maxFontSize: Double = 300
+        static let minGeneratedFontScale: Double = 0.01
         static let minPosition: Double = 0
         static let maxPosition: Double = 1
+        static let horizontalSafeInsetRatio: CGFloat = 0.05
+        static let verticalSafeInsetRatio: CGFloat = 0.04
         static let centerSnapValue: CGFloat = 0.5
         static let centerSnapThreshold: Double = 0.02
         static let defaultCenterY: CGFloat = 0.9

@@ -84,6 +84,7 @@ struct AgentPanelView: View {
                 }
                 newTabButton
                 historyButton
+                ViewSkillsButton()
             }
             .padding(.horizontal, AppTheme.Spacing.sm)
             .frame(maxWidth: .infinity)

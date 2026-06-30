@@ -3,16 +3,27 @@ import SwiftUI
 struct CaptionTab: View {
     @Environment(EditorViewModel.self) var editor
 
-    @State private var style = TextStyle(fontSize: AppTheme.Caption.defaultFontSize)
+    @State private var style: TextStyle = {
+        var s = TextStyle(fontSize: AppTheme.Caption.defaultFontSize)
+        s.shadow.enabled = false
+        return s
+    }()
     @State private var center = AppTheme.Caption.defaultCenter
     @State private var selectedTrackId: String?
     @State private var selectedClipTargets: [String] = []
     @State private var textCase: EditorViewModel.CaptionCase = .auto
+    @State private var animationPreset: TextAnimation.Preset = .none
+    @State private var animationHighlight: TextStyle.RGBA = TextAnimation.defaultHighlight
     @State private var censorProfanity = false
+    @State private var maxWords: Int?
     @State private var locale: Locale?
     @State private var supportedLocales: [Locale] = []
     @State private var isGenerating = false
     @State private var note: String?
+    @State private var sourceExpanded = true
+    @State private var styleExpanded = true
+    @State private var animationExpanded = true
+    @State private var placementExpanded = true
 
     private static let previewText = "Captions will look like this"
 
@@ -56,7 +67,11 @@ struct CaptionTab: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.mdLg) {
                         sourceSection
+                        sectionDivider
                         styleSection
+                        sectionDivider
+                        animationSection
+                        sectionDivider
                         placementSection
                     }
                     .padding(.horizontal, AppTheme.Spacing.lgXl)
@@ -83,8 +98,14 @@ struct CaptionTab: View {
         .onChange(of: editor.selectedClipIds) { _, _ in rememberSelectedClipTargets() }
     }
 
+    private var sectionDivider: some View {
+        Rectangle()
+            .fill(AppTheme.Border.subtleColor)
+            .frame(height: AppTheme.BorderWidth.hairline)
+    }
+
     private var sourceSection: some View {
-        InspectorSection("Source") {
+        InspectorSection("Source", isExpanded: $sourceExpanded) {
             InspectorRow(
                 icon: "waveform",
                 label: "Source",
@@ -101,6 +122,22 @@ struct CaptionTab: View {
                     }
                 } label: { menuValueLabel(locale.map(languageName) ?? "Auto") }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+            }
+            InspectorRow(icon: "number", label: "Max words", labelHelp: "Cap the words shown per caption. None fits each line to the box.") {
+                Menu {
+                    Button("None") { maxWords = nil }
+                    ForEach(1...8, id: \.self) { n in
+                        Button("\(n)") { maxWords = n }
+                    }
+                } label: { menuValueLabel(maxWords.map(String.init) ?? "None") }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+            }
+            InspectorRow(icon: "exclamationmark.bubble", label: "Censor profanity") {
+                Toggle("", isOn: $censorProfanity)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
             }
         }
     }
@@ -154,9 +191,17 @@ struct CaptionTab: View {
     }
 
     private var styleSection: some View {
-        InspectorSection("Style") {
+        InspectorSection("Style", isExpanded: $styleExpanded) {
             InspectorRow(icon: "character", label: "Font") {
                 FontPickerField(current: style.fontName, onPreview: { style.fontName = $0 }, onChange: { style.fontName = $0 }, onCancel: {})
+            }
+            InspectorRow(icon: "textformat", label: "Style") {
+                TextStyleTraitButtons(
+                    isBold: style.isBold,
+                    isItalic: style.isItalic,
+                    onBold: { style.isBold = $0 },
+                    onItalic: { style.isItalic = $0 }
+                )
             }
             InspectorRow(icon: "textformat.size", label: "Size") {
                 ScrubbableNumberField(
@@ -184,6 +229,20 @@ struct CaptionTab: View {
                         .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
                 }
             }
+            InspectorRow(icon: "a.square", label: "Outline") {
+                HStack(spacing: AppTheme.Spacing.sm) {
+                    ColorField(displayColor: style.border.color.swiftUIColor) {
+                        style.border.color = TextStyle.RGBA($0)
+                    }
+                    .opacity(style.border.enabled ? AppTheme.Opacity.opaque : AppTheme.Opacity.medium)
+                    .disabled(!style.border.enabled)
+                    Toggle("", isOn: $style.border.enabled)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
+                }
+            }
             InspectorRow(icon: "textformat", label: "Case") {
                 Menu {
                     ForEach(EditorViewModel.CaptionCase.allCases, id: \.self) { c in
@@ -199,18 +258,22 @@ struct CaptionTab: View {
                 }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
             }
-            InspectorRow(icon: "exclamationmark.bubble", label: "Censor profanity") {
-                Toggle("", isOn: $censorProfanity)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-                    .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
+        }
+    }
+
+    private var animationSection: some View {
+        InspectorSection("Animation", isExpanded: $animationExpanded) {
+            CaptionPresetGallery(selection: $animationPreset, highlight: animationHighlight)
+            if animationPreset.usesHighlight {
+                InspectorRow(icon: "highlighter", label: "Highlight", labelHelp: "Color for the active word.") {
+                    ColorField(displayColor: animationHighlight.swiftUIColor, onUserChange: { animationHighlight = TextStyle.RGBA($0) })
+                }
             }
         }
     }
 
     private var placementSection: some View {
-        InspectorSection("Placement") {
+        InspectorSection("Placement", isExpanded: $placementExpanded) {
             previewBox
             HStack(spacing: AppTheme.Spacing.mdLg) {
                 Spacer(minLength: AppTheme.Spacing.xs)
@@ -282,28 +345,12 @@ struct CaptionTab: View {
             AppTheme.Background.previewCanvasColor
             centerGuides
             GeometryReader { geo in
-                let canvasW = CGFloat(max(1, editor.timeline.width))
-                let canvasH = CGFloat(max(1, editor.timeline.height))
-                let natural = TextLayout.naturalSize(
-                    content: Self.previewText,
-                    style: style,
-                    maxWidth: canvasW * AppTheme.ComponentSize.captionPreviewMaxTextWidthRatio,
-                    canvasHeight: canvasH
+                CaptionAnimatedPreview(
+                    text: Self.previewText, style: style, center: center,
+                    preset: animationPreset, highlight: animationHighlight,
+                    canvas: CGSize(width: max(1, editor.timeline.width), height: max(1, editor.timeline.height)),
+                    size: geo.size
                 )
-                let scale = geo.size.height / TextLayout.referenceCanvasHeight
-                let boxWidth = natural.width / canvasW * geo.size.width
-                let boxHeight = natural.height / canvasH * geo.size.height
-                Text(Self.previewText)
-                    .font(Font(style.resolvedFont(size: CGFloat(style.fontSize * style.fontScale) * scale)))
-                    .foregroundStyle(style.color.swiftUIColor)
-                    .frame(width: boxWidth, height: boxHeight)
-                    .background(style.background.enabled ? style.background.color.swiftUIColor : Color.clear)
-                    .overlay {
-                        if style.border.enabled {
-                            Rectangle().stroke(style.border.color.swiftUIColor, lineWidth: AppTheme.BorderWidth.thin * scale)
-                        }
-                    }
-                    .position(x: geo.size.width * center.x, y: geo.size.height * center.y)
             }
         }
         .aspectRatio(aspect, contentMode: .fit)
@@ -394,7 +441,8 @@ struct CaptionTab: View {
         }
         let request = EditorViewModel.CaptionRequest(
             sourceClipIds: sourceIds, autoDetect: isAutoSource, style: style, center: center,
-            textCase: textCase, censorProfanity: censorProfanity, locale: locale
+            textCase: textCase, censorProfanity: censorProfanity, locale: locale, maxWords: maxWords,
+            animation: TextAnimation(preset: animationPreset, highlight: animationHighlight)
         )
         Task {
             isGenerating = true

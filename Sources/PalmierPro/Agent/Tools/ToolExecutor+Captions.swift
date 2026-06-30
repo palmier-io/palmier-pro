@@ -2,10 +2,9 @@ import CoreGraphics
 import Foundation
 
 extension ToolExecutor {
-    private static let addCaptionsAllowedKeys: Set<String> = [
-        "clipIds", "fontName", "fontSize", "color", "centerX", "centerY", "textCase", "censorProfanity", "language",
-        "maxCharacters",
-    ]
+    private static let addCaptionsAllowedKeys: Set<String> = Set([
+        "clipIds", "centerX", "centerY", "textCase", "censorProfanity", "language", "animation", "highlightColor", "maxCharacters", "maxWords",
+    ]).union(agentTextStylePatchAllowedKeys)
 
     func addCaptions(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.addCaptionsAllowedKeys, path: "add_captions")
@@ -13,9 +12,7 @@ extension ToolExecutor {
         let clipIds = (args["clipIds"] as? [Any])?.compactMap { $0 as? String } ?? []
 
         var style = TextStyle(fontSize: AppTheme.Caption.defaultFontSize)
-        if let f = args.string("fontName") { style.fontName = f }
-        if let s = args.double("fontSize") { style.fontSize = s }
-        if let c = try parseColorHex(args.string("color"), path: "add_captions") { style.color = c }
+        _ = Self.applyTextStylePatch(try parseTextStylePatch(args, path: "add_captions"), to: &style)
 
         let locale = try await Self.parseLocale(args, path: "add_captions")
 
@@ -44,6 +41,14 @@ extension ToolExecutor {
             maxCharacters = nil
         }
 
+        let animation = try parseTextAnimation(preset: args.string("animation"), highlightColor: args.string("highlightColor"), path: "add_captions") ?? TextAnimation()
+
+        var maxWords: Int?
+        if let n = args.int("maxWords") {
+            guard n >= 1 else { throw ToolError("add_captions: maxWords must be >= 1 (got \(n))") }
+            maxWords = n
+        }
+
         let request = EditorViewModel.CaptionRequest(
             sourceClipIds: clipIds,
             autoDetect: clipIds.isEmpty,
@@ -52,11 +57,14 @@ extension ToolExecutor {
             textCase: textCase,
             censorProfanity: args.bool("censorProfanity") ?? false,
             locale: locale,
-            maxCharacters: maxCharacters
+            maxCharacters: maxCharacters,
+            maxWords: maxWords,
+            animation: animation
         )
 
         let ids = try await editor.generateCaptions(for: request)
         guard !ids.isEmpty else { throw ToolError("No speech detected to caption.") }
-        return .ok("Added \(ids.count) caption\(ids.count == 1 ? "" : "s").")
+        let suffix = animation.isActive ? " (\(animation.preset.rawValue))" : ""
+        return .ok("Added \(ids.count) caption\(ids.count == 1 ? "" : "s")\(suffix).")
     }
 }

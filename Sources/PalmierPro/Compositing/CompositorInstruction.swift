@@ -2,17 +2,24 @@ import AVFoundation
 
 /// Immutable per-clip snapshot read on the render queue — never the live timeline.
 struct LayerPlan: Sendable {
-    let trackID: CMPersistentTrackID
+    enum Source: Sendable {
+        case track(CMPersistentTrackID)
+        case text
+    }
+    let source: Source
     let clip: Clip
-    /// Display size (preferredTransform applied), matching `clipNaturalSizes`.
     let natSize: CGSize
     let preferredTransform: CGAffineTransform
+
+    var trackID: CMPersistentTrackID? {
+        if case .track(let id) = source { return id }
+        return nil
+    }
 }
 
 /// One timeline segment between clip boundaries. Layers are ordered bottom → top.
 final class CompositorInstruction: NSObject, AVVideoCompositionInstructionProtocol, @unchecked Sendable {
     let timeRange: CMTimeRange
-    // Post-processing must stay on: the export animationTool (text) keys off it.
     let enablePostProcessing = true
     // Values are sampled per frame; never let AVFoundation cache one frame per instruction.
     let containsTweening = true
@@ -29,7 +36,8 @@ final class CompositorInstruction: NSObject, AVVideoCompositionInstructionProtoc
         self.fps = fps
         var seen = Set<CMPersistentTrackID>()
         self.requiredSourceTrackIDs = layers.compactMap {
-            seen.insert($0.trackID).inserted ? NSNumber(value: $0.trackID) : nil
+            guard let id = $0.trackID else { return nil }  // text layers need no decoded source
+            return seen.insert(id).inserted ? NSNumber(value: id) : nil
         }
         super.init()
     }

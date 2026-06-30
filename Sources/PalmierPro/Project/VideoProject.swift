@@ -3,13 +3,14 @@ import SwiftUI
 import AVFoundation
 import UniformTypeIdentifiers
 
-private struct ProjectPackageContents: Sendable {
+struct ProjectPackageContents: Sendable {
     var timeline: Timeline
     var manifest: MediaManifest?
     var generationLog: GenerationLog?
+    var manifestUnreadable: Bool = false
 }
 
-private struct ProjectPackageSnapshot: Sendable {
+struct ProjectPackageSnapshot: Sendable {
     var timeline: Data
     var manifest: Data?
     var generationLog: Data?
@@ -33,6 +34,9 @@ final class VideoProject: NSDocument {
     private nonisolated(unsafe) var loadedTimeline: Timeline?
     private nonisolated(unsafe) var loadedManifest: MediaManifest?
     private nonisolated(unsafe) var loadedGenerationLog: GenerationLog?
+
+    /// Set when media.json existed but failed to decode, so saves preserve it instead of clobbering.
+    private nonisolated(unsafe) var manifestLoadFailed = false
 
     /// Captured on main thread before writes may continue off-main.
     private nonisolated(unsafe) var snapshotTimeline: Data?
@@ -68,6 +72,7 @@ final class VideoProject: NSDocument {
         loadedTimeline = contents.timeline
         loadedManifest = contents.manifest
         loadedGenerationLog = contents.generationLog
+        manifestLoadFailed = contents.manifestUnreadable
         Log.project.notice(
             "read ok tracks=\(self.loadedTimeline?.tracks.count ?? 0)",
             telemetry: "Project read",
@@ -80,7 +85,7 @@ final class VideoProject: NSDocument {
         )
     }
 
-    private nonisolated static func readProjectPackage(at url: URL) throws -> ProjectPackageContents {
+    nonisolated static func readProjectPackage(at url: URL) throws -> ProjectPackageContents {
         let data = try requiredData(Project.timelineFilename, in: url)
         let timeline: Timeline
         do {
@@ -91,15 +96,20 @@ final class VideoProject: NSDocument {
         }
 
         let manifest: MediaManifest?
+        let manifestUnreadable: Bool
         if let manifestData = try optionalData(Project.manifestFilename, in: url) {
-            do {
-                manifest = try JSONDecoder().decode(MediaManifest.self, from: manifestData)
-            } catch {
-                Log.project.error("read manifest decode failed bytes=\(manifestData.count) error=\(error)")
-                throw CocoaError(.fileReadCorruptFile)
+            if let decoded = try? JSONDecoder().decode(MediaManifest.self, from: manifestData) {
+                manifest = decoded
+                manifestUnreadable = false
+            } else {
+                // A bad manifest must not lose the project; degrade to "media offline" and keep the file for recovery.
+                Log.project.error("read manifest decode failed bytes=\(manifestData.count); opening with empty manifest")
+                manifest = nil
+                manifestUnreadable = true
             }
         } else {
             manifest = nil
+            manifestUnreadable = false
         }
 
         let generationLog = try optionalData(Project.generationLogFilename, in: url)
@@ -108,7 +118,8 @@ final class VideoProject: NSDocument {
         return ProjectPackageContents(
             timeline: timeline,
             manifest: manifest,
-            generationLog: generationLog
+            generationLog: generationLog,
+            manifestUnreadable: manifestUnreadable
         )
     }
 
@@ -153,11 +164,13 @@ final class VideoProject: NSDocument {
             to: url,
             sourceURL: snapshotSourceProjectURL
         )
+        // A real manifest was just written, so the unreadable original is gone; stop preserving it.
+        if snapshotManifest != nil { manifestLoadFailed = false }
     }
 
     private func captureSaveSnapshot() {
         snapshotTimeline = try? JSONEncoder().encode(editorViewModel.timeline)
-        snapshotManifest = try? JSONEncoder().encode(editorViewModel.mediaManifest)
+        snapshotManifest = Self.manifestSnapshotData(manifest: editorViewModel.mediaManifest, loadFailed: manifestLoadFailed)
         snapshotGenerationLog = try? JSONEncoder().encode(editorViewModel.generationLog)
         snapshotThumbnail = captureThumbnail()
         snapshotChatSessionFiles = editorViewModel.agentService.sessions
@@ -166,6 +179,12 @@ final class VideoProject: NSDocument {
                 ChatSessionStore.encodeSession(session).map { (name: "\(session.id.uuidString).json", data: $0) }
             }
         snapshotPreparedForWrite = true
+    }
+
+    nonisolated static func manifestSnapshotData(manifest: MediaManifest, loadFailed: Bool) -> Data? {
+        // If the manifest failed to load, don't overwrite the (recoverable) original with an empty one.
+        if loadFailed && manifest.entries.isEmpty && manifest.folders.isEmpty { return nil }
+        return try? JSONEncoder().encode(manifest)
     }
 
     private nonisolated static func requiredData(_ name: String, in packageURL: URL) throws -> Data {
@@ -183,12 +202,14 @@ final class VideoProject: NSDocument {
         return try Data(contentsOf: url, options: [.mappedIfSafe])
     }
 
-    private nonisolated static func writeProjectPackage(_ snapshot: ProjectPackageSnapshot, to packageURL: URL, sourceURL: URL?) throws {
+    nonisolated static func writeProjectPackage(_ snapshot: ProjectPackageSnapshot, to packageURL: URL, sourceURL: URL?) throws {
         let fm = FileManager.default
         try createPackageDirectory(at: packageURL, fm: fm)
         try snapshot.timeline.write(to: packageURL.appendingPathComponent(Project.timelineFilename), options: .atomic)
         if let manifest = snapshot.manifest {
             try manifest.write(to: packageURL.appendingPathComponent(Project.manifestFilename), options: .atomic)
+        } else {
+            try copyPreservedFile(Project.manifestFilename, from: sourceURL, to: packageURL, fm: fm)
         }
         if let log = snapshot.generationLog {
             try log.write(to: packageURL.appendingPathComponent(Project.generationLogFilename), options: .atomic)

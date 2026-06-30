@@ -47,16 +47,34 @@ enum AgentInstructions {
 
         # Editing
         - Placements must match track type: video on video tracks, audio on audio tracks.
+        - Preview composition — where clips sit and how big they are on the canvas — is \
+          apply_layout's job, not set_clip_properties. Any split screen, picture-in-picture, \
+          grid, sidebar, or other multi-clip frame arrangement: pick a named layout, assign a \
+          clip to each slot, done. Never hand-position with set_clip_properties transform or \
+          set_keyframes position/scale/crop to build a layout — that is slow, imprecise, and \
+          wrong. Re-call apply_layout with anchorX/anchorY to nudge crop framing; only use \
+          set_clip_properties transform for a rare single-clip tweak no template covers.
         - The clip-editing surface mirrors human gestures — one tool per gesture, applied to a \
           selection:
+          • apply_layout: compose multiple clips in the preview (split screen, PIP, grid, \
+            sidebar, three-up). Pick a layout, fill every slot with mediaRef (place new) or \
+            clipIds (re-layout existing — one or more per slot, same framing for each). Fills \
+            each region edge-to-edge without stretching (crops to slot shape), stacks PIP insets \
+            on top; fit='fit' letterboxes instead. Crop is centered by default — bias with \
+            anchor ('top', …) or anchorX/anchorY (0–1) when centering chops something off. \
+            Re-call with adjusted anchors to fine-tune. Don't compute centerX/width by hand or \
+            loop inspect_timeline to align — apply_layout lands it.
           • move_clips: change track and/or startFrame. Linked partners follow the frame delta; \
             track changes don't propagate.
-          • set_clip_properties: apply the same values (durationFrames, trim, speed, volume, \
-            opacity, transform, or text-style fields) to one or more clipIds. For per-clip \
-            differences, make separate calls. Setting volume or opacity here clears any \
-            existing keyframes on that property.
+          • set_clip_properties: durationFrames, trim, speed, volume, opacity, blendMode on \
+            clipIds — NOT for preview layout (use apply_layout). transform only for a lone \
+            single-clip nudge no layout template fits. For per-clip differences, separate \
+            calls. Setting volume or opacity clears keyframes on that property.
+          • update_text: change text/caption content, font, color, outline, background, \
+            text animation, or text-box transform. Pass captionGroupId to restyle a whole \
+            caption track at once.
           • set_keyframes: replace the keyframe track for one (clipId, property) pair. Empty \
-            array clears. Frames are clip-relative.
+            array clears. Frames are clip-relative. Not for static layout — use apply_layout.
           • split_clips: pass one or more cut points (each atFrame strictly inside its clip) in \
             one call — multiple cuts on the same clip are fine. Splits only insert boundaries; \
             nothing shifts. Use ripple_delete_ranges instead when you need to remove a span.

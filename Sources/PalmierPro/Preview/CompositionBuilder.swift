@@ -52,7 +52,7 @@ enum CompositionBuilder {
         var unprocessableMediaRefs: Set<String> = []
 
         for (trackIdx, track) in timeline.tracks.enumerated() {
-            // Text renders via CATextLayer overlay (preview) + animation tool (export) — never as composition tracks.
+            // Text is composited at render, not as a track.
             let sortedClips = track.clips
                 .sorted { $0.startFrame < $1.startFrame }
                 .filter { $0.mediaType != .text }
@@ -424,17 +424,7 @@ enum CompositionBuilder {
         return (audioMix, AVVideoComposition(configuration: vcConfig))
     }
 
-    static func addingAnimationTool(
-        _ animationTool: AVVideoCompositionCoreAnimationTool,
-        to videoComposition: AVVideoComposition
-    ) -> AVVideoComposition {
-        var config = videoComposition.palmierConfiguration()
-        config.animationTool = animationTool
-        return AVVideoComposition(configuration: config)
-    }
-
     /// One instruction per segment between clip boundaries, layers bottom → top.
-    /// The black-background track is excluded — FrameRenderer fills black itself.
     private static func compositorInstructions(
         timeline: Timeline,
         trackMappings: [TrackMapping],
@@ -444,35 +434,40 @@ enum CompositionBuilder {
         renderSize: CGSize
     ) -> [CompositorInstruction] {
         let timescale = CMTimeScale(timeline.fps)
-        struct Entry {
-            let start: CMTime
-            let end: CMTime
-            let plan: LayerPlan
-        }
+        func cmTime(_ frame: Int) -> CMTime { CMTime(value: CMTimeValue(frame), timescale: timescale) }
+        struct Slot { let trackID: CMPersistentTrackID; let natSize: CGSize; let transform: CGAffineTransform }
+        struct Entry { let start: CMTime; let end: CMTime; let plan: LayerPlan }
 
-        // trackMappings order: timeline track 0 first (topmost), black background last.
-        var entries: [Entry] = []
-        for mapping in trackMappings.reversed() where mapping.isVideo {
+        // Resolve each inserted media clip to the composition track it lives on.
+        var media: [String: Slot] = [:]
+        for mapping in trackMappings where mapping.isVideo {
             guard case .timeline(let trackIndex, let clipIds) = mapping.kind,
                   timeline.tracks.indices.contains(trackIndex) else { continue }
-            let track = timeline.tracks[trackIndex]
-            guard !track.hidden else { continue }
+            let ids = clipIds ?? Set(timeline.tracks[trackIndex].clips.filter { $0.mediaType != .text }.map(\.id))
+            for id in ids {
+                media[id] = Slot(
+                    trackID: mapping.compositionTrack.trackID,
+                    natSize: clipNaturalSizes[id] ?? mapping.naturalSize,
+                    transform: clipTransforms[id] ?? .identity
+                )
+            }
+        }
+
+        // Walk tracks in reverse to produce bottom→top entries. Text layers follow track order.
+        var entries: [Entry] = []
+        for track in timeline.tracks.reversed() where !track.hidden {
             var prevEndFrame = Int.min
-            for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame })
-                where clip.mediaType != .text {
-                if let clipIds, !clipIds.contains(clip.id) { continue }
-                guard clip.durationFrames > 0, clip.startFrame >= prevEndFrame else { continue }
-                entries.append(Entry(
-                    start: CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale),
-                    end: CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale),
-                    plan: LayerPlan(
-                        trackID: mapping.compositionTrack.trackID,
-                        clip: clip,
-                        natSize: clipNaturalSizes[clip.id] ?? mapping.naturalSize,
-                        preferredTransform: clipTransforms[clip.id] ?? .identity
-                    )
-                ))
-                prevEndFrame = clip.endFrame
+            for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) where clip.durationFrames > 0 {
+                let plan: LayerPlan
+                if clip.mediaType == .text {
+                    guard !(clip.textContent ?? "").isEmpty else { continue }
+                    plan = LayerPlan(source: .text, clip: clip, natSize: renderSize, preferredTransform: .identity)
+                } else {
+                    guard clip.startFrame >= prevEndFrame, let slot = media[clip.id] else { continue }
+                    plan = LayerPlan(source: .track(slot.trackID), clip: clip, natSize: slot.natSize, preferredTransform: slot.transform)
+                    prevEndFrame = clip.endFrame
+                }
+                entries.append(Entry(start: cmTime(clip.startFrame), end: cmTime(clip.endFrame), plan: plan))
             }
         }
 

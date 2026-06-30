@@ -606,6 +606,7 @@ struct FCPXMLExporterTests {
         var style = TextStyle()
         style.fontName = "Helvetica"
         style.fontSize = 48
+        style.isBold = false
         style.alignment = .left
         text.textStyle = style
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [text])])
@@ -636,7 +637,24 @@ struct FCPXMLExporterTests {
         #expect(xml.contains("fontFace=\"Bold\""))
     }
 
-    @Test func verticalTimelineScalesTitleFontSizeLikeRenderer() throws {
+    @Test func explicitFontTraitsOverridePostScriptFontFaceForResolveTitles() throws {
+        let (resolver, tmpDir) = try makeResolver(entries: [])
+        var text = Fixtures.clip(id: "title", mediaRef: "text", mediaType: .text, start: 0, duration: 60)
+        text.textContent = "Caption"
+        var style = TextStyle()
+        style.fontName = "Helvetica-Bold"
+        style.isBold = false
+        style.isItalic = false
+        text.textStyle = style
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [text])])
+
+        let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        #expect(xml.contains("font=\"Helvetica\""))
+        #expect(xml.contains("fontFace=\"Regular\""))
+    }
+
+    @Test func titleFontSizeDoesNotScaleWithSequenceHeight() throws {
         let (resolver, tmpDir) = try makeResolver(entries: [])
         var text = Fixtures.clip(id: "title", mediaRef: "text", mediaType: .text, start: 0, duration: 60)
         text.textContent = "Caption"
@@ -647,7 +665,7 @@ struct FCPXMLExporterTests {
 
         let xml = try export(timeline, resolver: resolver, tmpDir: tmpDir)
 
-        #expect(xml.contains("fontSize=\"56.8889\""))
+        #expect(xml.contains("fontSize=\"48\""))
         #expect(xml.contains("<adjust-transform scale=\"1 1\" anchor=\"0 0\" position=\"0 0\"/>"))
     }
 

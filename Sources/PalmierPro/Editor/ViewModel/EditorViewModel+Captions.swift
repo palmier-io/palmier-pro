@@ -11,6 +11,8 @@ extension EditorViewModel {
         var censorProfanity: Bool = false
         var locale: Locale? = nil
         var maxCharacters: Int? = nil
+        var maxWords: Int? = nil
+        var animation: TextAnimation = TextAnimation()
     }
 
     enum CaptionCase: String, CaseIterable, Sendable {
@@ -37,7 +39,23 @@ extension EditorViewModel {
         let size = TextLayout.naturalSize(
             content: line, style: style, maxWidth: .greatestFiniteMagnitude, canvasHeight: CGFloat(timeline.height)
         )
-        return size.width <= CGFloat(timeline.width) * AppTheme.ComponentSize.captionPreviewMaxTextWidthRatio
+        return size.width <= captionSafeMaxTextWidth
+    }
+
+    private var captionSafeWidthRatio: CGFloat {
+        max(.zero, CGFloat(AppTheme.Caption.maxPosition - AppTheme.Caption.minPosition) - AppTheme.Caption.horizontalSafeInsetRatio * 2)
+    }
+
+    private var captionSafeHeightRatio: CGFloat {
+        max(.zero, CGFloat(AppTheme.Caption.maxPosition - AppTheme.Caption.minPosition) - AppTheme.Caption.verticalSafeInsetRatio * 2)
+    }
+
+    private var captionSafeMaxTextWidth: CGFloat {
+        CGFloat(timeline.width) * min(AppTheme.ComponentSize.captionPreviewMaxTextWidthRatio, captionSafeWidthRatio)
+    }
+
+    private var captionSafeMaxTextHeight: CGFloat {
+        CGFloat(timeline.height) * captionSafeHeightRatio
     }
 
     enum CaptionError: LocalizedError {
@@ -48,6 +66,20 @@ extension EditorViewModel {
             case .noSource: "No audio clips to caption."
             }
         }
+    }
+
+    /// Text clips sharing this clip's caption group (so animation applies once for the whole
+    /// caption track), or just the clip itself when it isn't part of a caption.
+    func captionGroupTextClipIds(for clipId: String) -> [String] {
+        guard let clip = clipFor(id: clipId), let group = clip.captionGroupId else { return [clipId] }
+        let ids = captionGroupTextClipIds(groupId: group)
+        return ids.isEmpty ? [clipId] : ids
+    }
+
+    /// Text clip ids in a caption group, in timeline order. Empty if the group has no text clips.
+    func captionGroupTextClipIds(groupId: String) -> [String] {
+        timeline.tracks.flatMap(\.clips)
+            .filter { $0.captionGroupId == groupId && $0.mediaType == .text }.map(\.id)
     }
 
     func captionCanTranscribe(_ clip: Clip) -> Bool {
@@ -161,7 +193,6 @@ extension EditorViewModel {
     private func captionSpecs(_ targets: [CaptionTarget], results: [String: TranscriptionResult], request: CaptionRequest) -> [TextClipSpec] {
         let fps = timeline.fps
         let groupId = UUID().uuidString
-        let transformFor = captionTransform(style: request.style, center: request.center)
 
         var phrasesByClip: [String: [CaptionBuilder.Phrase]] = [:]
         for (ref, result) in results {
@@ -179,7 +210,8 @@ extension EditorViewModel {
                         return captionLineFits(line, style: request.style)
                     },
                     minDuration: AppTheme.Caption.minDisplayDuration,
-                    maxCharacters: request.maxCharacters
+                    maxCharacters: request.maxCharacters,
+                    maxWords: request.maxWords
                 )
             }
             for p in phrases {
@@ -188,10 +220,13 @@ extension EditorViewModel {
             }
         }
 
+        let animation: TextAnimation? = request.animation.isActive ? request.animation : nil
         return targets.flatMap { t -> [TextClipSpec] in
             guard let phrases = phrasesByClip[t.id] else { return [] }
-            let cased = phrases.map { CaptionBuilder.Phrase(text: request.textCase.apply($0.text), start: $0.start, end: $0.end) }
-            return CaptionBuilder.specs(for: cased, sourceClip: t.clip, trackIndex: 0, fps: fps, style: request.style, captionGroupId: groupId, transformFor: transformFor)
+            let cased = phrases.map { CaptionBuilder.Phrase(text: request.textCase.apply($0.text), start: $0.start, end: $0.end, words: $0.words) }
+            let style = captionStyleFitting(cased.map(\.text), base: request.style)
+            let transformFor = captionTransform(style: style, center: request.center)
+            return CaptionBuilder.specs(for: cased, sourceClip: t.clip, trackIndex: 0, fps: fps, style: style, captionGroupId: groupId, animation: animation, transformFor: transformFor)
         }
     }
 
@@ -231,18 +266,64 @@ extension EditorViewModel {
         return (s, s + Double(c.durationFrames) * max(c.speed, 0.0001))
     }
 
-    private func captionTransform(style: TextStyle, center: CGPoint) -> (String) -> Transform? {
-        let canvasW = Double(timeline.width), canvasH = Double(timeline.height)
-        return { text in
+    func captionStyleFitting(_ texts: [String], base style: TextStyle) -> TextStyle {
+        guard timeline.width > 0, timeline.height > 0 else { return style }
+        let maxWidth = captionSafeMaxTextWidth
+        let maxHeight = captionSafeMaxTextHeight
+        guard maxWidth > .zero, maxHeight > .zero else { return style }
+
+        var scale = AppTheme.Caption.maxPosition
+        for text in texts where !text.isEmpty {
             let natural = TextLayout.naturalSize(
-                content: text, style: style, maxWidth: CGFloat(canvasW) * AppTheme.ComponentSize.captionPreviewMaxTextWidthRatio, canvasHeight: CGFloat(canvasH)
+                content: text,
+                style: style,
+                maxWidth: maxWidth,
+                canvasHeight: CGFloat(timeline.height)
             )
-            return Transform(
-                center: (Double(center.x), Double(center.y)),
-                width: Double(natural.width) / canvasW,
-                height: Double(natural.height) / canvasH
-            )
+            if natural.width > maxWidth {
+                scale = min(scale, Double(maxWidth / natural.width))
+            }
+            if natural.height > maxHeight {
+                scale = min(scale, Double(maxHeight / natural.height))
+            }
         }
+        guard scale < AppTheme.Caption.maxPosition else { return style }
+
+        var fitted = style
+        fitted.fontScale = max(style.fontScale * scale, AppTheme.Caption.minGeneratedFontScale)
+        return fitted
+    }
+
+    func captionTransform(for text: String, style: TextStyle, center: CGPoint) -> Transform {
+        guard timeline.width > 0, timeline.height > 0 else {
+            return Transform(center: (Double(center.x), Double(center.y)), width: AppTheme.Caption.maxPosition, height: AppTheme.Caption.maxPosition)
+        }
+
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
+        let natural = TextLayout.naturalSize(
+            content: text,
+            style: style,
+            maxWidth: captionSafeMaxTextWidth,
+            canvasHeight: CGFloat(timeline.height)
+        )
+        let width = min(Double(natural.width) / canvasW, Double(captionSafeWidthRatio))
+        let height = min(Double(natural.height) / canvasH, Double(captionSafeHeightRatio))
+        let minX = AppTheme.Caption.minPosition + Double(AppTheme.Caption.horizontalSafeInsetRatio)
+        let maxX = AppTheme.Caption.maxPosition - Double(AppTheme.Caption.horizontalSafeInsetRatio)
+        let minY = AppTheme.Caption.minPosition + Double(AppTheme.Caption.verticalSafeInsetRatio)
+        let maxY = AppTheme.Caption.maxPosition - Double(AppTheme.Caption.verticalSafeInsetRatio)
+        let centerX = clamped(Double(center.x), minX + width / 2, maxX - width / 2)
+        let centerY = clamped(Double(center.y), minY + height / 2, maxY - height / 2)
+        return Transform(center: (centerX, centerY), width: width, height: height)
+    }
+
+    private func captionTransform(style: TextStyle, center: CGPoint) -> (String) -> Transform? {
+        { text in self.captionTransform(for: text, style: style, center: center) }
+    }
+
+    private func clamped(_ value: Double, _ lower: Double, _ upper: Double) -> Double {
+        min(max(value, lower), max(lower, upper))
     }
 
     private func placeCaptionTrack(_ specs: [TextClipSpec]) -> [String] {
@@ -255,7 +336,7 @@ extension EditorViewModel {
         undoManager?.enableUndoRegistration()
         guard !ids.isEmpty else {
             timeline = before
-            videoEngine?.syncTextLayers()
+            videoEngine?.refreshVisuals()
             return []
         }
         registerTimelineSwap(undoState: before, redoState: timeline, actionName: "Generate Captions")

@@ -62,10 +62,8 @@ extension ToolExecutor {
         for frame in sampledFrames {
             let time = CMTime(value: CMTimeValue(frame), timescale: timescale)
             guard let videoCG = try? await generator.image(at: time).image else { continue }
-            let frameCanvas = CGSize(width: videoCG.width, height: videoCG.height)
-            let textRoot = TextLayerController.buildSnapshot(timeline: timeline, canvasSize: frameCanvas, atFrame: frame)
-            guard let composited = EditorViewModel.compositeCapture(video: videoCG, textRoot: textRoot, canvas: frameCanvas),
-                  let jpeg = ImageEncoder.encodeJPEG(composited, quality: Self.inspectTimelineJPEGQuality) else { continue }
+            // videoComposition already composites text via CustomVideoCompositor.
+            guard let jpeg = ImageEncoder.encodeJPEG(videoCG, quality: Self.inspectTimelineJPEGQuality) else { continue }
             imageBlocks.append(.image(base64: jpeg.base64EncodedString(), mediaType: "image/jpeg"))
             renderedFrames.append(frame)
         }
