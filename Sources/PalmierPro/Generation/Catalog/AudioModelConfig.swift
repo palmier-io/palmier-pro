@@ -54,7 +54,7 @@ struct AudioModelConfig: Identifiable, Sendable {
     }
 
     @MainActor
-    static var allModels: [AudioModelConfig] { ModelCatalog.shared.audio }
+    static var allModels: [AudioModelConfig] { ModelCatalog.shared.audio + AudioProviderCatalog.shared.audio }
 
     let entry: CatalogEntry
     let caps: AudioCaps

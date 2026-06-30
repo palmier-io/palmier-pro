@@ -244,6 +244,59 @@ final class GenerationService {
         return placeholder.id
     }
 
+    @discardableResult
+    func generateMiniMaxAudio(
+        genInput: GenerationInput,
+        model: AudioModelConfig,
+        params: AudioGenerationParams,
+        name: String? = nil,
+        folderId: String? = nil,
+        projectURL: URL?,
+        editor: EditorViewModel,
+        onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
+        onFailure: (@MainActor () -> Void)? = nil
+    ) -> String {
+        let destDir = Self.destinationDirectory(for: projectURL)
+        let baseName = name ?? String(genInput.prompt.prefix(30))
+        let resolvedFolderId = folderId.flatMap { editor.folder(id: $0) != nil ? $0 : nil }
+        let placeholder = createPlaceholder(
+            type: .audio,
+            name: baseName,
+            duration: AudioGenerationSubmission.placeholderDuration(model: model, params: params),
+            genInput: genInput,
+            folderId: resolvedFolderId,
+            destDir: destDir,
+            fileExtension: "mp3",
+            editor: editor
+        )
+
+        Task { @MainActor in
+            do {
+                updateGenerationMetadata(placeholder, editor: editor, status: .generating)
+                editor.onProjectCheckpointRequired?()
+                let output = try await MiniMaxAudioService.generate(model: model, params: params)
+                if output.fileExtension != placeholder.url.pathExtension.lowercased() {
+                    placeholder.url = placeholder.url.deletingPathExtension().appendingPathExtension(output.fileExtension)
+                }
+                updateGenerationMetadata(placeholder, editor: editor, status: .downloading)
+                let destinationURL = placeholder.url
+                try await Task.detached(priority: .utility) {
+                    try FileIO.writeData(output.data, to: destinationURL)
+                }.value
+                placeholder.generationStatus = .none
+                editor.importMediaAsset(placeholder, skipAppend: true)
+                editor.appendGenerationLog(for: placeholder)
+                await editor.finalizeImportedAsset(placeholder)
+                onComplete?(placeholder)
+                notifyGenerationComplete([placeholder], editor: editor, onFailure: onFailure)
+            } catch {
+                fail([placeholder], message: error.localizedDescription, editor: editor, onFailure: onFailure)
+            }
+        }
+
+        return placeholder.id
+    }
+
     private func prepareReferences(
         references: [MediaAsset],
         trimmedSourceOverride: TrimmedSource?,
@@ -497,7 +550,7 @@ final class GenerationService {
         editor: EditorViewModel,
         onFailure: (@MainActor () -> Void)?
     ) {
-        Log.generation.error("openrouter failed: \(message)")
+        Log.generation.error("generation failed: \(message)")
         for placeholder in placeholders {
             updateGenerationMetadata(placeholder, editor: editor, status: .failed(message))
         }

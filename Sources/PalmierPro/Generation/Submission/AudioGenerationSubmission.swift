@@ -19,7 +19,21 @@ struct AudioGenerationSubmission {
         onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
         onFailure: (@MainActor () -> Void)? = nil
     ) -> String {
-        service.generate(
+        if MiniMaxAudioService.canGenerate(model: model) {
+            return service.generateMiniMaxAudio(
+                genInput: genInput,
+                model: model,
+                params: params,
+                name: name,
+                folderId: folderId,
+                projectURL: projectURL,
+                editor: editor,
+                onComplete: onComplete,
+                onFailure: onFailure
+            )
+        }
+
+        return service.generate(
             genInput: genInput,
             assetType: .audio,
             placeholderDuration: placeholderDuration,

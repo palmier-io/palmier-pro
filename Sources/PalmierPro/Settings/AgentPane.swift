@@ -26,7 +26,16 @@ struct AgentPane: View {
 
     @State private var codexOAuthModel: String = ""
     @State private var savedCodexOAuthModel: String = ""
-    @State private var codexOAuthStatus = CodexOAuthStatus(hasAccessToken: false, accountID: nil, authMode: nil, lastRefresh: nil)
+    @State private var codexOAuthStatus = CodexOAuthStatus(
+        hasAccessToken: false,
+        hasRefreshToken: false,
+        accountID: nil,
+        authMode: nil,
+        lastRefresh: nil,
+        expiresAt: nil,
+        errorMessage: nil
+    )
+    @State private var codexOAuthBusy = false
 
     @FocusState private var focusedField: FocusedField?
 
@@ -295,7 +304,7 @@ struct AgentPane: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
             sectionHeader(
                 title: "Codex OAuth",
-                subtitle: "Use the local ~/.codex OAuth session. Palmier reads the access token at request time and does not copy it."
+                subtitle: "Sign in with ChatGPT through the Codex OAuth flow. Tokens are stored in the local Codex auth file."
             )
 
             codexOAuthStatusRow
@@ -313,16 +322,30 @@ struct AgentPane: View {
                 Button("Save", action: saveCodexOAuth)
                     .buttonStyle(.capsule(.prominent, size: .regular))
                     .controlSize(.large)
-                    .disabled(!codexOAuthIsDirty)
+                    .disabled(!codexOAuthIsDirty || codexOAuthBusy)
 
-                Button("Refresh", action: refreshCodexOAuthStatus)
+                Button("Sign In", action: signInCodexOAuth)
                     .buttonStyle(.capsule(.secondary, size: .regular))
                     .controlSize(.large)
+                    .disabled(codexOAuthBusy)
+
+                Button("Refresh", action: refreshCodexOAuthToken)
+                    .buttonStyle(.capsule(.secondary, size: .regular))
+                    .controlSize(.large)
+                    .disabled(codexOAuthBusy || !codexOAuthStatus.hasRefreshToken)
 
                 if codexOAuthHasSavedConfig {
                     Button("Clear", action: clearCodexOAuth)
                         .buttonStyle(.capsule(.secondary, size: .regular))
                         .controlSize(.large)
+                        .disabled(codexOAuthBusy)
+                }
+
+                if codexOAuthStatus.canAuthorize {
+                    Button("Sign Out", action: signOutCodexOAuth)
+                        .buttonStyle(.capsule(.secondary, size: .regular))
+                        .controlSize(.large)
+                        .disabled(codexOAuthBusy)
                 }
             }
         }
@@ -331,11 +354,11 @@ struct AgentPane: View {
     private var codexOAuthStatusRow: some View {
         HStack(spacing: AppTheme.Spacing.sm) {
             Circle()
-                .fill(codexOAuthStatus.hasAccessToken ? AppTheme.Status.successColor : AppTheme.Text.mutedColor)
+                .fill(codexOAuthStatusColor)
                 .frame(width: AppTheme.Spacing.smMd, height: AppTheme.Spacing.smMd)
 
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-                Text(codexOAuthStatus.hasAccessToken ? "OAuth session detected" : "No Codex OAuth session")
+                Text(codexOAuthTitle)
                     .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                     .foregroundStyle(AppTheme.Text.primaryColor)
 
@@ -353,14 +376,34 @@ struct AgentPane: View {
         .overlay(inputBorder(isFocused: false))
     }
 
+    private var codexOAuthStatusColor: Color {
+        if codexOAuthBusy { return AppTheme.Accent.primary }
+        if codexOAuthStatus.errorMessage != nil { return AppTheme.Status.errorColor }
+        if codexOAuthStatus.needsRefresh { return AppTheme.Status.warningColor }
+        return codexOAuthStatus.canAuthorize ? AppTheme.Status.successColor : AppTheme.Text.mutedColor
+    }
+
+    private var codexOAuthTitle: String {
+        if codexOAuthBusy { return "Codex OAuth in progress" }
+        if codexOAuthStatus.errorMessage != nil { return "Codex OAuth needs attention" }
+        if codexOAuthStatus.needsRefresh { return "Codex OAuth token needs refresh" }
+        return codexOAuthStatus.canAuthorize ? "Codex OAuth session ready" : "No Codex OAuth session"
+    }
+
     private var codexOAuthDetail: String {
+        if let error = codexOAuthStatus.errorMessage {
+            return error
+        }
         if let accountID = codexOAuthStatus.accountID {
             return "Account \(mask(accountID))"
+        }
+        if let lastRefresh = codexOAuthStatus.lastRefresh {
+            return "Last refresh \(lastRefresh)"
         }
         if let mode = codexOAuthStatus.authMode {
             return "Auth mode \(mode)"
         }
-        return "Run Codex sign in, then refresh."
+        return "Sign in with ChatGPT."
     }
 
     private var codexOAuthIsDirty: Bool {
@@ -378,7 +421,7 @@ struct AgentPane: View {
             let status = await Task.detached(priority: .userInitiated) {
                 CodexOAuthAgentSettings.save(model: model)
                 let status = CodexOAuthStore.status()
-                if !model.isEmpty && status.hasAccessToken {
+                if !model.isEmpty && status.canAuthorize {
                     AgentProviderPreference.save(.codexOAuth)
                 }
                 return status
@@ -386,7 +429,7 @@ struct AgentPane: View {
             savedCodexOAuthModel = model
             codexOAuthModel = model
             codexOAuthStatus = status
-            if !model.isEmpty && status.hasAccessToken {
+            if !model.isEmpty && status.canAuthorize {
                 provider = .codexOAuth
             }
         }
@@ -398,6 +441,38 @@ struct AgentPane: View {
                 CodexOAuthStore.status()
             }.value
             NotificationCenter.default.post(name: .codexOAuthAgentSettingsChanged, object: nil)
+        }
+    }
+
+    private func signInCodexOAuth() {
+        codexOAuthBusy = true
+        Task { @MainActor in
+            do {
+                let status = try await CodexOAuthStore.signIn()
+                codexOAuthStatus = status
+                let model = codexOAuthModel.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !model.isEmpty {
+                    CodexOAuthAgentSettings.save(model: model)
+                    savedCodexOAuthModel = model
+                    AgentProviderPreference.save(.codexOAuth)
+                    provider = .codexOAuth
+                }
+            } catch {
+                codexOAuthStatus = statusWithError(error)
+            }
+            codexOAuthBusy = false
+        }
+    }
+
+    private func refreshCodexOAuthToken() {
+        codexOAuthBusy = true
+        Task { @MainActor in
+            do {
+                codexOAuthStatus = try await CodexOAuthStore.refreshStoredToken()
+            } catch {
+                codexOAuthStatus = statusWithError(error)
+            }
+            codexOAuthBusy = false
         }
     }
 
@@ -416,6 +491,36 @@ struct AgentPane: View {
                 provider = .palmier
             }
         }
+    }
+
+    private func signOutCodexOAuth() {
+        codexOAuthBusy = true
+        Task { @MainActor in
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try CodexOAuthStore.signOut()
+                    CodexOAuthAgentSettings.clearModel()
+                    if AgentProviderPreference.stored == .codexOAuth {
+                        AgentProviderPreference.save(.palmier)
+                    }
+                }.value
+                savedCodexOAuthModel = ""
+                codexOAuthModel = ""
+                codexOAuthStatus = CodexOAuthStore.status()
+                if provider == .codexOAuth {
+                    provider = .palmier
+                }
+            } catch {
+                codexOAuthStatus = statusWithError(error)
+            }
+            codexOAuthBusy = false
+        }
+    }
+
+    private func statusWithError(_ error: Error) -> CodexOAuthStatus {
+        var status = CodexOAuthStore.status()
+        status.errorMessage = error.localizedDescription
+        return status
     }
 
     // MARK: - OpenAI Compatible
@@ -670,7 +775,7 @@ struct AgentPane: View {
                     hasAnthropicKey: !anthropicKey.isEmpty,
                     hasOpenAICompatibleConfig: OpenAICompatibleEndpoint.normalizedURL(from: baseURL) != nil && !model.isEmpty,
                     hasZhipuConfig: !zhipuKey.isEmpty && !zhipuModel.isEmpty,
-                    hasCodexOAuthConfig: codexOAuthStatus.hasAccessToken && !codexOAuthModel.isEmpty
+                    hasCodexOAuthConfig: codexOAuthStatus.canAuthorize && !codexOAuthModel.isEmpty
                 )
                 return (anthropicKey, openAIKey, baseURL, model, zhipuKey, zhipuModel, codexOAuthModel, codexOAuthStatus, provider)
             }.value

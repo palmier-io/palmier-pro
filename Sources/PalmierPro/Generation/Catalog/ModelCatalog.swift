@@ -12,7 +12,9 @@ enum ModelKind: Sendable {
 enum ModelRegistry {
     @MainActor static var byId: [String: ModelKind] { ModelCatalog.shared.byId }
 
-    @MainActor static func exists(id: String) -> Bool { byId[id] != nil }
+    @MainActor static func exists(id: String) -> Bool {
+        byId[id] != nil || AudioProviderCatalog.shared.modelExists(storedId: id)
+    }
 
 
     @MainActor static func displayName(for id: String) -> String {
@@ -20,6 +22,9 @@ enum ModelRegistry {
             return OpenRouterService.shared.imageModel(rawId: raw)?.displayName
                 ?? OpenRouterService.shared.videoModel(rawId: raw)?.displayName
                 ?? raw
+        }
+        if let raw = MiniMaxModelId.raw(id) {
+            return AudioProviderCatalog.shared.miniMaxModel(rawId: raw)?.displayName ?? raw
         }
         switch byId[id] {
         case .video(let m): return m.displayName
@@ -169,6 +174,34 @@ struct CatalogEntry: Decodable, Sendable {
         case id, kind, displayName, allowedEndpoints, responseShape, uiCapabilities
         case creditsPerSecond, audioDiscountRate, creditsPerImage, qualities
         case audioPricing, creditsPerSecondUpscale
+    }
+
+    init(
+        id: String,
+        kind: Kind,
+        displayName: String,
+        allowedEndpoints: [String],
+        responseShape: ResponseShape,
+        uiCapabilities: UICapabilities,
+        creditsPerSecond: [String: Double]? = nil,
+        audioDiscountRate: [String: Double]? = nil,
+        creditsPerImage: [String: Double]? = nil,
+        qualities: [String]? = nil,
+        audioPricing: AudioPricing? = nil,
+        creditsPerSecondUpscale: Double? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.displayName = displayName
+        self.allowedEndpoints = allowedEndpoints
+        self.responseShape = responseShape
+        self.uiCapabilities = uiCapabilities
+        self.creditsPerSecond = creditsPerSecond
+        self.audioDiscountRate = audioDiscountRate
+        self.creditsPerImage = creditsPerImage
+        self.qualities = qualities
+        self.audioPricing = audioPricing
+        self.creditsPerSecondUpscale = creditsPerSecondUpscale
     }
 
     init(from decoder: Decoder) throws {

@@ -19,17 +19,20 @@ Upstream sync note: preserve this as a project-level operating rule for both Cod
 
 ## OpenAI-Compatible BYOK Agent Runtime
 
-Intent: keep independent non-Palmier agent backends for user-provided keys and local OAuth credentials instead of patching the Anthropic backend. Zhipu GLM uses its OpenAI-compatible endpoint with a Keychain API key. Codex OAuth reads the local `~/.codex/auth.json` access token before streaming and keeps only the selected model in Palmier settings.
+Intent: keep independent non-Palmier agent backends for user-provided keys and local OAuth credentials instead of patching the Anthropic backend. Zhipu GLM uses its OpenAI-compatible endpoint with a Keychain API key. Codex OAuth signs in through the official ChatGPT PKCE browser flow, stores tokens in the local Codex auth file, refreshes access tokens before streaming, and keeps only the selected model in Palmier settings.
 
 Primary paths:
 
 - `Sources/PalmierPro/Agent/Clients/OpenAICompatibleClient.swift`
+- `Sources/PalmierPro/Agent/Clients/CodexOAuthClient.swift`
+- `Sources/PalmierPro/Agent/Clients/CodexOAuthStore.swift`
 - `Sources/PalmierPro/Agent/Clients/AgentProviderCredentials.swift`
 - `Sources/PalmierPro/Agent/Clients/AnthropicProtocol.swift`
 - `Sources/PalmierPro/Agent/Clients/AgentClientTypes.swift`
 - `Sources/PalmierPro/Agent/AgentService.swift`
 - `Sources/PalmierPro/Settings/AgentPane.swift`
 - `Sources/PalmierPro/Agent/Panel/AgentPanelView.swift`
+- `Tests/PalmierProTests/Agent/CodexOAuthStoreTests.swift`
 - `Tests/PalmierProTests/Agent/OpenAICompatibleClientTests.swift`
 
 Upstream sync note: preserve the provider boundary. Anthropic-specific request/streaming behavior should stay in the Anthropic path; OpenAI-compatible request/streaming behavior should stay in the independent client. Do not remove the Zhipu GLM or Codex OAuth options from Settings > Agent.
@@ -189,14 +192,19 @@ Upstream sync note: reject sign-in/credits preflight checks around generation to
 
 ## Generation Credential Settings
 
-Intent: Settings groups model credentials into Agent, Video Generation, and Audio Generation tabs. Users configure provider keys there; model lists are loaded from provider endpoints only after the relevant key exists. MiniMax exposes a Mainland China / Global API region picker because keys are region-bound and the wrong endpoint returns unauthorized.
+Intent: Settings groups model credentials into Agent, Video Generation, and Audio Generation tabs. Users configure provider keys there; model lists are loaded from provider endpoints only after the relevant key exists. MiniMax exposes a Mainland China / International API region picker because keys are region-bound and the wrong endpoint returns unauthorized. MiniMax audio models are loaded into a local provider catalog and generation calls use the selected MiniMax region endpoint directly.
 
 Primary paths:
 
 - `Sources/PalmierPro/Settings/SettingsView.swift`
 - `Sources/PalmierPro/Settings/ProvidersPane.swift`
 - `Sources/PalmierPro/Settings/ModelsPane.swift`
+- `Sources/PalmierPro/Generation/AudioProviderSettings.swift`
+- `Sources/PalmierPro/Generation/AudioProviderCatalog.swift`
+- `Sources/PalmierPro/Generation/MiniMaxAudioService.swift`
 - `Sources/PalmierPro/Generation/OpenRouter/OpenRouterService.swift`
+- `Sources/PalmierPro/Generation/Submission/AudioGenerationSubmission.swift`
 - `Sources/PalmierPro/Agent/Tools/ToolExecutor+Generate.swift`
+- `Tests/PalmierProTests/Generation/AudioProviderSettingsTests.swift`
 
 Upstream sync note: do not restore Account as the default Settings tab. Do not reintroduce a static default model catalog to mask missing provider credentials.
