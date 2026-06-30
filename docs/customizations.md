@@ -113,13 +113,28 @@ Upstream sync note: preserve deterministic local tokenization as the default. AI
 
 ## Palmier UI Feature Policy
 
-Intent: the Gitnapp build hides model-management settings, while anonymous crash/error reporting is forced off.
+Intent: the Gitnapp build exposes model-management settings for local provider configuration, while anonymous crash/error reporting is forced off.
 
 Primary paths:
 
 - `Sources/PalmierPro/App/AppFeaturePolicy.swift`
 - `Sources/PalmierPro/Settings/SettingsView.swift`
+- `Sources/PalmierPro/Settings/ModelsPane.swift`
 - `Sources/PalmierPro/Settings/PrivacyPane.swift`
 - `Sources/PalmierPro/Telemetry/Telemetry.swift`
 
-Upstream sync note: keep model-management settings hidden unless the fork intentionally re-enables them. If upstream adds new model-settings entry points, wire them through `AppFeaturePolicy`.
+Upstream sync note: keep model-management settings visible unless the fork intentionally removes local provider configuration. If upstream adds new model-settings entry points, wire them through `AppFeaturePolicy`.
+
+## OpenRouter Visual Generation Endpoint
+
+Intent: route optional BYOK image and video generation through OpenRouter, while keeping Palmier responsible for audio and upscale.
+
+Primary paths:
+
+- `Sources/PalmierPro/Generation/OpenRouter/OpenRouterService.swift`
+- `Sources/PalmierPro/Generation/GenerationService.swift`
+- `Sources/PalmierPro/Generation/UI/GenerationView.swift`
+- `Sources/PalmierPro/Settings/ModelsPane.swift`
+- `Sources/PalmierPro/App/main.swift`
+
+Upstream sync note: preserve the `openrouter:` stored model-id prefix and keep OpenRouter out of audio and upscale paths.

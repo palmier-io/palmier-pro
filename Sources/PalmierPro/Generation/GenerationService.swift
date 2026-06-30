@@ -121,6 +121,127 @@ final class GenerationService {
         return primaryId
     }
 
+    @discardableResult
+    func generateOpenRouterImage(
+        genInput: GenerationInput,
+        model: OpenRouterImageModelConfig,
+        references: [MediaAsset],
+        numImages: Int,
+        folderId: String?,
+        projectURL: URL?,
+        editor: EditorViewModel,
+        onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
+        onFailure: (@MainActor () -> Void)? = nil
+    ) -> String {
+        let count = max(1, min(model.maxImages, numImages))
+        var placeholders: [MediaAsset] = []
+        let destDir = Self.destinationDirectory(for: projectURL)
+        let baseName = String(genInput.prompt.prefix(30))
+        let resolvedFolderId = folderId.flatMap { editor.folder(id: $0) != nil ? $0 : nil }
+
+        for outputIndex in 0..<count {
+            var input = genInput
+            input.outputIndex = outputIndex
+            input.numImages = count > 1 ? count : nil
+            let placeholder = createPlaceholder(
+                type: .image,
+                name: baseName,
+                duration: Defaults.imageDurationSeconds,
+                genInput: input,
+                folderId: resolvedFolderId,
+                destDir: destDir,
+                fileExtension: "png",
+                editor: editor
+            )
+            placeholders.append(placeholder)
+        }
+        let primaryId = placeholders[0].id
+
+        Task { @MainActor in
+            do {
+                for placeholder in placeholders {
+                    updateGenerationMetadata(placeholder, editor: editor, status: .generating)
+                }
+                editor.onProjectCheckpointRequired?()
+                let outputs = try await OpenRouterService.shared.generateImages(
+                    model: model,
+                    prompt: genInput.prompt,
+                    aspectRatio: genInput.aspectRatio,
+                    resolution: genInput.resolution,
+                    quality: genInput.quality,
+                    numImages: count,
+                    references: references
+                )
+                await finalizeInlineImages(
+                    outputs: outputs,
+                    placeholders: placeholders,
+                    editor: editor,
+                    onComplete: onComplete,
+                    onFailure: onFailure
+                )
+            } catch {
+                fail(placeholders, message: error.localizedDescription, editor: editor, onFailure: onFailure)
+            }
+        }
+
+        return primaryId
+    }
+
+    @discardableResult
+    func generateOpenRouterVideo(
+        genInput: GenerationInput,
+        model: OpenRouterVideoModelConfig,
+        firstFrame: MediaAsset?,
+        lastFrame: MediaAsset?,
+        folderId: String?,
+        projectURL: URL?,
+        editor: EditorViewModel,
+        onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
+        onFailure: (@MainActor () -> Void)? = nil
+    ) -> String {
+        let destDir = Self.destinationDirectory(for: projectURL)
+        let baseName = String(genInput.prompt.prefix(30))
+        let resolvedFolderId = folderId.flatMap { editor.folder(id: $0) != nil ? $0 : nil }
+        let placeholder = createPlaceholder(
+            type: .video,
+            name: baseName,
+            duration: Double(genInput.duration),
+            genInput: genInput,
+            folderId: resolvedFolderId,
+            destDir: destDir,
+            fileExtension: "mp4",
+            editor: editor
+        )
+
+        Task { @MainActor in
+            do {
+                updateGenerationMetadata(placeholder, editor: editor, status: .generating)
+                editor.onProjectCheckpointRequired?()
+                let files = try await OpenRouterService.shared.generateVideoFiles(
+                    model: model,
+                    prompt: genInput.prompt,
+                    duration: genInput.duration,
+                    aspectRatio: genInput.aspectRatio,
+                    resolution: genInput.resolution,
+                    firstFrame: firstFrame,
+                    lastFrame: lastFrame,
+                    generateAudio: genInput.generateAudio ?? true
+                )
+                await finalizeDownloadedFiles(
+                    files: files,
+                    placeholders: [placeholder],
+                    editor: editor,
+                    onComplete: onComplete,
+                    onFailure: onFailure
+                )
+            } catch {
+                fail([placeholder], message: error.localizedDescription, editor: editor, onFailure: onFailure)
+            }
+        }
+
+        return placeholder.id
+    }
+
     private func prepareReferences(
         references: [MediaAsset],
         trimmedSourceOverride: TrimmedSource?,
@@ -269,6 +390,117 @@ final class GenerationService {
         Task { @MainActor in
             await downloadAndFinalize(asset: asset, remoteURL: remoteURL, editor: editor)
         }
+    }
+
+    private func finalizeInlineImages(
+        outputs: [OpenRouterImageOutput],
+        placeholders: [MediaAsset],
+        editor: EditorViewModel,
+        onComplete: (@MainActor (MediaAsset) -> Void)?,
+        onFailure: (@MainActor () -> Void)?
+    ) async {
+        guard !outputs.isEmpty else {
+            fail(placeholders, message: "OpenRouter returned no images", editor: editor, onFailure: onFailure)
+            return
+        }
+
+        var finalized: [MediaAsset] = []
+        for (index, placeholder) in placeholders.enumerated() {
+            guard outputs.indices.contains(index) else {
+                updateGenerationMetadata(placeholder, editor: editor, status: .failed("No image for placeholder"))
+                continue
+            }
+            let output = outputs[index]
+            if output.fileExtension != placeholder.url.pathExtension.lowercased() {
+                placeholder.url = placeholder.url.deletingPathExtension().appendingPathExtension(output.fileExtension)
+            }
+            updateGenerationMetadata(placeholder, editor: editor, status: .downloading)
+            do {
+                let destinationURL = placeholder.url
+                try await Task.detached(priority: .utility) {
+                    try FileIO.writeData(output.data, to: destinationURL)
+                }.value
+                placeholder.generationStatus = .none
+                editor.importMediaAsset(placeholder, skipAppend: true)
+                editor.appendGenerationLog(for: placeholder)
+                await editor.finalizeImportedAsset(placeholder)
+                onComplete?(placeholder)
+                finalized.append(placeholder)
+            } catch {
+                updateGenerationMetadata(placeholder, editor: editor, status: .failed(error.localizedDescription))
+            }
+        }
+        notifyGenerationComplete(finalized, editor: editor, onFailure: onFailure)
+    }
+
+    private func finalizeDownloadedFiles(
+        files: [URL],
+        placeholders: [MediaAsset],
+        editor: EditorViewModel,
+        onComplete: (@MainActor (MediaAsset) -> Void)?,
+        onFailure: (@MainActor () -> Void)?
+    ) async {
+        guard !files.isEmpty else {
+            fail(placeholders, message: "OpenRouter returned no video", editor: editor, onFailure: onFailure)
+            return
+        }
+
+        var finalized: [MediaAsset] = []
+        for (index, placeholder) in placeholders.enumerated() {
+            guard files.indices.contains(index) else {
+                updateGenerationMetadata(placeholder, editor: editor, status: .failed("No video for placeholder"))
+                continue
+            }
+            updateGenerationMetadata(placeholder, editor: editor, status: .downloading)
+            do {
+                let sourceURL = files[index]
+                let destinationURL = placeholder.url
+                try await Task.detached(priority: .utility) {
+                    _ = try FileIO.moveReplacingDestination(from: sourceURL, to: destinationURL)
+                }.value
+                placeholder.generationStatus = .none
+                editor.importMediaAsset(placeholder, skipAppend: true)
+                editor.appendGenerationLog(for: placeholder)
+                await editor.finalizeImportedAsset(placeholder)
+                onComplete?(placeholder)
+                finalized.append(placeholder)
+            } catch {
+                updateGenerationMetadata(placeholder, editor: editor, status: .failed(error.localizedDescription))
+            }
+        }
+        notifyGenerationComplete(finalized, editor: editor, onFailure: onFailure)
+    }
+
+    private func notifyGenerationComplete(
+        _ assets: [MediaAsset],
+        editor: EditorViewModel,
+        onFailure: (@MainActor () -> Void)?
+    ) {
+        guard let first = assets.first else {
+            onFailure?()
+            return
+        }
+        AppNotifications.generationComplete(
+            assetId: first.id,
+            projectURL: editor.projectURL,
+            assetName: first.name,
+            assetType: first.type,
+            count: assets.count
+        )
+    }
+
+    private func fail(
+        _ placeholders: [MediaAsset],
+        message: String,
+        editor: EditorViewModel,
+        onFailure: (@MainActor () -> Void)?
+    ) {
+        Log.generation.error("openrouter failed: \(message)")
+        for placeholder in placeholders {
+            updateGenerationMetadata(placeholder, editor: editor, status: .failed(message))
+        }
+        editor.onProjectCheckpointRequired?()
+        onFailure?()
     }
 
     func resumePendingGenerations(editor: EditorViewModel) {

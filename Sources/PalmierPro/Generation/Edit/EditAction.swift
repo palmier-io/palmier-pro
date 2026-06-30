@@ -101,7 +101,8 @@ enum EditAction {
             if asset.isGenerating {
                 return .disabled(reason: "Generation in progress")
             }
-            guard let modelId = asset.generationInput?.model, ModelRegistry.exists(id: modelId) else {
+            guard let modelId = asset.generationInput?.model,
+                  ModelRegistry.exists(id: modelId) || OpenRouterService.shared.modelExists(storedId: modelId) else {
                 return .disabled(reason: "Model no longer available")
             }
             return .available
