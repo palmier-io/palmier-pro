@@ -138,7 +138,7 @@ struct AgentPanelView: View {
 
     @ViewBuilder
     private var modelPicker: some View {
-        if service.hasApiKey {
+        if service.canPickModel {
             Menu {
                 ForEach(service.availableModels, id: \.self) { m in
                     Button(m.displayName) { service.model = m }
@@ -156,16 +156,27 @@ struct AgentPanelView: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
+        } else if service.activeProvider == .openAICompatible && service.hasOpenAICompatibleEndpoint {
+            Text(service.effectiveModelLabel)
+                .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .lineLimit(1)
+                .help("Streaming through an OpenAI-compatible endpoint")
         }
     }
 
     @ViewBuilder
     private var byokIndicator: some View {
-        if service.hasApiKey {
-            Text("using API key")
+        if service.isUsingBYOK {
+            Text("using \(service.providerStatusLabel) key")
                 .font(.system(size: AppTheme.FontSize.xs).italic())
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .help("Streaming through your Anthropic API key (BYOK)")
+                .help("Streaming through your own API key (BYOK)")
+        } else if service.activeProvider == .openAICompatible && service.hasOpenAICompatibleEndpoint {
+            Text("custom endpoint")
+                .font(.system(size: AppTheme.FontSize.xs).italic())
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .help("Streaming through an OpenAI-compatible endpoint")
         }
     }
 
@@ -330,7 +341,7 @@ struct AgentPanelView: View {
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
 
             Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
-                Text("your own Anthropic key")
+                Text("your own API key")
                     .underline()
                     .foregroundStyle(AppTheme.Accent.primary)
             }

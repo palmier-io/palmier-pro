@@ -20,32 +20,50 @@ enum CaptionBuilder {
         for segment: TranscriptionSegment,
         words: [TranscriptionWord] = [],
         fits: (String) -> Bool,
-        maxWords: Int? = nil,
-        minDuration: Double
+        minDuration: Double,
+        maxCharacters: Int? = nil,
+        maxWords: Int? = nil
     ) -> [Phrase] {
-        // Only phrases that fit visually and within the word cap are accepted; else, keep splitting.
-        let pieces: [String]
-        if let limit = maxWords {
-            let cap = max(1, limit)
-            pieces = split(segment.text, fits: { fits($0) && wordCount($0) <= cap })
-        } else {
-            pieces = split(segment.text, fits: fits)
-        }
+        let pieces = split(
+            segment.text,
+            fits: { phraseFits($0, fits: fits, maxCharacters: maxCharacters, maxWords: maxWords) },
+            maxCharacters: maxCharacters
+        )
         let timed = time(pieces, segment: segment, words: words)
         return enforceMinDuration(timed, minDuration: minDuration)
+    }
+
+    static func phrases(
+        for segment: TranscriptionSegment,
+        words: [TranscriptionWord] = [],
+        fits: (String) -> Bool,
+        maxWords: Int,
+        minDuration: Double
+    ) -> [Phrase] {
+        phrases(for: segment, words: words, fits: fits, minDuration: minDuration, maxWords: maxWords)
+    }
+
+    private static func phraseFits(_ text: String, fits: (String) -> Bool, maxCharacters: Int?, maxWords: Int?) -> Bool {
+        guard fits(text) else { return false }
+        if let maxCharacters, visibleCharacterCount(text) > maxCharacters { return false }
+        if let maxWords, wordCount(text) > max(1, maxWords) { return false }
+        return true
     }
 
     private static func wordCount(_ text: String) -> Int {
         text.split(whereSeparator: \.isWhitespace).count
     }
 
-    private static func split(_ text: String, fits: (String) -> Bool) -> [String] {
+    private static func split(_ text: String, fits: (String) -> Bool, maxCharacters: Int?) -> [String] {
         let t = text.trimmingCharacters(in: .whitespaces)
         guard !t.isEmpty else { return [] }
         if fits(t) { return [t] }
         let parts = breakOnce(t)
-        guard parts.count > 1 else { return [t] }   // a single over-long word: keep it
-        return parts.flatMap { split($0, fits: fits) }
+        guard parts.count > 1 else {
+            guard let maxCharacters, visibleCharacterCount(t) > maxCharacters else { return [t] }
+            return breakAtCharacterLimit(t, maxCharacters: maxCharacters)
+        }
+        return parts.flatMap { split($0, fits: fits, maxCharacters: maxCharacters) }
     }
 
     /// Break once at the best boundary present: sentence, then clause, then midpoint word.
@@ -78,6 +96,30 @@ enum CaptionBuilder {
         guard words.count > 1 else { return [text] }
         let mid = words.count / 2
         return [words[..<mid].joined(separator: " "), words[mid...].joined(separator: " ")]
+    }
+
+    static func visibleCharacterCount(_ text: String) -> Int {
+        text.reduce(0) { $0 + ($1.isWhitespace ? 0 : 1) }
+    }
+
+    private static func breakAtCharacterLimit(_ text: String, maxCharacters: Int) -> [String] {
+        var pieces: [String] = []
+        var current = ""
+        var count = 0
+        for character in text {
+            let increment = character.isWhitespace ? 0 : 1
+            if count > 0, count + increment > maxCharacters {
+                let piece = current.trimmingCharacters(in: .whitespaces)
+                if !piece.isEmpty { pieces.append(piece) }
+                current = ""
+                count = 0
+            }
+            current.append(character)
+            count += increment
+        }
+        let tail = current.trimmingCharacters(in: .whitespaces)
+        if !tail.isEmpty { pieces.append(tail) }
+        return pieces.isEmpty ? [text] : pieces
     }
 
     /// Time phrases from word runs by matching shared characters, so timing holds when

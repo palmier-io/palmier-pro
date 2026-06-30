@@ -124,7 +124,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addClips,
-            description: "Places one or more media assets on the timeline as a single undoable action. Each entry's asset type must be compatible with its target track (video/image are interchangeable across video/image tracks; audio requires an audio track). When a video asset with audio is placed on a video track, a linked audio clip is automatically created on an audio track (an existing one if available, otherwise a new one). The whole batch is one undo step.\n\ntrackIndex is optional. Omit it on all entries and the tool auto-creates the needed tracks — one shared video track for visual entries and one shared audio track for audio entries (matches the captioning pattern in add_texts). To target existing tracks, set trackIndex on every entry. Mixing (some entries specify, others omit) is rejected — split into two calls.\n\nTracks work as layers: clips on the SAME track are sequential — if a new clip's range overlaps an existing clip on that track, the existing clip is trimmed/split/removed to make room, matching the UI's drag-onto-track overwrite behavior.",
+            description: "Places one or more media assets on the timeline as a single undoable action. Each entry's asset type must be compatible with its target track (video/image are interchangeable across video/image tracks; audio requires an audio track). When a video asset with audio is placed on a video track, a linked audio clip is automatically created on an audio track (an existing one if available, otherwise a new one). The whole batch is one undo step.\n\ntrackIndex is optional. Omit it on all entries and the tool auto-creates the needed tracks — one shared video track for visual entries and one shared audio track (matches the captioning pattern in add_texts). To target existing tracks, set trackIndex on every entry. Mixing (some entries specify, others omit) is rejected — split into two calls. Existing caption tracks are protected; don't place media on them while reorganizing a timeline.\n\nTracks work as layers: clips on the SAME track are sequential — if a new clip's range overlaps an existing clip on that track, the existing clip is trimmed/split/removed to make room, matching the UI's drag-onto-track overwrite behavior.",
             inputSchema: objectSchema(
                 properties: [
                     "entries": [
@@ -143,13 +143,14 @@ enum ToolDefinitions {
                             "required": ["mediaRef", "startFrame", "durationFrames"],
                         ],
                     ],
+                    "includeCaptions": ["type": "boolean", "description": "Optional. Default false. Only set true when the user explicitly asked to replace or overwrite existing caption clips."],
                 ],
                 required: ["entries"]
             )
         ),
         AgentTool(
             name: .insertClips,
-            description: "Inserts one or more media assets at a single point and RIPPLES: every clip at or after atFrame is pushed right to open a gap, so nothing is overwritten. This is the non-destructive counterpart to add_clips (which clears the landing region, trimming/splitting/removing whatever's there). Use insert_clips to splice footage in without losing existing clips; use add_clips to fill empty space or deliberately overwrite.\n\nEntries are laid end-to-end starting at atFrame on the target track (entry[0] at atFrame, entry[1] immediately after, ...). The push equals the sum of the entries' durations and is applied to the target track, every sync-locked track, AND the audio track any auto-created linked audio lands on — so a clip and its linked audio stay aligned. As in add_clips, a video asset with audio spawns a linked audio clip. One undoable action; one bad entry rejects the whole call with no partial state.\n\ntrackIndex is required — ripple needs an existing track to push. For placement into empty space, use add_clips.",
+            description: "Inserts one or more media assets at a single point and RIPPLES: every clip at or after atFrame is pushed right to open a gap, so nothing is overwritten. This is the non-destructive counterpart to add_clips (which clears the landing region, trimming/splitting/removing whatever's there). Use insert_clips to splice footage in without losing existing clips; use add_clips to fill empty space or deliberately overwrite.\n\nEntries are laid end-to-end starting at atFrame on the target track (entry[0] at atFrame, entry[1] immediately after, ...). The push equals the sum of the entries' durations and is applied to the target track, every sync-locked track, AND the audio track any auto-created linked audio lands on — so a clip and its linked audio stay aligned. As in add_clips, a video asset with audio spawns a linked audio clip. One undoable action; one bad entry rejects the whole call with no partial state.\n\ntrackIndex is required — ripple needs an existing track to push. Do not target caption tracks while reorganizing a timeline. For placement into empty space, use add_clips.",
             inputSchema: objectSchema(
                 properties: [
                     "trackIndex": ["type": "integer", "description": "Track index (0-based, from get_timeline) to insert into and ripple."],
@@ -168,13 +169,14 @@ enum ToolDefinitions {
                             "required": ["mediaRef"],
                         ],
                     ],
+                    "includeCaptions": ["type": "boolean", "description": "Optional. Default false. Only set true when the user explicitly wants caption timing moved by this insertion."],
                 ],
                 required: ["trackIndex", "atFrame", "entries"]
             )
         ),
         AgentTool(
             name: .removeClips,
-            description: "Removes one or more clips by ID as a single undoable action. Any clip that belongs to a link group (e.g. a video with its paired audio) takes its whole group with it, matching the UI's linked-delete behavior.",
+            description: "Removes one or more clips by ID as a single undoable action. Any clip that belongs to a link group (e.g. a video with its paired audio) takes its whole group with it, matching the UI's linked-delete behavior. Caption clips are protected by default; don't remove them during timeline reorganization unless the user explicitly asked to delete captions.",
             inputSchema: objectSchema(
                 properties: [
                     "clipIds": [
@@ -182,13 +184,14 @@ enum ToolDefinitions {
                         "description": "Clip IDs to remove.",
                         "items": ["type": "string"],
                     ],
+                    "includeCaptions": ["type": "boolean", "description": "Optional. Default false. Must be true to remove caption clips."],
                 ],
                 required: ["clipIds"]
             )
         ),
         AgentTool(
             name: .removeTracks,
-            description: "Removes whole tracks and every clip on them in one undoable action. Linked partners on OTHER tracks are not removed. Remaining track indexes shift down after removal.",
+            description: "Removes whole tracks and every clip on them in one undoable action. Linked partners on OTHER tracks are not removed. Remaining track indexes shift down after removal. Caption tracks are protected by default; don't remove them during timeline reorganization unless the user explicitly asked to delete captions.",
             inputSchema: objectSchema(
                 properties: [
                     "trackIndexes": [
@@ -196,13 +199,14 @@ enum ToolDefinitions {
                         "items": ["type": "integer"],
                         "description": "Track indexes (0-based, from get_timeline) to remove.",
                     ],
+                    "includeCaptions": ["type": "boolean", "description": "Optional. Default false. Must be true to remove tracks containing caption clips."],
                 ],
                 required: ["trackIndexes"]
             )
         ),
         AgentTool(
             name: .moveClips,
-            description: "Moves one or more clips to a new track and/or frame position. Single undoable action. Each move specifies the clip ID and at least one of toTrack (must be compatible with the clip's media type) and toFrame. Overlap on the destination is resolved as in add_clips (existing clips on the destination track are trimmed/split/removed). Linked partners follow the named clip: startFrame propagates as a delta to preserve l-cut / j-cut offsets; tracks stay with the named clip.",
+            description: "Moves one or more clips to a new track and/or frame position. Single undoable action. Each move specifies the clip ID and at least one of toTrack (must be compatible with the clip's media type) and toFrame. Overlap on the destination is resolved as in add_clips (existing clips on the destination track are trimmed/split/removed). Linked partners follow the named clip: startFrame propagates as a delta to preserve l-cut / j-cut offsets; tracks stay with the named clip. Caption clips and caption tracks are protected by default; only move them when intentionally preserving caption timing.",
             inputSchema: objectSchema(
                 properties: [
                     "moves": [
@@ -218,6 +222,7 @@ enum ToolDefinitions {
                             "required": ["clipId"],
                         ],
                     ],
+                    "includeCaptions": ["type": "boolean", "description": "Optional. Default false. Must be true to move caption clips or target tracks containing captions."],
                 ],
                 required: ["moves"]
             )
@@ -325,7 +330,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .splitClips,
-            description: "Splits clips into two at one or more cut points, all in a single undoable action. A split only inserts a boundary — it never trims media or moves clips, so unlike ripple_delete_ranges nothing shifts and there's no gap to close.\n\nTwo modes — pass exactly one:\n• splits: an array of {clipId, atFrame} (project frames). Use when you know the clip IDs.\n• trackIndex + frames: cut one track at the given project frames; each frame is matched to whichever clip on that track contains it. Pairs naturally with get_transcript / get_timeline project frames.\n\nEvery frame must fall strictly between a clip's start and end. Multiple cuts on the SAME clip are allowed — pass all the frames at once and each is resolved against the current sub-clips. Duplicate cut points are ignored. Linked audio/video partners are split at the same frame so A/V stays in sync, and the right halves are regrouped into their own link pair. One bad cut point rejects the whole call with no partial state.",
+            description: "Splits clips into two at one or more cut points, all in a single undoable action. A split only inserts a boundary — it never trims media or moves clips, so unlike ripple_delete_ranges nothing shifts and there's no gap to close.\n\nTwo modes — pass exactly one:\n• splits: an array of {clipId, atFrame} (project frames). Use when you know the clip IDs.\n• trackIndex + frames: cut one track at the given project frames; each frame is matched to whichever clip on that track contains it. Pairs naturally with get_transcript / get_timeline project frames.\n\nEvery frame must fall strictly between a clip's start and end. Multiple cuts on the SAME clip are allowed — pass all the frames at once and each is resolved against the current sub-clips. Duplicate cut points are ignored. Linked audio/video partners are split at the same frame so A/V stays in sync, and the right halves are regrouped into their own link pair. Caption clips are protected by default. One bad cut point rejects the whole call with no partial state.",
             inputSchema: objectSchema(
                 properties: [
                     "splits": [
@@ -345,6 +350,7 @@ enum ToolDefinitions {
                         "description": "Project frames to cut on trackIndex; each is matched to the clip containing it.",
                         "items": ["type": "integer"],
                     ],
+                    "includeCaptions": ["type": "boolean", "description": "Optional. Default false. Must be true to split caption clips."],
                 ],
                 required: []
             )
@@ -412,7 +418,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addTexts,
-            description: "Adds text clips as timeline layers. Omit trackIndex on every entry to create one new top video track; otherwise set trackIndex on every entry. Transform is normalized text-box center/size; center-only auto-fits, all four fields override the box. Use add_captions for spoken audio captions. Unknown fields are rejected.",
+            description: "Adds one or more text clips (titles, captions, lower-thirds) in a single undoable action. Text renders as an overlay on top of visual media. Transform uses 0–1 normalized canvas coords: (0.5,0.5) is center, (0.5,0.1) top-center, (0.5,0.9) bottom-center. Omit transform to center + auto-fit. Put centerX/centerY inside transform to reposition with auto-fit size (common for lower-thirds). Put all four transform fields inside transform to override the box entirely. Colors are hex '#RRGGBB' or '#RRGGBBAA'.\n\ntrackIndex is optional. Omit it on all entries and the tool auto-creates one new video track at the top and places all text clips there — the common case for captions. To target existing tracks, set trackIndex on every entry (audio tracks rejected). Mixing (some entries specify, others omit) is rejected — split into two calls.\n\nTracks work as layers: clips on the SAME track are sequential — if a new clip's range overlaps an existing (or earlier-batch) clip on that track, the existing clip is trimmed/split/removed to make room, matching the UI's drag-onto-track overwrite behavior. To show multiple text clips at the same time (stacked titles, simultaneous labels), put each on a DIFFERENT trackIndex so they layer instead of trimming each other.\n\nFor captioning spoken audio, prefer add_captions — it transcribes and places styled caption clips in one call. Use add_texts only for bespoke text (titles, lower-thirds) or captioning a custom range by hand. Unknown fields are rejected.",
             inputSchema: objectSchema(
                 properties: [
                     "entries": [
@@ -467,16 +473,17 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addCaptions,
-            description: "Transcribes spoken audio and creates styled caption text clips. Omit clipIds to auto-pick speech; pass clipIds to caption specific audio/video clips. Per-word animations are timed from transcript.",
+            description: "Auto-caption spoken audio: transcribes on-device and places styled caption clips on a new track — the same pipeline as the editor's Captions tab. This is the reliable path for 'caption this'; prefer it over hand-placing add_texts from a transcript. Use maxCharacters for requests like 'at most 10 characters per caption' instead of splitting captions manually. When the user asks for short/readable captions but gives no exact limit, choose maxCharacters from the spoken language, the timeline aspect ratio/resolution, and fontSize: narrow vertical video or larger text needs fewer characters; wide landscape video or smaller text can use more; CJK text generally fits fewer visible characters than alphabetic text. Use maxWords for word-count style constraints. Per-word animations are timed from transcript. Omit clipIds to auto-pick the track with the most speech; pass clipIds to caption specific clips.",
             inputSchema: objectSchema(
                 properties: mergedProperties([
-                    "clipIds": ["type": "array", "items": ["type": "string"], "description": "Audio/video clips to caption."],
-                    "language": ["type": "string", "description": "BCP-47 speech language."],
-                    "centerX": ["type": "number", "description": "0-1 horizontal center."],
-                    "centerY": ["type": "number", "description": "0-1 vertical center."],
-                    "textCase": ["type": "string", "enum": ["auto", "upper", "lower"], "description": "Letter case."],
-                    "censorProfanity": ["type": "boolean", "description": "Mask profanity."],
-                    "maxWords": ["type": "integer", "description": "Max words per caption."],
+                    "clipIds": ["type": "array", "items": ["type": "string"], "description": "Optional. Audio/video clips to caption. Omit to auto-detect the primary spoken track."],
+                    "language": ["type": "string", "description": "Optional BCP-47 language of the speech (e.g. 'es', 'ja', 'en-GB'). Defaults to the system language — set this when the footage is in another language, or transcription will be garbage."],
+                    "centerX": ["type": "number", "description": "Optional horizontal center 0–1 (default 0.5)."],
+                    "centerY": ["type": "number", "description": "Optional vertical center 0–1 (default 0.9, near the bottom)."],
+                    "textCase": ["type": "string", "enum": ["auto", "upper", "lower"], "description": "Optional letter case (default auto)."],
+                    "censorProfanity": ["type": "boolean", "description": "Optional. Mask profanity (default false)."],
+                    "maxCharacters": ["type": "integer", "description": "Optional maximum visible non-whitespace characters per caption phrase. Pass this when the user gives a limit or asks for short/readable captions. Choose the value from language, timeline aspect ratio/resolution, and fontSize: smaller for vertical/narrow video, larger fonts, and CJK; larger for wide video, smaller fonts, and alphabetic languages."],
+                    "maxWords": ["type": "integer", "description": "Optional maximum words per caption phrase."],
                 ], textStyleProperties(), [
                     "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Caption animation preset."],
                     "highlightColor": ["type": "string", "description": "Active-word hex."],

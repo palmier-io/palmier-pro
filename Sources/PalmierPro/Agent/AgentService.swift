@@ -5,57 +5,140 @@ import Observation
 @MainActor
 final class AgentService {
 
-    private var apiKey: String = ""
-    private var apiKeyObserver: NSObjectProtocol?
+    private var anthropicAPIKey: String = ""
+    private var openAICompatibleSettings: OpenAICompatibleSettings?
+    private var providerPreference: AgentProviderPreference = .palmier
+    private var providerObservers: [NSObjectProtocol] = []
 
     init() {
-        reloadAPIKey()
-        apiKeyObserver = NotificationCenter.default.addObserver(
-            forName: .anthropicAPIKeyChanged,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.reloadAPIKey()
+        reloadProviderConfiguration()
+        for name in [
+            Notification.Name.anthropicAPIKeyChanged,
+            .openAICompatibleSettingsChanged,
+            .agentProviderChanged,
+        ] {
+            let observer = NotificationCenter.default.addObserver(
+                forName: name,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.reloadProviderConfiguration()
+                }
             }
+            providerObservers.append(observer)
         }
     }
 
-    private func reloadAPIKey() {
+    private func reloadProviderConfiguration() {
         Task { [weak self] in
-            let key = await Task.detached(priority: .utility) {
-                AnthropicKeychain.load() ?? ""
+            let config = await Task.detached(priority: .utility) {
+                let anthropicKey = AnthropicKeychain.load() ?? ""
+                let openAISettings = OpenAICompatibleSettings.load()
+                return (
+                    anthropicKey,
+                    openAISettings,
+                    AgentProviderPreference.defaultProvider(
+                        hasAnthropicKey: !anthropicKey.isEmpty,
+                        hasOpenAICompatibleConfig: openAISettings != nil
+                    )
+                )
             }.value
-            self?.apiKey = key
+            self?.anthropicAPIKey = config.0
+            self?.openAICompatibleSettings = config.1
+            self?.providerPreference = config.2
         }
     }
 
     isolated deinit {
-        if let token = apiKeyObserver {
+        for token in providerObservers {
             NotificationCenter.default.removeObserver(token)
         }
     }
 
-    var hasApiKey: Bool { !apiKey.isEmpty }
+    var activeProvider: AgentProviderPreference { providerPreference }
+
+    var hasApiKey: Bool {
+        hasAnthropicAPIKey || (openAICompatibleSettings?.hasAPIKey ?? false)
+    }
+
+    var hasAnthropicAPIKey: Bool { !anthropicAPIKey.isEmpty }
+
+    var hasOpenAICompatibleEndpoint: Bool { openAICompatibleSettings != nil }
+
+    var isUsingBYOK: Bool {
+        switch activeProvider {
+        case .anthropic:
+            return hasAnthropicAPIKey
+        case .openAICompatible:
+            return openAICompatibleSettings?.hasAPIKey == true
+        case .palmier:
+            return false
+        }
+    }
+
+    var providerStatusLabel: String {
+        switch activeProvider {
+        case .palmier:
+            return "Palmier"
+        case .anthropic:
+            return "Anthropic"
+        case .openAICompatible:
+            return "OpenAI compatible"
+        }
+    }
+
+    var effectiveModelLabel: String {
+        switch activeProvider {
+        case .openAICompatible:
+            return openAICompatibleSettings?.model ?? "No model"
+        case .anthropic, .palmier:
+            return effectiveModel.displayName
+        }
+    }
+
+    var canPickModel: Bool {
+        activeProvider == .anthropic && hasAnthropicAPIKey
+    }
 
     var canStream: Bool {
-        if hasApiKey { return true }
-        let account = AccountService.shared
-        return account.isSignedIn && account.hasCredits
+        switch activeProvider {
+        case .anthropic:
+            return hasAnthropicAPIKey
+        case .openAICompatible:
+            return hasOpenAICompatibleEndpoint
+        case .palmier:
+            let account = AccountService.shared
+            return account.isSignedIn && account.hasCredits
+        }
     }
 
     var availableModels: [AnthropicModel] {
-        if hasApiKey { return AnthropicModel.allCases }
-        return AccountService.shared.isPaid ? [.sonnet46] : [.haiku45]
+        switch activeProvider {
+        case .anthropic:
+            return hasAnthropicAPIKey ? AnthropicModel.allCases : []
+        case .openAICompatible:
+            return []
+        case .palmier:
+            return AccountService.shared.isPaid ? [.sonnet46] : [.haiku45]
+        }
     }
 
     private func selectClient() -> (any AgentClient)? {
         let chosen = effectiveModel
-        if hasApiKey { return AnthropicClient(apiKey: apiKey, model: chosen) }
-        if AccountService.shared.isSignedIn {
-            return PalmierClient(model: chosen)
+        switch activeProvider {
+        case .anthropic:
+            guard hasAnthropicAPIKey else { return nil }
+            return AnthropicClient(apiKey: anthropicAPIKey, model: chosen)
+        case .openAICompatible:
+            guard let openAICompatibleSettings else { return nil }
+            return OpenAICompatibleClient(settings: openAICompatibleSettings)
+        case .palmier:
+            if AccountService.shared.isSignedIn {
+                return PalmierClient(model: chosen)
+            }
+            return nil
         }
-        return nil
     }
 
     var effectiveModel: AnthropicModel {
@@ -298,7 +381,7 @@ final class AgentService {
 
     func send(text: String, mentions: [AgentMention]) {
         guard canStream else {
-            streamError = .upstream("Sign in to a paid plan or add an Anthropic API key to start.")
+            streamError = .upstream(missingProviderConfigurationMessage)
             return
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -315,6 +398,17 @@ final class AgentService {
         ))
         streamError = nil
         kickOffStream()
+    }
+
+    private var missingProviderConfigurationMessage: String {
+        switch activeProvider {
+        case .anthropic:
+            return "Add an Anthropic API key to start."
+        case .openAICompatible:
+            return "Add an OpenAI-compatible base URL and model to start."
+        case .palmier:
+            return "Sign in to a paid plan or add your own API key to start."
+        }
     }
 
     func cancel() {
@@ -339,11 +433,13 @@ final class AgentService {
     private func runLoop() async {
         guard let client = selectClient() else {
             streamError = .upstream("No backend available.")
+            AgentDebugLog.trace("runLoop no backend")
             return
         }
+        AgentDebugLog.trace("runLoop start provider=\(activeProvider.rawValue) messages=\(messages.count)")
         await SkillStore.shared.reloadInBackground()
         let tools = ToolDefinitions.inAppAgent.map {
-            AnthropicToolSchema(name: $0.name.rawValue, description: $0.description, inputSchema: $0.inputSchema)
+            AgentToolSchema(name: $0.name.rawValue, description: $0.description, inputSchema: $0.inputSchema)
         }
 
         loop: while !Task.isCancelled {
@@ -352,6 +448,7 @@ final class AgentService {
             let assistant = AgentMessage(role: .assistant, blocks: [])
             messages.append(assistant)
             let assistantID = assistant.id
+            AgentDebugLog.trace("turn request provider=\(activeProvider.rawValue) apiMessages=\(apiMsgs.count) tools=\(tools.count)")
 
             do {
                 let stream = client.stream(
@@ -360,35 +457,47 @@ final class AgentService {
                     messages: apiMsgs
                 )
 
-                var stopReason: AnthropicStopReason = .endTurn
+                var stopReason: AgentStopReason = .endTurn
+                var textChars = 0
+                var toolUseCount = 0
 
                 for try await event in stream {
                     try Task.checkCancellation()
                     switch event {
                     case .textDelta(let chunk):
+                        textChars += chunk.count
                         appendTextDelta(chunk, toAssistant: assistantID)
                     case .toolUseComplete(let id, let name, let inputJSON):
+                        toolUseCount += 1
+                        AgentDebugLog.trace("stream tool_use name=\(name) id=\(id) inputBytes=\(inputJSON.utf8.count)")
                         appendToolUse(id: id, name: name, inputJSON: inputJSON, toAssistant: assistantID)
                     case .messageStop(let reason):
                         stopReason = reason
+                        AgentDebugLog.trace("stream stop reason=\(reason.rawValue)")
                     }
                 }
+                AgentDebugLog.trace("turn stream complete stop=\(stopReason.rawValue) textChars=\(textChars) toolUses=\(toolUseCount)")
 
                 if stopReason == .toolUse {
                     await runPendingToolUses(assistantID: assistantID)
+                    AgentDebugLog.trace("turn continue after tool results")
                     continue loop
                 }
+                AgentDebugLog.trace("runLoop end stop=\(stopReason.rawValue)")
                 break loop
             } catch is CancellationError {
                 dropEmptyAssistantTurn(id: assistantID)
+                AgentDebugLog.trace("runLoop cancelled")
                 break loop
             } catch let err as PalmierClientError {
                 dropEmptyAssistantTurn(id: assistantID)
                 streamError = err
+                AgentDebugLog.trace("runLoop palmier error=\(err.localizedDescription)")
                 break loop
             } catch {
                 dropEmptyAssistantTurn(id: assistantID)
                 streamError = .upstream(error.localizedDescription)
+                AgentDebugLog.trace("runLoop error=\(error.localizedDescription)")
                 break loop
             }
         }
@@ -422,6 +531,7 @@ final class AgentService {
         guard let assistantIndex = assistantMessageIndex(id: assistantID) else { return }
         guard let executor = toolExecutor else {
             messages.append(AgentMessage(role: .user, blocks: [.text("Tool executor unavailable.")]))
+            AgentDebugLog.trace("tool executor unavailable")
             return
         }
 
@@ -430,18 +540,26 @@ final class AgentService {
             return nil
         }
         let alreadyResolved = resolvedToolUseIds(afterAssistantAt: assistantIndex)
+        AgentDebugLog.trace("tool batch start count=\(toolUses.count) alreadyResolved=\(alreadyResolved.count)")
 
         var resultBlocks: [AgentContentBlock] = []
         for use in toolUses where !alreadyResolved.contains(use.id) {
             if Task.isCancelled {
                 resultBlocks.append(.toolResult(toolUseId: use.id, content: [.text("Cancelled")], isError: true))
+                AgentDebugLog.trace("tool cancelled name=\(use.name) id=\(use.id)")
                 continue
             }
+            AgentDebugLog.trace("tool execute start name=\(use.name) id=\(use.id) inputBytes=\(use.input.utf8.count)")
             let result = await executor.execute(name: use.name, args: Self.parseJSONObject(use.input))
+            let errorPreview = result.isError ? " error=\(Self.toolResultPreview(result))" : ""
+            AgentDebugLog.trace("tool execute end name=\(use.name) id=\(use.id) isError=\(result.isError) blocks=\(result.content.count)\(errorPreview)")
             resultBlocks.append(.toolResult(toolUseId: use.id, content: result.content, isError: result.isError))
         }
         if !resultBlocks.isEmpty {
             messages.append(AgentMessage(role: .user, blocks: resultBlocks))
+            AgentDebugLog.trace("tool batch appended results=\(resultBlocks.count) totalMessages=\(messages.count)")
+        } else {
+            AgentDebugLog.trace("tool batch no new results")
         }
     }
 
@@ -499,6 +617,15 @@ final class AgentService {
         return obj
     }
 
+    private static func toolResultPreview(_ result: ToolResult) -> String {
+        let text = result.content.compactMap {
+            if case let .text(s) = $0 { return s }
+            return nil
+        }.joined(separator: " ")
+        let compact = text.replacingOccurrences(of: "\n", with: " ")
+        return String(compact.prefix(300))
+    }
+
     private func syncMessagesIntoCurrentSession() {
         guard let id = currentSessionId,
               let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
@@ -510,8 +637,8 @@ final class AgentService {
         }
     }
 
-    private func apiMessages() async -> [AnthropicMessage] {
-        var result: [AnthropicMessage] = []
+    private func apiMessages() async -> [AgentClientMessage] {
+        var result: [AgentClientMessage] = []
         for msg in messages {
             var content = msg.blocks.compactMap(Self.contentBlockJSON)
             if msg.role == .user, !msg.mentions.isEmpty {
@@ -522,7 +649,7 @@ final class AgentService {
                 content.insert(["type": "text", "text": hint], at: 0)
             }
             guard !content.isEmpty else { continue }
-            result.append(AnthropicMessage(role: msg.role == .user ? .user : .assistant, content: content))
+            result.append(AgentClientMessage(role: msg.role == .user ? .user : .assistant, content: content))
         }
         return result
     }

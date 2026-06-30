@@ -4,7 +4,8 @@ import Foundation
 
 fileprivate struct AddClipsInput: DecodableToolArgs {
     let entries: [Entry]
-    static let allowedKeys: Set<String> = ["entries"]
+    let includeCaptions: Bool?
+    static let allowedKeys: Set<String> = ["entries", "includeCaptions"]
 
     struct Entry: DecodableToolArgs {
         let mediaRef: String
@@ -21,7 +22,8 @@ fileprivate struct InsertClipsInput: DecodableToolArgs {
     let trackIndex: Int
     let atFrame: Int
     let entries: [Entry]
-    static let allowedKeys: Set<String> = ["trackIndex", "atFrame", "entries"]
+    let includeCaptions: Bool?
+    static let allowedKeys: Set<String> = ["trackIndex", "atFrame", "entries", "includeCaptions"]
 
     struct Entry: DecodableToolArgs {
         let mediaRef: String
@@ -34,7 +36,8 @@ fileprivate struct InsertClipsInput: DecodableToolArgs {
 
 fileprivate struct MoveClipsInput: DecodableToolArgs {
     let moves: [Move]
-    static let allowedKeys: Set<String> = ["moves"]
+    let includeCaptions: Bool?
+    static let allowedKeys: Set<String> = ["moves", "includeCaptions"]
 
     struct Move: DecodableToolArgs {
         let clipId: String
@@ -48,7 +51,8 @@ fileprivate struct SplitClipsInput: DecodableToolArgs {
     let splits: [Split]?
     let trackIndex: Int?
     let frames: [Int]?
-    static let allowedKeys: Set<String> = ["splits", "trackIndex", "frames"]
+    let includeCaptions: Bool?
+    static let allowedKeys: Set<String> = ["splits", "trackIndex", "frames", "includeCaptions"]
 
     struct Split: DecodableToolArgs {
         let clipId: String
@@ -133,6 +137,17 @@ fileprivate struct ParsedMove {
 
 extension ToolExecutor {
 
+    private static func trackContainsCaptions(_ track: Track) -> Bool {
+        track.clips.contains { $0.captionGroupId != nil }
+    }
+
+    private static func captionClipIds(_ ids: Set<String>, in editor: EditorViewModel) -> [String] {
+        editor.timeline.tracks.flatMap(\.clips)
+            .filter { ids.contains($0.id) && $0.captionGroupId != nil }
+            .map(\.id)
+            .sorted()
+    }
+
     // MARK: add_clips
 
     func addClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
@@ -149,12 +164,16 @@ extension ToolExecutor {
 
         var specs: [AddClipSpec] = []
         specs.reserveCapacity(input.entries.count)
+        let includeCaptions = input.includeCaptions ?? false
         for (idx, entry) in input.entries.enumerated() {
             let asset = try asset(entry.mediaRef, editor: editor)
             var trackId: String? = nil
             if let ti = entry.trackIndex {
                 guard editor.timeline.tracks.indices.contains(ti) else {
                     throw ToolError("entries[\(idx)]: track index \(ti) out of range (0..\(editor.timeline.tracks.count - 1))")
+                }
+                if !includeCaptions, Self.trackContainsCaptions(editor.timeline.tracks[ti]) {
+                    throw ToolError("entries[\(idx)]: track \(ti) contains captions. Choose a non-caption track, omit trackIndex to create a new track, or pass includeCaptions=true only when intentionally replacing captions.")
                 }
                 let targetType = editor.timeline.tracks[ti].type
                 guard asset.type.isCompatible(with: targetType) else {
@@ -286,6 +305,9 @@ extension ToolExecutor {
         guard editor.timeline.tracks.indices.contains(input.trackIndex) else {
             throw ToolError("trackIndex \(input.trackIndex) out of range (0..\(editor.timeline.tracks.count - 1))")
         }
+        if input.includeCaptions != true, Self.trackContainsCaptions(editor.timeline.tracks[input.trackIndex]) {
+            throw ToolError("insert_clips: track \(input.trackIndex) contains captions. Choose a non-caption track or pass includeCaptions=true only when intentionally moving caption timing.")
+        }
         guard input.atFrame >= 0 else { throw ToolError("atFrame must be >= 0 (got \(input.atFrame))") }
         let targetType = editor.timeline.tracks[input.trackIndex].type
 
@@ -334,13 +356,17 @@ extension ToolExecutor {
     // MARK: remove_clips
 
     func removeClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
-        try validateUnknownKeys(args, allowed: ["clipIds"], path: "remove_clips")
+        try validateUnknownKeys(args, allowed: ["clipIds", "includeCaptions"], path: "remove_clips")
         let clipIds = args.stringArray("clipIds")
         guard !clipIds.isEmpty else { throw ToolError("Missing or empty 'clipIds' array") }
         for id in clipIds {
             guard editor.findClip(id: id) != nil else { throw ToolError("Clip not found: \(id)") }
         }
         let expanded = editor.expandToLinkGroup(Set(clipIds))
+        let captionIds = Self.captionClipIds(expanded, in: editor)
+        if args.bool("includeCaptions") != true, !captionIds.isEmpty {
+            throw ToolError("remove_clips would remove caption clips: \(captionIds.joined(separator: ", ")). Pass includeCaptions=true only when the user explicitly asked to delete captions.")
+        }
         let tracksBefore = Set(editor.timeline.tracks.map(\.id))
         editor.removeClips(ids: expanded)
         let prunedCount = tracksBefore.subtracting(editor.timeline.tracks.map(\.id)).count
@@ -381,12 +407,19 @@ extension ToolExecutor {
                 guard editor.timeline.tracks.indices.contains(ti) else {
                     throw ToolError("\(path): toTrack \(ti) out of range (0..\(editor.timeline.tracks.count - 1))")
                 }
+                if input.includeCaptions != true, Self.trackContainsCaptions(editor.timeline.tracks[ti]) {
+                    throw ToolError("\(path): toTrack \(ti) contains captions. Choose a non-caption track or pass includeCaptions=true only when intentionally moving caption timing.")
+                }
                 let srcType = editor.timeline.tracks[loc.trackIndex].type
                 let destType = editor.timeline.tracks[ti].type
                 guard destType.isCompatible(with: srcType) else {
                     throw ToolError("\(path): toTrack \(ti) (\(destType.rawValue)) is incompatible with clip's \(srcType.rawValue) source track")
                 }
                 destTrackId = editor.timeline.tracks[ti].id
+            }
+            if input.includeCaptions != true,
+               editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].captionGroupId != nil {
+                throw ToolError("\(path): clip \(m.clipId) is a caption. Pass includeCaptions=true only when intentionally moving caption timing.")
             }
             if let f = m.toFrame, f < 0 {
                 throw ToolError("\(path): toFrame must be >= 0 (got \(f))")
@@ -645,6 +678,9 @@ extension ToolExecutor {
         var seen: Set<String> = []
 
         func addCut(trackIndex: Int, atFrame: Int, clip: Clip) throws {
+            if input.includeCaptions != true, clip.captionGroupId != nil {
+                throw ToolError("split_clips: clip \(clip.id) is a caption. Pass includeCaptions=true only when intentionally changing caption timing.")
+            }
             guard atFrame > clip.startFrame && atFrame < clip.endFrame else {
                 throw ToolError("Frame \(atFrame) is outside clip \(clip.id) range (\(clip.startFrame)..\(clip.endFrame))")
             }
@@ -851,7 +887,7 @@ extension ToolExecutor {
         return i
     }
 
-    private static let removeTracksAllowedKeys: Set<String> = ["trackIndexes"]
+    private static let removeTracksAllowedKeys: Set<String> = ["trackIndexes", "includeCaptions"]
 
     func removeTracks(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.removeTracksAllowedKeys, path: "remove_tracks")
@@ -870,6 +906,9 @@ extension ToolExecutor {
                 throw ToolError("remove_tracks: track index \(i) out of range (timeline has \(editor.timeline.tracks.count) tracks)")
             }
             let track = editor.timeline.tracks[i]
+            if args.bool("includeCaptions") != true, Self.trackContainsCaptions(track) {
+                throw ToolError("remove_tracks: track \(i) contains captions. Pass includeCaptions=true only when the user explicitly asked to delete captions.")
+            }
             ids.append(track.id)
             removed.append([
                 "trackIndex": i,
