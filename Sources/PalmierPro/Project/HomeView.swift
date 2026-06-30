@@ -197,18 +197,21 @@ private struct HomeSidebar: View {
                     action: { AppState.shared.openProjectFromPanel() }
                 )
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 10)
+            .padding(.horizontal, AppTheme.Spacing.smMd)
+            .padding(.vertical, AppTheme.Spacing.md)
 
             Spacer(minLength: 0)
 
-            SidebarRowButton(
-                label: "Settings",
-                systemImage: "gearshape",
-                action: { SettingsWindowController.shared.show() }
-            )
-            .padding(.horizontal, 8)
-            .padding(.bottom, 10)
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+                ViewSkillsButton(style: .sidebar)
+                SidebarRowButton(
+                    label: "Settings",
+                    systemImage: "gearshape",
+                    action: { SettingsWindowController.shared.show() }
+                )
+            }
+            .padding(.horizontal, AppTheme.Spacing.smMd)
+            .padding(.bottom, AppTheme.Spacing.md)
         }
         .frame(maxHeight: .infinity, alignment: .top)
     }
