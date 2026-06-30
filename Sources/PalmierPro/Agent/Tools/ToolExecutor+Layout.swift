@@ -4,11 +4,11 @@ fileprivate struct ApplyLayoutInput: DecodableToolArgs {
     struct SlotEntry: Decodable {
         let slot: String
         let mediaRef: String?
-        let clipId: String?
+        let clipIds: [String]?
         let anchor: String?
         let anchorX: Double?
         let anchorY: Double?
-        static let allowedKeys: Set<String> = ["slot", "mediaRef", "clipId", "anchor", "anchorX", "anchorY"]
+        static let allowedKeys: Set<String> = ["slot", "mediaRef", "clipIds", "anchor", "anchorX", "anchorY"]
     }
     let layout: String
     let slots: [SlotEntry]
@@ -68,14 +68,17 @@ extension ToolExecutor {
                 throw ToolError("slots[\(i)]: '\(e.slot)' is not a slot of layout '\(layout.rawValue)'. Slots: \(layout.slots.map(\.id).joined(separator: ", "))")
             }
             guard seen.insert(e.slot).inserted else { throw ToolError("slots[\(i)]: duplicate slot '\(e.slot)'") }
-            guard (e.mediaRef != nil) != (e.clipId != nil) else {
-                throw ToolError("slots[\(i)]: provide exactly one of 'mediaRef' or 'clipId'")
+            guard (e.mediaRef != nil) != (e.clipIds != nil) else {
+                throw ToolError("slots[\(i)]: provide exactly one of 'mediaRef' or 'clipIds'")
             }
-            if let cid = e.clipId, !seenClips.insert(cid).inserted {
-                throw ToolError("slots[\(i)]: clip '\(cid)' is assigned to more than one slot; each clip can fill only one.")
+            if let cids = e.clipIds {
+                guard !cids.isEmpty else { throw ToolError("slots[\(i)]: 'clipIds' must not be empty") }
+                for cid in cids where !seenClips.insert(cid).inserted {
+                    throw ToolError("slots[\(i)]: clip '\(cid)' is assigned to more than one slot; each clip can fill only one.")
+                }
             }
             usesMedia = usesMedia || e.mediaRef != nil
-            usesClip = usesClip || e.clipId != nil
+            usesClip = usesClip || e.clipIds != nil
             entries.append((slot, e, try resolveAnchor(e, path: "slots[\(i)]")))
         }
         let missing = Set(slotById.keys).subtracting(seen)
@@ -83,7 +86,7 @@ extension ToolExecutor {
             throw ToolError("layout '\(layout.rawValue)' needs every slot filled. Missing: \(missing.sorted().joined(separator: ", "))")
         }
         guard !(usesMedia && usesClip) else {
-            throw ToolError("apply_layout: don't mix 'mediaRef' and 'clipId' — either place new clips (all mediaRef) or re-layout existing clips (all clipId).")
+            throw ToolError("apply_layout: don't mix 'mediaRef' and 'clipIds' — either place new clips (all mediaRef) or re-layout existing clips (all clipIds).")
         }
 
         let startFrame = input.startFrame ?? 0
@@ -106,23 +109,31 @@ extension ToolExecutor {
             )
         } else {
             var rangesByTrack: [String: [(slot: String, start: Int, end: Int)]] = [:]
-            var commonStart = Int.min, commonEnd = Int.max
+            var intervalsBySlot: [String: [(start: Int, end: Int)]] = [:]
             for e in entries {
-                guard let loc = editor.findClip(id: e.entry.clipId!) else { throw ToolError("slot '\(e.slot.id)': clip not found: \(e.entry.clipId!)") }
-                let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-                guard clip.mediaType == .video || clip.mediaType == .image else {
-                    throw ToolError("slot '\(e.slot.id)': clip \(e.entry.clipId!) is \(clip.mediaType.rawValue); layout applies to video/image clips.")
+                for cid in e.entry.clipIds! {
+                    guard let loc = editor.findClip(id: cid) else { throw ToolError("slot '\(e.slot.id)': clip not found: \(cid)") }
+                    let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+                    guard clip.mediaType == .video || clip.mediaType == .image else {
+                        throw ToolError("slot '\(e.slot.id)': clip \(cid) is \(clip.mediaType.rawValue); layout applies to video/image clips.")
+                    }
+                    let trackId = editor.timeline.tracks[loc.trackIndex].id
+                    let start = clip.startFrame, end = clip.startFrame + clip.durationFrames
+                    for other in rangesByTrack[trackId] ?? [] where other.slot != e.slot.id && start < other.end && other.start < end {
+                        throw ToolError("clips in slots '\(other.slot)' and '\(e.slot.id)' are on the same track and their times overlap; only the first would render. Move them to separate tracks (or place new clips with mediaRef) so every region shows.")
+                    }
+                    rangesByTrack[trackId, default: []].append((e.slot.id, start, end))
+                    intervalsBySlot[e.slot.id, default: []].append((start, end))
                 }
-                let trackId = editor.timeline.tracks[loc.trackIndex].id
-                let start = clip.startFrame, end = clip.startFrame + clip.durationFrames
-                for other in rangesByTrack[trackId] ?? [] where start < other.end && other.start < end {
-                    throw ToolError("slots '\(other.slot)' and '\(e.slot.id)' are clips on the same track whose times overlap; only the first would render. Move them to separate tracks (or place new clips with mediaRef) so every region shows.")
-                }
-                rangesByTrack[trackId, default: []].append((e.slot.id, start, end))
-                commonStart = max(commonStart, start); commonEnd = min(commonEnd, end)
             }
-            if entries.count > 1, commonStart >= commonEnd {
-                throw ToolError("the selected clips never play at the same time, so no single frame shows every region. Overlap their timeline ranges (or place new clips with mediaRef) before laying them out.")
+            if entries.count > 1 {
+                let candidates = intervalsBySlot.values.flatMap { $0.map(\.start) }
+                let coincides = candidates.contains { f in
+                    intervalsBySlot.values.allSatisfy { ivs in ivs.contains { $0.start <= f && f < $0.end } }
+                }
+                guard coincides else {
+                    throw ToolError("the selected clips never play at the same time, so no single frame shows every region. Overlap their timeline ranges (or place new clips with mediaRef) before laying them out.")
+                }
             }
         }
 
@@ -130,7 +141,7 @@ extension ToolExecutor {
         var summaries: [String] = []
 
         editor.withTimelineSwap(actionName: "Apply Layout (Agent)") {
-            var clipBySlot: [String: String] = [:]
+            var clipsBySlot: [String: [String]] = [:]
             if usesMedia {
                 var trackBySlot: [String: String] = [:]
                 for slot in layout.slots.sorted(by: { $0.z < $1.z }) {
@@ -142,27 +153,29 @@ extension ToolExecutor {
                           let tIdx = editor.timeline.tracks.firstIndex(where: { $0.id == tid }) else { continue }
                     let ids = editor.placeClip(asset: asset, trackIndex: tIdx, startFrame: startFrame, durationFrames: duration)
                     if let primary = ids.first {
-                        clipBySlot[e.slot.id] = primary
+                        clipsBySlot[e.slot.id] = [primary]
                         summaries.append("\(e.slot.id) → \(primary)\(ids.count > 1 ? " (+audio \(ids[1]))" : "")")
                     }
                 }
             } else {
                 for e in entries {
-                    clipBySlot[e.slot.id] = e.entry.clipId!
-                    summaries.append("\(e.slot.id) → \(e.entry.clipId!)")
+                    let cids = e.entry.clipIds!
+                    clipsBySlot[e.slot.id] = cids
+                    summaries.append("\(e.slot.id) → \(cids.joined(separator: ", "))")
                 }
             }
 
             for e in entries {
-                guard let cid = clipBySlot[e.slot.id], let clip = editor.clipFor(id: cid),
-                      let loc = editor.findClip(id: cid) else { continue }
-                let p = editor.layoutPlacement(for: clip, in: e.slot.rect, fit: fit, anchorX: e.anchor.x, anchorY: e.anchor.y)
-                editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].transform = p.transform
-                editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].crop = p.crop
-                editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].positionTrack = nil
-                editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].scaleTrack = nil
-                editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].rotationTrack = nil
-                editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].cropTrack = nil
+                for cid in clipsBySlot[e.slot.id] ?? [] {
+                    guard let clip = editor.clipFor(id: cid), let loc = editor.findClip(id: cid) else { continue }
+                    let p = editor.layoutPlacement(for: clip, in: e.slot.rect, fit: fit, anchorX: e.anchor.x, anchorY: e.anchor.y)
+                    editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].transform = p.transform
+                    editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].crop = p.crop
+                    editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].positionTrack = nil
+                    editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].scaleTrack = nil
+                    editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].rotationTrack = nil
+                    editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].cropTrack = nil
+                }
             }
         }
 

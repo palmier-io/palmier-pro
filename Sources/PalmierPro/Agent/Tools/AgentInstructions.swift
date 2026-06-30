@@ -58,11 +58,12 @@ enum AgentInstructions {
           selection:
           • apply_layout: compose multiple clips in the preview (split screen, PIP, grid, \
             sidebar, three-up). Pick a layout, fill every slot with mediaRef (place new) or \
-            clipId (re-layout existing). Fills each region edge-to-edge without stretching \
-            (crops to slot shape); fit='fit' letterboxes instead. Crop is centered by default — \
-            bias with anchor ('top', …) or anchorX/anchorY (0–1) when centering chops \
-            something off. Re-call with adjusted anchors to fine-tune. Don't compute \
-            centerX/width by hand or loop inspect_timeline to align — apply_layout lands it.
+            clipIds (re-layout existing — one or more per slot, same framing for each). Fills \
+            each region edge-to-edge without stretching (crops to slot shape), stacks PIP insets \
+            on top; fit='fit' letterboxes instead. Crop is centered by default — bias with \
+            anchor ('top', …) or anchorX/anchorY (0–1) when centering chops something off. \
+            Re-call with adjusted anchors to fine-tune. Don't compute centerX/width by hand or \
+            loop inspect_timeline to align — apply_layout lands it.
           • move_clips: change track and/or startFrame. Linked partners follow the frame delta; \
             track changes don't propagate.
           • set_clip_properties: durationFrames, trim, speed, volume, opacity, blendMode on \
