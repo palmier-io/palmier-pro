@@ -13,6 +13,7 @@ extension EditorViewModel {
         var maxCharacters: Int? = nil
         var maxWords: Int? = nil
         var animation: TextAnimation = TextAnimation()
+        var transcriptionProvider: CaptionTranscriptionProvider = .local
     }
 
     enum CaptionCase: String, CaseIterable, Sendable {
@@ -60,10 +61,14 @@ extension EditorViewModel {
 
     enum CaptionError: LocalizedError {
         case noSource
+        case noCaptions
+        case noTimedWords
 
         var errorDescription: String? {
             switch self {
             case .noSource: "No audio clips to caption."
+            case .noCaptions: "No caption clips to align."
+            case .noTimedWords: "No timed words returned for caption alignment."
             }
         }
     }
@@ -149,6 +154,60 @@ extension EditorViewModel {
         return placeCaptionTrack(specs)
     }
 
+    @discardableResult
+    func alignCaptionsWithVolcengine(
+        sourceClipIds: [String] = [],
+        captionGroupId: String? = nil,
+        captionClipIds: [String] = [],
+        locale: Locale? = nil
+    ) async throws -> [String] {
+        let targets = captionTargets(ids: sourceClipIds)
+        guard !targets.isEmpty else { throw CaptionError.noSource }
+        let captionClips = captionAlignmentTargets(captionGroupId: captionGroupId, captionClipIds: captionClipIds)
+        guard !captionClips.isEmpty else { throw CaptionError.noCaptions }
+
+        var captionTargets = targets.compactMap { c in
+            findClip(id: c.id).map {
+                CaptionTarget(id: c.id, trackId: timeline.tracks[$0.trackIndex].id, clip: timeline.tracks[$0.trackIndex].clips[$0.clipIndex])
+            }
+        }
+        let request = CaptionRequest(
+            sourceClipIds: sourceClipIds,
+            autoDetect: sourceClipIds.isEmpty,
+            locale: locale,
+            transcriptionProvider: .volcengine
+        )
+        let results = try await transcribe(captionTargets, request: request)
+        if sourceClipIds.isEmpty, let winner = dominantSpeechTrack(captionTargets, results) {
+            captionTargets = captionTargets.filter { $0.trackId == winner }
+        }
+        let words = timelineWords(captionTargets, results: results)
+        guard !words.isEmpty else { throw CaptionError.noTimedWords }
+
+        let plan = captionAlignmentPlan(captionClips: captionClips, words: words)
+        guard !plan.isEmpty else { return [] }
+        withTimelineSwap(actionName: "Align Captions") {
+            var touchedTracks = Set<Int>()
+            for ti in timeline.tracks.indices {
+                for ci in timeline.tracks[ti].clips.indices {
+                    let id = timeline.tracks[ti].clips[ci].id
+                    guard let aligned = plan[id] else { continue }
+                    var clip = timeline.tracks[ti].clips[ci]
+                    clip.startFrame = aligned.startFrame
+                    clip.setDuration(aligned.durationFrames)
+                    clip.wordTimings = aligned.words
+                    timeline.tracks[ti].clips[ci] = clip
+                    touchedTracks.insert(ti)
+                }
+            }
+            for index in touchedTracks {
+                sortClips(trackIndex: index)
+            }
+            videoEngine?.refreshVisuals()
+        }
+        return captionClips.map(\.id).filter { plan[$0] != nil }
+    }
+
     private func transcribe(_ targets: [CaptionTarget], request: CaptionRequest) async throws -> [String: TranscriptionResult] {
         var results: [String: TranscriptionResult] = [:]
         var firstError: Error?
@@ -160,10 +219,15 @@ extension EditorViewModel {
                 if request.censorProfanity || request.locale != nil {
                     // option variants produce different transcripts — bypass the cache
                     results[t.clip.mediaRef] = isVideo
-                        ? try await Transcription.transcribeVideoAudio(videoURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale, sourceRange: range)
-                        : try await Transcription.transcribe(fileURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale, sourceRange: range)
+                        ? try await Transcription.transcribeVideoAudio(videoURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale, sourceRange: range, provider: request.transcriptionProvider)
+                        : try await Transcription.transcribe(fileURL: url, censorProfanity: request.censorProfanity, preferredLocale: request.locale, sourceRange: range, provider: request.transcriptionProvider)
                 } else {
-                    results[t.clip.mediaRef] = try await TranscriptCache.shared.transcript(for: url, isVideo: isVideo, range: range)
+                    results[t.clip.mediaRef] = try await TranscriptCache.shared.transcript(
+                        for: url,
+                        isVideo: isVideo,
+                        range: range,
+                        provider: request.transcriptionProvider
+                    )
                 }
             } catch {
                 firstError = firstError ?? error
@@ -266,6 +330,159 @@ extension EditorViewModel {
         return (s, s + Double(c.durationFrames) * max(c.speed, 0.0001))
     }
 
+    private struct CaptionAlignmentTarget {
+        let id: String
+        let text: String
+        let startFrame: Int
+    }
+
+    private struct TimelineCaptionWord {
+        let text: String
+        let startFrame: Int
+        let endFrame: Int
+    }
+
+    private struct CaptionAlignment {
+        let startFrame: Int
+        let durationFrames: Int
+        let words: [WordTiming]
+    }
+
+    private func captionAlignmentTargets(captionGroupId: String?, captionClipIds: [String]) -> [CaptionAlignmentTarget] {
+        timeline.tracks.flatMap(\.clips)
+            .filter { clip in
+                guard clip.mediaType == .text else { return false }
+                if !captionClipIds.isEmpty { return captionClipIds.contains(clip.id) }
+                if let captionGroupId { return clip.captionGroupId == captionGroupId }
+                return clip.captionGroupId != nil
+            }
+            .compactMap { clip in
+                guard let text = clip.textContent?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+                return CaptionAlignmentTarget(id: clip.id, text: text, startFrame: clip.startFrame)
+            }
+            .sorted { $0.startFrame < $1.startFrame }
+    }
+
+    private func timelineWords(_ targets: [CaptionTarget], results: [String: TranscriptionResult]) -> [TimelineCaptionWord] {
+        let fps = Double(timeline.fps)
+        guard fps > 0 else { return [] }
+        return targets.flatMap { target -> [TimelineCaptionWord] in
+            guard let result = results[target.clip.mediaRef] else { return [] }
+            let visible = visibleSource(target.clip)
+            return result.words.compactMap { word in
+                guard let start = word.start, let end = word.end, end > start else { return nil }
+                let sourceStart = start * fps
+                let sourceEnd = end * fps
+                let midpoint = (sourceStart + sourceEnd) / 2
+                guard midpoint >= visible.start, midpoint < visible.end else { return nil }
+                let speed = max(target.clip.speed, 0.0001)
+                let startFrame = target.clip.startFrame + Int(((sourceStart - visible.start) / speed).rounded())
+                let endFrame = target.clip.startFrame + Int(((sourceEnd - visible.start) / speed).rounded())
+                return TimelineCaptionWord(text: word.text, startFrame: max(target.clip.startFrame, startFrame), endFrame: max(startFrame + 1, min(target.clip.endFrame, endFrame)))
+            }
+        }
+        .sorted { $0.startFrame < $1.startFrame }
+    }
+
+    private func captionAlignmentPlan(
+        captionClips: [CaptionAlignmentTarget],
+        words: [TimelineCaptionWord]
+    ) -> [String: CaptionAlignment] {
+        var plan: [String: CaptionAlignment] = [:]
+        var cursor = 0
+        for caption in captionClips {
+            let tokens = alignmentTokens(caption.text)
+            let tokenCount = max(1, tokens.count)
+            let startIndex = bestAlignmentStart(tokens: tokens, words: words, cursor: cursor) ?? cursor
+            guard startIndex < words.count else { break }
+            let endIndex = alignmentEndIndex(from: startIndex, tokenCount: tokenCount, words: words)
+            let slice = Array(words[startIndex...endIndex])
+            guard let first = slice.first, let last = slice.last else { continue }
+            let startFrame = max(0, first.startFrame)
+            let endFrame = max(startFrame + 1, last.endFrame)
+            plan[caption.id] = CaptionAlignment(
+                startFrame: startFrame,
+                durationFrames: endFrame - startFrame,
+                words: slice.map {
+                    WordTiming(
+                        text: $0.text,
+                        startFrame: max(0, $0.startFrame - startFrame),
+                        endFrame: max(1, $0.endFrame - startFrame)
+                    )
+                }
+            )
+            cursor = min(words.count, endIndex + 1)
+        }
+        return plan
+    }
+
+    private func bestAlignmentStart(tokens: [String], words: [TimelineCaptionWord], cursor: Int) -> Int? {
+        guard !tokens.isEmpty, cursor < words.count else { return nil }
+        let upper = min(words.count, cursor + 80)
+        var best: (index: Int, score: Int)?
+        for index in cursor..<upper {
+            let score = alignmentScore(tokens: tokens, words: words, start: index)
+            guard score > 0 else { continue }
+            if best == nil || score > best!.score {
+                best = (index, score)
+            }
+            if score >= min(tokens.count, 3) {
+                return index
+            }
+        }
+        guard let best, best.score >= min(tokens.count, 2) else { return nil }
+        return best.index
+    }
+
+    private func alignmentScore(tokens: [String], words: [TimelineCaptionWord], start: Int) -> Int {
+        var probe: [String] = []
+        var index = start
+        while index < words.count, probe.count < tokens.count {
+            let wordTokens = alignmentTokens(words[index].text)
+            probe.append(contentsOf: wordTokens.isEmpty ? [words[index].text.lowercased()] : wordTokens)
+            index += 1
+        }
+        var score = 0
+        for pair in zip(tokens, probe) {
+            guard pair.0 == pair.1 else { break }
+            score += 1
+        }
+        return score
+    }
+
+    private func alignmentEndIndex(from start: Int, tokenCount: Int, words: [TimelineCaptionWord]) -> Int {
+        var count = 0
+        var index = start
+        while index < words.count {
+            count += max(1, alignmentTokens(words[index].text).count)
+            if count >= tokenCount { return index }
+            index += 1
+        }
+        return max(start, words.count - 1)
+    }
+
+    private func alignmentTokens(_ text: String) -> [String] {
+        var tokens: [String] = []
+        var current = ""
+        func flush() {
+            guard !current.isEmpty else { return }
+            tokens.append(current.lowercased())
+            current = ""
+        }
+        for scalar in text.unicodeScalars {
+            if CharacterSet.alphanumerics.contains(scalar) {
+                current.unicodeScalars.append(scalar)
+            } else if scalar.isCJK {
+                flush()
+                tokens.append(String(scalar))
+            } else {
+                flush()
+            }
+        }
+        flush()
+        return tokens
+    }
+
     func captionStyleFitting(_ texts: [String], base style: TextStyle) -> TextStyle {
         guard timeline.width > 0, timeline.height > 0 else { return style }
         let maxWidth = captionSafeMaxTextWidth
@@ -342,5 +559,13 @@ extension EditorViewModel {
         registerTimelineSwap(undoState: before, redoState: timeline, actionName: "Generate Captions")
         notifyTimelineChanged()
         return ids
+    }
+}
+
+private extension UnicodeScalar {
+    var isCJK: Bool {
+        (0x3400...0x4DBF).contains(Int(value)) ||
+        (0x4E00...0x9FFF).contains(Int(value)) ||
+        (0xF900...0xFAFF).contains(Int(value))
     }
 }

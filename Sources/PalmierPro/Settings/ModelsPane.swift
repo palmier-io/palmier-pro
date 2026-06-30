@@ -6,7 +6,6 @@ struct ModelsPane: View {
     @Bindable private var openRouter = OpenRouterService.shared
 
     @State private var query = ""
-    @State private var apiKeyDraft = ""
 
     private struct Row: Identifiable {
         let id: String
@@ -49,7 +48,6 @@ struct ModelsPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
-            openRouterKeySection
             searchBar
 
             if sections.isEmpty {
@@ -73,97 +71,6 @@ struct ModelsPane: View {
             return "Loading models…"
         }
         return "No models available."
-    }
-
-    private var openRouterKeySection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            HStack(spacing: AppTheme.Spacing.sm) {
-                Image(systemName: "network")
-                    .font(.system(size: AppTheme.FontSize.smMd))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-                    Text("OpenRouter")
-                        .font(.system(size: AppTheme.FontSize.md, weight: .medium))
-                        .foregroundStyle(AppTheme.Text.primaryColor)
-                    Text(openRouter.hasAPIKey ? "API key saved in Keychain." : "Set an API key for OpenRouter image and video models.")
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
-                }
-                Spacer(minLength: AppTheme.Spacing.lg)
-                statusPill
-            }
-
-            HStack(spacing: AppTheme.Spacing.sm) {
-                SecureField(openRouter.hasAPIKey ? "Replace API key" : "OpenRouter API key", text: $apiKeyDraft)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(AppTheme.Text.primaryColor)
-                    .padding(.horizontal, AppTheme.Spacing.md)
-                    .padding(.vertical, AppTheme.Spacing.smMd)
-                    .background(
-                        RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                            .fill(Color.white.opacity(AppTheme.Opacity.subtle))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                            .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.thin)
-                    )
-
-                Button("Save") {
-                    openRouter.saveAPIKey(apiKeyDraft)
-                    apiKeyDraft = ""
-                }
-                .disabled(apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                Button("Remove") {
-                    openRouter.removeAPIKey()
-                    apiKeyDraft = ""
-                }
-                .disabled(!openRouter.hasAPIKey)
-
-                Button {
-                    Task { await openRouter.refreshModels() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .disabled(openRouter.isLoading)
-                .help("Refresh OpenRouter models")
-            }
-            .buttonStyle(.borderless)
-            .controlSize(.small)
-
-            if let error = openRouter.lastError {
-                Text(error)
-                    .font(.system(size: AppTheme.FontSize.xs))
-                    .foregroundStyle(AppTheme.Status.errorColor)
-            }
-        }
-        .padding(AppTheme.Spacing.md)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                .fill(Color.white.opacity(AppTheme.Opacity.subtle))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.thin)
-        )
-    }
-
-    private var statusPill: some View {
-        HStack(spacing: AppTheme.Spacing.xs) {
-            Circle()
-                .fill(openRouter.hasAPIKey ? AppTheme.Status.successColor : AppTheme.Text.mutedColor)
-                .frame(width: AppTheme.Spacing.sm, height: AppTheme.Spacing.sm)
-            Text(openRouter.hasAPIKey ? "Ready" : "No key")
-                .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-        }
-        .padding(.horizontal, AppTheme.Spacing.sm)
-        .padding(.vertical, AppTheme.Spacing.xs)
-        .background(
-            Capsule()
-                .fill(Color.white.opacity(AppTheme.Opacity.subtle))
-        )
     }
 
     private var searchBar: some View {

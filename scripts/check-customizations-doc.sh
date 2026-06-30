@@ -16,6 +16,7 @@ required_patterns=(
   "Transcript-Driven Cut Guardrails"
   "Caption Readability And Safety"
   "NaturalLanguage Tokenizer Caption Splitting"
+  "Volcengine Speech Captions"
   "Palmier UI Feature Policy"
 )
 

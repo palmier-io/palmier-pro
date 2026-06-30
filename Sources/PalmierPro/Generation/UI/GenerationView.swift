@@ -1509,7 +1509,7 @@ struct GenerationView: View {
     private var submitButton: some View {
         Button {
             if generationAllowed { submitGeneration() }
-            else if usesOpenRouter { SettingsWindowController.shared.show(tab: .models) }
+            else if usesOpenRouter { SettingsWindowController.shared.show(tab: .providers) }
             else if !account.isMisconfigured { Task { await account.signInWithGoogle() } }
         } label: {
             Image(systemName: generationAllowed ? "arrow.up" : (usesOpenRouter ? "key" : "person.crop.circle"))
