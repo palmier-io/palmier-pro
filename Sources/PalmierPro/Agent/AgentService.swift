@@ -7,6 +7,8 @@ final class AgentService {
 
     private var anthropicAPIKey: String = ""
     private var openAICompatibleSettings: OpenAICompatibleSettings?
+    private var codexOAuthSettings: CodexOAuthSettings?
+    private var zhipuCodingPlanSettings: ZhipuCodingPlanSettings = .load()
     private var providerPreference: AgentProviderPreference = .palmier
     private var providerObservers: [NSObjectProtocol] = []
 
@@ -15,6 +17,8 @@ final class AgentService {
         for name in [
             Notification.Name.anthropicAPIKeyChanged,
             .openAICompatibleSettingsChanged,
+            .codexOAuthSettingsChanged,
+            .zhipuCodingPlanSettingsChanged,
             .agentProviderChanged,
         ] {
             let observer = NotificationCenter.default.addObserver(
@@ -35,18 +39,26 @@ final class AgentService {
             let config = await Task.detached(priority: .utility) {
                 let anthropicKey = AnthropicKeychain.load() ?? ""
                 let openAISettings = OpenAICompatibleSettings.load()
+                let codexOAuthSettings = CodexOAuthSettings.load()
+                let zhipuCodingPlanSettings = ZhipuCodingPlanSettings.load()
                 return (
                     anthropicKey,
                     openAISettings,
+                    codexOAuthSettings,
+                    zhipuCodingPlanSettings,
                     AgentProviderPreference.defaultProvider(
                         hasAnthropicKey: !anthropicKey.isEmpty,
-                        hasOpenAICompatibleConfig: openAISettings != nil
+                        hasOpenAICompatibleConfig: openAISettings != nil,
+                        hasCodexOAuthConfig: codexOAuthSettings?.hasCredentials == true,
+                        hasZhipuCodingPlanConfig: zhipuCodingPlanSettings.hasAPIKey
                     )
                 )
             }.value
             self?.anthropicAPIKey = config.0
             self?.openAICompatibleSettings = config.1
-            self?.providerPreference = config.2
+            self?.codexOAuthSettings = config.2
+            self?.zhipuCodingPlanSettings = config.3
+            self?.providerPreference = config.4
         }
     }
 
@@ -59,12 +71,16 @@ final class AgentService {
     var activeProvider: AgentProviderPreference { providerPreference }
 
     var hasApiKey: Bool {
-        hasAnthropicAPIKey || (openAICompatibleSettings?.hasAPIKey ?? false)
+        hasAnthropicAPIKey || (openAICompatibleSettings?.hasAPIKey ?? false) || zhipuCodingPlanSettings.hasAPIKey
     }
 
     var hasAnthropicAPIKey: Bool { !anthropicAPIKey.isEmpty }
 
     var hasOpenAICompatibleEndpoint: Bool { openAICompatibleSettings != nil }
+
+    var hasCodexOAuthCredentials: Bool { codexOAuthSettings?.hasCredentials == true }
+
+    var hasZhipuCodingPlanAPIKey: Bool { zhipuCodingPlanSettings.hasAPIKey }
 
     var isUsingBYOK: Bool {
         switch activeProvider {
@@ -72,6 +88,10 @@ final class AgentService {
             return hasAnthropicAPIKey
         case .openAICompatible:
             return openAICompatibleSettings?.hasAPIKey == true
+        case .zhipuCodingPlan:
+            return zhipuCodingPlanSettings.hasAPIKey
+        case .codexOAuth:
+            return false
         case .palmier:
             return false
         }
@@ -85,6 +105,10 @@ final class AgentService {
             return "Anthropic"
         case .openAICompatible:
             return "OpenAI compatible"
+        case .codexOAuth:
+            return "Codex OAuth"
+        case .zhipuCodingPlan:
+            return "Zhipu CodingPlan"
         }
     }
 
@@ -92,6 +116,10 @@ final class AgentService {
         switch activeProvider {
         case .openAICompatible:
             return openAICompatibleSettings?.model ?? "No model"
+        case .codexOAuth:
+            return codexOAuthSettings?.model ?? CodexOAuthSettings.defaultModel
+        case .zhipuCodingPlan:
+            return zhipuCodingPlanSettings.model
         case .anthropic, .palmier:
             return effectiveModel.displayName
         }
@@ -107,6 +135,10 @@ final class AgentService {
             return hasAnthropicAPIKey
         case .openAICompatible:
             return hasOpenAICompatibleEndpoint
+        case .codexOAuth:
+            return hasCodexOAuthCredentials
+        case .zhipuCodingPlan:
+            return hasZhipuCodingPlanAPIKey
         case .palmier:
             let account = AccountService.shared
             return account.isSignedIn && account.hasCredits
@@ -118,6 +150,8 @@ final class AgentService {
         case .anthropic:
             return hasAnthropicAPIKey ? AnthropicModel.allCases : []
         case .openAICompatible:
+            return []
+        case .codexOAuth, .zhipuCodingPlan:
             return []
         case .palmier:
             return AccountService.shared.isPaid ? [.sonnet46] : [.haiku45]
@@ -133,6 +167,12 @@ final class AgentService {
         case .openAICompatible:
             guard let openAICompatibleSettings else { return nil }
             return OpenAICompatibleClient(settings: openAICompatibleSettings)
+        case .codexOAuth:
+            guard let codexOAuthSettings, codexOAuthSettings.hasCredentials else { return nil }
+            return CodexOAuthClient(settings: codexOAuthSettings)
+        case .zhipuCodingPlan:
+            guard zhipuCodingPlanSettings.hasAPIKey else { return nil }
+            return OpenAICompatibleClient(settings: zhipuCodingPlanSettings.openAICompatibleSettings)
         case .palmier:
             if AccountService.shared.isSignedIn {
                 return PalmierClient(model: chosen)
@@ -406,6 +446,10 @@ final class AgentService {
             return "Add an Anthropic API key to start."
         case .openAICompatible:
             return "Add an OpenAI-compatible base URL and model to start."
+        case .codexOAuth:
+            return "Run `codex login` to start."
+        case .zhipuCodingPlan:
+            return "Add a Zhipu CodingPlan API key to start."
         case .palmier:
             return "Sign in to a paid plan or add your own API key to start."
         }

@@ -162,6 +162,18 @@ struct AgentPanelView: View {
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .lineLimit(1)
                 .help("Streaming through an OpenAI-compatible endpoint")
+        } else if service.activeProvider == .codexOAuth && service.hasCodexOAuthCredentials {
+            Text(service.effectiveModelLabel)
+                .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .lineLimit(1)
+                .help("Streaming through Codex OAuth")
+        } else if service.activeProvider == .zhipuCodingPlan && service.hasZhipuCodingPlanAPIKey {
+            Text(service.effectiveModelLabel)
+                .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .lineLimit(1)
+                .help("Streaming through Zhipu CodingPlan")
         }
     }
 
@@ -177,6 +189,11 @@ struct AgentPanelView: View {
                 .font(.system(size: AppTheme.FontSize.xs).italic())
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .help("Streaming through an OpenAI-compatible endpoint")
+        } else if service.activeProvider == .codexOAuth && service.hasCodexOAuthCredentials {
+            Text("using Codex OAuth")
+                .font(.system(size: AppTheme.FontSize.xs).italic())
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .help("Streaming through the local Codex login")
         }
     }
 
@@ -328,26 +345,44 @@ struct AgentPanelView: View {
 
     @ViewBuilder
     private var missingKeyState: some View {
-        let account = AccountService.shared
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Button(action: { SettingsWindowController.shared.show(tab: .account) }) {
-                Text(missingKeyPrimaryAction(account: account))
-                    .underline()
-                    .foregroundStyle(AppTheme.Accent.primary)
-            }
-            .buttonStyle(.plain)
-
-            Text("or use")
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-
+        if service.activeProvider == .codexOAuth {
             Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
-                Text("your own API key")
+                Text("Run codex login")
                     .underline()
                     .foregroundStyle(AppTheme.Accent.primary)
             }
             .buttonStyle(.plain)
+            .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+        } else if service.activeProvider == .zhipuCodingPlan {
+            Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
+                Text("Add Zhipu API key")
+                    .underline()
+                    .foregroundStyle(AppTheme.Accent.primary)
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+        } else {
+            let account = AccountService.shared
+            HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.xs) {
+                Button(action: { SettingsWindowController.shared.show(tab: .account) }) {
+                    Text(missingKeyPrimaryAction(account: account))
+                        .underline()
+                        .foregroundStyle(AppTheme.Accent.primary)
+                }
+                .buttonStyle(.plain)
+
+                Text("or use")
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+
+                Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
+                    Text("your own API key")
+                        .underline()
+                        .foregroundStyle(AppTheme.Accent.primary)
+                }
+                .buttonStyle(.plain)
+            }
+            .font(.system(size: AppTheme.FontSize.md, weight: .medium))
         }
-        .font(.system(size: AppTheme.FontSize.md, weight: .medium))
     }
 
     private func missingKeyPrimaryAction(account: AccountService) -> String {

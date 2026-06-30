@@ -8,6 +8,7 @@ struct OpenAICompatibleClientTests {
     @Test func normalizesChatCompletionsEndpoint() {
         #expect(OpenAICompatibleEndpoint.normalizedURL(from: "https://example.com")?.absoluteString == "https://example.com/v1/chat/completions")
         #expect(OpenAICompatibleEndpoint.normalizedURL(from: "https://example.com/api/v1")?.absoluteString == "https://example.com/api/v1/chat/completions")
+        #expect(OpenAICompatibleEndpoint.normalizedURL(from: "https://example.com/api/v4")?.absoluteString == "https://example.com/api/v4/chat/completions")
         #expect(OpenAICompatibleEndpoint.normalizedURL(from: "https://example.com/v1/chat/completions")?.absoluteString == "https://example.com/v1/chat/completions")
         #expect(OpenAICompatibleEndpoint.normalizedURL(from: "not a url") == nil)
     }

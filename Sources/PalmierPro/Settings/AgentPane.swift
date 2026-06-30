@@ -18,6 +18,16 @@ struct AgentPane: View {
     @State private var openAIMaskedKey: String = ""
     @State private var openAIKeyDraft: String = ""
 
+    @State private var codexHasCredentials: Bool = false
+    @State private var codexModel: String = CodexOAuthSettings.defaultModel
+    @State private var savedCodexModel: String = CodexOAuthSettings.defaultModel
+
+    @State private var zhipuModel: String = ZhipuCodingPlanSettings.defaultModel
+    @State private var savedZhipuModel: String = ZhipuCodingPlanSettings.defaultModel
+    @State private var zhipuHasKey: Bool = false
+    @State private var zhipuMaskedKey: String = ""
+    @State private var zhipuKeyDraft: String = ""
+
     @FocusState private var focusedField: FocusedField?
 
     private enum FocusedField: Hashable {
@@ -25,16 +35,23 @@ struct AgentPane: View {
         case openAIBaseURL
         case openAIModel
         case openAIKey
+        case codexModel
+        case zhipuKey
     }
 
     private let anthropicConsoleURL = URL(string: "https://console.anthropic.com/settings/keys")!
     private let openAIKeysURL = URL(string: "https://platform.openai.com/api-keys")!
+    private let zhipuDocsURL = URL(string: "https://docs.z.ai/devpack/tool/others/coding-plan")!
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
             providerSection
             Divider().overlay(AppTheme.Border.subtleColor)
             anthropicSection
+            Divider().overlay(AppTheme.Border.subtleColor)
+            codexOAuthSection
+            Divider().overlay(AppTheme.Border.subtleColor)
+            zhipuCodingPlanSection
             Divider().overlay(AppTheme.Border.subtleColor)
             openAICompatibleSection
             Divider().overlay(AppTheme.Border.subtleColor)
@@ -134,6 +151,224 @@ struct AgentPane: View {
                 AnthropicKeychain.delete()
             }.value
             applyAnthropicKey("")
+        }
+    }
+
+    // MARK: - Codex OAuth
+
+    private var codexOAuthSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            sectionHeader(
+                title: "Codex OAuth",
+                subtitle: "Use the local Codex login. Run codex login first; Palmier reads ~/.codex/auth.json."
+            )
+
+            textField(
+                label: "Model",
+                placeholder: CodexOAuthSettings.defaultModel,
+                text: $codexModel,
+                focused: .codexModel,
+                monospaced: true,
+                onSubmit: saveCodexOAuth
+            )
+
+            HStack(spacing: AppTheme.Spacing.sm) {
+                statusPill(
+                    text: codexHasCredentials ? "Signed in" : "Run codex login",
+                    systemImage: codexHasCredentials ? "checkmark.circle" : "exclamationmark.circle"
+                )
+                Spacer()
+                if codexIsDirty {
+                    Button("Save", action: saveCodexOAuth)
+                        .buttonStyle(.capsule(.prominent, size: .regular))
+                        .controlSize(.large)
+                }
+                Button("Refresh", action: refresh)
+                    .buttonStyle(.capsule(.secondary, size: .regular))
+                    .controlSize(.large)
+            }
+        }
+    }
+
+    private var codexIsDirty: Bool {
+        codexModel.trimmingCharacters(in: .whitespacesAndNewlines) != savedCodexModel
+    }
+
+    private func saveCodexOAuth() {
+        let model = codexModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        focusedField = nil
+        Task { @MainActor in
+            await Task.detached(priority: .userInitiated) {
+                CodexOAuthSettings.save(model: model)
+                if CodexOAuthCredentialStore.hasCredentials {
+                    AgentProviderPreference.save(.codexOAuth)
+                }
+            }.value
+            savedCodexModel = model.isEmpty ? CodexOAuthSettings.defaultModel : model
+            codexModel = savedCodexModel
+            codexHasCredentials = CodexOAuthCredentialStore.hasCredentials
+            if codexHasCredentials {
+                provider = .codexOAuth
+            }
+        }
+    }
+
+    // MARK: - Zhipu CodingPlan
+
+    private var zhipuCodingPlanSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            sectionHeader(
+                title: "Zhipu CodingPlan",
+                subtitle: "Use Zhipu's OpenAI-compatible CodingPlan endpoint. API keys are stored in your macOS Keychain.",
+                linkTitle: "CodingPlan docs",
+                linkURL: zhipuDocsURL
+            )
+
+            HStack(alignment: .bottom, spacing: AppTheme.Spacing.sm) {
+                zhipuModelPicker
+                Spacer()
+                Text(ZhipuCodingPlanSettings.baseURL)
+                    .font(.system(size: AppTheme.FontSize.xs, design: .monospaced))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            HStack(spacing: AppTheme.Spacing.sm) {
+                secureField(
+                    placeholder: zhipuKeyPlaceholder,
+                    text: $zhipuKeyDraft,
+                    focused: .zhipuKey,
+                    onSubmit: saveZhipuCodingPlan
+                )
+                zhipuTrailingControls
+            }
+        }
+    }
+
+    private var zhipuModelPicker: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            Text("Model")
+                .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            Menu {
+                ForEach(ZhipuCodingPlanModel.allCases) { model in
+                    Button(model.displayName) {
+                        zhipuModel = model.rawValue
+                    }
+                }
+            } label: {
+                HStack(spacing: AppTheme.Spacing.sm) {
+                    Text(zhipuModel)
+                        .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+                        .foregroundStyle(AppTheme.Text.primaryColor)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                }
+                .padding(.horizontal, AppTheme.Spacing.md)
+                .padding(.vertical, AppTheme.Spacing.smMd)
+                .background(inputBackground(isFocused: false))
+                .overlay(inputBorder(isFocused: false))
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        }
+    }
+
+    private var zhipuKeyPlaceholder: String {
+        zhipuHasKey ? zhipuMaskedKey : "Zhipu API key"
+    }
+
+    private var zhipuIsDirty: Bool {
+        zhipuModel.trimmingCharacters(in: .whitespacesAndNewlines) != savedZhipuModel ||
+        !zhipuKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var zhipuHasSavedConfig: Bool {
+        zhipuHasKey || savedZhipuModel != ZhipuCodingPlanSettings.defaultModel
+    }
+
+    @ViewBuilder
+    private var zhipuTrailingControls: some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            if zhipuIsDirty {
+                Button("Save", action: saveZhipuCodingPlan)
+                    .buttonStyle(.capsule(.prominent, size: .regular))
+                    .controlSize(.large)
+            }
+            if zhipuHasKey && zhipuKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Button(action: removeZhipuKey) {
+                    Image(systemName: "trash")
+                        .font(.system(size: AppTheme.FontSize.md))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                        .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
+                }
+                .buttonStyle(.capsule(.secondary, size: .regular))
+                .controlSize(.large)
+                .help("Remove API key")
+            }
+            if zhipuHasSavedConfig {
+                Button("Clear", action: clearZhipuCodingPlan)
+                    .buttonStyle(.capsule(.secondary, size: .regular))
+                    .controlSize(.large)
+            }
+        }
+    }
+
+    private func saveZhipuCodingPlan() {
+        let model = zhipuModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = zhipuKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasSavedKey = zhipuHasKey
+        focusedField = nil
+        Task { @MainActor in
+            await Task.detached(priority: .userInitiated) {
+                ZhipuCodingPlanSettings.save(model: model)
+                if !key.isEmpty {
+                    ZhipuCodingPlanKeychain.save(key)
+                }
+                if !key.isEmpty || hasSavedKey {
+                    AgentProviderPreference.save(.zhipuCodingPlan)
+                }
+            }.value
+            savedZhipuModel = model.isEmpty ? ZhipuCodingPlanSettings.defaultModel : model
+            zhipuModel = savedZhipuModel
+            zhipuKeyDraft = ""
+            if !key.isEmpty {
+                applyZhipuKey(key)
+            }
+            if !key.isEmpty || hasSavedKey {
+                provider = .zhipuCodingPlan
+            }
+        }
+    }
+
+    private func removeZhipuKey() {
+        zhipuKeyDraft = ""
+        Task { @MainActor in
+            await Task.detached(priority: .userInitiated) {
+                ZhipuCodingPlanKeychain.delete()
+            }.value
+            applyZhipuKey("")
+        }
+    }
+
+    private func clearZhipuCodingPlan() {
+        zhipuModel = ZhipuCodingPlanSettings.defaultModel
+        zhipuKeyDraft = ""
+        Task { @MainActor in
+            await Task.detached(priority: .userInitiated) {
+                ZhipuCodingPlanSettings.clear()
+                if AgentProviderPreference.stored == .zhipuCodingPlan {
+                    AgentProviderPreference.save(.palmier)
+                }
+            }.value
+            savedZhipuModel = ZhipuCodingPlanSettings.defaultModel
+            applyZhipuKey("")
+            if provider == .zhipuCodingPlan {
+                provider = .palmier
+            }
         }
     }
 
@@ -312,6 +547,26 @@ struct AgentPane: View {
         }
     }
 
+    private func statusPill(text: String, systemImage: String) -> some View {
+        HStack(spacing: AppTheme.Spacing.xs) {
+            Image(systemName: systemImage)
+                .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
+            Text(text)
+                .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+        }
+        .foregroundStyle(AppTheme.Text.secondaryColor)
+        .padding(.horizontal, AppTheme.Spacing.smMd)
+        .padding(.vertical, AppTheme.Spacing.xs)
+        .background(
+            Capsule()
+                .fill(AppTheme.Background.raisedColor)
+        )
+        .overlay(
+            Capsule()
+                .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
+        )
+    }
+
     private func textField(
         label: String,
         placeholder: String,
@@ -375,23 +630,35 @@ struct AgentPane: View {
             let snapshot = await Task.detached(priority: .utility) {
                 let anthropicKey = AnthropicKeychain.load() ?? ""
                 let openAIKey = OpenAICompatibleKeychain.load() ?? ""
+                let codexModel = CodexOAuthSettings.savedModel
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let codexHasCredentials = CodexOAuthCredentialStore.hasCredentials
+                let zhipuSettings = ZhipuCodingPlanSettings.load()
                 let baseURL = OpenAICompatibleSettings.savedBaseURLString
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 let model = OpenAICompatibleSettings.savedModel
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 let provider = AgentProviderPreference.defaultProvider(
                     hasAnthropicKey: !anthropicKey.isEmpty,
-                    hasOpenAICompatibleConfig: OpenAICompatibleEndpoint.normalizedURL(from: baseURL) != nil && !model.isEmpty
+                    hasOpenAICompatibleConfig: OpenAICompatibleEndpoint.normalizedURL(from: baseURL) != nil && !model.isEmpty,
+                    hasCodexOAuthConfig: codexHasCredentials,
+                    hasZhipuCodingPlanConfig: zhipuSettings.hasAPIKey
                 )
-                return (anthropicKey, openAIKey, baseURL, model, provider)
+                return (anthropicKey, openAIKey, codexModel, codexHasCredentials, zhipuSettings, baseURL, model, provider)
             }.value
             applyAnthropicKey(snapshot.0)
             applyOpenAIKey(snapshot.1)
-            savedOpenAIBaseURL = snapshot.2
-            openAIBaseURL = snapshot.2
-            savedOpenAIModel = snapshot.3
-            openAIModel = snapshot.3
-            provider = snapshot.4
+            savedCodexModel = snapshot.2.isEmpty ? CodexOAuthSettings.defaultModel : snapshot.2
+            codexModel = savedCodexModel
+            codexHasCredentials = snapshot.3
+            savedZhipuModel = snapshot.4.model
+            zhipuModel = snapshot.4.model
+            applyZhipuKey(snapshot.4.apiKey)
+            savedOpenAIBaseURL = snapshot.5
+            openAIBaseURL = snapshot.5
+            savedOpenAIModel = snapshot.6
+            openAIModel = snapshot.6
+            provider = snapshot.7
         }
     }
 
@@ -403,6 +670,11 @@ struct AgentPane: View {
     private func applyOpenAIKey(_ key: String) {
         openAIHasKey = !key.isEmpty
         openAIMaskedKey = mask(key)
+    }
+
+    private func applyZhipuKey(_ key: String) {
+        zhipuHasKey = !key.isEmpty
+        zhipuMaskedKey = mask(key)
     }
 
     private func mask(_ key: String) -> String {

@@ -95,13 +95,18 @@ enum OpenAICompatibleEndpoint {
             return components.url
         }
 
-        if pathParts.last == "v1" {
+        if let last = pathParts.last, isVersionPathComponent(last) {
             pathParts.append(contentsOf: ["chat", "completions"])
         } else {
             pathParts.append(contentsOf: ["v1", "chat", "completions"])
         }
         components.path = "/" + pathParts.joined(separator: "/")
         return components.url
+    }
+
+    private static func isVersionPathComponent(_ value: String) -> Bool {
+        guard value.count > 1, value.first == "v" else { return false }
+        return Int(value.dropFirst()) != nil
     }
 }
 

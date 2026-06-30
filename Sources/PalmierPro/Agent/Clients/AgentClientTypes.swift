@@ -10,6 +10,8 @@ enum AgentProviderPreference: String, CaseIterable, Identifiable, Sendable {
     case palmier
     case anthropic
     case openAICompatible
+    case codexOAuth
+    case zhipuCodingPlan
 
     static let defaultsKey = "agentProvider"
 
@@ -20,6 +22,8 @@ enum AgentProviderPreference: String, CaseIterable, Identifiable, Sendable {
         case .palmier: "Palmier"
         case .anthropic: "Anthropic"
         case .openAICompatible: "OpenAI Compatible"
+        case .codexOAuth: "Codex OAuth"
+        case .zhipuCodingPlan: "Zhipu CodingPlan"
         }
     }
 
@@ -33,10 +37,17 @@ enum AgentProviderPreference: String, CaseIterable, Identifiable, Sendable {
         NotificationCenter.default.post(name: .agentProviderChanged, object: nil)
     }
 
-    static func defaultProvider(hasAnthropicKey: Bool, hasOpenAICompatibleConfig: Bool) -> AgentProviderPreference {
+    static func defaultProvider(
+        hasAnthropicKey: Bool,
+        hasOpenAICompatibleConfig: Bool,
+        hasCodexOAuthConfig: Bool,
+        hasZhipuCodingPlanConfig: Bool
+    ) -> AgentProviderPreference {
         if let stored { return stored }
         if hasOpenAICompatibleConfig { return .openAICompatible }
+        if hasZhipuCodingPlanConfig { return .zhipuCodingPlan }
         if hasAnthropicKey { return .anthropic }
+        if hasCodexOAuthConfig { return .codexOAuth }
         return .palmier
     }
 }
