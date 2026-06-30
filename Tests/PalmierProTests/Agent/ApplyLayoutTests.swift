@@ -170,6 +170,65 @@ struct ApplyLayoutTests {
         #expect(clip(h, id: "ca")!.startFrame == 0)
     }
 
+    @Test func reLayoutsBatchOfClipsIntoOneSlot() async throws {
+        var t = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [
+                Fixtures.clip(id: "ca", mediaRef: "a", start: 0, duration: 60),
+                Fixtures.clip(id: "cb", mediaRef: "a", start: 60, duration: 60),
+            ]),
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "cc", mediaRef: "b", start: 0, duration: 120)]),
+        ])
+        t.width = 1920; t.height = 1080; t.settingsConfigured = true
+        let h = ToolHarness(timeline: t)
+        videoAsset(h, id: "a"); videoAsset(h, id: "b")
+        let before = h.editor.timeline.tracks.count
+        let r = await h.runRaw("apply_layout", args: [
+            "layout": "side_by_side",
+            "slots": [["slot": "left", "clipIds": ["ca", "cb"]], ["slot": "right", "clipId": "cc"]],
+        ])
+        #expect(r.isError == false)
+        #expect(h.editor.timeline.tracks.count == before)
+        #expect(approx(clip(h, id: "ca")!.transform.centerX, 0.25))
+        #expect(approx(clip(h, id: "cb")!.transform.centerX, 0.25))
+        #expect(approx(clip(h, id: "cc")!.transform.centerX, 0.75))
+    }
+
+    @Test func batchRejectsOverlapAcrossDifferentSlots() async throws {
+        var t = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [
+            Fixtures.clip(id: "ca", mediaRef: "a", start: 0, duration: 60),
+            Fixtures.clip(id: "cb", mediaRef: "b", start: 30, duration: 60),
+        ])])
+        t.width = 1920; t.height = 1080; t.settingsConfigured = true
+        let h = ToolHarness(timeline: t)
+        videoAsset(h, id: "a"); videoAsset(h, id: "b")
+        let r = await h.runRaw("apply_layout", args: [
+            "layout": "side_by_side",
+            "slots": [["slot": "left", "clipIds": ["ca"]], ["slot": "right", "clipIds": ["cb"]]],
+        ])
+        #expect(r.isError)
+        #expect(approx(clip(h, id: "ca")!.transform.centerX, 0.5))
+    }
+
+    @Test func batchRejectsEmptyAndDuplicateClipIds() async throws {
+        var t = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "ca", mediaRef: "a", start: 0, duration: 60)]),
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "cb", mediaRef: "b", start: 0, duration: 60)]),
+        ])
+        t.width = 1920; t.height = 1080; t.settingsConfigured = true
+        let h = ToolHarness(timeline: t)
+        videoAsset(h, id: "a"); videoAsset(h, id: "b")
+        let empty = await h.runRaw("apply_layout", args: [
+            "layout": "side_by_side",
+            "slots": [["slot": "left", "clipIds": [String]()], ["slot": "right", "clipId": "cb"]],
+        ])
+        #expect(empty.isError)
+        let dup = await h.runRaw("apply_layout", args: [
+            "layout": "side_by_side",
+            "slots": [["slot": "left", "clipIds": ["ca", "ca"]], ["slot": "right", "clipId": "cb"]],
+        ])
+        #expect(dup.isError)
+    }
+
     @Test func reLayoutClearsAnimationTracks() async throws {
         var t = Fixtures.timeline(tracks: [
             Fixtures.videoTrack(clips: [Fixtures.clip(id: "ca", mediaRef: "a", start: 0, duration: 60)]),
