@@ -19,7 +19,7 @@ Upstream sync note: preserve this as a project-level operating rule for both Cod
 
 ## OpenAI-Compatible BYOK Agent Runtime
 
-Intent: keep independent non-Palmier agent backends for user-provided keys and local OAuth credentials instead of patching the Anthropic backend. Zhipu GLM uses its OpenAI-compatible endpoint with a Keychain API key. Codex OAuth signs in through the official ChatGPT PKCE browser flow, stores tokens in the local Codex auth file, refreshes access tokens before streaming, and calls the official ChatGPT Codex backend `https://chatgpt.com/backend-api/codex/responses` with the Codex account header instead of the OpenAI-compatible Chat Completions path.
+Intent: keep independent non-Palmier agent backends for user-provided keys and local OAuth credentials instead of patching the Anthropic backend. Zhipu GLM uses its OpenAI-compatible endpoint with a Keychain API key. Codex OAuth signs in through the official ChatGPT PKCE browser flow, stores tokens in the local Codex auth file, refreshes access tokens before streaming, and calls the official ChatGPT Codex backend `https://chatgpt.com/backend-api/codex/responses` with the Codex account header instead of the OpenAI-compatible Chat Completions path. The agent panel keeps a visible cancel control during streaming, and Codex Responses streams that emit tool calls must continue into local tool execution even when `response.completed` follows the function-call item.
 
 Primary paths:
 
@@ -193,7 +193,7 @@ Upstream sync note: reject sign-in/credits preflight checks around generation to
 
 ## Generation Credential Settings
 
-Intent: Settings groups model credentials into Agent, Video Generation, and Audio Generation tabs. Users configure provider keys there; model lists are loaded from provider endpoints only after the relevant key exists. MiniMax exposes a Mainland China / International API region picker because keys are region-bound and the wrong endpoint returns unauthorized. MiniMax audio models are loaded into a local provider catalog and generation calls use the selected MiniMax region endpoint directly.
+Intent: Settings groups model credentials into Agent, Video Generation, and Audio Generation tabs. Users configure provider keys there; model lists are loaded from provider endpoints only after the relevant key exists. MiniMax exposes a Mainland China / International API region picker because keys are region-bound and the wrong endpoint returns unauthorized. MiniMax audio models are loaded into a local provider catalog after the selected region's model endpoint accepts the key; if that endpoint omits music_generation IDs, the configured MiniMax catalog exposes the supported music-2.6-free and music-2.6 generation models. Generation calls use the selected MiniMax region endpoint directly.
 
 Primary paths:
 
@@ -208,4 +208,4 @@ Primary paths:
 - `Sources/PalmierPro/Agent/Tools/ToolExecutor+Generate.swift`
 - `Tests/PalmierProTests/Generation/AudioProviderSettingsTests.swift`
 
-Upstream sync note: do not restore Account as the default Settings tab. Do not reintroduce a static default model catalog to mask missing provider credentials.
+Upstream sync note: do not restore Account as the default Settings tab. Do not reintroduce a static default model catalog to mask missing provider credentials; MiniMax music models should only appear after an authenticated region probe succeeds.

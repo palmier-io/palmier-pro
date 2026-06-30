@@ -161,6 +161,26 @@ struct CodexResponsesClientTests {
         }
     }
 
+    @Test func sseCompletedAfterFunctionCallKeepsToolUseStop() throws {
+        var pendingTools: [String: CodexResponsesSSE.PendingToolCall] = [:]
+
+        _ = try CodexResponsesSSE.events(
+            fromLine: #"data: {"type":"response.output_item.done","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_timeline","arguments":"{}"}}"#,
+            pendingTools: &pendingTools
+        )
+        let completedEvents = try CodexResponsesSSE.events(
+            fromLine: #"data: {"type":"response.completed","response":{"id":"resp_1","output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_timeline","arguments":"{}"}]}}"#,
+            pendingTools: &pendingTools
+        )
+
+        #expect(completedEvents.count == 1)
+        if case .messageStop(let stopReason) = try #require(completedEvents.first) {
+            #expect(stopReason == .toolUse)
+        } else {
+            Issue.record("Expected tool-use stop")
+        }
+    }
+
     @Test func sseFlushesFunctionCallArgumentsDeltas() throws {
         var pendingTools: [String: CodexResponsesSSE.PendingToolCall] = [:]
 

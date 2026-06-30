@@ -441,7 +441,7 @@ Deletes folders and everything inside them (subfolders and assets). Clips refere
 - Source line: `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift:744`
 - Availability: In-app agent and MCP
 
-Lists AI models with their capabilities (durations, aspect ratios, resolutions, first/last frame support, reference support, voices/category for audio, upscaler speed). Always call before generate_video, generate_image, generate_audio, or upscale_media so the model you pick actually supports the constraints you need. Returns { models, loaded } — if loaded=false, no configured provider has supplied a model catalog yet. Ask the user to configure the relevant provider credential, then retry.
+Lists AI models with their capabilities (durations, aspect ratios, resolutions, first/last frame support, reference support, voices/category for audio, upscaler speed). Always call before generate_video, generate_image, generate_audio, or upscale_media so the model you pick actually supports the constraints you need. Returns { models, loaded } and may include audioProviderError when a configured audio provider failed to load. If loaded=false, no configured provider has supplied a model catalog yet. Ask the user to configure the relevant provider credential, then retry.
 
 ### `apply_effect`
 

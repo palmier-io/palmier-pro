@@ -506,16 +506,21 @@ extension ToolExecutor {
             switch filter {
             case "video", "image":
                 return ModelCatalog.shared.isLoaded || OpenRouterService.shared.isLoaded
-            case "audio", "upscale":
+            case "audio":
+                return ModelCatalog.shared.isLoaded || AudioProviderCatalog.shared.isLoaded
+            case "upscale":
                 return ModelCatalog.shared.isLoaded
             default:
-                return ModelCatalog.shared.isLoaded || OpenRouterService.shared.isLoaded
+                return ModelCatalog.shared.isLoaded || OpenRouterService.shared.isLoaded || AudioProviderCatalog.shared.isLoaded
             }
         }()
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "models": out,
             "loaded": loaded,
         ]
+        if (filter == nil || filter == "audio"), let error = AudioProviderCatalog.shared.lastError {
+            body["audioProviderError"] = error
+        }
         guard let json = Self.jsonString(roundJSONFloatingPointNumbers(body, toPlaces: 3)) else {
             return .error("Failed to encode model list")
         }

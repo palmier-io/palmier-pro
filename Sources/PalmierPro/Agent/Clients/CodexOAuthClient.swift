@@ -289,10 +289,20 @@ enum CodexResponsesSSE {
             for event in events {
                 continuation.yield(event)
             }
+            if hasMessageStop(events) {
+                return
+            }
         }
         AgentDebugLog.trace("codex responses sse eof pending=\(pendingTools.count)")
         for event in finishStream(pendingTools: &pendingTools) {
             continuation.yield(event)
+        }
+    }
+
+    private static func hasMessageStop(_ events: [AgentStreamEvent]) -> Bool {
+        events.contains {
+            if case .messageStop = $0 { return true }
+            return false
         }
     }
 
@@ -325,7 +335,8 @@ enum CodexResponsesSSE {
             }
         case "response.completed":
             let toolEvents = finishStream(pendingTools: &pendingTools)
-            return toolEvents.isEmpty ? [.messageStop(stopReason: .endTurn)] : toolEvents
+            if !toolEvents.isEmpty { return toolEvents }
+            return [.messageStop(stopReason: completedResponseHasToolUse(event) ? .toolUse : .endTurn)]
         case "response.incomplete":
             throw CodexResponsesClientError.streamError("Response incomplete.")
         case "response.failed":
@@ -392,6 +403,15 @@ enum CodexResponsesSSE {
     private static func removePendingTool(_ toolCall: PendingToolCall, pendingTools: inout [String: PendingToolCall]) {
         pendingTools.removeValue(forKey: toolCall.itemID)
         pendingTools.removeValue(forKey: toolCall.callID)
+    }
+
+    private static func completedResponseHasToolUse(_ event: [String: Any]) -> Bool {
+        guard let response = event["response"] as? [String: Any],
+              let output = response["output"] as? [[String: Any]] else { return false }
+        return output.contains {
+            guard let type = $0["type"] as? String else { return false }
+            return type == "function_call" || type == "custom_tool_call"
+        }
     }
 
     private static func flushPendingTools(pendingTools: inout [String: PendingToolCall]) -> [AgentStreamEvent] {

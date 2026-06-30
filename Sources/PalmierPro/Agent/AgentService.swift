@@ -455,7 +455,10 @@ final class AgentService {
     func cancel() {
         currentTask?.cancel()
         currentTask = nil
+        resolveOrphanToolUses(reason: "Cancelled")
         isStreaming = false
+        syncMessagesIntoCurrentSession()
+        onSessionsChanged?()
     }
 
     private func kickOffStream() {
@@ -519,7 +522,7 @@ final class AgentService {
                 }
                 AgentDebugLog.trace("turn stream complete stop=\(stopReason.rawValue) textChars=\(textChars) toolUses=\(toolUseCount)")
 
-                if stopReason == .toolUse {
+                if stopReason == .toolUse || toolUseCount > 0 {
                     await runPendingToolUses(assistantID: assistantID)
                     AgentDebugLog.trace("turn continue after tool results")
                     continue loop

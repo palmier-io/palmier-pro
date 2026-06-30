@@ -17,6 +17,7 @@ enum MiniMaxModelId {
 @MainActor
 final class AudioProviderCatalog {
     static let shared = AudioProviderCatalog()
+    nonisolated static let miniMaxMusicModelIds = ["music-2.6-free", "music-2.6"]
 
     private(set) var audio: [AudioModelConfig] = []
     private(set) var isLoaded = false
@@ -63,10 +64,12 @@ final class AudioProviderCatalog {
             let models = try await Self.fetchMiniMaxModels(apiKey: miniMaxKey, region: region)
             audio = models
             isLoaded = true
+            Log.generation.notice("MiniMax audio models loaded count=\(models.count) region=\(region.rawValue)")
         } catch {
             audio = []
             isLoaded = false
             lastError = error.localizedDescription
+            Log.generation.warning("MiniMax audio models failed error=\(error.localizedDescription)")
         }
     }
 
@@ -88,7 +91,7 @@ final class AudioProviderCatalog {
         return rawIds.map(miniMaxModelConfig)
     }
 
-    private static func miniMaxModelIds(from object: Any) -> [String] {
+    nonisolated static func miniMaxModelIds(from object: Any) -> [String] {
         let data: [Any]
         if let array = object as? [Any] {
             data = array
@@ -106,7 +109,14 @@ final class AudioProviderCatalog {
             }
             return nil
         }
-        return Array(Set(ids.filter { $0.localizedCaseInsensitiveContains("music") })).sorted()
+        let supported = Set(miniMaxMusicModelIds)
+        let musicIds = ids.compactMap { id -> String? in
+            let normalized = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return supported.contains(normalized) ? normalized : nil
+        }
+        let unique = Set(musicIds)
+        let ordered = miniMaxMusicModelIds.filter { unique.contains($0) }
+        return ordered.isEmpty ? miniMaxMusicModelIds : ordered
     }
 
     private static func miniMaxModelConfig(rawId: String) -> AudioModelConfig {

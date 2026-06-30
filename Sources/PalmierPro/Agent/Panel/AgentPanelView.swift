@@ -49,6 +49,18 @@ struct AgentPanelView: View {
         !service.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var hasPendingToolRuns: Bool {
+        let results = toolResults
+        return service.messages.contains { message in
+            message.blocks.contains {
+                if case .toolUse(let id, _, _) = $0 {
+                    return results[id] == nil
+                }
+                return false
+            }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .top) {
@@ -84,6 +96,9 @@ struct AgentPanelView: View {
                 }
                 newTabButton
                 historyButton
+                if service.isStreaming || hasPendingToolRuns {
+                    stopRunButton
+                }
                 ViewSkillsButton()
             }
             .padding(.horizontal, AppTheme.Spacing.sm)
@@ -134,6 +149,19 @@ struct AgentPanelView: View {
                 onDelete: { service.deleteSession($0) }
             )
         }
+    }
+
+    private var stopRunButton: some View {
+        Button { service.cancel() } label: {
+            Image(systemName: "stop.circle.fill")
+                .font(.system(size: AppTheme.FontSize.mdLg, weight: AppTheme.FontWeight.medium))
+                .foregroundStyle(AppTheme.Status.errorColor)
+                .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .help("Stop reasoning")
+        .transition(.opacity.combined(with: .scale(scale: 0.85)))
     }
 
     @ViewBuilder

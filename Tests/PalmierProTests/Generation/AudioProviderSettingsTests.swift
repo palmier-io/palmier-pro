@@ -23,6 +23,29 @@ struct AudioProviderSettingsTests {
         #expect(MiniMaxAudioService.apiModelId(for: model) == "music-2.6")
     }
 
+    @Test func miniMaxModelEndpointFallbackKeepsMusicGenerationModelsAvailable() {
+        let response: [String: Any] = [
+            "data": [
+                ["id": "abab6.5s-chat"],
+                ["id": "speech-2.5-hd-preview"],
+            ],
+        ]
+
+        #expect(AudioProviderCatalog.miniMaxModelIds(from: response) == ["music-2.6-free", "music-2.6"])
+    }
+
+    @Test func miniMaxModelEndpointKeepsOnlySupportedMusicGenerationModels() {
+        let response: [String: Any] = [
+            "data": [
+                ["id": "music-cover"],
+                ["id": "music-2.6"],
+                ["id": "music-2.6-free"],
+            ],
+        ]
+
+        #expect(AudioProviderCatalog.miniMaxModelIds(from: response) == ["music-2.6-free", "music-2.6"])
+    }
+
     private func audioModel(id: String, displayName: String) -> AudioModelConfig {
         let caps = AudioCaps(
             category: "music",
