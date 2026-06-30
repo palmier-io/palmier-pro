@@ -226,14 +226,160 @@ enum TextFrameRenderer {
         return finish(ctx)
     }
 
-    /// Returns one timing per token. Uses word timings if counts match, otherwise splits duration evenly.
-    private static func tokenTimings(_ tokens: [(range: NSRange, text: String)],
-                                     _ words: [WordTiming]?, duration: Int) -> [WordTiming] {
-        if let words, words.count == tokens.count { return words }
+    /// Returns one timing per token, aligning transcript spans when token counts differ.
+    static func tokenTimings(_ tokens: [(range: NSRange, text: String)],
+                             _ words: [WordTiming]?, duration: Int) -> [WordTiming] {
+        guard !tokens.isEmpty else { return [] }
+        guard let words, !words.isEmpty else { return evenTokenTimings(tokens, duration: duration) }
+        if words.count == tokens.count {
+            return zip(tokens, words).map { pair in
+                let (token, timing) = pair
+                return clampedTiming(timing, text: token.text, duration: duration)
+            }
+        }
+        return alignedTokenTimings(tokens, words: words, duration: duration)
+            ?? evenTokenTimings(tokens, duration: duration)
+    }
+
+    private static func evenTokenTimings(_ tokens: [(range: NSRange, text: String)], duration: Int) -> [WordTiming] {
+        let duration = max(0, duration)
         let n = max(1, tokens.count)
         return tokens.indices.map {
             WordTiming(text: tokens[$0].text, startFrame: duration * $0 / n, endFrame: duration * ($0 + 1) / n)
         }
+    }
+
+    private struct TimingAlignmentGroup {
+        let tokenRange: Range<Int>
+        let wordRange: Range<Int>
+    }
+
+    private static func alignedTokenTimings(
+        _ tokens: [(range: NSRange, text: String)],
+        words: [WordTiming],
+        duration: Int
+    ) -> [WordTiming]? {
+        var result: [WordTiming] = []
+        var tokenIndex = 0
+        var wordIndex = 0
+
+        while tokenIndex < tokens.count, wordIndex < words.count {
+            guard let group = nextAlignedTimingGroup(
+                tokens,
+                words: words,
+                tokenStart: tokenIndex,
+                wordStart: wordIndex
+            ) else { return nil }
+
+            result.append(contentsOf: timingsForAlignedGroup(
+                tokens,
+                words: words,
+                tokenRange: group.tokenRange,
+                wordRange: group.wordRange,
+                duration: duration
+            ))
+            tokenIndex = group.tokenRange.upperBound
+            wordIndex = group.wordRange.upperBound
+        }
+
+        guard tokenIndex == tokens.count, wordIndex == words.count, result.count == tokens.count else { return nil }
+        return result
+    }
+
+    private static func nextAlignedTimingGroup(
+        _ tokens: [(range: NSRange, text: String)],
+        words: [WordTiming],
+        tokenStart: Int,
+        wordStart: Int
+    ) -> TimingAlignmentGroup? {
+        var tokenEnd = tokenStart
+        var wordEnd = wordStart
+        var tokenText = ""
+        var wordText = ""
+
+        while tokenEnd < tokens.count || wordEnd < words.count {
+            if shouldAppendTokenText(
+                tokenText: tokenText,
+                wordText: wordText,
+                tokenEnd: tokenEnd,
+                wordEnd: wordEnd,
+                tokenCount: tokens.count,
+                wordCount: words.count
+            ) {
+                tokenText += normalizedTimingText(tokens[tokenEnd].text)
+                tokenEnd += 1
+            } else {
+                wordText += normalizedTimingText(words[wordEnd].text)
+                wordEnd += 1
+            }
+
+            if !tokenText.isEmpty, tokenText == wordText {
+                return TimingAlignmentGroup(
+                    tokenRange: tokenStart..<tokenEnd,
+                    wordRange: wordStart..<wordEnd
+                )
+            }
+        }
+
+        return nil
+    }
+
+    private static func shouldAppendTokenText(
+        tokenText: String,
+        wordText: String,
+        tokenEnd: Int,
+        wordEnd: Int,
+        tokenCount: Int,
+        wordCount: Int
+    ) -> Bool {
+        if wordEnd >= wordCount { return true }
+        if tokenEnd >= tokenCount { return false }
+        return tokenText.count <= wordText.count
+    }
+
+    private static func timingsForAlignedGroup(
+        _ tokens: [(range: NSRange, text: String)],
+        words: [WordTiming],
+        tokenRange: Range<Int>,
+        wordRange: Range<Int>,
+        duration: Int
+    ) -> [WordTiming] {
+        if tokenRange.count == wordRange.count {
+            return zip(tokenRange, wordRange).map { pair in
+                let (tokenIndex, wordIndex) = pair
+                return clampedTiming(words[wordIndex], text: tokens[tokenIndex].text, duration: duration)
+            }
+        }
+
+        let maxFrame = max(0, duration)
+        let start = min(max(0, words[wordRange.lowerBound].startFrame), maxFrame)
+        let end = min(max(start, words[wordRange.upperBound - 1].endFrame), maxFrame)
+        let span = max(0, end - start)
+        return tokenRange.enumerated().map { offset, tokenIndex in
+            let tokenStart = start + span * offset / tokenRange.count
+            let tokenEnd: Int
+            if offset == tokenRange.count - 1 {
+                tokenEnd = end
+            } else {
+                tokenEnd = start + span * (offset + 1) / tokenRange.count
+            }
+            return WordTiming(text: tokens[tokenIndex].text, startFrame: tokenStart, endFrame: tokenEnd)
+        }
+    }
+
+    private static func clampedTiming(_ timing: WordTiming, text: String, duration: Int) -> WordTiming {
+        let maxFrame = max(0, duration)
+        let start = min(max(0, timing.startFrame), maxFrame)
+        let end = min(max(start, timing.endFrame), maxFrame)
+        return WordTiming(text: text, startFrame: start, endFrame: end)
+    }
+
+    private static func normalizedTimingText(_ text: String) -> String {
+        var out = ""
+        for scalar in text.unicodeScalars where CharacterSet.alphanumerics.contains(scalar) {
+            out += String(scalar).lowercased()
+        }
+        return out
     }
 
     private static func words(in content: String) -> [(range: NSRange, text: String)] {
