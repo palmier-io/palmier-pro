@@ -85,7 +85,8 @@ struct CodexOAuthStatus: Equatable, Sendable {
 
 enum CodexOAuthAgentSettings {
     static let modelDefaultsKey = "codexOAuthAgentModel"
-    static let baseURL = "https://api.openai.com/v1"
+    static let baseURL = "https://chatgpt.com/backend-api/codex"
+    static let responsesEndpoint = URL(string: "https://chatgpt.com/backend-api/codex/responses")!
 
     static var savedModel: String {
         UserDefaults.standard.string(forKey: modelDefaultsKey) ?? ""
@@ -94,13 +95,10 @@ enum CodexOAuthAgentSettings {
     static func load() -> OpenAICompatibleSettings? {
         let model = savedModel.trimmingCharacters(in: .whitespacesAndNewlines)
         let status = CodexOAuthStore.status()
-        guard !model.isEmpty,
-              let endpoint = OpenAICompatibleEndpoint.normalizedURL(from: baseURL),
-              status.canAuthorize
-        else { return nil }
+        guard !model.isEmpty, status.canAuthorize else { return nil }
         return OpenAICompatibleSettings(
             baseURL: baseURL,
-            endpoint: endpoint,
+            endpoint: responsesEndpoint,
             model: model,
             apiKey: CodexOAuthStore.cachedAccessToken() ?? ""
         )

@@ -23,6 +23,12 @@ enum CodexOAuthStore {
             .nilIfEmpty
     }
 
+    static func accountID() -> String? {
+        loadAuthFile()?.tokens?.accountID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+    }
+
     static func accessToken(refreshIfNeeded: Bool) async throws -> String {
         guard var file = loadAuthFile(),
               let tokens = file.tokens,
