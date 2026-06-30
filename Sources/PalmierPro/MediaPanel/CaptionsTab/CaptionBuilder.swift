@@ -165,6 +165,13 @@ enum CaptionBuilder {
             let phraseEndSource = p.end * Double(fps)
             guard phraseEndSource > visibleStartSource, phraseStartSource < visibleEndSource else { return nil }
 
+            func clampedTimelineFrame(sourceSeconds: Double) -> Int {
+                let sourceFrame = sourceSeconds * Double(fps)
+                let offsetFromTrim = sourceFrame - visibleStartSource
+                let frame = Int((Double(sourceClip.startFrame) + offsetFromTrim / max(sourceClip.speed, 0.0001)).rounded())
+                return min(max(frame, sourceClip.startFrame), sourceClip.endFrame)
+            }
+
             let mappedStart = sourceClip.timelineFrame(sourceSeconds: p.start, fps: fps)
             let mappedEnd = sourceClip.timelineFrame(sourceSeconds: p.end, fps: fps)
             let s = mappedStart ?? sourceClip.startFrame
@@ -173,10 +180,14 @@ enum CaptionBuilder {
 
             // Map word spans to clip-relative frames, clamped to the clip's own span.
             let words: [WordTiming] = p.words.compactMap { w in
-                guard let ws = sourceClip.timelineFrame(sourceSeconds: w.start, fps: fps),
-                      let we = sourceClip.timelineFrame(sourceSeconds: w.end, fps: fps) else { return nil }
+                let wordStartSource = w.start * Double(fps)
+                let wordEndSource = w.end * Double(fps)
+                guard wordEndSource > visibleStartSource, wordStartSource < visibleEndSource else { return nil }
+                let ws = clampedTimelineFrame(sourceSeconds: w.start)
+                let we = clampedTimelineFrame(sourceSeconds: w.end)
                 let rs = min(max(0, ws - s), duration)
                 let re = min(max(rs, we - s), duration)
+                guard re > rs else { return nil }
                 return WordTiming(text: w.text, startFrame: rs, endFrame: re)
             }
 
