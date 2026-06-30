@@ -761,6 +761,41 @@ struct ToolExecutorClipTests {
         #expect(ToolHarness.textOf(result).contains("Mixed trackIndex"))
     }
 
+    @Test func addClipsClearsLinkedAudioWhenOverwritingLinkedPair() async throws {
+        // Place an existing linked V+A clip [0, 90) via the editor, then use add_clips to
+        // overwrite the middle [30, 60). Without the fix, clearRegion splits the linked audio
+        // but removeClips only removes the video fragment, leaving a stranded audio [30, 60)
+        // on A1; placeClip then finds A1 occupied and creates a spurious A2 — double playback.
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+        let existing = h.addAsset(id: "existing", type: .video, duration: 3.0, hasAudio: true)
+        _ = h.editor.placeClip(asset: existing, trackIndex: 0, startFrame: 0, durationFrames: 90)
+        // After placeClip: V1[0,90) linked with A1[0,90). Two tracks total.
+        #expect(h.editor.timeline.tracks.count == 2)
+
+        let newAsset = h.addAsset(id: "new", type: .video, duration: 1.0, hasAudio: true)
+        let result = await h.runRaw("add_clips", args: [
+            "entries": [[
+                "mediaRef": newAsset.id,
+                "trackIndex": 0,
+                "startFrame": 30,
+                "durationFrames": 30,
+            ]]
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+
+        // No spurious third track should be created.
+        #expect(h.editor.timeline.tracks.count == 2)
+
+        // A1 must have exactly 3 clips: old[0,30), new[30,60), old[60,90).
+        let audioTrack = h.editor.timeline.tracks[1]
+        #expect(audioTrack.clips.count == 3)
+
+        // The clip in [30, 60) must belong to the new asset, not the stranded old audio.
+        let mid = audioTrack.clips.first { $0.startFrame == 30 }
+        #expect(mid?.mediaRef == newAsset.id)
+    }
+
     // MARK: - remove_clips
 
     @Test func removeClipsDropsClipsByIds() async throws {
