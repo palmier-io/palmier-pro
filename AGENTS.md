@@ -42,3 +42,12 @@ Palmier Pro speaks like a quietly capable native Mac app for filmmakers: direct,
 confident. Prefer Apple HIG-style terseness over warmth. Never chatty or cute. Never marketing. When the
 product needs to ask for action, lead with the action verb; when it reports state, name the thing.
 
+## Cursor Cloud specific instructions
+
+This project **cannot be built, run, or tested on the Cursor Cloud VM**, which is Linux/x86_64. PalmierPro is a macOS-only GUI app: `Package.swift` pins `.macOS(.v26)` (Tahoe) on Apple Silicon, ~150 source files import Apple-only frameworks (`AppKit`, `SwiftUI`, `AVFoundation`, `Metal`, `Cocoa`), the SPM dependencies (`Sparkle`, `sentry-cocoa`, `clerk-ios`, `lottie-ios`) are Apple-platform-only, the `MetalCIKernelPlugin` build tool needs Apple's Metal toolchain, and `scripts/bundle.sh`/`scripts/dev.sh` rely on `codesign`, `install_name_tool`, `dsymutil`, `xcrun`, `hdiutil`, and `PlistBuddy`.
+
+Consequences for cloud agents:
+- `swift build` / `swift run` / `swift test` will fail on Linux even if a Swift toolchain is installed — `import AppKit` and the macOS-only packages do not resolve there. The test target depends on the main target, so nothing in `Tests/` is Linux-testable either.
+- There is no useful dependency install step for this repo on Linux; the startup update script is intentionally a no-op.
+- Lint/build/run/test must be done on a macOS 26 + Xcode 16 + Swift 6.2 machine using the commands in `CONTRIBUTING.md` (`swift build`, `swift run`, `swift test`, `./scripts/dev.sh`). Make code-only changes here and verify them on macOS.
+
