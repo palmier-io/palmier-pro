@@ -189,7 +189,7 @@ Upstream sync note: reject sign-in/credits preflight checks around generation to
 
 ## Generation Credential Settings
 
-Intent: Settings groups model credentials into Agent, Video Generation, and Audio Generation tabs. Users configure provider keys there; model lists are loaded from provider endpoints only after the relevant key exists.
+Intent: Settings groups model credentials into Agent, Video Generation, and Audio Generation tabs. Users configure provider keys there; model lists are loaded from provider endpoints only after the relevant key exists. MiniMax exposes a Mainland China / Global API region picker because keys are region-bound and the wrong endpoint returns unauthorized.
 
 Primary paths:
 

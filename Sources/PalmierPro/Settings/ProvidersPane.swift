@@ -58,7 +58,7 @@ private enum AudioGenerationCredentialProvider: String, CaseIterable, Identifiab
         case .googleAI:
             "Gemini and Lyria model access. The key is stored in your macOS Keychain."
         case .minimax:
-            "Music model access. The key is stored in your macOS Keychain."
+            "Music model access. Choose the API region that issued the key."
         case .sonilo:
             "Video-to-music model access. The key is stored in your macOS Keychain."
         case .mirelo:
@@ -79,10 +79,51 @@ private enum AudioGenerationCredentialProvider: String, CaseIterable, Identifiab
         switch self {
         case .elevenLabs: URL(string: "https://elevenlabs.io/docs/api-reference/models")
         case .googleAI: URL(string: "https://ai.google.dev/api/models")
-        case .minimax: URL(string: "https://www.minimax.io/platform/document")
+        case .minimax: MiniMaxAPIRegion.stored.docsURL
         case .sonilo: URL(string: "https://platform.sonilo.com/")
         case .mirelo: URL(string: "https://mirelo.ai/api-docs")
         }
+    }
+}
+
+private enum MiniMaxAPIRegion: String, CaseIterable, Identifiable {
+    case mainlandChina
+    case global
+
+    private static let defaultsKey = "audioGenerationMiniMaxAPIRegion"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .mainlandChina: "Mainland China"
+        case .global: "Global"
+        }
+    }
+
+    var modelsURL: URL {
+        switch self {
+        case .mainlandChina: URL(string: "https://api.minimaxi.com/v1/models")!
+        case .global: URL(string: "https://api.minimax.io/v1/models")!
+        }
+    }
+
+    var docsURL: URL {
+        switch self {
+        case .mainlandChina: URL(string: "https://platform.minimaxi.com/docs/api-reference/models/openai/list-models")!
+        case .global: URL(string: "https://platform.minimax.io/docs/api-reference/models/openai/list-models")!
+        }
+    }
+
+    static var stored: MiniMaxAPIRegion {
+        guard let raw = UserDefaults.standard.string(forKey: defaultsKey),
+              let region = MiniMaxAPIRegion(rawValue: raw)
+        else { return .mainlandChina }
+        return region
+    }
+
+    static func save(_ region: MiniMaxAPIRegion) {
+        UserDefaults.standard.set(region.rawValue, forKey: defaultsKey)
     }
 }
 
@@ -117,7 +158,11 @@ private enum AudioProviderModelProbeError: LocalizedError {
 }
 
 private enum AudioProviderModelProbe {
-    static func fetch(provider: AudioGenerationCredentialProvider, apiKey: String) async throws -> AudioProviderModelProbeResult {
+    static func fetch(
+        provider: AudioGenerationCredentialProvider,
+        apiKey: String,
+        miniMaxRegion: MiniMaxAPIRegion = MiniMaxAPIRegion.stored
+    ) async throws -> AudioProviderModelProbeResult {
         switch provider {
         case .elevenLabs:
             return try await fetchJSONCount(
@@ -131,9 +176,9 @@ private enum AudioProviderModelProbe {
             return try await fetchJSONCount(url: components.url!, headers: [:], arrayKey: "models")
         case .minimax:
             return try await fetchJSONCount(
-                url: URL(string: "https://api.minimax.io/v1/models")!,
+                url: miniMaxRegion.modelsURL,
                 headers: ["Authorization": "Bearer \(apiKey)"],
-                arrayKey: "models"
+                arrayKey: "data"
             )
         case .sonilo, .mirelo:
             return AudioProviderModelProbeResult(count: nil)
@@ -172,6 +217,7 @@ private struct AudioGenerationProviderPane: View {
     let provider: AudioGenerationCredentialProvider
 
     @State private var apiKeyDraft = ""
+    @State private var miniMaxRegion = MiniMaxAPIRegion.stored
     @State private var hasKey = false
     @State private var maskedKey = ""
     @State private var isLoading = false
@@ -203,6 +249,10 @@ private struct AudioGenerationProviderPane: View {
                 trailingControls
             }
 
+            if provider == .minimax {
+                miniMaxRegionPicker
+            }
+
             statusRow
 
             if let errorText {
@@ -213,6 +263,35 @@ private struct AudioGenerationProviderPane: View {
             }
         }
         .onAppear(perform: refreshKeyState)
+    }
+
+    private var miniMaxRegionPicker: some View {
+        HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
+            Text("API Region")
+                .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+
+            Picker("", selection: $miniMaxRegion) {
+                ForEach(MiniMaxAPIRegion.allCases) { region in
+                    Text(region.title).tag(region)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .onChange(of: miniMaxRegion) { _, newValue in
+                MiniMaxAPIRegion.save(newValue)
+                if hasKey {
+                    Task { await refreshModels() }
+                }
+            }
+
+            Text(miniMaxRegion.modelsURL.host ?? "")
+                .font(.system(size: AppTheme.FontSize.xs, design: .monospaced))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+        }
     }
 
     private var header: some View {
@@ -350,6 +429,7 @@ private struct AudioGenerationProviderPane: View {
     }
 
     private func refreshKeyState() {
+        miniMaxRegion = MiniMaxAPIRegion.stored
         let key = AudioGenerationCredentialStore.load(provider: provider) ?? ""
         applyKey(key)
     }
@@ -365,7 +445,7 @@ private struct AudioGenerationProviderPane: View {
         errorText = nil
         defer { isLoading = false }
         do {
-            let result = try await AudioProviderModelProbe.fetch(provider: provider, apiKey: key)
+            let result = try await AudioProviderModelProbe.fetch(provider: provider, apiKey: key, miniMaxRegion: miniMaxRegion)
             if let count = result.count {
                 statusText = "\(count) models"
             } else {
