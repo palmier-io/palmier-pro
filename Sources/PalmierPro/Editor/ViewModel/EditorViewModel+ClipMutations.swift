@@ -275,6 +275,7 @@ extension EditorViewModel {
         timeline.tracks[ti].clips[loc.clipIndex].speed = newSpeed
         timeline.tracks[ti].clips[loc.clipIndex].durationFrames = newDuration
         // Keyframe offsets are clip-relative, so retime them before the clamp drops them.
+        timeline.tracks[ti].clips[loc.clipIndex].rescaleWordTimings(from: oldDuration)
         timeline.tracks[ti].clips[loc.clipIndex].rescaleKeyframes(by: Double(newDuration) / Double(oldDuration))
         timeline.tracks[ti].clips[loc.clipIndex].clampKeyframesToDuration()
         timeline.tracks[ti].clips[loc.clipIndex].clampFadesToDuration()
@@ -424,6 +425,11 @@ extension EditorViewModel {
         }
     }
 
+    func cancelDebouncedCommit(key: String) {
+        pendingDebouncedCommits[key]?.cancel()
+        pendingDebouncedCommits.removeValue(forKey: key)
+    }
+
     // MARK: - Text-style mutation helpers
 
     func applyTextStyle(clipId: String, fitToContent: Bool = false, _ modify: @escaping (inout TextStyle) -> Void) {
@@ -504,11 +510,15 @@ extension EditorViewModel {
 
     func commitClipProperty(clipId: String, _ modify: (inout Clip) -> Void) {
         guard let loc = findClip(id: clipId) else { return }
-        var clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        let before = dragBefore.removeValue(forKey: clipId) ?? clip
+        let current = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        var clip = current
+        let before = dragBefore.removeValue(forKey: clipId) ?? current
         modify(&clip)
+        guard current != clip || before != clip else { return }
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
-        registerClipPropertySwap(clipId: clipId, undoTarget: before, redoTarget: clip)
+        if before != clip {
+            registerClipPropertySwap(clipId: clipId, undoTarget: before, redoTarget: clip)
+        }
         if clip.mediaType == .text {
             videoEngine?.refreshVisuals()
         } else {
@@ -519,18 +529,28 @@ extension EditorViewModel {
     func commitClipProperties(clipIds: [String], _ modify: (inout Clip) -> Void) {
         var touchedText = false
         var touchedVisual = false
+        var before: [(id: String, clip: Clip)] = []
+        var after: [(id: String, clip: Clip)] = []
         for clipId in clipIds {
             guard let loc = findClip(id: clipId) else { continue }
-            var clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-            let before = dragBefore.removeValue(forKey: clipId) ?? clip
+            let current = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            var clip = current
+            let undoTarget = dragBefore.removeValue(forKey: clipId) ?? current
             modify(&clip)
+            guard current != clip || undoTarget != clip else { continue }
             timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
-            registerClipPropertySwap(clipId: clipId, undoTarget: before, redoTarget: clip)
+            if undoTarget != clip {
+                before.append((clipId, undoTarget))
+                after.append((clipId, clip))
+            }
             if clip.mediaType == .text {
                 touchedText = true
             } else {
                 touchedVisual = true
             }
+        }
+        if !before.isEmpty {
+            registerClipStateSwap(undoTarget: before, redoTarget: after, actionName: "Change Clip Property")
         }
         if touchedText { videoEngine?.refreshVisuals() }
         if touchedVisual { notifyTimelineChanged() }
