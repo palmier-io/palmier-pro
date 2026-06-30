@@ -70,12 +70,11 @@ final class MCPService {
     }
 
     private func registerTools(on server: Server) async {
-        let tools: [Tool] = ToolDefinitions.all.map { def in
-            Tool(name: def.name.rawValue, description: def.description, inputSchema: def.mcpSchemaValue)
-        }
-
         await server.withMethodHandler(ListTools.self) { _ in
-            .init(tools: tools)
+            let tools: [Tool] = ToolDefinitions.mcpTools().map { def in
+                Tool(name: def.name.rawValue, description: def.description, inputSchema: def.mcpSchemaValue)
+            }
+            return .init(tools: tools)
         }
 
         await server.withMethodHandler(CallTool.self) { [weak self] params in

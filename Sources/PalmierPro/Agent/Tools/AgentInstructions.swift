@@ -102,6 +102,8 @@ enum AgentInstructions {
           says transcription looks wrong, ask for the spoken language and retry with language set. \
           When you then cut with remove_words, pass the SAME language — the indices are only valid \
           against the transcription that produced them, so a mismatch cuts the wrong words.
+        - Use align_captions only for existing caption clips that need more precise timing; it preserves \
+          caption text and style and retimes with Volcengine word timestamps.
         - Existing captions are user edits. When reorganizing or rebuilding the timeline, preserve \
           captionGroups unless the user explicitly asks to delete captions. Do not remove caption \
           tracks, place media onto caption tracks, or overwrite caption clips. If moving an edited \

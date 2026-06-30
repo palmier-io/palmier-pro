@@ -111,6 +111,26 @@ Primary paths:
 
 Upstream sync note: preserve deterministic local tokenization as the default. AI-based semantic regrouping can be layered later, but it should not replace the local tokenizer or rewrite transcript text.
 
+## Volcengine Speech Captions
+
+Intent: users can choose Volcengine Seed ASR as an independent caption transcription backend, store their own API key in Keychain, and expose precise caption alignment tools only when that backend is configured.
+
+Primary paths:
+
+- `Sources/PalmierPro/Transcription/TranscriptionProvider.swift`
+- `Sources/PalmierPro/Transcription/VolcengineSpeechClient.swift`
+- `Sources/PalmierPro/Transcription/Transcription.swift`
+- `Sources/PalmierPro/Transcription/TranscriptCache.swift`
+- `Sources/PalmierPro/Editor/ViewModel/EditorViewModel+Captions.swift`
+- `Sources/PalmierPro/MediaPanel/CaptionsTab/CaptionTab.swift`
+- `Sources/PalmierPro/Settings/ProvidersPane.swift`
+- `Sources/PalmierPro/Settings/VolcengineSpeechPane.swift`
+- `Sources/PalmierPro/Agent/Tools/ToolDefinitions.swift`
+- `Sources/PalmierPro/Agent/MCP/MCPService.swift`
+- `Tests/PalmierProTests/Agent/ToolDefinitionAvailabilityTests.swift`
+
+Upstream sync note: keep the local Apple Speech backend as the default and keep Volcengine as a separate provider under Settings > Providers. `align_captions` must remain hidden unless the Volcengine Speech API key and resource configuration are available.
+
 ## Palmier UI Feature Policy
 
 Intent: the Gitnapp build exposes model-management settings for local provider configuration, while anonymous crash/error reporting is forced off.
@@ -119,11 +139,12 @@ Primary paths:
 
 - `Sources/PalmierPro/App/AppFeaturePolicy.swift`
 - `Sources/PalmierPro/Settings/SettingsView.swift`
+- `Sources/PalmierPro/Settings/ProvidersPane.swift`
 - `Sources/PalmierPro/Settings/ModelsPane.swift`
 - `Sources/PalmierPro/Settings/PrivacyPane.swift`
 - `Sources/PalmierPro/Telemetry/Telemetry.swift`
 
-Upstream sync note: keep model-management settings visible unless the fork intentionally removes local provider configuration. If upstream adds new model-settings entry points, wire them through `AppFeaturePolicy`.
+Upstream sync note: keep model-management and provider settings visible unless the fork intentionally removes local provider configuration. If upstream adds new model-settings or provider entry points, wire them through `AppFeaturePolicy`.
 
 ## OpenRouter Visual Generation Endpoint
 
@@ -134,7 +155,8 @@ Primary paths:
 - `Sources/PalmierPro/Generation/OpenRouter/OpenRouterService.swift`
 - `Sources/PalmierPro/Generation/GenerationService.swift`
 - `Sources/PalmierPro/Generation/UI/GenerationView.swift`
+- `Sources/PalmierPro/Settings/ProvidersPane.swift`
 - `Sources/PalmierPro/Settings/ModelsPane.swift`
 - `Sources/PalmierPro/App/main.swift`
 
-Upstream sync note: preserve the `openrouter:` stored model-id prefix and keep OpenRouter out of audio and upscale paths.
+Upstream sync note: preserve the `openrouter:` stored model-id prefix, keep API-key management under Settings > Providers, and keep OpenRouter out of audio and upscale paths.

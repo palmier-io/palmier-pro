@@ -20,6 +20,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case addTexts = "add_texts"
     case updateText = "update_text"
     case addCaptions = "add_captions"
+    case alignCaptions = "align_captions"
     case exportProject = "export_project"
     case generateVideo = "generate_video"
     case generateImage = "generate_image"
@@ -473,10 +474,11 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addCaptions,
-            description: "Auto-caption spoken audio: transcribes on-device and places styled caption clips on a new track — the same pipeline as the editor's Captions tab. This is the reliable path for 'caption this'; prefer it over hand-placing add_texts from a transcript. Use maxCharacters for requests like 'at most 10 characters per caption' instead of splitting captions manually. When the user asks for short/readable captions but gives no exact limit, choose maxCharacters from the spoken language, the timeline aspect ratio/resolution, and fontSize: narrow vertical video or larger text needs fewer characters; wide landscape video or smaller text can use more; CJK text generally fits fewer visible characters than alphabetic text. Use maxWords for word-count style constraints. Per-word animations are timed from transcript. Omit clipIds to auto-pick the track with the most speech; pass clipIds to caption specific clips.",
+            description: "Auto-caption spoken audio: transcribes and places styled caption clips on a new track — the same pipeline as the editor's Captions tab. This is the reliable path for 'caption this'; prefer it over hand-placing add_texts from a transcript. The transcriptionProvider defaults to the user's caption setting; pass local for on-device speech or volcengine for configured Seed ASR. Use maxCharacters for requests like 'at most 10 characters per caption' instead of splitting captions manually. When the user asks for short/readable captions but gives no exact limit, choose maxCharacters from the spoken language, the timeline aspect ratio/resolution, and fontSize: narrow vertical video or larger text needs fewer characters; wide landscape video or smaller text can use more; CJK text generally fits fewer visible characters than alphabetic text. Use maxWords for word-count style constraints. Per-word animations are timed from transcript. Omit clipIds to auto-pick the track with the most speech; pass clipIds to caption specific clips.",
             inputSchema: objectSchema(
                 properties: mergedProperties([
                     "clipIds": ["type": "array", "items": ["type": "string"], "description": "Optional. Audio/video clips to caption. Omit to auto-detect the primary spoken track."],
+                    "transcriptionProvider": ["type": "string", "enum": CaptionTranscriptionProvider.allCases.map(\.rawValue), "description": "Optional. local uses on-device speech. volcengine uses configured Seed ASR and errors if the API key is missing."],
                     "language": ["type": "string", "description": "Optional BCP-47 language of the speech (e.g. 'es', 'ja', 'en-GB'). Defaults to the system language — set this when the footage is in another language, or transcription will be garbage."],
                     "centerX": ["type": "number", "description": "Optional horizontal center 0–1 (default 0.5)."],
                     "centerY": ["type": "number", "description": "Optional vertical center 0–1 (default 0.9, near the bottom)."],
@@ -488,6 +490,18 @@ enum ToolDefinitions {
                     "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Caption animation preset."],
                     "highlightColor": ["type": "string", "description": "Active-word hex."],
                 ])
+            )
+        ),
+        AgentTool(
+            name: .alignCaptions,
+            description: "Retimes existing caption text clips with Volcengine Seed ASR word timestamps. Use when captions already exist but their timing drifts or needs precise audio alignment. This preserves caption text and style; it only adjusts startFrame, durationFrames, and per-word animation timings. Requires a configured Volcengine Speech API key, so this tool is hidden when that backend is unavailable. If there are no existing caption clips, call add_captions instead.",
+            inputSchema: objectSchema(
+                properties: [
+                    "captionGroupId": ["type": "string", "description": "Optional caption group id from get_timeline. Omit to align all caption groups."],
+                    "captionClipIds": ["type": "array", "items": ["type": "string"], "description": "Optional specific text clip ids to retime."],
+                    "sourceClipIds": ["type": "array", "items": ["type": "string"], "description": "Optional audio/video clips to use as the timing source. Omit to auto-detect the primary spoken track."],
+                    "language": ["type": "string", "description": "Optional BCP-47 language tag for Volcengine ASR."],
+                ]
             )
         ),
         AgentTool(
@@ -899,8 +913,33 @@ enum ToolDefinitions {
         )
     )
 
+    struct Availability: Sendable {
+        var captionAlignmentAvailable: Bool
+
+        static var current: Availability {
+            Availability(captionAlignmentAvailable: VolcengineSpeechAvailability.canExposeCaptionAlignment)
+        }
+
+        func allows(_ tool: AgentTool) -> Bool {
+            switch tool.name {
+            case .alignCaptions:
+                captionAlignmentAvailable
+            default:
+                true
+            }
+        }
+    }
+
+    static func mcpTools(availability: Availability = .current) -> [AgentTool] {
+        all.filter { availability.allows($0) }
+    }
+
     /// Tools for the in-app agent: every MCP tool plus read_skill.
-    static var inAppAgent: [AgentTool] { all + [readSkill] }
+    static func inAppAgent(availability: Availability = .current) -> [AgentTool] {
+        mcpTools(availability: availability) + [readSkill]
+    }
+
+    static var inAppAgent: [AgentTool] { inAppAgent() }
 
     private static func textBoxTransformProperties() -> [String: [String: Any]] {
         [
