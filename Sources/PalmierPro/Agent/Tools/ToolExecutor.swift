@@ -19,6 +19,9 @@ final class ToolExecutor {
 
     private var agentUndoStack: [String] = []
     var feedbackState = FeedbackState()
+    #if DEBUG
+    var executionHook: ((ToolName) async throws -> Void)?
+    #endif
 
     func execute(name: String, args: [String: Any]) async -> ToolResult {
         guard let tool = ToolName(rawValue: name) else {
@@ -34,13 +37,26 @@ final class ToolExecutor {
             data: ["tool": tool.rawValue, "projectId": editor.projectId ?? "unknown"]
         )
         do {
+            try Task.checkCancellation()
+            await Task.yield()
             let resolved = try expandingIdPrefixes(in: args, editor: editor)
+            try Task.checkCancellation()
+            await Task.yield()
+            #if DEBUG
+            try await executionHook?(tool)
+            try Task.checkCancellation()
+            await Task.yield()
+            #endif
             result = try await run(tool, editor, resolved)
+            try Task.checkCancellation()
+            await Task.yield()
             // Record any edit that actually changed the timeline so `undo` can revert it.
             if tool != .undo, !result.isError, editor.timeline != before,
                let actionName = editor.undoManager?.undoActionName {
                 agentUndoStack.append(actionName)
             }
+        } catch is CancellationError {
+            result = .error("Cancelled")
         } catch let err as ToolError {
             result = .error(err.message)
         } catch {
@@ -72,6 +88,8 @@ final class ToolExecutor {
     }
 
     private func run(_ tool: ToolName, _ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
+        try Task.checkCancellation()
+        await Task.yield()
         switch tool {
         case .getTimeline:   return try getTimeline(editor, args)
         case .getMedia:      return try getMedia(editor)

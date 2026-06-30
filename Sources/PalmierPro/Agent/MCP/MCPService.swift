@@ -33,7 +33,8 @@ final class MCPService {
     }
 
     func start() {
-        let httpServer = MCPHTTPServer(port: Self.port) { [weak self] in
+        let toolExecutor = toolExecutor
+        let httpServer = MCPHTTPServer(port: Self.port) {
             let server = Server(
                 name: "palmier-pro",
                 version: "1.0.0",
@@ -43,8 +44,8 @@ final class MCPService {
                     tools: .init(listChanged: false)
                 )
             )
-            await self?.registerTools(on: server)
-            await self?.registerResources(on: server)
+            await Self.registerTools(on: server, toolExecutor: toolExecutor)
+            await Self.registerResources(on: server)
             return server
         }
         self.httpServer = httpServer
@@ -69,7 +70,7 @@ final class MCPService {
         Log.mcp.notice("http server stopped")
     }
 
-    private func registerTools(on server: Server) async {
+    private nonisolated static func registerTools(on server: Server, toolExecutor: ToolExecutor) async {
         let tools: [Tool] = ToolDefinitions.all.map { def in
             Tool(name: def.name.rawValue, description: def.description, inputSchema: def.mcpSchemaValue)
         }
@@ -78,22 +79,21 @@ final class MCPService {
             .init(tools: tools)
         }
 
-        await server.withMethodHandler(CallTool.self) { [weak self] params in
-            guard let self else {
-                return ToolResult.error("Editor not available").toMCPResult()
-            }
-            return await self.dispatchCall(params)
+        await server.withMethodHandler(CallTool.self) { params in
+            await Self.dispatchCall(params, toolExecutor: toolExecutor)
         }
     }
 
-    // Convert args inside the actor so the non-Sendable dict never crosses the hop.
-    private func dispatchCall(_ params: CallTool.Parameters) async -> CallTool.Result {
+    private nonisolated static func dispatchCall(_ params: CallTool.Parameters, toolExecutor: ToolExecutor) async -> CallTool.Result {
+        guard ToolName(rawValue: params.name) != nil else {
+            return ToolResult.error("Unknown tool: \(params.name)").toMCPResult()
+        }
         let args = ToolArgsBridge.argsFromMCP(params.arguments ?? [:])
         let result = await toolExecutor.execute(name: params.name, args: args)
         return result.toMCPResult()
     }
 
-    private func registerResources(on server: Server) async {
+    private nonisolated static func registerResources(on server: Server) async {
         let resources = [
             Resource(
                 name: "Video Models",
@@ -114,18 +114,23 @@ final class MCPService {
         }
 
         await server.withMethodHandler(ReadResource.self) { params in
-            await Self.readResource(uri: params.uri)
+            await readResource(uri: params.uri)
         }
     }
 
-    @MainActor
-    private static func readResource(uri: String) -> ReadResource.Result {
+    private nonisolated static func readResource(uri: String) async -> ReadResource.Result {
         switch uri {
         case "palmier://models/video":
-            let json = ToolExecutor.jsonString(VideoModelConfig.allModels.map { ToolExecutor.videoModelInfo($0) }) ?? "[]"
+            let models = await MainActor.run { VideoModelConfig.allModels }
+            let json = await Task.detached(priority: .utility) {
+                ToolExecutor.jsonString(models.map { ToolExecutor.videoModelInfo($0) }) ?? "[]"
+            }.value
             return .init(contents: [.text(json, uri: uri, mimeType: "application/json")])
         case "palmier://models/image":
-            let json = ToolExecutor.jsonString(ImageModelConfig.allModels.map { ToolExecutor.imageModelInfo($0) }) ?? "[]"
+            let models = await MainActor.run { ImageModelConfig.allModels }
+            let json = await Task.detached(priority: .utility) {
+                ToolExecutor.jsonString(models.map { ToolExecutor.imageModelInfo($0) }) ?? "[]"
+            }.value
             return .init(contents: [.text(json, uri: uri, mimeType: "application/json")])
         default:
             return .init(contents: [.text("Unknown resource: \(uri)", uri: uri)])
