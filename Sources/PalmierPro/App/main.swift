@@ -6,6 +6,7 @@ BundledFonts.register()
 AccountService.shared.configure()
 ModelCatalog.shared.configure()
 OpenRouterService.shared.configure()
+AudioProviderCatalog.shared.configure()
 
 // Shorten the default tooltip delay from 2s to 0.01s.
 UserDefaults.standard.set(10, forKey: "NSInitialToolTipDelay")

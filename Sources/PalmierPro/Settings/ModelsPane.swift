@@ -12,6 +12,7 @@ struct ModelsPane: View {
     private var prefs = ModelPreferences.shared
     private var catalog = ModelCatalog.shared
     @Bindable private var openRouter = OpenRouterService.shared
+    @Bindable private var audioProviders = AudioProviderCatalog.shared
 
     @State private var query = ""
 
@@ -62,6 +63,12 @@ struct ModelsPane: View {
                 ModelSection(id: "palmier-audio", title: "Palmier Audio",
                              rows: filtered(catalog.audio.map { Row(id: $0.id, displayName: $0.displayName, detail: "Palmier") }))
             )
+            sections.append(
+                ModelSection(id: "minimax-audio", title: "MiniMax Audio",
+                             rows: filtered(audioProviders.audio.map {
+                                 Row(id: $0.id, displayName: $0.displayName, detail: MiniMaxAPIRegion.stored.title)
+                             }))
+            )
         }
         return sections.filter { !$0.rows.isEmpty }
     }
@@ -92,6 +99,9 @@ struct ModelsPane: View {
         }
         if scope == .visual {
             return "Configure a video generation provider to load models."
+        }
+        if scope == .audio, audioProviders.isLoading {
+            return "Loading models…"
         }
         if scope == .audio {
             return "Configure an audio generation provider to load models."

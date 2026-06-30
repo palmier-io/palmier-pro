@@ -5,6 +5,7 @@ struct GenerationView: View {
 
     @Environment(EditorViewModel.self) var editor
     @Bindable private var openRouter = OpenRouterService.shared
+    @Bindable private var audioProviders = AudioProviderCatalog.shared
     @State private var prompt = ""
     @State private var selectedType: GenerationType = .video
     @State private var selectedVideoModelIndex = 0
@@ -139,7 +140,7 @@ struct GenerationView: View {
 
     private var videoModels: [VideoModelConfig] { ModelCatalog.shared.video }
     private var imageModels: [ImageModelConfig] { ModelCatalog.shared.image }
-    private var audioModels: [AudioModelConfig] { ModelCatalog.shared.audio }
+    private var audioModels: [AudioModelConfig] { ModelCatalog.shared.audio + audioProviders.audio }
     private var openRouterVideoModels: [OpenRouterVideoModelConfig] { openRouter.video }
     private var openRouterImageModels: [OpenRouterImageModelConfig] { openRouter.image }
 

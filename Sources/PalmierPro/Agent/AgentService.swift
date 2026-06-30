@@ -172,7 +172,7 @@ final class AgentService {
             return OpenAICompatibleClient(settings: zhipuSettings)
         case .codexOAuth:
             guard let settings = CodexOAuthAgentSettings.load() else { return nil }
-            return OpenAICompatibleClient(settings: settings)
+            return CodexOAuthClient(model: settings.model)
         case .palmier:
             return PalmierClient(model: chosen)
         }

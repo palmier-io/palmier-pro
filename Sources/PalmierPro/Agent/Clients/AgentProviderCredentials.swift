@@ -66,9 +66,21 @@ enum ZhipuAgentKeychain {
 
 struct CodexOAuthStatus: Equatable, Sendable {
     var hasAccessToken: Bool
+    var hasRefreshToken: Bool
     var accountID: String?
     var authMode: String?
     var lastRefresh: String?
+    var expiresAt: Date?
+    var errorMessage: String?
+
+    var canAuthorize: Bool {
+        hasAccessToken || hasRefreshToken
+    }
+
+    var needsRefresh: Bool {
+        guard let expiresAt else { return false }
+        return expiresAt <= Date().addingTimeInterval(5 * 60)
+    }
 }
 
 enum CodexOAuthAgentSettings {
@@ -81,11 +93,17 @@ enum CodexOAuthAgentSettings {
 
     static func load() -> OpenAICompatibleSettings? {
         let model = savedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let status = CodexOAuthStore.status()
         guard !model.isEmpty,
               let endpoint = OpenAICompatibleEndpoint.normalizedURL(from: baseURL),
-              let accessToken = CodexOAuthStore.accessToken()
+              status.canAuthorize
         else { return nil }
-        return OpenAICompatibleSettings(baseURL: baseURL, endpoint: endpoint, model: model, apiKey: accessToken)
+        return OpenAICompatibleSettings(
+            baseURL: baseURL,
+            endpoint: endpoint,
+            model: model,
+            apiKey: CodexOAuthStore.cachedAccessToken() ?? ""
+        )
     }
 
     static func save(model: String) {
@@ -96,59 +114,6 @@ enum CodexOAuthAgentSettings {
     static func clearModel() {
         UserDefaults.standard.removeObject(forKey: modelDefaultsKey)
         NotificationCenter.default.post(name: .codexOAuthAgentSettingsChanged, object: nil)
-    }
-}
-
-enum CodexOAuthStore {
-    private static var authFileURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".codex", isDirectory: true)
-            .appendingPathComponent("auth.json", isDirectory: false)
-    }
-
-    static func accessToken() -> String? {
-        loadAuthFile()?.tokens?.accessToken
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .nilIfEmpty
-    }
-
-    static func status() -> CodexOAuthStatus {
-        guard let file = loadAuthFile() else {
-            return CodexOAuthStatus(hasAccessToken: false, accountID: nil, authMode: nil, lastRefresh: nil)
-        }
-        return CodexOAuthStatus(
-            hasAccessToken: file.tokens?.accessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
-            accountID: file.tokens?.accountID?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-            authMode: file.authMode?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-            lastRefresh: file.lastRefresh?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-        )
-    }
-
-    private static func loadAuthFile() -> CodexAuthFile? {
-        guard let data = try? Data(contentsOf: authFileURL) else { return nil }
-        return try? JSONDecoder().decode(CodexAuthFile.self, from: data)
-    }
-
-    private struct CodexAuthFile: Decodable {
-        let authMode: String?
-        let lastRefresh: String?
-        let tokens: Tokens?
-
-        enum CodingKeys: String, CodingKey {
-            case authMode = "auth_mode"
-            case lastRefresh = "last_refresh"
-            case tokens
-        }
-    }
-
-    private struct Tokens: Decodable {
-        let accessToken: String
-        let accountID: String?
-
-        enum CodingKeys: String, CodingKey {
-            case accessToken = "access_token"
-            case accountID = "account_id"
-        }
     }
 }
 
