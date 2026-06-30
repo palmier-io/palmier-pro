@@ -196,4 +196,32 @@ enum AgentInstructions {
         - When the user is vague about aesthetic direction, ask one focused question instead \
           of guessing.
         """
+
+    /// MCP server only
+    static let projectNavigation: String = """
+
+        # Projects
+        These tools choose which project you edit — every other tool acts on the active \
+        project, and you may start with none open.
+        - get_projects: list known projects (id, name, path, whether open, which is active). \
+          Call this first when unsure what's available.
+        - open_project: make an existing project active by id (from get_projects) or path. \
+          Editing tools then target it.
+        - new_project: create and open a fresh project. Give it a name; it's created in the \
+          Palmier Pro folder. Fails if that name already exists there.
+        Only one project is active at a time — opening or creating one switches the active \
+        project, and the user sees the window change.
+        """
+
+    /// In-app agent only
+    static func skillsSection(_ index: String) -> String {
+        guard !index.isEmpty else { return "" }
+        return """
+
+            # Skills
+            Playbooks for specific tasks. Before a task that matches one, call read_skill(id) \
+            to load its full procedure, then follow it.
+            \(index)
+            """
+    }
 }

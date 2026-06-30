@@ -77,7 +77,7 @@ struct HomeView: View {
         return ScrollView {
             LazyVGrid(columns: columns, alignment: .leading, spacing: AppTheme.Spacing.xl) {
                 if entries.isEmpty {
-                    NewProjectCard(action: { AppState.shared.createNewProject() })
+                    NewProjectCard(action: { AppState.shared.createProjectInteractively() })
                 } else {
                     ForEach(entries) { entry in
                         ProjectCard(
@@ -189,7 +189,7 @@ private struct HomeSidebar: View {
                 SidebarRowButton(
                     label: "New Project",
                     systemImage: "plus",
-                    action: { AppState.shared.createNewProject() }
+                    action: { AppState.shared.createProjectInteractively() }
                 )
                 SidebarRowButton(
                     label: "Open Project",
