@@ -59,7 +59,6 @@ struct CaptionTab: View {
     private var cloudModeUnavailableMessage: String? {
         guard provider == .cloud else { return nil }
         guard account.isSignedIn else { return "Sign in to use Cloud." }
-        guard account.isPaid else { return "Subscribe to use Cloud." }
         return nil
     }
     private var canGenerateCaptions: Bool {
@@ -539,7 +538,6 @@ struct CaptionTab: View {
     private func cloudUnavailableMessage(cost: Int?, provider mode: TranscriptionProvider? = nil) -> String? {
         guard (mode ?? provider) == .cloud else { return nil }
         guard account.isSignedIn else { return "Sign in to use Cloud." }
-        guard account.isPaid else { return "Subscribe to use Cloud." }
         guard let cost else { return nil }
         guard cost > 0 else { return nil }
         guard let remaining = remainingCloudCredits else { return nil }
