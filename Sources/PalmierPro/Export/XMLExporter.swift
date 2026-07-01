@@ -46,53 +46,11 @@ enum XMLExporter {
     }
 
     private static func sourceTimecodeCache(timeline: Timeline, resolver: MediaResolver) async -> [String: SourceTimecode] {
-        let mediaURLs = resolver.expectedURLMap()
         let mediaRefs = Set(timeline.tracks.flatMap { $0.clips.map(\.mediaRef) })
-        return await withTaskGroup(of: (String, SourceTimecode?).self) { group in
-            for mediaRef in mediaRefs {
-                guard let url = mediaURLs[mediaRef] else { continue }
-                group.addTask {
-                    (mediaRef, await readSourceTimecode(url: url))
-                }
-            }
-            var cache: [String: SourceTimecode] = [:]
-            for await (mediaRef, timecode) in group {
-                if let timecode {
-                    cache[mediaRef] = timecode
-                }
-            }
-            return cache
-        }
-    }
-
-    private static func readSourceTimecode(url: URL) async -> SourceTimecode? {
-        let asset = AVURLAsset(url: url)
-        guard let track = try? await asset.loadTracks(withMediaType: .timecode).first,
-              let format = try? await track.load(.formatDescriptions).first,
-              let reader = try? AVAssetReader(asset: asset) else { return nil }
-        let desc = format
-        let quanta = Int(CMTimeCodeFormatDescriptionGetFrameQuanta(desc))
-        let dropFrame = CMTimeCodeFormatDescriptionGetTimeCodeFlags(desc) & UInt32(kCMTimeCodeFlag_DropFrame) != 0
-        guard quanta > 0 else { return nil }
-
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
-        guard reader.canAdd(output) else { return nil }
-        reader.add(output)
-        guard reader.startReading() else { return nil }
-        while let sample = output.copyNextSampleBuffer() {
-            guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
-            var be: UInt32 = 0
-            guard CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: 4, destination: &be) == kCMBlockBufferNoErr
-            else { return nil }
-            return SourceTimecode(frame: Int(UInt32(bigEndian: be)), quanta: quanta, dropFrame: dropFrame)
-        }
-        return nil
+        return await SourceTimecodeReader.cache(mediaRefs: mediaRefs, urls: resolver.expectedURLMap())
     }
 
     // MARK: - Source timecode
-
-    /// A source's start timecode: frame number in the timecode track's own `quanta` rate, plus its drop-frame flag.
-    struct SourceTimecode: Equatable { let frame: Int; let quanta: Int; let dropFrame: Bool }
 
     /// The `<timecode>` values to emit for a file. A `tmcd` timecode runs at its own rate (often 30 DF
     /// even on 60p footage), so when present it — not the video rate — drives the rate/format. When absent,

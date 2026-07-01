@@ -45,7 +45,8 @@ enum FCPXMLVersion: String, CaseIterable, Identifiable, Sendable {
 ///
 /// What transports: clip placement/trims, speed, lane order, enabled state; text + font/face/
 /// size/color/alignment; position/scale/rotation/flip (+ position/scale/rotation keyframes);
-/// crop; opacity (+ keyframes); static volume.
+/// crop; opacity (+ keyframes); static volume; source start timecode, so Resolve doesn't flag a
+/// mismatch against the media's embedded timecode.
 ///
 /// What does NOT: keyframed audio volume and audio fades (Resolve drops both itself); text
 /// background/border boxes (no FCPXML form); crop keyframes; title rotation/scale; color &
@@ -54,16 +55,26 @@ enum FCPXMLVersion: String, CaseIterable, Identifiable, Sendable {
 /// Reference: https://developer.apple.com/documentation/professional-video-applications/fcpxml-reference
 enum FCPXMLExporter {
     static func export(timeline: Timeline, resolver: MediaResolver,
-                       version: FCPXMLVersion = .default, outputURL: URL) throws {
-        let xml = Builder(timeline: timeline, resolver: resolver, version: version).build()
+                       version: FCPXMLVersion = .default, outputURL: URL) async throws {
+        let mediaRefs = Set(timeline.tracks.flatMap { $0.clips.map(\.mediaRef) })
+        let timecodes = await SourceTimecodeReader.cache(mediaRefs: mediaRefs, urls: resolver.expectedURLMap())
+        let xml = render(timeline: timeline, resolver: resolver, version: version, startTimecodes: timecodes)
         guard let data = xml.data(using: .utf8) else { throw ExportError.xmlEncodingFailed }
         try data.write(to: outputURL)
+    }
+
+    /// Build the document from an explicit timecode map. Split out so tests can inject embedded
+    /// timecodes without a `tmcd`-carrying media file on disk.
+    static func render(timeline: Timeline, resolver: MediaResolver, version: FCPXMLVersion = .default,
+                       startTimecodes: [String: SourceTimecode] = [:]) -> String {
+        Builder(timeline: timeline, resolver: resolver, version: version, startTimecodes: startTimecodes).build()
     }
 
     private final class Builder {
         private let timeline: Timeline
         private let resolver: MediaResolver
         private let version: FCPXMLVersion
+        private let startTimecodes: [String: SourceTimecode]
         private let fps: Int
         private let seqWidth: Int
         private let seqHeight: Int
@@ -93,12 +104,16 @@ enum FCPXMLExporter {
             var durationFrames: Int
             let hasVideo: Bool
             let hasAudio: Bool
+            // Embedded start timecode in timeline-frame units; 0 when absent.
+            let startTimecodeFrames: Int
         }
 
-        init(timeline: Timeline, resolver: MediaResolver, version: FCPXMLVersion) {
+        init(timeline: Timeline, resolver: MediaResolver, version: FCPXMLVersion,
+             startTimecodes: [String: SourceTimecode]) {
             self.timeline = timeline
             self.resolver = resolver
             self.version = version
+            self.startTimecodes = startTimecodes
             self.fps = max(1, timeline.fps)
             self.seqWidth = timeline.width
             self.seqHeight = timeline.height
@@ -170,13 +185,16 @@ enum FCPXMLExporter {
             let dur = time(frames: resource.durationFrames)
             // <asset-clip> carries both streams so the outer ref-clip can deliver audio; <clip>/<video>
             // is video-only. Outer srcEnable gates what actually plays.
+            // The compound spine is 0-based (its offset), but reads the asset from the asset's own
+            // timecode origin, so `start` must equal the asset's embedded start timecode.
+            let tcStart = time(frames: resource.startTimecodeFrames)
             let innerClip: FCPXMLNode
             if resource.hasAudio {
                 innerClip = FCPXMLNode(name: "asset-clip", attributes: [
                     ("ref", resource.assetId),
-                    ("name", resource.entry.name),
+                    ("name", fileName(for: resource)),
                     ("duration", dur),
-                    ("start", "0s"),
+                    ("start", tcStart),
                     ("offset", "0s"),
                     ("format", resource.formatId ?? sequenceFormatId),
                 ])
@@ -184,13 +202,13 @@ enum FCPXMLExporter {
                 let video = FCPXMLNode(name: "video", attributes: [
                     ("ref", resource.assetId),
                     ("duration", dur),
-                    ("start", "0s"),
+                    ("start", tcStart),
                     ("offset", "0s"),
                 ])
                 innerClip = FCPXMLNode(name: "clip", attributes: [
-                    ("name", resource.entry.name),
+                    ("name", fileName(for: resource)),
                     ("duration", dur),
-                    ("start", "0s"),
+                    ("start", tcStart),
                     ("offset", "0s"),
                     ("format", resource.formatId ?? sequenceFormatId),
                 ], children: [video])
@@ -203,7 +221,7 @@ enum FCPXMLExporter {
             ], children: [FCPXMLNode(name: "spine", children: [innerClip])])
             return FCPXMLNode(name: "media", attributes: [
                 ("id", compoundId),
-                ("name", resource.entry.name),
+                ("name", fileName(for: resource)),
             ], children: [sequence])
         }
 
@@ -270,7 +288,7 @@ enum FCPXMLExporter {
                 let linkedAudio = linkedAudioForVideo[clip.id]
                 var attrs: [(String, String)] = [
                     ("ref", compoundId),
-                    ("name", resolver.displayName(for: clip.mediaRef)),
+                    ("name", fileName(for: resource)),
                     ("lane", "\(item.lane)"),
                     ("offset", time(frames: clip.startFrame)),
                     ("start", clipStart(for: clip)),
@@ -292,7 +310,7 @@ enum FCPXMLExporter {
             if clip.mediaType == .audio, let compoundId = resource.compoundId {
                 let attrs: [(String, String)] = [
                     ("ref", compoundId),
-                    ("name", resolver.displayName(for: clip.mediaRef)),
+                    ("name", fileName(for: resource)),
                     ("lane", "\(item.lane)"),
                     ("offset", time(frames: clip.startFrame)),
                     ("start", clipStart(for: clip)),
@@ -306,12 +324,13 @@ enum FCPXMLExporter {
                 ].compactMap { $0 })
             }
 
+            let origin = resource.startTimecodeFrames
             let attrs: [(String, String)] = [
                 ("ref", resource.assetId),
-                ("name", resolver.displayName(for: clip.mediaRef)),
+                ("name", fileName(for: resource)),
                 ("lane", "\(item.lane)"),
                 ("offset", time(frames: clip.startFrame)),
-                ("start", clipStart(for: clip)),
+                ("start", clipStart(for: clip, origin: origin)),
                 ("duration", time(frames: clip.durationFrames)),
                 ("enabled", item.enabled ? "1" : "0"),
             ]
@@ -319,7 +338,7 @@ enum FCPXMLExporter {
                 name: "asset-clip",
                 attributes: attrs,
                 children: [
-                    timeMapNode(for: clip, mediaFrames: resource.durationFrames),
+                    timeMapNode(for: clip, mediaFrames: resource.durationFrames, origin: origin),
                     volumeNode(for: clip),
                 ].compactMap { $0 }
             )
@@ -473,23 +492,26 @@ enum FCPXMLExporter {
         }
 
         /// Source in-point in the post-retime output axis Resolve expects (source ÷ speed); the raw
-        /// source frame when unspeeded.
-        private func clipStart(for clip: Clip) -> String {
-            guard abs(clip.speed - 1.0) > 0.001 else { return time(frames: clip.trimStartFrame) }
+        /// source frame when unspeeded. `origin` is the asset's embedded start timecode, added only to the
+        /// unspeeded case (a retimed clip carries its origin in the timeMap values, not in `start`).
+        private func clipStart(for clip: Clip, origin: Int = 0) -> String {
+            guard abs(clip.speed - 1.0) > 0.001 else { return time(frames: origin + clip.trimStartFrame) }
             let (p, q) = rationalSpeed(clip.speed)
             return rationalTime(num: clip.trimStartFrame * q, den: fps * p)
         }
 
         /// Resolve ramps the WHOLE media (`output[0, media/speed] → source[0, media]`) and windows in via
         /// `start`/`duration`. A ramp that stops at the clip edge leaves no tail mapping → black last frames.
-        private func timeMapNode(for clip: Clip, mediaFrames: Int) -> FCPXMLNode? {
+        private func timeMapNode(for clip: Clip, mediaFrames: Int, origin: Int = 0) -> FCPXMLNode? {
             guard abs(clip.speed - 1.0) > 0.001, mediaFrames > 0 else { return nil }
             let (p, q) = rationalSpeed(clip.speed)
             return FCPXMLNode(name: "timeMap", attributes: [("frameSampling", "floor")], children: [
-                FCPXMLNode(name: "timept", attributes: [("time", "0s"), ("value", "0s"), ("interp", "linear")]),
+                FCPXMLNode(name: "timept", attributes: [
+                    ("time", "0s"), ("value", time(frames: origin)), ("interp", "linear"),
+                ]),
                 FCPXMLNode(name: "timept", attributes: [
                     ("time", rationalTime(num: mediaFrames * q, den: fps * p)),  // media / speed
-                    ("value", time(frames: mediaFrames)),                        // full media
+                    ("value", time(frames: origin + mediaFrames)),               // full media from origin
                     ("interp", "linear"),
                 ]),
             ])
@@ -557,6 +579,7 @@ enum FCPXMLExporter {
                 for ref in c.mediaRefs {
                     resourceIndex[ref] = resources.count
                 }
+                let tcFrames = c.mediaRefs.compactMap { startTimecodes[$0] }.first?.frames(atFPS: fps) ?? 0
                 resources.append(MediaResource(
                     mediaRef: c.mediaRefs.first ?? c.entry.id,
                     assetId: "asset\(id)",
@@ -566,7 +589,8 @@ enum FCPXMLExporter {
                     url: c.url,
                     durationFrames: c.duration,
                     hasVideo: c.hasVideo,
-                    hasAudio: c.hasAudio
+                    hasAudio: c.hasAudio,
+                    startTimecodeFrames: tcFrames
                 ))
             }
         }
@@ -590,11 +614,17 @@ enum FCPXMLExporter {
             ])
         }
 
+        // Resolve relinks by matching the `name` attribute to the file on disk, so the extension must be
+        // present — a stripped name shows every clip as Media Offline.
+        private func fileName(for resource: MediaResource) -> String {
+            resource.url.lastPathComponent
+        }
+
         private func assetNode(for resource: MediaResource) -> FCPXMLNode {
             var attrs: [(String, String)] = [
                 ("id", resource.assetId),
-                ("name", resource.entry.name),
-                ("start", "0s"),
+                ("name", fileName(for: resource)),
+                ("start", time(frames: resource.startTimecodeFrames)),
                 ("duration", time(frames: resource.durationFrames)),
             ]
             if resource.hasVideo {

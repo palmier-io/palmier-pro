@@ -38,7 +38,7 @@ extension ToolExecutor {
         case .xml:
             return try await exportXML(editor, outputURL: outputURL)
         case .fcpxml:
-            return try exportFCPXML(editor, outputURL: outputURL)
+            return try await exportFCPXML(editor, outputURL: outputURL)
         case .palmier:
             return try await exportPalmier(editor, outputURL: outputURL)
         }
@@ -127,7 +127,7 @@ extension ToolExecutor {
         ])
     }
 
-    private func exportFCPXML(_ editor: EditorViewModel, outputURL: URL) throws -> ToolResult {
+    private func exportFCPXML(_ editor: EditorViewModel, outputURL: URL) async throws -> ToolResult {
         if FileManager.default.fileExists(atPath: outputURL.path) {
             do {
                 try FileManager.default.removeItem(at: outputURL)
@@ -136,7 +136,7 @@ extension ToolExecutor {
             }
         }
         do {
-            try FCPXMLExporter.export(timeline: editor.timeline, resolver: editor.mediaResolver, outputURL: outputURL)
+            try await FCPXMLExporter.export(timeline: editor.timeline, resolver: editor.mediaResolver, outputURL: outputURL)
         } catch {
             throw ToolError("export_project: FCPXML export failed: \(error.localizedDescription)")
         }
