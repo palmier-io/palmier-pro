@@ -127,12 +127,7 @@ extension ToolExecutor {
 
     func transcriptionContext(_ args: [String: Any], path: String, preferLast: Bool = false) async throws -> TranscriptionToolContext {
         if preferLast, let lastTranscriptContext {
-            return TranscriptionToolContext(
-                provider: lastTranscriptContext.provider,
-                preferredLocale: lastTranscriptContext.provider == .cloud
-                    ? nil
-                    : (try await Self.parseLocale(args, path: path) ?? lastTranscriptContext.preferredLocale)
-            )
+            return lastTranscriptContext
         }
         let account = AccountService.shared
         let provider: TranscriptionProvider = account.isSignedIn && account.hasCredits ? .cloud : .local
