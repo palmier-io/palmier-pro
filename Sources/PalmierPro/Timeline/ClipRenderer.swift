@@ -142,15 +142,22 @@ enum ClipRenderer {
             context.strokePath()
         }
 
-        drawLabelBar(clip: clip, type: type, in: labelRect, clipRect: rect, context: context, displayName: displayName, fps: fps)
+        let showDetailChrome = isSelected || rect.width >= AppTheme.ComponentSize.timelineClipDetailMinWidth
+        let showLabel = isSelected || rect.width >= AppTheme.ComponentSize.timelineClipLabelMinWidth
 
-        if let linkOffset, linkOffset != 0 {
+        if showLabel {
+            drawLabelBar(clip: clip, type: type, in: labelRect, clipRect: rect, context: context, displayName: displayName, fps: fps)
+        }
+
+        if showDetailChrome, let linkOffset, linkOffset != 0 {
             drawOffsetBadge(frames: linkOffset, in: rect, context: context)
         }
 
-        drawKeyframeMarkers(clip: clip, in: rect, context: context)
+        if showDetailChrome {
+            drawKeyframeMarkers(clip: clip, in: rect, context: context)
 
-        drawTrimHandles(in: rect, context: context)
+            drawTrimHandles(in: rect, context: context)
+        }
 
         if opacity < 1.0 {
             context.restoreGState()
