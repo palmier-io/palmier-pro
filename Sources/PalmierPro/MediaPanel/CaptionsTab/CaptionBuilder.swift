@@ -1,5 +1,6 @@
 import Foundation
 
+// Purpose: Decides how words from CaptionTranscriptMapper should be grouped into chunks
 enum CaptionBuilder {
     struct Phrase: Equatable {
         var text: String
@@ -15,7 +16,7 @@ enum CaptionBuilder {
         var end: Double
     }
 
-    /// Splits a transcript segment into screen-ready phrases and times them.
+    /// General builder: split a transcript segment into caption-sized chunks
     static func phrases(
         for segment: TranscriptionSegment,
         words: [TranscriptionWord] = [],
@@ -33,6 +34,25 @@ enum CaptionBuilder {
         }
         let timed = time(pieces, segment: segment, words: words)
         return enforceMinDuration(timed, minDuration: minDuration)
+    }
+
+    static func phrases(
+        fromTimedWords words: [TranscriptionWord],
+        fits: (String) -> Bool,
+        maxWords: Int? = nil,
+        minDuration: Double
+    ) -> [Phrase] {
+        let timed = words.filter { $0.start != nil && $0.end != nil }
+        guard let first = timed.first, let last = timed.last, let start = first.start, let end = last.end, end > start else { return [] }
+        let text = timed.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return [] }
+        return phrases(
+            for: TranscriptionSegment(text: text, start: start, end: end, speaker: first.speaker),
+            words: timed,
+            fits: fits,
+            maxWords: maxWords,
+            minDuration: minDuration
+        )
     }
 
     private static func wordCount(_ text: String) -> Int {
@@ -131,17 +151,16 @@ enum CaptionBuilder {
         return phrases
     }
 
-    /// Give each phrase a floor duration, shifting later ones so they don't overlap.
+    /// Give each phrase a floor duration without moving later phrases off their first word.
     private static func enforceMinDuration(_ phrases: [Phrase], minDuration: Double) -> [Phrase] {
         var out = phrases
         for i in out.indices {
-            if out[i].end - out[i].start < minDuration {
-                out[i].end = out[i].start + minDuration
-            }
-            if i + 1 < out.count, out[i + 1].start < out[i].end {
-                let shift = out[i].end - out[i + 1].start
-                out[i + 1].start += shift
-                out[i + 1].end += shift
+            let targetEnd = max(out[i].end, out[i].start + minDuration)
+            if i + 1 < out.count {
+                out[i].end = min(targetEnd, out[i + 1].start)
+                if out[i].end < out[i].start { out[i].end = out[i].start }
+            } else {
+                out[i].end = targetEnd
             }
         }
         return out

@@ -73,6 +73,7 @@ enum AgentInstructions {
           • update_text: change text/caption content, font, color, outline, background, \
             text animation, or text-box transform. Pass captionGroupId to restyle a whole \
             caption track at once.
+          • add_captions: if adding captions for the entire timeline, omit clipIds.
           • set_keyframes: replace the keyframe track for one (clipId, property) pair. Empty \
             array clears. Frames are clip-relative. Not for static layout — use apply_layout.
           • split_clips: pass one or more cut points (each atFrame strictly inside its clip) in \
@@ -89,19 +90,20 @@ enum AgentInstructions {
         - Transcript-driven cuts (filler words, duplicate/retake removal, tightening a ramble): \
           read the WORD-level get_transcript end-to-end as prose at least once, then cut with \
           remove_words — pass the indices of the words to drop (single indices or [start, end] \
-          spans). It maps words to frames, eats the surrounding pause, and closes the gaps, so you \
+          spans). Omit language unless needed for local transcription; remove_words reuses the \
+          previous get_transcript source. It maps words to frames, eats the surrounding pause, and \
+          closes the gaps, so you \
           never touch frame numbers; ripple_delete_ranges is the fallback only for spans that aren't \
           word-aligned. After a cut, indices shift — re-read get_transcript before the next \
           remove_words. The transcript summary is lossy — it hides reworded retakes ("in one state" \
           vs "in one place") and sub-frame seam fragments (a word whose start == end rounds to zero \
           frames); verify a suspected dangling fragment against the words, not the summary.
-        - On-device transcription is language-specific. When the spoken language is not English \
-          (or differs from the user's system locale), always pass language as a BCP-47 tag \
-          (e.g. language='es', language='fr', language='ja') to get_transcript and inspect_media. \
-          Without it, the wrong model is used and the output will be garbled or empty. If the user \
-          says transcription looks wrong, ask for the spoken language and retry with language set. \
-          When you then cut with remove_words, pass the SAME language — the indices are only valid \
-          against the transcription that produced them, so a mismatch cuts the wrong words.
+        - Omit language for transcription unless the user names the spoken language. \
+          On-device transcription is language-specific. Cloud transcription auto-detects language. \
+          When using local transcription or inspect_media for non-English speech (or speech that \
+          differs from the user's system locale), pass language as a BCP-47 tag (e.g. language='es', \
+          language='fr', language='ja'). If local transcription looks wrong, ask for the spoken \
+          language and retry with language set.
 
         # Export
         - When the user asks to export/render/save, call export_project. It matches the Export \

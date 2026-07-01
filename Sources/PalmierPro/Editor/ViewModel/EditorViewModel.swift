@@ -328,13 +328,16 @@ final class EditorViewModel {
     /// Coalesces rapid rebuild requests so `replaceCurrentItem` doesn't fire per keystroke.
     var pendingRebuildTask: Task<Void, Never>?
 
-    func notifyTimelineChanged() {
+    func notifyTimelineChanged(refreshVisuals: Bool = true) {
+        guard undoManager?.isUndoRegistrationEnabled ?? true else { return }
         pendingRebuildTask?.cancel()
         pendingRebuildTask = nil
         if isPlaying {
             videoEngine?.pause()
         }
-        videoEngine?.refreshVisuals()
+        if refreshVisuals {
+            videoEngine?.refreshVisuals()
+        }
         videoEngine?.rebuild()
     }
 

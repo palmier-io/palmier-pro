@@ -249,7 +249,7 @@ extension EditorViewModel {
     }
 
     /// Run `work` as a single atomic mutation, registering one timeline-swap undo
-    func withTimelineSwap(actionName: String, _ work: () -> Void) {
+    func withTimelineSwap(actionName: String, refreshVisuals: Bool = true, _ work: () -> Void) {
         let before = timeline
         undoManager?.disableUndoRegistration()
         work()
@@ -260,7 +260,7 @@ extension EditorViewModel {
         // registrations and will capture our diff in its own swap.
         guard undoManager?.isUndoRegistrationEnabled ?? true else { return }
         registerTimelineSwap(undoState: before, redoState: after, actionName: actionName)
-        notifyTimelineChanged()
+        notifyTimelineChanged(refreshVisuals: refreshVisuals)
     }
 
     fileprivate func setClipSpeed(at loc: ClipLocation, newSpeed: Double) {

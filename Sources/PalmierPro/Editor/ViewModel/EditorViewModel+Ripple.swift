@@ -155,7 +155,7 @@ extension EditorViewModel {
             }
         }
 
-        withTimelineSwap(actionName: "Ripple Delete") {
+        withTimelineSwap(actionName: "Ripple Delete", refreshVisuals: false) {
             removeClips(ids: ids)
             for shifts in shiftsByTrack.values { applyShifts(shifts) }
         }

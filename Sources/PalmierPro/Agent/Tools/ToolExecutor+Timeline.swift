@@ -2,24 +2,11 @@ import AVFoundation
 import Foundation
 import ImageIO
 
-struct TimelineWord {
-    let index: Int
-    let clipId: String
-    let trackIndex: Int
-    let clipStartFrame: Int
-    let clipEndFrame: Int
-    let text: String
-    let startFrame: Int
-    let endFrame: Int
-}
-
 extension ToolExecutor {
     private static let defaultReadVideoFrames = 6
     private static let readVideoMaxFrames = 12
     private nonisolated static let readVideoFrameMaxDimension: CGFloat = 512
     private nonisolated static let readVideoJPEGQuality: CGFloat = 0.7
-    private static let inspectMaxSegments = 400
-    private static let inspectMaxWords = 10000
 
     private static let getTimelineAllowedKeys: Set<String> = ["startFrame", "endFrame"]
     private static let captionRowLimit = 200
@@ -262,15 +249,6 @@ extension ToolExecutor {
         return .ok(json)
     }
 
-    static func parseLocale(_ args: [String: Any], path: String) async throws -> Locale? {
-        guard let lang = args.string("language") else { return nil }
-        let candidate = Locale(identifier: lang)
-        guard let match = Transcription.matchLocale(candidates: [candidate], supported: await Transcription.supportedLocales()) else {
-            throw ToolError("\(path): on-device transcription does not support language '\(lang)'.")
-        }
-        return match
-    }
-
     private static let inspectMediaAllowedKeys: Set<String> = [
         "mediaRef", "clipId", "maxFrames", "startSeconds", "endSeconds", "wordTimestamps", "overview", "language",
     ]
@@ -330,16 +308,6 @@ extension ToolExecutor {
             throw ToolError("Invalid time range [\(s), \(e)] for media of duration \(duration)s")
         }
         return s...e
-    }
-
-    static func timelineMappingMeta(clip: Clip, fps: Int) -> [String: Any] {
-        [
-            "clipId": clip.id,
-            "clipStartFrame": clip.startFrame,
-            "clipEndFrame": clip.endFrame,
-            "fps": fps,
-            "note": "transcription segments/words are project frames for this clip; out-of-range entries are dropped.",
-        ]
     }
 
     private func readImage(asset: MediaAsset, args: [String: Any]) async throws -> ToolResult {
@@ -526,205 +494,6 @@ extension ToolExecutor {
             throw ToolError("Failed to encode metadata")
         }
         return .ok(metaJSON)
-    }
-
-    private static func transcriptionMeta(
-        from transcript: TranscriptionResult,
-        mapping: (clip: Clip, fps: Int)? = nil,
-        includeWords: Bool = false
-    ) -> [String: Any] {
-        var out: [String: Any] = [
-            "timing": mapping == nil ? "sourceSeconds" : "projectFrames",
-        ]
-        if let lang = transcript.language { out["language"] = lang }
-
-        let rows: [(row: [Any], sourceEnd: Double)]
-        if let mapping {
-            rows = transcript.segments.compactMap { s in
-                guard let f = spanFrames(start: s.start, end: s.end, clip: mapping.clip, fps: mapping.fps) else { return nil }
-                return ([s.text, f.start, f.end], s.end)
-            }
-        } else {
-            rows = transcript.segments.map { ([$0.text, round2OrNull($0.start), round2OrNull($0.end)], $0.end) }
-        }
-        out["segments"] = rows.prefix(inspectMaxSegments).map(\.row)
-        if rows.count > inspectMaxSegments, let lastEnd = rows.prefix(inspectMaxSegments).last?.sourceEnd {
-            out["totalSegments"] = rows.count
-            out["nextStartSeconds"] = round2OrNull(lastEnd)
-            out["segmentsNote"] = "First \(inspectMaxSegments) of \(rows.count) segments. Continue with startSeconds = nextStartSeconds."
-        }
-
-        if includeWords {
-            let words: [[Any]]
-            if let mapping {
-                words = wordFrames(transcript, clip: mapping.clip, fps: mapping.fps).map { [$0.text, $0.start, $0.end] }
-            } else {
-                words = transcript.words.map { [$0.text, round2OrNull($0.start), round2OrNull($0.end)] }
-            }
-            out["words"] = Array(words.prefix(inspectMaxWords))
-            if words.count > inspectMaxWords {
-                out["totalWords"] = words.count
-                out["wordsNote"] = "First \(inspectMaxWords) of \(words.count) words. Narrow with startSeconds/endSeconds."
-            }
-        }
-        return out
-    }
-
-    private static let getTranscriptAllowedKeys: Set<String> = ["startFrame", "endFrame", "clipId", "wordTimestamps", "language"]
-
-    func getTranscript(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
-        try validateUnknownKeys(args, allowed: Self.getTranscriptAllowedKeys, path: "get_transcript")
-        let fps = editor.timeline.fps
-        let clipFilter = args.string("clipId")
-        let windowStart = args.int("startFrame")
-        let windowEnd = args.int("endFrame")
-        if let s = windowStart, let e = windowEnd, s >= e {
-            throw ToolError("startFrame (\(s)) must be less than endFrame (\(e))")
-        }
-        if let clipFilter {
-            guard editor.findClip(id: clipFilter) != nil else {
-                throw ToolError("Clip \(clipFilter) not found.")
-            }
-            guard editor.captionTargets(ids: []).contains(where: { $0.id == clipFilter }) else {
-                throw ToolError("Clip \(clipFilter) has no transcribable audio. If it's a video with linked audio, scope to the linked audio clip instead.")
-            }
-        }
-        let preferredLocale = try await Self.parseLocale(args, path: "get_transcript")
-
-        let (allWords, skipped) = try await timelineWords(editor, preferredLocale: preferredLocale)
-
-        var clipsOut: [[String: Any]] = []
-        var totalWords = 0
-        var remaining = Self.inspectMaxWords
-        var lastEnd: Int?
-        forEachTimelineClipGroup(in: allWords) { clipId, trackIndex, clipStartFrame, clipEndFrame, clipWords in
-            if let clipFilter, clipId != clipFilter { return }
-
-            var rows: [[Any]] = []
-            for w in clipWords {
-                if let ws = windowStart, w.endFrame <= ws { continue }
-                if let we = windowEnd, w.startFrame >= we { continue }
-                totalWords += 1
-                guard remaining > 0 else { continue }
-                rows.append([w.index, w.text, w.startFrame, w.endFrame])
-                remaining -= 1
-                lastEnd = w.endFrame
-            }
-            guard !rows.isEmpty else { return }
-            clipsOut.append(["clipId": clipId, "trackIndex": trackIndex,
-                             "startFrame": clipStartFrame, "endFrame": clipEndFrame,
-                             "words": rows])
-        }
-
-        var out: [String: Any] = [
-            "fps": fps, "timing": "projectFrames",
-            "wordFormat": ["index", "text", "start", "end"], "clips": clipsOut,
-        ]
-        if totalWords > Self.inspectMaxWords {
-            out["totalWords"] = totalWords
-            if let lastEnd {
-                out["nextStartFrame"] = lastEnd
-                out["wordsNote"] = "First \(Self.inspectMaxWords) of \(totalWords) words. Continue with startFrame = nextStartFrame."
-            }
-        }
-        if !skipped.isEmpty { out["skipped"] = skipped }
-
-        guard let json = Self.jsonString(out) else { throw ToolError("Failed to encode transcript") }
-        return .ok(json)
-    }
-
-    func timelineWords(_ editor: EditorViewModel, preferredLocale: Locale? = nil) async throws -> (words: [TimelineWord], skipped: [[String: Any]]) {
-        let fps = editor.timeline.fps
-        let assetsById = Dictionary(editor.mediaAssets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        struct Frag { let clipId: String; let trackIndex: Int; let clip: Clip; let url: URL; let isVideo: Bool }
-        var frags: [Frag] = []
-        var isVideoByURL: [URL: Bool] = [:]
-        for clip in editor.captionTargets(ids: []) {
-            guard let loc = editor.findClip(id: clip.id), let asset = assetsById[clip.mediaRef] else { continue }
-            let isVideo = asset.type == .video
-            frags.append(Frag(clipId: clip.id, trackIndex: loc.trackIndex, clip: clip, url: asset.url, isVideo: isVideo))
-            isVideoByURL[asset.url] = isVideo
-        }
-
-        // Transcribe each unique source once (cached); skip — don't fail — on per-asset errors.
-        var transcripts: [URL: TranscriptionResult] = [:]
-        var skipped: [[String: Any]] = []
-        for url in Set(frags.map(\.url)) {
-            do { transcripts[url] = try await TranscriptCache.shared.transcript(for: url, isVideo: isVideoByURL[url] ?? true, range: nil, preferredLocale: preferredLocale) }
-            catch { skipped.append(["file": url.lastPathComponent, "reason": error.localizedDescription]) }
-        }
-
-        var words: [TimelineWord] = []
-        for frag in frags.sorted(by: { $0.clip.startFrame < $1.clip.startFrame }) {
-            guard let transcript = transcripts[frag.url] else { continue }
-            let visStart = Double(frag.clip.trimStartFrame)
-            let visEnd = visStart + Double(frag.clip.durationFrames) * max(frag.clip.speed, 0.0001)
-            var rows: [(start: Int, end: Int, text: String)] = []
-            for w in transcript.words {
-                guard let s = w.start, let e = w.end else { continue }
-                // Assign a word to the clip whose visible range contains its midpoint.
-                let midFrame = (s + e) / 2 * Double(fps)
-                guard midFrame >= visStart, midFrame < visEnd,
-                      let f = Self.spanFrames(start: s, end: e, clip: frag.clip, fps: fps) else { continue }
-                rows.append((f.start, f.end, w.text))
-            }
-            rows.sort { ($0.start, $0.end) < ($1.start, $1.end) }
-            for r in rows {
-                words.append(TimelineWord(
-                    index: words.count, clipId: frag.clipId, trackIndex: frag.trackIndex,
-                    clipStartFrame: frag.clip.startFrame, clipEndFrame: frag.clip.endFrame,
-                    text: r.text, startFrame: r.start, endFrame: r.end
-                ))
-            }
-        }
-        return (words, skipped)
-    }
-
-    func forEachTimelineClipGroup(
-        in allWords: [TimelineWord],
-        _ body: (String, Int, Int, Int, ArraySlice<TimelineWord>) -> Void
-    ) {
-        var i = allWords.startIndex
-        while i < allWords.endIndex {
-            let clipId = allWords[i].clipId
-            var j = allWords.index(after: i)
-            while j < allWords.endIndex, allWords[j].clipId == clipId { j = allWords.index(after: j) }
-            body(clipId, allWords[i].trackIndex, allWords[i].clipStartFrame, allWords[i].clipEndFrame, allWords[i..<j])
-            i = j
-        }
-    }
-
-    func msToFrames(_ ms: Double, fps: Int) -> Int {
-        Int((ms / 1000 * Double(fps)).rounded())
-    }
-
-    /// Maps a clip's transcript words to (text, startFrame, endFrame) in project frames,
-    /// dropping words that fall outside the clip's visible span.
-    private static func wordFrames(_ transcript: TranscriptionResult, clip: Clip, fps: Int) -> [(text: String, start: Int, end: Int)] {
-        transcript.words.compactMap { w in
-            guard let s = w.start, let e = w.end, let f = spanFrames(start: s, end: e, clip: clip, fps: fps) else { return nil }
-            return (w.text, f.start, f.end)
-        }
-    }
-
-    /// Source-seconds span → project frames, clamped to the clip's visible window first so a boundary-straddler yields its real sliver, not a fabricated full-clip span. nil if not visible.
-    private static func spanFrames(start: Double, end: Double, clip: Clip, fps: Int) -> (start: Int, end: Int)? {
-        let fpsD = Double(fps)
-        let visStart = Double(clip.trimStartFrame)
-        let visEnd = visStart + Double(clip.durationFrames) * max(clip.speed, 0.0001)
-        let s = max(start * fpsD, visStart)
-        let e = min(end * fpsD, visEnd)
-        guard e > s else { return nil }
-        func toTimeline(_ sourceFrame: Double) -> Int {
-            Int((Double(clip.startFrame) + (sourceFrame - visStart) / max(clip.speed, 0.0001)).rounded())
-        }
-        let a = toTimeline(s)
-        return (a, max(a, toTimeline(e)))
-    }
-
-    private static func round2OrNull(_ x: Double?) -> Any {
-        guard let x, x.isFinite else { return NSNull() }
-        return NSDecimalNumber(string: String(format: "%.2f", x))
     }
 
     private static func baseMeta(for asset: MediaAsset) -> [String: Any] {

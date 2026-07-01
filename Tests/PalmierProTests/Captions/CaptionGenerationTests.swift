@@ -97,6 +97,34 @@ private func mediaAsset(_ id: String, hasAudio: Bool = true) -> MediaAsset {
     }
 }
 
+@MainActor
+@Suite struct CaptionProjectionTests {
+    @Test func phrasesIgnoreWordsOutsideCurrentClipFragments() {
+        let first = Fixtures.clip(id: "first", mediaRef: "media-1", mediaType: .audio, start: 0, duration: 30, trimStart: 0)
+        let second = Fixtures.clip(id: "second", mediaRef: "media-1", mediaType: .audio, start: 30, duration: 30, trimStart: 60)
+        let result = TranscriptionResult(
+            text: "keep um go",
+            language: "en",
+            words: [
+                TranscriptionWord(text: "keep", start: 0.1, end: 0.3),
+                TranscriptionWord(text: "um", start: 1.1, end: 1.2),
+                TranscriptionWord(text: "go", start: 2.1, end: 2.3),
+            ],
+            segments: [TranscriptionSegment(text: "keep um go", start: 0, end: 3)]
+        )
+
+        let firstPhrases = CaptionTranscriptMapper.phrases(
+            for: first, result: result, fps: 30, maxWords: nil, minDuration: 0, fits: { _ in true }
+        )
+        let secondPhrases = CaptionTranscriptMapper.phrases(
+            for: second, result: result, fps: 30, maxWords: nil, minDuration: 0, fits: { _ in true }
+        )
+
+        #expect(firstPhrases.map(\.text) == ["keep"])
+        #expect(secondPhrases.map(\.text) == ["go"])
+    }
+}
+
 @Suite struct CaptionCaseTests {
     @Test func transformsText() {
         #expect(EditorViewModel.CaptionCase.auto.apply("Hello World.") == "Hello World.")

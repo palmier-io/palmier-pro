@@ -319,7 +319,7 @@ struct ExportView: View {
             destination = option
         } label: {
             HStack(spacing: AppTheme.Spacing.sm) {
-                radioIndicator(selected: selected)
+                RadioIndicator(selected: selected)
 
                 Text(option.rawValue)
                     .font(.system(size: AppTheme.FontSize.md, weight: selected ? AppTheme.FontWeight.semibold : AppTheme.FontWeight.medium))
@@ -333,20 +333,6 @@ struct ExportView: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-    }
-
-    private func radioIndicator(selected: Bool) -> some View {
-        ZStack {
-            Circle()
-                .strokeBorder(selected ? AppTheme.Accent.primary : AppTheme.Text.mutedColor, lineWidth: AppTheme.BorderWidth.thin)
-
-            if selected {
-                Circle()
-                    .fill(AppTheme.Accent.primary)
-                    .padding(AppTheme.Spacing.xs)
-            }
-        }
-        .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
     }
 
     private func timelineFormatButton(_ format: TimelineExportFormat) -> some View {

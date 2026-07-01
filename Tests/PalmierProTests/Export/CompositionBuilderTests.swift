@@ -91,6 +91,44 @@ struct CompositionBuildValidationTests {
     }
 }
 
+@Suite("CompositionBuilder.buildVisuals — instructions")
+struct CompositionBuildVisualInstructionTests {
+
+    @Test func textInstructionsPreserveLayerOrderAcrossCaptionBoundaries() {
+        let topA = textClip(id: "top-a", start: 0, duration: 10)
+        let topB = textClip(id: "top-b", start: 10, duration: 10)
+        let bottom = textClip(id: "bottom", start: 0, duration: 20)
+        let timeline = Fixtures.timeline(fps: 10, tracks: [
+            Fixtures.videoTrack(clips: [topA, topB]),
+            Fixtures.videoTrack(clips: [bottom]),
+        ])
+
+        let (_, videoComposition) = CompositionBuilder.buildVisuals(
+            timeline: timeline,
+            trackMappings: [],
+            compositionDuration: CMTime(value: 20, timescale: 10),
+            renderSize: CGSize(width: 320, height: 180)
+        )
+        let instructions = videoComposition.instructions.compactMap { $0 as? CompositorInstruction }
+
+        #expect(instructions.count == 2)
+        #expect(instructions.map { $0.timeRange.start } == [
+            CMTime(value: 0, timescale: 10),
+            CMTime(value: 10, timescale: 10),
+        ])
+        #expect(instructions.map { $0.layers.map(\.clip.id) } == [
+            ["bottom", "top-a"],
+            ["bottom", "top-b"],
+        ])
+    }
+
+    private func textClip(id: String, start: Int, duration: Int) -> Clip {
+        var clip = Fixtures.clip(id: id, mediaRef: "text-\(id)", mediaType: .text, start: start, duration: duration)
+        clip.textContent = id
+        return clip
+    }
+}
+
 // MARK: - build() unreadable-asset resilience
 
 @Suite("CompositionBuilder.build — unreadable assets")

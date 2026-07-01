@@ -1,9 +1,12 @@
 import CryptoKit
 import Foundation
 
-/// Disk + memory cache for full-file transcripts, keyed by file identity so edits invalidate naturally.
+/// Disk + memory cache for local and cloud transcripts, keyed by file identity so edits invalidate naturally.
 actor TranscriptCache {
     static let shared = TranscriptCache()
+    static let directory = FileManager.default
+        .urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("\(Log.subsystem)/Transcripts", isDirectory: true)
 
     private var memory: [String: TranscriptionResult] = [:]
     private static let memoryMax = 4
@@ -29,6 +32,18 @@ actor TranscriptCache {
         return range.map { Self.filter(full, to: $0) } ?? full
     }
 
+    nonisolated static func hasCachedOnDisk(for url: URL) -> Bool {
+        guard let key = key(for: url) else { return false }
+        return FileManager.default.fileExists(atPath: diskURL(key).path)
+    }
+
+    /// Disk-only read
+    nonisolated static func cachedOnDisk(for url: URL) -> TranscriptionResult? {
+        guard let key = key(for: url),
+              let data = try? Data(contentsOf: diskURL(key)) else { return nil }
+        return try? JSONDecoder().decode(TranscriptionResult.self, from: data)
+    }
+
     static func filter(_ r: TranscriptionResult, to range: ClosedRange<Double>) -> TranscriptionResult {
         let segments = r.segments.filter { $0.end > range.lowerBound && $0.start < range.upperBound }
         let words = r.words.filter { w in
@@ -37,9 +52,42 @@ actor TranscriptCache {
         }
         return TranscriptionResult(
             text: segments.map(\.text).joined(separator: " "),
-            language: r.language, words: words, segments: segments
+            language: r.language,
+            words: words,
+            segments: segments
         )
     }
+
+    func cachedCloudTranscript(
+        for url: URL,
+        range: ClosedRange<Double>?,
+        language: String?
+    ) -> TranscriptionResult? {
+        guard let key = Self.key(for: url, variant: .cloud(range: range, language: language)) else { return nil }
+        return cached(key)
+    }
+
+    func hasCachedCloudTranscript(
+        for url: URL,
+        range: ClosedRange<Double>?,
+        language: String?
+    ) -> Bool {
+        guard let key = Self.key(for: url, variant: .cloud(range: range, language: language)) else { return false }
+        return memory[key] != nil || FileManager.default.fileExists(atPath: Self.diskURL(key).path)
+    }
+
+    func storeCloudTranscript(
+        _ result: TranscriptionResult,
+        for url: URL,
+        range: ClosedRange<Double>?,
+        language: String?
+    ) {
+        guard let key = Self.key(for: url, variant: .cloud(range: range, language: language)) else { return }
+        store(result, key: key)
+    }
+
+    /// Drop in-memory entries so a disk clear isn't shadowed by the memory cache.
+    func clearMemory() { memory.removeAll() }
 
     private func cached(_ key: String) -> TranscriptionResult? {
         if let r = memory[key] { return r }
@@ -62,34 +110,32 @@ actor TranscriptCache {
         memory[key] = result
     }
 
-    /// Drop in-memory entries so a disk clear isn't shadowed by the memory cache.
-    func clearMemory() { memory.removeAll() }
-
-    static let directory = FileManager.default
-        .urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("\(Log.subsystem)/Transcripts", isDirectory: true)
-
     private static func diskURL(_ key: String) -> URL {
         directory.appendingPathComponent("\(key).json")
     }
 
-    nonisolated static func hasCachedOnDisk(for url: URL) -> Bool {
-        guard let key = key(for: url) else { return false }
-        return FileManager.default.fileExists(atPath: diskURL(key).path)
-    }
-
-    /// Disk-only read
-    nonisolated static func cachedOnDisk(for url: URL) -> TranscriptionResult? {
-        guard let key = key(for: url),
-              let data = try? Data(contentsOf: diskURL(key)) else { return nil }
-        return try? JSONDecoder().decode(TranscriptionResult.self, from: data)
-    }
-
-    private static func key(for url: URL) -> String? {
+    private static func key(for url: URL, variant: CacheVariant = .local) -> String? {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
               let size = (attrs[.size] as? NSNumber)?.int64Value,
               let mtime = attrs[.modificationDate] as? Date else { return nil }
-        let identity = "\(url.path)|\(mtime.timeIntervalSince1970)|\(size)"
+        let base = "\(url.path)|\(mtime.timeIntervalSince1970)|\(size)"
+        let identity = variant.prefix.map { "\($0)|\(base)" } ?? base
         return SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined().prefix(32).description
+    }
+
+    private enum CacheVariant {
+        case local
+        case cloud(range: ClosedRange<Double>?, language: String?)
+
+        var prefix: String? {
+            switch self {
+            case .local:
+                return nil
+            case .cloud(let range, let language):
+                let lang = language ?? "auto"
+                guard let range else { return "cloud|\(lang)|full" }
+                return String(format: "cloud|%@|%.3f...%.3f", lang, range.lowerBound, range.upperBound)
+            }
+        }
     }
 }

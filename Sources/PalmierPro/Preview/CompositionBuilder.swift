@@ -479,13 +479,62 @@ enum CompositionBuilder {
         let cuts = cutSet.filter { $0 > .zero && $0 < compositionDuration }.sorted()
         let bounds = [.zero] + cuts + [compositionDuration]
 
+        var startsByTime: [CMTime: [Int]] = [:]
+        var endsByTime: [CMTime: [Int]] = [:]
+        for (index, entry) in entries.enumerated() {
+            startsByTime[entry.start, default: []].append(index)
+            endsByTime[entry.end, default: []].append(index)
+        }
+
+        var active: [Int] = []
+        var activeSet = Set<Int>()
+
+        func insertActive(_ index: Int) {
+            guard activeSet.insert(index).inserted else { return }
+            var low = 0
+            var high = active.count
+            while low < high {
+                let mid = (low + high) / 2
+                if active[mid] < index {
+                    low = mid + 1
+                } else {
+                    high = mid
+                }
+            }
+            active.insert(index, at: low)
+        }
+
+        func removeActive(_ index: Int) {
+            guard activeSet.remove(index) != nil else { return }
+            var low = 0
+            var high = active.count
+            while low < high {
+                let mid = (low + high) / 2
+                if active[mid] < index {
+                    low = mid + 1
+                } else {
+                    high = mid
+                }
+            }
+            if low < active.count, active[low] == index {
+                active.remove(at: low)
+            }
+        }
+
+        for (index, entry) in entries.enumerated() where entry.start < .zero && entry.end > .zero {
+            insertActive(index)
+        }
+
         var instructions: [CompositorInstruction] = []
+        instructions.reserveCapacity(max(0, bounds.count - 1))
         for i in 0..<(bounds.count - 1) {
+            let start = bounds[i]
+            for index in endsByTime[start] ?? [] { removeActive(index) }
+            for index in startsByTime[start] ?? [] { insertActive(index) }
+
             let range = CMTimeRange(start: bounds[i], end: bounds[i + 1])
             guard range.duration > .zero else { continue }
-            let layers = entries
-                .filter { $0.start <= range.start && $0.end >= range.end }
-                .map(\.plan)
+            let layers = active.map { entries[$0].plan }
             instructions.append(CompositorInstruction(
                 timeRange: range, layers: layers, renderSize: renderSize, fps: timeline.fps
             ))

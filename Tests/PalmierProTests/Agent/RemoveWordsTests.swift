@@ -52,4 +52,15 @@ struct RemoveWordsParamTests {
         #expect(spans[1].0 == 12 && spans[1].1 == 18)
         #expect(spans[2].0 == 40 && spans[2].1 == 40)
     }
+
+    @Test func parsesWordMatches() throws {
+        let matches = try ToolExecutor.parseWordMatches(["Um,", " uh ", "HMM"])
+        #expect(matches == ["um", "uh", "hmm"])
+    }
+
+    @Test func rejectsEmptyMatches() {
+        #expect(throws: ToolError.self) {
+            _ = try ToolExecutor.parseWordMatches(["..."])
+        }
+    }
 }

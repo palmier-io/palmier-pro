@@ -55,10 +55,42 @@ struct CaptionBuilderTests {
         #expect(phrases.map(\.end) == [4.0, 6.0])
     }
 
-    @Test func enforcesMinimumDurationAndShifts() {
+    @Test func enforcesMinimumDurationWithoutShiftingLaterPhrases() {
         let phrases = CaptionBuilder.phrases(for: segment("aa bbbb", 0, 6), fits: { $0.count <= 4 }, minDuration: 3)
-        #expect(phrases.map(\.start) == [0.0, 3.0])
-        #expect(phrases.map(\.end) == [3.0, 7.0])
+        #expect(phrases.map(\.start) == [0.0, 2.0])
+        #expect(phrases.map(\.end) == [2.0, 6.0])
+    }
+
+    @Test func denseWordTimingsKeepNextPhraseStart() {
+        let words = [
+            TranscriptionWord(text: "Okay,", start: 1.235, end: 1.413),
+            TranscriptionWord(text: "so", start: 1.430, end: 1.609),
+            TranscriptionWord(text: "I've", start: 1.641, end: 1.739),
+            TranscriptionWord(text: "been", start: 1.739, end: 1.836),
+            TranscriptionWord(text: "sleeping", start: 1.836, end: 2.161),
+        ]
+        let phrases = CaptionBuilder.phrases(
+            for: segment("Okay, so I've been sleeping", 1.235, 2.161),
+            words: words,
+            fits: { $0 == "Okay," || $0 == "so I've been sleeping" },
+            minDuration: 0.7
+        )
+        #expect(phrases.map(\.text) == ["Okay,", "so I've been sleeping"])
+        #expect(phrases.map(\.start) == [1.235, 1.430])
+        #expect(phrases[0].end == 1.430)
+    }
+
+    @Test func phrasesFromWordsUseOnlyPassedWords() {
+        let phrases = CaptionBuilder.phrases(
+            fromTimedWords: [
+                TranscriptionWord(text: "Okay,", start: 1.0, end: 1.2),
+                TranscriptionWord(text: "go", start: 2.0, end: 2.2),
+            ],
+            fits: { _ in true },
+            minDuration: 0
+        )
+        #expect(phrases.map(\.text) == ["Okay, go"])
+        #expect(phrases[0].words.map(\.text) == ["Okay,", "go"])
     }
 
     @Test func keepsOverlongSingleWord() {

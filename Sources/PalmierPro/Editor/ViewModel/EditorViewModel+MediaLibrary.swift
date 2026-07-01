@@ -625,7 +625,7 @@ extension EditorViewModel {
     /// Batch variant of `addTextClip` for agent flows.
     /// Caller owns undo + track creation.
     @discardableResult
-    func placeTextClips(_ specs: [TextClipSpec]) -> [String] {
+    func placeTextClips(_ specs: [TextClipSpec], clearExistingRegions: Bool = true, refreshVisuals: Bool = true) -> [String] {
         guard !specs.isEmpty else { return [] }
         let canvasW = Double(timeline.width)
         let canvasH = Double(timeline.height)
@@ -639,7 +639,9 @@ extension EditorViewModel {
                 guard timeline.tracks.indices.contains(spec.trackIndex) else { continue }
                 let start = max(0, spec.startFrame)
                 let duration = max(1, spec.durationFrames)
-                clearRegion(trackIndex: spec.trackIndex, start: start, end: start + duration, prune: false)
+                if clearExistingRegions {
+                    clearRegion(trackIndex: spec.trackIndex, start: start, end: start + duration, prune: false)
+                }
 
                 let resolved: Transform
                 if let t = spec.transform {
@@ -673,7 +675,9 @@ extension EditorViewModel {
         for i in Set(specs.map(\.trackIndex)) where timeline.tracks.indices.contains(i) {
             sortClips(trackIndex: i)
         }
-        videoEngine?.refreshVisuals()
+        if refreshVisuals {
+            videoEngine?.refreshVisuals()
+        }
         return createdIds.compactMap { $0 }
     }
 

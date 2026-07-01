@@ -2,18 +2,44 @@ import AVFoundation
 import Foundation
 import Speech
 
+enum TranscriptionProvider: String, CaseIterable, Sendable, Codable {
+    case local
+    case cloud
+
+    var label: String {
+        switch self {
+        case .local: "Local"
+        case .cloud: "Cloud"
+        }
+    }
+}
+
 struct TranscriptionWord: Sendable, Codable {
     let text: String
     let start: Double?
     let end: Double?
+    let speaker: String?
+
+    init(text: String, start: Double?, end: Double?, speaker: String? = nil) {
+        self.text = text
+        self.start = start
+        self.end = end
+        self.speaker = speaker
+    }
 }
 
-/// One natural utterance the transcriber endpointed on its own (pause/sentence
-/// boundary). `text` carries the model's punctuation and casing.
 struct TranscriptionSegment: Sendable, Codable {
     let text: String
     let start: Double
     let end: Double
+    let speaker: String?
+
+    init(text: String, start: Double, end: Double, speaker: String? = nil) {
+        self.text = text
+        self.start = start
+        self.end = end
+        self.speaker = speaker
+    }
 }
 
 struct TranscriptionResult: Sendable, Codable {
@@ -29,10 +55,15 @@ struct TranscriptionResult: Sendable, Codable {
             text: text,
             language: language,
             words: words.map {
-                TranscriptionWord(text: $0.text, start: $0.start.map { $0 + offset }, end: $0.end.map { $0 + offset })
+                TranscriptionWord(
+                    text: $0.text,
+                    start: $0.start.map { $0 + offset },
+                    end: $0.end.map { $0 + offset },
+                    speaker: $0.speaker
+                )
             },
             segments: segments.map {
-                TranscriptionSegment(text: $0.text, start: $0.start + offset, end: $0.end + offset)
+                TranscriptionSegment(text: $0.text, start: $0.start + offset, end: $0.end + offset, speaker: $0.speaker)
             }
         )
     }
@@ -200,9 +231,13 @@ enum Transcription {
     }
 
     /// Decode the asset's audio track to a PCM file with AVAssetReader
-    private static func extractAudioTrack(from videoURL: URL, range: ClosedRange<Double>? = nil) async throws -> URL {
+    static func extractAudioTrack(
+        from videoURL: URL,
+        range: ClosedRange<Double>? = nil,
+        fileExtension: String = "caf"
+    ) async throws -> URL {
         let outURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("palmier-stt-\(UUID().uuidString).caf")
+            .appendingPathComponent("palmier-stt-\(UUID().uuidString).\(fileExtension)")
         Log.transcription.notice(
             "extract start video=\(videoURL.lastPathComponent)",
             telemetry: "Transcription audio extraction started",
@@ -265,7 +300,8 @@ enum Transcription {
                 segments.append(TranscriptionSegment(
                     text: segmentText,
                     start: result.range.start.seconds,
-                    end: result.range.end.seconds
+                    end: result.range.end.seconds,
+                    speaker: nil
                 ))
             }
 
@@ -276,7 +312,7 @@ enum Transcription {
                 let range = run.audioTimeRange
                 let start = range.map(\.start.seconds)
                 let end = range.map { ($0.start + $0.duration).seconds }
-                words.append(TranscriptionWord(text: trimmed, start: start, end: end))
+                words.append(TranscriptionWord(text: trimmed, start: start, end: end, speaker: nil))
             }
         }
 
