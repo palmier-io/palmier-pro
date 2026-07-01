@@ -3,13 +3,13 @@ import Foundation
 // MARK: - Shared value types
 
 enum AnthropicModel: String, CaseIterable, Sendable {
-    case sonnet46 = "claude-sonnet-4-6"
+    case sonnet5 = "claude-sonnet-5"
     case opus48 = "claude-opus-4-8"
     case haiku45 = "claude-haiku-4-5-20251001"
 
     var displayName: String {
         switch self {
-        case .sonnet46: "Sonnet 4.6"
+        case .sonnet5: "Sonnet 5"
         case .opus48: "Opus 4.8"
         case .haiku45: "Haiku 4.5"
         }
