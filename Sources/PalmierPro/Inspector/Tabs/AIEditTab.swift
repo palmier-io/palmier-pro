@@ -190,8 +190,9 @@ struct AIEditTab: View {
             for: asset,
             effectiveDurationOverride: effectiveDurationForAvailability
         )
-        let isEnabled = availability.isAvailable
-        let disabledReason = availability.reason
+        let paidBlocked = (action == .upscale || action == .edit) && !account.isPaid
+        let isEnabled = availability.isAvailable && !paidBlocked
+        let disabledReason = paidBlocked ? "Requires a paid plan" : availability.reason
 
         HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
             Image(systemName: icon)

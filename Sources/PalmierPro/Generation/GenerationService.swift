@@ -1,5 +1,6 @@
 import Foundation
 @preconcurrency import Combine
+@preconcurrency import ConvexMobile
 
 /// Used by replace-clip callbacks so only the
 /// first successful asset of an N-image generation swaps the clip
@@ -304,6 +305,17 @@ final class GenerationService {
         }
     }
 
+    private func backendErrorMessage(_ error: Error) -> String {
+        struct Payload: Decodable { let code: String?; let message: String? }
+        if case let ClientError.ConvexError(data) = error,
+           let json = data.data(using: .utf8),
+           let payload = try? JSONDecoder().decode(Payload.self, from: json),
+           let message = payload.message {
+            return message
+        }
+        return error.localizedDescription
+    }
+
     private func updateGenerationMetadata(
         _ asset: MediaAsset,
         editor: EditorViewModel,
@@ -406,7 +418,7 @@ final class GenerationService {
                 projectId: editor.projectId,
             )
         } catch {
-            let message = error.localizedDescription
+            let message = backendErrorMessage(error)
             Log.generation.error("submit failed model=\(genInput.model) error=\(message)")
             for placeholder in placeholders {
                 updateGenerationMetadata(placeholder, editor: editor, status: .failed(message))

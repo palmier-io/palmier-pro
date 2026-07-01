@@ -3,12 +3,14 @@ import SwiftUI
 struct ModelsPane: View {
     private var prefs = ModelPreferences.shared
     private var catalog = ModelCatalog.shared
+    private var account = AccountService.shared
 
     @State private var query = ""
 
     private struct Row: Identifiable {
         let id: String
         let displayName: String
+        let paidOnly: Bool
     }
 
     private struct Section: Identifiable {
@@ -17,18 +19,22 @@ struct ModelsPane: View {
         let rows: [Row]
     }
 
+    private func isLocked(_ row: Row) -> Bool { row.paidOnly && !account.isPaid }
+
     private var sections: [Section] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        func filtered(_ rows: [Row]) -> [Row] {
-            q.isEmpty ? rows : rows.filter { $0.displayName.lowercased().contains(q) }
+        func prepare(_ rows: [Row]) -> [Row] {
+            let matched = q.isEmpty ? rows : rows.filter { $0.displayName.lowercased().contains(q) }
+            // Available models first, locked (paid-only) ones grouped at the bottom.
+            return matched.filter { !isLocked($0) } + matched.filter { isLocked($0) }
         }
         return [
             Section(id: "image", title: "Image",
-                    rows: filtered(catalog.image.map { Row(id: $0.id, displayName: $0.displayName) })),
+                    rows: prepare(catalog.image.map { Row(id: $0.id, displayName: $0.displayName, paidOnly: $0.paidOnly) })),
             Section(id: "video", title: "Video",
-                    rows: filtered(catalog.video.map { Row(id: $0.id, displayName: $0.displayName) })),
+                    rows: prepare(catalog.video.map { Row(id: $0.id, displayName: $0.displayName, paidOnly: $0.paidOnly) })),
             Section(id: "audio", title: "Audio",
-                    rows: filtered(catalog.audio.map { Row(id: $0.id, displayName: $0.displayName) })),
+                    rows: prepare(catalog.audio.map { Row(id: $0.id, displayName: $0.displayName, paidOnly: $0.paidOnly) })),
         ].filter { !$0.rows.isEmpty }
     }
 
@@ -99,19 +105,28 @@ struct ModelsPane: View {
         }
     }
 
+    @ViewBuilder
     private func modelRow(_ row: Row) -> some View {
+        let locked = isLocked(row)
         HStack(spacing: AppTheme.Spacing.md) {
             Text(row.displayName)
                 .font(.system(size: AppTheme.FontSize.md))
-                .foregroundStyle(AppTheme.Text.primaryColor)
+                .foregroundStyle(locked ? AppTheme.Text.tertiaryColor : AppTheme.Text.primaryColor)
             Spacer(minLength: AppTheme.Spacing.lg)
-            Toggle("", isOn: Binding(
-                get: { prefs.isEnabled(row.id) },
-                set: { prefs.setEnabled(row.id, $0) }
-            ))
-            .labelsHidden()
-            .toggleStyle(.switch)
-            .controlSize(.small)
+            if locked {
+                Button("Subscribe") {
+                    SettingsWindowController.shared.show(tab: .account)
+                }
+                .buttonStyle(.capsule(.secondary))
+            } else {
+                Toggle("", isOn: Binding(
+                    get: { prefs.isEnabled(row.id) },
+                    set: { prefs.setEnabled(row.id, $0) }
+                ))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+            }
         }
         .padding(.vertical, AppTheme.Spacing.smMd)
     }
