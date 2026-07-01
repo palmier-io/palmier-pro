@@ -33,6 +33,7 @@ struct MediaTab: View {
     @State var marqueeSelection = MarqueeSelection()
 
     @State private var mediaPanelHeight: CGFloat = 600
+    @State private var showMatteSheet = false
 
     enum ViewMode: String, CaseIterable {
         case folder, flat, grouped
@@ -152,6 +153,9 @@ struct MediaTab: View {
         }
         .onChange(of: currentFolderId, initial: true) { _, folderId in
             editor.mediaPanelCurrentFolderId = folderId
+        }
+        .sheet(isPresented: $showMatteSheet) {
+            MatteSheet(isPresented: $showMatteSheet)
         }
     }
 
@@ -582,6 +586,9 @@ struct MediaTab: View {
         return toolbarMenuIcon(systemName: "ellipsis") {
             Button(action: createNewFolderInCurrent) {
                 Label("New Folder", systemImage: "folder.badge.plus")
+            }
+            Button { showMatteSheet = true } label: {
+                Label("Create Matte", systemImage: "square.fill")
             }
             if canOrganize {
                 Button(action: organizeWithAgent) {

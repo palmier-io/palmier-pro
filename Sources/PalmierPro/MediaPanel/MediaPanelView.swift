@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Left-dock panel that hosts the Media and Captions tabs.
+/// Left-dock panel that hosts the Media, Captions, and Music tabs.
 struct MediaPanelView: View {
     @Environment(EditorViewModel.self) private var editor
     @State private var panelTab: PanelTab = .media

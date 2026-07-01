@@ -153,6 +153,8 @@ enum AgentInstructions {
           create folders for unrelated concepts.
         - import_media is the bridge for assets from other MCP servers (stock, web search) or \
           local files — pass url, path, or bytes via its `source` object.
+        - create_matte adds a solid-color PNG to the library — pass `hex` (e.g. '#000000') and \
+          optional aspectRatio (defaults to Project / timeline size).
 
         # Audio generation
         - Two categories, distinguished by model (see list_models type='audio'):
