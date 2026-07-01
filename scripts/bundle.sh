@@ -97,6 +97,9 @@ fi
 if [ -d "$RES_BUNDLE/Images" ]; then
   cp -R "$RES_BUNDLE/Images" "$APP/Contents/Resources/"
 fi
+for locale_dir in "$RES_BUNDLE"/*.lproj; do
+  [ -d "$locale_dir" ] && cp -R "$locale_dir" "$APP/Contents/Resources/"
+done
 if [ -d "$RES_BUNDLE/Changelog" ]; then
   cp -R "$RES_BUNDLE/Changelog" "$APP/Contents/Resources/"
 else

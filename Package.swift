@@ -43,6 +43,13 @@ let package = Package(
                 .copy("Resources/MCPB/palmier-pro.mcpb"),
                 .copy("Resources/Images"),
                 .copy("Resources/Changelog"),
+                .copy("Resources/en.lproj"),
+                .copy("Resources/es.lproj"),
+                .copy("Resources/fr.lproj"),
+                .copy("Resources/de.lproj"),
+                .copy("Resources/ja.lproj"),
+                .copy("Resources/pt-BR.lproj"),
+                .copy("Resources/zh-Hans.lproj"),
             ],
             plugins: ["MetalCIKernelPlugin"]
         ),
