@@ -104,6 +104,49 @@ struct ToolExecutorImportMediaTests {
         #expect(FileManager.default.fileExists(atPath: asset.url.path))
         #expect(h.editor.mediaManifest.entries.first?.name == "Imported Still")
     }
+
+    @Test func importPathCreatesPlaceholderAndCopiesIntoProject() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp-import-path-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let source = root.appendingPathComponent("source.png")
+        try Data("fake-png".utf8).write(to: source)
+
+        let h = ToolHarness()
+        h.editor.projectURL = root.appendingPathComponent("Import.palmier", isDirectory: true)
+
+        let result = await h.runRaw("import_media", args: [
+            "source": ["path": source.path],
+            "name": "Copied Still",
+        ])
+
+        #expect(result.isError == false)
+        #expect(ToolHarness.textOf(result).contains("Import started"))
+        let asset = try #require(h.editor.mediaAssets.first)
+        #expect(asset.name == "Copied Still")
+        #expect(asset.type == .image)
+        #expect(asset.url.path.contains("/Import.palmier/media/imported-"))
+        #expect(h.editor.mediaManifest.entries.first?.importInput?.sourcePath == source.path)
+
+        try await waitForImportCompletion(in: h.editor, assetId: asset.id)
+
+        #expect(asset.generationStatus == .none)
+        #expect(asset.importInput == nil)
+        #expect(FileManager.default.fileExists(atPath: asset.url.path))
+        #expect(h.editor.mediaManifest.entries.first?.importInput == nil)
+    }
+
+    private func waitForImportCompletion(in editor: EditorViewModel, assetId: String) async throws {
+        for _ in 0..<100 {
+            if let status = editor.mediaAssets.first(where: { $0.id == assetId })?.generationStatus,
+               status == .none {
+                return
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        Issue.record("import did not complete")
+    }
 }
 
 @Suite("ToolExecutor — read-only handlers")
@@ -508,6 +551,26 @@ struct ToolExecutorClipTests {
         let clip = h.editor.timeline.tracks[0].clips[0]
         #expect(clip.speed == 0.5)
         #expect(clip.durationFrames == 200)
+    }
+
+    @Test func setSpeedRescalesTextWordTimings() async throws {
+        var clip = Fixtures.clip(id: "caption", mediaRef: "text", mediaType: .text, start: 0, duration: 120)
+        clip.textContent = "one two"
+        clip.wordTimings = [
+            WordTiming(text: "one", startFrame: 0, endFrame: 60),
+            WordTiming(text: "two", startFrame: 60, endFrame: 120),
+        ]
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])]))
+
+        let result = await h.runRaw("set_clip_properties", args: ["clipIds": ["caption"], "speed": 2.0])
+
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let updated = h.editor.timeline.tracks[0].clips[0]
+        #expect(updated.durationFrames == 60)
+        #expect(updated.wordTimings == [
+            WordTiming(text: "one", startFrame: 0, endFrame: 30),
+            WordTiming(text: "two", startFrame: 30, endFrame: 60),
+        ])
     }
 
     // MARK: - add_clips
@@ -1034,14 +1097,39 @@ struct ToolExecutorClipTests {
         #expect(ToolHarness.textOf(result).lowercased().contains("not found"))
     }
 
-    @Test func setClipPropertiesRejectsTextOnlyFieldsOnVideoClip() async throws {
+    @Test func setClipPropertiesRejectsTextFieldsAsUnknown() async throws {
         let (h, asset) = await setupWithVideoTrack()
         let clipId = await addedClip(in: h, asset: asset)
         let result = await h.runRaw("set_clip_properties", args: [
             "clipIds": [clipId], "fontSize": 48,
         ])
         #expect(result.isError)
-        #expect(ToolHarness.textOf(result).contains("text"))
+        #expect(ToolHarness.textOf(result).contains("unknown field"))
+    }
+
+    @Test func updateTextRejectsNonTextClip() async throws {
+        let (h, asset) = await setupWithVideoTrack()
+        let clipId = await addedClip(in: h, asset: asset)
+        let result = await h.runRaw("update_text", args: [
+            "clipIds": [clipId], "fontSize": 48,
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("only applies to text"))
+    }
+
+    @Test func updateTextRejectsRemovedTextStyleFields() async {
+        var clip = Fixtures.clip(id: "title", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        clip.textStyle = TextStyle()
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])]))
+
+        let result = await h.runRaw("update_text", args: [
+            "clipIds": ["title"],
+            "borderEnabled": false,
+            "shadowColor": "#000000",
+        ])
+
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("unknown field"))
     }
 
     @Test func setClipPropertiesRejectsEmptyClipIds() async throws {
@@ -1295,6 +1383,40 @@ struct ToolExecutorTextFolderTests {
         let clip = h.editor.timeline.tracks[0].clips[0]
         #expect(clip.textContent == "Caption")
         #expect(clip.textStyle?.fontSize == 48)
+    }
+
+    @Test func addTextsAppliesRichTextStyleFields() async throws {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+        let result = await h.runRaw("add_texts", args: [
+            "entries": [[
+                "trackIndex": 0,
+                "startFrame": 0,
+                "durationFrames": 60,
+                "content": "Styled",
+                "fontName": "Georgia",
+                "fontSize": 54,
+                "isBold": false,
+                "isItalic": true,
+                "color": "#F0E0D0",
+                "alignment": "right",
+                "borderColor": "#102030",
+                "backgroundColor": "#01020380",
+            ]]
+        ])
+
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let style = h.editor.timeline.tracks[0].clips[0].textStyle
+        #expect(style?.fontName == "Georgia")
+        #expect(style?.fontSize == 54)
+        #expect(style?.isBold == false)
+        #expect(style?.isItalic == true)
+        #expect(style?.color == TextStyle.RGBA(hex: "#F0E0D0"))
+        #expect(style?.alignment == .right)
+        #expect(style?.border.enabled == true)
+        #expect(style?.border.color == TextStyle.RGBA(hex: "#102030"))
+        #expect(style?.background.enabled == true)
+        #expect(style?.background.color == TextStyle.RGBA(hex: "#01020380"))
     }
 
     @Test func addTextsRejectsAudioTargetTrack() async throws {
@@ -1691,5 +1813,73 @@ struct SetClipPropertiesTests {
         let updated = h.editor.timeline.tracks[0].clips[0]
         // Bug: Transform(center:width:height:) defaults rotation to 0, discarding cur.rotation.
         #expect(updated.transform.rotation == 45.0)
+    }
+
+    @Test func updateTextCaptionGroupAcceptsRichTextStyleFields() async {
+        var a = Fixtures.clip(id: "cap-a", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        var b = Fixtures.clip(id: "cap-b", mediaRef: "text", mediaType: .text, start: 30, duration: 30)
+        a.captionGroupId = "captions"
+        b.captionGroupId = "captions"
+        a.textContent = "one"
+        b.textContent = "two"
+        a.textStyle = TextStyle()
+        b.textStyle = TextStyle()
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [a, b])]))
+
+        let result = await h.runRaw("update_text", args: [
+            "captionGroupId": "captions",
+            "alignment": "left",
+            "borderColor": "#FFFFFF",
+            "backgroundColor": "#00000080",
+        ])
+
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        #expect(ToolHarness.textOf(result) == "Updated 2 text clips.")
+        let clips = h.editor.timeline.tracks[0].clips
+        for clip in clips {
+            #expect(clip.textStyle?.alignment == .left)
+            #expect(clip.textStyle?.border.enabled == true)
+            #expect(clip.textStyle?.border.color == TextStyle.RGBA(hex: "#FFFFFF"))
+            #expect(clip.textStyle?.background.enabled == true)
+            #expect(clip.textStyle?.background.color == TextStyle.RGBA(hex: "#00000080"))
+        }
+    }
+
+    @Test func updateTextAnimationPreservesExistingHighlight() async {
+        let highlight = TextStyle.RGBA(r: 1, g: 0, b: 0, a: 1)
+        var clip = Fixtures.clip(id: "title", mediaRef: "text", mediaType: .text, start: 0, duration: 60)
+        clip.textContent = "Title"
+        clip.textAnimation = TextAnimation(preset: .highlightPop, perWordFrames: 12, highlight: highlight)
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])]))
+
+        let result = await h.runRaw("update_text", args: [
+            "clipIds": ["title"],
+            "animation": "wordPop",
+        ])
+
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let animation = h.editor.timeline.tracks[0].clips[0].textAnimation
+        #expect(animation?.preset == .wordPop)
+        #expect(animation?.perWordFrames == 12)
+        #expect(animation?.highlight == highlight)
+    }
+
+    @Test func updateTextContentClearsWordTimings() async {
+        var clip = Fixtures.clip(id: "title", mediaRef: "text", mediaType: .text, start: 0, duration: 60)
+        clip.textContent = "old text"
+        clip.textStyle = TextStyle()
+        clip.wordTimings = [
+            WordTiming(text: "old", startFrame: 0, endFrame: 30),
+            WordTiming(text: "text", startFrame: 30, endFrame: 60),
+        ]
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])]))
+
+        let result = await h.runRaw("update_text", args: [
+            "clipIds": ["title"],
+            "content": "new text",
+        ])
+
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        #expect(h.editor.timeline.tracks[0].clips[0].wordTimings == nil)
     }
 }

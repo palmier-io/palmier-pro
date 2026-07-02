@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct FontPickerField: View {
-    let current: String
+    let current: String?
     let onPreview: (String) -> Void
     let onChange: (String) -> Void
     let onCancel: () -> Void
@@ -94,7 +94,8 @@ struct FontPickerField: View {
     }
 
     private var displayName: String {
-        NSFont(name: current, size: 12)?.familyName ?? current
+        guard let current else { return "Mixed" }
+        return NSFont(name: current, size: 12)?.familyName ?? current
     }
 }
 

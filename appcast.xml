@@ -701,5 +701,41 @@
                 type="application/octet-stream"
                 sparkle:edSignature="2QeBI3gH4zdRT+fIKIAQhPsdisEZuWVe8ZEC+vGFQkINz8zuj2oTy4sLY+d3uA8EXoG5GNGQjN+MBKSxyL+LBw=="/>
         </item>
+        <item>
+            <title>Version 0.4.5</title>
+            <pubDate>Sun, 28 Jun 2026 00:34:55 -0700</pubDate>
+            <sparkle:version>60</sparkle:version>
+            <sparkle:shortVersionString>0.4.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/palmier-io/palmier-pro/releases/download/v0.4.5/PalmierPro.dmg"
+                length="27092760"
+                type="application/octet-stream"
+                sparkle:edSignature="cZIVpGH3IJIx00G1Lz93dnYb5mrWL3k+MqEpk2hVxC8iYacnDZjmtATJgEJQixo7d3A3g3J2E7KaxAFgfyl5AQ=="/>
+        </item>
+        <item>
+            <title>Version 0.5.1</title>
+            <pubDate>Wed, 01 Jul 2026 01:07:32 -0700</pubDate>
+            <sparkle:version>61</sparkle:version>
+            <sparkle:shortVersionString>0.5.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/palmier-io/palmier-pro/releases/download/v0.5.1/PalmierPro.dmg"
+                length="27481771"
+                type="application/octet-stream"
+                sparkle:edSignature="ywjqGRSJAtaIHiefvyj+obBSdQDitTMe1t/DUXZ0/CvH3Ae0Y9G3RO3WWgVKE9sAasr02zF3GnbZqPO9QKaPDQ=="/>
+        </item>
+        <item>
+            <title>Version 0.5.2</title>
+            <pubDate>Wed, 01 Jul 2026 23:32:19 -0700</pubDate>
+            <sparkle:version>62</sparkle:version>
+            <sparkle:shortVersionString>0.5.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/palmier-io/palmier-pro/releases/download/v0.5.2/PalmierPro.dmg"
+                length="27518680"
+                type="application/octet-stream"
+                sparkle:edSignature="JRQrM5vIONHp1wRyFHWrPYrmEX3H55pimwJLOCl21OpdR+l39aZLiqOX2I71rxBMdfANHdgBrhRp3GjraVLLCg=="/>
+        </item>
     </channel>
 </rss>

@@ -38,6 +38,7 @@ struct ImageModelConfig: Identifiable, Sendable {
 
     var id: String { entry.id }
     var displayName: String { entry.displayName }
+    var paidOnly: Bool { entry.paidOnly }
     var creditsPerImage: [String: Double] { entry.creditsPerImage ?? [:] }
 
     var resolutions: [String]? { caps.resolutions }

@@ -19,11 +19,21 @@ final class ToolExecutor {
 
     private var agentUndoStack: [String] = []
     var feedbackState = FeedbackState()
+    var lastTranscriptContext: TranscriptionToolContext?
 
     func execute(name: String, args: [String: Any]) async -> ToolResult {
         guard let tool = ToolName(rawValue: name) else {
             return .error("Unknown tool: \(name)")
         }
+
+        // project tools act on AppState before editor is available
+        switch tool {
+        case .getProjects, .openProject, .newProject:
+            return await runProjectTool(tool, args)
+        default:
+            break
+        }
+
         guard let editor else { return .error("Editor not available") }
         let before = editor.timeline
         let result: ToolResult
@@ -87,6 +97,7 @@ final class ToolExecutor {
         case .removeClips:      return try removeClips(editor, args)
         case .removeTracks:     return try removeTracks(editor, args)
         case .moveClips:        return try moveClips(editor, args)
+        case .applyLayout:      return try applyLayout(editor, args)
         case .setClipProperties: return try setClipProperties(editor, args)
         case .setKeyframes:     return try setKeyframes(editor, args)
         case .splitClips:       return try splitClips(editor, args)
@@ -95,6 +106,7 @@ final class ToolExecutor {
         case .syncAudio:     return try await syncAudio(editor, args)
         case .undo:          return try undo(editor)
         case .addTexts:      return try addTexts(editor, args)
+        case .updateText:    return try updateText(editor, args)
         case .addCaptions:   return try await addCaptions(editor, args)
         case .exportProject: return try await exportProject(editor, args)
         case .generateVideo: return try generate(editor, args, type: .video)
@@ -102,6 +114,7 @@ final class ToolExecutor {
         case .generateAudio: return try await generateAudio(editor, args)
         case .upscaleMedia:  return try upscaleMedia(editor, args)
         case .importMedia:   return try await importMedia(editor, args)
+        case .createMatte:   return try await createMatte(editor, args)
         case .listModels:    return listModels(args)
         case .listFolders:   return listFolders(editor)
         case .createFolder:  return try createFolder(editor, args)
@@ -113,6 +126,8 @@ final class ToolExecutor {
         case .sendFeedback:  return try await sendFeedback(editor, args)
         case .setProjectSettings: return try setProjectSettings(editor, args)
         case .readSkill:     return readSkill(args)
+        case .getProjects, .openProject, .newProject:
+            return await runProjectTool(tool, args)
         }
     }
 

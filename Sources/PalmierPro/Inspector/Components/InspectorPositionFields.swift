@@ -36,13 +36,10 @@ struct InspectorPositionFields: View {
     }
 
     private func apply(setX: Double?, setY: Double?) {
-        for c in clips { editor.applyPosition(clipId: c.id, setX: setX, setY: setY) }
+        editor.applyPositions(clipIds: clips.map(\.id), setX: setX, setY: setY)
     }
 
     private func commit(setX: Double?, setY: Double?) {
-        editor.undoManager?.beginUndoGrouping()
-        for c in clips { editor.commitPosition(clipId: c.id, setX: setX, setY: setY) }
-        editor.undoManager?.endUndoGrouping()
-        editor.undoManager?.setActionName("Change Position")
+        editor.commitPositions(clipIds: clips.map(\.id), setX: setX, setY: setY)
     }
 }

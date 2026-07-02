@@ -57,6 +57,7 @@ struct ExportView: View {
     @State private var destination: ExportDestination = .video
     @State private var timelineFormat: TimelineExportFormat = .fcpxml
     @State private var fcpxmlVersion: FCPXMLVersion = .default
+    @State private var fcpxmlTarget: FCPXMLTarget = .default
     @State private var codec: VideoCodec = .h264
     @State private var resolution: ExportResolution = .matchTimeline
     @State private var palmierResult: String?
@@ -216,6 +217,18 @@ struct ExportView: View {
     private var fcpxmlVersionRow: some View {
         Divider().opacity(AppTheme.Opacity.moderate)
         HStack(spacing: AppTheme.Spacing.sm) {
+            Text("For")
+                .font(.system(size: AppTheme.FontSize.xs))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            Picker("", selection: $fcpxmlTarget) {
+                ForEach(FCPXMLTarget.allCases) { target in
+                    Text(target.displayName).tag(target)
+                }
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .font(.system(size: AppTheme.FontSize.xs))
+            .fixedSize()
             Text("Version")
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -319,7 +332,7 @@ struct ExportView: View {
             destination = option
         } label: {
             HStack(spacing: AppTheme.Spacing.sm) {
-                radioIndicator(selected: selected)
+                RadioIndicator(selected: selected)
 
                 Text(option.rawValue)
                     .font(.system(size: AppTheme.FontSize.md, weight: selected ? AppTheme.FontWeight.semibold : AppTheme.FontWeight.medium))
@@ -333,20 +346,6 @@ struct ExportView: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-    }
-
-    private func radioIndicator(selected: Bool) -> some View {
-        ZStack {
-            Circle()
-                .strokeBorder(selected ? AppTheme.Accent.primary : AppTheme.Text.mutedColor, lineWidth: AppTheme.BorderWidth.thin)
-
-            if selected {
-                Circle()
-                    .fill(AppTheme.Accent.primary)
-                    .padding(AppTheme.Spacing.xs)
-            }
-        }
-        .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
     }
 
     private func timelineFormatButton(_ format: TimelineExportFormat) -> some View {
@@ -468,6 +467,7 @@ struct ExportView: View {
                     format: format,
                     resolution: resolution,
                     fcpxmlVersion: fcpxmlVersion,
+                    fcpxmlTarget: fcpxmlTarget,
                     missingMediaRefs: editor.missingMediaRefs,
                     outputURL: url
                 )

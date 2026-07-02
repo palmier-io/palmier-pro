@@ -51,15 +51,33 @@ extension EditorViewModel {
             }
         }
 
-        // Refit auto-fitted clips to the new canvas aspect
+        // Keep visual scale proportional when the canvas aspect changes.
         if width != prevWidth || height != prevHeight {
             for ti in timeline.tracks.indices {
                 for ci in timeline.tracks[ti].clips.indices {
-                    let clip = timeline.tracks[ti].clips[ci]
-                    guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }) else { continue }
-                    if clip.transform == fitTransform(for: asset, canvasWidth: prevWidth, canvasHeight: prevHeight) {
-                        timeline.tracks[ti].clips[ci].transform = fitTransform(for: asset, canvasWidth: width, canvasHeight: height)
+                    var clip = timeline.tracks[ti].clips[ci]
+                    guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }),
+                          let oldAspect = mediaCanvasAspect(for: asset, canvasWidth: prevWidth, canvasHeight: prevHeight),
+                          let newAspect = mediaCanvasAspect(for: asset, canvasWidth: width, canvasHeight: height) else { continue }
+
+                    let scaleAnimated = clip.scaleTrack?.isActive ?? false
+                    let oldFit = fitTransform(for: asset, canvasWidth: prevWidth, canvasHeight: prevHeight)
+                    if !scaleAnimated,
+                       transformScale(clip.transform, matches: oldFit) {
+                        let newFit = fitTransform(for: asset, canvasWidth: width, canvasHeight: height)
+                        clip.transform.width = newFit.width
+                        clip.transform.height = newFit.height
+                    } else {
+                        let heightScale = oldAspect / newAspect
+                        clip.transform.height *= heightScale
+                        if var track = clip.scaleTrack, track.isActive {
+                            for ki in track.keyframes.indices {
+                                track.keyframes[ki].value.b *= heightScale
+                            }
+                            clip.scaleTrack = track
+                        }
                     }
+                    timeline.tracks[ti].clips[ci] = clip
                 }
             }
         }
@@ -76,7 +94,11 @@ extension EditorViewModel {
         notifyTimelineChanged()
     }
 
-    func checkProjectSettings(for assets: [MediaAsset]) -> ProjectSettingsAction {
+    private func transformScale(_ transform: Transform, matches other: Transform) -> Bool {
+        abs(transform.width - other.width) < 0.0001 && abs(transform.height - other.height) < 0.0001
+    }
+
+    func checkProjectSettings(for assets: [MediaAsset], adoptFPS: Bool = true) -> ProjectSettingsAction {
         guard let firstVideo = assets.first(where: { $0.type == .video }) else {
             return .proceed
         }
@@ -85,7 +107,7 @@ extension EditorViewModel {
 
         if !timeline.settingsConfigured {
             // First clip ever — auto-detect settings silently
-            let fps = firstVideo.sourceFPS.flatMap { Int($0.rounded()) } ?? timeline.fps
+            let fps = adoptFPS ? (firstVideo.sourceFPS.flatMap { Int($0.rounded()) } ?? timeline.fps) : timeline.fps
             let width = firstVideo.sourceWidth ?? timeline.width
             let height = firstVideo.sourceHeight ?? timeline.height
             applyTimelineSettings(fps: fps, width: width, height: height)
@@ -101,13 +123,13 @@ extension EditorViewModel {
         let clipWidth = firstVideo.sourceWidth
         let clipHeight = firstVideo.sourceHeight
 
-        let fpsMismatch = clipFPS != nil && clipFPS != timeline.fps
+        let fpsMismatch = adoptFPS && clipFPS != nil && clipFPS != timeline.fps
         let resMismatch = (clipWidth != nil && clipWidth != timeline.width) ||
                           (clipHeight != nil && clipHeight != timeline.height)
 
         if fpsMismatch || resMismatch {
             return .mismatch(
-                clipFPS: clipFPS ?? timeline.fps,
+                clipFPS: adoptFPS ? (clipFPS ?? timeline.fps) : timeline.fps,
                 clipWidth: clipWidth ?? timeline.width,
                 clipHeight: clipHeight ?? timeline.height
             )

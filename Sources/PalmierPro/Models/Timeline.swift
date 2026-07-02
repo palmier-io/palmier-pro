@@ -97,6 +97,8 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     // Text clips only.
     var textContent: String?
     var textStyle: TextStyle?
+    var textAnimation: TextAnimation?
+    var wordTimings: [WordTiming]?
 
     // Keyframe tracks for each animatable property. Nil when no animation exists.
     var opacityTrack: KeyframeTrack<Double>?
@@ -108,14 +110,17 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
 
     var effects: [Effect]?
 
+    /// How this clip composites over the tracks below it. nil = normal (source-over).
+    var blendMode: BlendMode?
+
     private enum CodingKeys: String, CodingKey {
         case id, mediaRef, mediaType, sourceClipType, startFrame, durationFrames
         case trimStartFrame, trimEndFrame, speed, volume
         case fadeInFrames, fadeOutFrames, fadeInInterpolation, fadeOutInterpolation
         case opacity, transform, crop
-        case linkGroupId, captionGroupId, textContent, textStyle
+        case linkGroupId, captionGroupId, textContent, textStyle, textAnimation, wordTimings
         case opacityTrack, positionTrack, scaleTrack, rotationTrack, cropTrack, volumeTrack
-        case effects
+        case effects, blendMode
     }
 
     /// Frame where this clip ends on the timeline
@@ -299,6 +304,16 @@ extension Clip {
         fadeOutFrames = max(0, min(fadeOutFrames, durationFrames - fadeInFrames))
     }
 
+    mutating func rescaleWordTimings(from oldDuration: Int) {
+        guard mediaType == .text, let timings = wordTimings, oldDuration > 0, durationFrames > 0 else { return }
+        let scale = Double(durationFrames) / Double(oldDuration)
+        wordTimings = timings.map { timing in
+            let start = min(max(0, Int((Double(timing.startFrame) * scale).rounded())), max(0, durationFrames - 1))
+            let end = min(max(start + 1, Int((Double(timing.endFrame) * scale).rounded())), durationFrames)
+            return WordTiming(text: timing.text, startFrame: start, endFrame: end)
+        }
+    }
+
     /// Set the fade length for one edge and clamp to fit.
     mutating func setFade(_ edge: FadeEdge, frames: Int) {
         let v = max(0, frames)
@@ -325,7 +340,9 @@ extension Clip {
     }
 
     mutating func setDuration(_ newDuration: Int) {
+        let oldDuration = durationFrames
         durationFrames = newDuration
+        rescaleWordTimings(from: oldDuration)
         clampKeyframesToDuration()
         clampFadesToDuration()
     }
@@ -354,18 +371,21 @@ extension Clip {
             captionGroupId: try? c.decode(String.self, forKey: .captionGroupId),
             textContent: try? c.decode(String.self, forKey: .textContent),
             textStyle: try? c.decode(TextStyle.self, forKey: .textStyle),
+            textAnimation: try? c.decode(TextAnimation.self, forKey: .textAnimation),
+            wordTimings: try? c.decode([WordTiming].self, forKey: .wordTimings),
             opacityTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .opacityTrack),
             positionTrack: try? c.decode(KeyframeTrack<AnimPair>.self, forKey: .positionTrack),
             scaleTrack: try? c.decode(KeyframeTrack<AnimPair>.self, forKey: .scaleTrack),
             rotationTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .rotationTrack),
             cropTrack: try? c.decode(KeyframeTrack<Crop>.self, forKey: .cropTrack),
             volumeTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .volumeTrack),
-            effects: try? c.decode([Effect].self, forKey: .effects)
+            effects: try? c.decode([Effect].self, forKey: .effects),
+            blendMode: try? c.decode(BlendMode.self, forKey: .blendMode)
         )
     }
 }
 
-struct Transform: Codable, Sendable, Equatable {
+struct Transform: Codable, Sendable, Equatable, Hashable {
     var centerX: Double = 0.5
     var centerY: Double = 0.5
     var width: Double = 1

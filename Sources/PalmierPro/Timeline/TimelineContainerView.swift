@@ -22,6 +22,7 @@ struct TimelineContainerView: NSViewRepresentable {
         let timelineView = TimelineView(editor: editor)
         timelineView.autoresizingMask = []
         scrollView.documentView = timelineView
+        headerView.requestCanvasRedraw = { [weak timelineView] in timelineView?.needsDisplay = true }
 
         scrollView.frame = NSRect(x: Layout.trackHeaderWidth, y: 0, width: 0, height: 0)
         scrollView.autoresizingMask = [.width, .height]

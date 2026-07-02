@@ -31,7 +31,7 @@ struct HDRExportTests {
         let out = URL(fileURLWithPath: outPath)
         try await HDRVideoExporter.export(
             .init(composition: comp, videoComposition: vc, audioMix: nil),
-            renderSize: vc.renderSize, fps: 30, transfer: .hlg, to: out
+            renderSize: vc.renderSize, transfer: .hlg, to: out
         )
 
         #expect(FileManager.default.fileExists(atPath: outPath))

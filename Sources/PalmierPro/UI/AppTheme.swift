@@ -64,6 +64,10 @@ enum AppTheme {
         )
     }
 
+    enum Update {
+        static let accent = Accent.timecodeColor
+    }
+
     // MARK: - Adjust sliders
 
     enum Slider {
@@ -263,6 +267,8 @@ enum AppTheme {
         static let toolImagePreviewMaxHeight: CGFloat = 50
         static let projectCardWidth: CGFloat = 150
         static let projectCardHeight: CGFloat = 120
+        static let timelineClipDetailMinWidth: CGFloat = 32
+        static let timelineClipLabelMinWidth: CGFloat = 56
         static let updateOverlayWidth: CGFloat = 640
     }
 
@@ -304,6 +310,11 @@ enum AppTheme {
     enum Export {
         static let sheetWidth: CGFloat = 560
         static let sheetHeight: CGFloat = 520
+    }
+
+    enum Matte {
+        static let sheetWidth: CGFloat = 280
+        static let controlWidth: CGFloat = 116
     }
 
     // MARK: - Shadows

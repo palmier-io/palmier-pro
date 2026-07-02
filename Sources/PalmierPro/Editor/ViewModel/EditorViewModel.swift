@@ -208,6 +208,7 @@ final class EditorViewModel {
     // MARK: - Document bridge
 
     weak var undoManager: UndoManager?
+    @ObservationIgnored var onProjectCheckpointRequired: (() -> Void)?
     var isDocumentEdited: Bool = false
 
     func telemetrySnapshot() -> [String: Any] {
@@ -327,13 +328,16 @@ final class EditorViewModel {
     /// Coalesces rapid rebuild requests so `replaceCurrentItem` doesn't fire per keystroke.
     var pendingRebuildTask: Task<Void, Never>?
 
-    func notifyTimelineChanged() {
+    func notifyTimelineChanged(refreshVisuals: Bool = true) {
+        guard undoManager?.isUndoRegistrationEnabled ?? true else { return }
         pendingRebuildTask?.cancel()
         pendingRebuildTask = nil
         if isPlaying {
             videoEngine?.pause()
         }
-        videoEngine?.syncTextLayers()
+        if refreshVisuals {
+            videoEngine?.refreshVisuals()
+        }
         videoEngine?.rebuild()
     }
 
@@ -372,15 +376,21 @@ final class EditorViewModel {
         // sourceSegment (source seconds) and explicit trim frames are mutually exclusive; callers pass one.
         let applyTrim: (inout Clip) -> Void = { clip in
             if sourceSegment != nil {
-                // trimStartFrame/trimEndFrame are amounts trimmed off the head/tail
-                // (sourceDurationFrames = consumed + trimStart + trimEnd), so the tail
-                // trim is whatever source remains after the head trim and visible span.
+                // tail trim is what's left after head trim and visible span
                 let consumed = Int((Double(durationFrames) * clip.speed).rounded())
                 clip.trimStartFrame = trimStart
                 clip.trimEndFrame = max(0, totalSourceFrames - trimStart - consumed)
             } else {
-                if let t = trimStartFrame { clip.trimStartFrame = t }
-                if let t = trimEndFrame { clip.trimEndFrame = t }
+                let start = max(0, trimStartFrame ?? 0)
+                clip.trimStartFrame = start
+                if totalSourceFrames > 0 {
+                    // Use actual remaining source for tail trim if not set; clamp to available.
+                    let consumed = Int((Double(durationFrames) * clip.speed).rounded())
+                    let remainingTail = max(0, totalSourceFrames - start - consumed)
+                    clip.trimEndFrame = min(trimEndFrame ?? remainingTail, remainingTail)
+                } else if let t = trimEndFrame {
+                    clip.trimEndFrame = t
+                }
             }
         }
 
@@ -467,45 +477,54 @@ final class EditorViewModel {
     }
 
     func fitTransform(for asset: MediaAsset, canvasWidth: Int, canvasHeight: Int) -> Transform {
-        guard let sw = asset.sourceWidth, let sh = asset.sourceHeight,
-              sw > 0, sh > 0, canvasWidth > 0, canvasHeight > 0 else {
+        guard let relativeAspect = mediaCanvasAspect(for: asset, canvasWidth: canvasWidth, canvasHeight: canvasHeight) else {
             return Transform()
         }
         let canvasAspect = Double(canvasWidth) / Double(canvasHeight)
-        let sourceAspect = Double(sw) / Double(sh)
+        let sourceAspect = relativeAspect * canvasAspect
         if abs(canvasAspect - sourceAspect) < Defaults.aspectTolerance {
             return Transform()
         }
-        if sourceAspect > canvasAspect {
-            return Transform(width: 1.0, height: canvasAspect / sourceAspect)
+        if relativeAspect > 1 {
+            return Transform(width: 1.0, height: 1.0 / relativeAspect)
         }
-        return Transform(width: sourceAspect / canvasAspect, height: 1.0)
+        return Transform(width: relativeAspect, height: 1.0)
+    }
+
+    func mediaCanvasAspect(for asset: MediaAsset, canvasWidth: Int, canvasHeight: Int) -> Double? {
+        guard let sw = asset.sourceWidth, let sh = asset.sourceHeight,
+              sw > 0, sh > 0, canvasWidth > 0, canvasHeight > 0 else { return nil }
+        let canvasAspect = Double(canvasWidth) / Double(canvasHeight)
+        return (Double(sw) / Double(sh)) / canvasAspect
     }
 
     /// Source aspect ratio relative to canvas; nil when source dimensions are unknown.
     func mediaCanvasAspect(for clip: Clip) -> Double? {
-        guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }),
-              let sw = asset.sourceWidth, let sh = asset.sourceHeight,
-              sw > 0, sh > 0 else { return nil }
-        let canvasAspect = Double(timeline.width) / Double(timeline.height)
-        return (Double(sw) / Double(sh)) / canvasAspect
+        guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }) else { return nil }
+        return mediaCanvasAspect(for: asset, canvasWidth: timeline.width, canvasHeight: timeline.height)
     }
 
-    /// Largest centered crop of `target` aspect inside the source.
-    func cropFittingAspect(for clip: Clip, targetPixelAspect target: Double) -> Crop {
+    func cropFittingAspect(
+        for clip: Clip,
+        targetPixelAspect target: Double,
+        anchorX: Double = 0.5,
+        anchorY: Double = 0.5
+    ) -> Crop {
         guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }),
               let sw = asset.sourceWidth, let sh = asset.sourceHeight,
               sw > 0, sh > 0, target > 0 else { return Crop() }
         let sourceAspect = Double(sw) / Double(sh)
         if abs(sourceAspect - target) < 0.0001 { return Crop() }
+        let ax = min(1, max(0, anchorX))
+        let ay = min(1, max(0, anchorY))
         if sourceAspect > target {
-            let visibleWidthFrac = target / sourceAspect
-            let inset = (1 - visibleWidthFrac) / 2
-            return Crop(left: inset, top: 0, right: inset, bottom: 0)
+            let total = 1 - target / sourceAspect
+            let left = total * ax
+            return Crop(left: left, top: 0, right: total - left, bottom: 0)
         } else {
-            let visibleHeightFrac = sourceAspect / target
-            let inset = (1 - visibleHeightFrac) / 2
-            return Crop(left: 0, top: inset, right: 0, bottom: inset)
+            let total = 1 - sourceAspect / target
+            let top = total * ay
+            return Crop(left: 0, top: top, right: 0, bottom: total - top)
         }
     }
 

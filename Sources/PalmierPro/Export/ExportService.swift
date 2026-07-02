@@ -36,6 +36,7 @@ final class ExportService {
         format: ExportFormat,
         resolution: ExportResolution,
         fcpxmlVersion: FCPXMLVersion = .default,
+        fcpxmlTarget: FCPXMLTarget = .default,
         missingMediaRefs: Set<String> = [],
         outputURL: URL,
         acquireSlot: Bool = true
@@ -57,7 +58,8 @@ final class ExportService {
                 if format == .xml {
                     try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
                 } else {
-                    try FCPXMLExporter.export(timeline: timeline, resolver: resolver, version: fcpxmlVersion, outputURL: outputURL)
+                    try await FCPXMLExporter.export(timeline: timeline, resolver: resolver, version: fcpxmlVersion,
+                                                    target: fcpxmlTarget, outputURL: outputURL)
                 }
                 progress = 1.0
                 Log.export.notice("export ok format=\(name)", telemetry: "Export finished", data: ["format": name])
@@ -217,7 +219,8 @@ final class ExportService {
     }
 
     /// Build the composition, then encode HEVC Main10 HDR. The compositor renders SDR Rec.709
-    /// (grades and effects already baked in); `HDRVideoExporter` converts 709 → HLG per frame.
+    /// (grades, effects, and titles already baked in via the videoComposition); `HDRVideoExporter`
+    /// converts 709 → HLG per frame.
     private func exportHDR(
         timeline: Timeline,
         resolver: MediaResolver,
@@ -235,22 +238,22 @@ final class ExportService {
                 resolveURL: { resolver.resolveURL(for: $0) },
                 renderSize: renderSize
             )
-            // `CIImage(cgImage:)` honors the bitmap's premultipliedLast alpha, so it composites and
-            // fades correctly as-is. (Do NOT add `.unpremultiplyingAlpha()` — unlike FrameRenderer's
-            // color-management-off CVPixelBuffer path, that double-divides and blows out titles.)
-            let overlays = TextLayerController.exportClipImages(timeline: timeline, canvasSize: renderSize)
-                .map { HDRVideoExporter.TextOverlay(clip: $0.clip, image: CIImage(cgImage: $0.image)) }
             try? FileManager.default.removeItem(at: outputURL)
-            Log.export.notice("hdr export start size=\(Int(renderSize.width))x\(Int(renderSize.height)) titles=\(overlays.count) url=\(outputURL.lastPathComponent)")
+            Log.export.notice("hdr export start size=\(Int(renderSize.width))x\(Int(renderSize.height)) url=\(outputURL.lastPathComponent)")
             let inputs = HDRVideoExporter.Inputs(
                 composition: result.composition,
                 videoComposition: result.videoComposition,
                 audioMix: result.audioMix
             )
             try await HDRVideoExporter.export(
-                inputs, renderSize: renderSize, fps: timeline.fps, transfer: .hlg, to: outputURL,
-                onProgress: { [weak self] p in Task { @MainActor in self?.progress = p } },
-                textOverlays: overlays
+                inputs, renderSize: renderSize, transfer: .hlg, to: outputURL,
+                onProgress: { [weak self] p in Task { @MainActor in self?.progress = p } }
+            )
+            let outputSize = await Self.encodedVideoSize(of: outputURL) ?? renderSize
+            lastReport = ExportRunReport(
+                outputSize: outputSize,
+                offlineMediaRefs: result.offlineMediaRefs,
+                unprocessableMediaRefs: result.unprocessableMediaRefs
             )
             progress = 1.0
             Log.export.notice("hdr export ok")
@@ -294,21 +297,7 @@ final class ExportService {
             throw ExportError.unsupportedPreset
         }
         session.audioMix = result.audioMix
-
-        // Bake text clips into the export via AVVideoCompositionCoreAnimationTool
-        let (parent, videoLayer) = TextLayerController.buildForExport(
-            timeline: timeline,
-            fps: timeline.fps,
-            renderSize: renderSize
-        )
-        let animationTool = AVVideoCompositionCoreAnimationTool(
-            postProcessingAsVideoLayer: videoLayer,
-            in: parent
-        )
-        session.videoComposition = CompositionBuilder.addingAnimationTool(
-            animationTool,
-            to: result.videoComposition
-        )
+        session.videoComposition = result.videoComposition
         return (session, result, renderSize)
     }
 

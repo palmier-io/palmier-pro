@@ -10,7 +10,7 @@ fileprivate struct AddClipsInput: DecodableToolArgs {
         let mediaRef: String
         let trackIndex: Int?
         let startFrame: Int
-        let durationFrames: Int
+        let durationFrames: Int?
         let trimStartFrame: Int?
         let trimEndFrame: Int?
         static let allowedKeys: Set<String> = ["mediaRef", "trackIndex", "startFrame", "durationFrames", "trimStartFrame", "trimEndFrame"]
@@ -58,7 +58,7 @@ fileprivate struct SplitClipsInput: DecodableToolArgs {
 }
 
 fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
-    let clipIds: [String]
+    let clipIds: [String]?
     let durationFrames: Int?
     let trimStartFrame: Int?
     let trimEndFrame: Int?
@@ -66,26 +66,21 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     let volume: Double?
     let opacity: Double?
     let transform: ParsedTransform?
-    let content: String?
-    let fontName: String?
-    let fontSize: Double?
-    let color: String?
-    let alignment: String?
+    let blendMode: String?
 
-    static let allowedKeys: Set<String> = [
+    static let allowedKeys: Set<String> = Set([
         "clipIds",
         "durationFrames", "trimStartFrame", "trimEndFrame", "speed",
         "volume", "opacity",
         "transform",
-        "content", "fontName", "fontSize", "color", "alignment",
-    ]
+        "blendMode",
+    ])
 
     var hasAnyProperty: Bool {
         durationFrames != nil || trimStartFrame != nil || trimEndFrame != nil
             || speed != nil || volume != nil || opacity != nil
             || transform != nil
-            || content != nil || fontName != nil || fontSize != nil
-            || color != nil || alignment != nil
+            || blendMode != nil
     }
 }
 
@@ -94,7 +89,8 @@ fileprivate struct RippleDeleteRangesInput: DecodableToolArgs {
     let trackIndex: Int?
     let ranges: [[Double]]
     let units: String?
-    static let allowedKeys: Set<String> = ["clipId", "trackIndex", "ranges", "units"]
+    let ignoreSyncLockedTracks: [Int]?
+    static let allowedKeys: Set<String> = ["clipId", "trackIndex", "ranges", "units", "ignoreSyncLockedTracks"]
 }
 
 fileprivate struct SetKeyframesInput: DecodableToolArgs {
@@ -137,6 +133,38 @@ fileprivate struct ParsedMove {
 
 extension ToolExecutor {
 
+    /// Resolves (trimStart, duration, trimEnd) for a clip placement
+    fileprivate func resolvePlacement(
+        _ asset: MediaAsset, fps: Int,
+        durationFrames: Int?, trimStartFrame: Int?, trimEndFrame: Int?, path: String
+    ) throws -> (trimStart: Int, duration: Int, trimEnd: Int?) {
+        let trimStart = trimStartFrame ?? 0
+        guard trimStart >= 0 else { throw ToolError("\(path): trimStartFrame must be >= 0 (got \(trimStart))") }
+        if let t = trimEndFrame, t < 0 { throw ToolError("\(path): trimEndFrame must be >= 0 (got \(t))") }
+        if let d = durationFrames, d < 1 { throw ToolError("\(path): durationFrames must be >= 1 (got \(d))") }
+        guard durationFrames == nil || trimEndFrame == nil else {
+            throw ToolError("\(path): set durationFrames OR trimEndFrame, not both — both define the clip's end. Use durationFrames for an explicit length, trimEndFrame to trim the tail.")
+        }
+
+        let sourceLen = secondsToFrame(seconds: asset.duration, fps: fps)
+        if let d = durationFrames {
+            if sourceLen > 0, trimStart + d > sourceLen {
+                throw ToolError("\(path): trimStartFrame \(trimStart) + durationFrames \(d) exceed the source length (\(sourceLen) frames). Use a shorter durationFrames or smaller trimStartFrame.")
+            }
+            return (trimStart, d, nil)
+        }
+        // Length derived from the trimmed source window [trimStart, sourceLen - trimEnd].
+        guard sourceLen > 0 else {
+            throw ToolError("\(path): durationFrames is required for this asset — its source length is unknown.")
+        }
+        let trimEnd = trimEndFrame ?? 0
+        let duration = sourceLen - trimStart - trimEnd
+        guard duration >= 1 else {
+            throw ToolError("\(path): trimStartFrame \(trimStart) + trimEndFrame \(trimEnd) leave no frames (source is \(sourceLen)).")
+        }
+        return (trimStart, duration, trimEndFrame)
+    }
+
     // MARK: add_clips
 
     func addClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
@@ -151,8 +179,8 @@ extension ToolExecutor {
             }
         }
 
-        var specs: [AddClipSpec] = []
-        specs.reserveCapacity(input.entries.count)
+        var prepared: [(entry: AddClipsInput.Entry, asset: MediaAsset, trackId: String?)] = []
+        prepared.reserveCapacity(input.entries.count)
         for (idx, entry) in input.entries.enumerated() {
             let asset = try asset(entry.mediaRef, editor: editor)
             var trackId: String? = nil
@@ -166,28 +194,30 @@ extension ToolExecutor {
                 }
                 trackId = editor.timeline.tracks[ti].id
             }
-            guard entry.durationFrames >= 1 else {
-                throw ToolError("entries[\(idx)]: durationFrames must be >= 1 (got \(entry.durationFrames))")
-            }
             guard entry.startFrame >= 0 else {
                 throw ToolError("entries[\(idx)]: startFrame must be >= 0 (got \(entry.startFrame))")
             }
-            if let t = entry.trimStartFrame, t < 0 {
-                throw ToolError("entries[\(idx)]: trimStartFrame must be >= 0 (got \(t))")
-            }
-            if let t = entry.trimEndFrame, t < 0 {
-                throw ToolError("entries[\(idx)]: trimEndFrame must be >= 0 (got \(t))")
-            }
-            specs.append(.init(asset: asset, trackId: trackId, startFrame: entry.startFrame, durationFrames: entry.durationFrames, trimStartFrame: entry.trimStartFrame, trimEndFrame: entry.trimEndFrame))
+            prepared.append((entry, asset, trackId))
         }
 
         // All-or-none for trackIndex: a new track at index 0 would shift any explicit indices.
-        let omittedCount = specs.filter { $0.trackId == nil }.count
-        guard omittedCount == 0 || omittedCount == specs.count else {
-            throw ToolError("Mixed trackIndex: \(omittedCount) of \(specs.count) entries omitted trackIndex. Either set it on every entry or omit it on every entry (to auto-create shared tracks).")
+        let omittedCount = prepared.filter { $0.trackId == nil }.count
+        guard omittedCount == 0 || omittedCount == prepared.count else {
+            throw ToolError("Mixed trackIndex: \(omittedCount) of \(prepared.count) entries omitted trackIndex. Either set it on every entry or omit it on every entry (to auto-create shared tracks).")
         }
 
-        let settingsNote = applySettingsIfNeededForAgent(editor, assets: specs.map(\.asset))
+        let settingsNote = applySettingsIfNeededForAgent(editor, assets: prepared.map(\.asset))
+
+        var specs: [AddClipSpec] = []
+        specs.reserveCapacity(prepared.count)
+        for (idx, p) in prepared.enumerated() {
+            let place = try resolvePlacement(p.asset, fps: editor.timeline.fps,
+                                             durationFrames: p.entry.durationFrames,
+                                             trimStartFrame: p.entry.trimStartFrame,
+                                             trimEndFrame: p.entry.trimEndFrame, path: "entries[\(idx)]")
+            specs.append(.init(asset: p.asset, trackId: p.trackId, startFrame: p.entry.startFrame,
+                               durationFrames: place.duration, trimStartFrame: place.trimStart, trimEndFrame: place.trimEnd))
+        }
 
         let actionName = specs.count == 1 ? "Add Clip (Agent)" : "Add Clips (Agent)"
         let (createdTracks, summaries) = try withUndoGroup(editor, actionName: actionName) { () -> ([String], [String]) in
@@ -301,12 +331,6 @@ extension ToolExecutor {
             guard asset.type.isCompatible(with: targetType) else {
                 throw ToolError("entries[\(idx)]: asset type \(asset.type.rawValue) is not compatible with \(targetType.rawValue) track at index \(input.trackIndex)")
             }
-            if let t = entry.trimStartFrame, t < 0 {
-                throw ToolError("entries[\(idx)]: trimStartFrame must be >= 0 (got \(t))")
-            }
-            if let t = entry.trimEndFrame, t < 0 {
-                throw ToolError("entries[\(idx)]: trimEndFrame must be >= 0 (got \(t))")
-            }
             resolvedAssets.append(asset)
         }
 
@@ -315,12 +339,12 @@ extension ToolExecutor {
         var specs: [EditorViewModel.RippleInsertSpec] = []
         specs.reserveCapacity(input.entries.count)
         for (idx, entry) in input.entries.enumerated() {
-            let asset = resolvedAssets[idx]
-            let duration = entry.durationFrames ?? editor.clipDurationFrames(for: asset, segment: nil)
-            guard duration >= 1 else {
-                throw ToolError("entries[\(idx)]: durationFrames must be >= 1 (got \(duration))")
-            }
-            specs.append(.init(asset: asset, durationFrames: duration, trimStartFrame: entry.trimStartFrame, trimEndFrame: entry.trimEndFrame))
+            let place = try resolvePlacement(resolvedAssets[idx], fps: editor.timeline.fps,
+                                             durationFrames: entry.durationFrames,
+                                             trimStartFrame: entry.trimStartFrame,
+                                             trimEndFrame: entry.trimEndFrame, path: "entries[\(idx)]")
+            specs.append(.init(asset: resolvedAssets[idx], durationFrames: place.duration,
+                               trimStartFrame: place.trimStart, trimEndFrame: place.trimEnd))
         }
 
         let totalPush = specs.reduce(0) { $0 + $1.durationFrames }
@@ -441,11 +465,10 @@ extension ToolExecutor {
 
     // MARK: set_clip_properties
 
-    private static let textOnlyKeys: Set<String> = ["content", "fontName", "fontSize", "color", "alignment"]
-
     func setClipProperties(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let input: SetClipPropertiesInput = try decodeToolArgs(args, path: "set_clip_properties")
-        guard !input.clipIds.isEmpty else { throw ToolError("Missing or empty 'clipIds' array") }
+        let clipIds = input.clipIds ?? []
+        guard !clipIds.isEmpty else { throw ToolError("Provide a non-empty 'clipIds' array") }
         guard input.hasAnyProperty else {
             throw ToolError("set_clip_properties needs at least one property to apply")
         }
@@ -467,26 +490,27 @@ extension ToolExecutor {
         if let t = input.trimEndFrame, t < 0 {
             throw ToolError("trimEndFrame must be >= 0 (got \(t))")
         }
-        let color = try parseColorHex(input.color, path: "set_clip_properties")
-        let alignment = try parseAlignment(input.alignment, path: "set_clip_properties")
 
-        // Resolve clipIds + collect types so we can reject text-only fields on non-text clips.
+        // Resolve clipIds + collect types for blend-mode validation.
         var clipTypes: [String: ClipType] = [:]
-        for id in input.clipIds {
+        for id in clipIds {
             guard let loc = editor.findClip(id: id) else { throw ToolError("Clip not found: \(id)") }
             clipTypes[id] = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].mediaType
         }
-        let textOnlyUsed = [
-            input.content   != nil ? "content"   : nil,
-            input.fontName  != nil ? "fontName"  : nil,
-            input.fontSize  != nil ? "fontSize"  : nil,
-            input.color     != nil ? "color"     : nil,
-            input.alignment != nil ? "alignment" : nil,
-        ].compactMap { $0 }
-        if !textOnlyUsed.isEmpty {
-            let nonText = clipTypes.filter { $0.value != .text }.map { $0.key }.sorted()
-            if !nonText.isEmpty {
-                throw ToolError("text-only fields '\(textOnlyUsed.joined(separator: "', '"))' rejected on non-text clips: \(nonText.joined(separator: ", "))")
+
+        // blendMode applies only to visual (video/image) clips. "normal" clears it.
+        var blendMode: BlendMode?
+        let setBlendMode = input.blendMode != nil
+        if let raw = input.blendMode {
+            let nonVisual = clipTypes.filter { $0.value == .text || $0.value == .audio }.map(\.key).sorted()
+            if !nonVisual.isEmpty {
+                throw ToolError("blendMode only applies to video/image clips: \(nonVisual.joined(separator: ", "))")
+            }
+            if raw != "normal" {
+                guard let m = BlendMode(rawValue: raw) else {
+                    throw ToolError("invalid blendMode '\(raw)'. Valid: \(BlendMode.allCases.map(\.rawValue).joined(separator: ", "))")
+                }
+                blendMode = m
             }
         }
 
@@ -495,14 +519,13 @@ extension ToolExecutor {
         let propagatesTiming = input.durationFrames != nil || input.trimStartFrame != nil
             || input.trimEndFrame != nil || input.speed != nil
         let partners: Set<String> = propagatesTiming
-            ? editor.timingPropagationPartners(of: Set(input.clipIds))
+            ? editor.timingPropagationPartners(of: Set(clipIds))
             : []
 
-        let setActionName = input.clipIds.count == 1 ? "Set Clip Property (Agent)" : "Set Clip Properties (Agent)"
+        let setActionName = clipIds.count == 1 ? "Set Clip Property (Agent)" : "Set Clip Properties (Agent)"
         let summaries: [String] = withUndoGroup(editor, actionName: setActionName) {
             var summaries: [String] = []
-            for id in input.clipIds {
-                let isText = clipTypes[id] == .text
+            for id in clipIds {
                 let changed = Self.applyPropertyChanges(
                     durationFrames: input.durationFrames,
                     trimStartFrame: input.trimStartFrame,
@@ -511,18 +534,11 @@ extension ToolExecutor {
                     volume: input.volume,
                     opacity: input.opacity,
                     transform: input.transform,
-                    content: isText ? input.content : nil,
-                    fontName: isText ? input.fontName : nil,
-                    fontSize: isText ? input.fontSize : nil,
-                    color: isText ? color : nil,
-                    alignment: isText ? alignment : nil,
+                    blendMode: blendMode,
+                    setBlendMode: setBlendMode,
                     clipId: id,
                     editor: editor
                 )
-                // Match the inspector: refit bbox after content/font change when caller didn't set a box.
-                if isText && input.transform == nil && (input.content != nil || input.fontName != nil || input.fontSize != nil) {
-                    editor.fitTextClipToContent(clipId: id)
-                }
                 summaries.append("\(id)\(changed.isEmpty ? " (no-op)" : ": \(changed.joined(separator: ", "))")")
             }
             for partnerId in partners {
@@ -534,7 +550,7 @@ extension ToolExecutor {
                     trimEndFrame:   partnerIsText ? nil : input.trimEndFrame,
                     speed:          partnerIsText ? nil : input.speed,
                     volume: nil, opacity: nil, transform: nil,
-                    content: nil, fontName: nil, fontSize: nil, color: nil, alignment: nil,
+                    blendMode: nil, setBlendMode: false,
                     clipId: partnerId,
                     editor: editor
                 )
@@ -543,7 +559,7 @@ extension ToolExecutor {
         }
 
         let linkedNote = partners.isEmpty ? "" : " (+\(partners.count) linked)"
-        return .ok("Updated \(input.clipIds.count) clip\(input.clipIds.count == 1 ? "" : "s")\(linkedNote): \(summaries.joined(separator: "; "))")
+        return .ok("Updated \(clipIds.count) clip\(clipIds.count == 1 ? "" : "s")\(linkedNote): \(summaries.joined(separator: "; "))")
     }
 
     fileprivate static func applyPropertyChanges(
@@ -554,20 +570,15 @@ extension ToolExecutor {
         volume: Double?,
         opacity: Double?,
         transform: ParsedTransform?,
-        content: String?,
-        fontName: String?,
-        fontSize: Double?,
-        color: TextStyle.RGBA?,
-        alignment: TextStyle.Alignment?,
+        blendMode: BlendMode?,
+        setBlendMode: Bool,
         clipId: String,
         editor: EditorViewModel
     ) -> [String] {
         var changed: [String] = []
         editor.commitClipProperty(clipId: clipId) { clip in
             if let v = durationFrames {
-                clip.durationFrames = v
-                clip.clampKeyframesToDuration()
-                clip.clampFadesToDuration()
+                clip.setDuration(v)
                 changed.append("durationFrames")
             }
             if let v = trimStartFrame { clip.trimStartFrame = v; changed.append("trimStartFrame") }
@@ -575,9 +586,7 @@ extension ToolExecutor {
             if let v = speed {
                 if durationFrames == nil, v > 0 {
                     let sourceConsumed = Double(clip.durationFrames) * clip.speed
-                    clip.durationFrames = max(1, safeInt((sourceConsumed / v).rounded()) ?? clip.durationFrames)
-                    clip.clampKeyframesToDuration()
-                    clip.clampFadesToDuration()
+                    clip.setDuration(max(1, safeInt((sourceConsumed / v).rounded()) ?? clip.durationFrames))
                     changed.append("durationFrames")
                 }
                 clip.speed = v
@@ -586,6 +595,7 @@ extension ToolExecutor {
             // Setting a scalar clears any existing keyframe track on the same property.
             if let v = volume         { clip.volume  = v; clip.volumeTrack  = nil; changed.append("volume") }
             if let v = opacity        { clip.opacity = v; clip.opacityTrack = nil; changed.append("opacity") }
+            if setBlendMode           { clip.blendMode = blendMode; changed.append("blendMode") }
             if let t = transform {
                 let cur = clip.transform
                 var next = Transform(
@@ -598,15 +608,6 @@ extension ToolExecutor {
                 next.flipVertical = t.flipVertical ?? cur.flipVertical
                 clip.transform = next
                 changed.append("transform")
-            }
-            if content != nil || fontName != nil || fontSize != nil || color != nil || alignment != nil {
-                if let c = content { clip.textContent = c; changed.append("content") }
-                var style = clip.textStyle ?? TextStyle()
-                if let f = fontName  { style.fontName = f; changed.append("fontName") }
-                if let s = fontSize  { style.fontSize = s; changed.append("fontSize") }
-                if let c = color     { style.color = c; changed.append("color") }
-                if let a = alignment { style.alignment = a; changed.append("alignment") }
-                clip.textStyle = style
             }
         }
         return changed
@@ -777,7 +778,8 @@ extension ToolExecutor {
             resolvedTrackIndex = trackIndex
         }
 
-        switch editor.rippleDeleteRangesOnTrack(trackIndex: resolvedTrackIndex, ranges: frameRanges) {
+        let ignoreSyncLocked = Set(input.ignoreSyncLockedTracks ?? [])
+        switch editor.rippleDeleteRangesOnTrack(trackIndex: resolvedTrackIndex, ranges: frameRanges, ignoreSyncLockTrackIndices: ignoreSyncLocked) {
         case .refused(let reason):
             throw ToolError(reason)
         case .ok(let report):

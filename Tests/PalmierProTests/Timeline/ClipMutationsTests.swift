@@ -372,6 +372,69 @@ struct WritePositionTests {
         #expect(updated.transform.centerX == 0.5)
         #expect(updated.transform.centerY == 0.5)
     }
+
+    @Test func batchPositionUpdatesAllClips() {
+        var a = Fixtures.clip(id: "a", start: 0, duration: 60)
+        var b = Fixtures.clip(id: "b", start: 10, duration: 60)
+        a.transform.width = 0.2
+        a.transform.height = 0.2
+        b.transform.width = 0.4
+        b.transform.height = 0.4
+
+        let e = editor([Fixtures.videoTrack(clips: [a, b])])
+        e.currentFrame = 0
+
+        e.commitPositions(clipIds: ["a", "b"], setX: 0.3, setY: 0.4)
+
+        let updated = e.timeline.tracks[0].clips
+        #expect(abs(updated[0].topLeftAt(frame: 0).x - 0.3) < 0.000001)
+        #expect(abs(updated[0].topLeftAt(frame: 0).y - 0.4) < 0.000001)
+        #expect(abs(updated[1].topLeftAt(frame: 0).x - 0.3) < 0.000001)
+        #expect(abs(updated[1].topLeftAt(frame: 0).y - 0.4) < 0.000001)
+    }
+}
+
+@Suite("EditorViewModel — clip property commits")
+@MainActor
+struct ClipPropertyCommitTests {
+
+    @Test func commitClipPropertiesGroupsMultipleClipUndo() {
+        var a = Fixtures.clip(id: "a", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        var b = Fixtures.clip(id: "b", mediaRef: "text", mediaType: .text, start: 30, duration: 30)
+        a.textContent = "one"
+        b.textContent = "two"
+        let e = editor([Fixtures.videoTrack(clips: [a, b])])
+        let undoManager = UndoManager()
+        e.undoManager = undoManager
+
+        e.commitClipProperties(clipIds: ["a", "b"]) {
+            $0.textAnimation = TextAnimation(preset: .wordPop)
+        }
+
+        #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation?.preset == .wordPop })
+        undoManager.undo()
+        #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation == nil })
+        #expect(undoManager.canUndo == false)
+    }
+
+    @Test func cancelDebouncedCommitPreventsPendingHighlightWrite() async throws {
+        var clip = Fixtures.clip(id: "caption", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        clip.textAnimation = TextAnimation(preset: .highlightPop, highlight: .init(r: 1, g: 0, b: 0, a: 1))
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+
+        e.debouncedCommitClipProperties(clipIds: ["caption"], key: "textHighlight", debounce: .milliseconds(5)) {
+            var animation = $0.textAnimation ?? TextAnimation()
+            animation.highlight = .init(r: 0, g: 0, b: 1, a: 1)
+            $0.textAnimation = animation
+        }
+        e.cancelDebouncedCommit(key: "textHighlight")
+        e.commitClipProperties(clipIds: ["caption"]) {
+            $0.textAnimation = nil
+        }
+
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(e.timeline.tracks[0].clips[0].textAnimation == nil)
+    }
 }
 
 @Suite("EditorViewModel — clearRegion")

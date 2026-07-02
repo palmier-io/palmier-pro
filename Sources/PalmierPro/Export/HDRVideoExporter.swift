@@ -3,12 +3,12 @@ import CoreImage
 import VideoToolbox
 
 /// HEVC Main10 BT.2020 HLG/PQ export via `AVAssetReader` → `AVAssetWriter`, since
-/// `AVAssetExportSession` presets can't emit 10-bit HDR.
-/// Titles are composited per frame here (the CoreAnimationTool is export-session only).
+/// `AVAssetExportSession` presets can't emit 10-bit HDR. The videoComposition's compositor bakes
+/// grades, effects, and titles into each SDR Rec.709 frame; we convert 709 → HLG per frame here.
 enum HDRVideoExporter {
 
-    /// SDR working space for compositing titles; 709 → HLG maps SDR white to graphics-white.
-    static let titleWorkingSpace = CGColorSpace(name: CGColorSpace.itur_709)
+    /// SDR working space for the read frames; 709 → HLG maps SDR white to graphics-white.
+    static let sdrWorkingSpace = CGColorSpace(name: CGColorSpace.itur_709)
         ?? CGColorSpaceCreateDeviceRGB()
 
     enum Transfer { case hlg, pq }
@@ -57,21 +57,12 @@ enum HDRVideoExporter {
         let audioMix: AVAudioMix?
     }
 
-    /// A title pre-rendered to a canvas-sized image; the pump composites it per frame at the
-    /// clip's keyframed opacity, at SDR graphics-white (never HDR peak).
-    struct TextOverlay: @unchecked Sendable {
-        let clip: Clip
-        let image: CIImage
-    }
-
     static func export(
         _ inputs: Inputs,
         renderSize: CGSize,
-        fps: Int,
         transfer: Transfer = .hlg,
         to outputURL: URL,
-        onProgress: (@Sendable (Double) -> Void)? = nil,
-        textOverlays: [TextOverlay] = []
+        onProgress: (@Sendable (Double) -> Void)? = nil
     ) async throws {
         let composition = inputs.composition
         let videoComposition = inputs.videoComposition
@@ -129,8 +120,8 @@ enum HDRVideoExporter {
             }
         }
 
-        // Every HDR frame is processed in CoreImage: decode the SDR 709 frame, composite titles,
-        // and convert 709 → HLG on output. The adaptor must be created before the writer starts.
+        // Every HDR frame is processed in CoreImage: decode the SDR 709 frame and convert
+        // 709 → HLG on output. The adaptor must be created before the writer starts.
         let attrs: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: pixelFormat,
             kCVPixelBufferWidthKey as String: Int(renderSize.width),
@@ -141,12 +132,11 @@ enum HDRVideoExporter {
             assetWriterInput: videoInput, sourcePixelBufferAttributes: attrs
         )
         let hlgSpace = CGColorSpace(name: CGColorSpace.itur_2100_HLG)
-            ?? CGColorSpace(name: CGColorSpace.itur_2020) ?? titleWorkingSpace
+            ?? CGColorSpace(name: CGColorSpace.itur_2020) ?? sdrWorkingSpace
         let processing = ProcessingContext(
             input: videoInput, output: videoOutput, reader: reader, adaptor: adaptor,
-            ciContext: CIContext(options: [.workingColorSpace: titleWorkingSpace]),
-            overlays: textOverlays, fps: fps, renderSize: renderSize,
-            inputSpace: titleWorkingSpace, hlgSpace: hlgSpace
+            ciContext: CIContext(options: [.workingColorSpace: sdrWorkingSpace]),
+            renderSize: renderSize, inputSpace: sdrWorkingSpace, hlgSpace: hlgSpace
         )
 
         guard reader.startReading() else {
@@ -243,22 +233,20 @@ enum HDRVideoExporter {
         }
     }
 
-    /// Bundles the non-Sendable CoreImage handles for the title-compositing video pump.
+    /// Bundles the non-Sendable CoreImage handles for the 709 → HLG video pump.
     private struct ProcessingContext: @unchecked Sendable {
         let input: AVAssetWriterInput
         let output: AVAssetReaderOutput
         let reader: AVAssetReader
         let adaptor: AVAssetWriterInputPixelBufferAdaptor
         let ciContext: CIContext
-        let overlays: [TextOverlay]
-        let fps: Int
         let renderSize: CGSize
         let inputSpace: CGColorSpace
         let hlgSpace: CGColorSpace
     }
 
-    /// Like `pump`, but composites each title over the video frame and writes the result to a
-    /// fresh 10-bit HLG buffer via the pixel-buffer adaptor.
+    /// Like `pump`, but converts each SDR 709 frame to a fresh 10-bit HLG buffer and writes it
+    /// via the pixel-buffer adaptor.
     private static func pumpVideoProcessed(
         _ c: ProcessingContext, failure: FailureBox, onSeconds: (@Sendable (Double) -> Void)? = nil
     ) async {
@@ -275,20 +263,7 @@ enum HDRVideoExporter {
                         return
                     }
                     let pts = CMSampleBufferGetPresentationTimeStamp(sample)
-                    var image = CIImage(cvPixelBuffer: srcBuffer, options: [.colorSpace: c.inputSpace])
-                    let frame = Int((pts.seconds * Double(c.fps)).rounded())
-                    for overlay in c.overlays {
-                        guard frame >= overlay.clip.startFrame, frame < overlay.clip.endFrame else { continue }
-                        let opacity = overlay.clip.opacityAt(frame: frame)
-                        guard opacity > 0.001 else { continue }
-                        var title = overlay.image
-                        if opacity < 0.999 {
-                            title = title.applyingFilter("CIColorMatrix", parameters: [
-                                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: opacity),
-                            ])
-                        }
-                        image = title.composited(over: image)
-                    }
+                    let image = CIImage(cvPixelBuffer: srcBuffer, options: [.colorSpace: c.inputSpace])
                     // On any abort, cancel the shared reader so a concurrent audio pump unblocks
                     // (its undrained output would otherwise stall read-ahead and deadlock waitForAll).
                     guard let pool = c.adaptor.pixelBufferPool else {

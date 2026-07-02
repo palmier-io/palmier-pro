@@ -136,24 +136,35 @@ struct GenerationView: View {
     private var imageModel: ImageModelConfig { selectedModel(imageModels, at: selectedImageModelIndex) }
     private var audioModel: AudioModelConfig { selectedModel(audioModels, at: selectedAudioModelIndex) }
 
+    private var currentModelLocked: Bool {
+        guard !account.isPaid else { return false }
+        switch selectedType {
+        case .video: return videoModel.paidOnly
+        case .image: return imageModel.paidOnly
+        case .audio: return audioModel.paidOnly
+        }
+    }
+
     private func selectedModel<T>(_ models: [T], at index: Int) -> T {
         let safeIndex = models.indices.contains(index) ? index : models.startIndex
         return models[safeIndex]
     }
 
+    private func isAvailable(_ paidOnly: Bool) -> Bool { account.isPaid || !paidOnly }
+
     private var enabledVideoModels: [(index: Int, model: VideoModelConfig)] {
         videoModels.enumerated()
-            .filter { ModelPreferences.shared.isEnabled($0.element.id) }
+            .filter { ModelPreferences.shared.isEnabled($0.element.id) && isAvailable($0.element.paidOnly) }
             .map { (index: $0.offset, model: $0.element) }
     }
     private var enabledImageModels: [(index: Int, model: ImageModelConfig)] {
         imageModels.enumerated()
-            .filter { ModelPreferences.shared.isEnabled($0.element.id) }
+            .filter { ModelPreferences.shared.isEnabled($0.element.id) && isAvailable($0.element.paidOnly) }
             .map { (index: $0.offset, model: $0.element) }
     }
     private var enabledAudioModels: [(index: Int, model: AudioModelConfig)] {
         audioModels.enumerated()
-            .filter { ModelPreferences.shared.isEnabled($0.element.id) }
+            .filter { ModelPreferences.shared.isEnabled($0.element.id) && isAvailable($0.element.paidOnly) }
             .map { (index: $0.offset, model: $0.element) }
     }
     private var enabledAudioModelsByCategory: [AudioModelConfig.Category: [(index: Int, model: AudioModelConfig)]] {
@@ -167,17 +178,19 @@ struct GenerationView: View {
 
     private func normalizeModelSelection() {
         switch selectedType {
-        case .video: selectedVideoModelIndex = enabledIndex(selectedVideoModelIndex, in: videoModels.map(\.id))
-        case .image: selectedImageModelIndex = enabledIndex(selectedImageModelIndex, in: imageModels.map(\.id))
-        case .audio: selectedAudioModelIndex = enabledIndex(selectedAudioModelIndex, in: audioModels.map(\.id))
+        case .video:
+            if !enabledVideoModels.contains(where: { $0.index == selectedVideoModelIndex }) {
+                selectedVideoModelIndex = enabledVideoModels.first?.index ?? 0
+            }
+        case .image:
+            if !enabledImageModels.contains(where: { $0.index == selectedImageModelIndex }) {
+                selectedImageModelIndex = enabledImageModels.first?.index ?? 0
+            }
+        case .audio:
+            if !enabledAudioModels.contains(where: { $0.index == selectedAudioModelIndex }) {
+                selectedAudioModelIndex = enabledAudioModels.first?.index ?? 0
+            }
         }
-    }
-
-    /// Keeps an enabled selection untouched
-    private func enabledIndex(_ current: Int, in ids: [String]) -> Int {
-        let prefs = ModelPreferences.shared
-        if ids.indices.contains(current), prefs.isEnabled(ids[current]) { return current }
-        return ids.firstIndex { prefs.isEnabled($0) } ?? (ids.indices.contains(current) ? current : 0)
     }
 
     private var trimmedPrompt: String { prompt.trimmingCharacters(in: .whitespaces) }
@@ -567,6 +580,10 @@ struct GenerationView: View {
         }
         .onChange(of: editor.pendingPanelSeed?.asset.id) { _, _ in consumePendingPanelSeed() }
         .onChange(of: ModelPreferences.shared.disabledIds) { _, _ in
+            guard !isPopulatingPanel else { return }
+            normalizeModelSelection()
+        }
+        .onChange(of: account.isPaid) { _, _ in
             guard !isPopulatingPanel else { return }
             normalizeModelSelection()
         }
@@ -1576,6 +1593,10 @@ struct GenerationView: View {
     }
 
     private func submitGeneration() {
+        if currentModelLocked {
+            SettingsWindowController.shared.show(tab: .account)
+            return
+        }
         let audioDuration: Int = {
             guard selectedType == .audio else { return 0 }
             if audioModel.inputs.contains(.video) { return effectiveAudioVideoSeconds }

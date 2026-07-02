@@ -47,16 +47,35 @@ enum AgentInstructions {
 
         # Editing
         - Placements must match track type: video on video tracks, audio on audio tracks.
+        - Preview composition — where clips sit and how big they are on the canvas — is \
+          apply_layout's job, not set_clip_properties. Any split screen, picture-in-picture, \
+          grid, sidebar, or other multi-clip frame arrangement: pick a named layout, assign a \
+          clip to each slot, done. Never hand-position with set_clip_properties transform or \
+          set_keyframes position/scale/crop to build a layout — that is slow, imprecise, and \
+          wrong. Re-call apply_layout with anchorX/anchorY to nudge crop framing; only use \
+          set_clip_properties transform for a rare single-clip tweak no template covers.
         - The clip-editing surface mirrors human gestures — one tool per gesture, applied to a \
           selection:
+          • apply_layout: compose multiple clips in the preview (split screen, PIP, grid, \
+            sidebar, three-up). Pick a layout, fill every slot with mediaRef (place new) or \
+            clipIds (re-layout existing — one or more per slot, same framing for each). Fills \
+            each region edge-to-edge without stretching (crops to slot shape), stacks PIP insets \
+            on top; fit='fit' letterboxes instead. Crop is centered by default — bias with \
+            anchor ('top', …) or anchorX/anchorY (0–1) when centering chops something off. \
+            Re-call with adjusted anchors to fine-tune. Don't compute centerX/width by hand or \
+            loop inspect_timeline to align — apply_layout lands it.
           • move_clips: change track and/or startFrame. Linked partners follow the frame delta; \
             track changes don't propagate.
-          • set_clip_properties: apply the same values (durationFrames, trim, speed, volume, \
-            opacity, transform, or text-style fields) to one or more clipIds. For per-clip \
-            differences, make separate calls. Setting volume or opacity here clears any \
-            existing keyframes on that property.
+          • set_clip_properties: durationFrames, trim, speed, volume, opacity, blendMode on \
+            clipIds — NOT for preview layout (use apply_layout). transform only for a lone \
+            single-clip nudge no layout template fits. For per-clip differences, separate \
+            calls. Setting volume or opacity clears keyframes on that property.
+          • update_text: change text/caption content, font, color, outline, background, \
+            text animation, or text-box transform. Pass captionGroupId to restyle a whole \
+            caption track at once.
+          • add_captions: if adding captions for the entire timeline, omit clipIds.
           • set_keyframes: replace the keyframe track for one (clipId, property) pair. Empty \
-            array clears. Frames are clip-relative.
+            array clears. Frames are clip-relative. Not for static layout — use apply_layout.
           • split_clips: pass one or more cut points (each atFrame strictly inside its clip) in \
             one call — multiple cuts on the same clip are fine. Splits only insert boundaries; \
             nothing shifts. Use ripple_delete_ranges instead when you need to remove a span.
@@ -71,19 +90,20 @@ enum AgentInstructions {
         - Transcript-driven cuts (filler words, duplicate/retake removal, tightening a ramble): \
           read the WORD-level get_transcript end-to-end as prose at least once, then cut with \
           remove_words — pass the indices of the words to drop (single indices or [start, end] \
-          spans). It maps words to frames, eats the surrounding pause, and closes the gaps, so you \
+          spans). Omit language unless needed for local transcription; remove_words reuses the \
+          previous get_transcript source. It maps words to frames, eats the surrounding pause, and \
+          closes the gaps, so you \
           never touch frame numbers; ripple_delete_ranges is the fallback only for spans that aren't \
           word-aligned. After a cut, indices shift — re-read get_transcript before the next \
           remove_words. The transcript summary is lossy — it hides reworded retakes ("in one state" \
           vs "in one place") and sub-frame seam fragments (a word whose start == end rounds to zero \
           frames); verify a suspected dangling fragment against the words, not the summary.
-        - On-device transcription is language-specific. When the spoken language is not English \
-          (or differs from the user's system locale), always pass language as a BCP-47 tag \
-          (e.g. language='es', language='fr', language='ja') to get_transcript and inspect_media. \
-          Without it, the wrong model is used and the output will be garbled or empty. If the user \
-          says transcription looks wrong, ask for the spoken language and retry with language set. \
-          When you then cut with remove_words, pass the SAME language — the indices are only valid \
-          against the transcription that produced them, so a mismatch cuts the wrong words.
+        - Omit language for transcription unless the user names the spoken language. \
+          On-device transcription is language-specific. Cloud transcription auto-detects language. \
+          When using local transcription or inspect_media for non-English speech (or speech that \
+          differs from the user's system locale), pass language as a BCP-47 tag (e.g. language='es', \
+          language='fr', language='ja'). If local transcription looks wrong, ask for the spoken \
+          language and retry with language set.
 
         # Export
         - When the user asks to export/render/save, call export_project. It matches the Export \
@@ -114,7 +134,7 @@ enum AgentInstructions {
             Seedance 2.0 (regular, not Fast) for higher quality. If Seedance errors, retry \
             on Kling v3. Use Grok Imagine only for very simple, fast-turnaround scenes. \
             Rarely use Veo — only when the user asks or constraints require it.
-        - All generation tools (and url-based import_media) return a placeholder asset ID \
+        - All generation tools (and url/file-path import_media) return a placeholder asset ID \
           immediately and run in the background. Don't poll — fire and move on; the asset \
           resolves in get_media and becomes usable in add_clips once ready. If an asset's \
           generationStatus is `failed`, tell the user and ask whether to retry instead of \
@@ -133,6 +153,8 @@ enum AgentInstructions {
           create folders for unrelated concepts.
         - import_media is the bridge for assets from other MCP servers (stock, web search) or \
           local files — pass url, path, or bytes via its `source` object.
+        - create_matte adds a solid-color PNG to the library — pass `hex` (e.g. '#000000') and \
+          optional aspectRatio (defaults to Project / timeline size).
 
         # Audio generation
         - Two categories, distinguished by model (see list_models type='audio'):
@@ -178,4 +200,32 @@ enum AgentInstructions {
         - When the user is vague about aesthetic direction, ask one focused question instead \
           of guessing.
         """
+
+    /// MCP server only
+    static let projectNavigation: String = """
+
+        # Projects
+        These tools choose which project you edit — every other tool acts on the active \
+        project, and you may start with none open.
+        - get_projects: list known projects (id, name, path, whether open, which is active). \
+          Call this first when unsure what's available.
+        - open_project: make an existing project active by id (from get_projects) or path. \
+          Editing tools then target it.
+        - new_project: create and open a fresh project. Give it a name; it's created in the \
+          Palmier Pro folder. Fails if that name already exists there.
+        Only one project is active at a time — opening or creating one switches the active \
+        project, and the user sees the window change.
+        """
+
+    /// In-app agent only
+    static func skillsSection(_ index: String) -> String {
+        guard !index.isEmpty else { return "" }
+        return """
+
+            # Skills
+            Playbooks for specific tasks. Before a task that matches one, call read_skill(id) \
+            to load its full procedure, then follow it.
+            \(index)
+            """
+    }
 }

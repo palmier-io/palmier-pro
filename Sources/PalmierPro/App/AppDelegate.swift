@@ -62,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     @objc func newProject(_ sender: Any?) {
-        AppState.shared.createNewProject()
+        AppState.shared.createProjectInteractively()
     }
 
     @MainActor

@@ -15,7 +15,15 @@ struct AIEditMenu: View {
                 if availableActions.contains(.upscale) {
                     Menu("Upscale") {
                         ForEach(UpscaleModelConfig.models(for: asset.type)) { model in
-                            Button(model.displayName) { runUpscale(model) }
+                            if model.paidOnly && !AccountService.shared.isPaid {
+                                Button {
+                                    SettingsWindowController.shared.show(tab: .account)
+                                } label: {
+                                    Label("\(model.displayName) (Paid)", systemImage: "lock.fill")
+                                }
+                            } else {
+                                Button(model.displayName) { runUpscale(model) }
+                            }
                         }
                     }
                 }

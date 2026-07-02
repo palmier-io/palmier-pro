@@ -63,8 +63,6 @@ struct HomeView: View {
         HStack(spacing: AppTheme.Spacing.md) {
             WelcomeTitle()
 
-            UpdateBadgeView()
-
             Spacer()
         }
         .padding(.horizontal, AppTheme.Spacing.xlXxl)
@@ -77,7 +75,7 @@ struct HomeView: View {
         return ScrollView {
             LazyVGrid(columns: columns, alignment: .leading, spacing: AppTheme.Spacing.xl) {
                 if entries.isEmpty {
-                    NewProjectCard(action: { AppState.shared.createNewProject() })
+                    NewProjectCard(action: { AppState.shared.createProjectInteractively() })
                 } else {
                     ForEach(entries) { entry in
                         ProjectCard(
@@ -170,6 +168,7 @@ private struct WelcomeTitle: View {
 
 private struct HomeSidebar: View {
     @Bindable private var account = AccountService.shared
+    @Bindable private var updater = Updater.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -189,7 +188,7 @@ private struct HomeSidebar: View {
                 SidebarRowButton(
                     label: "New Project",
                     systemImage: "plus",
-                    action: { AppState.shared.createNewProject() }
+                    action: { AppState.shared.createProjectInteractively() }
                 )
                 SidebarRowButton(
                     label: "Open Project",
@@ -197,18 +196,23 @@ private struct HomeSidebar: View {
                     action: { AppState.shared.openProjectFromPanel() }
                 )
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 10)
+            .padding(.horizontal, AppTheme.Spacing.smMd)
+            .padding(.vertical, AppTheme.Spacing.md)
 
             Spacer(minLength: 0)
+
+            UpdateSidebarCard()
+                .padding(.horizontal, AppTheme.Spacing.smMd)
+                .padding(.bottom, AppTheme.Spacing.sm)
+                .animation(.easeInOut(duration: AppTheme.Anim.transition), value: updater.updateAvailable)
 
             SidebarRowButton(
                 label: "Settings",
                 systemImage: "gearshape",
                 action: { SettingsWindowController.shared.show() }
             )
-            .padding(.horizontal, 8)
-            .padding(.bottom, 10)
+            .padding(.horizontal, AppTheme.Spacing.smMd)
+            .padding(.bottom, AppTheme.Spacing.md)
         }
         .frame(maxHeight: .infinity, alignment: .top)
     }
