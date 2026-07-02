@@ -82,7 +82,13 @@ extension InspectorView {
         if !audios.isEmpty {
             let allOn = audios.allSatisfy(\.hasDenoiseEnabled)
             let baking = audios.contains { editor.denoiseInFlight.contains($0.mediaRef) }
-            let failed = allOn && !baking && audios.contains { editor.denoiseFailed.contains($0.mediaRef) }
+            let hasDenoisedCache: (Clip) -> Bool = { clip in
+                guard let url = editor.mediaResolver.resolveURL(for: clip.mediaRef) else { return false }
+                return AudioEnhancer.cachedURL(for: url, mediaRef: clip.mediaRef, amount: clip.denoiseAmount) != nil
+            }
+            let failed = allOn && !baking && audios.contains {
+                editor.denoiseFailed.contains($0.mediaRef) && !hasDenoisedCache($0)
+            }
             VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
                 propertyRow(label: "Denoise") {
                     Toggle("", isOn: Binding(

@@ -50,8 +50,12 @@ extension EditorViewModel {
             }
             await MainActor.run { [self] in
                 self?.denoiseInFlight.remove(mediaRef)
-                if failed { self?.denoiseFailed.insert(mediaRef) }
-                self?.notifyTimelineChanged()
+                if failed {
+                    self?.denoiseFailed.insert(mediaRef)
+                } else {
+                    // Rebuild to pick up the baked audio without pausing active playback.
+                    self?.videoEngine?.rebuild()
+                }
             }
         }
     }
