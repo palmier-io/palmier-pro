@@ -29,6 +29,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case createMatte = "create_matte"
     case listModels = "list_models"
     case inspectMedia = "inspect_media"
+    case analyzeVideo = "analyze_video"
     case getTranscript = "get_transcript"
     case inspectTimeline = "inspect_timeline"
     case searchMedia = "search_media"
@@ -88,6 +89,17 @@ enum ToolDefinitions {
                     "language": ["type": "string", "description": "Optional BCP-47 language tag of the spoken audio (e.g. 'es', 'fr', 'ja', 'zh-Hans'). Defaults to the system language. Specify when the spoken language differs from the system locale — on-device models are language-specific and will produce garbled output if the wrong language is used."],
                 ],
                 required: ["mediaRef"]
+            )
+        ),
+        AgentTool(
+            name: .analyzeVideo,
+            description: "Ask a question about an entire video asset and get a natural-language answer from TwelveLabs Pegasus — a cloud video-understanding model that reasons over the whole clip's visuals AND audio at once. Use this when inspect_media's sampled frames aren't enough: a one-line summary of a long clip, \"what is the speaker demonstrating?\", \"is there a logo on screen?\", \"find the moment the goal is scored and describe it\", scene/mood/quality assessment, or content checks before placing footage. Pegasus sees motion and continuity that isolated frames miss.\n\nOpt-in and off by default: it requires a TwelveLabs API key in Settings → Agent. With no key set, this tool returns a notice and nothing happens — fall back to inspect_media (on-device frames + transcription). The asset is uploaded to TwelveLabs for analysis, so only call it when the user wants cloud understanding; one call covers the whole asset, so don't loop it per frame.",
+            inputSchema: objectSchema(
+                properties: [
+                    "mediaRef": ["type": "string", "description": "Video asset ID from get_media. Images and audio are not supported — use inspect_media for those."],
+                    "prompt": ["type": "string", "description": "What to ask about the video. Free-form, e.g. 'Summarize this clip in one sentence' or 'When does the on-screen text appear and what does it say?'"],
+                ],
+                required: ["mediaRef", "prompt"]
             )
         ),
         AgentTool(
