@@ -44,7 +44,7 @@ struct VideoProjectLoadTests {
 
         #expect(contents.manifest == nil)
         #expect(contents.manifestUnreadable == true)
-        #expect(contents.timeline.tracks.count == 2)   // creative work survives
+        #expect(contents.projectFile.timelines.first?.tracks.count == 2)   // creative work survives
     }
 
     @Test func missingManifestOpensAndIsNotFlaggedUnreadable() throws {

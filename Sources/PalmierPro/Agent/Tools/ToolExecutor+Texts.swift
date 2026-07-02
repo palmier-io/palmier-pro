@@ -232,7 +232,7 @@ extension ToolExecutor {
                 throw ToolError("Failed to place any text clips")
             }
 
-            editor.undoManager?.registerUndo(withTarget: editor) { vm in
+            editor.registerTimelineUndo { vm in
                 vm.removeClips(ids: Set(ids))
             }
             return (ids, createdTrackInfo, resolvedSpecs)

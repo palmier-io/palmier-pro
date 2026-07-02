@@ -454,7 +454,7 @@ extension EditorViewModel {
 
         sortClips(trackIndex: ti)
 
-        undoManager?.registerUndo(withTarget: self) { vm in
+        registerTimelineUndo { vm in
             vm.trimClipInternal(clipId: clipId, trimStartFrame: prevStart, trimEndFrame: prevEnd)
         }
         undoManager?.endUndoGrouping()

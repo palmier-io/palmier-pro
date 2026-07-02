@@ -6,12 +6,23 @@ struct ClipLocation: Equatable, Sendable {
     let clipIndex: Int
 }
 
-struct Timeline: Codable, Sendable, Equatable {
+/// Written on tab switch and save, not live — playhead mutates every frame.
+struct TimelineViewState: Codable, Sendable, Equatable {
+    var playheadFrame: Int = 0
+    var zoomScale: Double = Defaults.pixelsPerFrame
+    var scrollOffsetX: Double = 0
+}
+
+struct Timeline: Codable, Sendable, Equatable, Identifiable {
+    var id: String = UUID().uuidString
+    var name: String = "Timeline 1"
     var fps: Int = 30
     var width: Int = 1920
     var height: Int = 1080
     var settingsConfigured: Bool = false
+    var folderId: String?
     var tracks: [Track] = []
+    var viewState = TimelineViewState()
 
     var totalFrames: Int {
         var maxFrame = 0
@@ -19,6 +30,27 @@ struct Timeline: Codable, Sendable, Equatable {
             maxFrame = max(maxFrame, track.endFrame)
         }
         return maxFrame
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, fps, width, height, settingsConfigured, folderId, tracks, viewState
+    }
+}
+
+extension Timeline {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString,
+            name: (try? c.decode(String.self, forKey: .name)) ?? "Timeline 1",
+            fps: try c.decode(Int.self, forKey: .fps),
+            width: try c.decode(Int.self, forKey: .width),
+            height: try c.decode(Int.self, forKey: .height),
+            settingsConfigured: (try? c.decode(Bool.self, forKey: .settingsConfigured)) ?? false,
+            folderId: try? c.decode(String.self, forKey: .folderId),
+            tracks: try c.decode([Track].self, forKey: .tracks),
+            viewState: (try? c.decode(TimelineViewState.self, forKey: .viewState)) ?? TimelineViewState()
+        )
     }
 }
 
@@ -30,7 +62,6 @@ struct Track: Codable, Sendable, Equatable, Identifiable {
     var syncLocked: Bool = true
     var clips: [Clip] = []
 
-    /// Display-only height, not serialized. Reset to default on project open.
     var displayHeight: CGFloat = 50
 
     var endFrame: Int {
@@ -54,7 +85,7 @@ struct Track: Codable, Sendable, Equatable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, type, muted, hidden, syncLocked, clips
+        case id, type, muted, hidden, syncLocked, clips, displayHeight
     }
 }
 
@@ -67,7 +98,9 @@ extension Track {
             muted: (try? c.decode(Bool.self, forKey: .muted)) ?? false,
             hidden: (try? c.decode(Bool.self, forKey: .hidden)) ?? false,
             syncLocked: (try? c.decode(Bool.self, forKey: .syncLocked)) ?? true,
-            clips: (try? c.decode([Clip].self, forKey: .clips)) ?? []
+            clips: (try? c.decode([Clip].self, forKey: .clips)) ?? [],
+            displayHeight: (try? c.decode(CGFloat.self, forKey: .displayHeight))
+                .map { min(max($0, TrackSize.minHeight), TrackSize.maxHeight) } ?? 50
         )
     }
 }

@@ -174,7 +174,7 @@ extension ToolExecutor {
 
         let service = ExportService()
         guard let report = await service.exportPalmierProject(
-            timeline: editor.timeline,
+            projectFile: editor.projectFileSnapshot(),
             manifest: editor.mediaManifest,
             generationLog: editor.generationLog,
             sourceProjectURL: editor.projectURL,

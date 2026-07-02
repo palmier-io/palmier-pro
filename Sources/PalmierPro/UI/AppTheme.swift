@@ -268,6 +268,7 @@ enum AppTheme {
         static let projectCardWidth: CGFloat = 150
         static let projectCardHeight: CGFloat = 120
         static let timelineClipDetailMinWidth: CGFloat = 32
+        static let timelineTabRenameWidth: CGFloat = 120
         static let timelineClipLabelMinWidth: CGFloat = 56
         static let updateOverlayWidth: CGFloat = 640
     }

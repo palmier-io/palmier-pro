@@ -20,34 +20,19 @@ extension EditorViewModel {
         let prevFPS = timeline.fps
         let prevWidth = timeline.width
         let prevHeight = timeline.height
-        let prevConfigured = timeline.settingsConfigured
 
-        // Rescale all frame-based values when FPS changes
+        // FPS is project-wide: rescale frame-based values in every timeline.
         if fps != prevFPS && prevFPS > 0 && fps > 0 {
             let scale = Double(fps) / Double(prevFPS)
             currentFrame = Int((Double(currentFrame) * scale).rounded())
             sourcePlayheadFrame = Int((Double(sourcePlayheadFrame) * scale).rounded())
-            for ti in timeline.tracks.indices {
-                let clipIndices = timeline.tracks[ti].clips.indices.sorted {
-                    timeline.tracks[ti].clips[$0].startFrame < timeline.tracks[ti].clips[$1].startFrame
-                }
-                var previousEnd: Int?
-                for ci in clipIndices {
-                    var clip = timeline.tracks[ti].clips[ci]
-                    let scaledStart = Int((Double(clip.startFrame) * scale).rounded())
-                    let scaledEnd = Int((Double(clip.endFrame) * scale).rounded())
-                    clip.startFrame = max(scaledStart, previousEnd ?? scaledStart)
-                    clip.durationFrames = max(1, scaledEnd - clip.startFrame)
-                    clip.trimStartFrame = Int((Double(clip.trimStartFrame) * scale).rounded())
-                    clip.trimEndFrame = Int((Double(clip.trimEndFrame) * scale).rounded())
-                    clip.rescaleKeyframes(by: scale)
-                    clip.fadeInFrames = Int((Double(clip.fadeInFrames) * scale).rounded())
-                    clip.fadeOutFrames = Int((Double(clip.fadeOutFrames) * scale).rounded())
-                    clip.clampKeyframesToDuration()
-                    clip.clampFadesToDuration()
-                    timeline.tracks[ti].clips[ci] = clip
-                    previousEnd = clip.endFrame
-                }
+            for i in timelines.indices {
+                timelines[i].rescaleFrames(by: scale)
+            }
+            liveViewStates = liveViewStates.mapValues { vs in
+                var vs = vs
+                vs.playheadFrame = Int((Double(vs.playheadFrame) * scale).rounded())
+                return vs
             }
         }
 
@@ -82,13 +67,20 @@ extension EditorViewModel {
             }
         }
 
-        timeline.fps = fps
+        let prevConfiguredById = timelines.map { ($0.id, $0.settingsConfigured) }
+        for i in timelines.indices {
+            timelines[i].fps = fps
+            timelines[i].settingsConfigured = true
+        }
         timeline.width = width
         timeline.height = height
-        timeline.settingsConfigured = true
-        undoManager?.registerUndo(withTarget: self) { vm in
+        registerTimelineUndo { vm in
             vm.applyTimelineSettings(fps: prevFPS, width: prevWidth, height: prevHeight)
-            vm.timeline.settingsConfigured = prevConfigured
+            for (id, configured) in prevConfiguredById {
+                if let i = vm.timelines.firstIndex(where: { $0.id == id }) {
+                    vm.timelines[i].settingsConfigured = configured
+                }
+            }
         }
         undoManager?.setActionName("Change Project Settings")
         notifyTimelineChanged()
@@ -149,6 +141,34 @@ extension EditorViewModel {
                 clipWidth: clipWidth,
                 clipHeight: clipHeight
             )
+        }
+    }
+}
+
+extension Timeline {
+    mutating func rescaleFrames(by scale: Double) {
+        viewState.playheadFrame = Int((Double(viewState.playheadFrame) * scale).rounded())
+        for ti in tracks.indices {
+            let clipIndices = tracks[ti].clips.indices.sorted {
+                tracks[ti].clips[$0].startFrame < tracks[ti].clips[$1].startFrame
+            }
+            var previousEnd: Int?
+            for ci in clipIndices {
+                var clip = tracks[ti].clips[ci]
+                let scaledStart = Int((Double(clip.startFrame) * scale).rounded())
+                let scaledEnd = Int((Double(clip.endFrame) * scale).rounded())
+                clip.startFrame = max(scaledStart, previousEnd ?? scaledStart)
+                clip.durationFrames = max(1, scaledEnd - clip.startFrame)
+                clip.trimStartFrame = Int((Double(clip.trimStartFrame) * scale).rounded())
+                clip.trimEndFrame = Int((Double(clip.trimEndFrame) * scale).rounded())
+                clip.rescaleKeyframes(by: scale)
+                clip.fadeInFrames = Int((Double(clip.fadeInFrames) * scale).rounded())
+                clip.fadeOutFrames = Int((Double(clip.fadeOutFrames) * scale).rounded())
+                clip.clampKeyframesToDuration()
+                clip.clampFadesToDuration()
+                tracks[ti].clips[ci] = clip
+                previousEnd = clip.endFrame
+            }
         }
     }
 }

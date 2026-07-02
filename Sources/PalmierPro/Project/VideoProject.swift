@@ -4,7 +4,7 @@ import AVFoundation
 import UniformTypeIdentifiers
 
 struct ProjectPackageContents: Sendable {
-    var timeline: Timeline
+    var projectFile: ProjectFile
     var manifest: MediaManifest?
     var generationLog: GenerationLog?
     var manifestUnreadable: Bool = false
@@ -31,7 +31,7 @@ final class VideoProject: NSDocument {
     let editorViewModel = EditorViewModel()
 
     /// Decoded off-main in read(), applied on main in makeWindowControllers.
-    private nonisolated(unsafe) var loadedTimeline: Timeline?
+    private nonisolated(unsafe) var loadedProjectFile: ProjectFile?
     private nonisolated(unsafe) var loadedManifest: MediaManifest?
     private nonisolated(unsafe) var loadedGenerationLog: GenerationLog?
 
@@ -69,16 +69,18 @@ final class VideoProject: NSDocument {
     }
 
     private nonisolated func applyLoadedContents(_ contents: ProjectPackageContents) {
-        loadedTimeline = contents.timeline
+        loadedProjectFile = contents.projectFile
         loadedManifest = contents.manifest
         loadedGenerationLog = contents.generationLog
         manifestLoadFailed = contents.manifestUnreadable
+        let timelines = loadedProjectFile?.timelines ?? []
         Log.project.notice(
-            "read ok tracks=\(self.loadedTimeline?.tracks.count ?? 0)",
+            "read ok timelines=\(timelines.count)",
             telemetry: "Project read",
             data: [
-                "tracks": loadedTimeline?.tracks.count ?? 0,
-                "clips": loadedTimeline?.tracks.reduce(0) { $0 + $1.clips.count } ?? 0,
+                "timelines": timelines.count,
+                "tracks": timelines.reduce(0) { $0 + $1.tracks.count },
+                "clips": timelines.reduce(0) { $0 + $1.tracks.reduce(0) { $0 + $1.clips.count } },
                 "media": loadedManifest?.entries.count ?? 0,
                 "hasGenerationLog": loadedGenerationLog != nil
             ]
@@ -87,9 +89,9 @@ final class VideoProject: NSDocument {
 
     nonisolated static func readProjectPackage(at url: URL) throws -> ProjectPackageContents {
         let data = try requiredData(Project.timelineFilename, in: url)
-        let timeline: Timeline
+        let projectFile: ProjectFile
         do {
-            timeline = try JSONDecoder().decode(Timeline.self, from: data)
+            projectFile = try ProjectFile.decode(data)
         } catch {
             Log.project.error("read: timeline decode failed: \(String(describing: error))")
             throw error
@@ -116,7 +118,7 @@ final class VideoProject: NSDocument {
             .flatMap { try? JSONDecoder().decode(GenerationLog.self, from: $0) }
 
         return ProjectPackageContents(
-            timeline: timeline,
+            projectFile: projectFile,
             manifest: manifest,
             generationLog: generationLog,
             manifestUnreadable: manifestUnreadable
@@ -169,7 +171,7 @@ final class VideoProject: NSDocument {
     }
 
     private func captureSaveSnapshot() {
-        snapshotTimeline = try? JSONEncoder().encode(editorViewModel.timeline)
+        snapshotTimeline = try? JSONEncoder().encode(editorViewModel.projectFileSnapshot())
         snapshotManifest = Self.manifestSnapshotData(manifest: editorViewModel.mediaManifest, loadFailed: manifestLoadFailed)
         snapshotGenerationLog = try? JSONEncoder().encode(editorViewModel.generationLog)
         snapshotThumbnail = captureThumbnail()
@@ -327,9 +329,9 @@ final class VideoProject: NSDocument {
     // MARK: - Window setup
 
     override func makeWindowControllers() {
-        if let loaded = loadedTimeline {
-            editorViewModel.timeline = loaded
-            loadedTimeline = nil
+        if let loaded = loadedProjectFile {
+            editorViewModel.applyProjectFile(loaded)
+            loadedProjectFile = nil
         }
         editorViewModel.undoManager = undoManager
         editorViewModel.projectURL = fileURL

@@ -293,7 +293,7 @@ extension ToolExecutor {
                 reportTrack(idx)
             }
             let addedIds = allAdded
-            editor.undoManager?.registerUndo(withTarget: editor) { vm in
+            editor.registerTimelineUndo { vm in
                 vm.removeClips(ids: Set(addedIds))
             }
             return (createdTracks, summaries)

@@ -47,23 +47,20 @@ extension EditorViewModel {
         return clipId
     }
 
+    // Generation completes asynchronously — the placeholder may live on a background timeline.
     func finalizeGeneratingClip(placeholderId: String, asset: MediaAsset) {
-        guard let loc = findClipLocationByMediaRef(placeholderId) else { return }
-        let realFrames = max(1, secondsToFrame(seconds: asset.duration, fps: timeline.fps))
-        undoManager?.disableUndoRegistration()
-        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].durationFrames = realFrames
-        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].trimStartFrame = 0
-        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].trimEndFrame = 0
-        undoManager?.enableUndoRegistration()
-        notifyTimelineChanged()
-    }
-
-    private func findClipLocationByMediaRef(_ mediaRef: String) -> ClipLocation? {
-        for ti in timeline.tracks.indices {
-            if let ci = timeline.tracks[ti].clips.firstIndex(where: { $0.mediaRef == mediaRef }) {
-                return ClipLocation(trackIndex: ti, clipIndex: ci)
+        for i in timelines.indices {
+            for ti in timelines[i].tracks.indices {
+                guard let ci = timelines[i].tracks[ti].clips.firstIndex(where: { $0.mediaRef == placeholderId }) else { continue }
+                let realFrames = max(1, secondsToFrame(seconds: asset.duration, fps: timelines[i].fps))
+                undoManager?.disableUndoRegistration()
+                timelines[i].tracks[ti].clips[ci].durationFrames = realFrames
+                timelines[i].tracks[ti].clips[ci].trimStartFrame = 0
+                timelines[i].tracks[ti].clips[ci].trimEndFrame = 0
+                undoManager?.enableUndoRegistration()
+                if timelines[i].id == activeTimelineId { notifyTimelineChanged() }
+                return
             }
         }
-        return nil
     }
 }

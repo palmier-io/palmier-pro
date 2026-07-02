@@ -3,6 +3,7 @@ import AVFoundation
 
 enum MediaPanelItemKey {
     static let folderPrefix = "folder-"
+    static let timelinePrefix = "timeline-"
 
     static func folder(_ id: String) -> String {
         folderPrefix + id
@@ -11,6 +12,15 @@ enum MediaPanelItemKey {
     static func folderId(from key: String) -> String? {
         guard key.hasPrefix(folderPrefix) else { return nil }
         return String(key.dropFirst(folderPrefix.count))
+    }
+
+    static func timeline(_ id: String) -> String {
+        timelinePrefix + id
+    }
+
+    static func timelineId(from key: String) -> String? {
+        guard key.hasPrefix(timelinePrefix) else { return nil }
+        return String(key.dropFirst(timelinePrefix.count))
     }
 }
 
@@ -438,6 +448,7 @@ extension EditorViewModel {
     private func mediaPanelSelectedKeys() -> Set<String> {
         var keys = selectedMediaAssetIds
         keys.formUnion(selectedFolderIds.map(MediaPanelItemKey.folder))
+        keys.formUnion(selectedTimelineIds.map(MediaPanelItemKey.timeline))
         return keys
     }
 
@@ -446,6 +457,15 @@ extension EditorViewModel {
             guard folder(id: folderId) != nil else { return }
             mediaPanelScrollTarget = key
             selectedFolderIds = [folderId]
+            selectedMediaAssetIds.removeAll()
+            selectedTimelineIds.removeAll()
+            return
+        }
+        if let timelineId = MediaPanelItemKey.timelineId(from: key) {
+            guard timeline(for: timelineId) != nil else { return }
+            mediaPanelScrollTarget = key
+            selectedTimelineIds = [timelineId]
+            selectedFolderIds.removeAll()
             selectedMediaAssetIds.removeAll()
             return
         }

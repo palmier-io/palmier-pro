@@ -164,7 +164,7 @@ extension EditorViewModel {
         timeline.tracks[loc.trackIndex].clips.append(right)
         sortClips(trackIndex: loc.trackIndex)
 
-        undoManager?.registerUndo(withTarget: self) { vm in
+        registerTimelineUndo { vm in
             vm.removeClipInternal(id: right.id)
             if let newLoc = vm.findClip(id: left.id) {
                 vm.timeline.tracks[newLoc.trackIndex].clips[newLoc.clipIndex] = clip
@@ -240,7 +240,7 @@ extension EditorViewModel {
     }
 
     func registerTimelineSwap(undoState: Timeline, redoState: Timeline, actionName: String) {
-        undoManager?.registerUndo(withTarget: self) { vm in
+        registerTimelineUndo { vm in
             vm.timeline = undoState
             vm.notifyTimelineChanged()
             vm.registerTimelineSwap(undoState: redoState, redoState: undoState, actionName: actionName)
@@ -321,7 +321,7 @@ extension EditorViewModel {
         redoTarget: [(id: String, clip: Clip)],
         actionName: String
     ) {
-        undoManager?.registerUndo(withTarget: self) { vm in
+        registerTimelineUndo { vm in
             for entry in undoTarget {
                 if let loc = vm.findClip(id: entry.id) {
                     vm.timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = entry.clip
@@ -558,7 +558,7 @@ extension EditorViewModel {
 
     /// Bidirectional undo/redo for a single clip's property change.
     fileprivate func registerClipPropertySwap(clipId: String, undoTarget: Clip, redoTarget: Clip) {
-        undoManager?.registerUndo(withTarget: self) { vm in
+        registerTimelineUndo { vm in
             if let loc = vm.findClip(id: clipId) {
                 vm.timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = undoTarget
             }
@@ -624,7 +624,7 @@ extension EditorViewModel {
             }
         }
 
-        undoManager?.registerUndo(withTarget: self) { vm in
+        registerTimelineUndo { vm in
             for id in targetIds {
                 if let l = vm.findClip(id: id) {
                     vm.timeline.tracks[l.trackIndex].clips[l.clipIndex].mediaRef = oldMediaRef
@@ -683,17 +683,7 @@ extension EditorViewModel {
         guard mediaAssets.contains(where: { ids.contains($0.id) }) else { return }
 
         let before = mediaLibraryUndoSnapshot()
-        let clipIdsToRemove = Set(timeline.tracks
-            .flatMap(\.clips)
-            .filter { ids.contains($0.mediaRef) }
-            .map(\.id))
-        if !clipIdsToRemove.isEmpty {
-            selectedClipIds.subtract(clipIdsToRemove)
-            for i in timeline.tracks.indices {
-                timeline.tracks[i].clips.removeAll { clipIdsToRemove.contains($0.id) }
-            }
-            pruneEmptyTracks()
-        }
+        let clipIdsToRemove = removeClipsReferencingAssets(ids)
 
         mediaAssets.removeAll { ids.contains($0.id) }
         mediaManifest.entries.removeAll { ids.contains($0.id) }
@@ -701,7 +691,7 @@ extension EditorViewModel {
         for id in ids { closePreviewTab(id: PreviewTab.mediaAssetTabId(for: id)) }
         selectedMediaAssetIds.removeAll()
 
-        undoManager?.registerUndo(withTarget: self) { vm in
+        registerTimelineUndo { vm in
             vm.restoreMediaLibraryUndoSnapshot(before, actionName: "Delete Media")
             vm.selectedMediaAssetIds.removeAll()
         }

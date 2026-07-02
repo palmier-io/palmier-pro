@@ -488,7 +488,7 @@ struct ExportView: View {
             guard response == .OK, let url = panel.url else { return }
             Task {
                 let report = await service.exportPalmierProject(
-                    timeline: editor.timeline,
+                    projectFile: editor.projectFileSnapshot(),
                     manifest: editor.mediaManifest,
                     generationLog: editor.generationLog,
                     sourceProjectURL: editor.projectURL,

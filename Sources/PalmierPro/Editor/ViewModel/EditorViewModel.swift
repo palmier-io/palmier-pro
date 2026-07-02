@@ -24,8 +24,32 @@ final class EditorViewModel {
 
     // MARK: - Persisted state (synced with VideoProject)
 
-    var timeline = Timeline() {
+    var timelines: [Timeline] {
         didSet { timelineRenderRevision &+= 1 }
+    }
+    var activeTimelineId: String
+    var openTimelineIds: [String]
+    @ObservationIgnored var liveViewStates: [String: TimelineViewState] = [:]
+
+    /// Active-timeline proxy; assignment routes by id and activates so undo lands on its timeline.
+    var timeline: Timeline {
+        get { timelines.first(where: { $0.id == activeTimelineId }) ?? timelines[0] }
+        set {
+            if let i = timelines.firstIndex(where: { $0.id == newValue.id }) {
+                timelines[i] = newValue
+            } else {
+                let i = timelines.firstIndex(where: { $0.id == activeTimelineId }) ?? 0
+                let oldId = timelines[i].id
+                timelines[i] = newValue
+                openTimelineIds = openTimelineIds.map { $0 == oldId ? newValue.id : $0 }
+            }
+            activeTimelineId = newValue.id
+            if !openTimelineIds.contains(newValue.id) { openTimelineIds.append(newValue.id) }
+        }
+        _modify {
+            let i = timelines.firstIndex(where: { $0.id == activeTimelineId }) ?? 0
+            yield &timelines[i]
+        }
     }
     var mediaManifest = MediaManifest()
     var generationLog = GenerationLog()
@@ -63,6 +87,7 @@ final class EditorViewModel {
     var selectedTimelineRange: TimelineRangeSelection?
     var selectedMediaAssetIds: Set<String> = []
     var selectedFolderIds: Set<String> = []
+    var selectedTimelineIds: Set<String> = []
     var pendingSwapClipId: String?
     var clipClipboard: [ClipClipboardEntry] = []
     var zoomScale: Double = Defaults.pixelsPerFrame
@@ -74,6 +99,9 @@ final class EditorViewModel {
     var canvasOffset: CGSize = .zero
     var timelineVisibleWidth: Double = 0
     var timelineRenderRevision: Int = 0
+    /// Live horizontal scroll of the timeline panel, mirrored from AppKit for view-state stash.
+    @ObservationIgnored var timelineScrollOffsetX: Double = 0
+    var timelineScrollRestoreX: Double?
     var isScrubbing: Bool = false
     var toolMode: ToolMode = .pointer
     var showExportDialog: Bool = false
@@ -180,6 +208,10 @@ final class EditorViewModel {
     }
 
     init() {
+        let first = Timeline()
+        timelines = [first]
+        activeTimelineId = first.id
+        openTimelineIds = [first.id]
         mediaResolver = MediaResolver(
             manifest: { [weak self] in self?.mediaManifest ?? MediaManifest() },
             projectURL: { [weak self] in self?.projectURL }

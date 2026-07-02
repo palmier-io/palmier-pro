@@ -159,7 +159,7 @@ final class ExportService {
     /// Writes a self-contained `.palmier` bundle (all media collected internally).
     @discardableResult
     func exportPalmierProject(
-        timeline: Timeline,
+        projectFile: ProjectFile,
         manifest: MediaManifest,
         generationLog: GenerationLog,
         sourceProjectURL: URL?,
@@ -182,15 +182,15 @@ final class ExportService {
                 "palmier export start url=\(outputURL.lastPathComponent)",
                 telemetry: "Palmier project export started",
                 data: [
-                    "tracks": timeline.tracks.count,
-                    "clips": timeline.tracks.reduce(0) { $0 + $1.clips.count },
+                    "timelines": projectFile.timelines.count,
+                    "clips": projectFile.timelines.reduce(0) { $0 + $1.tracks.reduce(0) { $0 + $1.clips.count } },
                     "media": manifest.entries.count,
                     "generationLogEntries": generationLog.entries.count
                 ]
             )
             let report = try await Task.detached(priority: .userInitiated) {
                 try PalmierProjectExporter.export(
-                    timeline: timeline, manifest: manifest, generationLog: generationLog,
+                    projectFile: projectFile, manifest: manifest, generationLog: generationLog,
                     sourceProjectURL: sourceProjectURL, to: outputURL,
                     progress: { p in Task { @MainActor in self.progress = p } }
                 )

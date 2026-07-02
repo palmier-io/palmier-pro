@@ -496,7 +496,7 @@ struct PreviewContainerView: View {
         let isActive = tab.id == editor.activePreviewTabId
         let isHovered = hoveredTabId == tab.id
         return HStack(spacing: AppTheme.Spacing.xs) {
-            Text(tab.displayName)
+            Text(tab == .timeline ? editor.timeline.name : tab.displayName)
                 .font(.system(size: AppTheme.FontSize.xs, weight: isActive ? .semibold : .medium))
                 .foregroundStyle(isActive || isHovered ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
                 .lineLimit(1)

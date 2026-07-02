@@ -74,13 +74,18 @@ final class EditorWindowController: NSWindowController {
             return true
 
         case 51: // Delete/Backspace
-            if !editorViewModel.selectedFolderIds.isEmpty || !editorViewModel.selectedMediaAssetIds.isEmpty {
+            if !editorViewModel.selectedFolderIds.isEmpty || !editorViewModel.selectedMediaAssetIds.isEmpty
+                || !editorViewModel.selectedTimelineIds.isEmpty {
                 if !editorViewModel.selectedFolderIds.isEmpty {
                     editorViewModel.deleteFolders(ids: editorViewModel.selectedFolderIds)
                 }
                 if !editorViewModel.selectedMediaAssetIds.isEmpty {
                     editorViewModel.deleteSelectedMediaAssets()
                 }
+                for id in editorViewModel.selectedTimelineIds {
+                    editorViewModel.deleteTimeline(id)
+                }
+                editorViewModel.selectedTimelineIds.removeAll()
             } else if shift {
                 if editorViewModel.selectedGap != nil {
                     editorViewModel.rippleDeleteSelectedGap()
