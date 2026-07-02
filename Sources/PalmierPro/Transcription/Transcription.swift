@@ -93,6 +93,8 @@ enum TranscriptionError: LocalizedError {
 }
 
 enum Transcription {
+    private static let audioExtractionGate = AsyncSemaphore(value: 2)
+
     static func transcribeVideoAudio(videoURL: URL, censorProfanity: Bool = false, preferredLocale: Locale? = nil, sourceRange: ClosedRange<Double>? = nil) async throws -> TranscriptionResult {
         let tempAudioURL = try await extractAudioTrack(from: videoURL, range: sourceRange)
         defer { try? FileManager.default.removeItem(at: tempAudioURL) }
@@ -238,6 +240,9 @@ enum Transcription {
     ) async throws -> URL {
         let outURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("palmier-stt-\(UUID().uuidString).\(fileExtension)")
+        try await audioExtractionGate.wait()
+        defer { Task { await audioExtractionGate.signal() } }
+
         Log.transcription.notice(
             "extract start video=\(videoURL.lastPathComponent)",
             telemetry: "Transcription audio extraction started",
