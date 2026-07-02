@@ -97,6 +97,16 @@ fi
 if [ -d "$RES_BUNDLE/Images" ]; then
   cp -R "$RES_BUNDLE/Images" "$APP/Contents/Resources/"
 fi
+# .lproj folders must live at the bundle root for macOS to resolve them —
+# flatten out of Resources/Localization/ even though that's just an org folder.
+if [ -d "$RES_BUNDLE/Localization" ]; then
+  for locale_dir in "$RES_BUNDLE/Localization"/*.lproj; do
+    [ -d "$locale_dir" ] && cp -R "$locale_dir" "$APP/Contents/Resources/"
+  done
+else
+  echo "!! missing Localization/ in SwiftPM resource bundle at $RES_BUNDLE" >&2
+  exit 1
+fi
 if [ -d "$RES_BUNDLE/Changelog" ]; then
   cp -R "$RES_BUNDLE/Changelog" "$APP/Contents/Resources/"
 else

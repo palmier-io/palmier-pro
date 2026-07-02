@@ -318,31 +318,52 @@ struct AgentPanelView: View {
     @ViewBuilder
     private var missingKeyState: some View {
         let account = AccountService.shared
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Button(action: { SettingsWindowController.shared.show(tab: .account) }) {
-                Text(missingKeyPrimaryAction(account: account))
-                    .underline()
-                    .foregroundStyle(AppTheme.Accent.primary)
+        VStack(spacing: AppTheme.Spacing.mdLg) {
+            Button {
+                missingKeyPrimaryAction(account: account)
+            } label: {
+                Label(missingKeyPrimaryLabel(account: account), systemImage: missingKeyPrimaryIcon(account: account))
+                    .font(.system(size: AppTheme.FontSize.mdLg, weight: .semibold))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.capsule(.prominent, size: .regular))
 
-            Text("or use")
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            if !account.isSignedIn {
+                Text("First-time sign-ups only")
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+            }
 
             Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
-                Text("your own Anthropic key")
+                Text("or use your own Anthropic key")
                     .underline()
-                    .foregroundStyle(AppTheme.Accent.primary)
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .padding(.horizontal, AppTheme.Spacing.sm)
+                    .padding(.vertical, AppTheme.Spacing.xxs)
             }
             .buttonStyle(.plain)
+            .font(.system(size: AppTheme.FontSize.smMd, weight: .medium))
+            .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
         }
-        .font(.system(size: AppTheme.FontSize.md, weight: .medium))
     }
 
-    private func missingKeyPrimaryAction(account: AccountService) -> String {
-        if !account.isSignedIn { return "Sign in" }
+    private func missingKeyPrimaryLabel(account: AccountService) -> LocalizedStringKey {
+        if !account.isSignedIn { return "Log in for 250 free credits" }
         if !account.isPaid { return "Subscribe" }
         return "Open Settings"
+    }
+
+    private func missingKeyPrimaryIcon(account: AccountService) -> String {
+        if !account.isSignedIn { return "gift.fill" }
+        if !account.isPaid { return "sparkles" }
+        return "gearshape"
+    }
+
+    private func missingKeyPrimaryAction(account: AccountService) {
+        if !account.isSignedIn {
+            Task { await account.signInWithGoogle() }
+        } else {
+            SettingsWindowController.shared.show(tab: .account)
+        }
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
