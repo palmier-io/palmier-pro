@@ -79,7 +79,8 @@ final class ExportService {
         defer { if acquireSlot { ExportCoordinator.endExport() } }
 
         if format.isHDR {
-            await exportHDR(timeline: timeline, resolver: resolver, resolution: resolution, outputURL: outputURL)
+            await exportHDR(timeline: timeline, resolver: resolver, resolution: resolution,
+                            missingMediaRefs: missingMediaRefs, outputURL: outputURL)
             return
         }
 
@@ -225,6 +226,7 @@ final class ExportService {
         timeline: Timeline,
         resolver: MediaResolver,
         resolution: ExportResolution,
+        missingMediaRefs: Set<String>,
         outputURL: URL
     ) async {
         isExporting = true
@@ -236,6 +238,7 @@ final class ExportService {
             let result = try await CompositionBuilder.build(
                 timeline: timeline,
                 resolveURL: { resolver.resolveURL(for: $0) },
+                missingMediaRefs: missingMediaRefs,
                 renderSize: renderSize
             )
             try? FileManager.default.removeItem(at: outputURL)
