@@ -131,12 +131,15 @@ enum HDRVideoExporter {
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(
             assetWriterInput: videoInput, sourcePixelBufferAttributes: attrs
         )
-        let hlgSpace = CGColorSpace(name: CGColorSpace.itur_2100_HLG)
+        // Render into the space that matches the tagged transfer, or the encoded pixels won't
+        // agree with the color metadata.
+        let transferName = transfer == .pq ? CGColorSpace.itur_2100_PQ : CGColorSpace.itur_2100_HLG
+        let outputSpace = CGColorSpace(name: transferName)
             ?? CGColorSpace(name: CGColorSpace.itur_2020) ?? sdrWorkingSpace
         let processing = ProcessingContext(
             input: videoInput, output: videoOutput, reader: reader, adaptor: adaptor,
             ciContext: CIContext(options: [.workingColorSpace: sdrWorkingSpace]),
-            renderSize: renderSize, inputSpace: sdrWorkingSpace, hlgSpace: hlgSpace
+            renderSize: renderSize, inputSpace: sdrWorkingSpace, outputSpace: outputSpace
         )
 
         guard reader.startReading() else {
@@ -242,7 +245,7 @@ enum HDRVideoExporter {
         let ciContext: CIContext
         let renderSize: CGSize
         let inputSpace: CGColorSpace
-        let hlgSpace: CGColorSpace
+        let outputSpace: CGColorSpace
     }
 
     /// Like `pump`, but converts each SDR 709 frame to a fresh 10-bit HLG buffer and writes it
@@ -276,7 +279,7 @@ enum HDRVideoExporter {
                         failure.set("pixel buffer alloc failed (\(status))")
                         c.reader.cancelReading(); c.input.markAsFinished(); cont.resume(); return
                     }
-                    c.ciContext.render(image, to: outBuffer, bounds: bounds, colorSpace: c.hlgSpace)
+                    c.ciContext.render(image, to: outBuffer, bounds: bounds, colorSpace: c.outputSpace)
                     if !c.adaptor.append(outBuffer, withPresentationTime: pts) {
                         failure.set("frame append failed")
                         c.reader.cancelReading(); c.input.markAsFinished(); cont.resume(); return
