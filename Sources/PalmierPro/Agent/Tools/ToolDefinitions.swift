@@ -10,6 +10,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case removeTracks = "remove_tracks"
     case moveClips = "move_clips"
     case applyLayout = "apply_layout"
+    case duplicateClips = "duplicate_clips"
     case setClipProperties = "set_clip_properties"
     case setKeyframes = "set_keyframes"
     case splitClips = "split_clips"
@@ -268,6 +269,28 @@ enum ToolDefinitions {
                     ],
                 ],
                 required: ["layout", "slots"]
+            )
+        ),
+        AgentTool(
+            name: .duplicateClips,
+            description: "Creates exact copies of one or more clips at new positions. All properties are preserved: keyframes, effects, fades, speed, opacity, volume, transform, crop, and text styling. Single undoable action. Each entry specifies the source clip ID and a destination toFrame; toTrack is optional (defaults to the source clip's track). Overlap on the destination is resolved by overwriting (existing clips are trimmed/split/removed). Linked partners are duplicated automatically so A/V stays in sync — only name the lead clip.",
+            inputSchema: objectSchema(
+                properties: [
+                    "entries": [
+                        "type": "array",
+                        "description": "Per-clip duplication requests.",
+                        "items": [
+                            "type": "object",
+                            "properties": [
+                                "clipId": ["type": "string", "description": "The source clip ID to duplicate."],
+                                "toTrack": ["type": "integer", "description": "Destination track index (0-based). Omit to duplicate onto the source clip's track."],
+                                "toFrame": ["type": "integer", "description": "Destination start frame for the copy."],
+                            ],
+                            "required": ["clipId", "toFrame"],
+                        ],
+                    ],
+                ],
+                required: ["entries"]
             )
         ),
         AgentTool(
