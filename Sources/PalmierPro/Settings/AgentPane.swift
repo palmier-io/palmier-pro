@@ -12,6 +12,9 @@ struct AgentPane: View {
     @State private var maskedORKey: String = ""
     @State private var draftOR: String = ""
     @FocusState private var isORFocused: Bool
+    #if DEBUG
+    @State private var devBypassOR = OpenRouterKeychain.devBypassEnabled
+    #endif
 
     private let consoleURL = URL(string: "https://console.anthropic.com/settings/keys")!
     private let openRouterConsoleURL = URL(string: "https://openrouter.ai/keys")!
@@ -117,18 +120,17 @@ struct AgentPane: View {
 
     private func refresh() {
         Task { @MainActor in
-            let key = await Self.loadKey()
-            applyKey(key)
+            let keys = await Task.detached(priority: .utility) {
+                (anthropic: AnthropicKeychain.load() ?? "", openRouter: OpenRouterKeychain.load() ?? "")
+            }.value
+            hasKey = !keys.anthropic.isEmpty
+            maskedKey = mask(keys.anthropic)
+            hasORKey = !keys.openRouter.isEmpty
+            maskedORKey = mask(keys.openRouter)
+            #if DEBUG
+            devBypassOR = OpenRouterKeychain.devBypassEnabled
+            #endif
         }
-    }
-
-    private func applyKey(_ key: String) {
-        hasKey = !key.isEmpty
-        maskedKey = mask(key)
-
-        let orKey = OpenRouterKeychain.load() ?? ""
-        hasORKey = !orKey.isEmpty
-        maskedORKey = mask(orKey)
     }
 
     private func save() {
@@ -140,7 +142,7 @@ struct AgentPane: View {
             await Task.detached(priority: .userInitiated) {
                 AnthropicKeychain.save(key)
             }.value
-            applyKey(key)
+            refresh()
         }
     }
 
@@ -150,14 +152,8 @@ struct AgentPane: View {
             await Task.detached(priority: .userInitiated) {
                 AnthropicKeychain.delete()
             }.value
-            applyKey("")
+            refresh()
         }
-    }
-
-    private static func loadKey() async -> String {
-        await Task.detached(priority: .utility) {
-            AnthropicKeychain.load() ?? ""
-        }.value
     }
 
     private func mask(_ key: String) -> String {
@@ -171,8 +167,28 @@ struct AgentPane: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
             openRouterHeader
             openRouterField
+            #if DEBUG
+            devBypassRow
+            #endif
         }
     }
+
+    #if DEBUG
+    private var devBypassRow: some View {
+        Toggle(isOn: $devBypassOR) {
+            Text("Bypass Keychain — store the key as plain text. Dev builds re-prompt Keychain on every rebuild; use this while testing.")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .toggleStyle(.switch)
+        .controlSize(.small)
+        .onChange(of: devBypassOR) { _, enabled in
+            OpenRouterKeychain.devBypassEnabled = enabled
+            refresh()
+        }
+    }
+    #endif
 
     private var openRouterHeader: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
@@ -251,16 +267,24 @@ struct AgentPane: View {
     private func saveOR() {
         let key = draftOR.trimmingCharacters(in: .whitespaces)
         guard !key.isEmpty else { return }
-        OpenRouterKeychain.save(key)
         draftOR = ""
         isORFocused = false
-        refresh()
+        Task { @MainActor in
+            await Task.detached(priority: .userInitiated) {
+                OpenRouterKeychain.save(key)
+            }.value
+            refresh()
+        }
     }
 
     private func removeOR() {
-        OpenRouterKeychain.delete()
         draftOR = ""
-        refresh()
+        Task { @MainActor in
+            await Task.detached(priority: .userInitiated) {
+                OpenRouterKeychain.delete()
+            }.value
+            refresh()
+        }
     }
 
     // MARK: - MCP server

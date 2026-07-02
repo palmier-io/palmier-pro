@@ -12,8 +12,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Start Sparkle updater
         _ = Updater.shared
 
-        // Gate the app behind Supabase sign-in; routes to Home once authenticated.
-        AuthCoordinator.start()
+        if UserProfileStore.shared.isOnboarded {
+            HomeWindowController.shared.showWindow(nil)
+        } else {
+            OnboardingWindowController.shared.showWindow(nil)
+        }
 
         // Warn when connectivity drops; AI/online features require internet.
         NetworkMonitor.shared.start()
@@ -32,11 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
-            if SupabaseService.shared.isSignedIn {
-                AppState.shared.showHome()
-            } else {
-                SignInWindowController.shared.showWindow(nil)
-            }
+            AppState.shared.showHome()
         }
         return true
     }
@@ -68,11 +67,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         components.host = url.host
         components.path = url.path
         return components.string ?? url.scheme ?? "unknown"
-    }
-
-    @MainActor
-    @objc func signOut(_ sender: Any?) {
-        Task { await SupabaseService.shared.signOut() }
     }
 
     @MainActor

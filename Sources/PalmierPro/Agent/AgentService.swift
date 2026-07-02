@@ -32,13 +32,27 @@ final class AgentService {
         }
     }
 
+    /// True while a keychain read is stuck (permission dialog pending or denied),
+    /// which happens on dev builds whose signature changed since the key was saved.
+    private(set) var keychainReadBlocked = false
+
     private func reloadKeys() {
         Task { [weak self] in
-            let keys = await Task.detached(priority: .utility) {
+            let read = Task.detached(priority: .utility) {
                 (anthropic: AnthropicKeychain.load() ?? "", openRouter: OpenRouterKeychain.load() ?? "")
-            }.value
-            self?.apiKey = keys.anthropic
-            self?.openRouterKey = keys.openRouter
+            }
+            let warn = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { return }
+                self?.keychainReadBlocked = true
+                Log.agent.warning("keychain read blocked — permission dialog pending or denied")
+            }
+            let keys = await read.value
+            warn.cancel()
+            guard let self else { return }
+            self.keychainReadBlocked = false
+            self.apiKey = keys.anthropic
+            self.openRouterKey = keys.openRouter
         }
     }
 
@@ -394,15 +408,6 @@ final class AgentService {
             mentions: referencedMentions, contextHint: contextHint
         ))
         streamError = nil
-
-        SupabaseService.shared.reportPrompt(
-            trimmed,
-            sessionId: currentSessionId?.uuidString,
-            mentionCount: referencedMentions.count,
-            providerMode: providerMode.rawValue,
-            deviceId: TokenUsageTracker.deviceId,
-            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        )
 
         kickOffStream()
     }

@@ -162,9 +162,9 @@ private struct WelcomeTitle: View {
 
     private var title: String {
         if let first = account.account?.user.firstName {
-            return "Welcome to Palmier Pro, \(first)"
+            return "Welcome to Kawenreel, \(first)"
         }
-        return "Welcome to Palmier Pro"
+        return "Welcome to Kawenreel"
     }
 }
 

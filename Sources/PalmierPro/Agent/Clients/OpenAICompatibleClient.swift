@@ -8,7 +8,30 @@ extension Notification.Name {
 enum OpenRouterKeychain {
     private static let account = "openrouter-api-key"
 
+    #if DEBUG
+    // Unsigned `swift run` builds get a new code signature every rebuild, so the
+    // Keychain re-prompts (or silently blocks) on every read. The bypass stores the
+    // key as plain text in UserDefaults instead — dev builds only.
+    private static let bypassFlagKey = "openRouterKeychainBypass"
+    private static let bypassValueKey = "openRouterKeyDevStore"
+
+    static var devBypassEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: bypassFlagKey) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: bypassFlagKey)
+            NotificationCenter.default.post(name: .openRouterAPIKeyChanged, object: nil)
+        }
+    }
+    #endif
+
     static func save(_ key: String) {
+        #if DEBUG
+        if devBypassEnabled {
+            UserDefaults.standard.set(key, forKey: bypassValueKey)
+            NotificationCenter.default.post(name: .openRouterAPIKeyChanged, object: nil)
+            return
+        }
+        #endif
         KeychainStore.save(key, account: account)
         NotificationCenter.default.post(name: .openRouterAPIKeyChanged, object: nil)
     }
@@ -20,11 +43,19 @@ enum OpenRouterKeychain {
            !env.isEmpty {
             return env
         }
+        if devBypassEnabled {
+            let stored = UserDefaults.standard.string(forKey: bypassValueKey)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return (stored?.isEmpty == false) ? stored : nil
+        }
         #endif
         return KeychainStore.load(account: account)
     }
 
     static func delete() {
+        #if DEBUG
+        UserDefaults.standard.removeObject(forKey: bypassValueKey)
+        #endif
         KeychainStore.delete(account: account)
         NotificationCenter.default.post(name: .openRouterAPIKeyChanged, object: nil)
     }

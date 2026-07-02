@@ -56,7 +56,6 @@ final class TokenUsageTracker {
         )
         records.append(record)
         save()
-        SupabaseService.shared.reportUsage(record, deviceId: Self.deviceId, appVersion: Self.appVersion)
     }
 
     // MARK: Aggregates

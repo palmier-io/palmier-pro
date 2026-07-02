@@ -289,23 +289,39 @@ struct AgentPanelView: View {
     @ViewBuilder
     private var missingKeyState: some View {
         let account = AccountService.shared
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Button(action: { SettingsWindowController.shared.show(tab: .account) }) {
-                Text(missingKeyPrimaryAction(account: account))
-                    .underline()
-                    .foregroundStyle(AppTheme.Accent.primary)
-            }
-            .buttonStyle(.plain)
+        return VStack(spacing: AppTheme.Spacing.xs) {
+            if editor.agentService.keychainReadBlocked {
+                Text("Keychain is blocking the saved API key. Allow access in the Keychain dialog, or re-enter the key.")
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            Text("or use")
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
+                    Text("Open API key settings")
+                        .underline()
+                        .foregroundStyle(AppTheme.Accent.primary)
+                }
+                .buttonStyle(.plain)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Button(action: { SettingsWindowController.shared.show(tab: .account) }) {
+                        Text(missingKeyPrimaryAction(account: account))
+                            .underline()
+                            .foregroundStyle(AppTheme.Accent.primary)
+                    }
+                    .buttonStyle(.plain)
 
-            Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
-                Text("your own Anthropic key")
-                    .underline()
-                    .foregroundStyle(AppTheme.Accent.primary)
+                    Text("or use")
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+
+                    Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
+                        Text("your own API key")
+                            .underline()
+                            .foregroundStyle(AppTheme.Accent.primary)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .buttonStyle(.plain)
         }
         .font(.system(size: AppTheme.FontSize.md, weight: .medium))
     }

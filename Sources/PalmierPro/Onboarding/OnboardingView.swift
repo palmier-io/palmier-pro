@@ -2,9 +2,9 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// First-run setup after the first sign-in: welcome → what you edit → AI setup →
-/// style reference. Every step after the first is skippable; finishing (or skipping
-/// through) marks the profile onboarded and opens Home.
+/// First-launch setup: welcome → what you edit → AI setup → style reference.
+/// Every step after the first is skippable; finishing (or skipping through)
+/// marks the profile onboarded and opens Home.
 struct OnboardingView: View {
     let onFinish: () -> Void
 
