@@ -34,6 +34,16 @@ if [ -f "$ROOT/$ENV_FILE" ]; then
 fi
 
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-Developer ID Application: Palmier, Inc. (MMFLRC7562)}"
+# Dev convenience: if the release identity isn't in this machine's keychain, fall back to any
+# available Apple Development cert. Debug builds still get a STABLE signature, so the keychain
+# "Always Allow" grant persists instead of re-prompting on every rebuild (unlike ad-hoc/swift run).
+if ! security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGNING_IDENTITY"; then
+  FALLBACK_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development:/{print $2; exit}')"
+  if [ -n "$FALLBACK_IDENTITY" ]; then
+    echo "==> Signing identity not found; falling back to '$FALLBACK_IDENTITY'" >&2
+    SIGNING_IDENTITY="$FALLBACK_IDENTITY"
+  fi
+fi
 NOTARY_PROFILE="${NOTARY_PROFILE:-palmier-notary}"
 SENTRY_DSN="${SENTRY_DSN:-}"
 PROVISION_PROFILE="${PROVISION_PROFILE:-$ROOT/scripts/Palmier_Pro_Developer_ID.provisionprofile}"

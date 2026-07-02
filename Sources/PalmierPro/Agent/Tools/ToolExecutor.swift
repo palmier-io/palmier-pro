@@ -30,6 +30,8 @@ final class ToolExecutor {
         switch tool {
         case .getProjects, .openProject, .newProject:
             return await runProjectTool(tool, args)
+        case .listSources, .listSourceAssets:
+            return await runSourcesTool(tool, args)
         default:
             break
         }
@@ -114,6 +116,7 @@ final class ToolExecutor {
         case .generateAudio: return try await generateAudio(editor, args)
         case .upscaleMedia:  return try upscaleMedia(editor, args)
         case .importMedia:   return try await importMedia(editor, args)
+        case .importSourceAsset: return try importSourceAsset(editor, args)
         case .createMatte:   return try await createMatte(editor, args)
         case .listModels:    return listModels(args)
         case .listFolders:   return listFolders(editor)
@@ -128,6 +131,8 @@ final class ToolExecutor {
         case .readSkill:     return readSkill(args)
         case .getProjects, .openProject, .newProject:
             return await runProjectTool(tool, args)
+        case .listSources, .listSourceAssets:
+            return await runSourcesTool(tool, args)
         }
     }
 

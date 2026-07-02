@@ -33,12 +33,21 @@ struct MediaManifestEntry: Codable, Sendable, Equatable, Identifiable {
     var cachedRemoteURLExpiresAt: Date?
     var generationStatus: String?
     var importInput: MediaImportInput?
+    var provenance: MediaProvenance?
 }
 
 struct MediaImportInput: Codable, Sendable, Equatable {
     var sourceURL: String? = nil
     var sourcePath: String? = nil
     var createdAt: Date? = nil
+}
+
+// Where an asset was imported from (an external source provider). Unlike MediaImportInput —
+// which is a transient "pending download" marker cleared on completion — this persists so an
+// imported asset always remembers its origin (§ external-media-providers, Phase 4).
+struct MediaProvenance: Codable, Sendable, Equatable {
+    var providerId: String
+    var providerRef: String
 }
 
 struct GenerationInput: Codable, Sendable, Equatable {

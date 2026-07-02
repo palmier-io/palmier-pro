@@ -98,6 +98,19 @@ extension EditorViewModel {
         abs(transform.width - other.width) < 0.0001 && abs(transform.height - other.height) < 0.0001
     }
 
+    // A source card dropped on the timeline places its clip BEFORE the media (and its dimensions)
+    // have downloaded, so first-clip auto-detect falls back to the default frame. Once the media
+    // lands, adopt its real dimensions — but only when this asset is the sole video defining the
+    // frame, so we never clobber an established multi-clip project. Mirrors the silent first-clip path.
+    func adoptSettingsFromCompletedImport(_ asset: MediaAsset) {
+        guard asset.type == .video, let w = asset.sourceWidth, let h = asset.sourceHeight, w > 0, h > 0 else { return }
+        let videoClips = timeline.tracks.filter { $0.type == .video }.flatMap(\.clips)
+        guard !videoClips.isEmpty, videoClips.allSatisfy({ $0.mediaRef == asset.id }) else { return }
+        guard timeline.width != w || timeline.height != h else { return }
+        let fps = asset.sourceFPS.flatMap { Int($0.rounded()) } ?? timeline.fps
+        applyTimelineSettings(fps: fps, width: w, height: h)
+    }
+
     func checkProjectSettings(for assets: [MediaAsset], adoptFPS: Bool = true) -> ProjectSettingsAction {
         guard let firstVideo = assets.first(where: { $0.type == .video }) else {
             return .proceed

@@ -48,6 +48,9 @@ enum ToolName: String, CaseIterable, Sendable {
     case getProjects = "get_projects"
     case openProject = "open_project"
     case newProject = "new_project"
+    case listSources = "list_sources"
+    case listSourceAssets = "list_source_assets"
+    case importSourceAsset = "import_source_asset"
 }
 
 struct AgentTool: @unchecked Sendable {
@@ -948,7 +951,45 @@ enum ToolDefinitions {
     )
 
 
-    static var mcpServer: [AgentTool] { all + [getProjects, openProject, newProject] }
+    static let listSources = AgentTool(
+        name: .listSources,
+        description: "List external media sources (the user's macOS Photos, downloaded footage, past cuts, and other editors' caches) that can be browsed and imported. Returns each source's id, label, capabilities (video/image/music/sfx), and online status. A source is offline when its local server isn't running — tell the user to start it rather than treating it as an error. Call this first to discover what's available, then list_source_assets to browse one.",
+        inputSchema: objectSchema()
+    )
+
+    static let listSourceAssets = AgentTool(
+        name: .listSourceAssets,
+        description: "Browse assets in one external source (from list_sources). Returns cards: id, name, ref (pass to import_source_asset), type, and optional durationMs/description. Paginated — read hasMore and page forward. 'type' defaults to the source's only capability when it has one, else set it. 'keys' AND-match case-insensitively over each asset's text (title/author/tags/etc). Items with local:false aren't downloaded yet and can't be imported until fetched in the source app. Assets are NOT in the project until you import_source_asset them.",
+        inputSchema: objectSchema(
+            properties: [
+                "provider": ["type": "string", "description": "Source id from list_sources."],
+                "type": ["type": "string", "enum": AssetType.allCases.map(\.rawValue), "description": "Asset type to list. Optional when the source has a single capability."],
+                "keys": ["type": "array", "items": ["type": "string"], "description": "Keywords; AND-matched, case-insensitive substring."],
+                "page": ["type": "integer", "description": "1-based page. Default 1."],
+                "limit": ["type": "integer", "description": "Page size, max 100. Default 30."],
+            ],
+            required: ["provider"]
+        )
+    )
+
+    static let importSourceAsset = AgentTool(
+        name: .importSourceAsset,
+        description: "Import one asset from an external source into the current project's media library. Pass the provider and the asset's ref from list_source_assets. Copies the file in the background (like import_media from a URL): returns a placeholder asset id with status downloading — poll get_media until it appears, then reference it like any imported asset. Requires an open project.",
+        inputSchema: objectSchema(
+            properties: [
+                "provider": ["type": "string", "description": "Source id from list_sources."],
+                "ref": ["type": "string", "description": "Asset ref from list_source_assets."],
+                "name": ["type": "string", "description": "Optional display name; defaults to the asset's file name."],
+                "folderId": ["type": "string", "description": "Optional destination folder id (from list_folders)."],
+                "type": ["type": "string", "enum": AssetType.allCases.map(\.rawValue), "description": "The card's type from list_source_assets. Required for sources whose ref has no file extension (e.g. Photos)."],
+            ],
+            required: ["provider", "ref"]
+        )
+    )
+
+    static var mcpServer: [AgentTool] {
+        all + [getProjects, openProject, newProject, listSources, listSourceAssets, importSourceAsset]
+    }
     static var inAppAgent: [AgentTool] { all + [readSkill] }
 
     private static func textBoxTransformProperties() -> [String: [String: Any]] {

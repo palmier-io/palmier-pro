@@ -151,34 +151,102 @@ extension ToolExecutor {
             throw ToolError("Unsupported file extension '.\(fileExt)'")
         }
 
-        guard let projectURL = editor.projectURL else {
-            throw ToolError("No project is open; cannot import from URL")
-        }
+        let displayName = Self.importDisplayName(name: name, url: url)
+        let asset = try beginRemoteImport(
+            editor: editor, remoteURL: url, type: type, fileExtension: fileExt,
+            displayName: displayName, folderId: folderId,
+            importInput: MediaImportInput(sourceURL: url.absoluteString, createdAt: Date())
+        )
+        return Self.importStartedResult(asset, type: type)
+    }
 
-        let displayName: String
-        if let name {
-            displayName = name
+    // Import from a registered external provider (§ external-media-providers). Unlike
+    // import_media's https-only URLs, provider files are served over loopback http; the URL
+    // is trusted only when its host+port match a registered provider.
+    func importFromProvider(editor: EditorViewModel, providerId: String, ref: String, name: String?, folderId: String?, typeHint: AssetType? = nil) throws -> ToolResult {
+        let asset = try makeProviderImport(editor: editor, providerId: providerId, ref: ref,
+                                           name: name, folderId: folderId, typeHint: typeHint)
+        return Self.importStartedResult(asset, type: asset.type)
+    }
+
+    // Resolve a source card to a downloading placeholder asset and kick the copy. Returns the
+    // placeholder so callers (MCP import + timeline drag-and-drop) can place a clip on it.
+    // placeholderDurationSeconds sizes a dropped clip before the real media loads (drag path).
+    func makeProviderImport(editor: EditorViewModel, providerId: String, ref: String, name: String?, folderId: String?, typeHint: AssetType? = nil, placeholderDurationSeconds: Double = 0) throws -> MediaAsset {
+        guard let provider = AssetProviderRegistry.provider(providerId) else {
+            throw ToolError("Unknown source provider '\(providerId)'. Call list_sources.")
+        }
+        guard let url = provider.fetchURL(forRef: ref) else {
+            throw ToolError("Provider '\(providerId)' could not resolve ref '\(ref)'")
+        }
+        guard AssetProviderRegistry.isRegisteredLoopback(url) else {
+            throw ToolError("Refusing to import '\(url.absoluteString)': not a registered loopback source")
+        }
+        // Prefer the ref's own extension (the file URL may hide it in a query param, e.g. bridges'
+        // /cache-file?p=music/x.mp3). Some sources (Photos /video/<uuid>) have none, so fall back
+        // to the card's declared type.
+        let refExt = (ref as NSString).pathExtension.lowercased()
+        let fileExt: String
+        if ClipType(fileExtension: refExt) != nil {
+            fileExt = refExt
+        } else if let hint = typeHint {
+            fileExt = Self.defaultExtension(for: hint)
         } else {
-            let stem = url.deletingPathExtension().lastPathComponent
-            displayName = stem.isEmpty ? "Imported asset" : stem
+            let shown = refExt.isEmpty ? "(none)" : ".\(refExt)"
+            throw ToolError("Cannot infer media type from ref extension \(shown); provide type.")
         }
+        guard let type = ClipType(fileExtension: fileExt) else {
+            throw ToolError("Unsupported media type for import")
+        }
+        let displayName = Self.importDisplayName(name: name, url: url)
+        return try beginRemoteImport(
+            editor: editor, remoteURL: url, type: type, fileExtension: fileExt,
+            displayName: displayName, folderId: folderId,
+            importInput: MediaImportInput(sourceURL: url.absoluteString, createdAt: Date()),
+            provenance: MediaProvenance(providerId: providerId, providerRef: ref),
+            durationSeconds: placeholderDurationSeconds
+        )
+    }
 
+    private static func importStartedResult(_ asset: MediaAsset, type: ClipType) -> ToolResult {
+        .ok("Import started. Placeholder asset id: \(asset.id) (type: \(type.rawValue)). Status: downloading. Poll get_media; the asset appears once the download completes.")
+    }
+
+    private static func defaultExtension(for type: AssetType) -> String {
+        switch type {
+        case .video: "mp4"
+        case .image: "jpg"
+        case .music, .sfx: "mp3"
+        }
+    }
+
+    private static func importDisplayName(name: String?, url: URL) -> String {
+        if let name { return name }
+        let stem = url.deletingPathExtension().lastPathComponent
+        return stem.isEmpty ? "Imported asset" : stem
+    }
+
+    // Shared tail: create the placeholder, kick the background download, return the placeholder.
+    private func beginRemoteImport(editor: EditorViewModel, remoteURL: URL, type: ClipType, fileExtension: String, displayName: String, folderId: String?, importInput: MediaImportInput, provenance: MediaProvenance? = nil, durationSeconds: Double = 0) throws -> MediaAsset {
+        guard let projectURL = editor.projectURL else {
+            throw ToolError("No project is open; cannot import")
+        }
         let placeholder = createImportPlaceholder(
             editor: editor,
             projectURL: projectURL,
             type: type,
-            fileExtension: fileExt,
+            fileExtension: fileExtension,
             displayName: displayName,
             folderId: folderId,
-            importInput: MediaImportInput(sourceURL: url.absoluteString, createdAt: Date())
+            importInput: importInput,
+            provenance: provenance,
+            durationSeconds: durationSeconds
         )
-
         Task { @MainActor [weak editor] in
             guard let editor else { return }
-            await Self.downloadImportedAsset(asset: placeholder, remoteURL: url, editor: editor)
+            await Self.downloadImportedAsset(asset: placeholder, remoteURL: remoteURL, editor: editor)
         }
-
-        return .ok("Import started. Placeholder asset id: \(placeholder.id) (type: \(type.rawValue)). Status: downloading. Poll get_media; the asset appears once the download completes.")
+        return placeholder
     }
 
     private func createImportPlaceholder(
@@ -188,7 +256,9 @@ extension ToolExecutor {
         fileExtension: String,
         displayName: String,
         folderId: String?,
-        importInput: MediaImportInput
+        importInput: MediaImportInput,
+        provenance: MediaProvenance? = nil,
+        durationSeconds: Double = 0
     ) -> MediaAsset {
         let id = UUID().uuidString
         let mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
@@ -196,6 +266,8 @@ extension ToolExecutor {
         let placeholder = MediaAsset(id: id, url: destURL, type: type, name: displayName)
         placeholder.folderId = folderId
         placeholder.importInput = importInput
+        placeholder.provenance = provenance
+        placeholder.duration = durationSeconds
         placeholder.generationStatus = .downloading
         editor.importMediaAsset(placeholder)
         editor.onProjectCheckpointRequired?()
@@ -256,6 +328,12 @@ extension ToolExecutor {
         await editor.finalizeImportedAsset(asset)
         asset.importInput = nil
         asset.generationStatus = .none
+        // If this asset was dropped straight onto the timeline (drag-to-timeline), fix the
+        // placed clip's duration/trim from the now-loaded media. No-op if it's library-only.
+        editor.finalizeGeneratingClip(placeholderId: asset.id, asset: asset)
+        // And adopt its real aspect/fps if it's the sole video on the timeline (the placeholder had
+        // no dimensions at drop time, so the project defaulted to 16:9).
+        editor.adoptSettingsFromCompletedImport(asset)
         editor.updateManifestMetadata(for: asset)
         editor.onProjectCheckpointRequired?()
     }
