@@ -63,10 +63,8 @@ struct TimelineTileView: View {
             HStack {
                 Image(systemName: "film.stack")
                     .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
+                    .tileBadge()
                     .foregroundStyle(isActive ? AppTheme.Accent.primary : .white)
-                    .padding(AppTheme.Spacing.xxs + AppTheme.Spacing.xxs)
-                    .background(.ultraThinMaterial, in: .capsule)
-                    .padding(AppTheme.Spacing.xs)
                 Spacer()
             }
             Spacer()
@@ -80,12 +78,8 @@ struct TimelineTileView: View {
                 Spacer()
                 Text(formatTimecode(frame: timeline.totalFrames, fps: timeline.fps))
                     .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.medium))
-                    .foregroundStyle(.white)
                     .monospacedDigit()
-                    .padding(.horizontal, AppTheme.Spacing.sm)
-                    .padding(.vertical, AppTheme.Spacing.xxs)
-                    .background(.ultraThinMaterial, in: .capsule)
-                    .padding(AppTheme.Spacing.xs)
+                    .tileBadge()
             }
         }
     }

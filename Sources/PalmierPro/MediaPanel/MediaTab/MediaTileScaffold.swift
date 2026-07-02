@@ -86,3 +86,13 @@ struct MediaTileScaffold<Artwork: View, MenuItems: View>: View {
         }
     }
 }
+
+extension View {
+    func tileBadge() -> some View {
+        foregroundStyle(.white)
+            .padding(.horizontal, AppTheme.Spacing.sm)
+            .padding(.vertical, AppTheme.Spacing.xxs)
+            .background(.ultraThinMaterial, in: .capsule)
+            .padding(AppTheme.Spacing.xs)
+    }
+}

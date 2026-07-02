@@ -439,16 +439,24 @@ extension MediaTab {
     }
 
     fileprivate func handleTimelineTap(_ timeline: Timeline) {
+        handleTileTap(timeline.id, select: \.selectedTimelineIds,
+                      clearing: [\.selectedMediaAssetIds, \.selectedFolderIds])
+    }
+
+    fileprivate func handleTileTap(
+        _ id: String,
+        select selection: ReferenceWritableKeyPath<EditorViewModel, Set<String>>,
+        clearing others: [ReferenceWritableKeyPath<EditorViewModel, Set<String>>]
+    ) {
         if NSEvent.modifierFlags.contains(.shift) {
-            if editor.selectedTimelineIds.contains(timeline.id) {
-                editor.selectedTimelineIds.remove(timeline.id)
+            if editor[keyPath: selection].contains(id) {
+                editor[keyPath: selection].remove(id)
             } else {
-                editor.selectedTimelineIds.insert(timeline.id)
+                editor[keyPath: selection].insert(id)
             }
         } else {
-            editor.selectedTimelineIds = [timeline.id]
-            editor.selectedMediaAssetIds.removeAll()
-            editor.selectedFolderIds.removeAll()
+            editor[keyPath: selection] = [id]
+            for other in others { editor[keyPath: other].removeAll() }
         }
     }
 
@@ -487,18 +495,8 @@ extension MediaTab {
     }
 
     fileprivate func handleFolderTap(_ folder: MediaFolder) {
-        let shift = NSEvent.modifierFlags.contains(.shift)
-        if shift {
-            if editor.selectedFolderIds.contains(folder.id) {
-                editor.selectedFolderIds.remove(folder.id)
-            } else {
-                editor.selectedFolderIds.insert(folder.id)
-            }
-        } else {
-            editor.selectedFolderIds = [folder.id]
-            editor.selectedMediaAssetIds.removeAll()
-            editor.selectedTimelineIds.removeAll()
-        }
+        handleTileTap(folder.id, select: \.selectedFolderIds,
+                      clearing: [\.selectedMediaAssetIds, \.selectedTimelineIds])
     }
 
     @ViewBuilder

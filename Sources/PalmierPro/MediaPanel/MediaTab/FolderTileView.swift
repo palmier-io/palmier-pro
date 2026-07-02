@@ -45,12 +45,8 @@ struct FolderTileView: View {
                 Spacer()
                 Text("\(childCount)")
                     .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
-                    .foregroundStyle(.white)
                     .monospacedDigit()
-                    .padding(.horizontal, AppTheme.Spacing.sm)
-                    .padding(.vertical, AppTheme.Spacing.xxs)
-                    .background(.ultraThinMaterial, in: .capsule)
-                    .padding(AppTheme.Spacing.xs)
+                    .tileBadge()
             }
             Spacer()
         }

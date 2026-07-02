@@ -191,7 +191,7 @@ struct AssetThumbnailView: View {
     @ViewBuilder
     private var durationOverlay: some View {
         if showsDurationBadge {
-            durationBadge.padding(AppTheme.Spacing.xs)
+            durationBadge
         }
     }
 
@@ -225,11 +225,8 @@ struct AssetThumbnailView: View {
     private var durationBadge: some View {
         Text(formatDuration(asset.duration))
             .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
-            .foregroundStyle(.white)
             .monospacedDigit()
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .padding(.vertical, AppTheme.Spacing.xxs)
-            .background(.ultraThinMaterial, in: .capsule)
+            .tileBadge()
     }
 
     private func failedThumbnail(error: String) -> some View {
