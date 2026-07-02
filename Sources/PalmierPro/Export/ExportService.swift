@@ -233,9 +233,6 @@ final class ExportService {
         let renderSize = resolution.renderSize(for: timelineCanvas)
         let mediaURLs = resolver.expectedURLMap()
 
-        // CompositionBuilder only ever uses an already-cached denoise bake (so preview never
-        // blocks on the model); export can afford to wait, so bake anything still missing here.
-        // Failures abort the export — silently rendering un-denoised audio would be worse.
         for track in timeline.tracks {
             for clip in track.clips where clip.hasDenoiseEnabled {
                 guard let url = mediaURLs[clip.mediaRef] else { continue }

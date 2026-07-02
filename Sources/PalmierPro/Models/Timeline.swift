@@ -205,19 +205,15 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         return volume * kfGain * fadeMultiplier(at: frame)
     }
 
-    /// Whether the offline noise-removal bake should be applied to this clip's audio.
     var hasDenoiseEnabled: Bool {
         effects?.contains { $0.type == Clip.denoiseEffectType && $0.enabled } ?? false
     }
 
-    /// Dry/wet mix for the denoise bake (0 = untouched, 1 = fully denoised).
     var denoiseAmount: Double {
         effects?.first { $0.type == Clip.denoiseEffectType }?.params["amount"]?.value ?? Clip.defaultDenoiseAmount
     }
 
     static let denoiseEffectType = "audio.denoise"
-    /// DeepFilterNet3 at full strength tends to sound thin/gated on real-world audio;
-    /// blending in some dry signal by default keeps it usable out of the box.
     static let defaultDenoiseAmount: Double = 0.6
 
     func rawVolumeAt(frame: Int) -> Double {

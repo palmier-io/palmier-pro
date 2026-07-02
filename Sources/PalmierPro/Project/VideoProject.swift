@@ -346,7 +346,6 @@ final class VideoProject: NSDocument {
             loadedManifest = nil
             restoreAssetsFromManifest()
         }
-        // Resume denoise bakes for clips saved with denoise enabled but no cached result.
         editorViewModel.enhancePendingDenoises()
 
         let editorView = EditorView()

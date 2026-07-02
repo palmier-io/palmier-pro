@@ -2,12 +2,6 @@ import AVFoundation
 import Accelerate
 import SpeechEnhancement
 
-/// Offline noise-removal bake for audio clips, via DeepFilterNet3 (Core ML, Neural Engine).
-/// Mirrors `AlphaVideoNormalizer`: cache-checked transcode keyed on source file identity.
-///
-/// The model's raw output ("wet") is cached once per source file, independent of the
-/// dry/wet `amount` — changing the Strength slider only re-mixes cached wet+dry PCM
-/// (cheap, no model inference), rather than re-running the model.
 enum AudioEnhancer {
     static let cache = DiskCache(named: "EnhancedAudio")
 
@@ -23,16 +17,11 @@ enum AudioEnhancer {
         }
     }
 
-    /// Model is expensive to load and its buffers aren't Sendable; keep both loading
-    /// and inference confined to this actor so the instance never crosses isolation domains.
     private static let modelBox = ModelBox()
 
     private actor ModelBox {
         private var enhancer: SpeechEnhancer?
 
-        /// DeepFilterNet3 processes a single channel; internal streaming state resets
-        /// per call (`enhanceChunked` calls `resetState()` up front), so sequential
-        /// per-channel calls on one instance are safe.
         func enhance(audio: [Float], sampleRate: Int) async throws -> [Float] {
             if enhancer == nil { enhancer = try await SpeechEnhancer.fromPretrained() }
             return try enhancer!.enhanceChunked(audio: audio, sampleRate: sampleRate)
@@ -41,10 +30,6 @@ enum AudioEnhancer {
 
     private static var sampleRate: Double { Double(SpeechEnhancer.sampleRate) }
 
-    /// Returns the mixed (dry/wet) audio for `amount`, bakes if needed. `mediaRef` scopes the
-    /// cache key. `amount` is the dry/wet mix (0 = untouched, 1 = fully denoised) — DeepFilterNet3
-    /// at full strength tends to sound thin/over-gated on non-ideal input, so blending back some
-    /// of the original signal is the main lever for taming that.
     static func enhancedAudio(for sourceURL: URL, mediaRef: String, amount: Double) async throws -> URL {
         if let cached = cachedURL(for: sourceURL, mediaRef: mediaRef, amount: amount) { return cached }
         let wet = try await wetChannels(for: sourceURL, mediaRef: mediaRef)
@@ -59,9 +44,6 @@ enum AudioEnhancer {
         return outputURL
     }
 
-    /// Non-blocking cache check — never triggers a bake. Used by `CompositionBuilder` so
-    /// preview/export rebuilds don't stall on the model; falls back to the raw source until
-    /// the background bake (kicked off elsewhere) lands and triggers a rebuild.
     static func cachedURL(for sourceURL: URL, mediaRef: String, amount: Double) -> URL? {
         let url = mixedOutputURL(for: sourceURL, mediaRef: mediaRef, amount: amount)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
@@ -74,7 +56,6 @@ enum AudioEnhancer {
         return cache.directory.appendingPathComponent("\(mediaRef)_\(cacheTag(for: sourceURL))_\(pct)_denoised.caf")
     }
 
-    /// Cache key fragment that busts when the underlying file is replaced.
     private static func cacheTag(for url: URL) -> String {
         let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
         let size = (attrs?[.size] as? Int) ?? 0
@@ -84,9 +65,6 @@ enum AudioEnhancer {
 
     // MARK: - Reading
 
-    /// Reads deinterleaved float PCM at the model's sample rate. When `channelCount` is nil,
-    /// it is probed from the file itself (capped at stereo — the model is mono per channel;
-    /// anything beyond L/R is downmixed by the reader).
     private static func readChannels(from url: URL, channelCount: Int? = nil) async throws -> [[Float]] {
         let count: Int
         if let channelCount {
@@ -117,8 +95,6 @@ enum AudioEnhancer {
         return channels
     }
 
-    /// Returns the model's raw (100% wet) output per channel, running inference only if not
-    /// already cached on disk for this source file.
     private static func wetChannels(for sourceURL: URL, mediaRef: String) async throws -> [[Float]] {
         let wetURL = cache.directory.appendingPathComponent("\(mediaRef)_\(cacheTag(for: sourceURL))_wet.caf")
         if FileManager.default.fileExists(atPath: wetURL.path) {

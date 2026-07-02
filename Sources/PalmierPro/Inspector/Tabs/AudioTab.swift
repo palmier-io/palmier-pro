@@ -131,10 +131,6 @@ extension InspectorView {
                 valueSuffix: "%",
                 dragSensitivity: 0.5,
                 fieldWidth: 56
-                // No onChanged: this only persists (and re-mixes) once on commit, so
-                // dragging/scrubbing doesn't trigger a full preview rebuild per pixel
-                // (that swaps the player item and flashes black). The field still
-                // tracks the live value locally while dragging.
             ) { percent in
                 editor.setDenoise(
                     clipIds: Set(audios.map(\.id)),

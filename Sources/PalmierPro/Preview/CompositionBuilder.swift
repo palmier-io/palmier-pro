@@ -285,9 +285,6 @@ enum CompositionBuilder {
         } else if mediaType == .video {
             mediaURL = (try? await AlphaVideoNormalizer.premultipliedVideo(for: resolved, mediaRef: clip.mediaRef)) ?? resolved
         } else if mediaType == .audio, clip.hasDenoiseEnabled {
-            // Never bake inline here — that would block this rebuild (and playback) on the
-            // model. Use the cached result if the background bake has already landed; the
-            // caller is responsible for kicking off that bake and rebuilding once it completes.
             mediaURL = AudioEnhancer.cachedURL(for: resolved, mediaRef: clip.mediaRef, amount: clip.denoiseAmount) ?? resolved
         } else {
             mediaURL = resolved
