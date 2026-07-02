@@ -49,13 +49,17 @@ extension EditorViewModel {
                 Log.preview.error("denoise bake failed mediaRef=\(mediaRef): \(error.localizedDescription)")
             }
             await MainActor.run { [self] in
-                self?.denoiseInFlight.remove(mediaRef)
+                guard let self else { return }
+                self.denoiseInFlight.remove(mediaRef)
                 if failed {
-                    self?.denoiseFailed.insert(mediaRef)
+                    self.denoiseFailed.insert(mediaRef)
                 } else {
                     // Rebuild to pick up the baked audio without pausing active playback.
-                    self?.videoEngine?.rebuild()
+                    self.videoEngine?.rebuild()
                 }
+                // Bakes dedupe by mediaRef, so other clips needing a different
+                // strength mix may have been skipped while this one was in flight.
+                self.enhancePendingDenoises()
             }
         }
     }
