@@ -284,6 +284,8 @@ enum CompositionBuilder {
             }
         } else if mediaType == .video {
             mediaURL = (try? await AlphaVideoNormalizer.premultipliedVideo(for: resolved, mediaRef: clip.mediaRef)) ?? resolved
+        } else if mediaType == .audio, clip.hasDenoiseEnabled {
+            mediaURL = AudioEnhancer.cachedURL(for: resolved, mediaRef: clip.mediaRef, amount: clip.denoiseAmount) ?? resolved
         } else {
             mediaURL = resolved
         }

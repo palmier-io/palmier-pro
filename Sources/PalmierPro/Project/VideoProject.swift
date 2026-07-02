@@ -346,6 +346,7 @@ final class VideoProject: NSDocument {
             loadedManifest = nil
             restoreAssetsFromManifest()
         }
+        editorViewModel.enhancePendingDenoises()
 
         let editorView = EditorView()
             .environment(editorViewModel)

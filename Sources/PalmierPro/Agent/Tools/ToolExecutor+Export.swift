@@ -83,6 +83,7 @@ extension ToolExecutor {
             if let error = service.error {
                 AppNotifications.exportFailed(name: name, reason: error)
             } else {
+                editor.syncDenoiseAfterExport()
                 let report = service.lastReport
                 let warningCount = (report?.offlineMediaRefs.count ?? 0) + (report?.unprocessableMediaRefs.count ?? 0)
                 AppNotifications.exportComplete(
