@@ -10,6 +10,8 @@ struct LayerPlan: Sendable {
     let clip: Clip
     let natSize: CGSize
     let preferredTransform: CGAffineTransform
+    /// Composition track carrying this clip's baked person-mask matte, if any — see `PersonMaskBaker`.
+    var personMaskTrackID: CMPersistentTrackID? = nil
 
     var trackID: CMPersistentTrackID? {
         if case .track(let id) = source { return id }
@@ -35,10 +37,13 @@ final class CompositorInstruction: NSObject, AVVideoCompositionInstructionProtoc
         self.renderSize = renderSize
         self.fps = fps
         var seen = Set<CMPersistentTrackID>()
-        self.requiredSourceTrackIDs = layers.compactMap {
-            guard let id = $0.trackID else { return nil }  // text layers need no decoded source
-            return seen.insert(id).inserted ? NSNumber(value: id) : nil
+        var ids: [NSValue] = []
+        for layer in layers {
+            for id in [layer.trackID, layer.personMaskTrackID].compactMap({ $0 }) where seen.insert(id).inserted {
+                ids.append(NSNumber(value: id))
+            }
         }
+        self.requiredSourceTrackIDs = ids
         super.init()
     }
 }

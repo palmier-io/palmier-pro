@@ -34,6 +34,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case searchMedia = "search_media"
     case applyColor = "apply_color"
     case applyEffect = "apply_effect"
+    case removeBackground = "remove_background"
     case inspectColor = "inspect_color"
     case listFolders = "list_folders"
     case createFolder = "create_folder"
@@ -783,6 +784,16 @@ enum ToolDefinitions {
                         ),
                     ],
                     "remove": ["type": "array", "items": ["type": "string"], "description": "Effect type ids to remove from the clips."],
+                ],
+                required: ["clipIds"]
+            )
+        ),
+        AgentTool(
+            name: .removeBackground,
+            description: "Removes the background from video clips using on-device person detection: finds every person in each clip and bakes a matte that keeps them, cutting everything else — the same pipeline as the Inspector's 'Remove Background' button. Applies as an editable key.personMask effect (adjust after with apply_effect's invert/feather params, or remove: ['key.personMask']). Baking runs per clip and can take a while for longer clips; this call blocks until it finishes (or fails, e.g. no people detected) and reports a per-clip result — no polling needed. Undoable.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipIds": ["type": "array", "items": ["type": "string"], "description": "Video clip ids from get_timeline."],
                 ],
                 required: ["clipIds"]
             )

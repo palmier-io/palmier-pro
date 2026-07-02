@@ -25,7 +25,8 @@ enum FrameRenderer {
             switch layer.source {
             case .track(let id):
                 guard let buffer = sourceFrame(id) else { continue }
-                image = composedLayer(layer, buffer: buffer, frame: frame,
+                let matteBuffer = layer.personMaskTrackID.flatMap { sourceFrame($0) }
+                image = composedLayer(layer, buffer: buffer, matteBuffer: matteBuffer, frame: frame,
                                       renderSize: instruction.renderSize, bakeOpacity: isNormal)
             case .text:
                 image = composedTextLayer(layer, frame: frame, renderSize: instruction.renderSize,
@@ -69,6 +70,7 @@ enum FrameRenderer {
     private static func composedLayer(
         _ layer: LayerPlan,
         buffer: CVPixelBuffer,
+        matteBuffer: CVPixelBuffer? = nil,
         frame: Int,
         renderSize: CGSize,
         bakeOpacity: Bool = true
@@ -82,6 +84,11 @@ enum FrameRenderer {
         var image = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
             .unpremultiplyingAlpha()
         let srcHeight = CGFloat(CVPixelBufferGetHeight(buffer))
+
+        // The person-mask matte is baked at the same size as the main track and stays
+        // frame-locked to it (see CompositionBuilder), so the same crop rect applies to both.
+        var matte = matteBuffer.map { CIImage(cvPixelBuffer: $0, options: [.colorSpace: NSNull()]) }
+        let matteSrcHeight = matteBuffer.map { CGFloat(CVPixelBufferGetHeight($0)) } ?? srcHeight
 
         let crop = clip.cropAt(frame: frame)
         if !crop.isIdentity {
@@ -98,12 +105,22 @@ enum FrameRenderer {
                 width: avRect.width,
                 height: avRect.height
             ))
+            matte = matte?.cropped(to: CGRect(
+                x: avRect.origin.x,
+                y: matteSrcHeight - avRect.origin.y - avRect.height,
+                width: avRect.width,
+                height: avRect.height
+            ))
         }
 
         // Effects apply in source-pixel space: after crop, before placement.
         if let effects = clip.effects, !effects.isEmpty {
             let offset = frame - clip.startFrame
             for effect in effects where effect.enabled {
+                if effect.type == "key.personMask" {
+                    image = PersonMaskKernel.apply(image, matte: matte, effect: effect, atOffset: offset)
+                    continue
+                }
                 guard let descriptor = EffectRegistry.descriptor(id: effect.type) else { continue }
                 image = descriptor.render(image, effect: effect, atOffset: offset)
             }

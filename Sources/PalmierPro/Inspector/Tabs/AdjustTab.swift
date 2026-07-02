@@ -134,6 +134,11 @@ extension InspectorView {
                 adjustSubgroup(title: "Glow", controls: glowControls, clips: clips)
                 adjustSubgroup(title: "Chroma Key", controls: chromaKeyControls, clips: clips)
             }
+            if let personMaskClip = clips.first, clips.count == 1, personMaskClip.mediaType == .video {
+                adjustSection(title: "People Mask", effectIds: ["key.personMask"], clips: clips) {
+                    PersonMaskPanel(clip: personMaskClip)
+                }
+            }
         }
     }
 

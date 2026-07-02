@@ -338,6 +338,16 @@ enum EffectRegistry {
                                       softness: p.value("softness"), spill: p.value("spill"))
             }
         ),
+        // apply is a no-op: FrameRenderer special-cases this id to use the baked matte track instead.
+        EffectDescriptor(
+            id: "key.personMask", displayName: "People Mask", category: "Key",
+            params: [
+                EffectParamSpec(key: "invert", label: "Invert", range: 0...1, defaultValue: 0, unit: ""),
+                EffectParamSpec(key: "feather", label: "Feather", range: 0...1, defaultValue: 0, unit: ""),
+            ],
+            resourceKey: "maskCachePath",
+            apply: { image, _, _ in image }
+        ),
     ]
 
     static let byId: [String: EffectDescriptor] = Dictionary(
@@ -350,7 +360,7 @@ enum EffectRegistry {
     static let canonicalOrder: [String] = [
         "color.exposure", "color.contrast", "color.highlightsShadows", "color.blacksWhites",
         "color.temperature", "color.vibrance", "color.saturation", "color.wheels", "color.curves",
-        "color.hueCurves", "color.lut", "detail.clarity", "key.chroma", "blur.gaussian", "blur.sharpen",
+        "color.hueCurves", "color.lut", "detail.clarity", "key.chroma", "key.personMask", "blur.gaussian", "blur.sharpen",
         "blur.noiseReduction", "blur.motion", "stylize.grain", "stylize.vignette", "stylize.glow",
     ]
 

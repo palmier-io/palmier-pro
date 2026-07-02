@@ -19,6 +19,7 @@ struct CompositionResult {
     let trackMappings: [TrackMapping]
     let clipNaturalSizes: [String: CGSize]
     let clipTransforms: [String: CGAffineTransform]
+    let clipPersonMaskTracks: [String: CMPersistentTrackID]
     let offlineMediaRefs: Set<String>
     let unprocessableMediaRefs: Set<String>
 }
@@ -48,6 +49,7 @@ enum CompositionBuilder {
         var trackMappings: [TrackMapping] = []
         var clipNaturalSizes: [String: CGSize] = [:]
         var clipTransforms: [String: CGAffineTransform] = [:]
+        var clipPersonMaskTracks: [String: CMPersistentTrackID] = [:]
         var offlineMediaRefs: Set<String> = []
         var unprocessableMediaRefs: Set<String> = []
 
@@ -186,6 +188,11 @@ enum CompositionBuilder {
                     insertedCount += 1
                     insertedClipIds.insert(clip.id)
                     previousEndFrame = clip.endFrame
+                    if let maskTrackID = await insertPersonMaskTrack(
+                        for: clip, composition: composition, timescale: timescale
+                    ) {
+                        clipPersonMaskTracks[clip.id] = maskTrackID
+                    }
                 }
             }
 
@@ -223,6 +230,7 @@ enum CompositionBuilder {
             trackMappings: trackMappings,
             clipNaturalSizes: clipNaturalSizes,
             clipTransforms: clipTransforms,
+            clipPersonMaskTracks: clipPersonMaskTracks,
             compositionDuration: composition.duration,
             renderSize: renderSize
         )
@@ -234,9 +242,38 @@ enum CompositionBuilder {
             trackMappings: trackMappings,
             clipNaturalSizes: clipNaturalSizes,
             clipTransforms: clipTransforms,
+            clipPersonMaskTracks: clipPersonMaskTracks,
             offlineMediaRefs: offlineMediaRefs,
             unprocessableMediaRefs: unprocessableMediaRefs
         )
+    }
+
+    /// Inserts `clip`'s baked `key.personMask` matte as its own frame-locked track, if any.
+    /// Fails open (nil, clip renders unmasked) if the cache file is missing.
+    private static func insertPersonMaskTrack(
+        for clip: Clip,
+        composition: AVMutableComposition,
+        timescale: CMTimeScale
+    ) async -> CMPersistentTrackID? {
+        guard let effect = (clip.effects ?? []).first(where: { $0.type == "key.personMask" && $0.enabled }),
+              let path = effect.params["maskCachePath"]?.string,
+              FileManager.default.fileExists(atPath: path) else { return nil }
+
+        let maskAsset = AVURLAsset(url: URL(fileURLWithPath: path))
+        guard let maskTrack = try? await maskAsset.loadTracks(withMediaType: .video).first,
+              let compTrack = composition.addMutableTrack(
+                withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid
+              ) else { return nil }
+
+        var cursor = CMTime.zero
+        guard await insertClip(
+            clip, sourceAsset: maskAsset, sourceTrack: maskTrack,
+            into: compTrack, cursor: &cursor, timescale: timescale
+        ) else {
+            composition.removeTrack(compTrack)
+            return nil
+        }
+        return compTrack.trackID
     }
 
     private enum LoadOutcome {
@@ -383,6 +420,7 @@ enum CompositionBuilder {
         trackMappings: [TrackMapping],
         clipNaturalSizes: [String: CGSize] = [:],
         clipTransforms: [String: CGAffineTransform] = [:],
+        clipPersonMaskTracks: [String: CMPersistentTrackID] = [:],
         compositionDuration: CMTime,
         renderSize: CGSize
     ) -> (audioMix: AVMutableAudioMix, videoComposition: AVVideoComposition) {
@@ -418,6 +456,7 @@ enum CompositionBuilder {
             trackMappings: trackMappings,
             clipNaturalSizes: clipNaturalSizes,
             clipTransforms: clipTransforms,
+            clipPersonMaskTracks: clipPersonMaskTracks,
             compositionDuration: compositionDuration,
             renderSize: renderSize
         )
@@ -430,6 +469,7 @@ enum CompositionBuilder {
         trackMappings: [TrackMapping],
         clipNaturalSizes: [String: CGSize],
         clipTransforms: [String: CGAffineTransform],
+        clipPersonMaskTracks: [String: CMPersistentTrackID] = [:],
         compositionDuration: CMTime,
         renderSize: CGSize
     ) -> [CompositorInstruction] {
@@ -464,7 +504,10 @@ enum CompositionBuilder {
                     plan = LayerPlan(source: .text, clip: clip, natSize: renderSize, preferredTransform: .identity)
                 } else {
                     guard clip.startFrame >= prevEndFrame, let slot = media[clip.id] else { continue }
-                    plan = LayerPlan(source: .track(slot.trackID), clip: clip, natSize: slot.natSize, preferredTransform: slot.transform)
+                    plan = LayerPlan(
+                        source: .track(slot.trackID), clip: clip, natSize: slot.natSize, preferredTransform: slot.transform,
+                        personMaskTrackID: clipPersonMaskTracks[clip.id]
+                    )
                     prevEndFrame = clip.endFrame
                 }
                 entries.append(Entry(start: cmTime(clip.startFrame), end: cmTime(clip.endFrame), plan: plan))

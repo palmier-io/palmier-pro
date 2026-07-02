@@ -87,6 +87,10 @@ final class EditorViewModel {
     var pendingEditAudioPlacement: PendingAudioPlacement?
     /// Clip ids currently awaiting an AI-generated replacement.
     var pendingReplacements: Set<String> = []
+    /// In-flight (or last-failed) background-removal bake per clip id, so progress survives
+    /// the Inspector panel being unmounted mid-bake.
+    var personMaskJobs: [String: PersonMaskJob] = [:]
+    var personMaskTasks: [String: Task<Void, Error>] = [:]
     var cropEditingActive: Bool = false
     var cropAspectLock: CropAspectLock = .free
     var previewTabs: [PreviewTab] = [.timeline]

@@ -396,7 +396,9 @@ extension EditorViewModel {
         clip.mediaType != .text && isMediaOffline(clip.mediaRef)
     }
 
+    /// True while `clip`'s media is generating, or a background-removal bake is running on it.
     func isClipMediaGenerating(_ clip: Clip) -> Bool {
+        if isRemovingBackground(clipId: clip.id) { return true }
         guard clip.mediaType != .text else { return false }
         return mediaAssets.first(where: { $0.id == clip.mediaRef })?.isGenerating ?? false
     }

@@ -270,6 +270,7 @@ enum AppTheme {
         static let timelineClipDetailMinWidth: CGFloat = 32
         static let timelineClipLabelMinWidth: CGFloat = 56
         static let updateOverlayWidth: CGFloat = 640
+        static let personMaskChipSize: CGFloat = 56
     }
 
     enum Window {
