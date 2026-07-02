@@ -96,8 +96,9 @@ struct FCPXMLExporterTests {
 
         let xml = try await export(timeline, resolver: resolver, tmpDir: tmpDir)
 
-        #expect(!xml.contains("<ref-clip"))     // visual clips emit ref-clips now
-        #expect(!xml.contains("<media id="))    // and their compound clip
+        #expect(!xml.contains("<asset-clip"))
+        #expect(!xml.contains("<ref-clip"))
+        #expect(!xml.contains("<media id="))
         #expect(!xml.contains("ghost"))
     }
 
@@ -111,10 +112,10 @@ struct FCPXMLExporterTests {
 
         let assetCount = xml.components(separatedBy: "<asset id=\"asset").count - 1
         let compoundCount = xml.components(separatedBy: "<media id=\"media").count - 1
-        let clipCount = xml.components(separatedBy: "<ref-clip ref=\"media1\"").count - 1
+        let clipCount = xml.components(separatedBy: "<asset-clip ref=\"asset1\"").count - 1
         #expect(assetCount == 1)       // one shared asset
-        #expect(compoundCount == 1)    // one shared compound clip
-        #expect(clipCount == 2)        // two ref-clips reference it
+        #expect(compoundCount == 0)    // audio-less source needs no compound
+        #expect(clipCount == 2)        // two flat asset-clips reference it
     }
 
     @Test func distinctMediaRefsWithSameSourceFileEmitOneAssetResource() async throws {
@@ -154,6 +155,41 @@ struct FCPXMLExporterTests {
         #expect(!xml.contains("<asset id=\"asset2\""))
     }
 
+    @Test func apostropheInSourcePathPercentEncodesInMediaRep() async throws {
+        // Resolve's relinker fails on &apos; — the apostrophe must land as %27.
+        let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "sam's clip", in: NSTemporaryDirectory())])
+        let clip = Fixtures.clip(id: "c", mediaRef: "sam's clip", start: 0, duration: 30)
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+
+        let xml = try await export(timeline, resolver: resolver, tmpDir: tmpDir)
+        let rep = xml.components(separatedBy: "<media-rep").dropFirst().first?
+            .components(separatedBy: "/>").first ?? ""
+
+        #expect(rep.contains("%27"))
+        #expect(!rep.contains("&apos;"))
+    }
+
+    @Test func stillImageEmitsVideoElementWithTransform() async throws {
+        let entry = MediaManifestEntry(
+            id: "broll", name: "broll", type: .image,
+            source: .external(absolutePath: (NSTemporaryDirectory() as NSString).appendingPathComponent("broll.png")),
+            duration: 0,
+            sourceWidth: 1920,
+            sourceHeight: 1080
+        )
+        let (resolver, tmpDir) = try makeResolver(entries: [entry])
+        var clip = Fixtures.clip(id: "c", mediaRef: "broll", mediaType: .image, start: 0, duration: 30)
+        clip.transform = Transform(centerX: 0.25, centerY: 0.75)
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+
+        let xml = try await export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        #expect(xml.contains("<video ref=\"asset1\" name=\"broll.png\" lane=\"1\""))
+        #expect(!xml.contains("<ref-clip"))
+        #expect(!xml.contains("<media id="))
+        #expect(xml.contains("<adjust-transform scale=\"1 1\" anchor=\"0 0\" position=\"-44.4444 -25\"/>"))
+    }
+
     @Test func assetResourcesOmitSyntheticUID() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
         let clip = Fixtures.clip(id: "clip", mediaRef: "media-v", start: 0, duration: 30)
@@ -167,11 +203,10 @@ struct FCPXMLExporterTests {
         #expect(!xml.contains("io.palmier.media.asset"))
     }
 
-    @Test func visualClipWrapsAssetInFullMediaCompoundClip() async throws {
-        // The compound clip must hold the FULL media (here 5s @30fps = 150 frames), independent of the
-        // clip's trim/duration — that runway is what stops Resolve blacking a retimed tail. The ref-clip
-        // also carries adjust-conform=fit to match Resolve.
-        let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
+    @Test func oneSidedAvClipWrapsAssetInFullMediaCompoundClip() async throws {
+        // The compound must hold the FULL media (5s), independent of the clip's trim/duration —
+        // that runway is what stops Resolve blacking a retimed tail.
+        let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory(), hasAudio: true)])
         let clip = Fixtures.clip(id: "c", mediaRef: "media-v", start: 0, duration: 30, trimStart: 20)
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
 
@@ -180,8 +215,22 @@ struct FCPXMLExporterTests {
             .components(separatedBy: "</media>").first ?? ""
 
         #expect(compound.contains("<sequence format=\"r2\" duration=\"5s\""))
-        #expect(compound.contains("<clip name=\"media-v.mp4\" duration=\"5s\" start=\"0s\" offset=\"0s\" format=\"r2\">"))
-        #expect(compound.contains("<video ref=\"asset1\" duration=\"5s\" start=\"0s\" offset=\"0s\"/>"))
+        #expect(compound.contains("<asset-clip ref=\"asset1\" name=\"media-v.mp4\" duration=\"5s\" start=\"0s\" offset=\"0s\" format=\"r2\"/>"))
+        #expect(xml.contains("<ref-clip ref=\"media1\""))
+        #expect(xml.contains("srcEnable=\"video\""))
+        #expect(xml.contains("<adjust-conform type=\"fit\"/>"))
+    }
+
+    @Test func audiolessVideoEmitsFlatAssetClipWithoutCompound() async throws {
+        let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
+        let clip = Fixtures.clip(id: "c", mediaRef: "media-v", start: 0, duration: 30, trimStart: 20)
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+
+        let xml = try await export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        #expect(!xml.contains("<media id="))
+        #expect(!xml.contains("<ref-clip"))
+        #expect(xml.contains("<asset-clip ref=\"asset1\" name=\"media-v.mp4\" lane=\"1\""))
         #expect(xml.contains("<adjust-conform type=\"fit\"/>"))
     }
 
@@ -217,9 +266,9 @@ struct FCPXMLExporterTests {
         #expect(xml.contains("srcEnable=\"audio\""))
     }
 
-    @Test func linkedAvPairCollapsesToOneRefClip() async throws {
-        // A synced A/V pair (shared linkGroup, aligned) becomes a single <ref-clip> carrying both streams.
-        // The separate audio clip is dropped so Resolve doesn't import a phantom second video track.
+    @Test func linkedAvPairCollapsesToOneFlatAssetClip() async throws {
+        // A synced A/V pair (shared linkGroup, aligned) becomes a single flat <asset-clip> carrying both
+        // streams. The separate audio clip is dropped so Resolve doesn't import a phantom video track.
         let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory(), hasAudio: true)])
         var video = Fixtures.clip(id: "video", mediaRef: "media-v", mediaType: .video, start: 0, duration: 30)
         var audio = Fixtures.clip(id: "audio", mediaRef: "media-v", mediaType: .audio, start: 0, duration: 30, volume: 0.5)
@@ -232,11 +281,13 @@ struct FCPXMLExporterTests {
 
         let xml = try await export(timeline, resolver: resolver, tmpDir: tmpDir)
 
-        // One timeline element: the video ref-clip, no srcEnable (both streams play). No audio lane.
-        #expect(xml.contains("<ref-clip ref=\"media1\" name=\"media-v.mp4\" lane=\"1\""))
+        // One timeline element: a flat asset-clip, both streams play, no compound emitted at all.
+        #expect(xml.contains("<asset-clip ref=\"asset1\" name=\"media-v.mp4\" lane=\"1\""))
+        #expect(!xml.contains("<ref-clip"))
+        #expect(!xml.contains("<media id="))
         #expect(!xml.contains("lane=\"-1\""))
         #expect(!xml.contains("srcEnable="))
-        // The dropped audio clip's volume rides on the surviving ref-clip.
+        // The dropped audio clip's volume rides on the surviving asset-clip.
         #expect(xml.contains("<adjust-volume amount=\"-6.0206\"/>"))
     }
 
@@ -279,7 +330,7 @@ struct FCPXMLExporterTests {
 
     // MARK: - Timing & speed
 
-    @Test func videoClipEmitsRefClipWithOffsetStartAndDuration() async throws {
+    @Test func videoClipEmitsFlatAssetClipWithOffsetStartAndDuration() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
         let clip = Fixtures.clip(id: "clip-1", mediaRef: "media-v", start: 30, duration: 60, trimStart: 10)
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
@@ -287,7 +338,7 @@ struct FCPXMLExporterTests {
         let xml = try await export(timeline, resolver: resolver, tmpDir: tmpDir)
 
         // Unspeeded: start is the raw source in-point (trimStart 10 / 30fps = 1/3s), no timeMap.
-        #expect(xml.contains("<ref-clip ref=\"media1\" name=\"media-v.mp4\" lane=\"1\""))
+        #expect(xml.contains("<asset-clip ref=\"asset1\" name=\"media-v.mp4\" lane=\"1\""))
         #expect(xml.contains("offset=\"1s\""))
         #expect(xml.contains("start=\"1/3s\""))
         #expect(xml.contains("duration=\"2s\""))
@@ -502,6 +553,38 @@ struct FCPXMLExporterTests {
         #expect(xml.contains("<adjust-transform scale=\"-1 1\" anchor=\"0 0\" position=\"0 0\"/>"))
     }
 
+    @Test func fittedClipPositionDividesOutConformFit() async throws {
+        // 16:9 in 9:16: fitH = 81/256, so centerY 0.75 → −25×256/81 = −79.0123; x unaffected (fitW 1).
+        let entry = videoEntry(id: "media-v", in: NSTemporaryDirectory(), sourceWidth: 1280, sourceHeight: 720)
+        let (resolver, tmpDir) = try makeResolver(entries: [entry])
+        var clip = Fixtures.clip(id: "clip-1", mediaRef: "media-v", start: 0, duration: 60)
+        clip.transform = Transform(centerX: 0.75, centerY: 0.75, width: 1, height: 81.0 / 256.0)
+        var timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+        timeline.width = 1080
+        timeline.height = 1920
+
+        let xml = try await export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        #expect(xml.contains("<adjust-transform scale=\"1 1\" anchor=\"0 0\" position=\"14.0625 -79.0123\"/>"))
+    }
+
+    @Test func fcpTargetWritesSpecLiteralPositionAndCrop() async throws {
+        // Final Cut takes the spec at face value: raw percent crop, no conform-fit division.
+        let entry = videoEntry(id: "media-v", in: NSTemporaryDirectory(), sourceWidth: 1280, sourceHeight: 720)
+        let (resolver, _) = try makeResolver(entries: [entry])
+        var clip = Fixtures.clip(id: "clip-1", mediaRef: "media-v", start: 0, duration: 60)
+        clip.transform = Transform(centerX: 0.75, centerY: 0.75, width: 1, height: 81.0 / 256.0)
+        clip.crop = Crop(left: 0.2, top: 0.05, right: 0.1, bottom: 0.05)
+        var timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+        timeline.width = 1080
+        timeline.height = 1920
+
+        let xml = FCPXMLExporter.render(timeline: timeline, resolver: resolver, target: .fcp)
+
+        #expect(xml.contains("position=\"14.0625 -25\""))
+        #expect(xml.contains("<trim-rect top=\"5\" right=\"10\" bottom=\"5\" left=\"20\"/>"))
+    }
+
     @Test func positionKeyframesExportAsParamAnimation() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
         var clip = Fixtures.clip(id: "clip-1", mediaRef: "media-v", start: 0, duration: 60)
@@ -522,7 +605,8 @@ struct FCPXMLExporterTests {
 
     // MARK: - Crop
 
-    @Test func cropExportsTrimRectAsPercent() async throws {
+    @Test func cropExportsTrimRectInResolveUnits() async throws {
+        // Fit = 1 here, so top/bottom stay raw percent; left/right = source px ÷ (seqHeight/100).
         let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
         var clip = Fixtures.clip(id: "clip-1", mediaRef: "media-v", start: 0, duration: 60)
         clip.crop = Crop(left: 0.1, top: 0.2, right: 0.3, bottom: 0.4)
@@ -531,7 +615,23 @@ struct FCPXMLExporterTests {
         let xml = try await export(timeline, resolver: resolver, tmpDir: tmpDir)
 
         #expect(xml.contains("<adjust-crop mode=\"trim\">"))
-        #expect(xml.contains("<trim-rect top=\"20\" right=\"30\" bottom=\"40\" left=\"10\"/>"))
+        #expect(xml.contains("<trim-rect top=\"20\" right=\"53.3333\" bottom=\"40\" left=\"17.7778\"/>"))
+    }
+
+    @Test func cropOfWideSourceInPortraitSequenceMatchesResolveEncoding() async throws {
+        // Byte-matches DaVinci's own export of the identical crop (256/128/36/36 source px).
+        let (resolver, tmpDir) = try makeResolver(entries: [
+            videoEntry(id: "media-v", in: NSTemporaryDirectory(), sourceWidth: 1280, sourceHeight: 720),
+        ])
+        var clip = Fixtures.clip(id: "clip-1", mediaRef: "media-v", start: 0, duration: 60)
+        clip.crop = Crop(left: 0.2, top: 0.05, right: 0.1, bottom: 0.05)
+        var timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+        timeline.width = 1080
+        timeline.height = 1920
+
+        let xml = try await export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        #expect(xml.contains("<trim-rect top=\"5.9259\" right=\"6.6667\" bottom=\"5.9259\" left=\"13.3333\"/>"))
     }
 
     @Test func identityCropOmitsAdjustCrop() async throws {
@@ -695,6 +795,35 @@ struct FCPXMLExporterTests {
 
         #expect(xml.contains("font=\"Helvetica\""))
         #expect(xml.contains("fontFace=\"Regular\""))
+    }
+
+    @Test func textBorderExportsStrokeColorAndWidth() async throws {
+        let (resolver, tmpDir) = try makeResolver(entries: [])
+        var text = Fixtures.clip(id: "title", mediaRef: "text", mediaType: .text, start: 0, duration: 60)
+        text.textContent = "HOOK"
+        var style = TextStyle(fontSize: 96)
+        style.border = TextStyle.Fill(enabled: true, color: TextStyle.RGBA(r: 0, g: 0, b: 0, a: 1))
+        text.textStyle = style
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [text])])
+
+        let xml = try await export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        // 4% of the 96pt font (NSAttributedString's stroke convention) = 3.84pt.
+        #expect(xml.contains("strokeColor=\"0 0 0 1\""))
+        #expect(xml.contains("strokeWidth=\"3.84\""))
+    }
+
+    @Test func disabledBorderOmitsStroke() async throws {
+        let (resolver, tmpDir) = try makeResolver(entries: [])
+        var text = Fixtures.clip(id: "title", mediaRef: "text", mediaType: .text, start: 0, duration: 60)
+        text.textContent = "HOOK"
+        text.textStyle = TextStyle()
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [text])])
+
+        let xml = try await export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        #expect(!xml.contains("strokeColor="))
+        #expect(!xml.contains("strokeWidth="))
     }
 
     @Test func titleFontSizeDoesNotScaleWithSequenceHeight() async throws {

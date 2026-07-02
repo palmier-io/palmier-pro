@@ -57,6 +57,7 @@ struct ExportView: View {
     @State private var destination: ExportDestination = .video
     @State private var timelineFormat: TimelineExportFormat = .fcpxml
     @State private var fcpxmlVersion: FCPXMLVersion = .default
+    @State private var fcpxmlTarget: FCPXMLTarget = .default
     @State private var codec: VideoCodec = .h264
     @State private var resolution: ExportResolution = .matchTimeline
     @State private var palmierResult: String?
@@ -216,6 +217,18 @@ struct ExportView: View {
     private var fcpxmlVersionRow: some View {
         Divider().opacity(AppTheme.Opacity.moderate)
         HStack(spacing: AppTheme.Spacing.sm) {
+            Text("For")
+                .font(.system(size: AppTheme.FontSize.xs))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            Picker("", selection: $fcpxmlTarget) {
+                ForEach(FCPXMLTarget.allCases) { target in
+                    Text(target.displayName).tag(target)
+                }
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .font(.system(size: AppTheme.FontSize.xs))
+            .fixedSize()
             Text("Version")
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -453,6 +466,7 @@ struct ExportView: View {
                     format: format,
                     resolution: resolution,
                     fcpxmlVersion: fcpxmlVersion,
+                    fcpxmlTarget: fcpxmlTarget,
                     missingMediaRefs: editor.missingMediaRefs,
                     outputURL: url
                 )

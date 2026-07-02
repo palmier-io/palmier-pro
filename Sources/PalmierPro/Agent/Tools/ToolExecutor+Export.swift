@@ -38,7 +38,16 @@ extension ToolExecutor {
         case .xml:
             return try await exportXML(editor, outputURL: outputURL)
         case .fcpxml:
-            return try await exportFCPXML(editor, outputURL: outputURL)
+            let target: FCPXMLTarget
+            if let raw = input.fcpxmlTarget {
+                guard let parsed = FCPXMLTarget(rawValue: raw) else {
+                    throw ToolError("export_project: fcpxmlTarget must be 'resolve' or 'fcp'")
+                }
+                target = parsed
+            } else {
+                target = .default
+            }
+            return try await exportFCPXML(editor, target: target, outputURL: outputURL)
         case .palmier:
             return try await exportPalmier(editor, outputURL: outputURL)
         }
@@ -127,7 +136,7 @@ extension ToolExecutor {
         ])
     }
 
-    private func exportFCPXML(_ editor: EditorViewModel, outputURL: URL) async throws -> ToolResult {
+    private func exportFCPXML(_ editor: EditorViewModel, target: FCPXMLTarget, outputURL: URL) async throws -> ToolResult {
         if FileManager.default.fileExists(atPath: outputURL.path) {
             do {
                 try FileManager.default.removeItem(at: outputURL)
@@ -136,7 +145,8 @@ extension ToolExecutor {
             }
         }
         do {
-            try await FCPXMLExporter.export(timeline: editor.timeline, resolver: editor.mediaResolver, outputURL: outputURL)
+            try await FCPXMLExporter.export(timeline: editor.timeline, resolver: editor.mediaResolver,
+                                            target: target, outputURL: outputURL)
         } catch {
             throw ToolError("export_project: FCPXML export failed: \(error.localizedDescription)")
         }
@@ -278,13 +288,14 @@ extension ToolExecutor {
 }
 
 private struct ExportProjectArgs: DecodableToolArgs {
-    static let allowedKeys: Set<String> = ["mode", "codec", "resolution", "outputPath", "overwrite"]
+    static let allowedKeys: Set<String> = ["mode", "codec", "resolution", "outputPath", "overwrite", "fcpxmlTarget"]
 
     var mode: String?
     var codec: String?
     var resolution: String?
     var outputPath: String?
     var overwrite: Bool?
+    var fcpxmlTarget: String?
 }
 
 private enum ExportProjectMode: String {
