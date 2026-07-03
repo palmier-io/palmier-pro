@@ -37,6 +37,14 @@ struct ToolbarView: View {
             // Add content
             HStack(spacing: AppTheme.Spacing.md) {
                 textGlyphButton("T", help: "Add Text", action: { _ = editor.addTextClip() })
+
+                toolbarButton(
+                    "waveform.badge.minus",
+                    help: "Remove Silence",
+                    action: { editor.showSilenceRemovalSheet = true }
+                )
+                .disabled(editor.silenceRemovalCandidate == nil)
+                .opacity(editor.silenceRemovalCandidate == nil ? AppTheme.Opacity.muted : 1.0)
             }
 
             Spacer()
