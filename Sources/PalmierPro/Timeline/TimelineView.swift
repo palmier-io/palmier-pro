@@ -894,9 +894,18 @@ final class TimelineView: NSView {
             aiItems.append(aiEditItem)
         }
 
+        // Nest
+        var nestItems: [NSMenuItem] = []
+        if clip.sourceClipType == .sequence {
+            let openItem = NSMenuItem(title: "Open Timeline", action: #selector(performOpenNestedTimeline(_:)), keyEquivalent: "")
+            openItem.target = self
+            openItem.representedObject = clip.mediaRef
+            nestItems.append(openItem)
+        }
+
         // Media
         var mediaItems: [NSMenuItem] = []
-        if clip.mediaType != .text, singleLinkGroup {
+        if clip.mediaType != .text, clip.sourceClipType != .sequence, singleLinkGroup {
             let swapItem = NSMenuItem(title: "Swap Media", action: #selector(performSwapMedia(_:)), keyEquivalent: "")
             swapItem.target = self
             swapItem.representedObject = clip.id
@@ -917,7 +926,7 @@ final class TimelineView: NSView {
             syncItems.append(syncItem)
         }
 
-        for group in [timelineItems, aiItems, mediaItems, syncItems] where !group.isEmpty {
+        for group in [timelineItems, aiItems, nestItems, mediaItems, syncItems] where !group.isEmpty {
             if !menu.items.isEmpty { menu.addItem(.separator()) }
             group.forEach { menu.addItem($0) }
         }
@@ -1035,6 +1044,12 @@ final class TimelineView: NSView {
         guard let item = sender as? NSMenuItem,
               let clipId = item.representedObject as? String else { return }
         editor.beginMediaSwap(clipId: clipId)
+    }
+
+    @objc private func performOpenNestedTimeline(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let timelineId = item.representedObject as? String else { return }
+        editor.activateTimeline(timelineId)
     }
 
     @objc private func performSetVolumeKfInterpolation(_ sender: Any?) {

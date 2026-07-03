@@ -47,6 +47,11 @@ final class TimelineInputController {
             let ti = geometry.trackAt(y: point.y)
             if let hit = hitTestClip(at: point, trackIndex: ti, geometry: geometry) {
                 let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
+                if clip.sourceClipType == .sequence {
+                    editor.activateTimeline(clip.mediaRef)
+                    dragState = .idle
+                    return
+                }
                 if let asset = editor.mediaAssets.first(where: { $0.id == clip.mediaRef }) {
                     editor.selectMediaAsset(asset)
                     editor.mediaPanelRevealAssetId = asset.id
