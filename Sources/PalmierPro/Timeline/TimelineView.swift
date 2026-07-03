@@ -904,6 +904,12 @@ final class TimelineView: NSView {
             openItem.target = self
             openItem.representedObject = clip.mediaRef
             nestItems.append(openItem)
+            if singleLinkGroup {
+                let decomposeItem = NSMenuItem(title: "Decompose Nested Timeline", action: #selector(performDecomposeNest(_:)), keyEquivalent: "")
+                decomposeItem.target = self
+                decomposeItem.representedObject = clip.id
+                nestItems.append(decomposeItem)
+            }
         }
 
         // Media
@@ -1051,6 +1057,12 @@ final class TimelineView: NSView {
 
     @objc private func performNestClips(_ sender: Any?) {
         editor.nestSelectedClips()
+    }
+
+    @objc private func performDecomposeNest(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let clipId = item.representedObject as? String else { return }
+        editor.decomposeNest(clipId: clipId)
     }
 
     @objc private func performOpenNestedTimeline(_ sender: Any?) {
