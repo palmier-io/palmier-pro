@@ -401,7 +401,8 @@ final class EditorViewModel {
     ) -> [String] {
         guard timeline.tracks.indices.contains(trackIndex) else { return [] }
         let targetIsVideo = timeline.tracks[trackIndex].type == .video
-        let shouldLink = addLinkedAudio && targetIsVideo && asset.type == .video && asset.hasAudio
+        let shouldLink = addLinkedAudio && targetIsVideo && asset.hasAudio
+            && (asset.type == .video || asset.type == .sequence)
         let linkGroupId: String? = shouldLink ? UUID().uuidString : nil
         let trimStart = sourceSegment.map { secondsToFrame(seconds: $0.lowerBound, fps: timeline.fps) } ?? 0
         let totalSourceFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)

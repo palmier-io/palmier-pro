@@ -46,8 +46,7 @@ final class ToolExecutor {
         do {
             let resolved = try expandingIdPrefixes(in: args, editor: editor)
             result = try await run(tool, editor, resolved)
-            // Record any edit that actually changed the timeline so `undo` can revert it.
-            // A timeline switch changes `editor.timeline` without registering an undo.
+            // Register undo only if the timeline actually changed
             if tool != .undo, tool != .setActiveTimeline, !result.isError, editor.timeline != before,
                let actionName = editor.undoManager?.undoActionName {
                 agentUndoStack.append(actionName)
@@ -169,6 +168,31 @@ final class ToolExecutor {
             throw ToolError("\(label) not found: \(id)")
         }
         return asset
+    }
+
+    /// Media asset, or a synthetic stand-in when `id` names a timeline (nest insertion).
+    func clipSource(_ id: String, editor: EditorViewModel, path: String) throws -> MediaAsset {
+        if let existing = editor.mediaAssets.first(where: { $0.id == id }) { return existing }
+        guard let child = editor.timeline(for: id) else {
+            throw ToolError("\(path): media asset or timeline not found: \(id)")
+        }
+        guard child.totalFrames > 0 else {
+            throw ToolError("\(path): timeline \"\(child.name)\" is empty — add clips to it before nesting it.")
+        }
+        guard !editor.wouldCreateNestCycle(nesting: child.id, into: editor.activeTimelineId) else {
+            throw ToolError("\(path): can't nest \"\(child.name)\" here — it would contain itself.")
+        }
+        let stand = MediaAsset(
+            id: child.id,
+            url: URL(fileURLWithPath: "/dev/null"),
+            type: .sequence,
+            name: child.name,
+            duration: Double(child.totalFrames) / Double(editor.timeline.fps)
+        )
+        stand.sourceWidth = child.width
+        stand.sourceHeight = child.height
+        stand.hasAudio = child.tracks.contains { $0.type == .audio && !$0.clips.isEmpty }
+        return stand
     }
 
     func resolveFolderId(

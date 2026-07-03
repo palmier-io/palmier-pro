@@ -71,4 +71,64 @@ struct TimelineToolsTests {
         let result = await h.runRaw("set_active_timeline", args: ["timelineId": "ffffffff"])
         #expect(result.isError)
     }
+
+    @Test func addClipsNestsTimelineWithLinkedAudio() async throws {
+        let h = ToolHarness()
+        let child = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 60)]),
+            Fixtures.audioTrack(clips: [Fixtures.clip(mediaType: .audio, start: 0, duration: 60)])
+        ])
+        h.editor.timelines.append(child)
+
+        let result = await h.runRaw("add_clips", args: ["entries": [
+            ["mediaRef": child.id, "startFrame": 30]
+        ]])
+        #expect(!result.isError, "\(ToolHarness.textOf(result))")
+
+        let video = h.editor.timeline.tracks.first { $0.type == .video }!.clips[0]
+        let audio = h.editor.timeline.tracks.first { $0.type == .audio }!.clips[0]
+        #expect(video.mediaType == .sequence && video.sourceClipType == .sequence)
+        #expect(video.mediaRef == child.id)
+        #expect(video.startFrame == 30 && video.durationFrames == 60)
+        #expect(audio.sourceClipType == .sequence)
+        #expect(audio.linkGroupId == video.linkGroupId && video.linkGroupId != nil)
+    }
+
+    @Test func addClipsRejectsNestCyclesAndEmptyTimelines() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 30)])
+        ]))
+        // Self-nesting rejected.
+        let selfNest = await h.runRaw("add_clips", args: ["entries": [
+            ["mediaRef": h.editor.activeTimelineId, "startFrame": 0]
+        ]])
+        #expect(selfNest.isError)
+
+        // Empty child rejected.
+        let empty = Fixtures.timeline()
+        h.editor.timelines.append(empty)
+        let emptyNest = await h.runRaw("add_clips", args: ["entries": [
+            ["mediaRef": empty.id, "startFrame": 0]
+        ]])
+        #expect(emptyNest.isError)
+    }
+
+    @Test func renameAndDeleteMediaAcceptTimelines() async throws {
+        let h = ToolHarness()
+        let child = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 30)])])
+        h.editor.timelines.append(child)
+
+        let rename = await h.runRaw("rename_media", args: ["mediaRef": child.id, "name": "Selects"])
+        #expect(!rename.isError)
+        #expect(h.editor.timeline(for: child.id)?.name == "Selects")
+
+        let delete = await h.runRaw("delete_media", args: ["assetIds": [child.id]])
+        #expect(!delete.isError)
+        #expect(h.editor.timelines.count == 1)
+
+        // The last timeline is protected.
+        let last = await h.runRaw("delete_media", args: ["assetIds": [h.editor.activeTimelineId]])
+        #expect(last.isError)
+        #expect(h.editor.timelines.count == 1)
+    }
 }

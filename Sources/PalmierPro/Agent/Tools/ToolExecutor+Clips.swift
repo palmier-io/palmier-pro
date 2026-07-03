@@ -182,7 +182,7 @@ extension ToolExecutor {
         var prepared: [(entry: AddClipsInput.Entry, asset: MediaAsset, trackId: String?)] = []
         prepared.reserveCapacity(input.entries.count)
         for (idx, entry) in input.entries.enumerated() {
-            let asset = try asset(entry.mediaRef, editor: editor)
+            let asset = try clipSource(entry.mediaRef, editor: editor, path: "entries[\(idx)]")
             var trackId: String? = nil
             if let ti = entry.trackIndex {
                 guard editor.timeline.tracks.indices.contains(ti) else {
@@ -206,7 +206,7 @@ extension ToolExecutor {
             throw ToolError("Mixed trackIndex: \(omittedCount) of \(prepared.count) entries omitted trackIndex. Either set it on every entry or omit it on every entry (to auto-create shared tracks).")
         }
 
-        let settingsNote = applySettingsIfNeededForAgent(editor, assets: prepared.map(\.asset))
+        let settingsNote = applySettingsIfNeededForAgent(editor, assets: prepared.map(\.asset).filter { $0.type != .sequence })
 
         var specs: [AddClipSpec] = []
         specs.reserveCapacity(prepared.count)
@@ -327,14 +327,14 @@ extension ToolExecutor {
         var resolvedAssets: [MediaAsset] = []
         resolvedAssets.reserveCapacity(input.entries.count)
         for (idx, entry) in input.entries.enumerated() {
-            let asset = try asset(entry.mediaRef, editor: editor)
+            let asset = try clipSource(entry.mediaRef, editor: editor, path: "entries[\(idx)]")
             guard asset.type.isCompatible(with: targetType) else {
                 throw ToolError("entries[\(idx)]: asset type \(asset.type.rawValue) is not compatible with \(targetType.rawValue) track at index \(input.trackIndex)")
             }
             resolvedAssets.append(asset)
         }
 
-        let settingsNote = applySettingsIfNeededForAgent(editor, assets: resolvedAssets)
+        let settingsNote = applySettingsIfNeededForAgent(editor, assets: resolvedAssets.filter { $0.type != .sequence })
 
         var specs: [EditorViewModel.RippleInsertSpec] = []
         specs.reserveCapacity(input.entries.count)

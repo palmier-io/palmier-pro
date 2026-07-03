@@ -387,7 +387,9 @@ extension EditorViewModel {
             // Pin the linked-audio destination before pushing so it ripples too; otherwise the
             // auto-created audio partner would land on an un-pushed track and overlap.
             let targetIsVideo = timeline.tracks[trackIndex].type == .video
-            let needsLinkedAudio = targetIsVideo && specs.contains { $0.asset.type == .video && $0.asset.hasAudio }
+            let needsLinkedAudio = targetIsVideo && specs.contains {
+                $0.asset.hasAudio && ($0.asset.type == .video || $0.asset.type == .sequence)
+            }
             let linkedAudioTrackIndex: Int? = needsLinkedAudio
                 ? (timeline.tracks.firstIndex { $0.type == .audio } ?? insertTrack(at: timeline.tracks.count, type: .audio))
                 : nil
