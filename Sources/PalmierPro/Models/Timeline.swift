@@ -32,6 +32,16 @@ struct Timeline: Codable, Sendable, Equatable, Identifiable {
         return maxFrame
     }
 
+    var nestedTimelineIds: Set<String> {
+        var ids: Set<String> = []
+        for track in tracks {
+            for clip in track.clips where clip.mediaType == .sequence || clip.sourceClipType == .sequence {
+                ids.insert(clip.mediaRef)
+            }
+        }
+        return ids
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id, name, fps, width, height, settingsConfigured, folderId, tracks, viewState
     }

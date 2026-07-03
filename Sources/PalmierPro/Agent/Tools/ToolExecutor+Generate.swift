@@ -32,6 +32,8 @@ extension ToolExecutor {
             throw ToolError("Out of credits. Tell the user to add credits or subscribe to keep generating.")
         }
         switch type {
+        case .sequence:
+            throw ToolError("Cannot generate a sequence. Sequences are timelines.")
         case .video:
             let modelId = try args.string("model") ?? defaultModelId(
                 VideoModelConfig.allModels.map { (id: $0.id, paidOnly: $0.paidOnly) }, kind: "video")
@@ -255,8 +257,10 @@ extension ToolExecutor {
             guard start >= 0, end > start else {
                 throw ToolError("videoSourceEndFrame must be greater than videoSourceStartFrame (>= 0).")
             }
+            let timelinesById = Dictionary(uniqueKeysWithValues: editor.timelines.map { ($0.id, $0) })
             let mp4 = try await TimelineRenderer.render(
                 timeline: editor.timeline, resolver: editor.mediaResolver,
+                resolveTimeline: { timelinesById[$0] },
                 missingMediaRefs: editor.missingMediaRefs,
                 startFrame: start, frameCount: end - start,
                 shortSide: 360, includeAudio: false

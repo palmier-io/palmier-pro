@@ -3,6 +3,7 @@ import AVFoundation
 struct TrackMapping: @unchecked Sendable {
     enum Kind {
         case timeline(trackIndex: Int, clipIds: Set<String>?)
+        case nested(clips: [Clip], carrier: Clip, parentTrackIndex: Int)
         case blackBackground(range: CMTimeRange)
     }
     let compositionTrack: AVMutableCompositionTrack
@@ -35,6 +36,7 @@ enum CompositionBuilder {
         timeline: Timeline,
         resolveURL: @Sendable (String) -> URL?,
         resolveSourceSize: @Sendable (String) -> CGSize? = { _ in nil },
+        resolveTimeline: @Sendable (String) -> Timeline? = { _ in nil },
         missingMediaRefs: Set<String> = [],
         renderSize: CGSize
     ) async throws -> CompositionResult {
@@ -65,7 +67,22 @@ enum CompositionBuilder {
                 var normalClipIds = Set<String>()
                 var normalCursor = CMTime.zero
 
+                var previousAudioEnd = Int.min
                 for clip in sortedClips {
+                    guard clip.durationFrames > 0, clip.startFrame >= previousAudioEnd else { continue }
+                    previousAudioEnd = clip.endFrame
+                    if clip.sourceClipType == .sequence {
+                        try await expandNestAudio(
+                            carrier: clip, topCarrier: clip, volumeScale: 1.0,
+                            parentTrackIndex: trackIdx, depth: 0,
+                            composition: composition, timescale: timescale, renderSize: renderSize,
+                            resolveTimeline: resolveTimeline, resolveURL: resolveURL,
+                            resolveSourceSize: resolveSourceSize, missingMediaRefs: missingMediaRefs,
+                            trackMappings: &trackMappings, offlineMediaRefs: &offlineMediaRefs,
+                            unprocessableMediaRefs: &unprocessableMediaRefs
+                        )
+                        continue
+                    }
                     let source: (asset: AVURLAsset, track: AVAssetTrack)
                     switch try await loadSource(
                         clip: clip,
@@ -80,48 +97,22 @@ enum CompositionBuilder {
                     case .unprocessable: unprocessableMediaRefs.insert(clip.mediaRef); continue
                     }
 
-                    if clip.speed != 1.0 {
-                        guard let compTrack = composition.addMutableTrack(
+                    if normalTrack == nil {
+                        normalTrack = composition.addMutableTrack(
                             withMediaType: mediaType,
                             preferredTrackID: kCMPersistentTrackID_Invalid
-                        ) else { continue }
-                        var cursor = CMTime.zero
-                        if await insertClip(
-                            clip,
-                            sourceAsset: source.asset,
-                            sourceTrack: source.track,
-                            into: compTrack,
-                            cursor: &cursor,
-                            timescale: timescale
-                        ) {
-                            trackMappings.append(TrackMapping(
-                                compositionTrack: compTrack,
-                                kind: .timeline(trackIndex: trackIdx, clipIds: [clip.id]),
-                                naturalSize: .zero,
-                                endTime: .zero,
-                                isVideo: false
-                            ))
-                        } else {
-                            composition.removeTrack(compTrack)
-                        }
-                    } else {
-                        if normalTrack == nil {
-                            normalTrack = composition.addMutableTrack(
-                                withMediaType: mediaType,
-                                preferredTrackID: kCMPersistentTrackID_Invalid
-                            )
-                        }
-                        guard let compTrack = normalTrack else { continue }
-                        if await insertClip(
-                            clip,
-                            sourceAsset: source.asset,
-                            sourceTrack: source.track,
-                            into: compTrack,
-                            cursor: &normalCursor,
-                            timescale: timescale
-                        ) {
-                            normalClipIds.insert(clip.id)
-                        }
+                        )
+                    }
+                    guard let compTrack = normalTrack else { continue }
+                    if await insertClip(
+                        clip,
+                        sourceAsset: source.asset,
+                        sourceTrack: source.track,
+                        into: compTrack,
+                        cursor: &normalCursor,
+                        timescale: timescale
+                    ) {
+                        normalClipIds.insert(clip.id)
                     }
                 }
 
@@ -152,6 +143,19 @@ enum CompositionBuilder {
             var previousEndFrame = Int.min
             for clip in sortedClips {
                 guard clip.durationFrames > 0, clip.startFrame >= previousEndFrame else { continue }
+                if clip.mediaType == .sequence {
+                    try await expandNestVideo(
+                        carrier: clip, parentTrackIndex: trackIdx, depth: 0,
+                        composition: composition, timescale: timescale, renderSize: renderSize,
+                        resolveTimeline: resolveTimeline, resolveURL: resolveURL,
+                        resolveSourceSize: resolveSourceSize, missingMediaRefs: missingMediaRefs,
+                        trackMappings: &trackMappings, clipNaturalSizes: &clipNaturalSizes,
+                        clipTransforms: &clipTransforms, offlineMediaRefs: &offlineMediaRefs,
+                        unprocessableMediaRefs: &unprocessableMediaRefs
+                    )
+                    previousEndFrame = clip.endFrame
+                    continue
+                }
                 let source: (asset: AVURLAsset, track: AVAssetTrack)
                 switch try await loadSource(
                     clip: clip,
@@ -223,6 +227,7 @@ enum CompositionBuilder {
             trackMappings: trackMappings,
             clipNaturalSizes: clipNaturalSizes,
             clipTransforms: clipTransforms,
+            resolveTimeline: resolveTimeline,
             compositionDuration: composition.duration,
             renderSize: renderSize
         )
@@ -377,12 +382,190 @@ enum CompositionBuilder {
         )
     }
 
+    /// Insert a nest's child video clips as composition tracks (one per child track).
+    private static func expandNestVideo(
+        carrier: Clip,
+        parentTrackIndex: Int,
+        depth: Int,
+        composition: AVMutableComposition,
+        timescale: CMTimeScale,
+        renderSize: CGSize,
+        resolveTimeline: @Sendable (String) -> Timeline?,
+        resolveURL: @Sendable (String) -> URL?,
+        resolveSourceSize: @Sendable (String) -> CGSize?,
+        missingMediaRefs: Set<String>,
+        trackMappings: inout [TrackMapping],
+        clipNaturalSizes: inout [String: CGSize],
+        clipTransforms: inout [String: CGAffineTransform],
+        offlineMediaRefs: inout Set<String>,
+        unprocessableMediaRefs: inout Set<String>
+    ) async throws {
+        guard depth < NestFlattener.maxDepth else {
+            Log.preview.warning("nest depth limit reached; skipping \(carrier.mediaRef.prefix(8))")
+            return
+        }
+        guard let child = resolveTimeline(carrier.mediaRef) else {
+            offlineMediaRefs.insert(carrier.mediaRef)
+            return
+        }
+        let flat = NestFlattener.flatten(carrier: carrier, child: child, visual: true)
+        for childClips in flat.videoTracks {
+            var compTrack: AVMutableCompositionTrack?
+            var cursor = CMTime.zero
+            var inserted: [Clip] = []
+            var previousEndFrame = Int.min
+            for clip in childClips {
+                guard clip.durationFrames > 0, clip.startFrame >= previousEndFrame else { continue }
+                if clip.mediaType == .text { continue }   // text renders inside the group
+                if clip.mediaType == .sequence {
+                    try await expandNestVideo(
+                        carrier: clip, parentTrackIndex: parentTrackIndex, depth: depth + 1,
+                        composition: composition, timescale: timescale, renderSize: renderSize,
+                        resolveTimeline: resolveTimeline, resolveURL: resolveURL,
+                        resolveSourceSize: resolveSourceSize, missingMediaRefs: missingMediaRefs,
+                        trackMappings: &trackMappings, clipNaturalSizes: &clipNaturalSizes,
+                        clipTransforms: &clipTransforms, offlineMediaRefs: &offlineMediaRefs,
+                        unprocessableMediaRefs: &unprocessableMediaRefs
+                    )
+                    previousEndFrame = clip.endFrame
+                    continue
+                }
+                let source: (asset: AVURLAsset, track: AVAssetTrack)
+                switch try await loadSource(
+                    clip: clip, mediaType: .video, resolveURL: resolveURL,
+                    resolveSourceSize: resolveSourceSize, missingMediaRefs: missingMediaRefs,
+                    renderSize: renderSize
+                ) {
+                case .loaded(let asset, let track): source = (asset, track)
+                case .offline: offlineMediaRefs.insert(clip.mediaRef); continue
+                case .unprocessable: unprocessableMediaRefs.insert(clip.mediaRef); continue
+                }
+                if compTrack == nil {
+                    compTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+                }
+                guard let track = compTrack else { continue }
+                if let natSize = try? await source.track.load(.naturalSize),
+                   natSize.width > 0, natSize.height > 0 {
+                    let pt = (try? await source.track.load(.preferredTransform)) ?? .identity
+                    let box = CGRect(origin: .zero, size: natSize).applying(pt)
+                    clipNaturalSizes[clip.id] = CGSize(width: abs(box.width), height: abs(box.height))
+                    clipTransforms[clip.id] = pt.concatenating(CGAffineTransform(translationX: -box.minX, y: -box.minY))
+                }
+                if await insertClip(clip, sourceAsset: source.asset, sourceTrack: source.track,
+                                    into: track, cursor: &cursor, timescale: timescale) {
+                    inserted.append(clip)
+                    previousEndFrame = clip.endFrame
+                }
+            }
+            if let compTrack {
+                if inserted.isEmpty {
+                    composition.removeTrack(compTrack)
+                } else {
+                    trackMappings.append(TrackMapping(
+                        compositionTrack: compTrack,
+                        kind: .nested(clips: inserted, carrier: carrier, parentTrackIndex: parentTrackIndex),
+                        naturalSize: renderSize,
+                        endTime: cursor,
+                        isVideo: true
+                    ))
+                }
+            }
+        }
+    }
+
+    /// Child audio inserts per child track; static volumes fold, top carrier envelope multiplies at mix.
+    private static func expandNestAudio(
+        carrier: Clip,
+        topCarrier: Clip,
+        volumeScale: Double,
+        parentTrackIndex: Int,
+        depth: Int,
+        composition: AVMutableComposition,
+        timescale: CMTimeScale,
+        renderSize: CGSize,
+        resolveTimeline: @Sendable (String) -> Timeline?,
+        resolveURL: @Sendable (String) -> URL?,
+        resolveSourceSize: @Sendable (String) -> CGSize?,
+        missingMediaRefs: Set<String>,
+        trackMappings: inout [TrackMapping],
+        offlineMediaRefs: inout Set<String>,
+        unprocessableMediaRefs: inout Set<String>
+    ) async throws {
+        guard depth < NestFlattener.maxDepth else {
+            Log.preview.warning("nest depth limit reached; skipping \(carrier.mediaRef.prefix(8))")
+            return
+        }
+        guard let child = resolveTimeline(carrier.mediaRef) else {
+            offlineMediaRefs.insert(carrier.mediaRef)
+            return
+        }
+        let flat = NestFlattener.flatten(carrier: carrier, child: child, visual: false)
+        for trackClips in flat.audioTracks {
+            // Clips within a child track never overlap: share one composition track.
+            var sharedTrack: AVMutableCompositionTrack?
+            var sharedCursor = CMTime.zero
+            var sharedClips: [Clip] = []
+            var previousEnd = Int.min
+            for var clip in trackClips {
+                guard clip.durationFrames > 0, clip.startFrame >= previousEnd else { continue }
+                previousEnd = clip.endFrame
+                if clip.sourceClipType == .sequence {
+                    try await expandNestAudio(
+                        carrier: clip, topCarrier: topCarrier, volumeScale: volumeScale * clip.volume,
+                        parentTrackIndex: parentTrackIndex, depth: depth + 1,
+                        composition: composition, timescale: timescale, renderSize: renderSize,
+                        resolveTimeline: resolveTimeline, resolveURL: resolveURL,
+                        resolveSourceSize: resolveSourceSize, missingMediaRefs: missingMediaRefs,
+                        trackMappings: &trackMappings, offlineMediaRefs: &offlineMediaRefs,
+                        unprocessableMediaRefs: &unprocessableMediaRefs
+                    )
+                    continue
+                }
+                clip.volume *= volumeScale
+                let source: (asset: AVURLAsset, track: AVAssetTrack)
+                switch try await loadSource(
+                    clip: clip, mediaType: .audio, resolveURL: resolveURL,
+                    resolveSourceSize: resolveSourceSize, missingMediaRefs: missingMediaRefs,
+                    renderSize: renderSize
+                ) {
+                case .loaded(let asset, let track): source = (asset, track)
+                case .offline: offlineMediaRefs.insert(clip.mediaRef); continue
+                case .unprocessable: unprocessableMediaRefs.insert(clip.mediaRef); continue
+                }
+
+                if sharedTrack == nil {
+                    sharedTrack = composition.addMutableTrack(
+                        withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+                }
+                guard let compTrack = sharedTrack else { continue }
+                if await insertClip(clip, sourceAsset: source.asset, sourceTrack: source.track,
+                                    into: compTrack, cursor: &sharedCursor, timescale: timescale) {
+                    sharedClips.append(clip)
+                }
+            }
+            if let sharedTrack {
+                if sharedClips.isEmpty {
+                    composition.removeTrack(sharedTrack)
+                } else {
+                    trackMappings.append(TrackMapping(
+                        compositionTrack: sharedTrack,
+                        kind: .nested(clips: sharedClips, carrier: topCarrier, parentTrackIndex: parentTrackIndex),
+                        naturalSize: .zero,
+                        endTime: .zero,
+                        isVideo: false
+                    ))
+                }
+            }
+        }
+    }
+
     /// Rebuild only visual properties (transforms, opacity, volume)
     static func buildVisuals(
         timeline: Timeline,
         trackMappings: [TrackMapping],
         clipNaturalSizes: [String: CGSize] = [:],
         clipTransforms: [String: CGAffineTransform] = [:],
+        resolveTimeline: @Sendable (String) -> Timeline? = { _ in nil },
         compositionDuration: CMTime,
         renderSize: CGSize
     ) -> (audioMix: AVMutableAudioMix, videoComposition: AVVideoComposition) {
@@ -390,22 +573,40 @@ enum CompositionBuilder {
 
         let audioMix = AVMutableAudioMix()
         audioMix.inputParameters = trackMappings.filter { !$0.isVideo }.compactMap { mapping in
-            guard case .timeline(let trackIndex, let clipIds) = mapping.kind,
-                  timeline.tracks.indices.contains(trackIndex) else { return nil }
-            let track = timeline.tracks[trackIndex]
-            let params = AVMutableAudioMixInputParameters(track: mapping.compositionTrack)
-            if track.muted {
-                params.setVolume(0, at: .zero)
+            switch mapping.kind {
+            case .blackBackground:
+                return nil
+            case .nested(let clips, let carrier, let parentTrackIndex):
+                let params = AVMutableAudioMixInputParameters(track: mapping.compositionTrack)
+                guard timeline.tracks.indices.contains(parentTrackIndex) else { return params }
+                let parentTrack = timeline.tracks[parentTrackIndex]
+                if parentTrack.muted {
+                    params.setVolume(0, at: .zero)
+                    return params
+                }
+                // Prefer the live carrier so nest volume/fade edits apply on refresh.
+                let liveCarrier = parentTrack.clips.first { $0.id == carrier.id } ?? carrier
+                for clip in clips {
+                    emitVolumeEnvelope(params: params, clip: clip, timescale: timescale, carrier: liveCarrier)
+                }
+                return params
+            case .timeline(let trackIndex, let clipIds):
+                guard timeline.tracks.indices.contains(trackIndex) else { return nil }
+                let track = timeline.tracks[trackIndex]
+                let params = AVMutableAudioMixInputParameters(track: mapping.compositionTrack)
+                if track.muted {
+                    params.setVolume(0, at: .zero)
+                    return params
+                }
+                var prevEndFrame = Int.min
+                for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) {
+                    if let clipIds, !clipIds.contains(clip.id) { continue }
+                    guard clip.durationFrames > 0, clip.startFrame >= prevEndFrame else { continue }
+                    emitVolumeEnvelope(params: params, clip: clip, timescale: timescale)
+                    prevEndFrame = clip.startFrame + clip.durationFrames
+                }
                 return params
             }
-            var prevEndFrame = Int.min
-            for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) {
-                if let clipIds, !clipIds.contains(clip.id) { continue }
-                guard clip.durationFrames > 0, clip.startFrame >= prevEndFrame else { continue }
-                emitVolumeEnvelope(params: params, clip: clip, timescale: timescale)
-                prevEndFrame = clip.startFrame + clip.durationFrames
-            }
-            return params
         }
 
         var vcConfig = AVVideoComposition.Configuration()
@@ -418,6 +619,7 @@ enum CompositionBuilder {
             trackMappings: trackMappings,
             clipNaturalSizes: clipNaturalSizes,
             clipTransforms: clipTransforms,
+            resolveTimeline: resolveTimeline,
             compositionDuration: compositionDuration,
             renderSize: renderSize
         )
@@ -430,6 +632,7 @@ enum CompositionBuilder {
         trackMappings: [TrackMapping],
         clipNaturalSizes: [String: CGSize],
         clipTransforms: [String: CGAffineTransform],
+        resolveTimeline: @Sendable (String) -> Timeline? = { _ in nil },
         compositionDuration: CMTime,
         renderSize: CGSize
     ) -> [CompositorInstruction] {
@@ -441,9 +644,16 @@ enum CompositionBuilder {
         // Resolve each inserted media clip to the composition track it lives on.
         var media: [String: Slot] = [:]
         for mapping in trackMappings where mapping.isVideo {
-            guard case .timeline(let trackIndex, let clipIds) = mapping.kind,
-                  timeline.tracks.indices.contains(trackIndex) else { continue }
-            let ids = clipIds ?? Set(timeline.tracks[trackIndex].clips.filter { $0.mediaType != .text }.map(\.id))
+            let ids: Set<String>
+            switch mapping.kind {
+            case .timeline(let trackIndex, let clipIds):
+                guard timeline.tracks.indices.contains(trackIndex) else { continue }
+                ids = clipIds ?? Set(timeline.tracks[trackIndex].clips.filter { $0.mediaType != .text }.map(\.id))
+            case .nested(let clips, _, _):
+                ids = Set(clips.map(\.id))
+            case .blackBackground:
+                continue
+            }
             for id in ids {
                 media[id] = Slot(
                     trackID: mapping.compositionTrack.trackID,
@@ -451,6 +661,61 @@ enum CompositionBuilder {
                     transform: clipTransforms[id] ?? .identity
                 )
             }
+        }
+
+        // Flatten is pure per carrier — memoize; segments reuse one result.
+        var flattenCache: [String: NestFlattener.Flattened] = [:]
+        func flattened(for carrier: Clip, depth: Int) -> NestFlattener.Flattened? {
+            guard depth < NestFlattener.maxDepth else { return nil }
+            if let cached = flattenCache[carrier.id] { return cached }
+            guard let child = resolveTimeline(carrier.mediaRef) else { return nil }
+            let flat = NestFlattener.flatten(carrier: carrier, child: child, visual: true)
+            flattenCache[carrier.id] = flat
+            return flat
+        }
+
+        // Group layer for one segment window; empty children still render (nest gaps are opaque black).
+        func nestGroupPlan(carrier: Clip, depth: Int, window: Range<Int>) -> LayerPlan? {
+            guard let flat = flattened(for: carrier, depth: depth) else { return nil }
+            var children: [LayerPlan] = []
+            for childClips in flat.videoTracks.reversed() {
+                var prevEnd = Int.min
+                for clip in childClips where clip.durationFrames > 0 {
+                    let overlapsWindow = clip.startFrame < window.upperBound && clip.endFrame > window.lowerBound
+                    if clip.mediaType == .text {
+                        guard overlapsWindow, !(clip.textContent ?? "").isEmpty else { continue }
+                        children.append(LayerPlan(source: .text, clip: clip, natSize: flat.childCanvas, preferredTransform: .identity))
+                    } else if clip.mediaType == .sequence {
+                        guard clip.startFrame >= prevEnd else { continue }
+                        prevEnd = clip.endFrame
+                        guard overlapsWindow, let plan = nestGroupPlan(carrier: clip, depth: depth + 1, window: window) else { continue }
+                        children.append(plan)
+                    } else {
+                        guard clip.startFrame >= prevEnd, let slot = media[clip.id] else { continue }
+                        prevEnd = clip.endFrame
+                        guard overlapsWindow else { continue }
+                        children.append(LayerPlan(source: .track(slot.trackID), clip: clip, natSize: slot.natSize, preferredTransform: slot.transform))
+                    }
+                }
+            }
+            return LayerPlan(source: .group(children: children, canvas: flat.childCanvas),
+                             clip: carrier, natSize: flat.childCanvas, preferredTransform: .identity)
+        }
+
+        // Child clip boundaries: segments scope decoder demand to what's visible.
+        func nestCutFrames(carrier: Clip, depth: Int) -> [Int] {
+            guard let flat = flattened(for: carrier, depth: depth) else { return [] }
+            var frames: [Int] = []
+            for childClips in flat.videoTracks {
+                for clip in childClips {
+                    frames.append(clip.startFrame)
+                    frames.append(clip.endFrame)
+                    if clip.mediaType == .sequence {
+                        frames.append(contentsOf: nestCutFrames(carrier: clip, depth: depth + 1))
+                    }
+                }
+            }
+            return frames.filter { $0 > carrier.startFrame && $0 < carrier.endFrame }
         }
 
         // Walk tracks in reverse to produce bottom→top entries. Text layers follow track order.
@@ -462,6 +727,21 @@ enum CompositionBuilder {
                 if clip.mediaType == .text {
                     guard !(clip.textContent ?? "").isEmpty else { continue }
                     plan = LayerPlan(source: .text, clip: clip, natSize: renderSize, preferredTransform: .identity)
+                } else if clip.mediaType == .sequence {
+                    guard clip.startFrame >= prevEndFrame else { continue }
+                    prevEndFrame = clip.endFrame
+                    // One entry per child-boundary segment: each requires only the
+                    // source tracks visible in that segment.
+                    let bounds = ([clip.startFrame, clip.endFrame] + nestCutFrames(carrier: clip, depth: 0))
+                        .reduce(into: Set<Int>()) { $0.insert($1) }
+                        .sorted()
+                    for i in 0..<(bounds.count - 1) {
+                        let window = bounds[i]..<bounds[i + 1]
+                        guard window.count > 0,
+                              let group = nestGroupPlan(carrier: clip, depth: 0, window: window) else { continue }
+                        entries.append(Entry(start: cmTime(window.lowerBound), end: cmTime(window.upperBound), plan: group))
+                    }
+                    continue
                 } else {
                     guard clip.startFrame >= prevEndFrame, let slot = media[clip.id] else { continue }
                     plan = LayerPlan(source: .track(slot.trackID), clip: clip, natSize: slot.natSize, preferredTransform: slot.transform)
@@ -553,16 +833,23 @@ enum CompositionBuilder {
         return Array(Set(raw)).sorted()
     }
 
-    /// Linear-ramp envelope for the clip's volume curve. `volumeAt` already folds in static × kf × fade.
+    /// Linear-ramp volume envelope; a nest `carrier` multiplies its envelope in.
     private static func emitVolumeEnvelope(
         params: AVMutableAudioMixInputParameters,
         clip: Clip,
-        timescale: CMTimeScale
+        timescale: CMTimeScale,
+        carrier: Clip? = nil
     ) {
         let kfs = normalizedKeyframes(clip.volumeTrack?.keyframes ?? [], duration: clip.durationFrames)
         let hasFade = clip.fadeInFrames > 0 || clip.fadeOutFrames > 0
-        if kfs.isEmpty && !hasFade {
-            let volume = Float(clip.volumeAt(frame: clip.startFrame))
+        let carrierVaries = carrier.map {
+            ($0.volumeTrack?.isActive ?? false) || $0.fadeInFrames > 0 || $0.fadeOutFrames > 0
+        } ?? false
+        let gainAt: (Int) -> Double = { absFrame in
+            carrier.map { $0.volumeAt(frame: absFrame) } ?? 1
+        }
+        if kfs.isEmpty && !hasFade && !carrierVaries {
+            let volume = Float(clip.volumeAt(frame: clip.startFrame) * gainAt(clip.startFrame))
             let start = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
             let end = CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale)
             guard volume.isFinite, end > start else { return }
@@ -574,11 +861,37 @@ enum CompositionBuilder {
             return
         }
 
+        var extraOffsets: [Int] = []
+        if let carrier, carrierVaries {
+            let toClipOffset: (Int) -> Int = { carrierOffset in
+                carrier.startFrame + carrierOffset - clip.startFrame
+            }
+            if carrier.fadeInFrames > 0 {
+                extraOffsets.append(toClipOffset(carrier.fadeInFrames))
+                if carrier.fadeInInterpolation == .smooth {
+                    extraOffsets += smoothSubdivisions(from: 0, to: carrier.fadeInFrames).map(toClipOffset)
+                }
+            }
+            if carrier.fadeOutFrames > 0 {
+                let fadeStart = carrier.durationFrames - carrier.fadeOutFrames
+                extraOffsets.append(toClipOffset(fadeStart))
+                if carrier.fadeOutInterpolation == .smooth {
+                    extraOffsets += smoothSubdivisions(from: fadeStart, to: carrier.durationFrames).map(toClipOffset)
+                }
+            }
+            for kf in carrier.volumeTrack?.keyframes ?? [] {
+                extraOffsets.append(toClipOffset(kf.frame))
+                extraOffsets.append(toClipOffset(kf.frame) - 1)   // hold boundaries
+            }
+            extraOffsets = extraOffsets.filter { $0 > 0 && $0 < clip.durationFrames }
+        }
+
         emitEnvelopeRamps(
             clip: clip,
             kfs: kfs,
             timescale: timescale,
-            sampleAt: { Float(clip.volumeAt(frame: clip.startFrame + $0)) },
+            extraOffsets: extraOffsets,
+            sampleAt: { Float(clip.volumeAt(frame: clip.startFrame + $0) * gainAt(clip.startFrame + $0)) },
             emit: { start, end, range in
                 params.setVolumeRamp(fromStartVolume: start, toEndVolume: end, timeRange: range)
             }
@@ -590,6 +903,7 @@ enum CompositionBuilder {
         clip: Clip,
         kfs: [Keyframe<Double>],
         timescale: CMTimeScale,
+        extraOffsets: [Int] = [],
         sampleAt: (Int) -> Float,
         emit: (Float, Float, CMTimeRange) -> Void
     ) {
@@ -598,6 +912,7 @@ enum CompositionBuilder {
         let kfs = normalizedKeyframes(kfs, duration: dur)
 
         var offsetSet: Set<Int> = [0, dur]
+        offsetSet.formUnion(extraOffsets)
         for kf in kfs { offsetSet.insert(kf.frame) }
         for i in kfs.indices.dropLast() {
             let a = kfs[i], b = kfs[i + 1]

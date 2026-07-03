@@ -295,6 +295,7 @@ extension ToolExecutor {
         case .audio: return try await readAudio(editor: editor, asset: asset, args: args, mapping: mapping, preferredLocale: preferredLocale)
         case .lottie: return try await readLottie(asset: asset, args: args)
         case .text: throw ToolError("Text clips are not stored as media assets.")
+        case .sequence: throw ToolError("Sequences are timelines, not media assets. Use get_timeline.")
         }
     }
 

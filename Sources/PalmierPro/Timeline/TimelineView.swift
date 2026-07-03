@@ -1157,6 +1157,18 @@ final class TimelineView: NSView {
         guard let urlString = sender.draggingPasteboard.string(forType: .string) else { return false }
 
         let editor = self.editor
+
+        let timelineIds = editor.timelineIdsFromDragPayload(urlString)
+        if !timelineIds.isEmpty {
+            var frame = targetFrame
+            for id in timelineIds {
+                guard editor.nestTimeline(id, cursor: cursorTarget, atFrame: frame) else { continue }
+                frame += editor.timeline(for: id)?.totalFrames ?? 0
+            }
+            needsDisplay = true
+            return true
+        }
+
         let assets = editor.assetsFromDragPayload(urlString)
         let segments = editor.segmentsFromDragPayload(urlString)
         guard !assets.isEmpty else { return false }

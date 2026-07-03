@@ -154,6 +154,13 @@ extension EditorViewModel {
         }
     }
 
+    func timelineIdsFromDragPayload(_ payload: String) -> [String] {
+        payload.split(separator: "\n").compactMap { line in
+            guard let id = MediaTab.timelineId(fromDragString: String(line)) else { return nil }
+            return timeline(for: id)?.id
+        }
+    }
+
     /// Source-second ranges carried by search-moment drags, keyed by asset id.
     func segmentsFromDragPayload(_ payload: String) -> [String: ClosedRange<Double>] {
         var segments: [String: ClosedRange<Double>] = [:]
@@ -365,6 +372,9 @@ extension EditorViewModel {
         if let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }), asset.isGenerating {
             return asset.name
         }
+        if clip.sourceClipType == .sequence, let nested = timeline(for: clip.mediaRef) {
+            return nested.name
+        }
         return mediaResolver.displayName(for: clip.mediaRef)
     }
 
@@ -403,7 +413,10 @@ extension EditorViewModel {
     }
 
     func isClipMediaOffline(_ clip: Clip) -> Bool {
-        clip.mediaType != .text && isMediaOffline(clip.mediaRef)
+        if clip.sourceClipType == .sequence {
+            return timeline(for: clip.mediaRef) == nil
+        }
+        return clip.mediaType != .text && isMediaOffline(clip.mediaRef)
     }
 
     func isClipMediaGenerating(_ clip: Clip) -> Bool {
@@ -593,7 +606,7 @@ extension EditorViewModel {
             mediaVisualCache.generateWaveform(for: asset)
         case .image:
             mediaVisualCache.generateImageThumbnail(for: asset)
-        case .text, .lottie:
+        case .text, .lottie, .sequence:
             break
         }
         refreshPreviewForFinalizedAsset(asset)

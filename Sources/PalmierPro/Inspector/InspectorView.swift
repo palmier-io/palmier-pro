@@ -382,7 +382,7 @@ struct InspectorView: View {
             HStack(alignment: .top, spacing: 0) {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
                     transformSection(clips: clips)
-                    speedSection(clips: clips + selectedAudioClips)
+                    speedSection(clips: (clips + selectedAudioClips).filter { $0.sourceClipType != .sequence })
                         .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -394,7 +394,7 @@ struct InspectorView: View {
             }
         } else {
             transformSection(clips: clips)
-            speedSection(clips: clips + selectedAudioClips)
+            speedSection(clips: (clips + selectedAudioClips).filter { $0.sourceClipType != .sequence })
         }
 
         keyframesToggleBar(enabled: single != nil)

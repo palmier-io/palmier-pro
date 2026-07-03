@@ -185,16 +185,9 @@ extension EditorViewModel {
         if leftKfs.last?.frame != splitOffset {
             leftKfs.append(Keyframe(frame: splitOffset, value: boundary))
         }
-        var rightKfs = track.keyframes
-            .filter { $0.frame >= splitOffset }
-            .map { Keyframe(frame: $0.frame - splitOffset, value: $0.value, interpolationOut: $0.interpolationOut) }
-        if rightKfs.first?.frame != 0 {
-            let interp = track.keyframes.last { $0.frame < splitOffset }?.interpolationOut ?? .smooth
-            rightKfs.insert(Keyframe(frame: 0, value: boundary, interpolationOut: interp), at: 0)
-        }
         return (
             leftKfs.isEmpty ? nil : KeyframeTrack(keyframes: leftKfs),
-            rightKfs.isEmpty ? nil : KeyframeTrack(keyframes: rightKfs)
+            track.rebased(by: splitOffset, fallback: fallback)
         )
     }
 
@@ -215,6 +208,8 @@ extension EditorViewModel {
 
     func applyClipSpeed(clipId: String, newSpeed: Double) {
         guard let loc = findClip(id: clipId) else { return }
+        // Nest playback doesn't support retiming yet.
+        guard timeline.tracks[loc.trackIndex].clips[loc.clipIndex].sourceClipType != .sequence else { return }
         if preDragTimeline == nil {
             preDragTimeline = timeline
         }
@@ -228,6 +223,7 @@ extension EditorViewModel {
         let before: Timeline = preDragTimeline ?? timeline
         for id in ids {
             guard let loc = findClip(id: id) else { continue }
+            guard timeline.tracks[loc.trackIndex].clips[loc.clipIndex].sourceClipType != .sequence else { continue }
             if timeline.tracks[loc.trackIndex].clips[loc.clipIndex].speed != newSpeed {
                 setClipSpeed(at: loc, newSpeed: newSpeed)
             }

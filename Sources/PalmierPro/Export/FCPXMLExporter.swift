@@ -269,7 +269,7 @@ enum FCPXMLExporter {
                     switch item.clip.mediaType {
                     case .text:
                         return titleNode(for: item)
-                    case .audio, .video, .image:
+                    case .audio, .video, .image, .sequence:
                         return assetClipNode(for: item)
                     case .lottie:
                         return nil
@@ -684,10 +684,12 @@ enum FCPXMLExporter {
 
         private func isEmittable(_ clip: Clip) -> Bool {
             guard clip.durationFrames > 0 else { return false }
+            // Nested timelines await ref-clip support; excluded with a warning at export.
+            guard clip.sourceClipType != .sequence else { return false }
             switch clip.mediaType {
             case .text:
                 return clip.textContent?.isEmpty == false
-            case .lottie:
+            case .lottie, .sequence:
                 return false
             case .audio, .video, .image:
                 return resolver.resolveURL(for: clip.mediaRef) != nil

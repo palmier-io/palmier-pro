@@ -72,6 +72,12 @@ extension EditorViewModel {
             guard timeline.tracks.indices.contains(dstTrack) else { continue }
             let trackType = timeline.tracks[dstTrack].type
             guard trackType.isCompatible(with: entry.clip.mediaType) else { continue }
+            // A pasted nest must not make this timeline contain itself.
+            if entry.clip.sourceClipType == .sequence,
+               wouldCreateNestCycle(nesting: entry.clip.mediaRef, into: activeTimelineId) {
+                mediaPanelToast = "Can't paste \"\(clipDisplayLabel(for: entry.clip))\" here — it would nest this timeline inside itself."
+                continue
+            }
             placements.append(ClonePlacement(
                 source: entry.clip,
                 trackId: timeline.tracks[dstTrack].id,

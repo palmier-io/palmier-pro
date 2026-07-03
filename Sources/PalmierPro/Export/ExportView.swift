@@ -447,9 +447,11 @@ struct ExportView: View {
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             Task {
+                let timelinesById = Dictionary(uniqueKeysWithValues: editor.timelines.map { ($0.id, $0) })
                 await service.export(
                     timeline: editor.timeline,
                     resolver: editor.mediaResolver,
+                    resolveTimeline: { timelinesById[$0] },
                     format: format,
                     resolution: resolution,
                     fcpxmlVersion: fcpxmlVersion,

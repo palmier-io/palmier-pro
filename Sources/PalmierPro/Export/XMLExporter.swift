@@ -435,7 +435,7 @@ enum XMLExporter {
         /// Drops unresolvable clips so track builders and `<link>` indices agree.
         private func sortEmittable(_ track: Track) -> [Clip] {
             track.clips
-                .filter { resolver.resolveURL(for: $0.mediaRef) != nil }
+                .filter { $0.sourceClipType != .sequence && resolver.resolveURL(for: $0.mediaRef) != nil }
                 .sorted { $0.startFrame < $1.startFrame }
         }
 

@@ -212,6 +212,79 @@ extension EditorViewModel {
         return removed
     }
 
+    // MARK: - Nesting
+
+    func wouldCreateNestCycle(nesting childId: String, into hostId: String) -> Bool {
+        if childId == hostId { return true }
+        var visited: Set<String> = []
+        var frontier = [childId]
+        while let current = frontier.popLast() {
+            guard visited.insert(current).inserted else { continue }
+            guard let t = timeline(for: current) else { continue }
+            let ids = t.nestedTimelineIds
+            if ids.contains(hostId) { return true }
+            frontier.append(contentsOf: ids)
+        }
+        return false
+    }
+
+    /// Drops `childId` into the active timeline as a single nested clip.
+    @discardableResult
+    func nestTimeline(_ childId: String, cursor: TrackDropTarget, atFrame frame: Int) -> Bool {
+        guard let child = timeline(for: childId) else { return false }
+        guard child.totalFrames > 0 else {
+            mediaPanelToast = "\"\(child.name)\" is empty. Add clips before nesting it."
+            return false
+        }
+        guard !wouldCreateNestCycle(nesting: childId, into: activeTimelineId) else {
+            mediaPanelToast = "Can't nest \"\(child.name)\" — it would contain itself."
+            return false
+        }
+
+        let duration = child.totalFrames
+        let startFrame = max(0, frame)
+
+        withTimelineSwap(actionName: "Nest Timeline") {
+            var videoTarget = cursor
+            if case .existingTrack(let idx) = cursor,
+               !(timeline.tracks.indices.contains(idx) && timeline.tracks[idx].type == .video) {
+                videoTarget = .newTrackAt(0)
+            }
+            let videoIdx = materializeTrackIndex(target: videoTarget, type: .video)
+            clearRegion(trackIndex: videoIdx, start: startFrame, end: startFrame + duration)
+
+            let hasAudio = child.tracks.contains { $0.type == .audio && !$0.clips.isEmpty }
+            let linkGroupId: String? = hasAudio ? UUID().uuidString : nil
+
+            var clip = Clip(
+                mediaRef: childId,
+                mediaType: .sequence,
+                sourceClipType: .sequence,
+                startFrame: startFrame,
+                durationFrames: duration,
+                transform: fitTransform(sourceWidth: child.width, sourceHeight: child.height)
+            )
+            clip.linkGroupId = linkGroupId
+            timeline.tracks[videoIdx].clips.append(clip)
+            sortClips(trackIndex: videoIdx)
+
+            if let linkGroupId {
+                let audioIdx = resolveOrCreateAudioTrack(startFrame: startFrame, duration: duration)
+                var audioClip = Clip(
+                    mediaRef: childId,
+                    mediaType: .audio,
+                    sourceClipType: .sequence,
+                    startFrame: startFrame,
+                    durationFrames: duration
+                )
+                audioClip.linkGroupId = linkGroupId
+                timeline.tracks[audioIdx].clips.append(audioClip)
+                sortClips(trackIndex: audioIdx)
+            }
+        }
+        return true
+    }
+
     // MARK: - Naming
 
     func nextTimelineName() -> String {

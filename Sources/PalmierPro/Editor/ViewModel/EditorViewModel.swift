@@ -509,10 +509,18 @@ final class EditorViewModel {
     }
 
     func fitTransform(for asset: MediaAsset, canvasWidth: Int, canvasHeight: Int) -> Transform {
-        guard let relativeAspect = mediaCanvasAspect(for: asset, canvasWidth: canvasWidth, canvasHeight: canvasHeight) else {
-            return Transform()
-        }
+        guard let sw = asset.sourceWidth, let sh = asset.sourceHeight else { return Transform() }
+        return fitTransform(sourceWidth: sw, sourceHeight: sh, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+    }
+
+    func fitTransform(sourceWidth: Int, sourceHeight: Int) -> Transform {
+        fitTransform(sourceWidth: sourceWidth, sourceHeight: sourceHeight, canvasWidth: timeline.width, canvasHeight: timeline.height)
+    }
+
+    func fitTransform(sourceWidth: Int, sourceHeight: Int, canvasWidth: Int, canvasHeight: Int) -> Transform {
+        guard sourceWidth > 0, sourceHeight > 0, canvasWidth > 0, canvasHeight > 0 else { return Transform() }
         let canvasAspect = Double(canvasWidth) / Double(canvasHeight)
+        let relativeAspect = (Double(sourceWidth) / Double(sourceHeight)) / canvasAspect
         let sourceAspect = relativeAspect * canvasAspect
         if abs(canvasAspect - sourceAspect) < Defaults.aspectTolerance {
             return Transform()

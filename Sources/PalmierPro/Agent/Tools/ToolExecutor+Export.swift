@@ -58,6 +58,7 @@ extension ToolExecutor {
         let resolver = editor.mediaResolver
         let missingMediaRefs = editor.missingMediaRefs
         let name = outputURL.lastPathComponent
+        let timelinesById = Dictionary(uniqueKeysWithValues: editor.timelines.map { ($0.id, $0) })
 
         Task { @MainActor in
             defer { ExportCoordinator.endExport() }
@@ -65,6 +66,7 @@ extension ToolExecutor {
             await service.export(
                 timeline: timeline,
                 resolver: resolver,
+                resolveTimeline: { timelinesById[$0] },
                 format: format,
                 resolution: resolution,
                 missingMediaRefs: missingMediaRefs,
@@ -114,6 +116,10 @@ extension ToolExecutor {
         guard FileManager.default.fileExists(atPath: outputURL.path) else {
             throw ToolError("export_project: XML export failed")
         }
+        let nestCount = editor.timeline.tracks.flatMap(\.clips).count { $0.sourceClipType == .sequence }
+        let warnings: [String] = nestCount > 0
+            ? ["\(nestCount) nested timeline clip(s) were not exported — XML nesting support is not available yet."]
+            : []
         return try jsonResult([
             "status": "exported",
             "mode": ExportProjectMode.xml.rawValue,
@@ -123,7 +129,7 @@ extension ToolExecutor {
             "durationFrames": editor.timeline.totalFrames,
             "durationSeconds": Double(editor.timeline.totalFrames) / Double(max(1, editor.timeline.fps)),
             "fps": editor.timeline.fps,
-            "warnings": [],
+            "warnings": warnings,
         ])
     }
 
@@ -143,6 +149,10 @@ extension ToolExecutor {
         guard FileManager.default.fileExists(atPath: outputURL.path) else {
             throw ToolError("export_project: FCPXML export failed")
         }
+        let nestCount = editor.timeline.tracks.flatMap(\.clips).count { $0.sourceClipType == .sequence }
+        let warnings: [String] = nestCount > 0
+            ? ["\(nestCount) nested timeline clip(s) were not exported — XML nesting support is not available yet."]
+            : []
         return try jsonResult([
             "status": "exported",
             "mode": ExportProjectMode.fcpxml.rawValue,
@@ -152,7 +162,7 @@ extension ToolExecutor {
             "durationFrames": editor.timeline.totalFrames,
             "durationSeconds": Double(editor.timeline.totalFrames) / Double(max(1, editor.timeline.fps)),
             "fps": editor.timeline.fps,
-            "warnings": [],
+            "warnings": warnings,
         ])
     }
 

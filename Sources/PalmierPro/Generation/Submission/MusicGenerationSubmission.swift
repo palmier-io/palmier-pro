@@ -34,9 +34,11 @@ struct MusicGenerationSubmission {
         var videoURL: String?
         if mode == .videoToMusic {
             onPhase(.exporting)
+            let timelinesById = Dictionary(uniqueKeysWithValues: editor.timelines.map { ($0.id, $0) })
             let mp4 = try await TimelineRenderer.render(
                 timeline: editor.timeline,
                 resolver: editor.mediaResolver,
+                resolveTimeline: { timelinesById[$0] },
                 missingMediaRefs: editor.missingMediaRefs,
                 startFrame: source.startFrame,
                 frameCount: source.frameCount,

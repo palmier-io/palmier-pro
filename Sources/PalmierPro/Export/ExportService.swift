@@ -32,6 +32,7 @@ final class ExportService {
     func export(
         timeline: Timeline,
         resolver: MediaResolver,
+        resolveTimeline: @Sendable (String) -> Timeline? = { _ in nil },
         format: ExportFormat,
         resolution: ExportResolution,
         fcpxmlVersion: FCPXMLVersion = .default,
@@ -91,7 +92,7 @@ final class ExportService {
 
         do {
             let prepared = try await makeExportSession(
-                timeline: timeline, resolver: resolver,
+                timeline: timeline, resolver: resolver, resolveTimeline: resolveTimeline,
                 format: format, resolution: resolution,
                 missingMediaRefs: missingMediaRefs
             )
@@ -225,6 +226,7 @@ final class ExportService {
     private func makeExportSession(
         timeline: Timeline,
         resolver: MediaResolver,
+        resolveTimeline: @Sendable (String) -> Timeline? = { _ in nil },
         format: ExportFormat,
         resolution: ExportResolution,
         missingMediaRefs: Set<String>
@@ -236,6 +238,7 @@ final class ExportService {
         let result = try await CompositionBuilder.build(
             timeline: timeline,
             resolveURL: { mediaURLs[$0] },
+            resolveTimeline: resolveTimeline,
             missingMediaRefs: missingMediaRefs,
             renderSize: renderSize
         )
