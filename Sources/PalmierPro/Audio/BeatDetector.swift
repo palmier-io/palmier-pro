@@ -8,6 +8,9 @@ struct BeatAnalysis: Sendable {
     let downbeats: [Double]  // bar starts (every 4 beats), seconds
     let confidence: Double   // 0–1
     let durationSeconds: Double
+    let climaxSec: Double    // peak of the smoothed energy envelope — the song's climax, seconds
+    let energyCurve: [Double] // coarse energy curve, 0–1, one value per energyStepSec
+    let energyStepSec: Double
 }
 
 enum BeatDetectorError: LocalizedError {
@@ -41,14 +44,57 @@ enum BeatDetector {
         let beats = pickBeats(onsetEnv: onsetEnv, hopDuration: hopDuration, bpm: bpm)
         let downbeats = stride(from: 0, to: beats.count, by: 4).map { beats[$0] }
         let confidence = computeConfidence(onsetEnv: onsetEnv, beats: beats, hopDuration: hopDuration)
+        let energy = computeEnergy(onsetEnv: onsetEnv, hopDuration: hopDuration)
 
         return BeatAnalysis(
             bpm: bpm,
             beats: beats,
             downbeats: downbeats,
             confidence: confidence,
-            durationSeconds: duration
+            durationSeconds: duration,
+            climaxSec: energy.climaxSec,
+            energyCurve: energy.curve,
+            energyStepSec: energy.stepSec
         )
+    }
+
+    // MARK: - Energy / climax
+
+    /// Smooths the onset envelope with a ~3 s moving average into a loudness-like energy curve.
+    /// The peak of the smoothed curve is the song's climax (chorus/drop); the downsampled curve
+    /// lets callers see the overall build/quiet structure.
+    private static func computeEnergy(
+        onsetEnv: [Float], hopDuration: Double
+    ) -> (climaxSec: Double, curve: [Double], stepSec: Double) {
+        guard !onsetEnv.isEmpty else { return (0, [], 0) }
+        let window = max(1, Int((3.0 / hopDuration).rounded()))
+        var smoothed = [Float](repeating: 0, count: onsetEnv.count)
+        var sum: Float = 0
+        for i in 0..<onsetEnv.count {
+            sum += onsetEnv[i]
+            if i >= window { sum -= onsetEnv[i - window] }
+            smoothed[i] = sum / Float(min(i + 1, window))
+        }
+
+        var maxIdx = 0
+        var maxVal: Float = 0
+        for (i, v) in smoothed.enumerated() where v > maxVal { maxVal = v; maxIdx = i }
+        // The trailing average lags by half a window; recenter so the time lands on the peak itself.
+        let climaxSec = Double(max(0, maxIdx - window / 2)) * hopDuration
+
+        // Downsample to at most ~120 points (>= 2 s per point), normalized 0–1.
+        let stepSec = max(2.0, hopDuration * Double(smoothed.count) / 120.0)
+        let hopsPerStep = max(1, Int((stepSec / hopDuration).rounded()))
+        var curve: [Double] = []
+        var i = 0
+        while i < smoothed.count {
+            let end = min(i + hopsPerStep, smoothed.count)
+            var peak: Float = 0
+            for j in i..<end where smoothed[j] > peak { peak = smoothed[j] }
+            curve.append(maxVal > 0 ? Double(peak / maxVal) : 0)
+            i = end
+        }
+        return (climaxSec, curve, stepSec)
     }
 
     // MARK: - Audio loading

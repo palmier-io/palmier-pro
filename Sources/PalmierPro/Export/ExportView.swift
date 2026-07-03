@@ -128,6 +128,13 @@ struct ExportView: View {
                         .padding(.top, AppTheme.Spacing.sm)
                 }
 
+                if let warning = service.warning {
+                    Text(warning)
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                        .padding(.top, AppTheme.Spacing.sm)
+                }
+
                 if let palmierResult {
                     Text(palmierResult)
                         .font(.system(size: AppTheme.FontSize.xs))
@@ -470,7 +477,8 @@ struct ExportView: View {
                     missingMediaRefs: editor.missingMediaRefs,
                     outputURL: url
                 )
-                if service.error == nil {
+                // Keep the dialog open on a warning so the user sees what was skipped.
+                if service.error == nil && service.warning == nil {
                     editor.showExportDialog = false
                 }
             }

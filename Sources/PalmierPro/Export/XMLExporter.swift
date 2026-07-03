@@ -477,7 +477,9 @@ enum XMLExporter {
         /// Drops unresolvable clips so track builders and `<link>` indices agree.
         private func sortEmittable(_ track: Track) -> [Clip] {
             track.clips
-                .filter { resolver.resolveURL(for: $0.mediaRef) != nil }
+                // Adjustment layers only carry color/effects, which XMEML export doesn't
+                // transport; the export UI warns via FCPXMLExporter.unsupportedAdjustmentCount.
+                .filter { $0.mediaType != .adjustment && resolver.resolveURL(for: $0.mediaRef) != nil }
                 .sorted { $0.startFrame < $1.startFrame }
         }
 

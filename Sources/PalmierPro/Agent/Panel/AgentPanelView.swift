@@ -7,7 +7,7 @@ struct AgentPanelView: View {
         AgentStarterPrompt(
             title: "Create me a wedding highlight video",
             systemImage: "sparkles",
-            prompt: "Create a wedding highlight video from the footage and music already in my project. Read the malay-wedding-editing skill first, classify the moments on-device, skip test/junk shots, then cut a cinematic highlight (~3–4 minutes, or the song's length) synced to the music beats. Feature the akad nikah and salam original audio, keep the music ducked under them, grade it warm, and add a simple title. Use what's already imported — don't ask me where the footage or song is."
+            prompt: "Create a wedding highlight video from the footage and music already in my project. Read the malay-wedding-editing skill first, classify the moments on-device, skip test/junk shots, then cut a cinematic highlight lasting 1 minute to 1 minute 20 seconds, synced to the music beats. Start the video with the music already at its climax: analyze_audio_beats returns climaxSeconds/climaxFrame — trim the music clip so playback opens there (or on the downbeat just before it), and put the strongest visual moment over that opening. Feature the akad nikah and salam original audio, keep the music ducked under them, grade it warm, and add a simple title. Use what's already imported — don't ask me where the footage or song is."
         ),
         AgentStarterPrompt(
             title: "Create me a full wedding video",

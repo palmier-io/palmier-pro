@@ -27,6 +27,8 @@ final class ExportService {
     var progress: Double = 0
     var isExporting = false
     var error: String?
+    /// Non-fatal: the export succeeded but something was skipped (e.g. adjustment layers).
+    var warning: String?
     var lastReport: ExportRunReport?
 
     func export(
@@ -40,6 +42,7 @@ final class ExportService {
         acquireSlot: Bool = true
     ) async {
         error = nil
+        warning = nil
         lastReport = nil
         isExporting = true
         progress = 0
@@ -57,6 +60,11 @@ final class ExportService {
                     try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
                 } else {
                     try FCPXMLExporter.export(timeline: timeline, resolver: resolver, version: fcpxmlVersion, outputURL: outputURL)
+                }
+                // Neither timeline format transports color/effects, so adjustment layers are skipped.
+                let dropped = FCPXMLExporter.unsupportedAdjustmentCount(in: timeline)
+                if dropped > 0 {
+                    warning = "Exported, but \(dropped) adjustment layer\(dropped == 1 ? "" : "s") (color grading/effects) can't be represented in \(name.uppercased()) and \(dropped == 1 ? "was" : "were") skipped."
                 }
                 progress = 1.0
                 Log.export.notice("export ok format=\(name)", telemetry: "Export finished", data: ["format": name])

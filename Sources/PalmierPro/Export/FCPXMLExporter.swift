@@ -49,10 +49,19 @@ enum FCPXMLVersion: String, CaseIterable, Identifiable, Sendable {
 ///
 /// What does NOT: keyframed audio volume and audio fades (Resolve drops both itself); text
 /// background/border boxes (no FCPXML form); crop keyframes; title rotation/scale; color &
-/// effects; Lottie clips.
+/// effects; Lottie clips; adjustment layers (their effects have no FCPXML mapping — the caller
+/// should warn via `unsupportedAdjustmentCount`).
 ///
 /// Reference: https://developer.apple.com/documentation/professional-video-applications/fcpxml-reference
 enum FCPXMLExporter {
+    /// Adjustment layers carry color/effects, which FCPXML export doesn't transport;
+    /// callers use this to warn the user that grading on them will be dropped.
+    static func unsupportedAdjustmentCount(in timeline: Timeline) -> Int {
+        timeline.tracks.reduce(0) { count, track in
+            count + track.clips.filter { $0.mediaType == .adjustment && $0.effects?.isEmpty == false }.count
+        }
+    }
+
     static func export(timeline: Timeline, resolver: MediaResolver,
                        version: FCPXMLVersion = .default, outputURL: URL) throws {
         let xml = Builder(timeline: timeline, resolver: resolver, version: version).build()
@@ -251,9 +260,11 @@ enum FCPXMLExporter {
                     switch item.clip.mediaType {
                     case .text:
                         return titleNode(for: item)
-                    case .audio, .video, .image, .adjustment:
+                    case .audio, .video, .image:
                         return assetClipNode(for: item)
-                    case .lottie:
+                    case .lottie, .adjustment:
+                        // No FCPXML form: Lottie has no source FCP can read; adjustment layers
+                        // only carry color/effects, which this exporter doesn't transport.
                         return nil
                     }
                 }
@@ -657,9 +668,11 @@ enum FCPXMLExporter {
             switch clip.mediaType {
             case .text:
                 return clip.textContent?.isEmpty == false
-            case .lottie:
+            case .lottie, .adjustment:
+                // Not exportable: no media source (adjustment layers' color/effects
+                // don't transport — the export UI warns via unsupportedAdjustmentCount).
                 return false
-            case .audio, .video, .image, .adjustment:
+            case .audio, .video, .image:
                 return resolver.resolveURL(for: clip.mediaRef) != nil
             }
         }

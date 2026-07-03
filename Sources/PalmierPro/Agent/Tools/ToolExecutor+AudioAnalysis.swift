@@ -46,6 +46,13 @@ extension ToolExecutor {
             "beatsInFrames": beatsInFrames,
             "downbeats": analysis.downbeats.map { (($0 * 100).rounded() / 100) },
             "downbeatsInFrames": downbeatsInFrames,
+            "climaxSeconds": (analysis.climaxSec * 100).rounded() / 100,
+            "climaxFrame": Int((analysis.climaxSec * fps).rounded()),
+            "energy": [
+                "stepSeconds": (analysis.energyStepSec * 100).rounded() / 100,
+                "curve": analysis.energyCurve.map { (($0 * 100).rounded() / 100) },
+                "note": "Smoothed loudness envelope, 0–1, one value per stepSeconds. climaxSeconds is its peak (chorus/drop). To open a video at the music's climax, trim the music clip so source playback starts at climaxSeconds (use trimStartFrame = climaxFrame when the music is placed at project fps).",
+            ],
         ]
 
         Log.agent.notice(
