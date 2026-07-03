@@ -185,7 +185,7 @@ extension ToolExecutor {
         let input: SpeakerActivityInput = try decodeToolArgs(args, path: "get_speaker_activity")
         let group = try resolveMulticamGroup(input.groupId, editor: editor)
         guard !group.mics.isEmpty else {
-            throw ToolError("Group '\(group.name)' has no mic members — speaker activity needs per-speaker mics.")
+            throw ToolError("Group '\(group.name)' has no mic members — speaker activity needs per-speaker mics. For a single mixed recording, use get_transcript instead: cloud transcription returns speaker labels via diarization.")
         }
         if let s = input.startFrame, let e = input.endFrame, s >= e {
             throw ToolError("startFrame (\(s)) must be less than endFrame (\(e))")
