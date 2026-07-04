@@ -42,7 +42,7 @@ struct PalmierProjectExportTests {
         defer { try? fm.removeItem(at: root) }
 
         let report = try PalmierProjectExporter.export(
-            timeline: Fixtures.timeline(),
+            projectFile: ProjectFile(timelines: [Fixtures.timeline()], activeTimelineId: nil, openTimelineIds: nil),
             manifest: manifest(externalPath: root.appendingPathComponent("external-clip.mov").path),
             generationLog: GenerationLog(),
             sourceProjectURL: source,
@@ -81,7 +81,7 @@ struct PalmierProjectExportTests {
         defer { try? fm.removeItem(at: root) }
 
         try PalmierProjectExporter.export(
-            timeline: Fixtures.timeline(),
+            projectFile: ProjectFile(timelines: [Fixtures.timeline()], activeTimelineId: nil, openTimelineIds: nil),
             manifest: manifest(externalPath: root.appendingPathComponent("external-clip.mov").path),
             generationLog: GenerationLog(),
             sourceProjectURL: source,
@@ -109,7 +109,7 @@ struct PalmierProjectExportTests {
         ]
 
         let report = try PalmierProjectExporter.export(
-            timeline: Fixtures.timeline(), manifest: m, generationLog: GenerationLog(),
+            projectFile: ProjectFile(timelines: [Fixtures.timeline()], activeTimelineId: nil, openTimelineIds: nil), manifest: m, generationLog: GenerationLog(),
             sourceProjectURL: source, to: dest
         )
 

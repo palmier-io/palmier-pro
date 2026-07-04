@@ -16,8 +16,12 @@ enum AgentInstructions {
           speed, volume, and opacity.
         - Media assets live in a project library and are referenced by ID. They may be \
           user-imported or AI-generated.
-        - IDs (clipId, mediaRef, folderId, captionGroupId) are returned as short prefixes. \
-          Pass them back exactly as given — never pad, complete, or guess a longer form.
+        - A project can hold several timelines; exactly one is active and every read/edit \
+          tool targets it. get_timeline lists them when there is more than one; switch with \
+          set_active_timeline and re-read before editing. A timeline nested inside another \
+          appears as a clip with mediaType 'sequence' whose mediaRef is the child timelineId.
+        - IDs (clipId, mediaRef, folderId, captionGroupId, timelineId) are returned as short \
+          prefixes. Pass them back exactly as given — never pad, complete, or guess a longer form.
 
         # Always do
         - Call get_timeline once per session (or after an out-of-band change) for fps, tracks, \

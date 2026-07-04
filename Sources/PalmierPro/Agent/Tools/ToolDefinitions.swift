@@ -45,6 +45,9 @@ enum ToolName: String, CaseIterable, Sendable {
     case deleteFolder = "delete_folder"
     case sendFeedback = "send_feedback"
     case setProjectSettings = "set_project_settings"
+    case createTimeline = "create_timeline"
+    case setActiveTimeline = "set_active_timeline"
+    case duplicateTimeline = "duplicate_timeline"
     case readSkill = "read_skill"
     case getProjects = "get_projects"
     case openProject = "open_project"
@@ -129,7 +132,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addClips,
-            description: "Places one or more media assets on the timeline as a single undoable action. Each entry's asset type must be compatible with its target track (video/image are interchangeable across video/image tracks; audio requires an audio track). When a video asset with audio is placed on a video track, a linked audio clip is automatically created on an audio track (an existing one if available, otherwise a new one). The whole batch is one undo step.\n\ntrackIndex is optional. Omit it on all entries and the tool auto-creates the needed tracks — one shared video track for visual entries and one shared audio track for audio entries (matches the captioning pattern in add_texts). To target existing tracks, set trackIndex on every entry. Mixing (some entries specify, others omit) is rejected — split into two calls.\n\nTracks work as layers: clips on the SAME track are sequential — if a new clip's range overlaps an existing clip on that track, the existing clip is trimmed/split/removed to make room, matching the UI's drag-onto-track overwrite behavior.",
+            description: "Places one or more media assets on the timeline as a single undoable action. Each entry's asset type must be compatible with its target track (video/image are interchangeable across video/image tracks; audio requires an audio track). When a video asset with audio is placed on a video track, a linked audio clip is automatically created on an audio track (an existing one if available, otherwise a new one). The whole batch is one undo step.\n\ntrackIndex is optional. Omit it on all entries and the tool auto-creates the needed tracks — one shared video track for visual entries and one shared audio track for audio entries (matches the captioning pattern in add_texts). To target existing tracks, set trackIndex on every entry. Mixing (some entries specify, others omit) is rejected — split into two calls.\n\nTracks work as layers: clips on the SAME track are sequential — if a new clip's range overlaps an existing clip on that track, the existing clip is trimmed/split/removed to make room, matching the UI's drag-onto-track overwrite behavior.\n\nNESTING: mediaRef may also be a timelineId — the timeline is placed as a single live nested clip (mediaType 'sequence'), with a linked audio clip when the child has audio. Duration defaults to the child's full length; trims and durationFrames work as for video. Cycles (a timeline containing itself) and empty timelines are rejected.",
             inputSchema: objectSchema(
                 properties: [
                     "entries": [
@@ -154,7 +157,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .insertClips,
-            description: "Inserts one or more media assets at a single point and RIPPLES: every clip at or after atFrame is pushed right to open a gap, so nothing is overwritten. This is the non-destructive counterpart to add_clips (which clears the landing region, trimming/splitting/removing whatever's there). Use insert_clips to splice footage in without losing existing clips; use add_clips to fill empty space or deliberately overwrite.\n\nEntries are laid end-to-end starting at atFrame on the target track (entry[0] at atFrame, entry[1] immediately after, ...). The push equals the sum of the entries' durations and is applied to the target track, every sync-locked track, AND the audio track any auto-created linked audio lands on — so a clip and its linked audio stay aligned. As in add_clips, a video asset with audio spawns a linked audio clip. One undoable action; one bad entry rejects the whole call with no partial state.\n\ntrackIndex is required — ripple needs an existing track to push. For placement into empty space, use add_clips.",
+            description: "Inserts one or more media assets at a single point and RIPPLES: every clip at or after atFrame is pushed right to open a gap, so nothing is overwritten. This is the non-destructive counterpart to add_clips (which clears the landing region, trimming/splitting/removing whatever's there). Use insert_clips to splice footage in without losing existing clips; use add_clips to fill empty space or deliberately overwrite.\n\nEntries are laid end-to-end starting at atFrame on the target track (entry[0] at atFrame, entry[1] immediately after, ...). The push equals the sum of the entries' durations and is applied to the target track, every sync-locked track, AND the audio track any auto-created linked audio lands on — so a clip and its linked audio stay aligned. As in add_clips, a video asset with audio spawns a linked audio clip. One undoable action; one bad entry rejects the whole call with no partial state.\n\ntrackIndex is required — ripple needs an existing track to push. For placement into empty space, use add_clips.\n\nAs in add_clips, mediaRef may be a timelineId to splice in a nested timeline.",
             inputSchema: objectSchema(
                 properties: [
                     "trackIndex": ["type": "integer", "description": "Track index (0-based, from get_timeline) to insert into and ripple."],
@@ -504,6 +507,7 @@ enum ToolDefinitions {
                     "outputPath": ["type": "string", "description": "Optional. Absolute destination path. If omitted, a unique project-named file is written to ~/Downloads. If no extension is provided, the mode's extension is appended."],
                     "overwrite": ["type": "boolean", "description": "Optional. Default true, matching the UI save flow. false refuses when outputPath already exists."],
                     "fcpxmlTarget": ["type": "string", "enum": ["resolve", "fcp"], "description": "fcpxml mode only. Optional, default resolve. Davinci Resolve and Final Cut interpret crop and position values differently; pick the app the file will be imported into."],
+                    "timelineId": ["type": "string", "description": "Optional. Timeline to export (from get_timeline's timelines list). Defaults to the active timeline. Not valid for palmier mode, which packages every timeline."],
                 ]
             )
         ),
@@ -677,7 +681,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .renameMedia,
-            description: "Renames media assets in the library. Pass either mediaRef/name for one asset or entries for multiple assets, not both. Undoable.",
+            description: "Renames media assets or timelines. mediaRef accepts either an asset id from get_media or a timelineId from get_timeline. Pass either mediaRef/name for one item or entries for multiple, not both. Undoable.",
             inputSchema: objectSchema(
                 properties: [
                     "mediaRef": ["type": "string", "description": "Media asset id from get_media."],
@@ -721,7 +725,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .deleteMedia,
-            description: "Deletes media assets from the library. Any clips referencing them are removed from the timeline in the same undoable action.",
+            description: "Deletes media assets or timelines. assetIds accepts asset ids from get_media and timelineIds from get_timeline. Deleting an asset removes any clips referencing it; deleting a timeline leaves nest clips referencing it rendering black (remove those clips too, or don't delete a timeline that's still nested). The last remaining timeline can't be deleted. Undoable.",
             inputSchema: objectSchema(
                 properties: [
                     "assetIds": [
@@ -888,6 +892,35 @@ enum ToolDefinitions {
                     "height": ["type": "integer", "description": "Canvas height in pixels. Use with width for an exact resolution. Mutually exclusive with aspectRatio."],
                     "aspectRatio": ["type": "string", "enum": ["16:9", "9:16", "1:1", "4:3", "2.4:1", "9:14"], "description": "Preset aspect ratio — sets both width and height from the preset, or combined with quality to pick a specific size. Mutually exclusive with width/height."],
                     "quality": ["type": "string", "enum": ["720p", "1080p", "2K", "4K"], "description": "Resolution quality preset — scales the short edge to the target while preserving the current (or specified) aspect ratio."],
+                ]
+            )
+        ),
+        AgentTool(
+            name: .createTimeline,
+            description: "Creates a new empty timeline in the project and switches to it — every read and edit tool now targets it. Settings (fps, resolution) are inherited from the previously active timeline. Returns the new timelineId. Undoable.\n\nUse timelines to organize a project: alternate versions, sections assembled separately, or reusable groups. A timeline can be placed inside another as a single clip (the user drops it from the media panel); it then appears as a clip with mediaType 'sequence' whose mediaRef is the timelineId.",
+            inputSchema: objectSchema(
+                properties: [
+                    "name": ["type": "string", "description": "Optional display name. Defaults to 'Timeline N'."],
+                ]
+            )
+        ),
+        AgentTool(
+            name: .setActiveTimeline,
+            description: "Switches the active timeline — the one every read and edit tool targets and the one the user sees. get_timeline lists the project's timelines (with timelineId) whenever there is more than one. Always re-read get_timeline after switching; clip and track ids from the previous timeline are no longer valid targets.\n\nTo edit the contents of a nested timeline (a clip with mediaType 'sequence'), switch to its mediaRef.",
+            inputSchema: objectSchema(
+                properties: [
+                    "timelineId": ["type": "string", "description": "Timeline id from get_timeline's timelines list (or a sequence clip's mediaRef)."],
+                ],
+                required: ["timelineId"]
+            )
+        ),
+        AgentTool(
+            name: .duplicateTimeline,
+            description: "Duplicates a timeline — the versioning primitive: copy, then edit the copy (\"a tighter cut\", \"a 9:16 version\") while the original stays intact. Copies all tracks, clips, and settings, switches to the copy, and returns its timelineId. Every clip and track id in the copy is NEW — re-read get_timeline before editing. Undoable.",
+            inputSchema: objectSchema(
+                properties: [
+                    "timelineId": ["type": "string", "description": "Timeline to duplicate. Defaults to the active timeline."],
+                    "name": ["type": "string", "description": "Optional name for the copy. Defaults to '<name> copy'."],
                 ]
             )
         ),

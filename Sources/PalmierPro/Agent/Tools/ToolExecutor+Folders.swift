@@ -72,7 +72,11 @@ extension ToolExecutor {
         let (specs, isBatch) = try parseRenameMediaSpecs(args, editor: editor)
         withUndoGroup(editor, actionName: specs.count == 1 ? "Rename Asset" : "Rename Assets") {
             for spec in specs {
-                editor.renameMediaAsset(id: spec.mediaRef, name: spec.name)
+                if editor.timeline(for: spec.mediaRef) != nil {
+                    editor.renameTimeline(spec.mediaRef, to: spec.name)
+                } else {
+                    editor.renameMediaAsset(id: spec.mediaRef, name: spec.name)
+                }
             }
         }
         if !isBatch, let spec = specs.first {
@@ -95,15 +99,25 @@ extension ToolExecutor {
     }
 
     func deleteMedia(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
-        let assetIds = args.stringArray("assetIds")
+        var seen: Set<String> = []
+        let assetIds = args.stringArray("assetIds").filter { seen.insert($0).inserted }
         guard !assetIds.isEmpty else { throw ToolError("assetIds is required") }
-        for id in assetIds {
+        let timelineIds = assetIds.filter { id in editor.timelines.contains { $0.id == id } }
+        for id in assetIds where !timelineIds.contains(id) {
             guard editor.mediaAssets.contains(where: { $0.id == id }) else {
-                throw ToolError("Media asset not found: \(id)")
+                throw ToolError("Media asset or timeline not found: \(id)")
             }
         }
-        editor.deleteMediaAssets(ids: Set(assetIds))
-        return .ok("Deleted \(assetIds.count) asset(s). Any clips referencing them were removed from the timeline.")
+        guard timelineIds.count < editor.timelines.count else {
+            throw ToolError("Can't delete every timeline — the project needs at least one.")
+        }
+        let mediaIds = Set(assetIds).subtracting(timelineIds)
+        if !mediaIds.isEmpty { editor.deleteMediaAssets(ids: mediaIds) }
+        for id in timelineIds { editor.deleteTimeline(id) }
+        var notes: [String] = []
+        if !mediaIds.isEmpty { notes.append("Deleted \(mediaIds.count) asset(s); clips referencing them were removed.") }
+        if !timelineIds.isEmpty { notes.append("Deleted \(timelineIds.count) timeline(s); nest clips referencing them will render black.") }
+        return .ok(notes.joined(separator: " "))
     }
 
     func deleteFolder(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
@@ -159,14 +173,20 @@ extension ToolExecutor {
                 try validateUnknownKeys(entry, allowed: Self.renameMediaEntryAllowedKeys, path: path)
                 let mediaRef = try entry.requireString("mediaRef")
                 let name = try entry.requireString("name")
-                _ = try asset(mediaRef, editor: editor)
+                try requireAssetOrTimeline(mediaRef, editor: editor)
                 return RenameMediaSpec(mediaRef: mediaRef, name: name)
             }, true)
         }
         let mediaRef = try args.requireString("mediaRef")
         let name = try args.requireString("name")
-        _ = try asset(mediaRef, editor: editor)
+        try requireAssetOrTimeline(mediaRef, editor: editor)
         return ([RenameMediaSpec(mediaRef: mediaRef, name: name)], false)
+    }
+
+    private func requireAssetOrTimeline(_ id: String, editor: EditorViewModel) throws {
+        guard editor.mediaAssets.contains(where: { $0.id == id }) || editor.timeline(for: id) != nil else {
+            throw ToolError("Media asset or timeline not found: \(id)")
+        }
     }
 
     private func parseRenameFolderSpecs(

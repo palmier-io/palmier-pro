@@ -6,6 +6,7 @@ final class EditorWindowController: NSWindowController {
     let editorViewModel: EditorViewModel
     private nonisolated(unsafe) var keyMonitor: Any?
     private nonisolated(unsafe) var mouseMonitor: Any?
+    private nonisolated(unsafe) var endEditingObserver: Any?
 
     init(editorViewModel: EditorViewModel, window: NSWindow) {
         self.editorViewModel = editorViewModel
@@ -18,6 +19,7 @@ final class EditorWindowController: NSWindowController {
     deinit {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
+        if let endEditingObserver { NotificationCenter.default.removeObserver(endEditingObserver) }
     }
 
     func installKeyMonitor() {
@@ -32,6 +34,17 @@ final class EditorWindowController: NSWindowController {
             self.resignStaleFocus(hitView: hitView)
             self.handlePanelClick(hitView: hitView)
             return event
+        }
+
+        endEditingObserver = NotificationCenter.default.addObserver(
+            forName: NSText.didEndEditingNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            nonisolated(unsafe) let object = note.object
+            MainActor.assumeIsolated {
+                guard let self, let editor = object as? NSTextView,
+                      editor.window === self.window, let storage = editor.textStorage else { return }
+                self.editorViewModel.undoManager?.removeAllActions(withTarget: storage)
+            }
         }
     }
 
@@ -74,13 +87,18 @@ final class EditorWindowController: NSWindowController {
             return true
 
         case 51: // Delete/Backspace
-            if !editorViewModel.selectedFolderIds.isEmpty || !editorViewModel.selectedMediaAssetIds.isEmpty {
+            if !editorViewModel.selectedFolderIds.isEmpty || !editorViewModel.selectedMediaAssetIds.isEmpty
+                || !editorViewModel.selectedTimelineIds.isEmpty {
                 if !editorViewModel.selectedFolderIds.isEmpty {
                     editorViewModel.deleteFolders(ids: editorViewModel.selectedFolderIds)
                 }
                 if !editorViewModel.selectedMediaAssetIds.isEmpty {
                     editorViewModel.deleteSelectedMediaAssets()
                 }
+                for id in editorViewModel.selectedTimelineIds {
+                    editorViewModel.deleteTimeline(id)
+                }
+                editorViewModel.selectedTimelineIds.removeAll()
             } else if shift {
                 if editorViewModel.selectedGap != nil {
                     editorViewModel.rippleDeleteSelectedGap()
@@ -194,7 +212,11 @@ final class EditorWindowController: NSWindowController {
             if let panel = EditorViewModel.FocusedPanel(accessibilityID: v.accessibilityIdentifier()) {
                 editorViewModel.focusedPanel = panel
                 if panel == .media { editorViewModel.selectedClipIds.removeAll() }
-                if panel == .timeline { editorViewModel.selectedMediaAssetIds.removeAll() }
+                if panel == .timeline {
+                    editorViewModel.selectedMediaAssetIds.removeAll()
+                    editorViewModel.selectedTimelineIds.removeAll()
+                    editorViewModel.selectedFolderIds.removeAll()
+                }
                 return
             }
             view = v.superview

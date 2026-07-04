@@ -34,13 +34,15 @@ struct CompositorRenderTests {
 
     static func render(
         _ timeline: Timeline, frame: Int,
-        renderSize: CGSize = size, imageURLs: [String: URL] = [:]
+        renderSize: CGSize = size, imageURLs: [String: URL] = [:],
+        timelines: [Timeline] = []
     ) async throws -> Frame {
         var urls = imageURLs
         if urls["pattern"] == nil { urls["pattern"] = try await CompositorFixtures.patternVideoURL() }
         let resolved = urls
+        let byId = Dictionary(uniqueKeysWithValues: timelines.map { ($0.id, $0) })
         let result = try await CompositionBuilder.build(
-            timeline: timeline, resolveURL: { resolved[$0] }, renderSize: renderSize
+            timeline: timeline, resolveURL: { resolved[$0] }, resolveTimeline: { byId[$0] }, renderSize: renderSize
         )
         let gen = AVAssetImageGenerator(asset: result.composition)
         gen.videoComposition = result.videoComposition
@@ -55,11 +57,11 @@ struct CompositorRenderTests {
 
 // MARK: - Color classification
 
-private func isRed(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.r > 140 && p.g < 100 && p.b < 100 }
-private func isGreen(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.g > 140 && p.r < 110 && p.b < 110 }
-private func isBlue(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.b > 140 && p.r < 100 && p.g < 100 }
-private func isWhite(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.r > 170 && p.g > 170 && p.b > 170 }
-private func isBlack(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.r < 45 && p.g < 45 && p.b < 45 }
+private let isRed = CompositorFixtures.isRed
+private let isGreen = CompositorFixtures.isGreen
+private let isBlue = CompositorFixtures.isBlue
+private let isWhite = CompositorFixtures.isWhite
+private let isBlack = CompositorFixtures.isBlack
 
 // MARK: - Tests
 
@@ -267,10 +269,5 @@ extension CompositorRenderTests {
 // MARK: - Fixture helper
 
 extension CompositorRenderTests {
-    static func timelineWith(_ tracks: Track...) -> Timeline {
-        var t = Fixtures.timeline(tracks: tracks)
-        t.width = Int(size.width)
-        t.height = Int(size.height)
-        return t
-    }
+    static func timelineWith(_ tracks: Track...) -> Timeline { CompositorFixtures.timeline(tracks) }
 }

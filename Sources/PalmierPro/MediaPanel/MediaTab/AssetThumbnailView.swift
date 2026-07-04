@@ -6,8 +6,6 @@ struct AssetThumbnailView: View {
 
     @Environment(EditorViewModel.self) var editor
     @State private var isRenaming = false
-    @FocusState private var isRenameFieldFocused: Bool
-    @State private var renameDraft = ""
     @State private var isHovering = false
 
     var body: some View {
@@ -37,16 +35,16 @@ struct AssetThumbnailView: View {
 
             ZStack(alignment: .leading) {
                 if isRenaming {
-                    TextField("Name", text: $renameDraft)
-                        .font(.system(size: AppTheme.FontSize.xs))
-                        .textFieldStyle(.plain)
-                        .lineLimit(1)
-                        .focused($isRenameFieldFocused)
-                        .onSubmit { commitRename() }
-                        .onChange(of: isRenameFieldFocused) { _, focused in
-                            if !focused { commitRename() }
-                        }
-                        .onExitCommand { isRenaming = false }
+                    InlineRenameField(
+                        originalName: asset.name,
+                        placeholder: "Name",
+                        font: .system(size: AppTheme.FontSize.xs),
+                        onCommit: { name in
+                            editor.renameMediaAsset(id: asset.id, name: name)
+                            isRenaming = false
+                        },
+                        onCancel: { isRenaming = false }
+                    )
                 } else {
                     Text(asset.name)
                         .font(.system(size: AppTheme.FontSize.xs))
@@ -193,7 +191,7 @@ struct AssetThumbnailView: View {
     @ViewBuilder
     private var durationOverlay: some View {
         if showsDurationBadge {
-            durationBadge.padding(AppTheme.Spacing.xs)
+            durationBadge
         }
     }
 
@@ -227,11 +225,8 @@ struct AssetThumbnailView: View {
     private var durationBadge: some View {
         Text(formatDuration(asset.duration))
             .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
-            .foregroundStyle(.white)
             .monospacedDigit()
-            .padding(.horizontal, AppTheme.Spacing.sm)
-            .padding(.vertical, AppTheme.Spacing.xxs)
-            .background(.ultraThinMaterial, in: .capsule)
+            .tileBadge()
     }
 
     private func failedThumbnail(error: String) -> some View {
@@ -320,18 +315,7 @@ struct AssetThumbnailView: View {
     }
 
     private func beginRename() {
-        renameDraft = asset.name
         isRenaming = true
-        isRenameFieldFocused = true
-    }
-
-    private func commitRename() {
-        guard isRenaming else { return }
-        let trimmed = renameDraft.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty && trimmed != asset.name {
-            editor.renameMediaAsset(id: asset.id, name: trimmed)
-        }
-        isRenaming = false
     }
 
     private func handleTap() {

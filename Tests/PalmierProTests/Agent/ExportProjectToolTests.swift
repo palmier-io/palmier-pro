@@ -85,6 +85,35 @@ struct ExportProjectToolTests {
         #expect(!FileManager.default.fileExists(atPath: uiActiveVideo.path))
     }
 
+    @Test func exportsXMLForANonActiveTimelineById() async throws {
+        let h = ToolHarness()
+        var other = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [Fixtures.clip(mediaRef: "missing", start: 0, duration: 42)])])
+        other.name = "B-Roll Cut"
+        h.editor.timelines.append(other)
+        let activeBefore = h.editor.activeTimelineId
+
+        let out = FileManager.default.temporaryDirectory
+            .appendingPathComponent("export-tool-tl-\(UUID().uuidString).xml")
+        defer { try? FileManager.default.removeItem(at: out) }
+
+        let result = try await h.runOK("export_project", args: [
+            "mode": "xml", "outputPath": out.path,
+            "timelineId": String(other.id.prefix(8)),
+        ]) as? [String: Any]
+        #expect(result?["timeline"] as? String == "B-Roll Cut")
+        #expect(result?["durationFrames"] as? Int == 42)
+        // Exporting by id doesn't switch the active timeline.
+        #expect(h.editor.activeTimelineId == activeBefore)
+        let xml = String(decoding: try Data(contentsOf: out), as: UTF8.self)
+        #expect(xml.contains("<name>B-Roll Cut</name>"))
+
+        let unknown = await h.runRaw("export_project", args: ["mode": "xml", "outputPath": "/tmp/x.xml", "timelineId": "ffffffff"])
+        #expect(unknown.isError)
+        let palmier = await h.runRaw("export_project", args: ["mode": "palmier", "outputPath": "/tmp/x.palmier", "timelineId": String(other.id.prefix(8))])
+        #expect(palmier.isError)
+        #expect(ToolHarness.textOf(palmier).contains("palmier"))
+    }
+
     @Test func exportsXML() async throws {
         let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
             Fixtures.videoTrack(clips: [Fixtures.clip(mediaRef: "missing", start: 0, duration: 30)]),

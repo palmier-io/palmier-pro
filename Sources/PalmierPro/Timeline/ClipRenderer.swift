@@ -131,6 +131,13 @@ enum ClipRenderer {
             context.strokePath()
         }
 
+        // Subtle wash while the clip's media is being rendered/generated.
+        if isGenerating {
+            context.setFillColor(NSColor.white.withAlphaComponent(AppTheme.Opacity.faint).cgColor)
+            context.addPath(path)
+            context.fillPath()
+        }
+
         // Red wash + border for clips whose source media is missing.
         if isMissing && !isGenerating {
             context.setFillColor(AppTheme.Status.error.withAlphaComponent(AppTheme.Opacity.moderate).cgColor)

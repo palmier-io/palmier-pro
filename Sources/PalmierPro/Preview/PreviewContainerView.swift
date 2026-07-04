@@ -471,21 +471,8 @@ struct PreviewContainerView: View {
                 }
             }
 
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: AppTheme.Spacing.md) {
-                        ForEach(editor.previewTabs) { tab in
-                            tabItem(for: tab).id(tab.id)
-                        }
-                    }
-                    .padding(.horizontal, AppTheme.Spacing.sm)
-                }
-                .mouseWheelScrollsHorizontally()
-                .onChange(of: editor.activePreviewTabId) { _, newId in
-                    withAnimation(.easeOut(duration: AppTheme.Anim.transition)) {
-                        proxy.scrollTo(newId, anchor: .center)
-                    }
-                }
+            TabStrip(items: editor.previewTabs, activeId: editor.activePreviewTabId) { tab in
+                tabItem(for: tab)
             }
 
             overflowMenu
@@ -496,13 +483,17 @@ struct PreviewContainerView: View {
         let isActive = tab.id == editor.activePreviewTabId
         let isHovered = hoveredTabId == tab.id
         return HStack(spacing: AppTheme.Spacing.xs) {
-            Text(tab.displayName)
+            Text(tab == .timeline ? editor.timeline.name : tab.displayName)
                 .font(.system(size: AppTheme.FontSize.xs, weight: isActive ? .semibold : .medium))
                 .foregroundStyle(isActive || isHovered ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
                 .lineLimit(1)
 
             if tab.isCloseable {
-                closeButton(tabId: tab.id)
+                TabCloseButton {
+                    withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
+                        editor.closePreviewTab(id: tab.id)
+                    }
+                }
             }
         }
         .padding(.horizontal, AppTheme.Spacing.xs)
@@ -559,21 +550,6 @@ struct PreviewContainerView: View {
         .fixedSize()
         .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
         .help("More")
-    }
-
-    private func closeButton(tabId: String) -> some View {
-        Button {
-            withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
-                editor.closePreviewTab(id: tabId)
-            }
-        } label: {
-            Image(systemName: "xmark")
-                .font(.system(size: AppTheme.FontSize.micro, weight: .bold))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
-                .hoverHighlight(cornerRadius: 7)
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Scrub bar

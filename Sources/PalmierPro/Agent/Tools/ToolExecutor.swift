@@ -35,7 +35,7 @@ final class ToolExecutor {
         }
 
         guard let editor else { return .error("Editor not available") }
-        let before = editor.timeline
+        let before = editor.timelines
         let result: ToolResult
         let started = ContinuousClock.now
         Log.agent.notice(
@@ -46,8 +46,7 @@ final class ToolExecutor {
         do {
             let resolved = try expandingIdPrefixes(in: args, editor: editor)
             result = try await run(tool, editor, resolved)
-            // Record any edit that actually changed the timeline so `undo` can revert it.
-            if tool != .undo, !result.isError, editor.timeline != before,
+            if tool != .undo, tool != .setActiveTimeline, !result.isError, editor.timelines != before,
                let actionName = editor.undoManager?.undoActionName {
                 agentUndoStack.append(actionName)
             }
@@ -62,7 +61,7 @@ final class ToolExecutor {
         let payload: Telemetry.Payload = [
             "tool": tool.rawValue,
             "durationSeconds": elapsed,
-            "timelineChanged": editor.timeline != before
+            "timelineChanged": editor.timelines != before
         ]
         if result.isError {
             Log.agent.warning(
@@ -126,6 +125,9 @@ final class ToolExecutor {
         case .deleteFolder:  return try deleteFolder(editor, args)
         case .sendFeedback:  return try await sendFeedback(editor, args)
         case .setProjectSettings: return try setProjectSettings(editor, args)
+        case .createTimeline:     return try createTimeline(editor, args)
+        case .setActiveTimeline:  return try setActiveTimeline(editor, args)
+        case .duplicateTimeline:  return try duplicateTimeline(editor, args)
         case .readSkill:     return readSkill(args)
         case .getProjects, .openProject, .newProject:
             return await runProjectTool(tool, args)
@@ -166,6 +168,28 @@ final class ToolExecutor {
             throw ToolError("\(label) not found: \(id)")
         }
         return asset
+    }
+
+    /// Media asset, or a synthetic stand-in when `id` names a timeline (nest insertion).
+    func clipSource(_ id: String, editor: EditorViewModel, path: String) throws -> MediaAsset {
+        if let existing = editor.mediaAssets.first(where: { $0.id == id }) { return existing }
+        guard let child = editor.timeline(for: id) else {
+            throw ToolError("\(path): media asset or timeline not found: \(id)")
+        }
+        if let reason = editor.nestBlockReason(childId: id) {
+            throw ToolError("\(path): \(reason)")
+        }
+        let stand = MediaAsset(
+            id: child.id,
+            url: URL(fileURLWithPath: "/dev/null"),
+            type: .sequence,
+            name: child.name,
+            duration: Double(child.totalFrames) / Double(editor.timeline.fps)
+        )
+        stand.sourceWidth = child.width
+        stand.sourceHeight = child.height
+        stand.hasAudio = child.hasAudioClips
+        return stand
     }
 
     func resolveFolderId(

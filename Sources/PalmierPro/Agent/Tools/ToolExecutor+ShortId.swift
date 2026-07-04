@@ -11,7 +11,7 @@ extension ToolExecutor {
         "clipId", "sourceClipId", "referenceClipId", "targetClipId",
         "mediaRef", "startFrameMediaRef", "endFrameMediaRef",
         "sourceVideoMediaRef", "videoSourceMediaRef",
-        "folderId", "parentFolderId", "captionGroupId",
+        "folderId", "parentFolderId", "captionGroupId", "timelineId",
     ]
     private static let arrayIdKeys: Set<String> = [
         "clipIds", "targetClipIds", "assetIds", "folderIds",
@@ -23,6 +23,7 @@ extension ToolExecutor {
     /// prefix is distinct across the whole set, so anything we emit resolves to exactly one id.
     func currentIdUniverse(_ editor: EditorViewModel) -> Set<String> {
         var ids = Set<String>()
+        for timeline in editor.timelines { ids.insert(timeline.id) }
         for track in editor.timeline.tracks {
             ids.insert(track.id)
             for clip in track.clips {

@@ -894,9 +894,27 @@ final class TimelineView: NSView {
             aiItems.append(aiEditItem)
         }
 
+        // Nest
+        var nestItems: [NSMenuItem] = []
+        let nestClipsItem = NSMenuItem(title: "Create Nested Timeline", action: #selector(performNestClips(_:)), keyEquivalent: "")
+        nestClipsItem.target = self
+        nestItems.append(nestClipsItem)
+        if clip.sourceClipType == .sequence {
+            let openItem = NSMenuItem(title: "Open Timeline", action: #selector(performOpenNestedTimeline(_:)), keyEquivalent: "")
+            openItem.target = self
+            openItem.representedObject = clip.mediaRef
+            nestItems.append(openItem)
+            if singleLinkGroup {
+                let decomposeItem = NSMenuItem(title: "Decompose Nested Timeline", action: #selector(performDecomposeNest(_:)), keyEquivalent: "")
+                decomposeItem.target = self
+                decomposeItem.representedObject = clip.id
+                nestItems.append(decomposeItem)
+            }
+        }
+
         // Media
         var mediaItems: [NSMenuItem] = []
-        if clip.mediaType != .text, singleLinkGroup {
+        if clip.mediaType != .text, clip.sourceClipType != .sequence, singleLinkGroup {
             let swapItem = NSMenuItem(title: "Swap Media", action: #selector(performSwapMedia(_:)), keyEquivalent: "")
             swapItem.target = self
             swapItem.representedObject = clip.id
@@ -917,7 +935,7 @@ final class TimelineView: NSView {
             syncItems.append(syncItem)
         }
 
-        for group in [timelineItems, aiItems, mediaItems, syncItems] where !group.isEmpty {
+        for group in [timelineItems, aiItems, nestItems, mediaItems, syncItems] where !group.isEmpty {
             if !menu.items.isEmpty { menu.addItem(.separator()) }
             group.forEach { menu.addItem($0) }
         }
@@ -1035,6 +1053,22 @@ final class TimelineView: NSView {
         guard let item = sender as? NSMenuItem,
               let clipId = item.representedObject as? String else { return }
         editor.beginMediaSwap(clipId: clipId)
+    }
+
+    @objc private func performNestClips(_ sender: Any?) {
+        editor.nestSelectedClips()
+    }
+
+    @objc private func performDecomposeNest(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let clipId = item.representedObject as? String else { return }
+        editor.decomposeNest(clipId: clipId)
+    }
+
+    @objc private func performOpenNestedTimeline(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let timelineId = item.representedObject as? String else { return }
+        editor.activateTimeline(timelineId)
     }
 
     @objc private func performSetVolumeKfInterpolation(_ sender: Any?) {
@@ -1157,6 +1191,18 @@ final class TimelineView: NSView {
         guard let urlString = sender.draggingPasteboard.string(forType: .string) else { return false }
 
         let editor = self.editor
+
+        let timelineIds = editor.timelineIdsFromDragPayload(urlString)
+        if !timelineIds.isEmpty {
+            var frame = targetFrame
+            for id in timelineIds {
+                guard editor.nestTimeline(id, cursor: cursorTarget, atFrame: frame) else { continue }
+                frame += editor.timeline(for: id)?.totalFrames ?? 0
+            }
+            needsDisplay = true
+            return true
+        }
+
         let assets = editor.assetsFromDragPayload(urlString)
         let segments = editor.segmentsFromDragPayload(urlString)
         guard !assets.isEmpty else { return false }

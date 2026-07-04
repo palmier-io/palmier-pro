@@ -41,10 +41,51 @@ extension ToolExecutor {
         }
         dict["currentFrame"] = editor.currentFrame
         dict["canGenerate"] = AccountService.shared.isSignedIn && AccountService.shared.hasCredits
+        if editor.timelines.count > 1 {
+            dict["timelines"] = editor.timelines.map { t -> [String: Any] in
+                var entry: [String: Any] = ["timelineId": t.id, "name": t.name]
+                if t.id == editor.activeTimelineId { entry["active"] = true }
+                return entry
+            }
+        }
         guard let json = Self.jsonString(roundJSONFloatingPointNumbers(dict, toPlaces: 3)) else {
             throw ToolError("Failed to encode timeline")
         }
         return .ok(json)
+    }
+
+    func createTimeline(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        try validateUnknownKeys(args, allowed: ["name"], path: "create_timeline")
+        let id = editor.createTimeline(name: args.string("name"))
+        let name = editor.timeline(for: id)?.name ?? ""
+        return .ok("Created and switched to timeline \"\(name)\" (timelineId \(id)). It is empty; all edit tools now target it.")
+    }
+
+    func setActiveTimeline(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        try validateUnknownKeys(args, allowed: ["timelineId"], path: "set_active_timeline")
+        guard let id = args.string("timelineId") else { throw ToolError("timelineId is required") }
+        guard let target = editor.timeline(for: id) else {
+            throw ToolError("No timeline with id '\(id)'. get_timeline lists the project's timelines.")
+        }
+        guard editor.activeTimelineId != target.id else {
+            return .ok("\"\(target.name)\" is already the active timeline.")
+        }
+        editor.activateTimeline(target.id)
+        return .ok("Active timeline: \"\(target.name)\" (\(target.totalFrames) frames, \(target.fps) fps). Re-read get_timeline before editing.")
+    }
+
+    func duplicateTimeline(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        try validateUnknownKeys(args, allowed: ["timelineId", "name"], path: "duplicate_timeline")
+        let sourceId = args.string("timelineId") ?? editor.activeTimelineId
+        guard let source = editor.timeline(for: sourceId) else {
+            throw ToolError("No timeline with id '\(sourceId)'. get_timeline lists the project's timelines.")
+        }
+        guard let newId = editor.duplicateTimeline(sourceId) else {
+            throw ToolError("Couldn't duplicate \"\(source.name)\".")
+        }
+        if let name = args.string("name") { editor.renameTimeline(newId, to: name) }
+        let copy = editor.timeline(for: newId)
+        return .ok("Duplicated \"\(source.name)\" as \"\(copy?.name ?? "")\" (timelineId \(newId)) and switched to it. Clip and track ids in the copy are new — re-read get_timeline before editing.")
     }
 
     private static let trackDefaults: [String: Any] = ["muted": false, "hidden": false, "syncLocked": true]
@@ -295,6 +336,7 @@ extension ToolExecutor {
         case .audio: return try await readAudio(editor: editor, asset: asset, args: args, mapping: mapping, preferredLocale: preferredLocale)
         case .lottie: return try await readLottie(asset: asset, args: args)
         case .text: throw ToolError("Text clips are not stored as media assets.")
+        case .sequence: throw ToolError("Sequences are timelines, not media assets. Use get_timeline.")
         }
     }
 

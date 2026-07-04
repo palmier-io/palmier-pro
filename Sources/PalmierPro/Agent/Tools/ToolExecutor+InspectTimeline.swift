@@ -42,6 +42,7 @@ extension ToolExecutor {
         let composition = try await CompositionBuilder.build(
             timeline: timeline,
             resolveURL: { mediaURLs[$0] },
+            resolveTimeline: editor.timelineResolver(),
             missingMediaRefs: editor.missingMediaRefs,
             renderSize: canvas
         )

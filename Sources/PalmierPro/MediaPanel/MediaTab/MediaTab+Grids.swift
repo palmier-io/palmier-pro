@@ -5,12 +5,13 @@ import UniformTypeIdentifiers
 
 extension MediaTab {
     struct MediaCell: Identifiable {
-        enum Kind { case folder(MediaFolder), asset(MediaAsset) }
+        enum Kind { case folder(MediaFolder), timeline(Timeline), asset(MediaAsset) }
         let kind: Kind
 
         var id: String {
             switch kind {
             case .folder(let f): return MediaPanelItemKey.folder(f.id)
+            case .timeline(let t): return MediaPanelItemKey.timeline(t.id)
             case .asset(let a): return a.id
             }
         }
@@ -53,6 +54,9 @@ extension MediaTab {
         for folder in subfoldersInCurrentFolder {
             cells.append(MediaCell(kind: .folder(folder)))
         }
+        for timeline in timelinesInCurrentFolder {
+            cells.append(MediaCell(kind: .timeline(timeline)))
+        }
         for asset in assetsInCurrentFolder {
             cells.append(MediaCell(kind: .asset(asset)))
         }
@@ -66,6 +70,7 @@ extension MediaTab {
     func clearSelections() {
         if !editor.selectedMediaAssetIds.isEmpty { editor.selectedMediaAssetIds.removeAll() }
         if !editor.selectedFolderIds.isEmpty { editor.selectedFolderIds.removeAll() }
+        if !editor.selectedTimelineIds.isEmpty { editor.selectedTimelineIds.removeAll() }
     }
 
     func publishOrderedIds(_ ids: [String]) {
@@ -148,19 +153,20 @@ extension MediaTab {
 
 extension MediaTab {
     var flatGridView: some View {
-        let assets = sortAndFilter(editor.mediaAssets)
-        let orderedIds = assets.map(\.id)
+        var cells = searchFilteredTimelines(editor.timelines).map { MediaCell(kind: .timeline($0)) }
+        cells.append(contentsOf: sortAndFilter(editor.mediaAssets).map { MediaCell(kind: .asset($0)) })
+        let orderedIds = cells.map(\.id)
         return GeometryReader { geo in
             let dims = gridDimensions(width: geo.size.width)
             gridScroll(
-                cells: assets,
+                cells: cells,
                 orderedIds: orderedIds,
                 cols: dims.cols,
                 tileWidth: dims.tileWidth,
                 spacing: dims.spacing,
                 topPadding: AppTheme.Spacing.sm
-            ) { asset in
-                assetCellView(for: asset)
+            ) { cell in
+                cellView(for: cell)
             }
         }
     }
@@ -179,8 +185,12 @@ extension MediaTab {
         let allFolders = editor.folders
             .map { ($0, editor.folderPath(for: $0.id).map(\.name).joined(separator: " / ")) }
             .sorted { $0.1.localizedCaseInsensitiveCompare($1.1) == .orderedAscending }
-        var orderedIds = collapsedGroupedKeys.contains("") ? [] : rootAssets.map(\.id)
+        var orderedIds: [String] = []
+        if !collapsedGroupedKeys.contains("") {
+            orderedIds = filteredTimelines(in: nil).map { MediaPanelItemKey.timeline($0.id) } + rootAssets.map(\.id)
+        }
         for (folder, _) in allFolders where !collapsedGroupedKeys.contains(folder.id) {
+            orderedIds.append(contentsOf: filteredTimelines(in: folder.id).map { MediaPanelItemKey.timeline($0.id) })
             orderedIds.append(contentsOf: sortAndFilter(bucketed[folder.id] ?? []).map(\.id))
         }
         return GeometryReader { geo in
@@ -188,21 +198,23 @@ extension MediaTab {
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-                        if !rootAssets.isEmpty {
+                        let rootTimelines = filteredTimelines(in: nil)
+                        if !rootAssets.isEmpty || !rootTimelines.isEmpty {
                             groupedSection(
                                 title: "Library",
                                 folderId: nil,
+                                timelines: rootTimelines,
                                 assets: rootAssets,
                                 tileWidth: dims.tileWidth,
                                 spacing: dims.spacing
                             )
                         }
                         ForEach(allFolders, id: \.0.id) { folder, path in
-                            let assets = sortAndFilter(bucketed[folder.id] ?? [])
                             groupedSection(
                                 title: path,
                                 folderId: folder.id,
-                                assets: assets,
+                                timelines: filteredTimelines(in: folder.id),
+                                assets: sortAndFilter(bucketed[folder.id] ?? []),
                                 tileWidth: dims.tileWidth,
                                 spacing: dims.spacing
                             )
@@ -235,6 +247,7 @@ extension MediaTab {
     fileprivate func groupedSection(
         title: String,
         folderId: String?,
+        timelines: [Timeline],
         assets: [MediaAsset],
         tileWidth: CGFloat,
         spacing: CGFloat
@@ -293,7 +306,7 @@ extension MediaTab {
                 } else {
                     groupedSectionTitle(title)
                 }
-                Text("\(assets.count)")
+                Text("\(timelines.count + assets.count)")
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .monospacedDigit()
@@ -305,7 +318,7 @@ extension MediaTab {
                     .fill(AppTheme.Border.subtleColor)
                     .frame(height: 0.5)
 
-                if assets.isEmpty {
+                if assets.isEmpty && timelines.isEmpty {
                     Text("Empty")
                         .font(.system(size: AppTheme.FontSize.xs))
                         .foregroundStyle(AppTheme.Text.mutedColor)
@@ -313,6 +326,12 @@ extension MediaTab {
                 } else {
                     let columns = [GridItem(.adaptive(minimum: thumbnailSize), spacing: spacing)]
                     LazyVGrid(columns: columns, alignment: .leading, spacing: spacing) {
+                        ForEach(timelines) { timeline in
+                            timelineTile(timeline)
+                                .background(assetFrameReader(for: MediaPanelItemKey.timeline(timeline.id)))
+                                .frame(width: tileWidth)
+                                .id(MediaPanelItemKey.timeline(timeline.id))
+                        }
                         ForEach(assets) { asset in
                             assetCellView(for: asset)
                                 .frame(width: tileWidth)
@@ -387,8 +406,71 @@ extension MediaTab {
         case .folder(let folder):
             folderTile(folder)
                 .background(assetFrameReader(for: cell.id))
+        case .timeline(let timeline):
+            timelineTile(timeline)
+                .background(assetFrameReader(for: cell.id))
         case .asset(let asset):
             assetCellView(for: asset)
+        }
+    }
+
+    fileprivate func timelineTile(_ timeline: Timeline) -> some View {
+        TimelineTileView(
+            timeline: timeline,
+            posterImage: timelinePoster(timeline),
+            isSelected: editor.selectedTimelineIds.contains(timeline.id),
+            isActive: editor.activeTimelineId == timeline.id,
+            canDelete: editor.timelines.count > 1,
+            isRenaming: Binding(
+                get: { renamingTimelineId == timeline.id },
+                set: { renamingTimelineId = $0 ? timeline.id : nil }
+            ),
+            onTap: { handleTimelineTap(timeline) },
+            onOpen: { editor.activateTimeline(timeline.id) },
+            onCommitRename: { newName in
+                editor.renameTimeline(timeline.id, to: newName)
+                renamingTimelineId = nil
+            },
+            onCancelRename: { renamingTimelineId = nil },
+            onDuplicate: { editor.duplicateTimeline(timeline.id) },
+            onDelete: { editor.deleteTimeline(timeline.id) }
+        )
+        .draggable(MediaTab.timelineDragString(forTimelineId: timeline.id)) {
+            TileDragPreview(icon: "film.stack", name: timeline.name)
+        }
+    }
+
+    /// First visual clip's cached asset thumbnail — no dedicated timeline render.
+    fileprivate func timelinePoster(_ timeline: Timeline) -> NSImage? {
+        for track in timeline.tracks where track.type == .video {
+            for clip in track.clips where clip.mediaType == .video || clip.mediaType == .image {
+                if let thumb = editor.mediaAssets.first(where: { $0.id == clip.mediaRef })?.thumbnail {
+                    return thumb
+                }
+            }
+        }
+        return nil
+    }
+
+    fileprivate func handleTimelineTap(_ timeline: Timeline) {
+        handleTileTap(timeline.id, select: \.selectedTimelineIds,
+                      clearing: [\.selectedMediaAssetIds, \.selectedFolderIds])
+    }
+
+    fileprivate func handleTileTap(
+        _ id: String,
+        select selection: ReferenceWritableKeyPath<EditorViewModel, Set<String>>,
+        clearing others: [ReferenceWritableKeyPath<EditorViewModel, Set<String>>]
+    ) {
+        if NSEvent.modifierFlags.contains(.shift) {
+            if editor[keyPath: selection].contains(id) {
+                editor[keyPath: selection].remove(id)
+            } else {
+                editor[keyPath: selection].insert(id)
+            }
+        } else {
+            editor[keyPath: selection] = [id]
+            for other in others { editor[keyPath: other].removeAll() }
         }
     }
 
@@ -414,12 +496,10 @@ extension MediaTab {
                     renamingFolderId = nil
                 },
                 onCancelRename: { renamingFolderId = nil },
-                onDelete: { editor.deleteFolders(ids: [folder.id]) },
-                shouldAutoFocus: pendingFolderFocusId == folder.id,
-                onAutoFocusConsumed: { pendingFolderFocusId = nil }
+                onDelete: { editor.deleteFolders(ids: [folder.id]) }
             )
             .draggable(MediaTab.folderDragString(forFolderId: folder.id)) {
-                FolderDragPreview(name: folder.name)
+                TileDragPreview(icon: "folder.fill", name: folder.name)
             }
         }
         .onDrop(of: [.fileURL, .text], isTargeted: dropHover) { providers in
@@ -429,17 +509,8 @@ extension MediaTab {
     }
 
     fileprivate func handleFolderTap(_ folder: MediaFolder) {
-        let shift = NSEvent.modifierFlags.contains(.shift)
-        if shift {
-            if editor.selectedFolderIds.contains(folder.id) {
-                editor.selectedFolderIds.remove(folder.id)
-            } else {
-                editor.selectedFolderIds.insert(folder.id)
-            }
-        } else {
-            editor.selectedFolderIds = [folder.id]
-            editor.selectedMediaAssetIds.removeAll()
-        }
+        handleTileTap(folder.id, select: \.selectedFolderIds,
+                      clearing: [\.selectedMediaAssetIds, \.selectedTimelineIds])
     }
 
     @ViewBuilder
@@ -451,7 +522,6 @@ extension MediaTab {
             Button("New Folder") {
                 let id = editor.createFolder(name: "New Folder", in: currentFolderId)
                 editor.moveAssetsToFolder(assetIds: targetIds, folderId: id)
-                pendingFolderFocusId = id
                 renamingFolderId = id
             }
             if currentFolderId != nil || targetIds.contains(where: { id in editor.mediaAssets.first(where: { $0.id == id })?.folderId != nil }) {
@@ -487,11 +557,12 @@ struct AssetFramePreferenceKey: PreferenceKey {
     }
 }
 
-private struct FolderDragPreview: View {
+private struct TileDragPreview: View {
+    let icon: String
     let name: String
     var body: some View {
         HStack(spacing: AppTheme.Spacing.xs) {
-            Image(systemName: "folder.fill")
+            Image(systemName: icon)
                 .foregroundStyle(AppTheme.Accent.primary)
             Text(name)
                 .font(.system(size: AppTheme.FontSize.sm, weight: .medium))

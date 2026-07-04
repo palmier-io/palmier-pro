@@ -19,7 +19,7 @@ enum PalmierProjectExporter {
 
     @discardableResult
     static func export(
-        timeline: Timeline,
+        projectFile: ProjectFile,
         manifest: MediaManifest,
         generationLog: GenerationLog,
         sourceProjectURL: URL?,
@@ -70,7 +70,7 @@ enum PalmierProjectExporter {
         newManifest.entries = newEntries
 
         let encoder = JSONEncoder()
-        try encoder.encode(timeline).write(to: staging.appendingPathComponent(Project.timelineFilename))
+        try encoder.encode(projectFile).write(to: staging.appendingPathComponent(Project.timelineFilename))
         try encoder.encode(newManifest).write(to: staging.appendingPathComponent(Project.manifestFilename))
         try encoder.encode(generationLog).write(to: staging.appendingPathComponent(Project.generationLogFilename))
 

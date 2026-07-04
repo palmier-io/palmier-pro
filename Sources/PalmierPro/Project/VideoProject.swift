@@ -4,7 +4,7 @@ import AVFoundation
 import UniformTypeIdentifiers
 
 struct ProjectPackageContents: Sendable {
-    var timeline: Timeline
+    var projectFile: ProjectFile
     var manifest: MediaManifest?
     var generationLog: GenerationLog?
     var manifestUnreadable: Bool = false
@@ -31,17 +31,17 @@ final class VideoProject: NSDocument {
     let editorViewModel = EditorViewModel()
 
     /// Decoded off-main in read(), applied on main in makeWindowControllers.
-    private nonisolated(unsafe) var loadedTimeline: Timeline?
+    private nonisolated(unsafe) var loadedProjectFile: ProjectFile?
     private nonisolated(unsafe) var loadedManifest: MediaManifest?
     private nonisolated(unsafe) var loadedGenerationLog: GenerationLog?
 
     /// Set when media.json existed but failed to decode, so saves preserve it instead of clobbering.
     private nonisolated(unsafe) var manifestLoadFailed = false
 
-    /// Captured on main thread before writes may continue off-main.
-    private nonisolated(unsafe) var snapshotTimeline: Data?
-    private nonisolated(unsafe) var snapshotManifest: Data?
-    private nonisolated(unsafe) var snapshotGenerationLog: Data?
+    /// Captured on main thread as cheap value copies; encoded off-main in write().
+    private nonisolated(unsafe) var snapshotProjectFile: ProjectFile?
+    private nonisolated(unsafe) var snapshotManifest: MediaManifest?
+    private nonisolated(unsafe) var snapshotGenerationLog: GenerationLog?
     private nonisolated(unsafe) var snapshotThumbnail: Data?
     private nonisolated(unsafe) var snapshotChatSessionFiles: [(name: String, data: Data)] = []
     private nonisolated(unsafe) var snapshotSourceProjectURL: URL?
@@ -51,6 +51,9 @@ final class VideoProject: NSDocument {
     // MARK: - Persistence
 
     override class var autosavesInPlace: Bool { true }
+
+    // The save snapshot is captured on main before super.save; the encode + disk write run off-main.
+    override func canAsynchronouslyWrite(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType) -> Bool { true }
 
     @MainActor
     static func load(from url: URL) async throws -> VideoProject {
@@ -69,16 +72,18 @@ final class VideoProject: NSDocument {
     }
 
     private nonisolated func applyLoadedContents(_ contents: ProjectPackageContents) {
-        loadedTimeline = contents.timeline
+        loadedProjectFile = contents.projectFile
         loadedManifest = contents.manifest
         loadedGenerationLog = contents.generationLog
         manifestLoadFailed = contents.manifestUnreadable
+        let timelines = loadedProjectFile?.timelines ?? []
         Log.project.notice(
-            "read ok tracks=\(self.loadedTimeline?.tracks.count ?? 0)",
+            "read ok timelines=\(timelines.count)",
             telemetry: "Project read",
             data: [
-                "tracks": loadedTimeline?.tracks.count ?? 0,
-                "clips": loadedTimeline?.tracks.reduce(0) { $0 + $1.clips.count } ?? 0,
+                "timelines": timelines.count,
+                "tracks": timelines.reduce(0) { $0 + $1.tracks.count },
+                "clips": timelines.reduce(0) { $0 + $1.tracks.reduce(0) { $0 + $1.clips.count } },
                 "media": loadedManifest?.entries.count ?? 0,
                 "hasGenerationLog": loadedGenerationLog != nil
             ]
@@ -87,9 +92,9 @@ final class VideoProject: NSDocument {
 
     nonisolated static func readProjectPackage(at url: URL) throws -> ProjectPackageContents {
         let data = try requiredData(Project.timelineFilename, in: url)
-        let timeline: Timeline
+        let projectFile: ProjectFile
         do {
-            timeline = try JSONDecoder().decode(Timeline.self, from: data)
+            projectFile = try ProjectFile.decode(data)
         } catch {
             Log.project.error("read: timeline decode failed: \(String(describing: error))")
             throw error
@@ -116,7 +121,7 @@ final class VideoProject: NSDocument {
             .flatMap { try? JSONDecoder().decode(GenerationLog.self, from: $0) }
 
         return ProjectPackageContents(
-            timeline: timeline,
+            projectFile: projectFile,
             manifest: manifest,
             generationLog: generationLog,
             manifestUnreadable: manifestUnreadable
@@ -144,34 +149,41 @@ final class VideoProject: NSDocument {
                 snapshotSourceProjectURL = fileURL
             }
         }
-        defer {
-            snapshotPreparedForWrite = false
-            snapshotSourceProjectURL = nil
-        }
-        guard let data = snapshotTimeline else {
-            Log.project.error("save: snapshotTimeline missing at write()")
+
+        let file = snapshotProjectFile
+        let manifest = snapshotManifest
+        let generationLog = snapshotGenerationLog
+        let thumbnail = snapshotThumbnail
+        let chatSessionFiles = snapshotChatSessionFiles
+        let sourceURL = snapshotSourceProjectURL
+        snapshotPreparedForWrite = false
+        snapshotSourceProjectURL = nil
+        unblockUserInteraction()
+
+        guard let file, let data = try? JSONEncoder().encode(file) else {
+            Log.project.error("save: project snapshot missing at write()")
             throw CocoaError(.fileWriteUnknown)
         }
 
         try Self.writeProjectPackage(
             ProjectPackageSnapshot(
                 timeline: data,
-                manifest: snapshotManifest,
-                generationLog: snapshotGenerationLog,
-                thumbnail: snapshotThumbnail,
-                chatSessionFiles: snapshotChatSessionFiles
+                manifest: manifest.flatMap { try? JSONEncoder().encode($0) },
+                generationLog: generationLog.flatMap { try? JSONEncoder().encode($0) },
+                thumbnail: thumbnail,
+                chatSessionFiles: chatSessionFiles
             ),
             to: url,
-            sourceURL: snapshotSourceProjectURL
+            sourceURL: sourceURL
         )
         // A real manifest was just written, so the unreadable original is gone; stop preserving it.
-        if snapshotManifest != nil { manifestLoadFailed = false }
+        if manifest != nil { manifestLoadFailed = false }
     }
 
     private func captureSaveSnapshot() {
-        snapshotTimeline = try? JSONEncoder().encode(editorViewModel.timeline)
-        snapshotManifest = Self.manifestSnapshotData(manifest: editorViewModel.mediaManifest, loadFailed: manifestLoadFailed)
-        snapshotGenerationLog = try? JSONEncoder().encode(editorViewModel.generationLog)
+        snapshotProjectFile = editorViewModel.projectFileSnapshot()
+        snapshotManifest = Self.manifestSnapshot(manifest: editorViewModel.mediaManifest, loadFailed: manifestLoadFailed)
+        snapshotGenerationLog = editorViewModel.generationLog
         snapshotThumbnail = captureThumbnail()
         snapshotChatSessionFiles = editorViewModel.agentService.sessions
             .filter { !$0.messages.isEmpty }
@@ -181,10 +193,10 @@ final class VideoProject: NSDocument {
         snapshotPreparedForWrite = true
     }
 
-    nonisolated static func manifestSnapshotData(manifest: MediaManifest, loadFailed: Bool) -> Data? {
+    nonisolated static func manifestSnapshot(manifest: MediaManifest, loadFailed: Bool) -> MediaManifest? {
         // If the manifest failed to load, don't overwrite the (recoverable) original with an empty one.
         if loadFailed && manifest.entries.isEmpty && manifest.folders.isEmpty { return nil }
-        return try? JSONEncoder().encode(manifest)
+        return manifest
     }
 
     private nonisolated static func requiredData(_ name: String, in packageURL: URL) throws -> Data {
@@ -327,9 +339,9 @@ final class VideoProject: NSDocument {
     // MARK: - Window setup
 
     override func makeWindowControllers() {
-        if let loaded = loadedTimeline {
-            editorViewModel.timeline = loaded
-            loadedTimeline = nil
+        if let loaded = loadedProjectFile {
+            editorViewModel.applyProjectFile(loaded)
+            loadedProjectFile = nil
         }
         editorViewModel.undoManager = undoManager
         editorViewModel.projectURL = fileURL

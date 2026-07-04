@@ -795,3 +795,143 @@ struct XMLExporterTests {
         #expect(!xml.contains("<keyframe>"))
     }
 }
+
+@Suite("XMLExporter — nested timelines")
+struct XMEMLNestExportTests {
+
+    private func makeResolver(entries: [MediaManifestEntry]) throws -> MediaResolver {
+        for entry in entries {
+            if case let .external(absolutePath) = entry.source {
+                FileManager.default.createFile(atPath: absolutePath, contents: Data())
+            }
+        }
+        var manifest = MediaManifest()
+        manifest.entries = entries
+        return MediaResolver(manifest: { manifest }, projectURL: { nil })
+    }
+
+    private func videoEntry(id: String) -> MediaManifestEntry {
+        MediaManifestEntry(
+            id: id, name: id, type: .video,
+            source: .external(absolutePath: (NSTemporaryDirectory() as NSString).appendingPathComponent("\(id)-\(UUID().uuidString).mp4")),
+            duration: 5
+        )
+    }
+
+    private func carrier(for child: Timeline, start: Int, duration: Int? = nil, trimStart: Int = 0) -> Clip {
+        var c = Clip(mediaRef: child.id, mediaType: .sequence, sourceClipType: .sequence,
+                     startFrame: start, durationFrames: duration ?? child.totalFrames)
+        c.trimStartFrame = trimStart
+        return c
+    }
+
+    private func render(_ parent: Timeline, timelines: [Timeline], resolver: MediaResolver) -> String {
+        let byId = Dictionary(uniqueKeysWithValues: timelines.map { ($0.id, $0) })
+        return XMLExporter.render(timeline: parent, resolver: resolver, resolveTimeline: { byId[$0] })
+    }
+
+    @Test func nestEmitsInlineSequenceInsideClipitem() throws {
+        let resolver = try makeResolver(entries: [videoEntry(id: "v1")])
+        var child = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [Fixtures.clip(mediaRef: "v1", start: 0, duration: 60)])])
+        child.name = "Intro"
+        let parent = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [carrier(for: child, start: 30)])])
+
+        let xml = render(parent, timelines: [child, parent], resolver: resolver)
+
+        #expect(xml.contains("<sequence id=\"sequence-2\">"))
+        #expect(xml.contains("<name>Intro</name>"))
+        // Carrier placement and trims in parent frames.
+        let clipitem = xml.components(separatedBy: "<clipitem").first { $0.contains("sequence-2") } ?? ""
+        #expect(clipitem.contains("<start>30</start>"))
+        #expect(clipitem.contains("<end>90</end>"))
+        #expect(clipitem.contains("<in>0</in>"))
+        #expect(clipitem.contains("<out>60</out>"))
+        // The child's own clip is inside the nested sequence definition.
+        #expect(xml.contains("<pathurl>"))
+    }
+
+    @Test func secondCarrierReferencesTheSequenceById() throws {
+        let resolver = try makeResolver(entries: [videoEntry(id: "v1")])
+        let child = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [Fixtures.clip(mediaRef: "v1", start: 0, duration: 60)])])
+        let parent = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [
+            carrier(for: child, start: 0),
+            carrier(for: child, start: 60),
+        ])])
+
+        let xml = render(parent, timelines: [child, parent], resolver: resolver)
+
+        let fullDefs = xml.components(separatedBy: "<sequence id=\"sequence-2\">").count - 1
+        let refs = xml.components(separatedBy: "<sequence id=\"sequence-2\"/>").count - 1
+        #expect(fullDefs == 1)
+        #expect(refs == 1)
+    }
+
+    @Test func twoLevelNestingEmitsBothSequences() throws {
+        let resolver = try makeResolver(entries: [videoEntry(id: "v1")])
+        var grandchild = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [Fixtures.clip(mediaRef: "v1", start: 0, duration: 30)])])
+        grandchild.name = "Deep"
+        let child = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [carrier(for: grandchild, start: 0)])])
+        let parent = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [carrier(for: child, start: 0)])])
+
+        let xml = render(parent, timelines: [grandchild, child, parent], resolver: resolver)
+
+        #expect(xml.contains("<sequence id=\"sequence-2\">"))
+        #expect(xml.contains("<sequence id=\"sequence-3\">"))
+        #expect(xml.contains("<name>Deep</name>"))
+    }
+
+    @Test func frozenCarrierClampsToChildContent() throws {
+        let resolver = try makeResolver(entries: [videoEntry(id: "v1")])
+        let child = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [Fixtures.clip(mediaRef: "v1", start: 0, duration: 60)])])
+        let parent = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [carrier(for: child, start: 0, duration: 100, trimStart: 10)])])
+
+        let xml = render(parent, timelines: [child, parent], resolver: resolver)
+
+        let clipitem = xml.components(separatedBy: "<clipitem").first { $0.contains("sequence-2") } ?? ""
+        #expect(clipitem.contains("<in>10</in>"))
+        #expect(clipitem.contains("<out>60</out>"))
+        #expect(clipitem.contains("<end>50</end>"))
+    }
+
+    @Test func emptyOrMissingChildDropsCarrier() throws {
+        let resolver = try makeResolver(entries: [])
+        let empty = Fixtures.timeline()
+        let parent = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [
+            carrier(for: empty, start: 0, duration: 30),
+            { var c = Fixtures.clip(mediaRef: "no-such-timeline", start: 60, duration: 30)
+              c.mediaType = .sequence; c.sourceClipType = .sequence; return c }()
+        ])])
+
+        let xml = render(parent, timelines: [empty, parent], resolver: resolver)
+
+        #expect(!xml.contains("<clipitem"))
+        #expect(!xml.contains("sequence-2"))
+    }
+
+    @Test func linkedCarrierPairEmitsLinkedClipitems() throws {
+        let resolver = try makeResolver(entries: [videoEntry(id: "v1")])
+        let child = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(mediaRef: "v1", start: 0, duration: 60)]),
+            Fixtures.audioTrack(clips: [Fixtures.clip(mediaRef: "v1", mediaType: .audio, start: 0, duration: 60)])
+        ])
+        var video = carrier(for: child, start: 0)
+        var audio = Fixtures.clip(mediaRef: child.id, mediaType: .audio, start: 0, duration: 60)
+        audio.sourceClipType = .sequence
+        video.linkGroupId = "g1"
+        audio.linkGroupId = "g1"
+        let parent = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [video]),
+            Fixtures.audioTrack(clips: [audio])
+        ])
+
+        let xml = render(parent, timelines: [child, parent], resolver: resolver)
+
+        // Both carriers emit; one holds the definition, the other a reference; links pair them.
+        let fullDefs = xml.components(separatedBy: "<sequence id=\"sequence-2\">").count - 1
+        let refs = xml.components(separatedBy: "<sequence id=\"sequence-2\"/>").count - 1
+        #expect(fullDefs == 1)
+        #expect(refs == 1)
+        #expect(xml.contains("<linkclipref>clipitem-\(video.id)</linkclipref>"))
+        #expect(xml.contains("<linkclipref>clipitem-\(audio.id)</linkclipref>"))
+    }
+}

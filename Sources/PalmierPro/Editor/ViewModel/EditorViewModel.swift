@@ -24,8 +24,33 @@ final class EditorViewModel {
 
     // MARK: - Persisted state (synced with VideoProject)
 
-    var timeline = Timeline() {
+    var timelines: [Timeline] {
         didSet { timelineRenderRevision &+= 1 }
+    }
+    var activeTimelineId: String
+    var openTimelineIds: [String]
+    @ObservationIgnored var liveViewStates: [String: TimelineViewState] = [:]
+    var timelineTabRenameRequest: String?
+
+    /// Active-timeline proxy; assignment routes by id and activates so undo lands on its timeline.
+    var timeline: Timeline {
+        get { timelines.first(where: { $0.id == activeTimelineId }) ?? timelines[0] }
+        set {
+            if let i = timelines.firstIndex(where: { $0.id == newValue.id }) {
+                timelines[i] = newValue
+            } else {
+                let i = timelines.firstIndex(where: { $0.id == activeTimelineId }) ?? 0
+                let oldId = timelines[i].id
+                timelines[i] = newValue
+                openTimelineIds = openTimelineIds.map { $0 == oldId ? newValue.id : $0 }
+            }
+            activeTimelineId = newValue.id
+            if !openTimelineIds.contains(newValue.id) { openTimelineIds.append(newValue.id) }
+        }
+        _modify {
+            let i = timelines.firstIndex(where: { $0.id == activeTimelineId }) ?? 0
+            yield &timelines[i]
+        }
     }
     var mediaManifest = MediaManifest()
     var generationLog = GenerationLog()
@@ -66,6 +91,7 @@ final class EditorViewModel {
     var selectedTimelineRange: TimelineRangeSelection?
     var selectedMediaAssetIds: Set<String> = []
     var selectedFolderIds: Set<String> = []
+    var selectedTimelineIds: Set<String> = []
     var pendingSwapClipId: String?
     var clipClipboard: [ClipClipboardEntry] = []
     var zoomScale: Double = Defaults.pixelsPerFrame
@@ -77,6 +103,9 @@ final class EditorViewModel {
     var canvasOffset: CGSize = .zero
     var timelineVisibleWidth: Double = 0
     var timelineRenderRevision: Int = 0
+    /// Live horizontal scroll of the timeline panel, mirrored from AppKit for view-state stash.
+    @ObservationIgnored var timelineScrollOffsetX: Double = 0
+    var timelineScrollRestoreX: Double?
     var isScrubbing: Bool = false
     var toolMode: ToolMode = .pointer
     var showExportDialog: Bool = false
@@ -183,6 +212,10 @@ final class EditorViewModel {
     }
 
     init() {
+        let first = Timeline()
+        timelines = [first]
+        activeTimelineId = first.id
+        openTimelineIds = [first.id]
         mediaResolver = MediaResolver(
             manifest: { [weak self] in self?.mediaManifest ?? MediaManifest() },
             projectURL: { [weak self] in self?.projectURL }
@@ -372,7 +405,8 @@ final class EditorViewModel {
     ) -> [String] {
         guard timeline.tracks.indices.contains(trackIndex) else { return [] }
         let targetIsVideo = timeline.tracks[trackIndex].type == .video
-        let shouldLink = addLinkedAudio && targetIsVideo && asset.type == .video && asset.hasAudio
+        let shouldLink = addLinkedAudio && targetIsVideo && asset.hasAudio
+            && (asset.type == .video || asset.type == .sequence)
         let linkGroupId: String? = shouldLink ? UUID().uuidString : nil
         let trimStart = sourceSegment.map { secondsToFrame(seconds: $0.lowerBound, fps: timeline.fps) } ?? 0
         let totalSourceFrames = secondsToFrame(seconds: asset.duration, fps: timeline.fps)
@@ -476,15 +510,23 @@ final class EditorViewModel {
     }
 
     func fitTransform(for clip: Clip) -> Transform {
-        guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }) else { return Transform() }
-        return fitTransform(for: asset)
+        guard let dims = sourceDimensions(for: clip) else { return Transform() }
+        return fitTransform(sourceWidth: dims.width, sourceHeight: dims.height)
     }
 
     func fitTransform(for asset: MediaAsset, canvasWidth: Int, canvasHeight: Int) -> Transform {
-        guard let relativeAspect = mediaCanvasAspect(for: asset, canvasWidth: canvasWidth, canvasHeight: canvasHeight) else {
-            return Transform()
-        }
+        guard let sw = asset.sourceWidth, let sh = asset.sourceHeight else { return Transform() }
+        return fitTransform(sourceWidth: sw, sourceHeight: sh, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+    }
+
+    func fitTransform(sourceWidth: Int, sourceHeight: Int) -> Transform {
+        fitTransform(sourceWidth: sourceWidth, sourceHeight: sourceHeight, canvasWidth: timeline.width, canvasHeight: timeline.height)
+    }
+
+    func fitTransform(sourceWidth: Int, sourceHeight: Int, canvasWidth: Int, canvasHeight: Int) -> Transform {
+        guard sourceWidth > 0, sourceHeight > 0, canvasWidth > 0, canvasHeight > 0 else { return Transform() }
         let canvasAspect = Double(canvasWidth) / Double(canvasHeight)
+        let relativeAspect = (Double(sourceWidth) / Double(sourceHeight)) / canvasAspect
         let sourceAspect = relativeAspect * canvasAspect
         if abs(canvasAspect - sourceAspect) < Defaults.aspectTolerance {
             return Transform()
@@ -502,10 +544,24 @@ final class EditorViewModel {
         return (Double(sw) / Double(sh)) / canvasAspect
     }
 
+    /// Source pixel dimensions for a clip: asset dims, or the child timeline's for nest carriers.
+    func sourceDimensions(for clip: Clip) -> (width: Int, height: Int)? {
+        if let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }),
+           let sw = asset.sourceWidth, let sh = asset.sourceHeight, sw > 0, sh > 0 {
+            return (sw, sh)
+        }
+        if clip.sourceClipType == .sequence, let child = timeline(for: clip.mediaRef),
+           child.width > 0, child.height > 0 {
+            return (child.width, child.height)
+        }
+        return nil
+    }
+
     /// Source aspect ratio relative to canvas; nil when source dimensions are unknown.
     func mediaCanvasAspect(for clip: Clip) -> Double? {
-        guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }) else { return nil }
-        return mediaCanvasAspect(for: asset, canvasWidth: timeline.width, canvasHeight: timeline.height)
+        guard let dims = sourceDimensions(for: clip), timeline.width > 0, timeline.height > 0 else { return nil }
+        let canvasAspect = Double(timeline.width) / Double(timeline.height)
+        return (Double(dims.width) / Double(dims.height)) / canvasAspect
     }
 
     func cropFittingAspect(
@@ -514,10 +570,8 @@ final class EditorViewModel {
         anchorX: Double = 0.5,
         anchorY: Double = 0.5
     ) -> Crop {
-        guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }),
-              let sw = asset.sourceWidth, let sh = asset.sourceHeight,
-              sw > 0, sh > 0, target > 0 else { return Crop() }
-        let sourceAspect = Double(sw) / Double(sh)
+        guard let dims = sourceDimensions(for: clip), target > 0 else { return Crop() }
+        let sourceAspect = Double(dims.width) / Double(dims.height)
         if abs(sourceAspect - target) < 0.0001 { return Crop() }
         let ax = min(1, max(0, anchorX))
         let ay = min(1, max(0, anchorY))

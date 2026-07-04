@@ -18,6 +18,19 @@ extension ToolExecutor {
         let format = try mode == .video ? ExportFormat.videoCodec(named: input.codec) : nil
         let resolution = try mode == .video ? ExportResolution.exportPreset(named: input.resolution) : .matchTimeline
 
+        let timeline: Timeline
+        if let id = input.timelineId {
+            guard mode != .palmier else {
+                throw ToolError("export_project: timelineId doesn't apply to palmier mode — the package carries every timeline")
+            }
+            guard let t = editor.timeline(for: id) else {
+                throw ToolError("export_project: no timeline with id '\(id)'. get_timeline lists the project's timelines.")
+            }
+            timeline = t
+        } else {
+            timeline = editor.timeline
+        }
+
         let outputURL = try exportDestination(
             outputPath: input.outputPath,
             mode: mode,
@@ -31,12 +44,12 @@ extension ToolExecutor {
             guard let format else {
                 throw ToolError("export_project: codec is required for video mode")
             }
-            guard editor.timeline.totalFrames > 0 else {
+            guard timeline.totalFrames > 0 else {
                 throw ToolError("export_project: timeline is empty")
             }
-            return try exportVideo(editor, format: format, resolution: resolution, outputURL: outputURL)
+            return try exportVideo(editor, timeline: timeline, format: format, resolution: resolution, outputURL: outputURL)
         case .xml:
-            return try await exportXML(editor, outputURL: outputURL)
+            return try await exportXML(editor, timeline: timeline, outputURL: outputURL)
         case .fcpxml:
             let target: FCPXMLTarget
             if let raw = input.fcpxmlTarget {
@@ -47,7 +60,7 @@ extension ToolExecutor {
             } else {
                 target = .default
             }
-            return try await exportFCPXML(editor, target: target, outputURL: outputURL)
+            return try await exportFCPXML(editor, timeline: timeline, target: target, outputURL: outputURL)
         case .palmier:
             return try await exportPalmier(editor, outputURL: outputURL)
         }
@@ -55,6 +68,7 @@ extension ToolExecutor {
 
     private func exportVideo(
         _ editor: EditorViewModel,
+        timeline: Timeline,
         format: ExportFormat,
         resolution: ExportResolution,
         outputURL: URL
@@ -63,10 +77,10 @@ extension ToolExecutor {
             throw ToolError("export_project: Another export is already in progress.")
         }
 
-        let timeline = editor.timeline
         let resolver = editor.mediaResolver
         let missingMediaRefs = editor.missingMediaRefs
         let name = outputURL.lastPathComponent
+        let resolveTimeline = editor.timelineResolver()
 
         Task { @MainActor in
             defer { ExportCoordinator.endExport() }
@@ -74,6 +88,7 @@ extension ToolExecutor {
             await service.export(
                 timeline: timeline,
                 resolver: resolver,
+                resolveTimeline: resolveTimeline,
                 format: format,
                 resolution: resolution,
                 missingMediaRefs: missingMediaRefs,
@@ -101,14 +116,15 @@ extension ToolExecutor {
             "path": outputURL.path,
             "codec": format.displayName,
             "resolution": resolution.rawValue,
-            "durationFrames": editor.timeline.totalFrames,
-            "durationSeconds": Double(editor.timeline.totalFrames) / Double(max(1, editor.timeline.fps)),
-            "fps": editor.timeline.fps,
+            "timeline": timeline.name,
+            "durationFrames": timeline.totalFrames,
+            "durationSeconds": Double(timeline.totalFrames) / Double(max(1, timeline.fps)),
+            "fps": timeline.fps,
             "note": "Rendering in the background. A system notification will report completion or failure.",
         ])
     }
 
-    private func exportXML(_ editor: EditorViewModel, outputURL: URL) async throws -> ToolResult {
+    private func exportXML(_ editor: EditorViewModel, timeline: Timeline, outputURL: URL) async throws -> ToolResult {
         if FileManager.default.fileExists(atPath: outputURL.path) {
             do {
                 try FileManager.default.removeItem(at: outputURL)
@@ -117,27 +133,32 @@ extension ToolExecutor {
             }
         }
         do {
-            try await XMLExporter.export(timeline: editor.timeline, resolver: editor.mediaResolver, outputURL: outputURL)
+            try await XMLExporter.export(
+                timeline: timeline, resolver: editor.mediaResolver,
+                resolveTimeline: editor.timelineResolver(), outputURL: outputURL
+            )
         } catch {
             throw ToolError("export_project: XML export failed: \(error.localizedDescription)")
         }
         guard FileManager.default.fileExists(atPath: outputURL.path) else {
             throw ToolError("export_project: XML export failed")
         }
+        let warnings = nestExportWarnings(editor, timeline: timeline)
         return try jsonResult([
             "status": "exported",
             "mode": ExportProjectMode.xml.rawValue,
             "path": outputURL.path,
-            "width": editor.timeline.width,
-            "height": editor.timeline.height,
-            "durationFrames": editor.timeline.totalFrames,
-            "durationSeconds": Double(editor.timeline.totalFrames) / Double(max(1, editor.timeline.fps)),
-            "fps": editor.timeline.fps,
-            "warnings": [],
+            "timeline": timeline.name,
+            "width": timeline.width,
+            "height": timeline.height,
+            "durationFrames": timeline.totalFrames,
+            "durationSeconds": Double(timeline.totalFrames) / Double(max(1, timeline.fps)),
+            "fps": timeline.fps,
+            "warnings": warnings,
         ])
     }
 
-    private func exportFCPXML(_ editor: EditorViewModel, target: FCPXMLTarget, outputURL: URL) async throws -> ToolResult {
+    private func exportFCPXML(_ editor: EditorViewModel, timeline: Timeline, target: FCPXMLTarget, outputURL: URL) async throws -> ToolResult {
         if FileManager.default.fileExists(atPath: outputURL.path) {
             do {
                 try FileManager.default.removeItem(at: outputURL)
@@ -146,25 +167,38 @@ extension ToolExecutor {
             }
         }
         do {
-            try await FCPXMLExporter.export(timeline: editor.timeline, resolver: editor.mediaResolver,
-                                            target: target, outputURL: outputURL)
+            try await FCPXMLExporter.export(
+                timeline: timeline, resolver: editor.mediaResolver,
+                resolveTimeline: editor.timelineResolver(), target: target, outputURL: outputURL
+            )
         } catch {
             throw ToolError("export_project: FCPXML export failed: \(error.localizedDescription)")
         }
         guard FileManager.default.fileExists(atPath: outputURL.path) else {
             throw ToolError("export_project: FCPXML export failed")
         }
+        let warnings = nestExportWarnings(editor, timeline: timeline)
         return try jsonResult([
             "status": "exported",
             "mode": ExportProjectMode.fcpxml.rawValue,
             "path": outputURL.path,
-            "width": editor.timeline.width,
-            "height": editor.timeline.height,
-            "durationFrames": editor.timeline.totalFrames,
-            "durationSeconds": Double(editor.timeline.totalFrames) / Double(max(1, editor.timeline.fps)),
-            "fps": editor.timeline.fps,
-            "warnings": [],
+            "timeline": timeline.name,
+            "width": timeline.width,
+            "height": timeline.height,
+            "durationFrames": timeline.totalFrames,
+            "durationSeconds": Double(timeline.totalFrames) / Double(max(1, timeline.fps)),
+            "fps": timeline.fps,
+            "warnings": warnings,
         ])
+    }
+
+    private func nestExportWarnings(_ editor: EditorViewModel, timeline: Timeline) -> [String] {
+        let dropped = timeline.tracks.flatMap(\.clips).count {
+            $0.sourceClipType == .sequence && $0.mediaType != .audio
+                && (editor.timeline(for: $0.mediaRef)?.totalFrames ?? 0) == 0
+        }
+        guard dropped > 0 else { return [] }
+        return ["\(dropped) nested timeline clip(s) were skipped — their timelines are empty or missing."]
     }
 
     private func exportPalmier(_ editor: EditorViewModel, outputURL: URL) async throws -> ToolResult {
@@ -175,7 +209,7 @@ extension ToolExecutor {
 
         let service = ExportService()
         guard let report = await service.exportPalmierProject(
-            timeline: editor.timeline,
+            projectFile: editor.projectFileSnapshot(),
             manifest: editor.mediaManifest,
             generationLog: editor.generationLog,
             sourceProjectURL: editor.projectURL,
@@ -289,7 +323,7 @@ extension ToolExecutor {
 }
 
 private struct ExportProjectArgs: DecodableToolArgs {
-    static let allowedKeys: Set<String> = ["mode", "codec", "resolution", "outputPath", "overwrite", "fcpxmlTarget"]
+    static let allowedKeys: Set<String> = ["mode", "codec", "resolution", "outputPath", "overwrite", "fcpxmlTarget", "timelineId"]
 
     var mode: String?
     var codec: String?
@@ -297,6 +331,7 @@ private struct ExportProjectArgs: DecodableToolArgs {
     var outputPath: String?
     var overwrite: Bool?
     var fcpxmlTarget: String?
+    var timelineId: String?
 }
 
 private enum ExportProjectMode: String {

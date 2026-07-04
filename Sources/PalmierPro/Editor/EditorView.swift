@@ -70,7 +70,12 @@ final class EditorSplitViewController: PaddedDividerSplitViewController {
     private lazy var agentHC: NSViewController     = makeHosting(AgentPanelView(), panel: .agent)
     private lazy var timelineHC: NSViewController  = makeHosting(
         VStack(spacing: 0) {
-            ToolbarView().frame(height: Layout.toolbarHeight)
+            TimelineTabBar()
+            ToolbarView()
+                .frame(height: Layout.toolbarHeight)
+                .overlay(alignment: .bottom) {
+                    Rectangle().fill(AppTheme.Border.primaryColor).frame(height: AppTheme.BorderWidth.thin)
+                }
             TimelineContainerView()
         },
         panel: .timeline

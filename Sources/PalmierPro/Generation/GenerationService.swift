@@ -392,6 +392,7 @@ final class GenerationService {
             case .audio: return "audio/mpeg"
             case .text: return "application/octet-stream"
             case .lottie: return "application/json"
+            case .sequence: return "video/mp4"
             }
         }
     }
