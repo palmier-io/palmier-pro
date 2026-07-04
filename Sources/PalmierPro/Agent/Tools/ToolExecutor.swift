@@ -29,39 +29,41 @@ final class ToolExecutor {
         }
         guard let editor else { return .error("Editor not available") }
         let before = editor.timeline
-        let result: ToolResult
         let started = ContinuousClock.now
         Log.agent.notice(
             "tool start name=\(tool.rawValue)",
             telemetry: "Agent tool started",
             data: ["tool": tool.rawValue, "projectId": editor.projectId ?? "unknown"]
         )
-        do {
-            try Task.checkCancellation()
-            await Task.yield()
-            let resolved = try expandingIdPrefixes(in: args, editor: editor)
-            try Task.checkCancellation()
-            await Task.yield()
-            #if DEBUG
-            try await executionHook?(tool)
-            try Task.checkCancellation()
-            await Task.yield()
-            #endif
-            result = try await run(tool, editor, resolved)
-            try Task.checkCancellation()
-            await Task.yield()
-            // Record any edit that actually changed the timeline so `undo` can revert it.
-            if tool != .undo, !result.isError, editor.timeline != before,
-               let actionName = editor.undoManager?.undoActionName {
-                agentUndoStack.append(actionName)
+        let result: ToolResult = await {
+            do {
+                try Task.checkCancellation()
+                await Task.yield()
+                let resolved = try expandingIdPrefixes(in: args, editor: editor)
+                try Task.checkCancellation()
+                await Task.yield()
+                #if DEBUG
+                try await executionHook?(tool)
+                try Task.checkCancellation()
+                await Task.yield()
+                #endif
+                let result = try await run(tool, editor, resolved)
+                try Task.checkCancellation()
+                await Task.yield()
+                // Record any edit that actually changed the timeline so `undo` can revert it.
+                if tool != .undo, !result.isError, editor.timeline != before,
+                   let actionName = editor.undoManager?.undoActionName {
+                    agentUndoStack.append(actionName)
+                }
+                return result
+            } catch is CancellationError {
+                return .error("Cancelled")
+            } catch let err as ToolError {
+                return .error(err.message)
+            } catch {
+                return .error(error.localizedDescription)
             }
-        } catch is CancellationError {
-            result = .error("Cancelled")
-        } catch let err as ToolError {
-            result = .error(err.message)
-        } catch {
-            result = .error(error.localizedDescription)
-        }
+        }()
         feedbackState.record(result, for: tool)
         let elapsed = started.duration(to: .now).seconds
         let telemetry = result.isError ? "Agent tool failed" : "Agent tool finished"
