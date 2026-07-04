@@ -19,6 +19,8 @@ extension InspectorView {
                         .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
                     fadeRow(label: "Fade Out", clips: audios, edge: .right)
                         .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
+                    denoiseRow(audios: audios)
+                        .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
                     if nonTextVisualClips.isEmpty {
                         speedSection(clips: audios)
                             .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
@@ -39,6 +41,7 @@ extension InspectorView {
                     volumeRow(audios: audios)
                     fadeRow(label: "Fade In", clips: audios, edge: .left)
                     fadeRow(label: "Fade Out", clips: audios, edge: .right)
+                    denoiseRow(audios: audios)
                 }
                 if nonTextVisualClips.isEmpty {
                     speedSection(clips: audios)
@@ -72,6 +75,77 @@ extension InspectorView {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func denoiseRow(audios: [Clip]) -> some View {
+        if !audios.isEmpty {
+            let allOn = audios.allSatisfy(\.hasDenoiseEnabled)
+            let baking = audios.contains { editor.denoiseInFlight.contains($0.mediaRef) }
+            let hasDenoisedCache: (Clip) -> Bool = { clip in
+                guard let url = editor.mediaResolver.resolveURL(for: clip.mediaRef) else { return false }
+                return AudioEnhancer.cachedURL(for: url, mediaRef: clip.mediaRef, amount: clip.denoiseAmount) != nil
+            }
+            let failed = allOn && !baking && audios.contains {
+                editor.denoiseFailed.contains($0.mediaRef) && !hasDenoisedCache($0)
+            }
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+                propertyRow(label: "Denoise") {
+                    Toggle("", isOn: Binding(
+                        get: { allOn },
+                        set: { enabled in
+                            editor.setDenoise(
+                                clipIds: Set(audios.map(\.id)),
+                                enabled: enabled,
+                                actionName: enabled ? "Enable Denoise" : "Disable Denoise"
+                            )
+                        }
+                    ))
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .labelsHidden()
+                }
+                .help("Removes background noise from this audio using an on-device model.")
+                if allOn {
+                    denoiseStrengthRow(audios: audios)
+                }
+                if baking {
+                    HStack(spacing: AppTheme.Spacing.xs) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Removing background noise…")
+                            .font(.system(size: AppTheme.FontSize.xs))
+                            .foregroundStyle(AppTheme.Text.mutedColor)
+                    }
+                } else if failed {
+                    Text("Denoise failed. Playback uses the original audio — adjust Strength to retry.")
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .foregroundStyle(AppTheme.Status.errorColor)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func denoiseStrengthRow(audios: [Clip]) -> some View {
+        propertyRow(label: "Strength") {
+            ScrubbableNumberField(
+                value: sharedClipValue(audios) { $0.denoiseAmount * 100 },
+                range: 0...100,
+                format: "%.0f",
+                valueSuffix: "%",
+                dragSensitivity: 0.5,
+                fieldWidth: 56
+            ) { percent in
+                editor.setDenoise(
+                    clipIds: Set(audios.map(\.id)),
+                    enabled: true,
+                    amount: percent / 100,
+                    actionName: "Change Denoise Strength"
+                )
+            }
+        }
+        .help("Blends denoised and original audio — lower this if voices sound thin or over-compressed.")
     }
 
     @ViewBuilder

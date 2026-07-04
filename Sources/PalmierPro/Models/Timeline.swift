@@ -205,6 +205,17 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         return volume * kfGain * fadeMultiplier(at: frame)
     }
 
+    var hasDenoiseEnabled: Bool {
+        effects?.contains { $0.type == Clip.denoiseEffectType && $0.enabled } ?? false
+    }
+
+    var denoiseAmount: Double {
+        effects?.first { $0.type == Clip.denoiseEffectType }?.params["amount"]?.value ?? Clip.defaultDenoiseAmount
+    }
+
+    static let denoiseEffectType = "audio.denoise"
+    static let defaultDenoiseAmount: Double = 0.6
+
     func rawVolumeAt(frame: Int) -> Double {
         let kfGain: Double
         if let track = volumeTrack, track.isActive {

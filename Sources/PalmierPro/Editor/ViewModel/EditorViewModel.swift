@@ -30,6 +30,9 @@ final class EditorViewModel {
     var mediaManifest = MediaManifest()
     var generationLog = GenerationLog()
 
+    var denoiseInFlight: Set<String> = []
+    var denoiseFailed: Set<String> = []
+
     // MARK: - Panel focus
 
     enum FocusedPanel: String {
@@ -330,6 +333,7 @@ final class EditorViewModel {
 
     func notifyTimelineChanged(refreshVisuals: Bool = true) {
         guard undoManager?.isUndoRegistrationEnabled ?? true else { return }
+        enhancePendingDenoises()
         pendingRebuildTask?.cancel()
         pendingRebuildTask = nil
         if isPlaying {

@@ -34,6 +34,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case searchMedia = "search_media"
     case applyColor = "apply_color"
     case applyEffect = "apply_effect"
+    case denoiseAudio = "denoise_audio"
     case inspectColor = "inspect_color"
     case listFolders = "list_folders"
     case createFolder = "create_folder"
@@ -784,6 +785,18 @@ enum ToolDefinitions {
                         ),
                     ],
                     "remove": ["type": "array", "items": ["type": "string"], "description": "Effect type ids to remove from the clips."],
+                ],
+                required: ["clipIds"]
+            )
+        ),
+        AgentTool(
+            name: .denoiseAudio,
+            description: "Remove background noise from audio clips using an on-device speech-enhancement model (DeepFilterNet3). strength is a dry/wet percentage: 0 leaves the audio untouched, 100 is fully denoised. Full strength can sound thin or over-gated on real-world recordings, so the default is 60. The bake runs in the background — the timeline updates automatically when it finishes; no need to poll. Pass enabled:false to turn denoise off. Undoable.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipIds": ["type": "array", "items": ["type": "string"], "description": "Audio clip ids from get_timeline."],
+                    "strength": ["type": "number", "description": "Dry/wet mix as a percentage, 0–100 (default 60). Lower it if voices sound thin or over-compressed."],
+                    "enabled": ["type": "boolean", "description": "Default true. false removes the denoise effect from the clips."],
                 ],
                 required: ["clipIds"]
             )
