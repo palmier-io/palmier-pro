@@ -2,33 +2,13 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.5.1",
-      "date": "2026-07-01",
+      "version": "0.6.1",
+      "date": "2026-07-04",
       "sections": [
         {
           "heading": "New",
           "items": [
-            "Text Animation: A preset animation for caption and text clips.",
-            "Better Cloud Transcription Model: Introduce a cloud-based transcription model that is much more accurate and auto-detect languages, speakers, and more.",
-            "Project management tools: MCP and Agent can now list, create, and open projects.",
-            "Color Matte: You can now add a color matte from the media panel.",
-            "Predefined layouts: Agent can now apply predefined layouts to clips.",
-            "Blend modes: You can now apply blend modes to clips."
-          ]
-        },
-        {
-          "heading": "Improved",
-          "items": [
-            "More skills: Checkout the new skills in the settings page.",
-            "Better FCPXML export: more stable export for fcpxml."
-          ]
-        },
-        {
-          "heading": "Models",
-          "items": [
-            "Sonnet 5: try out sonnet 5 with the agent chat.",
-            "Gemini Omni and Nano Banana Lite: try out the new video/image models by Google."
-
+            "Multiple timelines support: You can now create multiple timelines within a project and nest them inside each other."
           ]
         }
       ]
