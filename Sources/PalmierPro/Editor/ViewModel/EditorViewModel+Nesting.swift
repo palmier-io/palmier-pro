@@ -9,6 +9,11 @@ extension EditorViewModel {
         return child.reachableTimelines(resolve: timeline(for:)).contains { $0.id == hostId }
     }
 
+    func isVisibleFromActive(_ id: String) -> Bool {
+        id == activeTimelineId
+            || timeline.reachableTimelines(resolve: timeline(for:)).contains { $0.id == id }
+    }
+
     /// Why `childId` can't nest into the active timeline, or nil if it can.
     func nestBlockReason(childId: String) -> String? {
         guard let child = timeline(for: childId) else { return nil }

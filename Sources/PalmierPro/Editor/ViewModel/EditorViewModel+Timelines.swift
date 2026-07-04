@@ -129,6 +129,7 @@ extension EditorViewModel {
         copy.name = duplicateName(for: copy.name)
         copy.regenerateIds()
         timelines.append(copy)
+        stashActiveViewState()
         liveViewStates[copy.id] = viewState(for: id)
         registerRemoveUndo(for: copy.id, actionName: "Duplicate Timeline")
         if activate { activateTimeline(copy.id) }
@@ -141,6 +142,7 @@ extension EditorViewModel {
         guard !trimmed.isEmpty, timelines[i].name != trimmed else { return }
         let previous = timelines[i].name
         timelines[i].name = trimmed
+        if isVisibleFromActive(id) { timelineRenderRevision &+= 1 }
         undoManager?.registerUndo(withTarget: self) { vm in
             vm.renameTimeline(id, to: previous)
         }
@@ -148,8 +150,11 @@ extension EditorViewModel {
     }
 
     func deleteTimeline(_ id: String) {
-        guard timelines.count > 1,
-              let index = timelines.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = timelines.firstIndex(where: { $0.id == id }) else { return }
+        guard timelines.count > 1 else {
+            mediaPanelToast = "Can't delete every timeline — the project needs at least one."
+            return
+        }
         let openIndex = openTimelineIds.firstIndex(of: id)
         let wasActive = activeTimelineId == id
         if wasActive {
@@ -159,14 +164,20 @@ extension EditorViewModel {
         }
         let removed = timelines[index]
         let removedViewState = viewState(for: id)
+        let wasNestedInActive = isVisibleFromActive(id)
         timelines.remove(at: index)
         liveViewStates.removeValue(forKey: id)
         selectedTimelineIds.remove(id)
+        videoEngine?.evictComposition(for: id)
         if let openIndex { openTimelineIds.remove(at: openIndex) }
         undoManager?.registerUndo(withTarget: self) { vm in
             vm.reinsertTimeline(removed, viewState: removedViewState, at: index, openAt: openIndex, reactivate: wasActive)
         }
         undoManager?.setActionName("Delete Timeline")
+        if wasNestedInActive {
+            timelineRenderRevision &+= 1
+            notifyTimelineChanged(refreshVisuals: false)
+        }
     }
 
     func closeTimelineTab(_ id: String) {
@@ -176,11 +187,15 @@ extension EditorViewModel {
             activateTimeline(openTimelineIds[index == 0 ? 1 : index - 1])
         }
         openTimelineIds.remove(at: index)
+        videoEngine?.evictComposition(for: id)
     }
 
     func closeOtherTimelineTabs(keeping id: String) {
         guard openTimelineIds.contains(id) else { return }
         activateTimeline(id)
+        for closed in openTimelineIds where closed != id {
+            videoEngine?.evictComposition(for: closed)
+        }
         openTimelineIds = [id]
     }
 
@@ -190,7 +205,12 @@ extension EditorViewModel {
         if let openIndex {
             openTimelineIds.insert(t.id, at: min(openIndex, openTimelineIds.count))
         }
-        if reactivate { activateTimeline(t.id) }
+        if reactivate {
+            activateTimeline(t.id)
+        } else if isVisibleFromActive(t.id) {
+            timelineRenderRevision &+= 1
+            notifyTimelineChanged(refreshVisuals: false)
+        }
         undoManager?.registerUndo(withTarget: self) { vm in
             vm.deleteTimeline(t.id)
         }
