@@ -131,6 +131,14 @@ final class VideoEngine {
 
     // MARK: - Composition
 
+    /// Everything CompositionBuilder.build reads; equal inputs → identical composition.
+    private struct RebuildInputs: Equatable {
+        let involved: [Timeline]  // active timeline plus nested children
+        let mediaURLs: [String: URL]
+        let assetSizes: [String: CGSize]
+        let missingMediaRefs: Set<String>
+    }
+
     func rebuild() {
         guard let editor, editor.activePreviewTab == .timeline else { return }
         rebuildTask?.cancel()
@@ -144,6 +152,19 @@ final class VideoEngine {
             }
         )
         let resolveTimeline = editor.timelineResolver()
+
+        let timelineId = editor.timeline.id
+        let inputs = RebuildInputs(
+            involved: [editor.timeline] + editor.timeline.reachableTimelines(resolve: { editor.timeline(for: $0) }),
+            mediaURLs: mediaURLs,
+            assetSizes: assetSizes,
+            missingMediaRefs: missingMediaRefs
+        )
+        if let cached = compositionCache[timelineId], cached.inputs == inputs {
+            rebuildTask = nil
+            apply(cached.result, resolveTimeline: resolveTimeline, editor: editor)
+            return
+        }
 
         rebuildTask = Task {
             let result: CompositionResult
@@ -167,22 +188,30 @@ final class VideoEngine {
             rebuildTask = nil
             guard !Task.isCancelled else { return }
 
-            trackMappings = result.trackMappings
-            clipNaturalSizes = result.clipNaturalSizes
-            clipTransforms = result.clipTransforms
-            compositionDuration = result.composition.duration
-            resolveTimelineSnapshot = resolveTimeline
-            editor.offlineMediaRefs = result.offlineMediaRefs
-            editor.unprocessableMediaRefs = result.unprocessableMediaRefs
-
-            let item = AVPlayerItem(asset: result.composition)
-            item.audioMix = result.audioMix
-            item.videoComposition = result.videoComposition
-            replacePlayerItem(item, reason: "rebuild")
-
-            seek(to: editor.currentFrame, mode: .exact)
-            if editor.isPlaying { player.play() }
+            compositionCache[timelineId] = (inputs, result)
+            compositionCache = compositionCache.filter { editor.openTimelineIds.contains($0.key) }
+            apply(result, resolveTimeline: resolveTimeline, editor: editor)
         }
+    }
+
+    private var compositionCache: [String: (inputs: RebuildInputs, result: CompositionResult)] = [:]
+
+    private func apply(_ result: CompositionResult, resolveTimeline: @escaping @Sendable (String) -> Timeline?, editor: EditorViewModel) {
+        trackMappings = result.trackMappings
+        clipNaturalSizes = result.clipNaturalSizes
+        clipTransforms = result.clipTransforms
+        compositionDuration = result.composition.duration
+        resolveTimelineSnapshot = resolveTimeline
+        editor.offlineMediaRefs = result.offlineMediaRefs
+        editor.unprocessableMediaRefs = result.unprocessableMediaRefs
+
+        let item = AVPlayerItem(asset: result.composition)
+        item.audioMix = result.audioMix
+        item.videoComposition = result.videoComposition
+        replacePlayerItem(item, reason: "rebuild")
+
+        seek(to: editor.currentFrame, mode: .exact)
+        if editor.isPlaying { player.play() }
     }
 
     func refreshVisuals() {

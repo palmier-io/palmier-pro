@@ -67,7 +67,8 @@ extension EditorViewModel {
         activeTimelineId = id
         if !openTimelineIds.contains(id) { openTimelineIds.append(id) }
         restoreActiveViewState()
-        notifyTimelineChanged()
+        // refreshVisuals would apply the new timeline to the old track mappings — rebuild alone is correct.
+        notifyTimelineChanged(refreshVisuals: false)
         seekToFrame(currentFrame)
     }
 
