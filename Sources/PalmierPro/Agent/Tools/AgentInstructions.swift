@@ -44,6 +44,11 @@ enum AgentInstructions {
           startSeconds/endSeconds for full frames. Plan splits, trims, and captions from \
           segment timestamps; wordTimestamps=true on a narrow window for exact word \
           boundaries.
+        - When the question is about the whole clip's content rather than a specific frame \
+          ("summarize this video", "what's the speaker demonstrating", "find the goal") and a \
+          TwelveLabs key is set, analyze_video answers it from cloud video understanding in one \
+          call. It's opt-in — if no key is configured it returns a notice and you fall back to \
+          inspect_media.
         - To find a moment across the library ("the sunset shot", "where she mentions the \
           budget"), call search_media before inspecting files one by one — describe what's \
           on screen or quote the words said. Hits are source-second ranges ready to convert \

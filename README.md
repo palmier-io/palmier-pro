@@ -52,6 +52,10 @@ Generate videos and images with SOTA models like Seedance, Kling, Nano Banana Pr
 
 Connects your Claude/Codex/Cursor via MCP, or use the in-app agent to work on the same project together.
 
+### Video understanding (optional)
+
+Add a [TwelveLabs](https://twelvelabs.io) API key in **Settings → Agent** to unlock the `analyze_video` tool. The in-app agent can then ask TwelveLabs Pegasus about a whole clip — "summarize this", "what is the speaker demonstrating", "find the moment the goal is scored" — reasoning over motion and audio together, beyond on-device frame sampling. Off by default; with no key set, everything works exactly as before.
+
 ## MCP server
 
 When the app is open, it exposes an MCP server at `http://127.0.0.1:19789/mcp` via HTTP. To connect:
