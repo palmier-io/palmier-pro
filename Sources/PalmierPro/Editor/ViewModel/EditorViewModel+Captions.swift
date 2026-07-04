@@ -114,9 +114,13 @@ extension EditorViewModel {
 
     @discardableResult
     func generateCaptions(for request: CaptionRequest) async throws -> [String] {
+        let owningTimelineId = activeTimelineId
         var targets = resolvedCaptionTargets(for: request)
         guard !targets.isEmpty else { throw CaptionError.noSource }
         let results = try await transcribe(targets, request: request)
+
+        guard timeline(for: owningTimelineId) != nil else { return [] }
+        if activeTimelineId != owningTimelineId { activateTimeline(owningTimelineId) }
 
         if request.autoDetect {
             guard let winner = dominantSpeechTrack(targets, results) else { return [] }
