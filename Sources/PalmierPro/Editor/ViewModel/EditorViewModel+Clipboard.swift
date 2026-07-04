@@ -134,7 +134,7 @@ private extension EditorViewModel {
         for p in placements {
             if let g = p.source.linkGroupId { groupCounts[g, default: 0] += 1 }
         }
-        var groupRemap: [String: String] = [:]
+        var groups: [String: String] = [:]
 
         var newIds: [String] = []
         withTimelineSwap(actionName: actionName) {
@@ -146,17 +146,9 @@ private extension EditorViewModel {
             for p in placements {
                 guard let ti = timeline.tracks.firstIndex(where: { $0.id == p.trackId }) else { continue }
                 var clone = p.source
-                clone.id = UUID().uuidString
                 clone.startFrame = p.dstStart
-                if let oldGroup = p.source.linkGroupId, (groupCounts[oldGroup] ?? 0) > 1 {
-                    if let mapped = groupRemap[oldGroup] {
-                        clone.linkGroupId = mapped
-                    } else {
-                        let new = UUID().uuidString
-                        groupRemap[oldGroup] = new
-                        clone.linkGroupId = new
-                    }
-                } else {
+                clone.freshenIds(groups: &groups)
+                if let oldGroup = p.source.linkGroupId, (groupCounts[oldGroup] ?? 0) <= 1 {
                     clone.linkGroupId = nil
                 }
                 timeline.tracks[ti].clips.append(clone)
