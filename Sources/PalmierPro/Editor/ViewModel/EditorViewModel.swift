@@ -394,7 +394,9 @@ final class EditorViewModel {
             }
         }
 
-        var clip = Clip(mediaRef: asset.id, mediaType: asset.type, sourceClipType: asset.type, startFrame: startFrame, durationFrames: durationFrames, transform: fitTransform(for: asset))
+        // A video asset placed on an audio track contributes its audio only.
+        let mediaType: ClipType = (!targetIsVideo && asset.type == .video && asset.hasAudio) ? .audio : asset.type
+        var clip = Clip(mediaRef: asset.id, mediaType: mediaType, sourceClipType: asset.type, startFrame: startFrame, durationFrames: durationFrames, transform: fitTransform(for: asset))
         clip.linkGroupId = linkGroupId
         applyTrim(&clip)
         timeline.tracks[trackIndex].clips.append(clip)
