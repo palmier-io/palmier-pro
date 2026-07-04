@@ -301,8 +301,12 @@ extension EditorViewModel {
         var before: [(id: String, clip: Clip)] = []
         for ti in timeline.tracks.indices {
             for ci in timeline.tracks[ti].clips.indices where ids.contains(timeline.tracks[ti].clips[ci].id) {
-                before.append((timeline.tracks[ti].clips[ci].id, timeline.tracks[ti].clips[ci]))
-                modify(&timeline.tracks[ti].clips[ci])
+                // Modify a copy so the closure can read `timeline` without an
+                // exclusivity conflict against the in-place inout access.
+                var clip = timeline.tracks[ti].clips[ci]
+                before.append((clip.id, clip))
+                modify(&clip)
+                timeline.tracks[ti].clips[ci] = clip
             }
         }
         guard !before.isEmpty else { return }
