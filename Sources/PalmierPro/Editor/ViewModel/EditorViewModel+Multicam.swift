@@ -145,9 +145,15 @@ extension EditorViewModel {
     ) -> MulticamLayoutResult {
         var result = MulticamLayoutResult()
         let camera = defaultCameraRef.flatMap { group.member(for: $0) } ?? group.cameras.first
+        // No dedicated mics: the program camera's own audio becomes the audio bed.
+        var audioMembers = group.mics
+        if audioMembers.isEmpty, let camera,
+           mediaAssets.first(where: { $0.id == camera.mediaRef })?.hasAudio == true {
+            audioMembers = [camera]
+        }
         var toPlace: [MulticamGroup.Member] = []
         if let camera { toPlace.append(camera) }
-        toPlace.append(contentsOf: group.mics)
+        toPlace.append(contentsOf: audioMembers)
 
         let assetsById = Dictionary(mediaAssets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let placeable = toPlace.filter { assetsById[$0.mediaRef] != nil }
@@ -172,7 +178,7 @@ extension EditorViewModel {
                 result.placedClipIds.append(contentsOf: ids)
             }
 
-            for mic in group.mics {
+            for mic in audioMembers {
                 guard let asset = assetsById[mic.mediaRef] else { continue }
                 let duration = clipDurationFrames(for: asset, segment: nil)
                 let frame = startFrame + mic.syncOffsetFrames - minOffset
