@@ -239,6 +239,21 @@ struct MultiTimelineTests {
         #expect(e.activeTimelineId == aId)
     }
 
+    @Test func finalizeGeneratingClipPatchesDuplicatedCopies() {
+        let e = EditorViewModel()
+        e.timeline.tracks = [Fixtures.videoTrack(clips: [Fixtures.clip(mediaRef: "gen-1", start: 0, duration: 300)])]
+        let copyId = e.duplicateTimeline(e.activeTimelineId, activate: false)
+        let asset = MediaAsset(id: "gen-1", url: URL(fileURLWithPath: "/tmp/x.mp4"), type: .video, name: "gen", duration: 2)
+
+        e.finalizeGeneratingClip(placeholderId: "gen-1", asset: asset)
+
+        let expected = 2 * e.timeline.fps
+        for id in [e.activeTimelineId, copyId].compactMap({ $0 }) {
+            let clip = e.timeline(for: id)?.tracks.flatMap(\.clips).first { $0.mediaRef == "gen-1" }
+            #expect(clip?.durationFrames == expected)
+        }
+    }
+
     @Test func moveTimelinesToFolderSetsParentAndUndoes() {
         let e = EditorViewModel()
         let undo = UndoManager()

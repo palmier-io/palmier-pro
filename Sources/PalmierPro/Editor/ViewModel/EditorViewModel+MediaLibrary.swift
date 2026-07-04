@@ -626,8 +626,8 @@ extension EditorViewModel {
     }
 
     private func refreshPreviewForFinalizedAsset(_ asset: MediaAsset) {
-        let usedOnTimeline = timeline.tracks.contains { track in
-            track.clips.contains { $0.mediaRef == asset.id }
+        let usedOnTimeline = ([timeline] + timeline.reachableTimelines(resolve: timeline(for:))).contains { t in
+            t.tracks.contains { $0.clips.contains { $0.mediaRef == asset.id } }
         }
         if usedOnTimeline {
             timelineRenderRevision &+= 1
