@@ -1,4 +1,4 @@
-> 此翻译由 AI 生成。如发现错误，欢迎提交 PR。
+> 此翻译由 AI 辅助翻译。如发现错误，欢迎修改并提交 PR。
 
 <div align="center">
 
@@ -40,23 +40,23 @@
 
 ---
 
-Palmier Pro 是面向 Mac 的开源视频编辑器。你和你的 agent 可以在时间线中一起生成和编辑视频。
+Palmier Pro 是面向 Mac 的开源视频编辑器。你和你的 Agent 可以在时间线中一起生成和编辑视频。
 
-### Swift 原生视频编辑器
+### 基于 Swift 原生开发的剪辑工具
 
-我们用 Swift 从零构建了 Palmier Pro。参考目标是 Premiere Pro，并以我们自己的方式把 AI 融入工作流。
+本软件基于 Swift 从零原生开发，对标专业剪辑软件 Premiere Pro。软件独创 AI 深度融合架构，重构视频制作全流程，你可搭配各类 AI 智能代理，直接在时间线内协同生成、剪辑视频。
 
-### 内置生成式 AI
+### 内置前沿生成式 AI 能力
 
-在时间线编辑器内使用 Seedance、Kling、Nano Banana Pro 等前沿模型生成视频和图像。
+可直接在时间线编辑器内调用多款行业顶尖 AI 模型生成图片、视频素材，包含字节跳动Seedance、可灵 Kling、Nano Banana Pro。
 
-### 与你的 agent 集成
+### 可对接各类 Agents 协同工作
 
-通过 MCP 连接 Claude、Codex 或 Cursor，或使用应用内 agent 在同一个项目中协作。
+通过 MCP 协议对接 Claude、Codex、Cursor 等 AI 工具，也可使用软件内置智能助手，多人 / 多 AI 协同处理同一剪辑工程。
 
 ## MCP 服务器
 
-应用打开时，会通过 HTTP 在 `http://127.0.0.1:19789/mcp` 暴露 MCP 服务器。连接方式：
+软件启动后，会在本地 `http://127.0.0.1:19789/mcp` 地址开启 HTTP 协议 MCP 服务，各工具连接配置如下：
 
 **Claude Code**
 ```bash
@@ -69,10 +69,10 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 ```
 
 **Cursor**
+推荐快捷安装：打开软件顶部菜单栏 `Help` -> `MCP Instructions` -> `Install in Cursor`；
+如需手动配置，将下方配置写入 `~/.cursor/mcp.json` 文件：
 
-最简单的方法是在应用内打开 `Help` -> `MCP Instructions` -> `Install in Cursor`，也可以手动把以下内容添加到 `~/.cursor/mcp.json`：
-
-```
+```json
 {
   "mcpServers": {
     "palmier-pro": {
@@ -85,13 +85,13 @@ codex mcp add palmier-pro --url http://127.0.0.1:19789/mcp
 
 **Claude Desktop**
 
-应用内置了一个 [mcpb](https://github.com/modelcontextprotocol/mcpb)，可在 Claude Desktop 中一键安装桌面扩展。打开 `Help` -> `MCP Instructions` -> `Install in Claude Desktop`。
+软件内置了一个 [mcpb](https://github.com/modelcontextprotocol/mcpb)工具，支持一键为 Claude Desktop 安装配套桌面扩展。打开 `Help` -> `MCP Instructions` -> `Install in Claude Desktop`。
 
 ## FAQ
 
 **Palmier Pro 是否完全开源？**
 
-视频编辑器本身完全开源，不包括生成式 AI 功能。MCP 服务器和 agent 聊天也开源。唯一闭源的是生成式 AI 处理部分。
+视频编辑器本身完全开源，不包括生成式 AI 功能。MCP 服务器和 Agent 聊天也开源。唯一闭源的是生成式 AI 处理部分。
 
 **是否免费？**
 
