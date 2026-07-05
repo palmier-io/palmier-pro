@@ -55,8 +55,17 @@ final class EditorViewModel {
     var mediaManifest = MediaManifest()
     var generationLog = GenerationLog()
 
+    // MARK: - Denoise bake state (session-scoped, keyed by mediaRef)
+
     var denoiseInFlight: Set<String> = []
     var denoiseFailed: Set<String> = []
+    var denoiseBaked: Set<String> = []
+    var speechAnalyzingCount: Int = 0
+    var speakerRegistry: [SpeakerRegistryEntry] = []
+    var speakerAssignments: [String: [String: Int]] = [:]
+    var speakerIdentifyPhase: String?
+    var speakerIdentifyInFlight: Bool { speakerIdentifyPhase != nil }
+    var speakerIdentifyError: String?
 
     // MARK: - Panel focus
 
@@ -190,6 +199,24 @@ final class EditorViewModel {
         didSet { UserDefaults.standard.set(keyframesPanelVisible, forKey: "keyframesPanelVisible") }
     }
 
+    var markDeadAir: Bool = {
+        UserDefaults.standard.object(forKey: "markDeadAir") as? Bool ?? true
+    }() {
+        didSet {
+            UserDefaults.standard.set(markDeadAir, forKey: "markDeadAir")
+            mediaVisualCache.timelineView?.needsDisplay = true
+        }
+    }
+
+    var markSpeakers: Bool = {
+        UserDefaults.standard.object(forKey: "markSpeakers") as? Bool ?? true
+    }() {
+        didSet {
+            UserDefaults.standard.set(markSpeakers, forKey: "markSpeakers")
+            syncSpeakerColors()
+        }
+    }
+
     // MARK: - Media panel navigation routing
 
     var mediaPanelOrderedItemIds: [String] = []
@@ -222,6 +249,9 @@ final class EditorViewModel {
         )
         agentService.editor = self
         searchIndex.assetsProvider = { [weak self] in self?.mediaAssets ?? [] }
+        mediaVisualCache.speech.onAnalyzingCountChange = { [weak self] count in
+            self?.speechAnalyzingCount = count
+        }
 
         // Re-check media presence when the app regains focus: a user may have
         // deleted/moved backing files in Finder (or ejected a volume) while we

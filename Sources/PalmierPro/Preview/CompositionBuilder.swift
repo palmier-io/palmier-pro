@@ -11,6 +11,9 @@ struct TrackMapping: @unchecked Sendable {
     let naturalSize: CGSize   // zero for audio-only mappings
     let endTime: CMTime       // .zero for audio-only mappings
     let isVideo: Bool
+    // Denoise blend: wet twin plays at strength volume, dry clip at 1-strength.
+    var wetAudio = false
+    var blendedClipIds: Set<String> = []
 }
 
 struct CompositionResult {
@@ -200,6 +203,7 @@ enum CompositionBuilder {
         var compTrack: AVMutableCompositionTrack?
         var cursor = CMTime.zero
         var inserted: [Clip] = []
+        var blendedClipIds = Set<String>()
         var previousEndFrame = Int.min
         for var clip in clips {
             guard clip.durationFrames > 0, clip.startFrame >= previousEndFrame else { continue }
@@ -227,6 +231,9 @@ enum CompositionBuilder {
             if await insertClip(clip, sourceAsset: source.asset, sourceTrack: source.track,
                                 into: track, cursor: &cursor, timescale: ctx.timescale) {
                 inserted.append(clip)
+                if nest == nil, await insertDenoisedTwin(clip, parentTrackIndex: parentTrackIndex, ctx: ctx) {
+                    blendedClipIds.insert(clip.id)
+                }
             }
         }
         guard let compTrack else { return }
@@ -237,8 +244,40 @@ enum CompositionBuilder {
         let kind: TrackMapping.Kind = nest.map { .nested(clips: inserted, carrier: $0.topCarrier, parentTrackIndex: parentTrackIndex) }
             ?? .timeline(trackIndex: parentTrackIndex, clipIds: Set(inserted.map(\.id)))
         ctx.trackMappings.append(TrackMapping(
-            compositionTrack: compTrack, kind: kind, naturalSize: .zero, endTime: .zero, isVideo: false
+            compositionTrack: compTrack, kind: kind, naturalSize: .zero, endTime: .zero, isVideo: false,
+            blendedClipIds: blendedClipIds
         ))
+    }
+
+    private static func insertDenoisedTwin(_ clip: Clip, parentTrackIndex: Int, ctx: BuildContext) async -> Bool {
+        guard clip.hasDenoiseEnabled, clip.denoiseAmount > 0,
+              let resolved = ctx.resolveURL(clip.mediaRef),
+              let wetURL = AudioEnhancer.cachedDenoisedURL(for: resolved, mediaRef: clip.mediaRef)
+        else { return false }
+        let asset = AVURLAsset(url: wetURL)
+        guard let sourceTrack = try? await asset.loadTracks(withMediaType: .audio).first,
+              let compTrack = ctx.composition.addMutableTrack(
+                  withMediaType: .audio,
+                  preferredTrackID: kCMPersistentTrackID_Invalid
+              )
+        else { return false }
+        var cursor = CMTime.zero
+        guard await insertClip(
+            clip, sourceAsset: asset, sourceTrack: sourceTrack,
+            into: compTrack, cursor: &cursor, timescale: ctx.timescale
+        ) else {
+            ctx.composition.removeTrack(compTrack)
+            return false
+        }
+        ctx.trackMappings.append(TrackMapping(
+            compositionTrack: compTrack,
+            kind: .timeline(trackIndex: parentTrackIndex, clipIds: [clip.id]),
+            naturalSize: .zero,
+            endTime: .zero,
+            isVideo: false,
+            wetAudio: true
+        ))
+        return true
     }
 
     private static func recordSourceGeometry(for clip: Clip, sourceTrack: AVAssetTrack, ctx: BuildContext) async {
@@ -303,8 +342,6 @@ enum CompositionBuilder {
             }
         } else if mediaType == .video {
             mediaURL = (try? await AlphaVideoNormalizer.premultipliedVideo(for: resolved, mediaRef: clip.mediaRef)) ?? resolved
-        } else if mediaType == .audio, clip.hasDenoiseEnabled {
-            mediaURL = AudioEnhancer.cachedURL(for: resolved, mediaRef: clip.mediaRef, amount: clip.denoiseAmount) ?? resolved
         } else {
             mediaURL = resolved
         }
@@ -346,7 +383,12 @@ enum CompositionBuilder {
             ? clip.durationFrames
             : max(1, Int(Double(clip.durationFrames) * clip.speed))
         let durationSeconds = Double(sourceFrames) / Double(timescale)
-        let sourceDuration = CMTime(seconds: durationSeconds, preferredTimescale: sourceTimescale)
+        var sourceDuration = CMTime(seconds: durationSeconds, preferredTimescale: sourceTimescale)
+        // Baked sources can be a hair shorter than the original; clamp instead of throwing.
+        if let assetDuration = try? await sourceAsset.load(.duration), assetDuration.isNumeric {
+            sourceDuration = CMTimeMinimum(sourceDuration, assetDuration - trimStart)
+        }
+        guard sourceDuration > .zero else { return false }
         let sourceRange = CMTimeRange(start: trimStart, duration: sourceDuration)
 
         do {
@@ -477,7 +519,11 @@ enum CompositionBuilder {
                 for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) {
                     if let clipIds, !clipIds.contains(clip.id) { continue }
                     guard clip.durationFrames > 0, clip.startFrame >= prevEndFrame else { continue }
-                    emitVolumeEnvelope(params: params, clip: clip, timescale: timescale)
+                    let strength = clip.hasDenoiseEnabled ? Float(min(1, max(0, clip.denoiseAmount))) : 0
+                    let gain: Float = mapping.wetAudio
+                        ? strength
+                        : (mapping.blendedClipIds.contains(clip.id) ? 1 - strength : 1)
+                    emitVolumeEnvelope(params: params, clip: clip, timescale: timescale, gain: gain)
                     prevEndFrame = clip.startFrame + clip.durationFrames
                 }
                 return params
@@ -713,7 +759,8 @@ enum CompositionBuilder {
         params: AVMutableAudioMixInputParameters,
         clip: Clip,
         timescale: CMTimeScale,
-        carrier: Clip? = nil
+        carrier: Clip? = nil,
+        gain: Float = 1
     ) {
         let kfs = normalizedKeyframes(clip.volumeTrack?.keyframes ?? [], duration: clip.durationFrames)
         let hasFade = clip.fadeInFrames > 0 || clip.fadeOutFrames > 0
@@ -724,7 +771,7 @@ enum CompositionBuilder {
             carrier.map { $0.volumeAt(frame: absFrame) } ?? 1
         }
         if kfs.isEmpty && !hasFade && !carrierVaries {
-            let volume = Float(clip.volumeAt(frame: clip.startFrame) * gainAt(clip.startFrame))
+            let volume = Float(clip.volumeAt(frame: clip.startFrame) * gainAt(clip.startFrame)) * gain
             let start = CMTime(value: CMTimeValue(clip.startFrame), timescale: timescale)
             let end = CMTime(value: CMTimeValue(clip.endFrame), timescale: timescale)
             guard volume.isFinite, end > start else { return }
@@ -769,7 +816,7 @@ enum CompositionBuilder {
             kfs: kfs,
             timescale: timescale,
             extraOffsets: extraOffsets,
-            sampleAt: { Float(clip.volumeAt(frame: clip.startFrame + $0) * gainAt(clip.startFrame + $0)) },
+            sampleAt: { Float(clip.volumeAt(frame: clip.startFrame + $0) * gainAt(clip.startFrame + $0)) * gain },
             emit: { start, end, range in
                 params.setVolumeRamp(fromStartVolume: start, toEndVolume: end, timeRange: range)
             }

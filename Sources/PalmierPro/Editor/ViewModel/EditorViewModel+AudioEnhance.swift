@@ -1,25 +1,32 @@
 import Foundation
 
 extension EditorViewModel {
+    /// Called after Settings clears disk caches: session memoization must not outlive them.
+    func resetAnalysisSessionState() {
+        denoiseBaked.removeAll()
+        denoiseFailed.removeAll()
+        mediaVisualCache.resetSessionState()
+        enhancePendingDenoises()
+    }
+
     func setDenoise(clipIds: Set<String>, enabled: Bool, amount: Double? = nil, actionName: String) {
         let clamped = amount.map { min(1, max(0, $0)) }
+        if enabled {
+            for id in clipIds {
+                if let ref = clipFor(id: id)?.mediaRef { denoiseFailed.remove(ref) }
+            }
+        }
         mutateClips(ids: clipIds, actionName: actionName) { clip in
             var stack = clip.effects ?? []
-            let current = stack.first { $0.type == Clip.denoiseEffectType }
-            stack.removeAll { $0.type == Clip.denoiseEffectType }
-            if enabled {
-                let value = clamped ?? current?.params["amount"]?.value ?? Clip.defaultDenoiseAmount
+            if let i = stack.firstIndex(where: { $0.type == Clip.denoiseEffectType }) {
+                stack[i].enabled = enabled
+                if let clamped { stack[i].params["amount"] = EffectParam(value: clamped) }
+            } else if enabled {
                 stack.append(Effect(type: Clip.denoiseEffectType, enabled: true, params: [
-                    "amount": EffectParam(value: value),
+                    "amount": EffectParam(value: clamped ?? Clip.defaultDenoiseAmount),
                 ]))
             }
             clip.effects = stack.isEmpty ? nil : stack
-        }
-        guard enabled else { return }
-        for id in clipIds {
-            guard let live = clipFor(id: id) else { continue }
-            denoiseFailed.remove(live.mediaRef)
-            enhanceAudioIfNeeded(for: live)
         }
     }
 
@@ -31,36 +38,22 @@ extension EditorViewModel {
         }
     }
 
-    /// Export can bake denoise caches the preview never got (failed bake, or a composition
-    /// built before the cache landed). Clear stale failure marks and rebuild so playback
-    /// matches the exported file.
-    func syncDenoiseAfterExport() {
-        var hasCached = false
-        for track in timeline.tracks {
-            for clip in track.clips where clip.hasDenoiseEnabled {
-                guard let url = mediaResolver.resolveURL(for: clip.mediaRef),
-                      AudioEnhancer.cachedURL(for: url, mediaRef: clip.mediaRef, amount: clip.denoiseAmount) != nil
-                else { continue }
-                denoiseFailed.remove(clip.mediaRef)
-                hasCached = true
-            }
-        }
-        if hasCached { videoEngine?.rebuild() }
-    }
-
     func enhanceAudioIfNeeded(for clip: Clip) {
-        guard clip.hasDenoiseEnabled,
-              !denoiseInFlight.contains(clip.mediaRef), !denoiseFailed.contains(clip.mediaRef),
-              let url = mediaResolver.resolveURL(for: clip.mediaRef),
-              AudioEnhancer.cachedURL(for: url, mediaRef: clip.mediaRef, amount: clip.denoiseAmount) == nil
-        else { return }
-        denoiseInFlight.insert(clip.mediaRef)
         let mediaRef = clip.mediaRef
-        let amount = clip.denoiseAmount
+        guard clip.hasDenoiseEnabled, clip.denoiseAmount > 0,
+              !denoiseBaked.contains(mediaRef),
+              !denoiseInFlight.contains(mediaRef), !denoiseFailed.contains(mediaRef),
+              let url = mediaResolver.resolveURL(for: mediaRef)
+        else { return }
+        if AudioEnhancer.cachedDenoisedURL(for: url, mediaRef: mediaRef) != nil {
+            denoiseBaked.insert(mediaRef)
+            return
+        }
+        denoiseInFlight.insert(mediaRef)
         Task.detached(priority: .utility) { [weak self] in
             var failed = false
             do {
-                _ = try await AudioEnhancer.enhancedAudio(for: url, mediaRef: mediaRef, amount: amount)
+                _ = try await AudioEnhancer.denoisedAudio(for: url, mediaRef: mediaRef)
             } catch {
                 failed = true
                 Log.preview.error("denoise bake failed mediaRef=\(mediaRef): \(error.localizedDescription)")
@@ -71,12 +64,10 @@ extension EditorViewModel {
                 if failed {
                     self.denoiseFailed.insert(mediaRef)
                 } else {
+                    self.denoiseBaked.insert(mediaRef)
                     // Rebuild to pick up the baked audio without pausing active playback.
                     self.videoEngine?.rebuild()
                 }
-                // Bakes dedupe by mediaRef, so other clips needing a different
-                // strength mix may have been skipped while this one was in flight.
-                self.enhancePendingDenoises()
             }
         }
     }

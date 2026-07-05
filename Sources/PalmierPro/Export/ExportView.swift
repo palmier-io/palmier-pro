@@ -492,7 +492,6 @@ struct ExportView: View {
                     outputURL: url
                 )
                 if service.error == nil {
-                    editor.syncDenoiseAfterExport()
                     editor.showExportDialog = false
                 }
             }

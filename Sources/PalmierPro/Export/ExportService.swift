@@ -238,9 +238,13 @@ final class ExportService {
         let mediaURLs = resolver.expectedURLMap()
 
         for track in timeline.tracks {
-            for clip in track.clips where clip.hasDenoiseEnabled {
-                guard let url = mediaURLs[clip.mediaRef] else { continue }
-                _ = try await AudioEnhancer.enhancedAudio(for: url, mediaRef: clip.mediaRef, amount: clip.denoiseAmount)
+            for clip in track.clips where clip.hasDenoiseEnabled && clip.denoiseAmount > 0 {
+                guard !missingMediaRefs.contains(clip.mediaRef), let url = mediaURLs[clip.mediaRef] else { continue }
+                do {
+                    _ = try await AudioEnhancer.denoisedAudio(for: url, mediaRef: clip.mediaRef)
+                } catch {
+                    Log.export.error("denoise bake failed — exporting original audio. mediaRef=\(clip.mediaRef): \(Log.detail(error))")
+                }
             }
         }
 

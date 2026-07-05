@@ -40,6 +40,7 @@ enum ToolName: String, CaseIterable, Sendable {
     // Transcript
     case getTranscript = "get_transcript"
     case removeWords = "remove_words"
+    case removeSilence = "remove_silence"
 
     // Text & captions
     case addTexts = "add_texts"
@@ -592,6 +593,11 @@ enum ToolDefinitions {
                 ],
                 required: []
             )
+        ),
+        AgentTool(
+            name: .removeSilence,
+            description: "Remove dead air — quiet, speech-free sections — from the timeline's audio, ripple-closing the gaps. Sections come from on-device speech detection (the same spans marked red on waveforms): non-speech runs whose level sits well below the recording's own speech level, so music beds and loud ambience are never cut, and speech-boundary slop keeps the cuts from feeling clipped. Cuts linked A/V partners and honors sync lock; the whole pass is one undoable action.\n\nUse this to tighten pacing (long pauses, dead space between takes) before or instead of word-level edits: remove_silence handles pauses, remove_words handles fillers and flubbed lines. No transcript needed. If it reports no dead air, speech analysis may still be running in the background — wait a moment and retry. Takes no arguments.",
+            inputSchema: objectSchema(properties: [:], required: [])
         ),
         AgentTool(
             name: .addTexts,

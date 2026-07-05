@@ -102,7 +102,10 @@ enum ClipRenderer {
             drawTiledImage(image: image, in: thumbRect, clipRect: rect, cornerRadius: cornerRadius, context: context)
         } else if type == .audio, let samples = cache?.samples(for: clip.mediaRef), !samples.isEmpty {
             let audioRect = CGRect(x: contentX, y: contentY, width: contentWidth, height: mainHeight)
-            drawWaveform(samples: samples, clip: clip, type: colorType, in: audioRect, context: context)
+            let mask = markDeadAir ? cache?.deadAirMask(for: clip.mediaRef) : nil
+            drawWaveform(samples: samples, deadAirMask: mask,
+                         speakerMask: speakerColors.isEmpty ? nil : cache?.speakerMask(for: clip.mediaRef),
+                         clip: clip, type: colorType, in: audioRect, context: context)
         }
 
         if type == .audio {
@@ -206,8 +209,14 @@ enum ClipRenderer {
 
     // MARK: - Waveform
 
+    private static let washColor = AppTheme.Status.error.withAlphaComponent(AppTheme.Opacity.medium).cgColor
+    nonisolated(unsafe) static var speakerColors: [Int: CGColor] = [:]
+    private static var markDeadAir: Bool { UserDefaults.standard.object(forKey: "markDeadAir") as? Bool ?? true }
+
     private static func drawWaveform(
         samples: [Float],
+        deadAirMask: [Bool]?,
+        speakerMask: [Int]? = nil,
         clip: Clip,
         type: ClipType,
         in drawRect: NSRect,
@@ -249,6 +258,18 @@ enum ClipRenderer {
         let needsPerBarVolume = (clip.volumeTrack?.isActive ?? false) || clip.fadeInFrames > 0 || clip.fadeOutFrames > 0
         let staticShift = CGFloat(VolumeScale.dbFromLinear(clip.volume)) / dbRange
 
+        // Dead-air shading maps the mask through the same source fractions as samples.
+        let maskCount = deadAirMask?.count ?? 0
+        let maskStart = max(0, min(maskCount, Int(startFrac * Double(maskCount))))
+        let maskEnd = max(maskStart, min(maskCount, Int(endFrac * Double(maskCount))))
+        let maskVisCount = maskEnd - maskStart
+        var washes: [CGRect] = []
+        let spkCount = speakerMask?.count ?? 0
+        let spkStart = max(0, min(spkCount, Int(startFrac * Double(spkCount))))
+        let spkEnd = max(spkStart, min(spkCount, Int(endFrac * Double(spkCount))))
+        let spkVisCount = spkEnd - spkStart
+        var tintedBars: [Int: [CGRect]] = [:]
+
         var bars: [CGRect] = []
         bars.reserveCapacity(lastBar - firstBar)
         for i in firstBar..<lastBar {
@@ -271,9 +292,38 @@ enum ClipRenderer {
             let amplitude = min(1, dbAmp)
             let barHeight = max(1, amplitude * (drawHeight - 2))
             let barY = drawRect.maxY - barHeight - 1
-            bars.append(CGRect(x: drawRect.minX + CGFloat(i), y: barY, width: 1, height: barHeight))
+            let bar = CGRect(x: drawRect.minX + CGFloat(i), y: barY, width: 1, height: barHeight)
+            var speaker = -1
+            if let speakerMask, spkVisCount > 0 {
+                let c = min(spkEnd - 1, spkStart + i * spkVisCount / barCount)
+                speaker = speakerMask[c]
+            }
+            if speaker >= 0, speakerColors[speaker] != nil {
+                tintedBars[speaker, default: []].append(bar)
+            } else {
+                bars.append(bar)
+            }
+
+            if let deadAirMask, maskVisCount > 0 {
+                let m0 = maskStart + i * maskVisCount / barCount
+                let m1 = min(maskEnd, max(m0 + 1, maskStart + (i + 1) * maskVisCount / barCount))
+                if deadAirMask[m0..<m1].contains(true) {
+                    washes.append(CGRect(x: drawRect.minX + CGFloat(i), y: drawRect.minY, width: 1, height: drawRect.height))
+                }
+            }
         }
         context.fill(bars)
+        for (speaker, rects) in tintedBars {
+            if let tint = speakerColors[speaker] {
+                context.setFillColor(tint)
+                context.fill(rects)
+            }
+        }
+
+        if !washes.isEmpty {
+            context.setFillColor(washColor)
+            context.fill(washes)
+        }
     }
 
     // MARK: - Volume rubber band

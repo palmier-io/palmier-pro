@@ -21,6 +21,8 @@ extension EditorViewModel {
         activeTimelineId = file.activeTimelineId.flatMap { ids.contains($0) ? $0 : nil }
             ?? file.timelines[0].id
         openTimelineIds = (file.openTimelineIds ?? []).filter { ids.contains($0) }
+        speakerRegistry = file.speakers ?? []
+        syncSpeakerColors()
         if !openTimelineIds.contains(activeTimelineId) {
             openTimelineIds.append(activeTimelineId)
         }
@@ -35,7 +37,8 @@ extension EditorViewModel {
             timelines: timelines,
             activeTimelineId: activeTimelineId,
             openTimelineIds: openTimelineIds,
-            viewStates: liveViewStates.filter { ids.contains($0.key) }
+            viewStates: liveViewStates.filter { ids.contains($0.key) },
+            speakers: speakerRegistry.isEmpty ? nil : speakerRegistry
         )
     }
 
