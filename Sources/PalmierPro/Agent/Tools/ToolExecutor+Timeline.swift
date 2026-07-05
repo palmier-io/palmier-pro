@@ -120,8 +120,14 @@ extension ToolExecutor {
         _ tracks: [[String: Any]], editor: EditorViewModel, window: Range<Int>?, captionDetail: Bool
     ) -> [[String: Any]] {
         let fold = linkFoldPlan(tracks)
+        var grades: [String: [String: Any]] = [:]
+        for track in editor.timeline.tracks {
+            for clip in track.clips {
+                if let c = colorObject(from: clip.effects) { grades[clip.id] = c }
+            }
+        }
         return tracks.indices.map { i in
-            var track = compactTrack(tracks[i], window: window, captionDetail: captionDetail, fold: fold)
+            var track = compactTrack(tracks[i], window: window, captionDetail: captionDetail, fold: fold, grades: grades)
             // Report the displayed label (mirrored video numbering), not the stored seed.
             track["label"] = editor.timelineTrackDisplayLabel(at: i)
             track["index"] = i
@@ -196,22 +202,45 @@ extension ToolExecutor {
             }
         }
         let stripped = strippingDefaults(compactClipKeyframes(partner), clipDefaults)
-        for key in ["volume", "fadeInFrames", "fadeOutFrames", "fadeInInterpolation", "fadeOutInterpolation", "effects", "keyframes"] {
+        for key in ["volume", "fadeInFrames", "fadeOutFrames", "fadeInInterpolation", "fadeOutInterpolation", "keyframes"] {
             if let v = stripped[key] { out[key] = v }
         }
+        if let fx = stripped["effects"] as? [[String: Any]] {
+            let cleaned = compactEffects(fx)
+            if !cleaned.isEmpty { out["effects"] = cleaned }
+        }
         return out
+    }
+
+    /// Read shape for the effect stack: no ids (removal is by type), flat params, enabled
+    /// only when false. color.* entries live in the clip's `color` object instead.
+    private static func compactEffects(_ raw: [[String: Any]]) -> [[String: Any]] {
+        raw.compactMap { e in
+            guard let type = e["type"] as? String, !type.hasPrefix("color.") else { return nil }
+            var out: [String: Any] = ["type": type]
+            if let params = e["params"] as? [String: Any] {
+                var flat: [String: Any] = [:]
+                for (k, v) in params {
+                    guard let p = v as? [String: Any] else { flat[k] = v; continue }
+                    flat[k] = p["value"] ?? p["string"] ?? (p["track"] != nil ? "animated" : nil) ?? v
+                }
+                if !flat.isEmpty { out["params"] = flat }
+            }
+            if let enabled = e["enabled"] as? Bool, !enabled { out["enabled"] = false }
+            return out
+        }
     }
 
     // MARK: - Track and clip compaction
 
     private static func compactTrack(
-        _ track: [String: Any], window: Range<Int>?, captionDetail: Bool, fold: LinkFold
+        _ track: [String: Any], window: Range<Int>?, captionDetail: Bool, fold: LinkFold, grades: [String: [String: Any]]
     ) -> [String: Any] {
         var out = strippingDefaults(track, trackDefaults)
         guard let rawClips = track["clips"] as? [[String: Any]] else { return out }
         let compacted = rawClips
             .filter { !fold.foldedAudioIds.contains(($0["id"] as? String) ?? "") }
-            .map { compactClip($0, fold: fold) }
+            .map { compactClip($0, fold: fold, grades: grades) }
 
         var loose: [[String: Any]] = []
         var groupOrder: [String] = []
@@ -241,7 +270,9 @@ extension ToolExecutor {
         return out
     }
 
-    private static func compactClip(_ clip: [String: Any], fold: LinkFold? = nil) -> [String: Any] {
+    private static func compactClip(
+        _ clip: [String: Any], fold: LinkFold? = nil, grades: [String: [String: Any]] = [:]
+    ) -> [String: Any] {
         var out = compactClipKeyframes(clip)
         if let s = out["sourceClipType"] as? String, s == out["mediaType"] as? String {
             out.removeValue(forKey: "sourceClipType")
@@ -252,6 +283,11 @@ extension ToolExecutor {
             out.removeValue(forKey: "trimEndFrame")
         }
         out = strippingDefaults(out, clipDefaults)
+        if let id = out["id"] as? String, let grade = grades[id] { out["color"] = grade }
+        if let fx = out["effects"] as? [[String: Any]] {
+            let cleaned = compactEffects(fx)
+            if cleaned.isEmpty { out.removeValue(forKey: "effects") } else { out["effects"] = cleaned }
+        }
         let start = intValue(out["startFrame"])
         out["frames"] = [start, start + intValue(out["durationFrames"])]
         out.removeValue(forKey: "startFrame")

@@ -1501,6 +1501,68 @@ struct ToolExecutorClipTests {
         #expect(((json?["notes"] as? [String])?.first ?? "").contains("cleared existing keyframes"))
     }
 
+    @Test func applyColorEchoesGradeAndRoundTrips() async throws {
+        let h = ToolHarness()
+        let asset = h.addAsset(type: .video, duration: 10)
+        _ = await h.runRaw("add_clips", args: ["entries": [
+            ["mediaRef": asset.id, "startFrame": 0, "endFrame": 60],
+            ["mediaRef": asset.id, "startFrame": 60, "endFrame": 120],
+        ]])
+        let a = h.editor.timeline.tracks[0].clips[0].id
+        let b = h.editor.timeline.tracks[0].clips[1].id
+
+        let graded = try await h.runOK("apply_color", args: [
+            "clipIds": [a], "exposure": 0.4, "temperature": 7200.0,
+            "masterCurve": [[0, 0.05], [1, 0.95]],
+        ]) as? [String: Any]
+        let color = ((graded?["clips"] as? [[String: Any]])?.first?["color"]) as? [String: Any]
+        #expect(color?["exposure"] as? Double == 0.4)
+        #expect(color?["temperature"] as? Double == 7200)
+        #expect((color?["masterCurve"] as? [[Double]])?.count == 2)
+        // color.* effects live in `color`, not `effects`.
+        #expect((graded?["clips"] as? [[String: Any]])?.first?["effects"] == nil)
+
+        // Paste the grade onto clip B; both now read identically.
+        let pasted = try await h.runOK("apply_color", args: [
+            "clipIds": [b], "color": color!,
+        ]) as? [String: Any]
+        let bColor = ((pasted?["clips"] as? [[String: Any]])?.first?["color"]) as? [String: Any]
+        #expect(bColor?["exposure"] as? Double == 0.4)
+        #expect(bColor?["temperature"] as? Double == 7200)
+
+        // Paste + knobs together is rejected.
+        let mixed = await h.runRaw("apply_color", args: ["clipIds": [b], "color": color!, "exposure": 1.0])
+        #expect(mixed.isError)
+
+        // Touching one wheel doesn't leak the other zones' neutral values into the echo.
+        let wheels = try await h.runOK("apply_color", args: [
+            "clipIds": [a], "shadowsHue": 180.0, "shadowsAmount": 0.12,
+        ]) as? [String: Any]
+        let wColor = ((wheels?["clips"] as? [[String: Any]])?.first?["color"]) as? [String: Any]
+        #expect(wColor?["shadowsHue"] as? Double == 180)
+        #expect(wColor?["shadowsAmount"] as? Double == 0.12)
+        #expect(wColor?["midsGamma"] == nil)
+        #expect(wColor?["highsGain"] == nil)
+        #expect(wColor?["midsHue"] == nil)
+    }
+
+    @Test func applyEffectEchoesCleanEffectShape() async throws {
+        let h = ToolHarness()
+        let asset = h.addAsset(type: .video, duration: 10)
+        _ = await h.runRaw("add_clips", args: ["entries": [["mediaRef": asset.id, "startFrame": 0, "endFrame": 60]]])
+        let id = h.editor.timeline.tracks[0].clips[0].id
+
+        let json = try await h.runOK("apply_effect", args: [
+            "clipIds": [id], "effects": [["type": "blur.gaussian", "params": ["radius": 12.0]]],
+        ]) as? [String: Any]
+        let fx = ((json?["clips"] as? [[String: Any]])?.first?["effects"] as? [[String: Any]])?.first
+        #expect(fx?["type"] as? String == "blur.gaussian")
+        #expect((fx?["params"] as? [String: Any])?["radius"] as? Double == 12)
+        // No UUID, no enabled:true noise.
+        #expect(fx?["id"] == nil)
+        #expect(fx?["enabled"] == nil)
+    }
+
     @Test func setProjectSettingsReturnsChangedFieldsAsJSON() async throws {
         let h = ToolHarness()
         let json = try await h.runOK("set_project_settings", args: ["fps": 60]) as? [String: Any]
