@@ -130,15 +130,16 @@ extension ToolExecutor {
             throw ToolError("No dead air on the timeline. Speech analysis may still be running, or the audio has no quiet non-speech sections.")
         }
         editor.undoManager?.setActionName("Remove Silence (Agent)")
-        guard case .ok(let report) = result.outcome else {
-            if case .refused(let reason) = result.outcome { throw ToolError("Ripple delete refused: \(reason)") }
-            throw ToolError("Ripple delete refused.")
+        if let refusal = result.refusal, result.sections == 0 {
+            throw ToolError("Ripple delete refused: \(refusal)")
         }
-        let payload: [String: Any] = [
-            "sectionsRemoved": result.sections, "removedFrames": report.removedFrames,
-            "tracksEdited": report.clearedTracks,
+        var payload: [String: Any] = [
+            "sectionsRemoved": result.sections, "removedFrames": result.removedFrames,
             "note": "Removed dead air and closed the gaps. Frames have shifted — re-read get_timeline or get_transcript before further edits.",
         ]
+        if let refusal = result.refusal {
+            payload["partial"] = "A later track refused: \(refusal). Earlier tracks were already edited."
+        }
         guard let json = Self.jsonString(payload) else { throw ToolError("Failed to encode result") }
         return .ok(json)
     }

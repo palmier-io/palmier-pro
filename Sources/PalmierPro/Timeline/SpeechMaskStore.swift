@@ -6,6 +6,7 @@ final class SpeechMaskStore {
     private var speechMasks: [String: [Bool]] = [:]
     private var deadAirMasks: [String: [Bool]] = [:]
     private var failed: Set<String> = []
+    private var epoch: [String: Int] = [:]
     private var inFlight: Set<String> = [] {
         didSet { if inFlight.count != oldValue.count { onAnalyzingCountChange?(inFlight.count) } }
     }
@@ -17,6 +18,7 @@ final class SpeechMaskStore {
         let key = asset.id
         guard speechMasks[key] == nil, !inFlight.contains(key), !failed.contains(key) else { return }
         inFlight.insert(key)
+        let startEpoch = epoch[key, default: 0]
 
         let url = asset.url
         Task.detached(priority: .utility) { [weak self] in
@@ -30,6 +32,7 @@ final class SpeechMaskStore {
             }
             guard let self else { return }
             await MainActor.run { [self] in
+                guard self.epoch[key, default: 0] == startEpoch else { return }
                 self.inFlight.remove(key)
                 if let mask {
                     self.speechMasks[key] = mask
@@ -44,12 +47,16 @@ final class SpeechMaskStore {
 
     /// Drops all session state so cleared disk caches regenerate.
     func reset() {
+        for key in inFlight { epoch[key, default: 0] += 1 }
+        inFlight.removeAll()
         speechMasks.removeAll()
         deadAirMasks.removeAll()
         failed.removeAll()
     }
 
     func invalidate(_ mediaRef: String) {
+        epoch[mediaRef, default: 0] += 1
+        inFlight.remove(mediaRef)
         speechMasks.removeValue(forKey: mediaRef)
         deadAirMasks.removeValue(forKey: mediaRef)
         failed.remove(mediaRef)
@@ -57,9 +64,7 @@ final class SpeechMaskStore {
 
     // MARK: - Dead air
 
-    /// A non-speech span is dead air when its median level sits `speechGap` below the
-    /// file's own speech level — the threshold adapts to each recording's room tone.
-    /// Levels use the waveform's normalized scale (0=loud … 1=silence over -50 dB).
+    // Marks a span as dead air if its median level is `speechGap` below the file's speech level, using normalized waveform values.
     private nonisolated static let speechGap: Float = 0.24      // 12 dB
     private nonisolated static let noSpeechFloor: Float = 0.56  // absolute fallback ≈ -28 dB
     private nonisolated static let minCells = 8                 // ≈ 0.26 s

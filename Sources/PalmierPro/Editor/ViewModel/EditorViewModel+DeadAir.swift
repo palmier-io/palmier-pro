@@ -55,27 +55,29 @@ extension EditorViewModel {
         }
     }
 
-    /// Ripples each track's dead air in turn, re-deriving ranges after every pass
-    /// (earlier deletions shift frames). One pass per track at most.
+    /// Ripples dead air per-track, updating ranges between passes. Stops if a track refuses.
     @discardableResult
-    func removeAllDeadAir() -> (outcome: RippleRangesOutcome, sections: Int)? {
+    func removeAllDeadAir() -> (sections: Int, removedFrames: Int, refusal: String?)? {
         var sections = 0
-        var lastOutcome: RippleRangesOutcome?
+        var removedFrames = 0
+        var refusal: String?
         undoManager?.beginUndoGrouping()
         defer { undoManager?.endUndoGrouping() }
         for _ in timeline.tracks.indices {
             guard let next = allDeadAir().first else { break }
-            let outcome = rippleDeleteRangesOnTrack(trackIndex: next.trackIndex, ranges: next.ranges)
-            lastOutcome = outcome
-            if case .refused(let reason) = outcome {
+            switch rippleDeleteRangesOnTrack(trackIndex: next.trackIndex, ranges: next.ranges) {
+            case .ok(let report):
+                sections += next.ranges.count
+                removedFrames += report.removedFrames
+            case .refused(let reason):
+                refusal = reason
                 NSSound.beep()
                 Log.editor.notice("remove dead air blocked: \(reason)")
-                break
             }
-            sections += next.ranges.count
+            if refusal != nil { break }
         }
-        guard let lastOutcome else { return nil }
-        return (lastOutcome, sections)
+        guard sections > 0 || refusal != nil else { return nil }
+        return (sections, removedFrames, refusal)
     }
 
     private func timelineRange(clip: Clip, sourceStart: Double, sourceEnd: Double) -> FrameRange? {

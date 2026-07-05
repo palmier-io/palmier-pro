@@ -277,7 +277,9 @@ extension ToolExecutor {
                 refsByURL[frag.url, default: []].append(frag.clip.mediaRef)
             }
             guard isNewURL, let transcript = transcripts[frag.url] else { continue }
-            let turns = SpeakerIdentity.turns(from: transcript)
+            let turns = await SpeakerIdentity.speechConfirmed(
+                SpeakerIdentity.turns(from: transcript), url: frag.url, mediaRef: frag.clip.mediaRef
+            )
             if !turns.isEmpty { files.append((frag.clip.mediaRef, frag.url, turns)) }
         }
         let result = await SpeakerIdentity.assignments(files: files, registry: registry.map { ($0.id, $0.centroid) })
