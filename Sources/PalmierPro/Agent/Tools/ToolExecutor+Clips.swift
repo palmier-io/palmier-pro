@@ -140,8 +140,11 @@ extension ToolExecutor {
     ) throws -> (trimStart: Int, duration: Int, trimEnd: Int?) {
         let trimStart = trimStartFrame ?? 0
         guard trimStart >= 0 else { throw ToolError("\(path): trimStartFrame must be >= 0 (got \(trimStart))") }
+        try requireFrameInBounds(trimStart, label: "trimStartFrame", path: path)
         if let t = trimEndFrame, t < 0 { throw ToolError("\(path): trimEndFrame must be >= 0 (got \(t))") }
+        if let t = trimEndFrame { try requireFrameInBounds(t, label: "trimEndFrame", path: path) }
         if let d = durationFrames, d < 1 { throw ToolError("\(path): durationFrames must be >= 1 (got \(d))") }
+        if let d = durationFrames { try requireFrameInBounds(d, label: "durationFrames", path: path) }
         guard durationFrames == nil || trimEndFrame == nil else {
             throw ToolError("\(path): set durationFrames OR trimEndFrame, not both — both define the clip's end. Use durationFrames for an explicit length, trimEndFrame to trim the tail.")
         }
@@ -197,6 +200,7 @@ extension ToolExecutor {
             guard entry.startFrame >= 0 else {
                 throw ToolError("entries[\(idx)]: startFrame must be >= 0 (got \(entry.startFrame))")
             }
+            try requireFrameInBounds(entry.startFrame, label: "startFrame", path: "entries[\(idx)]")
             prepared.append((entry, asset, trackId))
         }
 
@@ -321,6 +325,7 @@ extension ToolExecutor {
             throw ToolError("trackIndex \(input.trackIndex) out of range (0..\(editor.timeline.tracks.count - 1))")
         }
         guard input.atFrame >= 0 else { throw ToolError("atFrame must be >= 0 (got \(input.atFrame))") }
+        try requireFrameInBounds(input.atFrame, label: "atFrame")
         let targetType = editor.timeline.tracks[input.trackIndex].type
 
         // Apply settings before deriving durations: it may change FPS, which clipDurationFrames depends on.
@@ -419,6 +424,7 @@ extension ToolExecutor {
             if let f = m.toFrame, f < 0 {
                 throw ToolError("\(path): toFrame must be >= 0 (got \(f))")
             }
+            if let f = m.toFrame { try requireFrameInBounds(f, label: "toFrame", path: path) }
             parsed.append(ParsedMove(clipId: m.clipId, destTrackId: destTrackId, toFrame: m.toFrame))
         }
 
@@ -475,6 +481,7 @@ extension ToolExecutor {
         if let df = input.durationFrames, df < 1 {
             throw ToolError("durationFrames must be >= 1 (got \(df))")
         }
+        if let df = input.durationFrames { try requireFrameInBounds(df, label: "durationFrames") }
         if let s = input.speed, s <= 0 {
             throw ToolError("speed must be > 0 (got \(s))")
         }
@@ -487,9 +494,11 @@ extension ToolExecutor {
         if let t = input.trimStartFrame, t < 0 {
             throw ToolError("trimStartFrame must be >= 0 (got \(t))")
         }
+        if let t = input.trimStartFrame { try requireFrameInBounds(t, label: "trimStartFrame") }
         if let t = input.trimEndFrame, t < 0 {
             throw ToolError("trimEndFrame must be >= 0 (got \(t))")
         }
+        if let t = input.trimEndFrame { try requireFrameInBounds(t, label: "trimEndFrame") }
 
         // Resolve clipIds + collect types for blend-mode validation.
         var clipTypes: [String: ClipType] = [:]

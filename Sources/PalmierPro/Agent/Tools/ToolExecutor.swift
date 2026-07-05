@@ -316,6 +316,16 @@ func clampInt(_ d: Double, min lo: Int, max hi: Int) -> Int {
     return Int(d.rounded())
 }
 
+// Frame ceiling low enough that startFrame + durationFrames can't overflow Int, high enough for any real timeline.
+let maxToolFrame = 1_000_000_000
+
+func requireFrameInBounds(_ value: Int, label: String, path: String = "") throws {
+    guard value <= maxToolFrame else {
+        let prefix = path.isEmpty ? "" : "\(path): "
+        throw ToolError("\(prefix)\(label) \(value) exceeds the maximum supported frame (\(maxToolFrame))")
+    }
+}
+
 extension Dictionary where Key == String, Value == Any {
     func string(_ key: String) -> String? {
         if let v = self[key] as? String, !v.isEmpty { return v }
