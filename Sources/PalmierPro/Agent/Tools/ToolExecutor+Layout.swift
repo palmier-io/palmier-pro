@@ -95,7 +95,9 @@ extension ToolExecutor {
         var settingsNote: String?
         if usesMedia {
             guard startFrame >= 0 else { throw ToolError("startFrame must be >= 0 (got \(startFrame))") }
+            try requireFrameInBounds(startFrame, label: "startFrame")
             guard duration >= 1 else { throw ToolError("apply_layout placing new clips requires durationFrames >= 1.") }
+            try requireFrameInBounds(duration, label: "durationFrames")
             for e in entries {
                 let a = try asset(e.entry.mediaRef!, editor: editor)
                 guard a.type == .video || a.type == .image else {

@@ -164,9 +164,11 @@ extension ToolExecutor {
             guard durationFrames >= 1 else {
                 throw ToolError("\(path): durationFrames must be >= 1 (got \(durationFrames))")
             }
+            try requireFrameInBounds(durationFrames, label: "durationFrames", path: path)
             guard startFrame >= 0 else {
                 throw ToolError("\(path): startFrame must be >= 0 (got \(startFrame))")
             }
+            try requireFrameInBounds(startFrame, label: "startFrame", path: path)
 
             var style = TextStyle()
             _ = Self.applyTextStylePatch(try parseTextStylePatch(entry, path: path), to: &style)

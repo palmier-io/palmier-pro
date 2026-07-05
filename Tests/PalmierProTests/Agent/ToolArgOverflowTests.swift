@@ -84,4 +84,66 @@ struct ToolArgOverflowE2ETests {
         ])
         #expect(result.isError == true)
     }
+
+    /// A near-Int.max integer startFrame decodes into Int (unlike 1e19) and reached startFrame + durationFrames, which trapped the process.
+    @Test func addClipsRejectsFrameThatWouldOverflowEndFrame() async {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+        let asset = h.addAsset(type: .video, duration: 5)
+        let result = await h.runRaw("add_clips", args: [
+            "entries": [[
+                "mediaRef": asset.id,
+                "trackIndex": 0,
+                "startFrame": Int.max,
+                "durationFrames": 60,
+            ]]
+        ])
+        #expect(result.isError == true)          // was: hard crash (Int overflow trap)
+        #expect(h.editor.timeline.tracks[0].clips.isEmpty)   // rejected before any placement
+    }
+
+    /// insert_clips routes atFrame into the same endFrame arithmetic.
+    @Test func insertClipsRejectsOverflowAtFrame() async {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+        let asset = h.addAsset(type: .video, duration: 5)
+        let result = await h.runRaw("insert_clips", args: [
+            "trackIndex": 0,
+            "atFrame": Int.max,
+            "entries": [["mediaRef": asset.id, "durationFrames": 30]],
+        ])
+        #expect(result.isError == true)
+    }
+
+    /// move_clips sets a clip's startFrame directly from toFrame.
+    @Test func moveClipsRejectsOverflowToFrame() async {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "M1", start: 0, duration: 100)]),
+        ]))
+        let result = await h.runRaw("move_clips", args: [
+            "moves": [["clipId": "M1", "toFrame": Int.max]],
+        ])
+        #expect(result.isError == true)
+    }
+
+    /// set_clip_properties writes durationFrames straight onto the clip.
+    @Test func setClipPropertiesRejectsOverflowDuration() async {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "S1", start: 0, duration: 100)]),
+        ]))
+        let result = await h.runRaw("set_clip_properties", args: [
+            "clipIds": ["S1"], "durationFrames": Int.max,
+        ])
+        #expect(result.isError == true)
+    }
+
+    /// add_texts places a text clip at an unbounded startFrame.
+    @Test func addTextsRejectsOverflowStartFrame() async {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .text)
+        let result = await h.runRaw("add_texts", args: [
+            "entries": [["content": "hi", "startFrame": Int.max, "durationFrames": 60]],
+        ])
+        #expect(result.isError == true)
+    }
 }
