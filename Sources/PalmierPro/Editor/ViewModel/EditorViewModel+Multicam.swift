@@ -12,8 +12,10 @@ extension EditorViewModel {
         mediaManifest.multicamGroups.first { $0.id == id }
     }
 
+    /// Newest match wins: legacy projects may hold duplicate groups over the
+    /// same media with stale sync offsets, and the latest sync is the truth.
     func multicamGroup(containing mediaRef: String) -> MulticamGroup? {
-        mediaManifest.multicamGroups.first { $0.member(for: mediaRef) != nil }
+        mediaManifest.multicamGroups.last { $0.member(for: mediaRef) != nil }
     }
 
     /// (group, member) the clip's source belongs to, if any.
@@ -28,7 +30,8 @@ extension EditorViewModel {
     func multicamBadgeLabel(for clip: Clip) -> String? {
         guard let (_, member) = multicamMembership(of: clip) else { return nil }
         if let speaker = member.speaker, !speaker.isEmpty { return speaker }
-        return member.role == .camera ? "Cam" : "Mic"
+        // A `both` member is Cam as picture and Mic as sound.
+        return clip.mediaType == .audio ? "Mic" : "Cam"
     }
 
     // MARK: - Mutation
@@ -53,6 +56,35 @@ extension EditorViewModel {
         }
         undoManager?.setActionName("Edit Multicam Group")
         isDocumentEdited = true
+    }
+
+    /// Insert `group`, or refresh the existing group over the same media set:
+    /// re-running create_multicam must not pile up duplicates whose stale sync
+    /// offsets later win lookups. The newest members (offsets, roles, name)
+    /// replace the old; speakers are kept where the new members leave them nil;
+    /// stray duplicates are removed. Returns the effective group.
+    @discardableResult
+    func upsertMulticamGroup(_ group: MulticamGroup) -> MulticamGroup {
+        let refs = Set(group.members.map(\.mediaRef))
+        let existing = mediaManifest.multicamGroups.filter { Set($0.members.map(\.mediaRef)) == refs }
+        guard let primary = existing.first else {
+            addMulticamGroup(group)
+            return group
+        }
+        var merged = group
+        merged.id = primary.id
+        for i in merged.members.indices where merged.members[i].speaker == nil {
+            let ref = merged.members[i].mediaRef
+            merged.members[i].speaker = existing
+                .compactMap { $0.member(for: ref)?.speaker }
+                .first { !$0.isEmpty }
+        }
+        undoManager?.beginUndoGrouping()
+        for duplicate in existing.dropFirst() { removeMulticamGroup(id: duplicate.id) }
+        updateMulticamGroup(merged)
+        undoManager?.endUndoGrouping()
+        undoManager?.setActionName("Create Multicam Group")
+        return merged
     }
 
     func removeMulticamGroup(id: String) {
@@ -211,7 +243,12 @@ extension EditorViewModel {
         var placedOverlayClipIds: [String] = []
         var createdOverlayTracks: Int = 0
         var splitCount: Int = 0
+        /// Redundant seams merged after the plan: back-to-back segments of the
+        /// same angle, continuous in source time, collapse into one take.
+        var joinedSeams: Int = 0
         var skipped: [(range: FrameRange, message: String)] = []
+        /// Ranges shrunk to the span every requested angle actually covers.
+        var clamped: [(requested: FrameRange, applied: FrameRange, message: String)] = []
     }
 
     /// Swap the program-track clips inside each range to another camera of the
@@ -244,55 +281,104 @@ extension EditorViewModel {
         }
 
         for req in requests {
-            let range = req.range
+            let requested = req.range
             guard let programRef = req.assignments.first?.mediaRef else {
-                outcome.skipped.append((range, "No angle assignments.")); continue
+                outcome.skipped.append((requested, "No angle assignments.")); continue
             }
             guard let pi = timeline.tracks.firstIndex(where: { $0.id == programTrackId }) else { break }
             guard let group = multicamGroup(containing: programRef),
                   let programMember = group.member(for: programRef) else {
-                outcome.skipped.append((range, "Target media is not in a multicam group.")); continue
+                outcome.skipped.append((requested, "Target media is not in a multicam group.")); continue
             }
             guard req.assignments.allSatisfy({ group.member(for: $0.mediaRef) != nil }) else {
-                outcome.skipped.append((range, "All layout angles must belong to the same multicam group.")); continue
+                outcome.skipped.append((requested, "All layout angles must belong to the same multicam group.")); continue
             }
 
-            // Pre-validate every assignment against every program clip
-            // overlapping the range, so a range that can't switch leaves no
-            // stray splits behind.
+            /// First violated constraint over `r`, checking every assignment
+            /// against every overlapping program clip. Nil = fully coverable.
+            func coverageFailure(_ r: FrameRange) -> String? {
+                for clip in timeline.tracks[pi].clips
+                where clip.startFrame < r.end && clip.endFrame > r.start
+                    && multicamMembership(of: clip)?.group.id == group.id {
+                    guard let fromMember = group.member(for: clip.mediaRef) else { continue }
+                    let overlapStart = max(r.start, clip.startFrame)
+                    let overlapEnd = min(r.end, clip.endFrame)
+                    let speed = max(clip.speed, 0.0001)
+                    let sourceAtStart = clip.trimStartFrame
+                        + Int((Double(overlapStart - clip.startFrame) * speed).rounded())
+                    let groupTimeAtStart = fromMember.syncOffsetFrames + sourceAtStart
+                    let consumed = Int((Double(overlapEnd - overlapStart) * speed).rounded())
+                    for (_, ref) in req.assignments {
+                        guard let m = group.member(for: ref) else { continue }
+                        let trim = groupTimeAtStart - m.syncOffsetFrames
+                        if trim < 0 {
+                            return "\(ref) wasn't recording yet at frame \(overlapStart)."
+                        }
+                        let len = sourceLen(ref)
+                        if len > 0, trim + consumed > len {
+                            return "\(ref) ends before frame \(overlapEnd)."
+                        }
+                    }
+                }
+                return nil
+            }
+
             let overlapping = timeline.tracks[pi].clips.filter { clip in
-                clip.startFrame < range.end && clip.endFrame > range.start
+                clip.startFrame < requested.end && clip.endFrame > requested.start
                     && multicamMembership(of: clip)?.group.id == group.id
             }
             guard !overlapping.isEmpty else {
-                outcome.skipped.append((range, "No multicam clips of this group inside the range.")); continue
+                outcome.skipped.append((requested, "No multicam clips of this group inside the range.")); continue
             }
 
-            var failure: String?
+            // Shrink the range to the span every assignment covers instead of
+            // refusing outright: a camera that started late or ran out early
+            // clamps the edges, and the rest of the plan still lands.
+            var effStart = requested.start
+            var effEnd = requested.end
+            var startCulprit: String?
+            var endCulprit: String?
             for clip in overlapping {
                 guard let fromMember = group.member(for: clip.mediaRef) else { continue }
-                let overlapStart = max(range.start, clip.startFrame)
-                let overlapEnd = min(range.end, clip.endFrame)
+                let overlapStart = max(requested.start, clip.startFrame)
                 let speed = max(clip.speed, 0.0001)
                 let sourceAtStart = clip.trimStartFrame
                     + Int((Double(overlapStart - clip.startFrame) * speed).rounded())
                 let groupTimeAtStart = fromMember.syncOffsetFrames + sourceAtStart
-                let consumed = Int((Double(overlapEnd - overlapStart) * speed).rounded())
                 for (_, ref) in req.assignments {
                     guard let m = group.member(for: ref) else { continue }
                     let trim = groupTimeAtStart - m.syncOffsetFrames
                     if trim < 0 {
-                        failure = "\(ref) wasn't recording yet at frame \(overlapStart)."; break
+                        let bound = overlapStart + Int(ceil(Double(-trim) / speed))
+                        if bound > effStart { effStart = bound; startCulprit = ref }
                     }
                     let len = sourceLen(ref)
-                    if len > 0, trim + consumed > len {
-                        failure = "\(ref) ends before frame \(overlapEnd)."; break
+                    if len > 0 {
+                        let bound = overlapStart + Int(floor(Double(max(0, len - trim)) / speed))
+                        if bound < effEnd { effEnd = bound; endCulprit = ref }
                     }
                 }
-                if failure != nil { break }
             }
-            if let failure {
-                outcome.skipped.append((range, failure)); continue
+
+            guard effEnd > effStart else {
+                outcome.skipped.append((requested, coverageFailure(requested) ?? "No angle covers any of this range."))
+                continue
+            }
+            let range = FrameRange(start: effStart, end: effEnd)
+            // Clamp math assumes group time grows along the track (true after
+            // word cuts); if hand-edits broke that, fall back to refusing.
+            if let failure = coverageFailure(range) {
+                outcome.skipped.append((requested, failure)); continue
+            }
+            if range != requested {
+                var notes: [String] = []
+                if let startCulprit, range.start > requested.start {
+                    notes.append("\(startCulprit) starts recording at frame \(range.start)")
+                }
+                if let endCulprit, range.end < requested.end {
+                    notes.append("\(endCulprit) runs out at frame \(range.end)")
+                }
+                outcome.clamped.append((requested, range, notes.joined(separator: "; ") + "."))
             }
 
             // Insert boundaries so only the requested span switches.
@@ -395,10 +481,64 @@ extension EditorViewModel {
                 vm.removeClips(ids: ids)
             }
         }
+        // Sanitize: iterating on a cut plan leaves same-angle segments cut
+        // back to back. Joining through edits is lossless, so heal the whole
+        // program track and this call's overlay layers.
+        if !outcome.switchedClipIds.isEmpty || !placedIds.isEmpty {
+            var healTrackIds = [programTrackId]
+            healTrackIds.append(contentsOf: overlayTrackIds.values)
+            for tid in healTrackIds {
+                guard let ti = timeline.tracks.firstIndex(where: { $0.id == tid }) else { continue }
+                outcome.joinedSeams += joinThroughEdits(trackIndex: ti)
+            }
+        }
         if !outcome.switchedClipIds.isEmpty || outcome.splitCount > 0 || !placedIds.isEmpty {
             notifyTimelineChanged()
         }
         return outcome
+    }
+
+    // MARK: - Manual angle switch (context menu)
+
+    struct AngleCandidate: Sendable {
+        let mediaRef: String
+        let label: String
+        let isCurrent: Bool
+        let isAvailable: Bool
+    }
+
+    /// Cameras of the clip's group for the Switch Angle menu. A camera is
+    /// available when it was recording for the clip's whole range in group time.
+    func angleSwitchCandidates(for clip: Clip) -> [AngleCandidate] {
+        guard clip.mediaType == .video,
+              let (group, member) = multicamMembership(of: clip) else { return [] }
+        let groupTimeAtStart = member.syncOffsetFrames + clip.trimStartFrame
+        let consumed = clip.sourceFramesConsumed
+        return group.cameras.map { cam in
+            let asset = mediaAssets.first { $0.id == cam.mediaRef }
+            let trim = groupTimeAtStart - cam.syncOffsetFrames
+            let len = asset.map { secondsToFrame(seconds: $0.duration, fps: timeline.fps) } ?? 0
+            let label = cam.speaker.flatMap { $0.isEmpty ? nil : $0 } ?? asset?.name ?? cam.mediaRef
+            return AngleCandidate(
+                mediaRef: cam.mediaRef,
+                label: label,
+                isCurrent: cam.mediaRef == clip.mediaRef,
+                isAvailable: asset != nil && trim >= 0 && (len == 0 || trim + consumed <= len)
+            )
+        }
+    }
+
+    /// Switch one clip to another camera of its group, full-frame. Content
+    /// time is preserved via the group's sync offsets.
+    func switchClipAngle(clipId: String, toMediaRef ref: String) {
+        guard let loc = findClip(id: clipId) else { return }
+        let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        guard clip.mediaRef != ref else { return }
+        _ = switchAngle(trackIndex: loc.trackIndex, requests: [AngleSwitchRequest(
+            range: FrameRange(start: clip.startFrame, end: clip.endFrame),
+            layout: .full, fit: .fill,
+            assignments: [(slotId: "main", mediaRef: ref)]
+        )])
     }
 
     // MARK: - Speaker activity
@@ -460,8 +600,12 @@ extension EditorViewModel {
         let assets = ids.compactMap { id in mediaAssets.first { $0.id == id } }
         let avAssets = assets.filter { $0.type == .video || $0.type == .audio }
         guard avAssets.count >= 2 else { return }
+        // No dedicated mic files: each camera's embedded audio is that person's mic.
+        let hasDedicatedMics = avAssets.contains { $0.type == .audio }
         let members = avAssets.map { asset in
-            MulticamGroup.Member(mediaRef: asset.id, role: asset.type == .audio ? .mic : .camera)
+            let role: MulticamGroup.Role = asset.type == .audio ? .mic
+                : (!hasDedicatedMics && asset.hasAudio) ? .both : .camera
+            return MulticamGroup.Member(mediaRef: asset.id, role: role)
         }
         let referenceRef = (avAssets.first { $0.type == .audio } ?? avAssets[0]).id
         let groupName = name ?? "Multicam \(mediaManifest.multicamGroups.count + 1)"
@@ -477,9 +621,8 @@ extension EditorViewModel {
                     synced[i].syncOffsetFrames = offset
                 }
             }
-            let group = MulticamGroup(name: groupName, members: synced)
             self.undoManager?.beginUndoGrouping()
-            self.addMulticamGroup(group)
+            let group = self.upsertMulticamGroup(MulticamGroup(name: groupName, members: synced))
             self.layoutMulticamGroup(group)
             self.undoManager?.endUndoGrouping()
             self.undoManager?.setActionName("Create Multicam Group")

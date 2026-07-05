@@ -93,10 +93,25 @@ struct AssetThumbnailView: View {
             Button("New Multicam Group") { editor.createMulticamGroupFromAssets(ids: ids) }
             Divider()
         }
+        let groups = multicamGroups(containing: ids)
+        if !groups.isEmpty {
+            ForEach(groups, id: \.id) { group in
+                Button("Remove Multicam Group \u{201C}\(group.name)\u{201D}") {
+                    editor.removeMulticamGroup(id: group.id)
+                }
+            }
+            Divider()
+        }
         Button("Reveal in Finder") { revealInFinder(ids: ids) }
         Button("Copy Path") { copyPaths(ids: ids) }
         Divider()
         Button("Delete", role: .destructive) { deleteAssets(ids: ids) }
+    }
+
+    private func multicamGroups(containing ids: [String]) -> [MulticamGroup] {
+        editor.multicamGroups.filter { group in
+            ids.contains { id in group.member(for: id) != nil }
+        }
     }
 
     private func canCreateMulticam(ids: [String]) -> Bool {

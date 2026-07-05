@@ -87,7 +87,8 @@ final class TimelineInputController {
 
             let localX = point.x - rect.minX
             let isCommand = event.modifierFlags.contains(.command)
-            let onTrimHandle = !isOption && Self.isOnTrimZone(localX: localX, clipWidth: rect.width)
+            let trimEdge = isOption ? nil : Self.trimEdgeHit(localX: localX, clipWidth: rect.width)
+            let onTrimHandle = trimEdge != nil
             let rippleTrim = isShift && onTrimHandle
             let rollTrim = isCommand && !isShift && onTrimHandle
 
@@ -113,7 +114,9 @@ final class TimelineInputController {
                 editor.selectedClipIds = linkedOn ? editor.expandToLinkGroup([clip.id]) : [clip.id]
             }
 
-            if let edge = fadeKneeHit(at: point, clip: clip, clipRect: rect) {
+            // Explicit modifier-trim gestures (roll/ripple) win over the fade
+            // knee, whose hit rect overlaps the trim zone on unfaded clips.
+            if !rollTrim, !rippleTrim, let edge = fadeKneeHit(at: point, clip: clip, clipRect: rect) {
                 let originalFrames = clip.fadeFrames(edge)
                 dragState = .fadeKnee(DragState.FadeKneeDrag(
                     clipId: clip.id,
@@ -139,7 +142,7 @@ final class TimelineInputController {
             } else if isCommand, clip.mediaType == .audio,
                       addVolumeKeyframeOnClick(at: point, clip: clip, clipRect: rect) {
                 dragState = .idle
-            } else if !isOption, localX <= Trim.handleWidth {
+            } else if trimEdge == .left {
                 let rollNeighbor = rollTrim ? editor.rollNeighbor(of: clip.id, edge: .left) : nil
                 dragState = .trimLeft(DragState.TrimDrag(
                     clipId: clip.id,
@@ -154,7 +157,7 @@ final class TimelineInputController {
                     isRoll: rollNeighbor != nil,
                     rollNeighborId: rollNeighbor?.id
                 ))
-            } else if !isOption, localX >= rect.width - Trim.handleWidth {
+            } else if trimEdge == .right {
                 let rollNeighbor = rollTrim ? editor.rollNeighbor(of: clip.id, edge: .right) : nil
                 dragState = .trimRight(DragState.TrimDrag(
                     clipId: clip.id,
@@ -572,7 +575,7 @@ final class TimelineInputController {
             let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
             let rect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
             let localX = point.x - rect.minX
-            if Self.isOnTrimZone(localX: localX, clipWidth: rect.width) {
+            if Self.trimEdgeHit(localX: localX, clipWidth: rect.width) != nil {
                 NSCursor.resizeLeftRight.set()
                 return
             }
@@ -589,8 +592,13 @@ final class TimelineInputController {
         NSCursor.arrow.set()
     }
 
-    private static func isOnTrimZone(localX: CGFloat, clipWidth: CGFloat) -> Bool {
-        localX <= Trim.handleWidth || localX >= clipWidth - Trim.handleWidth
+    /// Which trim edge a grab at `localX` targets, if any. The zone is wider
+    /// than the drawn handle but never eats a narrow clip's move area.
+    static func trimEdgeHit(localX: CGFloat, clipWidth: CGFloat) -> EditorViewModel.TrimEdge? {
+        let zone = min(Trim.grabWidth, max(Trim.handleWidth, clipWidth / 3))
+        if localX <= zone { return localX <= clipWidth - localX ? .left : .right }
+        if localX >= clipWidth - zone { return .right }
+        return nil
     }
 
     func audioVolumeKfHit(at point: NSPoint, clip: Clip, clipRect: NSRect) -> Int? {

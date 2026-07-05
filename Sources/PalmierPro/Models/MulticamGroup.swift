@@ -6,7 +6,12 @@ import Foundation
 /// stays flat — angle switching just rewrites a clip's mediaRef and trim.
 struct MulticamGroup: Codable, Sendable, Equatable, Identifiable {
     enum Role: String, Codable, Sendable {
-        case camera, mic
+        /// `both` = a camera whose embedded audio is also that person's mic
+        /// (each participant recorded one file, no separate mic track).
+        case camera, mic, both
+
+        var isCamera: Bool { self == .camera || self == .both }
+        var isMic: Bool { self == .mic || self == .both }
     }
 
     struct Member: Codable, Sendable, Equatable {
@@ -61,8 +66,8 @@ struct MulticamGroup: Codable, Sendable, Equatable, Identifiable {
         members.first { $0.mediaRef == mediaRef }
     }
 
-    var cameras: [Member] { members.filter { $0.role == .camera } }
-    var mics: [Member] { members.filter { $0.role == .mic } }
+    var cameras: [Member] { members.filter { $0.role.isCamera } }
+    var mics: [Member] { members.filter { $0.role.isMic } }
 
     /// Camera framing `speaker`, if the group maps one.
     func camera(forSpeaker speaker: String) -> Member? {

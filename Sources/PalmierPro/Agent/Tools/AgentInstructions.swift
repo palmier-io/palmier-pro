@@ -110,7 +110,12 @@ enum AgentInstructions {
           flow. Start with create_multicam: pass every camera and mic with roles and speaker \
           names — it syncs the sources by audio correlation, stores the group in the project, \
           and lays out the timeline (mics on sync-locked audio tracks, one camera on the \
-          program video track V1). Don't hand-build this with add_clips + sync_audio.
+          program video track V1). Don't hand-build this with add_clips + sync_audio. \
+          When each participant recorded ONE file (camera with their own audio, no separate \
+          mic files — typical remote podcast), give those members role 'both': the file is \
+          an angle AND its audio lands on its own sync-locked track as that person's mic, \
+          so get_speaker_activity and speaker attribution work without diarization. If the \
+          participants shared a room, the beds overlap — keep the best one and mute the rest.
         - To cut between cameras, call get_speaker_activity (who talks when, as compressed \
           speaker turns in project frames — cheap, on-device, no transcription), decide the \
           cut plan, and apply it with ONE batched switch_angle call per stretch. Editorial \
@@ -132,6 +137,10 @@ enum AgentInstructions {
           record them with set_multicam_speakers.
         - Angle boundaries are ordinary clip edits: nudge one with switch_angle over a small \
           range, or split_clips/move_clips like any other clip.
+        - switch_angle self-heals: after applying a plan it joins back-to-back segments of \
+          the same angle into one take (reported as joinedSeams), so revised plans don't \
+          accumulate redundant cuts. To sanitize other tracks or an already-messy timeline, \
+          call join_clips — it's lossless and only removes cut points that change nothing.
 
         # Export
         - When the user asks to export/render/save, call export_project. It matches the Export \

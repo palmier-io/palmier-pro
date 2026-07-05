@@ -187,6 +187,135 @@ struct SplitClipTests {
     }
 }
 
+@Suite("EditorViewModel — joinThroughEdits")
+@MainActor
+struct JoinThroughEditsTests {
+
+    @Test func joinRestoresSplitClip() {
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 60, trimStart: 10, trimEnd: 5)
+        clip.fadeInFrames = 8
+        clip.fadeOutFrames = 12
+        clip.opacityTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 1.0),
+            Keyframe(frame: 60, value: 0.0),
+        ])
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        _ = e.splitClips(at: [(0, 20), (0, 40)])
+        #expect(e.timeline.tracks[0].clips.count == 3)
+        // What the post-split curve renders at frame 30 — join must preserve it.
+        let middle = e.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }[1]
+        let expectedAt30 = middle.opacityTrack?.sample(at: 30 - middle.startFrame, fallback: -1)
+
+        let joined = e.joinThroughEdits(trackIndex: 0)
+        #expect(joined == 2)
+        let merged = e.timeline.tracks[0].clips
+        #expect(merged.count == 1)
+        #expect(merged[0].startFrame == 0)
+        #expect(merged[0].durationFrames == 60)
+        #expect(merged[0].trimStartFrame == 10)
+        #expect(merged[0].trimEndFrame == 5)
+        #expect(merged[0].fadeInFrames == 8)
+        #expect(merged[0].fadeOutFrames == 12)
+        // Keyframe curve survives: same sample as before the join.
+        #expect(merged[0].opacityTrack?.sample(at: 30, fallback: -1) == expectedAt30)
+    }
+
+    @Test func refusesSourceDiscontinuity() {
+        // Word-cut shape: b resumes 15 source frames later than a left off.
+        let a = Fixtures.clip(id: "a", start: 0, duration: 30, trimStart: 0)
+        let b = Fixtures.clip(id: "b", start: 30, duration: 30, trimStart: 45)
+        let e = editor([Fixtures.videoTrack(clips: [a, b])])
+        #expect(e.joinThroughEdits(trackIndex: 0) == 0)
+        #expect(e.timeline.tracks[0].clips.count == 2)
+    }
+
+    @Test func refusesDifferentMediaAndGaps() {
+        let a = Fixtures.clip(id: "a", mediaRef: "m1", start: 0, duration: 30)
+        let b = Fixtures.clip(id: "b", mediaRef: "m2", start: 30, duration: 30, trimStart: 30)
+        let c = Fixtures.clip(id: "c", mediaRef: "m1", start: 70, duration: 30, trimStart: 30)
+        let e = editor([Fixtures.videoTrack(clips: [a, b, c])])
+        #expect(e.joinThroughEdits(trackIndex: 0) == 0)
+    }
+
+    @Test func refusesDifferentFramingOrFadeAtSeam() {
+        var a = Fixtures.clip(id: "a", start: 0, duration: 30)
+        var b = Fixtures.clip(id: "b", start: 30, duration: 30, trimStart: 30)
+        b.transform = Transform(centerX: 0.25, centerY: 0.5, width: 0.5, height: 0.5)
+        let e1 = editor([Fixtures.videoTrack(clips: [a, b])])
+        #expect(e1.joinThroughEdits(trackIndex: 0) == 0)
+
+        a = Fixtures.clip(id: "a", start: 0, duration: 30)
+        a.fadeOutFrames = 10
+        b = Fixtures.clip(id: "b", start: 30, duration: 30, trimStart: 30)
+        let e2 = editor([Fixtures.videoTrack(clips: [a, b])])
+        #expect(e2.joinThroughEdits(trackIndex: 0) == 0)
+    }
+
+    @Test func joinsLinkedPairsTogether() {
+        var v = Fixtures.clip(id: "v", start: 0, duration: 60)
+        v.linkGroupId = "g1"
+        var a = Fixtures.clip(id: "a", mediaType: .audio, start: 0, duration: 60)
+        a.linkGroupId = "g1"
+        let e = editor([
+            Fixtures.videoTrack(clips: [v]),
+            Fixtures.audioTrack(clips: [a]),
+        ])
+        _ = e.splitClip(clipId: "v", atFrame: 30)
+        #expect(e.timeline.tracks.flatMap(\.clips).count == 4)
+
+        #expect(e.joinThroughEdits(trackIndex: 0) == 1)
+        let clips = e.timeline.tracks.flatMap(\.clips)
+        #expect(clips.count == 2)
+        #expect(clips.allSatisfy { $0.durationFrames == 60 })
+        #expect(Set(clips.compactMap(\.linkGroupId)) == ["g1"])
+    }
+
+    @Test func refusesLinkedSeamWhenPartnerSeamDiffers() {
+        // Video halves are a through edit, but the audio partner halves are not
+        // (volume differs) — the seam must stay.
+        var v = Fixtures.clip(id: "v", start: 0, duration: 60)
+        v.linkGroupId = "g1"
+        var a = Fixtures.clip(id: "a", mediaType: .audio, start: 0, duration: 60)
+        a.linkGroupId = "g1"
+        let e = editor([
+            Fixtures.videoTrack(clips: [v]),
+            Fixtures.audioTrack(clips: [a]),
+        ])
+        let rightIds = e.splitClip(clipId: "v", atFrame: 30)
+        let audioRight = e.timeline.tracks[1].clips.first { rightIds.contains($0.id) }!
+        e.mutateClips(ids: [audioRight.id], actionName: "Volume") { $0.volume = 0.5 }
+
+        #expect(e.joinThroughEdits(trackIndex: 0) == 0)
+        #expect(e.timeline.tracks.flatMap(\.clips).count == 4)
+    }
+
+    @Test func rangeLimitsJoining() {
+        let clip = Fixtures.clip(id: "c1", start: 0, duration: 90)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        _ = e.splitClips(at: [(0, 30), (0, 60)])
+
+        #expect(e.joinThroughEdits(trackIndex: 0, in: FrameRange(start: 50, end: 70)) == 1)
+        let clips = e.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(clips.map(\.startFrame) == [0, 30])
+        #expect(clips.map(\.durationFrames) == [30, 60])
+    }
+
+    @Test func joinIsUndoable() {
+        let clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let um = UndoManager()
+        e.undoManager = um
+        _ = e.splitClip(clipId: "c1", atFrame: 30)
+        // Tests never spin the run loop, so split and join would land in one
+        // undo group — drop the split's actions to isolate the join.
+        um.removeAllActions()
+        _ = e.joinThroughEdits(trackIndex: 0)
+        #expect(e.timeline.tracks[0].clips.count == 1)
+        um.undo()
+        #expect(e.timeline.tracks[0].clips.count == 2)
+    }
+}
+
 @Suite("EditorViewModel — applyTimelineSettings")
 @MainActor
 struct ApplyTimelineSettingsTests {

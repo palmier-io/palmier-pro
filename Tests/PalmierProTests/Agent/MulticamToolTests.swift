@@ -81,7 +81,7 @@ struct CreateMulticamTests {
         #expect(h.editor.timeline.tracks[0].type == .video)
         #expect(h.editor.timeline.tracks[1].type == .audio)
         #expect(h.editor.timeline.tracks[2].type == .audio)
-        #expect(h.editor.timeline.tracks.allSatisfy(\.syncLocked))
+        #expect(h.editor.timeline.tracks.allSatisfy { $0.syncLocked })
         // Default camera (first) on the program track; mics full length.
         #expect(h.editor.timeline.tracks[0].clips.first?.mediaRef == "cam-alice-0000")
         #expect(h.editor.timeline.tracks[1].clips.count == 1)
@@ -121,6 +121,98 @@ struct CreateMulticamTests {
         _ = try await h.runOK("create_multicam", args: args)
         #expect(h.editor.timeline.tracks.isEmpty)
         #expect(h.editor.multicamGroups.count == 1)
+    }
+}
+
+@Suite("ToolExecutor — create_multicam role 'both'")
+@MainActor
+struct CreateMulticamBothRoleTests {
+
+    /// Remote-podcast shape: each participant has one file — camera + own audio.
+    private func harness() -> ToolHarness {
+        let h = ToolHarness(timeline: Fixtures.timeline())
+        h.addAsset(id: "cam-alice-0000", type: .video, duration: 10, hasAudio: true)
+        h.addAsset(id: "cam-bob-000000", type: .video, duration: 10, hasAudio: true)
+        return h
+    }
+
+    private var createArgs: [String: Any] {
+        [
+            "name": "Remote Pod",
+            "sync": false,
+            "members": [
+                ["mediaRef": "cam-alice-0000", "role": "both", "speaker": "Alice"],
+                ["mediaRef": "cam-bob-000000", "role": "both", "speaker": "Bob", "syncOffsetFrames": 30],
+            ],
+        ]
+    }
+
+    @Test func bothMembersCountAsCameraAndMic() async throws {
+        let h = harness()
+        _ = try await h.runOK("create_multicam", args: createArgs)
+        let group = try #require(h.editor.multicamGroups.first)
+        #expect(group.cameras.map(\.mediaRef) == ["cam-alice-0000", "cam-bob-000000"])
+        #expect(group.mics.map(\.mediaRef) == ["cam-alice-0000", "cam-bob-000000"])
+    }
+
+    @Test func layoutPlacesEachBothMembersAudioOnItsOwnTrack() async throws {
+        let h = harness()
+        let result = try await h.runOK("create_multicam", args: createArgs) as? [String: Any]
+
+        // Program video track + one audio track per participant.
+        #expect(result?["programTrackIndex"] as? Int == 0)
+        #expect(h.editor.timeline.tracks.count == 3)
+        #expect(h.editor.timeline.tracks[0].type == .video)
+        #expect(h.editor.timeline.tracks[1].type == .audio)
+        #expect(h.editor.timeline.tracks[2].type == .audio)
+        #expect(h.editor.timeline.tracks.allSatisfy { $0.syncLocked })
+
+        // Program shows Alice's picture; the audio beds are the same files, audio-only.
+        #expect(h.editor.timeline.tracks[0].clips.first?.mediaRef == "cam-alice-0000")
+        let beds = [h.editor.timeline.tracks[1].clips.first, h.editor.timeline.tracks[2].clips.first]
+        #expect(beds.compactMap { $0?.mediaRef } == ["cam-alice-0000", "cam-bob-000000"])
+        #expect(beds.allSatisfy { $0?.mediaType == .audio })
+        // Bob started 30 group-frames later — his bed lands offset on the timeline.
+        #expect(beds[0]?.startFrame == 0)
+        #expect(beds[1]?.startFrame == 30)
+    }
+
+    @Test func switchAngleCutsBetweenBothMembers() async throws {
+        let h = harness()
+        _ = try await h.runOK("create_multicam", args: createArgs)
+        let result = try await h.runOK("switch_angle", args: [
+            "trackIndex": 0,
+            "switches": [["startFrame": 100, "endFrame": 200, "mediaRef": "cam-bob-000000"]],
+        ]) as? [String: Any]
+        #expect(result?["switched"] as? Int == 1)
+        let mid = h.editor.timeline.tracks[0].clips.first { $0.startFrame == 100 }
+        #expect(mid?.mediaRef == "cam-bob-000000")
+        // Group time 100 in Alice's file = source 70 in Bob's (offset 30).
+        #expect(mid?.trimStartFrame == 70)
+    }
+
+    @Test func rejectsBothRoleWithoutAudio() async {
+        let h = ToolHarness(timeline: Fixtures.timeline())
+        h.addAsset(id: "cam-mute-00000", type: .video, duration: 10, hasAudio: false)
+        h.addAsset(id: "cam-alice-0000", type: .video, duration: 10, hasAudio: true)
+        let result = await h.runRaw("create_multicam", args: [
+            "sync": false,
+            "members": [
+                ["mediaRef": "cam-mute-00000", "role": "both"],
+                ["mediaRef": "cam-alice-0000", "role": "both"],
+            ],
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("video assets with audio"))
+    }
+
+    @Test func speakerActivityAcceptsBothMembersAsMics() async throws {
+        let h = harness()
+        _ = try await h.runOK("create_multicam", args: createArgs)
+        // Stub URLs have no readable audio, but the mic-membership guards must
+        // pass: the failure mode is "no envelope", not "no mic members".
+        let result = await h.runRaw("get_speaker_activity", args: [:])
+        #expect(!ToolHarness.textOf(result).contains("no mic members"))
     }
 }
 
@@ -211,6 +303,57 @@ struct SwitchAngleTests {
         ])
         #expect(result.isError)
         #expect(ToolHarness.textOf(result).contains("not a member of any multicam group"))
+    }
+
+    @Test func clampsHeadWhenCameraStartedLate() async throws {
+        let h = harness() // camera B offset 60
+        let result = try await h.runOK("switch_angle", args: [
+            "trackIndex": 0,
+            "switches": [["startFrame": 0, "endFrame": 200, "mediaRef": "cam-b-00000000"]],
+        ]) as? [String: Any]
+
+        // The uncoverable head stays camera A; [60, 200) switches.
+        let clamped = try #require(result?["clamped"] as? [[String: Any]])
+        #expect(clamped.first?["applied"] as? [Int] == [60, 200])
+        let clips = h.editor.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(clips.map(\.mediaRef) == ["cam-a-00000000", "cam-b-00000000", "cam-a-00000000"])
+        let mid = clips[1]
+        #expect(mid.startFrame == 60 && mid.endFrame == 200)
+        // Group time 60 is camera B's source frame 0.
+        #expect(mid.trimStartFrame == 0)
+    }
+
+    @Test func clampsTailWhenCameraRunsOut() async throws {
+        // Camera B: 150 frames at offset 60 → covers group time 60..210.
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [
+                Fixtures.clip(id: "program-clip-01", mediaRef: "cam-a-00000000", start: 0, duration: 300, trimEnd: 0),
+            ]),
+        ]))
+        h.addAsset(id: "cam-a-00000000", type: .video, duration: 10)
+        h.addAsset(id: "cam-b-00000000", type: .video, duration: 5)
+        h.editor.mediaManifest.multicamGroups = [MulticamGroup(
+            id: "group-00000000", name: "Test",
+            members: [
+                MulticamGroup.Member(mediaRef: "cam-a-00000000", role: .camera, syncOffsetFrames: 0),
+                MulticamGroup.Member(mediaRef: "cam-b-00000000", role: .camera, syncOffsetFrames: 60),
+            ]
+        )]
+
+        let result = try await h.runOK("switch_angle", args: [
+            "trackIndex": 0,
+            "switches": [["startFrame": 100, "endFrame": 300, "mediaRef": "cam-b-00000000"]],
+        ]) as? [String: Any]
+
+        let clamped = try #require(result?["clamped"] as? [[String: Any]])
+        #expect(clamped.first?["applied"] as? [Int] == [100, 210])
+        let clips = h.editor.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(clips.map(\.mediaRef) == ["cam-a-00000000", "cam-b-00000000", "cam-a-00000000"])
+        let mid = clips[1]
+        #expect(mid.startFrame == 100 && mid.endFrame == 210)
+        #expect(mid.trimStartFrame == 40)
+        // The tail past camera B's footage stays camera A, content time intact.
+        #expect(clips[2].startFrame == 210 && clips[2].trimStartFrame == 210)
     }
 
     @Test func batchedSwitchesApplyInOneCall() async throws {
@@ -305,13 +448,16 @@ struct SwitchAngleLayoutTests {
             ],
         ])
 
-        // Overlay cleared, program restored to full-frame camera A.
+        // Overlay cleared, program restored to full-frame camera A — and since
+        // the whole track is one continuous take again, the seams heal away.
         let overlay = h.editor.timeline.tracks[0]
         #expect(overlay.clips.isEmpty)
         let program = h.editor.timeline.tracks[1]
-        let mid = try #require(program.clips.first { $0.startFrame == 100 })
-        #expect(mid.mediaRef == "cam-a-00000000")
-        #expect(abs(mid.transform.width - 1.0) < 0.001)
+        let clip = try #require(program.clips.first)
+        #expect(program.clips.count == 1)
+        #expect(clip.mediaRef == "cam-a-00000000")
+        #expect(clip.startFrame == 0 && clip.durationFrames == 300)
+        #expect(abs(clip.transform.width - 1.0) < 0.001)
     }
 
     @Test func layoutRejectsMissingSlots() async {
@@ -347,6 +493,42 @@ struct SwitchAngleLayoutTests {
         // Nothing placed, nothing split.
         #expect(h.editor.timeline.tracks.count == 1)
         #expect(h.editor.timeline.tracks[0].clips.count == 1)
+    }
+
+    @Test func joinsBackToBackSameAngleSegmentsIntoOneTake() async throws {
+        let h = harness()
+        // Two adjacent switches to the same camera — a revised cut plan shape.
+        let result = try await h.runOK("switch_angle", args: [
+            "trackIndex": 0,
+            "switches": [
+                ["startFrame": 100, "endFrame": 150, "mediaRef": "cam-b-00000000"],
+                ["startFrame": 150, "endFrame": 200, "mediaRef": "cam-b-00000000"],
+            ],
+        ]) as? [String: Any]
+        #expect(result?["joinedSeams"] as? Int == 1)
+
+        let clips = h.editor.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(clips.count == 3)
+        #expect(clips[1].mediaRef == "cam-b-00000000")
+        #expect(clips[1].startFrame == 100 && clips[1].durationFrames == 100)
+        // Group time at frame 100 = 100 in A; B shows it at 100 - 60 = 40.
+        #expect(clips[1].trimStartFrame == 40)
+    }
+
+    @Test func repeatedSwitchAngleIterationsDoNotAccumulateCuts() async throws {
+        let h = harness()
+        _ = try await h.runOK("switch_angle", args: [
+            "trackIndex": 0,
+            "switches": [["startFrame": 100, "endFrame": 200, "mediaRef": "cam-b-00000000"]],
+        ])
+        // Re-run a revised plan over an overlapping span, same angle.
+        _ = try await h.runOK("switch_angle", args: [
+            "trackIndex": 0,
+            "switches": [["startFrame": 150, "endFrame": 200, "mediaRef": "cam-b-00000000"]],
+        ])
+        let clips = h.editor.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(clips.map(\.startFrame) == [0, 100, 200])
+        #expect(clips[1].mediaRef == "cam-b-00000000")
     }
 
     @Test func rejectsMixingMediaRefAndLayout() async {
@@ -400,6 +582,188 @@ struct SetMulticamSpeakersTests {
             "speakers": [["mediaRef": "other-00000000", "speaker": "Bob"]],
         ])
         #expect(result.isError)
+    }
+}
+
+@Suite("ToolExecutor — remove_multicam")
+@MainActor
+struct RemoveMulticamTests {
+
+    private func harness(groups: [MulticamGroup]) -> ToolHarness {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [
+                Fixtures.clip(id: "program-clip-01", mediaRef: "cam-a-00000000", start: 0, duration: 100, trimEnd: 0),
+            ]),
+        ]))
+        h.addAsset(id: "cam-a-00000000", type: .video, duration: 10)
+        h.editor.mediaManifest.multicamGroups = groups
+        return h
+    }
+
+    private var group: MulticamGroup {
+        MulticamGroup(id: "group-00000000", name: "Test", members: [
+            MulticamGroup.Member(mediaRef: "cam-a-00000000", role: .camera),
+        ])
+    }
+
+    @Test func removesSoleGroupWithoutId() async {
+        let h = harness(groups: [group])
+        let result = await h.runRaw("remove_multicam", args: [:])
+        #expect(!result.isError)
+        #expect(h.editor.multicamGroups.isEmpty)
+        #expect(h.editor.timeline.tracks[0].clips.count == 1)
+    }
+
+    @Test func removesById() async {
+        var second = group
+        second.id = "group-11111111"
+        second.name = "Other"
+        let h = harness(groups: [group, second])
+        let result = await h.runRaw("remove_multicam", args: ["groupId": "group-00000000"])
+        #expect(!result.isError)
+        #expect(h.editor.multicamGroups.map(\.id) == ["group-11111111"])
+    }
+
+    @Test func requiresIdWhenAmbiguous() async {
+        var second = group
+        second.id = "group-11111111"
+        let h = harness(groups: [group, second])
+        let result = await h.runRaw("remove_multicam", args: [:])
+        #expect(result.isError)
+        #expect(h.editor.multicamGroups.count == 2)
+    }
+
+    @Test func errorsWhenNoGroups() async {
+        let h = harness(groups: [])
+        let result = await h.runRaw("remove_multicam", args: [:])
+        #expect(result.isError)
+    }
+}
+
+@Suite("Multicam — duplicate group resolution")
+@MainActor
+struct MulticamDuplicateGroupTests {
+
+    /// Legacy pile-up: an old group with stale sync offsets and a newer,
+    /// correctly-synced group over the same cameras.
+    private func harness() -> ToolHarness {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [
+                Fixtures.clip(id: "program-clip-01", mediaRef: "cam-a-00000000", start: 0, duration: 300, trimEnd: 0),
+            ]),
+        ]))
+        h.addAsset(id: "cam-a-00000000", type: .video, duration: 10)
+        h.addAsset(id: "cam-b-00000000", type: .video, duration: 10)
+        h.editor.mediaManifest.multicamGroups = [
+            MulticamGroup(id: "stale-00000000", name: "Test", members: [
+                MulticamGroup.Member(mediaRef: "cam-a-00000000", role: .camera, syncOffsetFrames: 0),
+                MulticamGroup.Member(mediaRef: "cam-b-00000000", role: .camera, syncOffsetFrames: 30, speaker: "Bob"),
+            ]),
+            MulticamGroup(id: "fresh-00000000", name: "Test", members: [
+                MulticamGroup.Member(mediaRef: "cam-a-00000000", role: .camera, syncOffsetFrames: 0),
+                MulticamGroup.Member(mediaRef: "cam-b-00000000", role: .camera, syncOffsetFrames: 60),
+            ]),
+        ]
+        return h
+    }
+
+    @Test func lookupPrefersNewestGroup() {
+        let h = harness()
+        #expect(h.editor.multicamGroup(containing: "cam-b-00000000")?.id == "fresh-00000000")
+    }
+
+    /// Regression: switch_angle silently used the oldest duplicate's stale
+    /// offset, putting the switched camera out of sync with the audio bed.
+    @Test func switchAngleUsesNewestGroupOffsets() async throws {
+        let h = harness()
+        _ = try await h.runOK("switch_angle", args: [
+            "trackIndex": 0,
+            "switches": [["startFrame": 100, "endFrame": 200, "mediaRef": "cam-b-00000000"]],
+        ])
+        let mid = try #require(h.editor.timeline.tracks[0].clips.first { $0.startFrame == 100 })
+        #expect(mid.mediaRef == "cam-b-00000000")
+        // Newest offset (60) → trim 100 − 60 = 40; the stale group would give 70.
+        #expect(mid.trimStartFrame == 40)
+    }
+
+    @Test func upsertCollapsesDuplicatesAndPreservesSpeakers() {
+        let h = harness()
+        let result = h.editor.upsertMulticamGroup(MulticamGroup(name: "Test", members: [
+            MulticamGroup.Member(mediaRef: "cam-a-00000000", role: .camera, syncOffsetFrames: 0, speaker: "Alice"),
+            MulticamGroup.Member(mediaRef: "cam-b-00000000", role: .camera, syncOffsetFrames: 24),
+        ]))
+        #expect(h.editor.multicamGroups.count == 1)
+        // Keeps the first existing group's id; adopts the new offsets.
+        #expect(result.id == "stale-00000000")
+        #expect(result.member(for: "cam-b-00000000")?.syncOffsetFrames == 24)
+        // New speaker wins; missing speaker backfilled from the old groups.
+        #expect(result.member(for: "cam-a-00000000")?.speaker == "Alice")
+        #expect(result.member(for: "cam-b-00000000")?.speaker == "Bob")
+    }
+
+    @Test func recreatingMulticamDoesNotDuplicate() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline())
+        h.addAsset(id: "cam-a-00000000", type: .video, duration: 10)
+        h.addAsset(id: "cam-b-00000000", type: .video, duration: 10)
+        let members: [[String: Any]] = [
+            ["mediaRef": "cam-a-00000000", "role": "camera", "speaker": "Alice"],
+            ["mediaRef": "cam-b-00000000", "role": "camera", "syncOffsetFrames": 30],
+        ]
+        _ = try await h.runOK("create_multicam", args: ["sync": false, "layout": false, "members": members])
+        let firstId = try #require(h.editor.multicamGroups.first?.id)
+
+        var again = members
+        again[1]["syncOffsetFrames"] = 24
+        _ = try await h.runOK("create_multicam", args: ["sync": false, "layout": false, "members": again])
+
+        #expect(h.editor.multicamGroups.count == 1)
+        let group = try #require(h.editor.multicamGroups.first)
+        #expect(group.id == firstId)
+        #expect(group.member(for: "cam-b-00000000")?.syncOffsetFrames == 24)
+        #expect(group.member(for: "cam-a-00000000")?.speaker == "Alice")
+    }
+}
+
+@Suite("Multicam — transcript dedupe")
+@MainActor
+struct MulticamCaptionTargetTests {
+
+    private func harness(withBed: Bool) -> ToolHarness {
+        var tracks = [
+            Fixtures.videoTrack(clips: [
+                Fixtures.clip(id: "program-a-0001", mediaRef: "cam-a-00000000", start: 0, duration: 150),
+                Fixtures.clip(id: "program-b-0001", mediaRef: "cam-b-00000000", start: 150, duration: 150),
+            ]),
+        ]
+        if withBed {
+            tracks.append(Fixtures.audioTrack(clips: [
+                Fixtures.clip(id: "audio-bed-0001", mediaRef: "cam-a-00000000", mediaType: .audio, start: 0, duration: 300),
+            ]))
+        }
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: tracks))
+        h.addAsset(id: "cam-a-00000000", type: .video, duration: 10, hasAudio: true)
+        h.addAsset(id: "cam-b-00000000", type: .video, duration: 10, hasAudio: true)
+        h.editor.mediaManifest.multicamGroups = [MulticamGroup(
+            id: "group-00000000", name: "Test",
+            members: [
+                MulticamGroup.Member(mediaRef: "cam-a-00000000", role: .camera),
+                MulticamGroup.Member(mediaRef: "cam-b-00000000", role: .camera),
+            ]
+        )]
+        return h
+    }
+
+    /// Regression: cameras' embedded audio duplicated the group's audio bed in
+    /// get_transcript, and the doubled words then tripped remove_words.
+    @Test func groupAudioSuppressesCameraEmbeddedAudio() {
+        let h = harness(withBed: true)
+        // Only the bed speaks for the group — including the switched cam-b segment.
+        #expect(h.editor.captionTargets(ids: []).map(\.id) == ["audio-bed-0001"])
+    }
+
+    @Test func camerasTranscribeWhenGroupHasNoAudioOnTimeline() {
+        let h = harness(withBed: false)
+        #expect(h.editor.captionTargets(ids: []).map(\.id) == ["program-a-0001", "program-b-0001"])
     }
 }
 

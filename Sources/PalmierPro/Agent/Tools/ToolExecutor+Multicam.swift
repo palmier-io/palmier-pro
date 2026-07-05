@@ -56,6 +56,18 @@ fileprivate struct SwitchAngleInput: DecodableToolArgs {
     }
 }
 
+fileprivate struct RemoveMulticamInput: DecodableToolArgs {
+    let groupId: String?
+    static let allowedKeys: Set<String> = ["groupId"]
+}
+
+fileprivate struct JoinClipsInput: DecodableToolArgs {
+    let trackIndex: Int?
+    let startFrame: Int?
+    let endFrame: Int?
+    static let allowedKeys: Set<String> = ["trackIndex", "startFrame", "endFrame"]
+}
+
 fileprivate struct SetMulticamSpeakersInput: DecodableToolArgs {
     let groupId: String
     let speakers: [Entry]
@@ -91,7 +103,7 @@ extension ToolExecutor {
         for (idx, m) in input.members.enumerated() {
             let asset = try asset(m.mediaRef, editor: editor)
             guard let role = MulticamGroup.Role(rawValue: m.role) else {
-                throw ToolError("members[\(idx)]: role must be 'camera' or 'mic' (got '\(m.role)')")
+                throw ToolError("members[\(idx)]: role must be 'camera', 'mic', or 'both' (got '\(m.role)')")
             }
             switch role {
             case .camera:
@@ -101,6 +113,10 @@ extension ToolExecutor {
             case .mic:
                 guard asset.type == .audio || (asset.type == .video && asset.hasAudio) else {
                     throw ToolError("members[\(idx)]: mic member \(asset.id) has no audio")
+                }
+            case .both:
+                guard asset.type == .video && asset.hasAudio else {
+                    throw ToolError("members[\(idx)]: 'both' members must be video assets with audio (\(asset.id) is \(asset.type.rawValue)\(asset.type == .video ? ", no audio" : ""))")
                 }
             }
             if members.contains(where: { $0.mediaRef == asset.id }) {
@@ -127,7 +143,7 @@ extension ToolExecutor {
                 }
                 referenceRef = explicit
             } else {
-                referenceRef = (members.first { $0.role == .mic } ?? members[0]).mediaRef
+                referenceRef = (members.first { $0.role.isMic } ?? members[0]).mediaRef
             }
             let toSync = members.map(\.mediaRef).filter { !explicitOffsets.contains($0) && $0 != referenceRef }
             if !toSync.isEmpty {
@@ -147,14 +163,14 @@ extension ToolExecutor {
             }
         }
 
-        let group = MulticamGroup(
+        var group = MulticamGroup(
             name: input.name ?? "Multicam \(editor.multicamGroups.count + 1)",
             members: members
         )
 
         var layoutResult: EditorViewModel.MulticamLayoutResult?
         withUndoGroup(editor, actionName: "Create Multicam Group") {
-            editor.addMulticamGroup(group)
+            group = editor.upsertMulticamGroup(group)
             if input.layout ?? true {
                 layoutResult = editor.layoutMulticamGroup(group, startFrame: max(0, input.startFrame ?? 0))
             }
@@ -330,6 +346,9 @@ extension ToolExecutor {
             "switched": outcome.switchedClipIds.count,
             "splits": outcome.splitCount,
         ]
+        if outcome.joinedSeams > 0 {
+            payload["joinedSeams"] = outcome.joinedSeams
+        }
         if !outcome.placedOverlayClipIds.isEmpty {
             payload["overlayClips"] = outcome.placedOverlayClipIds.count
         }
@@ -339,6 +358,15 @@ extension ToolExecutor {
         }
         if let minStart = requests.map(\.range.start).min(), let maxEnd = requests.map(\.range.end).max() {
             payload["rangeCovered"] = [minStart, maxEnd]
+        }
+        if !outcome.clamped.isEmpty {
+            payload["clamped"] = outcome.clamped.map { c -> [String: Any] in
+                [
+                    "requested": [c.requested.start, c.requested.end],
+                    "applied": [c.applied.start, c.applied.end],
+                    "reason": c.message,
+                ]
+            }
         }
         if !outcome.skipped.isEmpty {
             payload["skipped"] = outcome.skipped.map { skip -> [String: Any] in
@@ -382,6 +410,46 @@ extension ToolExecutor {
             .map { "\($0.mediaRef) (\($0.role.rawValue)) → \($0.speaker!)" }
             .joined(separator: "; ")
         return .ok("Updated speakers on '\(group.name)': \(mapping.isEmpty ? "all cleared" : mapping)")
+    }
+
+    // MARK: remove_multicam
+
+    func removeMulticam(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        let input: RemoveMulticamInput = try decodeToolArgs(args, path: "remove_multicam")
+        let group = try resolveMulticamGroup(input.groupId, editor: editor)
+        withUndoGroup(editor, actionName: "Remove Multicam Group") {
+            editor.removeMulticamGroup(id: group.id)
+        }
+        return .ok("Removed multicam group '\(group.name)' (\(group.id)). Timeline clips were left in place as ordinary clips.")
+    }
+
+    // MARK: join_clips
+
+    func joinClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        let input: JoinClipsInput = try decodeToolArgs(args, path: "join_clips")
+        if let ti = input.trackIndex {
+            guard editor.timeline.tracks.indices.contains(ti) else {
+                throw ToolError("trackIndex \(ti) out of range (0..\(editor.timeline.tracks.count - 1))")
+            }
+        }
+        if let s = input.startFrame, let e = input.endFrame, s >= e {
+            throw ToolError("startFrame (\(s)) must be less than endFrame (\(e))")
+        }
+        let range: FrameRange? = (input.startFrame != nil || input.endFrame != nil)
+            ? FrameRange(start: input.startFrame ?? 0, end: input.endFrame ?? Int.max)
+            : nil
+        let trackIndices = input.trackIndex.map { [$0] } ?? Array(editor.timeline.tracks.indices)
+
+        var joined = 0
+        withUndoGroup(editor, actionName: "Join Clips") {
+            for ti in trackIndices {
+                joined += editor.joinThroughEdits(trackIndex: ti, in: range)
+            }
+        }
+        guard joined > 0 else {
+            return .ok("No through edits found — every seam changes content (different source, discontinuous time, or differing properties). Nothing to join.")
+        }
+        return .ok("Joined \(joined) through edit\(joined == 1 ? "" : "s"). Clip ids on the merged seams changed — re-read with get_timeline before further edits.")
     }
 
     // MARK: - Helpers

@@ -108,6 +108,8 @@ final class ToolExecutor {
         case .getSpeakerActivity:  return try await getSpeakerActivity(editor, args)
         case .switchAngle:         return try switchAngle(editor, args)
         case .setMulticamSpeakers: return try setMulticamSpeakers(editor, args)
+        case .removeMulticam:      return try removeMulticam(editor, args)
+        case .joinClips:           return try joinClips(editor, args)
         case .undo:          return try undo(editor)
         case .addTexts:      return try addTexts(editor, args)
         case .updateText:    return try updateText(editor, args)

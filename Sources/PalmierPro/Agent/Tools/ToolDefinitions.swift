@@ -20,6 +20,8 @@ enum ToolName: String, CaseIterable, Sendable {
     case getSpeakerActivity = "get_speaker_activity"
     case switchAngle = "switch_angle"
     case setMulticamSpeakers = "set_multicam_speakers"
+    case removeMulticam = "remove_multicam"
+    case joinClips = "join_clips"
     case undo = "undo"
     case addTexts = "add_texts"
     case updateText = "update_text"
@@ -420,7 +422,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .createMulticam,
-            description: "Set up a multicam recording session (podcast, interview, panel) in one call: registers cameras and mics as a multicam group, aligns their sync offsets by cross-correlating source audio, and lays out the timeline — each mic full-length on its own sync-locked audio track, one default camera on a new program video track (V1), all positioned so everything lines up. The group persists in the project (visible in get_media as multicamGroups), so switch_angle and get_speaker_activity can derive frame math from it later.\n\nMembers: every camera and mic file of the session. role 'camera' = video asset; role 'mic' = audio asset (or a video used only for its sound). Set speaker on each mic ('Alice') and on any camera framing one person — that mapping drives speaker-aware editing; use set_multicam_speakers to fill it in later once names are known from the transcript.\n\nSync runs automatically against referenceMediaRef (default: the first mic). Pass syncOffsetFrames on a member to pin its offset and skip its correlation (offset = group time at the member's source start, in project frames); pass sync=false to skip correlation entirely. Members that fail to correlate keep offset 0 and are reported in syncFailures — fix with set_clip_properties/move_clips or re-run.\n\nAfter this call the timeline is ready to edit: word cuts (remove_words / ripple_delete_ranges) ripple across the sync-locked mic tracks so everything stays aligned, and switch_angle cuts the program track between cameras.",
+            description: "Set up a multicam recording session (podcast, interview, panel) in one call: registers cameras and mics as a multicam group, aligns their sync offsets by cross-correlating source audio, and lays out the timeline — each mic full-length on its own sync-locked audio track, one default camera on a new program video track (V1), all positioned so everything lines up. The group persists in the project (visible in get_media as multicamGroups), so switch_angle and get_speaker_activity can derive frame math from it later.\n\nMembers: every camera and mic file of the session. role 'camera' = video asset; role 'mic' = audio asset (or a video used only for its sound); role 'both' = a video whose embedded audio is also that person's mic — the right choice when each participant recorded one file (remote podcast, no separate mics): the file serves as an angle AND gets its audio laid out on its own sync-locked track for speaker attribution. Set speaker on each mic ('Alice') and on any camera framing one person — that mapping drives speaker-aware editing; use set_multicam_speakers to fill it in later once names are known from the transcript.\n\nSync runs automatically against referenceMediaRef (default: the first mic). Pass syncOffsetFrames on a member to pin its offset and skip its correlation (offset = group time at the member's source start, in project frames); pass sync=false to skip correlation entirely. Members that fail to correlate keep offset 0 and are reported in syncFailures — fix with set_clip_properties/move_clips or re-run.\n\nAfter this call the timeline is ready to edit: word cuts (remove_words / ripple_delete_ranges) ripple across the sync-locked mic tracks so everything stays aligned, and switch_angle cuts the program track between cameras.",
             inputSchema: objectSchema(
                 properties: [
                     "name": ["type": "string", "description": "Group name (e.g. 'Episode 42'). Defaults to 'Multicam N'."],
@@ -430,7 +432,7 @@ enum ToolDefinitions {
                         "items": objectSchema(
                             properties: [
                                 "mediaRef": ["type": "string", "description": "Asset ID from get_media."],
-                                "role": ["type": "string", "enum": ["camera", "mic"], "description": "camera = a video angle; mic = an audio source used for speaker attribution and the mix."],
+                                "role": ["type": "string", "enum": ["camera", "mic", "both"], "description": "camera = a video angle; mic = an audio source used for speaker attribution and the mix; both = a camera whose embedded audio is also that person's mic (use when each participant recorded one file and there are no separate mic files — its audio gets its own sync-locked track)."],
                                 "speaker": ["type": "string", "description": "Optional person name. On mics: whose voice this is. On cameras: who the shot frames (omit for wide/group shots)."],
                                 "syncOffsetFrames": ["type": "integer", "description": "Optional. Pin this member's sync offset (group time of its source frame 0, project frames) instead of correlating."],
                             ],
@@ -462,7 +464,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .switchAngle,
-            description: "Cut the program track between cameras of a multicam group. Each entry says: from startFrame to endFrame, show this camera (mediaRef) — or show SEVERAL cameras at once (layout + slots: side-by-side for a two-way exchange, grid_2x2 for a four-person panel, PiP for a reaction). The tool splits program clips at the range bounds, swaps each enclosed clip's source with the trim corrected from the group's sync offsets, and for layouts places the extra angles on auto-managed overlay tracks directly above the program track with the same offset-corrected trims and the layout's transforms — content time never shifts, so the mics stay in sync by construction. A later single-mediaRef (full-frame) entry over the same frames ends a layout: it clears this call's overlay layers in its range and resets the program clip to full-frame. Every cut lands as an ordinary clip: adjust any boundary later with split_clips/move_clips or another switch_angle over a small range; re-crop a layout's framing afterwards with apply_layout clipIds mode.\n\nBatch a whole editing pass into one call (one undo step): read get_speaker_activity, decide the cut plan (typical style: 4–8s minimum shot length, cut to the active speaker shortly after they start, a layout or wide shot during crosstalk), and pass every range at once in timeline order. For hour-long episodes work in ~10-minute windows per call. Ranges may span existing cuts — they're re-split deterministically. The result is terse (counts + range covered); don't re-read get_timeline between your own batches, but note that layout entries insert overlay tracks above the program track, which shifts track indices.\n\nRanges that can't switch (a camera not recording at that moment, no group clips in range) are reported in skipped without failing the rest.",
+            description: "Cut the program track between cameras of a multicam group. Each entry says: from startFrame to endFrame, show this camera (mediaRef) — or show SEVERAL cameras at once (layout + slots: side-by-side for a two-way exchange, grid_2x2 for a four-person panel, PiP for a reaction). The tool splits program clips at the range bounds, swaps each enclosed clip's source with the trim corrected from the group's sync offsets, and for layouts places the extra angles on auto-managed overlay tracks directly above the program track with the same offset-corrected trims and the layout's transforms — content time never shifts, so the mics stay in sync by construction. A later single-mediaRef (full-frame) entry over the same frames ends a layout: it clears this call's overlay layers in its range and resets the program clip to full-frame. Every cut lands as an ordinary clip: adjust any boundary later with split_clips/move_clips or another switch_angle over a small range; re-crop a layout's framing afterwards with apply_layout clipIds mode.\n\nBatch a whole editing pass into one call (one undo step): read get_speaker_activity, decide the cut plan (typical style: 4–8s minimum shot length, cut to the active speaker shortly after they start, a layout or wide shot during crosstalk), and pass every range at once in timeline order. For hour-long episodes work in ~10-minute windows per call. Ranges may span existing cuts — they're re-split deterministically. The result is terse (counts + range covered); don't re-read get_timeline between your own batches, but note that layout entries insert overlay tracks above the program track, which shifts track indices.\n\nRanges a camera only partly covers (it started late or ran out) are shrunk to the covered span and reported in clamped; ranges with no coverage at all (or no group clips in range) are reported in skipped. Neither fails the rest of the batch.",
             inputSchema: objectSchema(
                 properties: [
                     "trackIndex": ["type": "integer", "description": "The program video track (from create_multicam's programTrackIndex, or get_timeline)."],
@@ -518,6 +520,28 @@ enum ToolDefinitions {
                     ],
                 ],
                 required: ["groupId", "speakers"]
+            )
+        ),
+        AgentTool(
+            name: .joinClips,
+            description: "Sanitize a timeline by joining through edits: adjacent clips that are the same source continuing uninterrupted (same media, contiguous source time, identical framing/speed/volume) merge back into one clip. This is lossless — nothing on screen changes; it only removes redundant cut points left behind by repeated split/switch_angle iterations, so one take reads as one clip again. Seams where content actually changes (different angle, word cuts, retimes) are never touched. switch_angle already runs this on the tracks it edits; call join_clips directly to clean other tracks or a whole messy timeline. Undoable.",
+            inputSchema: objectSchema(
+                properties: [
+                    "trackIndex": ["type": "integer", "description": "Track to sanitize. Omit to sweep every track."],
+                    "startFrame": ["type": "integer", "description": "Only join seams at or after this project frame."],
+                    "endFrame": ["type": "integer", "description": "Only join seams at or before this project frame."],
+                ],
+                required: []
+            )
+        ),
+        AgentTool(
+            name: .removeMulticam,
+            description: "Delete a multicam group from the project. Clips already on the timeline are untouched — they become ordinary clips; only the group metadata (member roles, speakers, sync offsets) is removed, so switch_angle, get_speaker_activity, and speaker attribution stop applying to those sources. Use this when a group was set up wrong (bad sync, wrong members) before re-running create_multicam, or when the user wants to drop the multicam workflow entirely. Undoable.",
+            inputSchema: objectSchema(
+                properties: [
+                    "groupId": ["type": "string", "description": "Group to remove. Optional when exactly one group exists."],
+                ],
+                required: []
             )
         ),
         AgentTool(

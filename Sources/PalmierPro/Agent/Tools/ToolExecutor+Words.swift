@@ -81,23 +81,37 @@ extension ToolExecutor {
 
         // Cut one track; the ripple carries its linked A/V partners across the same span.
         let primaryTrack: Int
+        var primaryRanges: [FrameRange]
         if rangesByTrack.count == 1 {
             primaryTrack = rangesByTrack.first!.key
+            // Only the primary track's own ranges; the ripple removes the same span from
+            // linked partners, so flattening foreign-track frames here would over-cut.
+            primaryRanges = rangesByTrack.first!.value
         } else {
-            // Multiple tracks are only coherent as one linked unit (e.g. camera + mic); otherwise
-            // cutting them together breaks alignment.
-            let groupIds: [String] = involvedClips.compactMap { id in
-                editor.findClip(id: id).flatMap { editor.timeline.tracks[$0.trackIndex].clips[$0.clipIndex].linkGroupId }
+            // Multiple tracks are only coherent as one unit: a link group, or a
+            // multicam group on sync-locked tracks (the ripple carries those too).
+            let clips = involvedClips.compactMap { id in
+                editor.findClip(id: id).map { (loc: $0, clip: editor.timeline.tracks[$0.trackIndex].clips[$0.clipIndex]) }
             }
-            guard groupIds.count == involvedClips.count, Set(groupIds).count == 1 else {
+            let linkIds = Set(clips.compactMap(\.clip.linkGroupId))
+            let isLinkedUnit = clips.count == involvedClips.count
+                && linkIds.count == 1 && clips.allSatisfy { $0.clip.linkGroupId != nil }
+            let multicamIds = Set(clips.compactMap { editor.multicamGroup(containing: $0.clip.mediaRef)?.id })
+            let isMulticamUnit = clips.count == involvedClips.count
+                && multicamIds.count == 1
+                && clips.allSatisfy { editor.multicamGroup(containing: $0.clip.mediaRef) != nil }
+                && clips.allSatisfy { editor.timeline.tracks[$0.loc.trackIndex].syncLocked }
+            guard isLinkedUnit || isMulticamUnit else {
                 let tracks = rangesByTrack.keys.sorted().map(String.init).joined(separator: ", ")
                 throw ToolError("Selected words span multiple unlinked tracks (\(tracks)). Remove words one track at a time — linked video/audio is cut automatically. If these tracks are the same source (e.g. camera + mic), link them into one unit first.")
             }
             primaryTrack = rangesByTrack.keys.min()!
+            // Every range is a moment on the shared timebase; cut the union on one
+            // track and the linked/sync-locked ripple removes it everywhere.
+            primaryRanges = isMulticamUnit
+                ? rangesByTrack.values.flatMap { $0 }
+                : rangesByTrack[primaryTrack]!
         }
-        // Use only the primary track's own ranges; the ripple removes the same span from linked
-        // partners, so flattening foreign-track frames here would over-cut the primary track.
-        let primaryRanges = rangesByTrack[primaryTrack]!
 
         editor.undoManager?.beginUndoGrouping()
         let outcome = editor.rippleDeleteRangesOnTrack(trackIndex: primaryTrack, ranges: primaryRanges)

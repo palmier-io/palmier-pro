@@ -383,6 +383,32 @@ final class TimelineView: NSView {
                     continue
                 }
 
+                // Roll edit: the neighbor's shared edge mirrors the lead's.
+                if let (drag, isLeft) = trimDrag, drag.isRoll, clip.id == drag.rollNeighborId {
+                    var previewClip = clip
+                    let sourceDelta = Int((Double(drag.deltaFrames) * clip.speed).rounded())
+                    if isLeft {
+                        // Boundary is the lead's left edge — neighbor's tail follows.
+                        previewClip.durationFrames = clip.durationFrames + drag.deltaFrames
+                        previewClip.trimEndFrame = clip.trimEndFrame - sourceDelta
+                    } else {
+                        // Boundary is the lead's right edge — neighbor's head follows.
+                        previewClip.startFrame = clip.startFrame + drag.deltaFrames
+                        previewClip.trimStartFrame = clip.trimStartFrame + sourceDelta
+                        previewClip.durationFrames = clip.durationFrames - drag.deltaFrames
+                    }
+                    let previewRect = geo.clipRect(for: previewClip, trackIndex: ti)
+                    clipDisplayRects[clip.id] = previewRect
+                    if previewRect.intersects(dirtyRect) {
+                        ClipRenderer.draw(previewClip, type: clip.mediaType, in: previewRect,
+                                          isSelected: isSelected, context: ctx,
+                                          cache: editor.mediaVisualCache,
+                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
+                    }
+                    continue
+                }
+
                 if let (drag, isLeft) = trimDrag,
                    clip.id == drag.clipId || trimPartnerIds.contains(clip.id),
                    // Ripple drags with no resize preview at rest.
@@ -898,6 +924,22 @@ final class TimelineView: NSView {
 
         // Media
         var mediaItems: [NSMenuItem] = []
+        let angleCandidates = singleLinkGroup ? editor.angleSwitchCandidates(for: clip) : []
+        if angleCandidates.count > 1 {
+            let submenu = NSMenu()
+            submenu.autoenablesItems = false
+            for candidate in angleCandidates {
+                let item = NSMenuItem(title: candidate.label, action: #selector(performSwitchAngle(_:)), keyEquivalent: "")
+                item.target = self
+                item.state = candidate.isCurrent ? .on : .off
+                item.isEnabled = candidate.isAvailable && !candidate.isCurrent
+                item.representedObject = ["clipId": clip.id, "mediaRef": candidate.mediaRef] as [String: Any]
+                submenu.addItem(item)
+            }
+            let angleItem = NSMenuItem(title: "Switch Angle", action: nil, keyEquivalent: "")
+            angleItem.submenu = submenu
+            mediaItems.append(angleItem)
+        }
         if clip.mediaType != .text, singleLinkGroup {
             let swapItem = NSMenuItem(title: "Swap Media", action: #selector(performSwapMedia(_:)), keyEquivalent: "")
             swapItem.target = self
@@ -1037,6 +1079,14 @@ final class TimelineView: NSView {
         guard let item = sender as? NSMenuItem,
               let clipId = item.representedObject as? String else { return }
         editor.beginMediaSwap(clipId: clipId)
+    }
+
+    @objc private func performSwitchAngle(_ sender: Any?) {
+        guard let info = (sender as? NSMenuItem)?.representedObject as? [String: Any],
+              let clipId = info["clipId"] as? String,
+              let mediaRef = info["mediaRef"] as? String else { return }
+        editor.switchClipAngle(clipId: clipId, toMediaRef: mediaRef)
+        needsDisplay = true
     }
 
     @objc private func performSetVolumeKfInterpolation(_ sender: Any?) {

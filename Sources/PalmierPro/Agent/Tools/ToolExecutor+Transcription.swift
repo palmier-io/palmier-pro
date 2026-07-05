@@ -230,7 +230,7 @@ extension ToolExecutor {
             // speaker with certainty — better than (and a local substitute for)
             // cloud diarization.
             let micSpeaker = editor.multicamMembership(of: frag.clip)
-                .flatMap { $0.member.role == .mic ? $0.member.speaker : nil }
+                .flatMap { $0.member.role.isMic ? $0.member.speaker : nil }
             for row in timelineRows(from: transcript, clip: frag.clip, fps: fps) {
                 words.append(TimelineWord(
                     index: words.count,

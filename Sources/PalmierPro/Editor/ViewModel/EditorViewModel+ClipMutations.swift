@@ -198,6 +198,126 @@ extension EditorViewModel {
         )
     }
 
+    // MARK: - Join through edits
+
+    /// True when `b` continues `a`'s take: contiguous on the timeline,
+    /// continuous in source time, and rendering identically at the seam.
+    /// Joining such a pair is lossless — it's the inverse of a split.
+    func isThroughEdit(_ a: Clip, _ b: Clip) -> Bool {
+        guard b.startFrame == a.endFrame,
+              a.mediaRef == b.mediaRef,
+              a.mediaType == b.mediaType,
+              a.mediaType != .text,
+              a.captionGroupId == nil, b.captionGroupId == nil,
+              a.speed == b.speed,
+              a.volume == b.volume,
+              a.opacity == b.opacity,
+              a.transform == b.transform,
+              a.crop == b.crop,
+              a.blendMode == b.blendMode,
+              (a.effects ?? []) == (b.effects ?? []),
+              a.fadeOutFrames == 0, b.fadeInFrames == 0,
+              b.trimStartFrame == a.trimStartFrame + a.sourceFramesConsumed
+        else { return false }
+        return continuousAtSeam(a.opacityTrack, b.opacityTrack, at: a.durationFrames, fallback: a.opacity)
+            && continuousAtSeam(a.volumeTrack, b.volumeTrack, at: a.durationFrames, fallback: a.volume)
+            && continuousAtSeam(a.positionTrack, b.positionTrack, at: a.durationFrames, fallback: AnimPair(a: 0, b: 0))
+            && continuousAtSeam(a.scaleTrack, b.scaleTrack, at: a.durationFrames, fallback: AnimPair(a: 1, b: 1))
+            && continuousAtSeam(a.rotationTrack, b.rotationTrack, at: a.durationFrames, fallback: 0)
+            && continuousAtSeam(a.cropTrack, b.cropTrack, at: a.durationFrames, fallback: a.crop)
+    }
+
+    /// Merges every run of through edits on a track back into single clips.
+    /// Linked clips join only when each partner seam is a through edit too.
+    /// `range` limits joining to seams inside it. Returns joined seam count.
+    @discardableResult
+    func joinThroughEdits(trackIndex: Int, in range: FrameRange? = nil) -> Int {
+        guard timeline.tracks.indices.contains(trackIndex) else { return 0 }
+        var joined = 0
+        withTimelineSwap(actionName: "Join Clips") {
+            while let seam = nextJoinableSeam(trackIndex: trackIndex, in: range) {
+                for (leftId, rightId) in seam {
+                    guard let li = findClip(id: leftId), let ri = findClip(id: rightId) else { continue }
+                    let a = timeline.tracks[li.trackIndex].clips[li.clipIndex]
+                    let b = timeline.tracks[ri.trackIndex].clips[ri.clipIndex]
+                    selectedClipIds.remove(rightId)
+                    timeline.tracks[li.trackIndex].clips[li.clipIndex] = joinedClip(a, b)
+                    timeline.tracks[ri.trackIndex].clips.removeAll { $0.id == rightId }
+                }
+                joined += 1
+            }
+        }
+        return joined
+    }
+
+    /// First joinable seam on the track: the (left, right) pairs to merge —
+    /// the lead pair plus every linked-partner pair.
+    private func nextJoinableSeam(trackIndex: Int, in range: FrameRange?) -> [(String, String)]? {
+        let clips = timeline.tracks[trackIndex].clips.sorted { $0.startFrame < $1.startFrame }
+        guard clips.count > 1 else { return nil }
+        for i in 0..<(clips.count - 1) {
+            let a = clips[i], b = clips[i + 1]
+            if let range, a.endFrame < range.start || a.endFrame > range.end { continue }
+            guard isThroughEdit(a, b) else { continue }
+            var pairs: [(String, String)] = [(a.id, b.id)]
+            if a.linkGroupId != nil || b.linkGroupId != nil {
+                let aPartners = linkedPartnerIds(of: a.id)
+                var bPartners = Set(linkedPartnerIds(of: b.id))
+                var linkable = true
+                for paId in aPartners {
+                    guard let pl = findClip(id: paId) else { linkable = false; break }
+                    let pa = timeline.tracks[pl.trackIndex].clips[pl.clipIndex]
+                    guard let pbId = bPartners.first(where: { pbId in
+                        guard let rl = findClip(id: pbId), rl.trackIndex == pl.trackIndex else { return false }
+                        return isThroughEdit(pa, timeline.tracks[rl.trackIndex].clips[rl.clipIndex])
+                    }) else { linkable = false; break }
+                    bPartners.remove(pbId)
+                    pairs.append((paId, pbId))
+                }
+                // Unmatched partners of b would be orphaned — refuse the seam.
+                guard linkable, bPartners.isEmpty else { continue }
+            }
+            return pairs
+        }
+        return nil
+    }
+
+    private func joinedClip(_ a: Clip, _ b: Clip) -> Clip {
+        var m = a
+        m.durationFrames = a.durationFrames + b.durationFrames
+        m.trimEndFrame = b.trimEndFrame
+        m.fadeOutFrames = b.fadeOutFrames
+        m.fadeOutInterpolation = b.fadeOutInterpolation
+        m.opacityTrack  = joinedKeyframeTrack(a.opacityTrack,  b.opacityTrack,  offset: a.durationFrames)
+        m.volumeTrack   = joinedKeyframeTrack(a.volumeTrack,   b.volumeTrack,   offset: a.durationFrames)
+        m.positionTrack = joinedKeyframeTrack(a.positionTrack, b.positionTrack, offset: a.durationFrames)
+        m.scaleTrack    = joinedKeyframeTrack(a.scaleTrack,    b.scaleTrack,    offset: a.durationFrames)
+        m.rotationTrack = joinedKeyframeTrack(a.rotationTrack, b.rotationTrack, offset: a.durationFrames)
+        m.cropTrack     = joinedKeyframeTrack(a.cropTrack,     b.cropTrack,     offset: a.durationFrames)
+        return m
+    }
+
+    private func continuousAtSeam<Value: KeyframeInterpolatable & Codable & Sendable & Equatable>(
+        _ left: KeyframeTrack<Value>?, _ right: KeyframeTrack<Value>?, at offset: Int, fallback: Value
+    ) -> Bool {
+        guard (left?.isActive ?? false) || (right?.isActive ?? false) else { return true }
+        let l = left.map { $0.sample(at: offset, fallback: fallback) } ?? fallback
+        let r = right.map { $0.sample(at: 0, fallback: fallback) } ?? fallback
+        return l == r
+    }
+
+    private func joinedKeyframeTrack<Value: Codable & Sendable & Equatable>(
+        _ left: KeyframeTrack<Value>?, _ right: KeyframeTrack<Value>?, offset: Int
+    ) -> KeyframeTrack<Value>? {
+        guard (left?.isActive ?? false) || (right?.isActive ?? false) else { return nil }
+        var merged = KeyframeTrack<Value>()
+        for kf in left?.keyframes ?? [] { merged.upsert(kf) }
+        for kf in right?.keyframes ?? [] {
+            merged.upsert(Keyframe(frame: kf.frame + offset, value: kf.value, interpolationOut: kf.interpolationOut))
+        }
+        return merged.keyframes.isEmpty ? nil : merged
+    }
+
     func removeClips(ids: Set<String>, prune: Bool = true) {
         let hasMatches = timeline.tracks.contains { t in t.clips.contains { ids.contains($0.id) } }
         guard hasMatches else { return }

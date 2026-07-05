@@ -97,11 +97,18 @@ extension EditorViewModel {
 
     private func captionTargets(in pool: [Clip]) -> [Clip] {
         let linkGroupsWithAudio = Set(pool.filter { $0.mediaType == .audio }.compactMap(\.linkGroupId))
+        // A multicam group's audio (its bed or mics) speaks for every camera in
+        // the group — transcribing the cameras' embedded audio too would list
+        // the same speech once per track.
+        let multicamGroupsWithAudio = Set(pool.filter { $0.mediaType == .audio }
+            .compactMap { multicamGroup(containing: $0.mediaRef)?.id })
         return pool
             .filter { clip in
                 guard captionCanTranscribe(clip) else { return false }
-                guard clip.mediaType == .video, let groupId = clip.linkGroupId else { return true }
-                return !linkGroupsWithAudio.contains(groupId)
+                guard clip.mediaType == .video else { return true }
+                if let groupId = clip.linkGroupId, linkGroupsWithAudio.contains(groupId) { return false }
+                if let mcId = multicamGroup(containing: clip.mediaRef)?.id, multicamGroupsWithAudio.contains(mcId) { return false }
+                return true
             }
             .sorted { $0.startFrame < $1.startFrame }
     }
