@@ -35,19 +35,14 @@ extension EditorViewModel {
         return ranges
     }
 
-    /// Dead-air ranges across all audio clips, with the track that anchors the ripple.
-    func allDeadAir() -> (anchorTrackIndex: Int, ranges: [FrameRange])? {
-        var anchor: Int?
-        var ranges: [FrameRange] = []
+    /// Dead-air ranges grouped by track; each track ripples its own spans.
+    func allDeadAir() -> [(trackIndex: Int, ranges: [FrameRange])] {
+        var out: [(Int, [FrameRange])] = []
         for (ti, track) in timeline.tracks.enumerated() where track.type == .audio {
-            for clip in track.clips {
-                let found = deadAirRanges(for: clip)
-                if !found.isEmpty && anchor == nil { anchor = ti }
-                ranges.append(contentsOf: found)
-            }
+            let ranges = track.clips.flatMap { deadAirRanges(for: $0) }
+            if !ranges.isEmpty { out.append((ti, ranges)) }
         }
-        guard let anchor, !ranges.isEmpty else { return nil }
-        return (anchor, ranges)
+        return out
     }
 
     func removeDeadAir(clipId: String, atTimelineFrame frame: Int) {
@@ -60,15 +55,27 @@ extension EditorViewModel {
         }
     }
 
+    /// Ripples each track's dead air in turn, re-deriving ranges after every pass
+    /// (earlier deletions shift frames). One pass per track at most.
     @discardableResult
     func removeAllDeadAir() -> (outcome: RippleRangesOutcome, sections: Int)? {
-        guard let (trackIndex, ranges) = allDeadAir() else { return nil }
-        let outcome = rippleDeleteRangesOnTrack(trackIndex: trackIndex, ranges: ranges)
-        if case .refused(let reason) = outcome {
-            NSSound.beep()
-            Log.editor.notice("remove dead air blocked: \(reason)")
+        var sections = 0
+        var lastOutcome: RippleRangesOutcome?
+        undoManager?.beginUndoGrouping()
+        defer { undoManager?.endUndoGrouping() }
+        for _ in timeline.tracks.indices {
+            guard let next = allDeadAir().first else { break }
+            let outcome = rippleDeleteRangesOnTrack(trackIndex: next.trackIndex, ranges: next.ranges)
+            lastOutcome = outcome
+            if case .refused(let reason) = outcome {
+                NSSound.beep()
+                Log.editor.notice("remove dead air blocked: \(reason)")
+                break
+            }
+            sections += next.ranges.count
         }
-        return (outcome, ranges.count)
+        guard let lastOutcome else { return nil }
+        return (lastOutcome, sections)
     }
 
     private func timelineRange(clip: Clip, sourceStart: Double, sourceEnd: Double) -> FrameRange? {

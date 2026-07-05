@@ -156,7 +156,7 @@ extension EditorViewModel {
             }
             masks[file.mediaRef] = mask
         }
-        mediaVisualCache.speakerMasks = masks
+        for (ref, mask) in masks { mediaVisualCache.speakerMasks[ref] = mask }
         for (ref, locals) in result.byFileLocal { speakerAssignments[ref] = locals }
         if !result.newEntries.isEmpty { onProjectCheckpointRequired?() }
         syncSpeakerColors()

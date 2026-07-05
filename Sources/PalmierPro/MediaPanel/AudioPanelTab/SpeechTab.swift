@@ -115,8 +115,7 @@ struct SpeechTab: View {
     }
 
     private var removeSilenceRow: some View {
-        let deadAir = editor.allDeadAir()
-        let count = deadAir?.ranges.count ?? 0
+        let count = editor.allDeadAir().reduce(0) { $0 + $1.ranges.count }
         return HStack(spacing: AppTheme.Spacing.sm) {
             Button("Remove Silence") { editor.removeAllDeadAir() }
                 .controlSize(.small)
