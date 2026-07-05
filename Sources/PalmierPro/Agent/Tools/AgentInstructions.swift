@@ -102,6 +102,8 @@ enum AgentInstructions {
           remove_words. The transcript summary is lossy — it hides reworded retakes ("in one state" \
           vs "in one place") and sub-frame seam fragments (a word whose start == end rounds to zero \
           frames); verify a suspected dangling fragment against the words, not the summary.
+        - Pauses and dead space are remove_silence's job, not remove_words': when tightening \
+          pacing, run remove_silence first (no transcript needed), then remove_words for fillers.
         - Omit language for transcription unless the user names the spoken language. \
           On-device transcription is language-specific. Cloud transcription auto-detects language. \
           When using local transcription or inspect_media for non-English speech (or speech that \

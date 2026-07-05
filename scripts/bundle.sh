@@ -120,6 +120,18 @@ if ! ls "$RES_BUNDLE"/*.metallib >/dev/null 2>&1; then
 fi
 cp "$RES_BUNDLE"/*.metallib "$APP/Contents/Resources/"
 
+MLX_METALLIB="$ROOT/.build/$CONFIG/mlx.metallib"
+if [ ! -f "$MLX_METALLIB" ]; then
+  echo "==> Building MLX metallib ($CONFIG)"
+  BUILD_DIR="$ROOT/.build" "$ROOT/.build/checkouts/speech-swift/scripts/build_mlx_metallib.sh" "$CONFIG"
+fi
+if [ ! -f "$MLX_METALLIB" ]; then
+  echo "!! missing $MLX_METALLIB — on-device speech features (VAD, speaker ID) would die silently" >&2
+  exit 1
+fi
+mkdir -p "$APP/Contents/Resources/mlx-swift_Cmlx.bundle"
+cp "$MLX_METALLIB" "$APP/Contents/Resources/mlx-swift_Cmlx.bundle/default.metallib"
+
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/PalmierPro"
 touch "$APP"
 

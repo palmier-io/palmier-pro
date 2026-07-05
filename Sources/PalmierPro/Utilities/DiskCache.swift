@@ -30,6 +30,14 @@ struct DiskCache: Sendable {
         return total
     }
 
+    /// Cache key fragment that busts when the underlying file is replaced.
+    static func sizeMtimeTag(for url: URL) -> String {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let size = (attrs?[.size] as? Int) ?? 0
+        let modified = (attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        return "\(size)_\(Int(modified))"
+    }
+
     func clear() {
         let fm = FileManager.default
         guard let entries = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return }

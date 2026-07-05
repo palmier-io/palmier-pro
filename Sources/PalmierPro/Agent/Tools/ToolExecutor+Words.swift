@@ -121,6 +121,29 @@ extension ToolExecutor {
         return .ok(json)
     }
 
+    func removeSilence(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        try validateUnknownKeys(args, allowed: [], path: "remove_silence")
+        editor.undoManager?.beginUndoGrouping()
+        let result = editor.removeAllDeadAir()
+        editor.undoManager?.endUndoGrouping()
+        guard let result else {
+            throw ToolError("No dead air on the timeline. Speech analysis may still be running, or the audio has no quiet non-speech sections.")
+        }
+        editor.undoManager?.setActionName("Remove Silence (Agent)")
+        if let refusal = result.refusal, result.sections == 0 {
+            throw ToolError("Ripple delete refused: \(refusal)")
+        }
+        var payload: [String: Any] = [
+            "sectionsRemoved": result.sections, "removedFrames": result.removedFrames,
+            "note": "Removed dead air and closed the gaps. Frames have shifted — re-read get_timeline or get_transcript before further edits.",
+        ]
+        if let refusal = result.refusal {
+            payload["partial"] = "A later track refused: \(refusal). Earlier tracks were already edited."
+        }
+        guard let json = Self.jsonString(payload) else { throw ToolError("Failed to encode result") }
+        return .ok(json)
+    }
+
     static func parseWordSpans(_ raw: [Any]) throws -> [(Int, Int)] {
         try raw.enumerated().map { i, element in
             if let n = intFromAny(element) { return (n, n) }

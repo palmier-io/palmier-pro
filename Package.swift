@@ -32,6 +32,7 @@ let package = Package(
                 .product(name: "Tokenizers", package: "swift-transformers"),
                 .product(name: "Lottie", package: "lottie-ios"),
                 .product(name: "SpeechEnhancement", package: "speech-swift"),
+                .product(name: "SpeechVAD", package: "speech-swift"),
             ],
             path: "Sources/PalmierPro",
             exclude: [

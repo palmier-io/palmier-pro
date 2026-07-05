@@ -6,6 +6,7 @@ struct ProjectFile: Codable, Sendable {
     var activeTimelineId: String?
     var openTimelineIds: [String]?
     var viewStates: [String: TimelineViewState]?
+    var speakers: [SpeakerRegistryEntry]?
 
     static func decode(_ data: Data) throws -> ProjectFile {
         let decoder = JSONDecoder()

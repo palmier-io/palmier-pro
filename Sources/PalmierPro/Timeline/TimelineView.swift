@@ -839,6 +839,16 @@ final class TimelineView: NSView {
             return menu
         }
 
+        if clip.mediaType == .audio, editor.markDeadAir,
+           editor.deadAirSpanRange(clip: clip, atTimelineFrame: clickFrame) != nil {
+            let menu = NSMenu()
+            let remove = NSMenuItem(title: "Remove Dead Air", action: #selector(performRemoveDeadAir(_:)), keyEquivalent: "")
+            remove.target = self
+            remove.representedObject = ["clipId": clip.id, "frame": clickFrame] as [String: Any]
+            menu.addItem(remove)
+            return menu
+        }
+
         if !editor.selectedClipIds.contains(clip.id) {
             editor.selectedClipIds = editor.expandToLinkGroup([clip.id])
             needsDisplay = true
@@ -1101,6 +1111,16 @@ final class TimelineView: NSView {
         editor.removeKeyframe(clipId: clipId, property: .volume, at: frame)
         needsDisplay = true
     }
+
+    @objc private func performRemoveDeadAir(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let info = item.representedObject as? [String: Any],
+              let clipId = info["clipId"] as? String,
+              let frame = info["frame"] as? Int else { return }
+        editor.removeDeadAir(clipId: clipId, atTimelineFrame: frame)
+        needsDisplay = true
+    }
+
 
 
     override func updateTrackingAreas() {
