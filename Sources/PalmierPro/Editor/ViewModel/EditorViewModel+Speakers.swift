@@ -1,12 +1,11 @@
 import SwiftUI
 
-/// Persisted per-project speaker identity; hidden entries are removed-but-remembered noise.
+/// Persisted per-project speaker identity.
 struct SpeakerRegistryEntry: Codable, Sendable, Identifiable {
     var id: Int
     var name: String
     var color: [Double]
     var centroid: [Float]
-    var hidden: Bool
 }
 
 struct ProjectSpeaker: Identifiable {
@@ -20,9 +19,7 @@ extension EditorViewModel {
     static let speakerPalette: [Color] = [.blue, .green, .orange, .purple, .pink, .teal, .yellow, .indigo]
 
     var projectSpeakers: [ProjectSpeaker] {
-        speakerRegistry.filter { !$0.hidden }.map {
-            ProjectSpeaker(id: $0.id, name: $0.name, color: Self.color(from: $0.color))
-        }
+        speakerRegistry.map { ProjectSpeaker(id: $0.id, name: $0.name, color: Self.color(from: $0.color)) }
     }
 
     static func color(from rgba: [Double]) -> Color {
@@ -58,9 +55,12 @@ extension EditorViewModel {
         mediaVisualCache.timelineView?.needsDisplay = true
     }
 
+    /// Deletes the label; Identify/Refresh recreates it if the voice is still present.
     func removeSpeaker(id: Int) {
-        guard let i = speakerRegistry.firstIndex(where: { $0.id == id }) else { return }
-        speakerRegistry[i].hidden = true
+        speakerRegistry.removeAll { $0.id == id }
+        for ref in speakerAssignments.keys {
+            speakerAssignments[ref] = speakerAssignments[ref]?.filter { $0.value != id }
+        }
         onProjectCheckpointRequired?()
         for (ref, mask) in mediaVisualCache.speakerMasks {
             mediaVisualCache.speakerMasks[ref] = mask.map { $0 == id ? -1 : $0 }
@@ -140,17 +140,16 @@ extension EditorViewModel {
             speakerRegistry.append(SpeakerRegistryEntry(
                 id: entry.id, name: "Speaker \(entry.id)",
                 color: Self.rgba(from: Self.speakerPalette[(entry.id - 1) % Self.speakerPalette.count]),
-                centroid: entry.centroid, hidden: false
+                centroid: entry.centroid
             ))
         }
-        let hiddenIds = Set(speakerRegistry.filter(\.hidden).map(\.id))
         var masks: [String: [Int]] = [:]
         for file in files {
             guard let duration = mediaAssets.first(where: { $0.id == file.mediaRef })?.duration, duration > 0 else { continue }
             let cellCount = Int(duration / VoiceActivity.chunkDuration) + 1
             var mask = [Int](repeating: -1, count: cellCount)
             for turn in file.turns {
-                guard let gid = result.byFileLocal[file.mediaRef]?[turn.speaker], !hiddenIds.contains(gid) else { continue }
+                guard let gid = result.byFileLocal[file.mediaRef]?[turn.speaker] else { continue }
                 let lo = max(0, Int(turn.start / VoiceActivity.chunkDuration))
                 let hi = min(cellCount, Int((turn.end / VoiceActivity.chunkDuration).rounded(.up)))
                 if lo < hi { for c in lo..<hi { mask[c] = gid } }

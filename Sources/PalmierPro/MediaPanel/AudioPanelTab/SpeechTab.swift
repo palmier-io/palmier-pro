@@ -50,6 +50,12 @@ struct SpeechTab: View {
                     .foregroundStyle(AppTheme.Status.errorColor)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if !editor.projectSpeakers.isEmpty {
+                Text("Labels")
+                    .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .padding(.top, AppTheme.Spacing.xs)
+            }
             ForEach(editor.projectSpeakers) { speaker in
                 HStack(spacing: AppTheme.Spacing.sm) {
                     ColorPicker("", selection: Binding(
@@ -72,7 +78,7 @@ struct SpeechTab: View {
                             .foregroundStyle(AppTheme.Text.tertiaryColor)
                     }
                     .buttonStyle(.plain)
-                    .help("Removes this speaker's label and tint — use for noise misdetected as a voice.")
+                    .help("Removes this label and tint. Identify recreates it if the voice is still present.")
                 }
             }
         }
