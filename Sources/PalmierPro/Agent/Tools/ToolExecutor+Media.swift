@@ -43,10 +43,7 @@ extension ToolExecutor {
             if entry.hasAudio == true, entry.type == .video { a["hasAudio"] = true }
             if let path = folderPathString(entry.folderId, editor: editor) { a["folder"] = path }
             if pending, let status { a["generationStatus"] = status }
-            if let prompt = entry.generationInput?.prompt, !prompt.isEmpty {
-                a["prompt"] = prompt.count > Self.getMediaPromptLimit
-                    ? String(prompt.prefix(Self.getMediaPromptLimit)) + "…" : prompt
-            }
+            if let prompt = Self.truncatedPrompt(entry.generationInput?.prompt) { a["prompt"] = prompt }
             assets.append(a)
         }
 
@@ -317,27 +314,27 @@ extension ToolExecutor {
         return .ok(metaJSON)
     }
 
+    /// Same vocabulary as get_media assets, so one asset never describes itself two ways.
     private static func baseMeta(for asset: MediaAsset) -> [String: Any] {
         var meta: [String: Any] = [
             "id": asset.id, "name": asset.name,
-            "type": asset.type.rawValue, "duration": asset.duration.jsonRounded(toPlaces: 3),
+            "type": asset.type.rawValue,
+            "durationSeconds": asset.duration.jsonRounded(toPlaces: 3),
             "fileName": asset.url.lastPathComponent,
-            "generationStatus": asset.generationStatus.serialized,
         ]
-        if let w = asset.sourceWidth { meta["sourceWidth"] = w }
-        if let h = asset.sourceHeight { meta["sourceHeight"] = h }
-        if let fps = asset.sourceFPS { meta["sourceFPS"] = fps }
-        if let gi = asset.generationInput, let obj = encodeAsJSONObject(gi) {
-            meta["generationInput"] = obj
+        if case .none = asset.generationStatus {} else {
+            meta["generationStatus"] = asset.generationStatus.serialized
         }
+        if let w = asset.sourceWidth { meta["width"] = w }
+        if let h = asset.sourceHeight { meta["height"] = h }
+        if let fps = asset.sourceFPS { meta["fps"] = fps }
+        if let prompt = truncatedPrompt(asset.generationInput?.prompt) { meta["prompt"] = prompt }
         return meta
     }
 
-    private static func encodeAsJSONObject<T: Encodable>(_ value: T) -> Any? {
-        guard let data = try? JSONEncoder().encode(value),
-              let obj = try? JSONSerialization.jsonObject(with: data)
-        else { return nil }
-        return obj
+    private static func truncatedPrompt(_ prompt: String?) -> String? {
+        guard let prompt, !prompt.isEmpty else { return nil }
+        return prompt.count > getMediaPromptLimit ? String(prompt.prefix(getMediaPromptLimit)) + "…" : prompt
     }
 
     private static func imagePropertiesSummary(at url: URL) -> [String: Any]? {
