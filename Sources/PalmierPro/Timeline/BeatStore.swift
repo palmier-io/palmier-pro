@@ -1,5 +1,7 @@
 import Foundation
 
+struct BeatStoreStaleAnalysisError: Error {}
+
 @MainActor
 @Observable
 final class BeatStore {
@@ -55,10 +57,21 @@ final class BeatStore {
     }
 
     func analysisAwaiting(for asset: MediaAsset) async throws -> BeatAnalysis {
-        if let existing = analyses[asset.id] { return existing }
-        let analysis = try await BeatDetector.analysis(for: asset.url, mediaRef: asset.id)
-        analyses[asset.id] = analysis
-        failed.remove(asset.id)
+        let key = asset.id
+        if let existing = analyses[key] { return existing }
+
+        inFlight.insert(key)
+        failed.remove(key)
+        let startEpoch = epoch[key, default: 0]
+        defer { inFlight.remove(key) }
+
+        let analysis = try await BeatDetector.analysis(for: asset.url, mediaRef: key)
+        guard epoch[key, default: 0] == startEpoch else {
+            if let existing = analyses[key] { return existing }
+            throw BeatStoreStaleAnalysisError()
+        }
+
+        analyses[key] = analysis
         onBeatsReady?()
         return analysis
     }
