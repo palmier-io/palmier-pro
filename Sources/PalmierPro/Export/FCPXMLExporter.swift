@@ -96,7 +96,7 @@ enum FCPXMLExporter {
                 }
             }
         }
-        let timecodes = await SourceTimecodeReader.cache(mediaRefs: mediaRefs, urls: resolver.expectedURLMap())
+        let timecodes = await SourceTimingReader.timecodes(mediaRefs: mediaRefs, urls: resolver.expectedURLMap())
         let xml = render(timeline: timeline, resolver: resolver, resolveTimeline: resolveTimeline,
                          version: version, target: target, startTimecodes: timecodes)
         guard let data = xml.data(using: .utf8) else { throw ExportError.xmlEncodingFailed }

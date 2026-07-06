@@ -938,10 +938,16 @@ final class TimelineView: NSView {
         }
         // Sync
         var syncItems: [NSMenuItem] = []
-        if let pair = editor.audioSyncSelection() {
-            let syncItem = NSMenuItem(title: "Synchronize", action: #selector(performSynchronize(_:)), keyEquivalent: "")
-            syncItem.target = self
-            syncItem.representedObject = ["referenceClipId": pair.referenceClipId, "targetClipIds": pair.targetClipIds] as [String: Any]
+        if let pair = editor.syncSelection() {
+            let syncItem = NSMenuItem(title: "Synchronize", action: nil, keyEquivalent: "")
+            let syncMenu = NSMenu()
+            for (title, mode) in [("Auto", EditorViewModel.SyncMode.auto), ("Audio", .audio), ("Timecode", .timecode)] {
+                let item = NSMenuItem(title: title, action: #selector(performSynchronize(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = ["referenceClipId": pair.referenceClipId, "targetClipIds": pair.targetClipIds, "mode": mode.rawValue] as [String: Any]
+                syncMenu.addItem(item)
+            }
+            syncItem.submenu = syncMenu
             syncItems.append(syncItem)
         }
 

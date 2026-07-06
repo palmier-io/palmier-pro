@@ -67,7 +67,7 @@ enum XMLExporter {
                 mediaRefs.insert(clip.mediaRef)
             }
         }
-        return await SourceTimecodeReader.cache(mediaRefs: mediaRefs, urls: resolver.expectedURLMap())
+        return await SourceTimingReader.timecodes(mediaRefs: mediaRefs, urls: resolver.expectedURLMap())
     }
 
     // MARK: - Source timecode

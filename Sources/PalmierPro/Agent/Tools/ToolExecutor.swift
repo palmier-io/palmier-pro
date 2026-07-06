@@ -105,7 +105,7 @@ final class ToolExecutor {
         case .rippleDeleteRanges: return try rippleDeleteRanges(editor, args)
         case .removeWords:   return try await removeWords(editor, args)
         case .removeSilence: return try removeSilence(editor, args)
-        case .syncAudio:     return try await syncAudio(editor, args)
+        case .syncClips:     return try await syncClips(editor, args)
         case .undo:          return try undo(editor)
         case .addTexts:      return try addTexts(editor, args)
         case .updateText:    return try updateText(editor, args)
