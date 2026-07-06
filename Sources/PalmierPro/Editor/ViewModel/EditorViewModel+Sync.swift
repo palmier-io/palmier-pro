@@ -74,7 +74,7 @@ extension EditorViewModel {
 
         let hop = AudioEnvelopeExtractor.hopSeconds
         let maxLag = max(1, Int((searchWindowSeconds / hop).rounded()))
-        let seedWindow = max(1, Int((SyncDefaults.dateSeedWindowSeconds / hop).rounded()))
+        let seedWindow = max(1, min(maxLag, Int((SyncDefaults.dateSeedWindowSeconds / hop).rounded())))
         let minOverlap = max(AudioSyncCorrelator.minOverlap, Int((SyncDefaults.minOverlapSeconds / hop).rounded()))
 
         struct AudioClip {
@@ -223,9 +223,11 @@ extension EditorViewModel {
         // Shift right if any accepted move (partners included) starts before frame 0.
         let shift = max(0, -(allMoves.map(\.toFrame).min() ?? 0))
         report.shiftedFrames = shift
-        if shift > 0, let liveRef = liveClip(referenceClipId) {
-            if queueMove(of: referenceClipId, toFrame: liveRef.startFrame) != nil {
-                report.failures.append(contentsOf: accepted.map { ($0.clipId, "Reference clip unavailable.") })
+        if shift > 0 {
+            let failure = liveClip(referenceClipId).map { queueMove(of: referenceClipId, toFrame: $0.startFrame) }
+                ?? "Reference clip unavailable."
+            if let failure {
+                report.failures.append(contentsOf: accepted.map { ($0.clipId, failure) })
                 return report
             }
         }
