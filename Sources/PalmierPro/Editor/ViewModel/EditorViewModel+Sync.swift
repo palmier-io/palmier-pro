@@ -193,11 +193,13 @@ extension EditorViewModel {
         var movedIds = Set<String>()
         func queueMove(of clipId: String, toFrame rawStart: Int) -> String? {
             guard let loc = findClip(id: clipId) else { return "Clip not found." }
+            let delta = rawStart - timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame
             var moves = [(clipId: clipId, toTrack: loc.trackIndex, toFrame: rawStart)]
-            for pm in partnerMoves(forMoveOf: clipId, toFrame: rawStart) where pm.clipId != referenceClipId {
-                if let pLoc = findClip(id: pm.clipId) {
-                    moves.append((clipId: pm.clipId, toTrack: pLoc.trackIndex, toFrame: pm.toFrame))
-                }
+            // Include all linked partners, regardless of current positions, to avoid splitting pairs when shifting.
+            for pid in linkedPartnerIds(of: clipId) where pid != referenceClipId {
+                guard let pLoc = findClip(id: pid) else { continue }
+                let pClip = timeline.tracks[pLoc.trackIndex].clips[pLoc.clipIndex]
+                moves.append((clipId: pid, toTrack: pLoc.trackIndex, toFrame: pClip.startFrame + delta))
             }
             if clipId != referenceClipId, moveWouldClobberReference(moves, referenceClipId: referenceClipId) {
                 return "Shares the reference's track — move it to its own track first."
@@ -218,8 +220,8 @@ extension EditorViewModel {
             accepted.append((p.clipId, p.rawStart, p.confidence, p.method, clip.startFrame))
         }
 
-        // Shift right if any accepted placement starts before frame 0.
-        let shift = max(0, -(accepted.map(\.rawStart).min() ?? 0))
+        // Shift right if any accepted move (partners included) starts before frame 0.
+        let shift = max(0, -(allMoves.map(\.toFrame).min() ?? 0))
         report.shiftedFrames = shift
         if shift > 0, let liveRef = liveClip(referenceClipId) {
             if queueMove(of: referenceClipId, toFrame: liveRef.startFrame) != nil {
