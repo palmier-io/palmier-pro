@@ -16,6 +16,7 @@ extension ToolExecutor {
         let searchWindow = args.double("searchWindowSeconds") ?? EditorViewModel.AudioSyncDefaults.searchWindowSeconds
         guard searchWindow > 0 else { throw ToolError("sync_audio: searchWindowSeconds must be > 0.") }
 
+        let snapshot = timelineSnapshot(editor)
         let report = await editor.syncAudio(
             referenceClipId: referenceClipId,
             targetClipIds: targets,
@@ -26,15 +27,15 @@ extension ToolExecutor {
             throw ToolError("sync_audio: \(report.failures.first?.message ?? "no clips aligned")")
         }
 
-        var payload: [String: Any] = [
+        var extra: [String: Any] = [
             "referenceClipId": referenceClipId,
             "synced": report.synced.map {
                 ["clipId": $0.clipId, "offsetFrames": $0.offsetFrames, "confidence": ($0.confidence * 1000).rounded() / 1000]
             },
         ]
         if !report.failures.isEmpty {
-            payload["failed"] = report.failures.map { ["clipId": $0.clipId, "reason": $0.message] }
+            extra["failed"] = report.failures.map { ["clipId": $0.clipId, "reason": $0.message] }
         }
-        return .ok(Self.jsonString(payload) ?? "Synchronized \(report.synced.count) clip(s).")
+        return mutationResult(editor, since: snapshot, touched: report.synced.map(\.clipId), extra: extra)
     }
 }

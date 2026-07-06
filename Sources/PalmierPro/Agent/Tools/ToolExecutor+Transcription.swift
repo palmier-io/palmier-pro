@@ -26,10 +26,6 @@ struct TimelineTranscript {
         words.contains { $0.speaker != nil }
     }
 
-    var wordFormat: [String] {
-        includesSpeakers ? ["index", "text", "start", "end", "speaker"] : ["index", "text", "start", "end"]
-    }
-
     func groups(clipId filter: String? = nil) -> [TimelineTranscriptGroup] {
         var groups: [TimelineTranscriptGroup] = []
         var i = words.startIndex
@@ -51,40 +47,62 @@ struct TimelineTranscript {
         return groups
     }
 
-    func responsePayload(fps: Int, clipId: String?, startFrame: Int?, endFrame: Int?, maxWords: Int) -> [String: Any] {
+    func responsePayload(
+        fps: Int, clipId: String?, startFrame: Int?, endFrame: Int?, maxWords: Int, segments: Bool = false
+    ) -> [String: Any] {
         var clipsOut: [[String: Any]] = []
         var totalWords = 0
         var remaining = maxWords
         var lastEnd: Int?
+        var speakerRuns: [[Any]] = []
+        var currentSpeaker: String??
 
         for group in groups(clipId: clipId) {
-            var rows: [[Any]] = []
+            var visible: [TimelineWord] = []
             for word in group.words {
                 if let startFrame, word.endFrame <= startFrame { continue }
                 if let endFrame, word.startFrame >= endFrame { continue }
                 totalWords += 1
                 guard remaining > 0 else { continue }
-                rows.append(row(for: word))
+                visible.append(word)
                 remaining -= 1
                 lastEnd = word.endFrame
+                // Speakers as run-length turns, not a column repeated on every word.
+                if includesSpeakers, currentSpeaker != word.speaker {
+                    currentSpeaker = word.speaker
+                    speakerRuns.append([word.index, word.speaker ?? NSNull()])
+                }
             }
-            guard !rows.isEmpty else { continue }
-            clipsOut.append([
+            guard !visible.isEmpty else { continue }
+            var clipOut: [String: Any] = [
                 "clipId": group.clipId,
                 "trackIndex": group.trackIndex,
                 "startFrame": group.clipStartFrame,
                 "endFrame": group.clipEndFrame,
-                "words": rows,
-            ])
+            ]
+            if segments {
+                clipOut["segments"] = Self.segmentRows(visible, fps: fps)
+            } else {
+                clipOut["words"] = visible.map { [$0.index, $0.text, $0.startFrame] }
+            }
+            clipsOut.append(clipOut)
         }
 
         var out: [String: Any] = [
             "fps": fps,
             "timing": "projectFrames",
             "transcriptionSource": context.provider.rawValue,
-            "wordFormat": wordFormat,
             "clips": clipsOut,
         ]
+        if segments {
+            out["segmentFormat"] = ["firstWordIndex", "text", "start", "end"]
+        } else {
+            out["wordFormat"] = ["index", "text", "start"]
+        }
+        if includesSpeakers, !speakerRuns.isEmpty {
+            out["speakers"] = speakerRuns
+            out["speakersNote"] = "[firstWordIndex, speaker] — each run holds until the next entry."
+        }
         if totalWords > maxWords {
             out["totalWords"] = totalWords
             if let lastEnd {
@@ -96,11 +114,27 @@ struct TimelineTranscript {
         return out
     }
 
-    private func row(for word: TimelineWord) -> [Any] {
-        if includesSpeakers {
-            return [word.index, word.text, word.startFrame, word.endFrame, word.speaker ?? NSNull()]
+    /// Sentence-ish rows for comprehension reads; firstWordIndex is the handle back into word mode.
+    private static func segmentRows(_ words: [TimelineWord], fps: Int) -> [[Any]] {
+        var rows: [[Any]] = []
+        var run: [TimelineWord] = []
+        func flush() {
+            guard let first = run.first, let last = run.last else { return }
+            rows.append([first.index, run.map(\.text).joined(separator: " "), first.startFrame, last.endFrame])
+            run.removeAll()
         }
-        return [word.index, word.text, word.startFrame, word.endFrame]
+        for word in words {
+            if let last = run.last,
+               last.speaker != word.speaker || word.startFrame - last.endFrame > fps || run.count >= 48 {
+                flush()
+            }
+            run.append(word)
+            if word.text.hasSuffix(".") || word.text.hasSuffix("!") || word.text.hasSuffix("?") {
+                flush()
+            }
+        }
+        flush()
+        return rows
     }
 }
 
@@ -123,7 +157,7 @@ extension ToolExecutor {
     static let transcriptWordLimit = 10000
 
     private static let inspectMaxSegments = 400
-    private static let getTranscriptAllowedKeys: Set<String> = ["startFrame", "endFrame", "clipId", "wordTimestamps", "language"]
+    private static let getTranscriptAllowedKeys: Set<String> = ["startFrame", "endFrame", "clipId", "wordTimestamps", "language", "granularity"]
 
     func transcriptionContext(_ args: [String: Any], path: String, preferLast: Bool = false) async throws -> TranscriptionToolContext {
         if preferLast, let lastTranscriptContext {
@@ -169,6 +203,11 @@ extension ToolExecutor {
         }
         try validateTranscriptClipFilter(clipFilter, editor)
 
+        let granularity = args.string("granularity") ?? "words"
+        guard granularity == "words" || granularity == "segments" else {
+            throw ToolError("granularity must be 'words' or 'segments' (got '\(granularity)')")
+        }
+
         let context = try await transcriptionContext(args, path: "get_transcript")
         let transcript = try await timelineTranscript(editor, context: context)
         lastTranscriptContext = context
@@ -178,7 +217,8 @@ extension ToolExecutor {
             clipId: clipFilter,
             startFrame: windowStart,
             endFrame: windowEnd,
-            maxWords: Self.transcriptWordLimit
+            maxWords: Self.transcriptWordLimit,
+            segments: granularity == "segments"
         )
         guard let json = Self.jsonString(out) else { throw ToolError("Failed to encode transcript") }
         return .ok(json)

@@ -37,7 +37,10 @@ enum SpeakerIdentity {
     private actor ModelBox {
         private var model: WeSpeakerModel?
         func embed(_ samples: [Float]) async throws -> [Float] {
-            if model == nil { model = try await WeSpeakerModel.fromPretrained() }
+            if model == nil {
+                try MLXRuntime.requireAvailable()
+                model = try await WeSpeakerModel.fromPretrained()
+            }
             return model!.embed(audio: samples, sampleRate: 16000)
         }
     }

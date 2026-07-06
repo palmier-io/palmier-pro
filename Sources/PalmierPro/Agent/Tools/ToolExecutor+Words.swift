@@ -99,6 +99,7 @@ extension ToolExecutor {
         // partners, so flattening foreign-track frames here would over-cut the primary track.
         let primaryRanges = rangesByTrack[primaryTrack]!
 
+        let snapshot = timelineSnapshot(editor)
         editor.undoManager?.beginUndoGrouping()
         let outcome = editor.rippleDeleteRangesOnTrack(trackIndex: primaryTrack, ranges: primaryRanges)
         editor.undoManager?.endUndoGrouping()
@@ -108,21 +109,23 @@ extension ToolExecutor {
             throw ToolError("Ripple delete refused.")
         }
 
-        var payload: [String: Any] = [
+        var extra: [String: Any] = [
             "removedWords": removedTexts.count, "removedFrames": report.removedFrames,
-            "tracksEdited": report.clearedTracks, "cutAggressiveness": aggressiveness.rawValue,
+            "cutAggressiveness": aggressiveness.rawValue,
             "transcriptionSource": context.provider.rawValue,
-            "note": "Removed and closed the gaps. Re-read get_transcript before another remove_words.",
         ]
         let preview = removedTexts.prefix(24).joined(separator: " ")
-        if !preview.isEmpty { payload["removedText"] = removedTexts.count > 24 ? preview + " …" : preview }
-        if !ignored.isEmpty { payload["indicesIgnored"] = ignored.sorted() }
-        guard let json = Self.jsonString(payload) else { throw ToolError("Failed to encode result") }
-        return .ok(json)
+        if !preview.isEmpty { extra["removedText"] = removedTexts.count > 24 ? preview + " …" : preview }
+        if !ignored.isEmpty { extra["indicesIgnored"] = ignored.sorted() }
+        return mutationResult(
+            editor, since: snapshot, extra: extra,
+            notes: ["Word indices shifted — re-read get_transcript before another remove_words."]
+        )
     }
 
     func removeSilence(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         try validateUnknownKeys(args, allowed: [], path: "remove_silence")
+        let snapshot = timelineSnapshot(editor)
         editor.undoManager?.beginUndoGrouping()
         let result = editor.removeAllDeadAir()
         editor.undoManager?.endUndoGrouping()
@@ -133,15 +136,15 @@ extension ToolExecutor {
         if let refusal = result.refusal, result.sections == 0 {
             throw ToolError("Ripple delete refused: \(refusal)")
         }
-        var payload: [String: Any] = [
-            "sectionsRemoved": result.sections, "removedFrames": result.removedFrames,
-            "note": "Removed dead air and closed the gaps. Frames have shifted — re-read get_timeline or get_transcript before further edits.",
-        ]
+        var notes: [String] = []
         if let refusal = result.refusal {
-            payload["partial"] = "A later track refused: \(refusal). Earlier tracks were already edited."
+            notes.append("A later track refused: \(refusal). Earlier tracks were already edited.")
         }
-        guard let json = Self.jsonString(payload) else { throw ToolError("Failed to encode result") }
-        return .ok(json)
+        return mutationResult(
+            editor, since: snapshot,
+            extra: ["sectionsRemoved": result.sections, "removedFrames": result.removedFrames],
+            notes: notes
+        )
     }
 
     static func parseWordSpans(_ raw: [Any]) throws -> [(Int, Int)] {

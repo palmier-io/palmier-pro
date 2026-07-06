@@ -42,6 +42,7 @@ enum VoiceActivity {
             if let model {
                 vad = model
             } else {
+                try MLXRuntime.requireAvailable()
                 vad = try await SileroVADModel.fromPretrained(engine: .mlx)
                 model = vad
             }

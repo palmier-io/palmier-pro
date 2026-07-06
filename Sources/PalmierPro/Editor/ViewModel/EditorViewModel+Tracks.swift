@@ -106,10 +106,12 @@ extension EditorViewModel {
         offName: String
     ) {
         guard timeline.tracks.indices.contains(trackIndex) else { return }
+        let trackId = timeline.tracks[trackIndex].id
         let was = timeline.tracks[trackIndex][keyPath: keyPath]
         timeline.tracks[trackIndex][keyPath: keyPath].toggle()
         registerTimelineUndo { vm in
-            vm.timeline.tracks[trackIndex][keyPath: keyPath] = was
+            guard let i = vm.timeline.tracks.firstIndex(where: { $0.id == trackId }) else { return }
+            vm.timeline.tracks[i][keyPath: keyPath] = was
         }
         undoManager?.setActionName(was ? offName : onName)
         notifyTimelineChanged()
@@ -119,10 +121,12 @@ extension EditorViewModel {
 
     func setTrackHeight(trackIndex: Int, height: CGFloat) {
         guard timeline.tracks.indices.contains(trackIndex) else { return }
+        let trackId = timeline.tracks[trackIndex].id
         let prev = timeline.tracks[trackIndex].displayHeight
         timeline.tracks[trackIndex].displayHeight = max(TrackSize.minHeight, min(TrackSize.maxHeight, height))
         registerTimelineUndo { vm in
-            vm.setTrackHeight(trackIndex: trackIndex, height: prev)
+            guard let i = vm.timeline.tracks.firstIndex(where: { $0.id == trackId }) else { return }
+            vm.setTrackHeight(trackIndex: i, height: prev)
         }
         undoManager?.setActionName("Resize Track")
     }

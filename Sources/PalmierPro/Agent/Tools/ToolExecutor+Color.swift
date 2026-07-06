@@ -53,10 +53,67 @@ extension ToolExecutor {
         }
     }
 
+    static let colorObjectAllowedKeys: Set<String> = ApplyColorInput.allowedKeys
+        .subtracting(["clipIds", "reset", "hueCurves"])
+        .union(["hueCurvesRaw"])
+
+    /// The clip's grade in apply_color vocabulary; nil when ungraded. Round-trips via
+    /// apply_color's `color` parameter (hue curves come back raw — they compile one-way).
+    static func colorObject(from effects: [Effect]?) -> [String: Any]? {
+        guard let effects, effects.contains(where: { $0.type.hasPrefix("color.") }) else { return nil }
+        let s = GradeState(effects: effects)
+        var out: [String: Any] = [:]
+        let knobs: [(String, Double?)] = [
+            ("exposure", s.exposure), ("contrast", s.contrast), ("saturation", s.saturation),
+            ("vibrance", s.vibrance), ("temperature", s.temperature), ("tint", s.tint),
+            ("highlights", s.highlights), ("shadows", s.shadows), ("blacks", s.blacks), ("whites", s.whites),
+            ("shadowsHue", s.shadowsHue), ("shadowsAmount", s.shadowsAmount), ("shadowsLum", s.shadowsLum),
+            ("midsHue", s.midsHue), ("midsAmount", s.midsAmount), ("midsGamma", s.midsGamma),
+            ("highsHue", s.highsHue), ("highsAmount", s.highsAmount), ("highsGain", s.highsGain),
+        ]
+        // Wheels store every zone; neutral values aren't part of the grade's meaning.
+        let neutral: [String: Double] = ["shadowsLum": 0, "midsGamma": 1, "highsGain": 1, "shadowsAmount": 0, "midsAmount": 0, "highsAmount": 0]
+        for (k, v) in knobs {
+            guard let v, v != neutral[k] else { continue }
+            out[k] = v
+        }
+        for zone in ["shadows", "mids", "highs"] where out["\(zone)Amount"] == nil {
+            out.removeValue(forKey: "\(zone)Hue")
+        }
+        func pts(_ p: [CurvePoint]) -> [[Double]]? { p.isEmpty ? nil : p.map { [$0.x, $0.y] } }
+        if let c = s.curve {
+            if let v = pts(c.master) { out["masterCurve"] = v }
+            if let v = pts(c.red) { out["redCurve"] = v }
+            if let v = pts(c.green) { out["greenCurve"] = v }
+            if let v = pts(c.blue) { out["blueCurve"] = v }
+        }
+        if let hc = s.hueCurves {
+            var raw: [String: Any] = [:]
+            if let v = pts(hc.hueVsHue) { raw["hueVsHue"] = v }
+            if let v = pts(hc.hueVsSat) { raw["hueVsSat"] = v }
+            if let v = pts(hc.hueVsLum) { raw["hueVsLum"] = v }
+            if !raw.isEmpty { out["hueCurvesRaw"] = raw }
+        }
+        if let path = s.lutPath {
+            out["lut"] = ["path": path, "strength": s.lutIntensity ?? 1] as [String: Any]
+        }
+        return out.isEmpty ? nil : out
+    }
+
     func applyColor(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
-        let input: ApplyColorInput = try decodeToolArgs(args, path: "apply_color")
+        let colorDict = args["color"] as? [String: Any]
+        var knobArgs = args
+        knobArgs.removeValue(forKey: "color")
+        let input: ApplyColorInput = try decodeToolArgs(knobArgs, path: "apply_color")
         guard !input.clipIds.isEmpty else { throw ToolError("clipIds is empty.") }
-        guard input.hasAnyParam || (input.reset ?? false) else { throw ToolError("No grade parameters provided.") }
+        if let colorDict {
+            guard !input.hasAnyParam, input.reset != true else {
+                throw ToolError("'color' pastes a complete grade — don't combine it with individual knobs or reset.")
+            }
+            try validateUnknownKeys(colorDict, allowed: Self.colorObjectAllowedKeys, path: "apply_color.color")
+        } else {
+            guard input.hasAnyParam || (input.reset ?? false) else { throw ToolError("No grade parameters provided.") }
+        }
         for id in input.clipIds {
             guard let clip = editor.clipFor(id: id) else { throw ToolError("Clip not found: \(id)") }
             guard clip.mediaType == .video || clip.mediaType == .image else {
@@ -64,26 +121,41 @@ extension ToolExecutor {
             }
         }
         // LUT file I/O up front so it can throw before mutating.
-        var lutDestPath: String?
-        if let path = input.lut?.path, !path.isEmpty {
-            do { lutDestPath = try LUTLoader.store(path: path, projectId: editor.projectId) }
+        func storeLUT(_ path: String) throws -> String {
+            do { return try LUTLoader.store(path: path, projectId: editor.projectId) }
             catch let e as LUTStoreError { throw ToolError(e.errorDescription ?? "Invalid LUT.") }
         }
+        var lutDestPath: String?
+        if let path = input.lut?.path, !path.isEmpty {
+            lutDestPath = try storeLUT(path)
+        }
+        var pastedStack: [Effect]?
+        if let colorDict {
+            var pasted = GradeState(colorDict: colorDict)
+            if let path = pasted.lutPath, !path.isEmpty { pasted.lutPath = try storeLUT(path) }
+            pasted.lutIntensity = pasted.lutIntensity.map { min(1, max(0, $0)) }
+            pastedStack = pasted.buildStack()
+        }
         let reset = input.reset ?? false
+        let snapshot = timelineSnapshot(editor)
         let actionName = input.clipIds.count == 1 ? "Color Grade (Agent)" : "Color Grade ×\(input.clipIds.count) (Agent)"
         withUndoGroup(editor, actionName: actionName) {
             editor.mutateClips(ids: Set(input.clipIds), actionName: actionName) { clip in
+                let nonColor = (clip.effects ?? []).filter { !$0.type.hasPrefix("color.") }
+                if let pastedStack {
+                    clip.effects = nonColor + pastedStack
+                    return
+                }
                 let disabledColor = reset ? []
                     : Set((clip.effects ?? []).filter { $0.type.hasPrefix("color.") && !$0.enabled }.map(\.type))
                 var state = GradeState(effects: reset ? nil : clip.effects)
                 state.apply(input, lutDestPath: lutDestPath)
-                let nonColor = (clip.effects ?? []).filter { !$0.type.hasPrefix("color.") }
                 var color = state.buildStack()
                 for i in color.indices where disabledColor.contains(color[i].type) { color[i].enabled = false }
                 clip.effects = nonColor + color
             }
         }
-        return .ok("Graded \(input.clipIds.count) clip\(input.clipIds.count == 1 ? "" : "s") (\(reset ? "reset" : "merged")). Verify with inspect_timeline.")
+        return mutationResult(editor, since: snapshot, touched: input.clipIds)
     }
 
     fileprivate struct InspectColorInput: DecodableToolArgs {
@@ -303,6 +375,44 @@ private struct GradeState {
                 highsGain = p["gain_m"]?.value
             default: break
             }
+        }
+    }
+
+    /// A pasted `color` object — the shape colorObject(from:) emits.
+    init(colorDict d: [String: Any]) {
+        func dv(_ k: String) -> Double? { (d[k] as? NSNumber)?.doubleValue }
+        exposure = dv("exposure"); contrast = dv("contrast"); saturation = dv("saturation")
+        vibrance = dv("vibrance"); temperature = dv("temperature"); tint = dv("tint")
+        highlights = dv("highlights"); shadows = dv("shadows"); blacks = dv("blacks"); whites = dv("whites")
+        shadowsHue = dv("shadowsHue"); shadowsAmount = dv("shadowsAmount"); shadowsLum = dv("shadowsLum")
+        midsHue = dv("midsHue"); midsAmount = dv("midsAmount"); midsGamma = dv("midsGamma")
+        highsHue = dv("highsHue"); highsAmount = dv("highsAmount"); highsGain = dv("highsGain")
+
+        func points(_ raw: Any?) -> [CurvePoint] {
+            (raw as? [[Any]])?.compactMap { row in
+                guard row.count >= 2,
+                      let x = (row[0] as? NSNumber)?.doubleValue,
+                      let y = (row[1] as? NSNumber)?.doubleValue else { return nil }
+                return CurvePoint(x: x, y: y)
+            } ?? []
+        }
+        let master = points(d["masterCurve"]), red = points(d["redCurve"])
+        let green = points(d["greenCurve"]), blue = points(d["blueCurve"])
+        if !(master.isEmpty && red.isEmpty && green.isEmpty && blue.isEmpty) {
+            var c = GradeCurve()
+            c.master = master; c.red = red; c.green = green; c.blue = blue
+            curve = c
+        }
+        if let raw = d["hueCurvesRaw"] as? [String: Any] {
+            var hc = HueCurves()
+            hc.hueVsHue = points(raw["hueVsHue"])
+            hc.hueVsSat = points(raw["hueVsSat"])
+            hc.hueVsLum = points(raw["hueVsLum"])
+            if !hc.isIdentity { hueCurves = hc }
+        }
+        if let lut = d["lut"] as? [String: Any] {
+            lutPath = lut["path"] as? String
+            lutIntensity = (lut["strength"] as? NSNumber)?.doubleValue
         }
     }
 

@@ -3,20 +3,21 @@ import Foundation
 
 extension ToolExecutor {
     private static let addCaptionsAllowedKeys: Set<String> = Set([
-        "clipIds", "centerX", "centerY", "textCase", "censorProfanity", "language", "animation", "highlightColor", "maxWords",
+        "transform", "textCase", "censorProfanity", "language", "animation", "highlightColor", "maxWords",
     ]).union(agentTextStylePatchAllowedKeys)
 
     func addCaptions(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.addCaptionsAllowedKeys, path: "add_captions")
 
-        let clipIds = (args["clipIds"] as? [Any])?.compactMap { $0 as? String } ?? []
-
         var style = TextStyle(fontSize: AppTheme.Caption.defaultFontSize)
         _ = Self.applyTextStylePatch(try parseTextStylePatch(args, path: "add_captions"), to: &style)
 
         var center = AppTheme.Caption.defaultCenter
-        if let x = args.double("centerX") { center.x = CGFloat(x) }
-        if let y = args.double("centerY") { center.y = CGFloat(y) }
+        if let t = args["transform"] as? [String: Any] {
+            try validateUnknownKeys(t, allowed: ["centerX", "centerY"], path: "add_captions.transform")
+            if let x = t.double("centerX") { center.x = CGFloat(x) }
+            if let y = t.double("centerY") { center.y = CGFloat(y) }
+        }
 
         var textCase: EditorViewModel.CaptionCase = .auto
         if let raw = args.string("textCase") {
@@ -43,8 +44,8 @@ extension ToolExecutor {
         }
 
         let request = EditorViewModel.CaptionRequest(
-            sourceClipIds: clipIds,
-            autoDetect: clipIds.isEmpty,
+            sourceClipIds: [],
+            autoDetect: true,
             style: style,
             center: center,
             textCase: textCase,
@@ -57,9 +58,9 @@ extension ToolExecutor {
 
         try await Self.validateCloudTranscriptionAccess(for: request, in: editor)
 
+        let snapshot = timelineSnapshot(editor)
         let ids = try await editor.generateCaptions(for: request)
         guard !ids.isEmpty else { throw ToolError("No speech detected to caption.") }
-        let suffix = animation.isActive ? " (\(animation.preset.rawValue))" : ""
-        return .ok("Added \(ids.count) caption\(ids.count == 1 ? "" : "s")\(suffix).")
+        return mutationResult(editor, since: snapshot)
     }
 }

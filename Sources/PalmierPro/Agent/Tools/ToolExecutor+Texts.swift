@@ -39,7 +39,7 @@ fileprivate struct PartialTextSpec {
 
 extension ToolExecutor {
     private static let addTextsAllowedKeys: Set<String> = Set([
-        "trackIndex", "startFrame", "durationFrames", "content",
+        "trackIndex", "startFrame", "endFrame", "content",
         "transform", "animation", "highlightColor",
     ]).union(agentTextStylePatchAllowedKeys)
 
@@ -148,7 +148,7 @@ extension ToolExecutor {
 
             let trackIndex = entry.int("trackIndex")
             let startFrame = try entry.requireInt("startFrame")
-            let durationFrames = try entry.requireInt("durationFrames")
+            let endFrame = try entry.requireInt("endFrame")
             let content = try entry.requireString("content")
 
             var trackId: String? = nil
@@ -161,12 +161,13 @@ extension ToolExecutor {
                 }
                 trackId = editor.timeline.tracks[ti].id
             }
-            guard durationFrames >= 1 else {
-                throw ToolError("\(path): durationFrames must be >= 1 (got \(durationFrames))")
-            }
             guard startFrame >= 0 else {
                 throw ToolError("\(path): startFrame must be >= 0 (got \(startFrame))")
             }
+            guard endFrame > startFrame else {
+                throw ToolError("\(path): endFrame (\(endFrame)) must be greater than startFrame (\(startFrame))")
+            }
+            let durationFrames = endFrame - startFrame
 
             var style = TextStyle()
             _ = Self.applyTextStylePatch(try parseTextStylePatch(entry, path: path), to: &style)
@@ -195,15 +196,13 @@ extension ToolExecutor {
             throw ToolError("Mixed trackIndex: \(omittedCount) of \(partials.count) entries omitted trackIndex. Either set it on every entry or omit it on every entry (to auto-create a shared new track).")
         }
 
+        let snapshot = timelineSnapshot(editor)
         let actionName = partials.count == 1 ? "Add Text (Agent)" : "Add Texts (Agent)"
-        let (ids, createdTrackInfo, resolvedSpecs) = try withUndoGroup(editor, actionName: actionName) {
-            () -> ([String], String?, [EditorViewModel.TextClipSpec]) in
-            var createdTrackInfo: String? = nil
+        try withUndoGroup(editor, actionName: actionName) {
             var createdTrackId: String? = nil
             let resolvedTrackId: String?
             if omittedCount == partials.count {
                 let newIdx = editor.insertTrack(at: 0, type: .video)
-                createdTrackInfo = "track \(newIdx) ('\(editor.timelineTrackDisplayLabel(at: newIdx))')"
                 createdTrackId = editor.timeline.tracks.indices.contains(newIdx) ? editor.timeline.tracks[newIdx].id : nil
                 resolvedTrackId = createdTrackId
             } else {
@@ -235,15 +234,9 @@ extension ToolExecutor {
             editor.registerTimelineUndo { vm in
                 vm.removeClips(ids: Set(ids))
             }
-            return (ids, createdTrackInfo, resolvedSpecs)
         }
         editor.notifyTimelineChanged()
-
-        let prefix = createdTrackInfo.map { "Created \($0). " } ?? ""
-        let summary = zip(ids, resolvedSpecs).map { id, spec in
-            "\(id) on track \(spec.trackIndex) @ frame \(spec.startFrame) for \(spec.durationFrames)"
-        }.joined(separator: "; ")
-        return .ok("\(prefix)Added \(ids.count) text clip\(ids.count == 1 ? "" : "s"): \(summary)")
+        return mutationResult(editor, since: snapshot)
     }
 
     func updateText(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
@@ -287,6 +280,19 @@ extension ToolExecutor {
             }
         }
 
+        var notes: [String] = []
+        if hasContent {
+            let timingCleared = clipIds.filter { id in
+                guard let loc = editor.findClip(id: id) else { return false }
+                let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+                return clip.wordTimings != nil && clip.textContent != content
+            }
+            if !timingCleared.isEmpty {
+                notes.append("Content change cleared word timings on \(timingCleared.count) clip\(timingCleared.count == 1 ? "" : "s") — karaoke highlighting falls back to plain text there.")
+            }
+        }
+
+        let snapshot = timelineSnapshot(editor)
         let actionName = clipIds.count == 1 ? "Update Text (Agent)" : "Update Texts (Agent)"
         let shouldFitToContent = transform == nil && (hasContent || textStylePatch.affectsLayout)
         let canvasW = Double(editor.timeline.width)
@@ -339,6 +345,6 @@ extension ToolExecutor {
             }
         }
 
-        return .ok("Updated \(clipIds.count) text clip\(clipIds.count == 1 ? "" : "s").")
+        return mutationResult(editor, since: snapshot, touched: clipIds, notes: notes)
     }
 }

@@ -49,13 +49,13 @@ struct TimelineToolsTests {
         #expect(undo.isError)
     }
 
-    @Test func duplicateTimelineCopiesRenamesAndSwitches() async throws {
+    @Test func createTimelineFromDuplicatesRenamesAndSwitches() async throws {
         let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
             Fixtures.videoTrack(clips: [Fixtures.clip(id: "orig", start: 0, duration: 30)])
         ]))
         let sourceId = h.editor.activeTimelineId
 
-        let result = await h.runRaw("duplicate_timeline", args: ["name": "Vertical Cut"])
+        let result = await h.runRaw("create_timeline", args: ["from": sourceId, "name": "Vertical Cut"])
         #expect(!result.isError)
         #expect(h.editor.timelines.count == 2)
         #expect(h.editor.timeline.name == "Vertical Cut")
@@ -113,21 +113,29 @@ struct TimelineToolsTests {
         #expect(emptyNest.isError)
     }
 
-    @Test func renameAndDeleteMediaAcceptTimelines() async throws {
+    @Test func organizeMediaAcceptsTimelines() async throws {
         let h = ToolHarness()
         let child = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 30)])])
         h.editor.timelines.append(child)
 
-        let rename = await h.runRaw("rename_media", args: ["mediaRef": child.id, "name": "Selects"])
+        let rename = await h.runRaw("organize_media", args: [
+            "renames": [["item": child.id, "name": "Selects"]],
+        ])
         #expect(!rename.isError)
         #expect(h.editor.timeline(for: child.id)?.name == "Selects")
 
-        let delete = await h.runRaw("delete_media", args: ["assetIds": [child.id]])
+        let move = await h.runRaw("organize_media", args: [
+            "moves": [["items": [child.id], "into": "Cuts"]],
+        ])
+        #expect(!move.isError)
+        #expect(h.editor.timeline(for: child.id)?.folderId != nil)
+
+        let delete = await h.runRaw("organize_media", args: ["deletes": [child.id]])
         #expect(!delete.isError)
         #expect(h.editor.timelines.count == 1)
 
         // The last timeline is protected.
-        let last = await h.runRaw("delete_media", args: ["assetIds": [h.editor.activeTimelineId]])
+        let last = await h.runRaw("organize_media", args: ["deletes": [h.editor.activeTimelineId]])
         #expect(last.isError)
         #expect(h.editor.timelines.count == 1)
     }

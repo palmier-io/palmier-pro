@@ -26,6 +26,10 @@ extension EditorViewModel {
         MediaFolderIndex(mediaManifest.folders).path(for: folderId)
     }
 
+    func folderIdsIncludingDescendants(_ ids: Set<String>) -> Set<String> {
+        MediaFolderIndex(mediaManifest.folders).idsIncludingDescendants(ids)
+    }
+
     private func assetIds(inFolderIds folderIds: Set<String>) -> Set<String> {
         Set(mediaAssets
             .filter { asset in asset.folderId.map { folderIds.contains($0) } ?? false }
