@@ -15,6 +15,24 @@ enum AudioTrackReader {
         }
     }
 
+    /// Whole-range mono Float32 decode at `sampleRate`
+    static func readMonoFloats(from url: URL, sampleRate: Double, range: ClosedRange<Double>? = nil) async throws -> [Float] {
+        var samples: [Float] = []
+        try await read(from: url, outputSettings: [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: true,
+        ], range: range) { buffer in
+            guard let data = buffer.floatChannelData else { return }
+            samples.append(contentsOf: UnsafeBufferPointer(start: data[0], count: Int(buffer.frameLength)))
+        }
+        return samples
+    }
+
     /// Decode `url`'s first audio track with `outputSettings` (and optional `range`),
     /// invoking `onBuffer` for each PCM buffer. Throws `ReadError` on any failure.
     static func read(

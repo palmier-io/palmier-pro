@@ -29,6 +29,15 @@ final class TimelineInputController {
 
     // MARK: - Mouse down
 
+
+    /// Nest trim limits come from the child's live length, not creation time.
+    private func effectiveTrimEnd(for clip: Clip) -> Int {
+        guard clip.sourceClipType == .sequence, let child = editor.timeline(for: clip.mediaRef) else {
+            return clip.trimEndFrame
+        }
+        return max(0, child.totalFrames - clip.trimStartFrame - clip.durationFrames)
+    }
+
     func mouseDown(with event: NSEvent, geometry: TimelineGeometry) {
         let point = view.convert(event.locationInWindow, from: nil)
         let scrollOffsetY = view.enclosingScrollView?.contentView.bounds.origin.y ?? 0
@@ -38,6 +47,11 @@ final class TimelineInputController {
             let ti = geometry.trackAt(y: point.y)
             if let hit = hitTestClip(at: point, trackIndex: ti, geometry: geometry) {
                 let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
+                if clip.sourceClipType == .sequence {
+                    editor.activateTimeline(clip.mediaRef)
+                    dragState = .idle
+                    return
+                }
                 if let asset = editor.mediaAssets.first(where: { $0.id == clip.mediaRef }) {
                     editor.selectMediaAsset(asset)
                     editor.mediaPanelRevealAssetId = asset.id
@@ -144,7 +158,7 @@ final class TimelineInputController {
                     clipId: clip.id,
                     trackIndex: hit.trackIndex,
                     originalTrimStart: clip.trimStartFrame,
-                    originalTrimEnd: clip.trimEndFrame,
+                    originalTrimEnd: effectiveTrimEnd(for: clip),
                     originalStartFrame: clip.startFrame,
                     originalDuration: clip.durationFrames,
                     hasNoSourceMedia: clip.mediaType == .image || clip.mediaType == .text || clip.mediaType == .adjustment,
@@ -156,7 +170,7 @@ final class TimelineInputController {
                     clipId: clip.id,
                     trackIndex: hit.trackIndex,
                     originalTrimStart: clip.trimStartFrame,
-                    originalTrimEnd: clip.trimEndFrame,
+                    originalTrimEnd: effectiveTrimEnd(for: clip),
                     originalStartFrame: clip.startFrame,
                     originalDuration: clip.durationFrames,
                     hasNoSourceMedia: clip.mediaType == .image || clip.mediaType == .text || clip.mediaType == .adjustment,

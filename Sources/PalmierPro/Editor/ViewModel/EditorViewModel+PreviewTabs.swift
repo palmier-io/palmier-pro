@@ -30,6 +30,7 @@ extension EditorViewModel {
     }
 
     func selectMediaAsset(_ asset: MediaAsset, atSourceFrame frame: Int = 0) {
+        selectedTimelineIds.removeAll()
         openPreviewTab(for: asset, atSourceFrame: frame)
         syncSelectionToActiveTab()
         showMediaPanelMediaTab()

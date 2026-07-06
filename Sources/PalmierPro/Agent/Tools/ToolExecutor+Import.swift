@@ -5,8 +5,8 @@ extension ToolExecutor {
     nonisolated static let importBytesMaxBase64Length = 15 * 1024 * 1024
     nonisolated static let remoteImportRequestTimeout: TimeInterval = 15 * 60
 
-    private static let importMediaAllowedKeys: Set<String> = ["source", "name", "folderId"]
-    private static let importSourceAllowedKeys: Set<String> = ["url", "path", "bytes", "mimeType"]
+    private static let importMediaAllowedKeys: Set<String> = ["source", "name", "folder"]
+    private static let importSourceAllowedKeys: Set<String> = ["url", "path", "bytes", "matte", "mimeType"]
     private nonisolated static let acceptedMimeTypesMessage = "Accepted: video/mp4, video/quicktime, audio/mpeg, audio/wav, audio/aac, audio/mp4, audio/aiff, audio/flac, image/png, image/jpeg, image/tiff, image/heic."
 
     private struct ImportPathStatus: Sendable {
@@ -29,14 +29,15 @@ extension ToolExecutor {
         let urlStr = source.string("url")
         let pathStr = source.string("path")
         let bytesStr = source.string("bytes")
+        let matte = source["matte"] as? [String: Any]
         let mimeType = source.string("mimeType")
 
-        let setCount = [urlStr, pathStr, bytesStr].compactMap { $0 }.count
+        let setCount = [urlStr, pathStr, bytesStr].compactMap { $0 }.count + (matte == nil ? 0 : 1)
         guard setCount == 1 else {
-            throw ToolError("source must set exactly one of 'url', 'path', or 'bytes' (got \(setCount))")
+            throw ToolError("source must set exactly one of 'url', 'path', 'bytes', or 'matte' (got \(setCount))")
         }
 
-        let folderId = try resolveFolderId(args, editor: editor)
+        let folderId = try resolveFolder(args, editor: editor)
         let providedName = args.string("name")
 
         if let pathStr {
@@ -47,6 +48,9 @@ extension ToolExecutor {
                 throw ToolError("source.mimeType is required when source.bytes is set")
             }
             return try await importFromBytes(editor: editor, base64: bytesStr, mimeType: mimeType, name: providedName, folderId: folderId)
+        }
+        if let matte {
+            return try await importMatte(editor: editor, matte: matte, name: providedName, folderId: folderId)
         }
         if let urlStr {
             return try importFromURL(editor: editor, urlString: urlStr, mimeOverride: mimeType, name: providedName, folderId: folderId)
@@ -67,7 +71,12 @@ extension ToolExecutor {
             guard summary.assetCount > 0 else {
                 throw ToolError("No supported media found in folder: \(path)")
             }
-            return .ok("Imported \(summary.assetCount) file(s) into \(summary.folderCount) folder(s) from '\(fileURL.lastPathComponent)', mirroring its structure. Available now in get_media / list_folders.")
+            return .ok(Self.jsonString([
+                "status": "ready",
+                "imported": summary.assetCount,
+                "folders": summary.folderCount,
+                "note": "Imported from '\(fileURL.lastPathComponent)', mirroring its structure. See get_media.",
+            ] as [String: Any]) ?? "{}")
         }
         let ext = fileURL.pathExtension.lowercased()
         guard let type = ClipType(fileExtension: ext) else {
@@ -96,7 +105,12 @@ extension ToolExecutor {
             await Self.copyImportedAsset(asset: placeholder, sourceURL: fileURL, editor: editor)
         }
 
-        return .ok("Import started. Placeholder asset id: \(placeholder.id) (type: \(type.rawValue)). Status: downloading. Poll get_media; the asset appears once the copy completes.")
+        return .ok(Self.jsonString([
+            "mediaRef": placeholder.id,
+            "type": type.rawValue,
+            "status": "downloading",
+            "note": "Copying in the background. Poll get_media with ids:[\"\(placeholder.id)\"] until generationStatus clears.",
+        ]) ?? "{}")
     }
 
     private func importFromBytes(editor: EditorViewModel, base64: String, mimeType: String, name: String?, folderId: String?) async throws -> ToolResult {
@@ -116,7 +130,12 @@ extension ToolExecutor {
             throw ToolError("Failed to register imported asset")
         }
         applyImportMetadata(editor: editor, asset: asset, name: name, folderId: folderId)
-        return .ok("Imported '\(asset.name)' (id: \(asset.id), type: \(asset.type.rawValue), \(imported.byteCount) bytes). Available now in get_media.")
+        return .ok(Self.jsonString([
+            "mediaRef": asset.id,
+            "name": asset.name,
+            "type": asset.type.rawValue,
+            "status": "ready",
+        ]) ?? "{}")
     }
 
     private func importFromURL(editor: EditorViewModel, urlString: String, mimeOverride: String?, name: String?, folderId: String?) throws -> ToolResult {
@@ -178,7 +197,12 @@ extension ToolExecutor {
             await Self.downloadImportedAsset(asset: placeholder, remoteURL: url, editor: editor)
         }
 
-        return .ok("Import started. Placeholder asset id: \(placeholder.id) (type: \(type.rawValue)). Status: downloading. Poll get_media; the asset appears once the download completes.")
+        return .ok(Self.jsonString([
+            "mediaRef": placeholder.id,
+            "type": type.rawValue,
+            "status": "downloading",
+            "note": "Downloading in the background. Poll get_media with ids:[\"\(placeholder.id)\"] until generationStatus clears.",
+        ]) ?? "{}")
     }
 
     private func createImportPlaceholder(
@@ -325,26 +349,28 @@ extension ToolExecutor {
         }
     }
 
-    func createMatte(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
-        try validateUnknownKeys(args, allowed: ["hex", "aspectRatio", "name", "folderId"], path: "create_matte")
-        guard let hex = args.string("hex")?.trimmingCharacters(in: .whitespacesAndNewlines), !hex.isEmpty
-        else { throw ToolError("create_matte requires 'hex'.") }
+    private func importMatte(
+        editor: EditorViewModel, matte: [String: Any], name: String?, folderId: String?
+    ) async throws -> ToolResult {
+        try validateUnknownKeys(matte, allowed: ["hex", "aspectRatio"], path: "source.matte")
+        guard let hex = matte.string("hex")?.trimmingCharacters(in: .whitespacesAndNewlines), !hex.isEmpty
+        else { throw ToolError("source.matte requires 'hex'.") }
         let aspect: MatteAspect
-        if let raw = args.string("aspectRatio") {
+        if let raw = matte.string("aspectRatio") {
             guard let parsed = MatteAspect.parse(raw) else {
-                throw ToolError("create_matte: unknown aspectRatio '\(raw)'. Use one of \(MatteAspect.allCases.map(\.rawValue).joined(separator: ", ")).")
+                throw ToolError("source.matte: unknown aspectRatio '\(raw)'. Use one of \(MatteAspect.allCases.map(\.rawValue).joined(separator: ", ")).")
             }
             aspect = parsed
         } else {
             aspect = .project
         }
-        let asset = try await editor.createMatte(
-            hex: hex,
-            aspect: aspect,
-            folderId: try resolveFolderId(args, editor: editor),
-            name: args.string("name")
-        )
-        return .ok(Self.jsonString(["mediaRef": asset.id, "name": asset.name]) ?? asset.id)
+        let asset = try await editor.createMatte(hex: hex, aspect: aspect, folderId: folderId, name: name)
+        return .ok(Self.jsonString([
+            "mediaRef": asset.id,
+            "name": asset.name,
+            "type": asset.type.rawValue,
+            "status": "ready",
+        ]) ?? "{}")
     }
 }
 

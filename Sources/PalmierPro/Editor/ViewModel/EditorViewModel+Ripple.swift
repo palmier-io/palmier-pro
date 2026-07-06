@@ -116,17 +116,14 @@ extension EditorViewModel {
         }
     }
 
-    /// Achievable timeline-duration delta for a ripple trim of `clip` from a drag of `delta`
-    /// timeline frames. Reuses `trimValues` for the source clamp, then converts the realised
-    /// source-trim change back to a timeline-length delta (positive = longer).
+    /// Timeline delta from a ripple trim of `clip` by `delta` frames.
     private func rippleTrimDurationDelta(for clip: Clip, edge: TrimEdge, delta: Int) -> Int {
         let fields = trimValues(for: clip, edge: edge, delta: delta)
         let sourceShift = (fields.trimStart - clip.trimStartFrame) + (fields.trimEnd - clip.trimEndFrame)
         return -Int((Double(sourceShift) / clip.speed).rounded())
     }
 
-    /// Ripple delete: remove selected clips and close the gaps. Sync-locked tracks shift
-    /// along to preserve cross-track alignment; refuses if any would collide.
+    /// Ripple delete: remove selected clips and shift sync-locked tracks to keep them aligned.
     func rippleDeleteSelectedClips() {
         let ids = selectedClipIds
         guard !ids.isEmpty else { return }
@@ -180,8 +177,7 @@ extension EditorViewModel {
         return rippleDeleteRangesOnTrack(trackIndex: anchorLoc.trackIndex, ranges: ranges)
     }
 
-    /// Deletes project-frame ranges from one track (spanning any clips) and closes the gaps; cuts linked A/V partners and sync-locked tracks, refuses if any can't absorb.
-    /// Tracks in `ignoreSyncLockTrackIndices` are treated as unlocked for this call only
+    /// Ripple-deletes frame ranges on a track, including linked and sync-locked tracks. Tracks in `ignoreSyncLockTrackIndices` are unlocked for this call.
     func rippleDeleteRangesOnTrack(trackIndex: Int, ranges: [FrameRange], ignoreSyncLockTrackIndices: Set<Int> = []) -> RippleRangesOutcome {
         guard timeline.tracks.indices.contains(trackIndex) else {
             return .refused("Track index out of range: \(trackIndex)")
@@ -195,15 +191,25 @@ extension EditorViewModel {
 
         let anchorTrackId = timeline.tracks[trackIndex].id
         var clearTrackIds: Set<String> = [anchorTrackId]
-        // Linked partners of every touched clip, so A/V stays in sync across multi-clip ranges.
-        for clip in timeline.tracks[trackIndex].clips
-        where clip.linkGroupId != nil && merged.contains(where: { $0.start < clip.endFrame && $0.end > clip.startFrame }) {
-            for pid in linkedPartnerIds(of: clip.id) {
-                if let l = findClip(id: pid) { clearTrackIds.insert(timeline.tracks[l.trackIndex].id) }
-            }
-        }
         for track in timeline.tracks where track.syncLocked && !ignoredTrackIds.contains(track.id) {
             clearTrackIds.insert(track.id)
+        }
+        // Ensure all linked partners of affected clips are included to keep A/V in sync.
+        var frontier = clearTrackIds
+        while !frontier.isEmpty {
+            var added: Set<String> = []
+            for tid in frontier {
+                guard let ti = timeline.tracks.firstIndex(where: { $0.id == tid }) else { continue }
+                for clip in timeline.tracks[ti].clips
+                where clip.linkGroupId != nil && merged.contains(where: { $0.start < clip.endFrame && $0.end > clip.startFrame }) {
+                    for pid in linkedPartnerIds(of: clip.id) {
+                        guard let l = findClip(id: pid) else { continue }
+                        let partnerTid = timeline.tracks[l.trackIndex].id
+                        if clearTrackIds.insert(partnerTid).inserted { added.insert(partnerTid) }
+                    }
+                }
+            }
+            frontier = added
         }
 
         // Refuse up front if a sync-locked follower can't absorb the shift after clearing.
@@ -387,7 +393,9 @@ extension EditorViewModel {
             // Pin the linked-audio destination before pushing so it ripples too; otherwise the
             // auto-created audio partner would land on an un-pushed track and overlap.
             let targetIsVideo = timeline.tracks[trackIndex].type == .video
-            let needsLinkedAudio = targetIsVideo && specs.contains { $0.asset.type == .video && $0.asset.hasAudio }
+            let needsLinkedAudio = targetIsVideo && specs.contains {
+                $0.asset.hasAudio && ($0.asset.type == .video || $0.asset.type == .sequence)
+            }
             let linkedAudioTrackIndex: Int? = needsLinkedAudio
                 ? (timeline.tracks.firstIndex { $0.type == .audio } ?? insertTrack(at: timeline.tracks.count, type: .audio))
                 : nil
@@ -454,7 +462,7 @@ extension EditorViewModel {
 
         sortClips(trackIndex: ti)
 
-        undoManager?.registerUndo(withTarget: self) { vm in
+        registerTimelineUndo { vm in
             vm.trimClipInternal(clipId: clipId, trimStartFrame: prevStart, trimEndFrame: prevEnd)
         }
         undoManager?.endUndoGrouping()

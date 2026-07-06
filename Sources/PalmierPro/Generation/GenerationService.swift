@@ -393,6 +393,7 @@ final class GenerationService {
             case .text: return "application/octet-stream"
             case .lottie: return "application/json"
             case .adjustment: return "application/octet-stream"
+            case .sequence: return "video/mp4"
             }
         }
     }

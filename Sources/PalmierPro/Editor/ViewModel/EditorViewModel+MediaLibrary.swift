@@ -3,6 +3,7 @@ import AVFoundation
 
 enum MediaPanelItemKey {
     static let folderPrefix = "folder-"
+    static let timelinePrefix = "timeline-"
 
     static func folder(_ id: String) -> String {
         folderPrefix + id
@@ -11,6 +12,15 @@ enum MediaPanelItemKey {
     static func folderId(from key: String) -> String? {
         guard key.hasPrefix(folderPrefix) else { return nil }
         return String(key.dropFirst(folderPrefix.count))
+    }
+
+    static func timeline(_ id: String) -> String {
+        timelinePrefix + id
+    }
+
+    static func timelineId(from key: String) -> String? {
+        guard key.hasPrefix(timelinePrefix) else { return nil }
+        return String(key.dropFirst(timelinePrefix.count))
     }
 }
 
@@ -141,6 +151,13 @@ extension EditorViewModel {
         payload.split(separator: "\n").compactMap { line in
             guard let id = MediaTab.assetId(fromDragString: String(line)) else { return nil }
             return mediaAssets.first { $0.id == id }
+        }
+    }
+
+    func timelineIdsFromDragPayload(_ payload: String) -> [String] {
+        payload.split(separator: "\n").compactMap { line in
+            guard let id = MediaTab.timelineId(fromDragString: String(line)) else { return nil }
+            return timeline(for: id)?.id
         }
     }
 
@@ -358,6 +375,9 @@ extension EditorViewModel {
         if let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }), asset.isGenerating {
             return asset.name
         }
+        if clip.sourceClipType == .sequence, let nested = timeline(for: clip.mediaRef) {
+            return nested.name
+        }
         return mediaResolver.displayName(for: clip.mediaRef)
     }
 
@@ -396,7 +416,10 @@ extension EditorViewModel {
     }
 
     func isClipMediaOffline(_ clip: Clip) -> Bool {
-        clip.mediaType != .text && isMediaOffline(clip.mediaRef)
+        if clip.sourceClipType == .sequence {
+            return timeline(for: clip.mediaRef) == nil
+        }
+        return clip.mediaType != .text && isMediaOffline(clip.mediaRef)
     }
 
     func isClipMediaGenerating(_ clip: Clip) -> Bool {
@@ -441,6 +464,7 @@ extension EditorViewModel {
     private func mediaPanelSelectedKeys() -> Set<String> {
         var keys = selectedMediaAssetIds
         keys.formUnion(selectedFolderIds.map(MediaPanelItemKey.folder))
+        keys.formUnion(selectedTimelineIds.map(MediaPanelItemKey.timeline))
         return keys
     }
 
@@ -449,6 +473,15 @@ extension EditorViewModel {
             guard folder(id: folderId) != nil else { return }
             mediaPanelScrollTarget = key
             selectedFolderIds = [folderId]
+            selectedMediaAssetIds.removeAll()
+            selectedTimelineIds.removeAll()
+            return
+        }
+        if let timelineId = MediaPanelItemKey.timelineId(from: key) {
+            guard timeline(for: timelineId) != nil else { return }
+            mediaPanelScrollTarget = key
+            selectedTimelineIds = [timelineId]
+            selectedFolderIds.removeAll()
             selectedMediaAssetIds.removeAll()
             return
         }
@@ -576,7 +609,7 @@ extension EditorViewModel {
             mediaVisualCache.generateWaveform(for: asset)
         case .image:
             mediaVisualCache.generateImageThumbnail(for: asset)
-        case .text, .lottie, .adjustment:
+        case .text, .lottie, .adjustment, .sequence:
             break
         }
         refreshPreviewForFinalizedAsset(asset)
@@ -596,8 +629,8 @@ extension EditorViewModel {
     }
 
     private func refreshPreviewForFinalizedAsset(_ asset: MediaAsset) {
-        let usedOnTimeline = timeline.tracks.contains { track in
-            track.clips.contains { $0.mediaRef == asset.id }
+        let usedOnTimeline = ([timeline] + timeline.reachableTimelines(resolve: timeline(for:))).contains { t in
+            t.tracks.contains { $0.clips.contains { $0.mediaRef == asset.id } }
         }
         if usedOnTimeline {
             timelineRenderRevision &+= 1

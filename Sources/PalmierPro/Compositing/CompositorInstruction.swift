@@ -6,6 +6,8 @@ struct LayerPlan: Sendable {
         case track(CMPersistentTrackID)
         case text
         case adjustment
+        /// Nested timeline: children composite into a `canvas`-sized unit, then the nest clip's pipeline applies.
+        case group(children: [LayerPlan], canvas: CGSize)
     }
     let source: Source
     let clip: Clip
@@ -15,6 +17,15 @@ struct LayerPlan: Sendable {
     var trackID: CMPersistentTrackID? {
         if case .track(let id) = source { return id }
         return nil
+    }
+
+    func collectTrackIDs(into ids: inout [CMPersistentTrackID]) {
+        switch source {
+        case .track(let id): ids.append(id)
+        case .text, .adjustment: break
+        case .group(let children, _):
+            for child in children { child.collectTrackIDs(into: &ids) }
+        }
     }
 }
 
@@ -37,10 +48,11 @@ final class CompositorInstruction: NSObject, AVVideoCompositionInstructionProtoc
         self.renderSize = renderSize
         self.fps = fps
         self.letterboxRatio = letterboxRatio
+        var all: [CMPersistentTrackID] = []
+        for layer in layers { layer.collectTrackIDs(into: &all) }
         var seen = Set<CMPersistentTrackID>()
-        self.requiredSourceTrackIDs = layers.compactMap {
-            guard let id = $0.trackID else { return nil }  // text layers need no decoded source
-            return seen.insert(id).inserted ? NSNumber(value: id) : nil
+        self.requiredSourceTrackIDs = all.compactMap {
+            seen.insert($0).inserted ? NSNumber(value: $0) : nil
         }
         super.init()
     }

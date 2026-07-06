@@ -43,7 +43,7 @@ struct ApplyLayoutTests {
         videoAsset(h, id: "landscape", w: 1920, ht: 1080)
         videoAsset(h, id: "portrait", w: 1080, ht: 1920)
         let r = await h.runRaw("apply_layout", args: [
-            "layout": "side_by_side", "durationFrames": 60,
+            "layout": "side_by_side", "endFrame": 60,
             "slots": [["slot": "right", "mediaRef": "portrait"], ["slot": "left", "mediaRef": "landscape"]],
         ])
         #expect(r.isError == false)
@@ -55,7 +55,7 @@ struct ApplyLayoutTests {
         let h = ToolHarness()
         videoAsset(h, id: "a"); videoAsset(h, id: "b")
         let r = await h.runRaw("apply_layout", args: [
-            "layout": "side_by_side", "durationFrames": 120,
+            "layout": "side_by_side", "endFrame": 120,
             "slots": [["slot": "left", "mediaRef": "a"], ["slot": "right", "mediaRef": "b"]],
         ])
         #expect(r.isError == false)
@@ -78,7 +78,7 @@ struct ApplyLayoutTests {
         let h = ToolHarness()
         videoAsset(h, id: "screen"); videoAsset(h, id: "cam")
         let r = await h.runRaw("apply_layout", args: [
-            "layout": "pip_bottom_right", "durationFrames": 90,
+            "layout": "pip_bottom_right", "endFrame": 90,
             "slots": [["slot": "main", "mediaRef": "screen"], ["slot": "inset", "mediaRef": "cam"]],
         ])
         #expect(r.isError == false)
@@ -100,7 +100,7 @@ struct ApplyLayoutTests {
         let h = ToolHarness()
         videoAsset(h, id: "a"); videoAsset(h, id: "b")
         let r = await h.runRaw("apply_layout", args: [
-            "layout": "top_bottom", "durationFrames": 60, "fit": "fit",
+            "layout": "top_bottom", "endFrame": 60, "fit": "fit",
             "slots": [["slot": "top", "mediaRef": "a"], ["slot": "bottom", "mediaRef": "b"]],
         ])
         #expect(r.isError == false)
@@ -116,7 +116,7 @@ struct ApplyLayoutTests {
         let h = ToolHarness()
         for id in ["a", "b", "c", "d"] { videoAsset(h, id: id) }
         let r = await h.runRaw("apply_layout", args: [
-            "layout": "grid_2x2", "durationFrames": 90,
+            "layout": "grid_2x2", "endFrame": 90,
             "slots": [
                 ["slot": "top_left", "mediaRef": "a"], ["slot": "top_right", "mediaRef": "b"],
                 ["slot": "bottom_left", "mediaRef": "c"], ["slot": "bottom_right", "mediaRef": "d"],
@@ -134,7 +134,7 @@ struct ApplyLayoutTests {
         let um = SpyUndoManager()
         h.editor.undoManager = um
         let r = await h.runRaw("apply_layout", args: [
-            "layout": "grid_2x2", "durationFrames": 90,
+            "layout": "grid_2x2", "endFrame": 90,
             "slots": [
                 ["slot": "top_left", "mediaRef": "a"], ["slot": "top_right", "mediaRef": "b"],
                 ["slot": "bottom_left", "mediaRef": "c"], ["slot": "bottom_right", "mediaRef": "d"],
@@ -315,7 +315,7 @@ struct ApplyLayoutTests {
         let h = configured(1920, 1080)
         for id in ["c", "p", "t"] { videoAsset(h, id: id, w: 1080, ht: 1920) }
         let r = await h.runRaw("apply_layout", args: [
-            "layout": "three_up", "durationFrames": 60,
+            "layout": "three_up", "endFrame": 60,
             "slots": [
                 ["slot": "left", "mediaRef": "c"],
                 ["slot": "center", "mediaRef": "p", "anchorY": 0.2],
@@ -338,14 +338,14 @@ struct ApplyLayoutTests {
         let h = ToolHarness(timeline: t)
         videoAsset(h, id: "a"); videoAsset(h, id: "b")
         let bad: [(String, [String: Any])] = [
-            ("unknown layout", ["layout": "hexagon", "durationFrames": 30, "slots": [["slot": "left", "mediaRef": "a"]]]),
-            ("unknown slot", ["layout": "side_by_side", "durationFrames": 30, "slots": [["slot": "left", "mediaRef": "a"], ["slot": "mid", "mediaRef": "b"]]]),
-            ("missing slot", ["layout": "side_by_side", "durationFrames": 30, "slots": [["slot": "left", "mediaRef": "a"]]]),
-            ("mixed sources", ["layout": "side_by_side", "durationFrames": 30, "slots": [["slot": "left", "clipIds": ["cx"]], ["slot": "right", "mediaRef": "b"]]]),
+            ("unknown layout", ["layout": "hexagon", "endFrame": 30, "slots": [["slot": "left", "mediaRef": "a"]]]),
+            ("unknown slot", ["layout": "side_by_side", "endFrame": 30, "slots": [["slot": "left", "mediaRef": "a"], ["slot": "mid", "mediaRef": "b"]]]),
+            ("missing slot", ["layout": "side_by_side", "endFrame": 30, "slots": [["slot": "left", "mediaRef": "a"]]]),
+            ("mixed sources", ["layout": "side_by_side", "endFrame": 30, "slots": [["slot": "left", "clipIds": ["cx"]], ["slot": "right", "mediaRef": "b"]]]),
             ("no duration", ["layout": "side_by_side", "slots": [["slot": "left", "mediaRef": "a"], ["slot": "right", "mediaRef": "b"]]]),
-            ("both source + clip", ["layout": "full", "durationFrames": 30, "slots": [["slot": "main", "mediaRef": "a", "clipIds": ["cx"]]]]),
-            ("invalid anchor", ["layout": "full", "durationFrames": 30, "slots": [["slot": "main", "mediaRef": "a", "anchor": "diagonal"]]]),
-            ("anchor out of range", ["layout": "full", "durationFrames": 30, "slots": [["slot": "main", "mediaRef": "a", "anchorY": 1.5]]]),
+            ("both source + clip", ["layout": "full", "endFrame": 30, "slots": [["slot": "main", "mediaRef": "a", "clipIds": ["cx"]]]]),
+            ("invalid anchor", ["layout": "full", "endFrame": 30, "slots": [["slot": "main", "mediaRef": "a", "anchor": "diagonal"]]]),
+            ("anchor out of range", ["layout": "full", "endFrame": 30, "slots": [["slot": "main", "mediaRef": "a", "anchorY": 1.5]]]),
             ("duplicate clipIds", ["layout": "side_by_side", "slots": [["slot": "left", "clipIds": ["cx"]], ["slot": "right", "clipIds": ["cx"]]]]),
             ("deprecated clipId", ["layout": "side_by_side", "slots": [["slot": "left", "clipId": "cx"], ["slot": "right", "clipIds": ["b"]]]]),
         ]

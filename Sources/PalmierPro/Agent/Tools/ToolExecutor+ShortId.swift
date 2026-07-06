@@ -1,9 +1,6 @@
 import Foundation
 
-// Entity ids are full UUIDs. Sent verbatim they cost ~36 chars each and dominate large
-// get_timeline / get_transcript payloads. We emit the shortest prefix that's unique within
-// the project and accept any prefix back: tools always run on full ids (resolved on input),
-// and every text response has its known ids shortened on the way out.
+// UUID ids are shortened to unique prefixes when output; full ids are accepted as input.
 extension ToolExecutor {
     private nonisolated static let idPrefixFloor = 8
 
@@ -11,21 +8,20 @@ extension ToolExecutor {
         "clipId", "sourceClipId", "referenceClipId", "targetClipId",
         "mediaRef", "startFrameMediaRef", "endFrameMediaRef",
         "sourceVideoMediaRef", "videoSourceMediaRef",
-        "folderId", "parentFolderId", "captionGroupId",
+        "captionGroupId", "timelineId", "item", "from", "reference",
     ]
     private static let arrayIdKeys: Set<String> = [
-        "clipIds", "targetClipIds", "assetIds", "folderIds",
-        "mediaRefs",
+        "clipIds", "targetClipIds", "items", "ids", "deletes",
+        "assetIds", "mediaRefs",
         "referenceMediaRefs", "referenceImageMediaRefs",
         "referenceVideoMediaRefs", "referenceAudioMediaRefs",
     ]
 
-    /// Every entity id the agent can see or name back. One set serves both directions: a min-unique
-    /// prefix is distinct across the whole set, so anything we emit resolves to exactly one id.
+    /// Returns all ids visible to the agent.
     func currentIdUniverse(_ editor: EditorViewModel) -> Set<String> {
         var ids = Set<String>()
+        for timeline in editor.timelines { ids.insert(timeline.id) }
         for track in editor.timeline.tracks {
-            ids.insert(track.id)
             for clip in track.clips {
                 ids.insert(clip.id)
                 if let captionGroupId = clip.captionGroupId { ids.insert(captionGroupId) }
@@ -33,19 +29,17 @@ extension ToolExecutor {
             }
         }
         for asset in editor.mediaAssets { ids.insert(asset.id) }
-        for folder in editor.folders { ids.insert(folder.id) }
         return ids
     }
 
-    /// Replaces each known full UUID in a result's text with its short prefix. Unknown UUIDs
-    /// (e.g. ones embedded in a filename) aren't in the map and pass through untouched.
-    func shorteningIds(in result: ToolResult, editor: EditorViewModel) async -> ToolResult {
+    /// Rewrites known UUIDs in result text to their shortest unique prefixes. Uses `alsoKnown` to include recently removed ids.
+    func shorteningIds(in result: ToolResult, editor: EditorViewModel, alsoKnown: Set<String> = []) async -> ToolResult {
         guard result.content.contains(where: { block in
             if case .text = block { return true }
             return false
         }) else { return result }
 
-        let universe = currentIdUniverse(editor)
+        let universe = currentIdUniverse(editor).union(alsoKnown)
         guard !universe.isEmpty else { return result }
         return await Task.detached(priority: .utility) {
             Self.shorteningIds(in: result, universe: universe)
@@ -116,6 +110,7 @@ extension ToolExecutor {
 
     private static func expandOne(_ ref: String, universe: Set<String>) throws -> String {
         if universe.contains(ref) { return ref }
+        guard ref.count >= idPrefixFloor else { return ref }
         let matches = universe.filter { $0.hasPrefix(ref) }
         if matches.count == 1 { return matches.first! }
         if matches.count > 1 {

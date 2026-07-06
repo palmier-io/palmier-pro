@@ -15,34 +15,11 @@ enum FrameRenderer {
         let renderRect = CGRect(origin: .zero, size: instruction.renderSize)
         let frame = Int((compositionTime.seconds * Double(instruction.fps)).rounded())
 
-        var accum = CIImage(color: .black).cropped(to: renderRect)
-        for layer in instruction.layers {
-            let mode = layer.clip.blendMode ?? .normal
-            // Source-over bakes opacity into alpha; blend modes apply it as a fade of
-            // the blend RESULT (Photoshop/Premiere semantics), so don't bake it there.
-            let isNormal = mode.ciFilterName == nil
-            let image: CIImage?
-            switch layer.source {
-            case .track(let id):
-                guard let buffer = sourceFrame(id) else { continue }
-                image = composedLayer(layer, buffer: buffer, frame: frame,
-                                      renderSize: instruction.renderSize, bakeOpacity: isNormal)
-            case .text:
-                image = composedTextLayer(layer, frame: frame, renderSize: instruction.renderSize,
-                                          bakeOpacity: isNormal)
-            case .adjustment:
-                // Adjustment layers apply their effects onto the composited result so far.
-                accum = applyAdjustmentLayer(layer, accum: accum, frame: frame)
-                continue
-            }
-            guard let image else { continue }
-            if isNormal {
-                accum = image.composited(over: accum)
-            } else {
-                let opacity = min(1.0, max(0.0, layer.clip.opacityAt(frame: frame)))
-                accum = blend(image, over: accum, filter: mode.ciFilterName!, opacity: opacity)
-            }
-        }
+        let base = CIImage(color: .black).cropped(to: renderRect)
+        var accum = composite(
+            layers: instruction.layers, over: base, frame: frame,
+            renderSize: instruction.renderSize, sourceFrame: sourceFrame, gateByClipRange: false
+        )
         if let ratio = instruction.letterboxRatio, ratio > 0 {
             let canvasAspect = renderRect.width / renderRect.height
             if ratio > canvasAspect {
@@ -65,6 +42,74 @@ enum FrameRenderer {
         }
         context.render(accum, to: output, bounds: renderRect, colorSpace: nil)
         tag709(output)
+    }
+
+    /// Bottom→top layer stack; `gateByClipRange` skips group children outside `frame`.
+    private static func composite(
+        layers: [LayerPlan],
+        over background: CIImage,
+        frame: Int,
+        renderSize: CGSize,
+        sourceFrame: (CMPersistentTrackID) -> CVPixelBuffer?,
+        gateByClipRange: Bool
+    ) -> CIImage {
+        var accum = background
+        for layer in layers {
+            if gateByClipRange, !layer.clip.contains(timelineFrame: frame) { continue }
+            let mode = layer.clip.blendMode ?? .normal
+            // Source-over bakes opacity into alpha; blend modes apply it as a fade of
+            // the blend RESULT (Photoshop/Premiere semantics), so don't bake it there.
+            let isNormal = mode.ciFilterName == nil
+            let image: CIImage?
+            switch layer.source {
+            case .track(let id):
+                guard let buffer = sourceFrame(id) else { continue }
+                image = composedLayer(layer, buffer: buffer, frame: frame,
+                                      renderSize: renderSize, bakeOpacity: isNormal)
+            case .text:
+                image = composedTextLayer(layer, frame: frame, renderSize: renderSize,
+                                          bakeOpacity: isNormal)
+            case .adjustment:
+                // Adjustment layers apply their effects onto the composited result so far.
+                accum = applyAdjustmentLayer(layer, accum: accum, frame: frame)
+                continue
+            case .group(let children, let canvas):
+                image = composedGroupLayer(layer, children: children, canvas: canvas, frame: frame,
+                                           renderSize: renderSize, sourceFrame: sourceFrame, bakeOpacity: isNormal)
+            }
+            guard let image else { continue }
+            if isNormal {
+                accum = image.composited(over: accum)
+            } else {
+                let opacity = min(1.0, max(0.0, layer.clip.opacityAt(frame: frame)))
+                accum = blend(image, over: accum, filter: mode.ciFilterName!, opacity: opacity)
+            }
+        }
+        return accum
+    }
+
+    /// Children composite at the child canvas; the nest clip's pipeline runs on the result.
+    private static func composedGroupLayer(
+        _ layer: LayerPlan,
+        children: [LayerPlan],
+        canvas: CGSize,
+        frame: Int,
+        renderSize: CGSize,
+        sourceFrame: (CMPersistentTrackID) -> CVPixelBuffer?,
+        bakeOpacity: Bool
+    ) -> CIImage? {
+        let alpha = min(1.0, max(0.0, layer.clip.opacityAt(frame: frame)))
+        guard alpha > 0, canvas.width > 0, canvas.height > 0 else { return nil }
+        let canvasRect = CGRect(origin: .zero, size: canvas)
+        let base = CIImage(color: .black).cropped(to: canvasRect)
+        let intermediate = composite(
+            layers: children, over: base, frame: frame,
+            renderSize: canvas, sourceFrame: sourceFrame, gateByClipRange: true
+        )
+        return applyClipPipeline(
+            image: intermediate, srcHeight: canvas.height, layer: layer, frame: frame,
+            renderSize: renderSize, alpha: alpha, bakeOpacity: bakeOpacity
+        )
     }
 
     /// Blend `image` over `background`, then fade the blend to background by `opacity`.
@@ -114,15 +159,30 @@ enum FrameRenderer {
         renderSize: CGSize,
         bakeOpacity: Bool = true
     ) -> CIImage? {
-        let clip = layer.clip
-        let alpha = min(1.0, max(0.0, clip.opacityAt(frame: frame)))
+        let alpha = min(1.0, max(0.0, layer.clip.opacityAt(frame: frame)))
         guard alpha > 0 else { return nil }
 
         // Undo premultiplied alpha to avoid dark edges.
-
-        var image = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
+        let image = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
             .unpremultiplyingAlpha()
-        let srcHeight = CGFloat(CVPixelBufferGetHeight(buffer))
+        return applyClipPipeline(
+            image: image, srcHeight: CGFloat(CVPixelBufferGetHeight(buffer)), layer: layer,
+            frame: frame, renderSize: renderSize, alpha: alpha, bakeOpacity: bakeOpacity
+        )
+    }
+
+    /// Crop → effects → transform → opacity, sampled from `layer.clip` at `frame`.
+    private static func applyClipPipeline(
+        image input: CIImage,
+        srcHeight: CGFloat,
+        layer: LayerPlan,
+        frame: Int,
+        renderSize: CGSize,
+        alpha: Double,
+        bakeOpacity: Bool
+    ) -> CIImage? {
+        let clip = layer.clip
+        var image = input
 
         let crop = clip.cropAt(frame: frame)
         if !crop.isIdentity {

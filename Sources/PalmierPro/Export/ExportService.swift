@@ -34,6 +34,7 @@ final class ExportService {
     func export(
         timeline: Timeline,
         resolver: MediaResolver,
+        resolveTimeline: @escaping @Sendable (String) -> Timeline? = { _ in nil },
         format: ExportFormat,
         resolution: ExportResolution,
         fcpxmlVersion: FCPXMLVersion = .default,
@@ -58,10 +59,10 @@ final class ExportService {
             )
             do {
                 if format == .xml {
-                    try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outputURL)
+                    try await XMLExporter.export(timeline: timeline, resolver: resolver, resolveTimeline: resolveTimeline, outputURL: outputURL)
                 } else {
-                    try await FCPXMLExporter.export(timeline: timeline, resolver: resolver, version: fcpxmlVersion,
-                                                    target: fcpxmlTarget, outputURL: outputURL)
+                    try await FCPXMLExporter.export(timeline: timeline, resolver: resolver, resolveTimeline: resolveTimeline,
+                                                    version: fcpxmlVersion, target: fcpxmlTarget, outputURL: outputURL)
                 }
                 // Neither timeline format transports color/effects, so adjustment layers are skipped.
                 let dropped = FCPXMLExporter.unsupportedAdjustmentCount(in: timeline)
@@ -101,7 +102,7 @@ final class ExportService {
 
         do {
             let prepared = try await makeExportSession(
-                timeline: timeline, resolver: resolver,
+                timeline: timeline, resolver: resolver, resolveTimeline: resolveTimeline,
                 format: format, resolution: resolution,
                 missingMediaRefs: missingMediaRefs
             )
@@ -167,7 +168,7 @@ final class ExportService {
     /// Writes a self-contained `.palmier` bundle (all media collected internally).
     @discardableResult
     func exportPalmierProject(
-        timeline: Timeline,
+        projectFile: ProjectFile,
         manifest: MediaManifest,
         generationLog: GenerationLog,
         sourceProjectURL: URL?,
@@ -190,15 +191,15 @@ final class ExportService {
                 "palmier export start url=\(outputURL.lastPathComponent)",
                 telemetry: "Palmier project export started",
                 data: [
-                    "tracks": timeline.tracks.count,
-                    "clips": timeline.tracks.reduce(0) { $0 + $1.clips.count },
+                    "timelines": projectFile.timelines.count,
+                    "clips": projectFile.timelines.reduce(0) { $0 + $1.tracks.reduce(0) { $0 + $1.clips.count } },
                     "media": manifest.entries.count,
                     "generationLogEntries": generationLog.entries.count
                 ]
             )
             let report = try await Task.detached(priority: .userInitiated) {
                 try PalmierProjectExporter.export(
-                    timeline: timeline, manifest: manifest, generationLog: generationLog,
+                    projectFile: projectFile, manifest: manifest, generationLog: generationLog,
                     sourceProjectURL: sourceProjectURL, to: outputURL,
                     progress: { p in Task { @MainActor in self.progress = p } }
                 )
@@ -235,6 +236,7 @@ final class ExportService {
     private func makeExportSession(
         timeline: Timeline,
         resolver: MediaResolver,
+        resolveTimeline: @escaping @Sendable (String) -> Timeline? = { _ in nil },
         format: ExportFormat,
         resolution: ExportResolution,
         missingMediaRefs: Set<String>
@@ -243,9 +245,21 @@ final class ExportService {
         let renderSize = resolution.renderSize(for: timelineCanvas)
         let mediaURLs = resolver.expectedURLMap()
 
+        for track in timeline.tracks {
+            for clip in track.clips where clip.hasDenoiseEnabled && clip.denoiseAmount > 0 {
+                guard !missingMediaRefs.contains(clip.mediaRef), let url = mediaURLs[clip.mediaRef] else { continue }
+                do {
+                    _ = try await AudioEnhancer.denoisedAudio(for: url, mediaRef: clip.mediaRef)
+                } catch {
+                    Log.export.error("denoise bake failed — exporting original audio. mediaRef=\(clip.mediaRef): \(Log.detail(error))")
+                }
+            }
+        }
+
         let result = try await CompositionBuilder.build(
             timeline: timeline,
             resolveURL: { mediaURLs[$0] },
+            resolveTimeline: resolveTimeline,
             missingMediaRefs: missingMediaRefs,
             renderSize: renderSize
         )

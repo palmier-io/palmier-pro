@@ -14,6 +14,7 @@ enum TimelineRenderer {
     static func render(
         timeline: Timeline,
         resolver: MediaResolver,
+        resolveTimeline: @escaping @Sendable (String) -> Timeline? = { _ in nil },
         missingMediaRefs: Set<String> = [],
         startFrame: Int,
         frameCount: Int,
@@ -31,6 +32,7 @@ enum TimelineRenderer {
         let result = try await CompositionBuilder.build(
             timeline: timeline,
             resolveURL: { mediaURLs[$0] },
+            resolveTimeline: resolveTimeline,
             missingMediaRefs: missingMediaRefs,
             renderSize: renderSize
         )

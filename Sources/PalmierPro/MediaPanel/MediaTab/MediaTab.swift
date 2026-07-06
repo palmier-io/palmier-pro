@@ -16,7 +16,7 @@ struct MediaTab: View {
     @State var currentFolderId: String? = nil
     @State var folderReturnViewMode: ViewMode?
     @State var renamingFolderId: String?
-    @State var pendingFolderFocusId: String?
+    @State var renamingTimelineId: String?
     @State var dropTargetFolderId: String?
     /// Hovered grouped-section key; "" = root.
     @State var dropTargetGroupedKey: String?
@@ -163,6 +163,7 @@ struct MediaTab: View {
         }
         .sheet(isPresented: $showGDriveSheet) {
             gdriveImportSheet
+        }
         .sheet(isPresented: $showMatteSheet) {
             MatteSheet(isPresented: $showMatteSheet)
         }
@@ -232,7 +233,6 @@ struct MediaTab: View {
     private func pruneStaleFolderState() {
         if let id = currentFolderId, editor.folder(id: id) == nil { navigateToFolder(nil) }
         if let id = renamingFolderId, editor.folder(id: id) == nil { renamingFolderId = nil }
-        if let id = pendingFolderFocusId, editor.folder(id: id) == nil { pendingFolderFocusId = nil }
         if let id = dropTargetFolderId, editor.folder(id: id) == nil { dropTargetFolderId = nil }
     }
 
@@ -492,6 +492,20 @@ struct MediaTab: View {
         return folders.filter { $0.name.localizedCaseInsensitiveContains(q) }
     }
 
+    var timelinesInCurrentFolder: [Timeline] {
+        filteredTimelines(in: currentFolderId)
+    }
+
+    func filteredTimelines(in folderId: String?) -> [Timeline] {
+        searchFilteredTimelines(editor.timelines.filter { $0.folderId == folderId })
+    }
+
+    func searchFilteredTimelines(_ timelines: [Timeline]) -> [Timeline] {
+        let q = searchQuery.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return timelines }
+        return timelines.filter { $0.name.localizedCaseInsensitiveContains(q) }
+    }
+
     private func passesFilters(_ asset: MediaAsset) -> Bool {
         let typeOk = filterTypes.isEmpty || filterTypes.contains(asset.type)
         let aiOk = !filterAI || asset.isGenerated
@@ -511,7 +525,7 @@ struct MediaTab: View {
     }
 
     private var currentFolderItemCount: Int {
-        subfoldersInCurrentFolder.count + assetsInCurrentFolder.count
+        subfoldersInCurrentFolder.count + timelinesInCurrentFolder.count + assetsInCurrentFolder.count
     }
 
     // MARK: - Toolbar helpers
@@ -639,7 +653,6 @@ struct MediaTab: View {
 
     private func createNewFolderInCurrent() {
         let id = editor.createFolder(name: "New Folder", in: currentFolderId)
-        pendingFolderFocusId = id
         renamingFolderId = id
     }
 
@@ -672,7 +685,8 @@ struct MediaTab: View {
                     let extending = NSEvent.modifierFlags.contains(.shift)
                     marqueeSelection.begin(
                         baseAssets: extending ? editor.selectedMediaAssetIds : [],
-                        baseFolders: extending ? editor.selectedFolderIds : []
+                        baseFolders: extending ? editor.selectedFolderIds : [],
+                        baseTimelines: extending ? editor.selectedTimelineIds : []
                     )
                 }
 
@@ -680,11 +694,14 @@ struct MediaTab: View {
                 marqueeSelection.rect = rect
                 var assetIds = marqueeSelection.baseAssets
                 var folderIds = marqueeSelection.baseFolders
+                var timelineIds = marqueeSelection.baseTimelines
 
-                // Frame keys are either raw asset ids or "folder-<id>".
+                // Frame keys are raw asset ids, "folder-<id>", or "timeline-<id>".
                 for (id, frame) in assetFrames where rect.intersects(frame) {
                     if let folderId = MediaCell.folderId(fromFrameKey: id) {
                         folderIds.insert(folderId)
+                    } else if let timelineId = MediaPanelItemKey.timelineId(from: id) {
+                        timelineIds.insert(timelineId)
                     } else {
                         assetIds.insert(id)
                     }
@@ -695,6 +712,9 @@ struct MediaTab: View {
                 }
                 if folderIds != editor.selectedFolderIds {
                     editor.selectedFolderIds = folderIds
+                }
+                if timelineIds != editor.selectedTimelineIds {
+                    editor.selectedTimelineIds = timelineIds
                 }
             }
             .onEnded { _ in
@@ -974,11 +994,13 @@ struct MarqueeSelection {
     var isActive = false
     var baseAssets: Set<String> = []
     var baseFolders: Set<String> = []
+    var baseTimelines: Set<String> = []
 
-    mutating func begin(baseAssets: Set<String>, baseFolders: Set<String>) {
+    mutating func begin(baseAssets: Set<String>, baseFolders: Set<String>, baseTimelines: Set<String>) {
         isActive = true
         self.baseAssets = baseAssets
         self.baseFolders = baseFolders
+        self.baseTimelines = baseTimelines
     }
 
     mutating func reset() {
@@ -986,6 +1008,7 @@ struct MarqueeSelection {
         isActive = false
         baseAssets = []
         baseFolders = []
+        baseTimelines = []
     }
 }
 

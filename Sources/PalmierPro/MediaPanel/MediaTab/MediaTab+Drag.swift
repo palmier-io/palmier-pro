@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 extension MediaTab {
     static let folderDragScheme = "palmier-folder://"
     static let assetDragScheme = "palmier-asset://"
+    static let timelineDragScheme = "palmier-timeline://"
 
     static func folderDragString(forFolderId id: String) -> String {
         folderDragScheme + id
@@ -14,6 +15,14 @@ extension MediaTab {
 
     static func folderId(fromDragString line: String) -> String? {
         line.hasPrefix(folderDragScheme) ? String(line.dropFirst(folderDragScheme.count)) : nil
+    }
+
+    static func timelineDragString(forTimelineId id: String) -> String {
+        timelineDragScheme + id
+    }
+
+    static func timelineId(fromDragString line: String) -> String? {
+        line.hasPrefix(timelineDragScheme) ? String(line.dropFirst(timelineDragScheme.count)) : nil
     }
 
     static func assetDragString(forAssetId id: String) -> String {
@@ -164,9 +173,13 @@ extension MediaTab {
     static func resolveTextDrop(_ text: String, into destFolderId: String?, editor: EditorViewModel) {
         var assetIds: Set<String> = []
         var folderIds: Set<String> = []
+        var timelineIds: Set<String> = []
         for line in text.split(separator: "\n").map(String.init) where !line.isEmpty {
             if let folderId = folderId(fromDragString: line) {
                 folderIds.insert(folderId)
+            } else if let timelineId = timelineId(fromDragString: line),
+                      editor.timeline(for: timelineId) != nil {
+                timelineIds.insert(timelineId)
             } else if let id = assetId(fromDragString: line),
                       editor.mediaAssets.contains(where: { $0.id == id }) {
                 assetIds.insert(id)
@@ -177,6 +190,9 @@ extension MediaTab {
         }
         if !folderIds.isEmpty {
             editor.moveFoldersToFolder(folderIds: folderIds, parentFolderId: destFolderId)
+        }
+        if !timelineIds.isEmpty {
+            editor.moveTimelinesToFolder(timelineIds: timelineIds, folderId: destFolderId)
         }
     }
 }

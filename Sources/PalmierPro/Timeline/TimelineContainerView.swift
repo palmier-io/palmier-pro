@@ -38,6 +38,7 @@ struct TimelineContainerView: NSViewRepresentable {
         context.coordinator.headerView = headerView
         context.coordinator.timelineView = timelineView
         context.coordinator.scrollView = scrollView
+        context.coordinator.editor = editor
 
         scrollView.contentView.postsBoundsChangedNotifications = true
         scrollView.contentView.postsFrameChangedNotifications = true
@@ -73,6 +74,13 @@ struct TimelineContainerView: NSViewRepresentable {
             context.coordinator.headerView?.needsDisplay = true
         }
 
+        if let x = editor.timelineScrollRestoreX,
+           let scrollView = context.coordinator.scrollView {
+            let y = scrollView.contentView.bounds.origin.y
+            scrollView.contentView.setBoundsOrigin(NSPoint(x: max(0, x), y: y))
+            DispatchQueue.main.async { editor.timelineScrollRestoreX = nil }
+        }
+
         if editor.isPlaying,
            let timelineView = context.coordinator.timelineView,
            let scrollView = context.coordinator.scrollView {
@@ -106,6 +114,7 @@ struct TimelineContainerView: NSViewRepresentable {
         var headerView: TimelineHeaderView?
         var timelineView: TimelineView?
         var scrollView: NSScrollView?
+        weak var editor: EditorViewModel?
         private var renderState: RenderState?
 
         func needsRender(for next: RenderState) -> Bool {
@@ -116,6 +125,9 @@ struct TimelineContainerView: NSViewRepresentable {
         @MainActor @objc func scrollViewBoundsChanged(_ notification: Notification) {
             timelineView?.needsDisplay = true
             timelineView?.updatePlayheadLayer()
+            if let scrollX = scrollView?.contentView.bounds.origin.x {
+                editor?.timelineScrollOffsetX = scrollX
+            }
             if let scrollY = scrollView?.contentView.bounds.origin.y {
                 headerView?.setBoundsOrigin(NSPoint(x: 0, y: scrollY))
                 headerView?.needsDisplay = true

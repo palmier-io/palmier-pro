@@ -44,7 +44,7 @@ struct VideoProjectLoadTests {
 
         #expect(contents.manifest == nil)
         #expect(contents.manifestUnreadable == true)
-        #expect(contents.timeline.tracks.count == 2)   // creative work survives
+        #expect(contents.projectFile.timelines.first?.tracks.count == 2)   // creative work survives
     }
 
     @Test func missingManifestOpensAndIsNotFlaggedUnreadable() throws {
@@ -86,17 +86,17 @@ struct VideoProjectLoadTests {
     @Test func emptyManifestNotSerializedAfterLoadFailure() {
         // Opening with a corrupt manifest leaves an empty in-memory manifest. Serializing it
         // would overwrite the (recoverable) original on the next autosave — so it must be nil.
-        #expect(VideoProject.manifestSnapshotData(manifest: MediaManifest(), loadFailed: true) == nil)
+        #expect(VideoProject.manifestSnapshot(manifest: MediaManifest(), loadFailed: true) == nil)
     }
 
     @Test func rebuiltManifestIsSerializedAfterLoadFailure() {
         // Once the user adds media, the manifest is no longer empty and must be written.
-        #expect(VideoProject.manifestSnapshotData(manifest: sampleManifest(), loadFailed: true) != nil)
+        #expect(VideoProject.manifestSnapshot(manifest: sampleManifest(), loadFailed: true) != nil)
     }
 
     @Test func manifestSerializedNormallyWhenLoadSucceeded() {
         // Regression guard: ordinary saves still persist the (possibly empty) manifest.
-        #expect(VideoProject.manifestSnapshotData(manifest: MediaManifest(), loadFailed: false) != nil)
+        #expect(VideoProject.manifestSnapshot(manifest: MediaManifest(), loadFailed: false) != nil)
     }
 
     @Test func saveAsPreservesUnreadableManifestFile() throws {

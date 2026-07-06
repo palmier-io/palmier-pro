@@ -11,7 +11,14 @@ fileprivate struct SetProjectSettingsInput: DecodableToolArgs {
 
 extension ToolExecutor {
 
-    func setProjectSettings(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+    struct ValidatedProjectSettings {
+        fileprivate let input: SetProjectSettingsInput
+        let aspectPreset: AspectPreset?
+        let qualityPreset: QualityPreset?
+    }
+
+    @discardableResult
+    func validateProjectSettings(_ args: [String: Any]) throws -> ValidatedProjectSettings {
         let input: SetProjectSettingsInput = try decodeToolArgs(args, path: "set_project_settings")
 
         guard input.fps != nil || input.width != nil || input.height != nil
@@ -48,6 +55,14 @@ extension ToolExecutor {
                 throw ToolError("Unknown quality '\(q)'. Use one of: 720p, 1080p, 2K, 4K")
             }
         }
+        return ValidatedProjectSettings(input: input, aspectPreset: aspectPreset, qualityPreset: qualityPreset)
+    }
+
+    func setProjectSettings(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        let settings = try validateProjectSettings(args)
+        let input = settings.input
+        let aspectPreset = settings.aspectPreset
+        let qualityPreset = settings.qualityPreset
 
         let newFPS = input.fps ?? editor.timeline.fps
         let newWidth: Int
@@ -83,16 +98,21 @@ extension ToolExecutor {
         editor.applyTimelineSettings(fps: newFPS, width: newWidth, height: newHeight)
         editor.undoManager?.setActionName("Set Project Settings (Agent)")
 
-        var changes: [String] = []
-        if newFPS != prevFPS { changes.append("fps \(prevFPS) → \(newFPS)") }
-        if newWidth != prevWidth || newHeight != prevHeight {
-            changes.append("resolution \(prevWidth)×\(prevHeight) → \(newWidth)×\(newHeight)")
-        }
+        var changed: [String] = []
+        if newFPS != prevFPS { changed.append("fps") }
+        if newWidth != prevWidth || newHeight != prevHeight { changed.append("resolution") }
 
-        if changes.isEmpty {
-            return .ok("No change — settings already match: \(newWidth)×\(newHeight) @ \(newFPS)fps")
+        var payload: [String: Any] = [
+            "fps": newFPS,
+            "resolution": "\(newWidth)x\(newHeight)",
+            "changed": changed,
+        ]
+        if changed.isEmpty {
+            payload["note"] = "Settings already matched."
+        } else if changed.contains("fps") {
+            payload["note"] = "Clip frames rescaled to \(newFPS)fps — re-read get_timeline before frame-based edits."
         }
-        return .ok("Updated: \(changes.joined(separator: ", ")). Now \(newWidth)×\(newHeight) @ \(newFPS)fps.")
+        return .ok(Self.jsonString(payload) ?? "{}")
     }
 
     /// Syncs timeline resolution with the first clip if needed; returns a note if changed, nil otherwise.

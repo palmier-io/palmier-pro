@@ -32,6 +32,8 @@ extension ToolExecutor {
             throw ToolError("Out of credits. Tell the user to add credits or subscribe to keep generating.")
         }
         switch type {
+        case .sequence:
+            throw ToolError("Cannot generate a sequence. Sequences are timelines.")
         case .video:
             let modelId = try args.string("model") ?? defaultModelId(
                 VideoModelConfig.allModels.map { (id: $0.id, paidOnly: $0.paidOnly) }, kind: "video")
@@ -149,7 +151,7 @@ extension ToolExecutor {
             aspectRatio: aspectRatio, resolution: resolution
         )
 
-        let folderId = try resolveFolderId(
+        let folderId = try resolveFolder(
             args, editor: editor, fallbackReferences: inputAssets.textToVideoReferences
         )
         let placeholderId = VideoGenerationSubmission.make(
@@ -203,7 +205,7 @@ extension ToolExecutor {
             prompt: prompt, model: modelId, duration: 0,
             aspectRatio: aspectRatio, resolution: resolution, quality: quality
         )
-        let folderId = try resolveFolderId(args, editor: editor, fallbackReferences: refs)
+        let folderId = try resolveFolder(args, editor: editor, fallbackReferences: refs)
         let placeholderId = ImageGenerationSubmission.make(
             genInput: genInput,
             model: model,
@@ -259,6 +261,7 @@ extension ToolExecutor {
             }
             let mp4 = try await TimelineRenderer.render(
                 timeline: editor.timeline, resolver: editor.mediaResolver,
+                resolveTimeline: editor.timelineResolver(),
                 missingMediaRefs: editor.missingMediaRefs,
                 startFrame: start, frameCount: end - start,
                 shortSide: 360, includeAudio: false
@@ -301,7 +304,7 @@ extension ToolExecutor {
             instrumental: model.supportsInstrumental ? instrumental : nil
         )
 
-        let folderId = try resolveFolderId(args, editor: editor)
+        let folderId = try resolveFolder(args, editor: editor)
         let submission = AudioGenerationSubmission.make(
             genInput: genInput,
             model: model,

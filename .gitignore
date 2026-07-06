@@ -35,6 +35,8 @@ models/*/build*/
 models/*/checkpoint*
 models/*/convert*.log
 
+AUDIO_SUITE_*
+
 # Local reference research data (scraped videos/frames) — ignored except the
 # shot-labeling pipeline + its progress file (re-included level by level).
 References/*

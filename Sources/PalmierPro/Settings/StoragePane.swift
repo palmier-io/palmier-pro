@@ -99,7 +99,7 @@ struct StoragePane: View {
         }
     }
 
-    private nonisolated static let caches = [ImageVideoGenerator.cache, MediaVisualCache.diskCache, DiskCache(directory: TranscriptCache.directory)]
+    private nonisolated static let caches = [ImageVideoGenerator.cache, MediaVisualCache.diskCache, DiskCache(directory: TranscriptCache.directory), AudioEnhancer.cache, VoiceActivity.cache, SpeakerIdentity.cache]
 
     private var displayPath: String {
         DiskCache.rootDirectory.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
@@ -115,7 +115,12 @@ struct StoragePane: View {
         Task.detached {
             for cache in Self.caches { cache.clear() }
             await TranscriptCache.shared.clearMemory()
-            await MainActor.run { isClearing = false }
+            await MainActor.run {
+                isClearing = false
+                for document in NSDocumentController.shared.documents {
+                    (document as? VideoProject)?.editorViewModel.resetAnalysisSessionState()
+                }
+            }
             await refresh()
         }
     }

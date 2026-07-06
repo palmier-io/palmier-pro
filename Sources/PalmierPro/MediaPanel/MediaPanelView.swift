@@ -1,18 +1,17 @@
 import SwiftUI
 
-/// Left-dock panel that hosts the Media, Captions, and Music tabs.
 struct MediaPanelView: View {
     @Environment(EditorViewModel.self) private var editor
     @State private var panelTab: PanelTab = .media
     @State private var hoveredTab: PanelTab?
 
     enum PanelTab: String, CaseIterable {
-        case media = "Media", captions = "Captions", music = "Music", fonts = "Fonts"
+        case media = "Media", captions = "Captions", audio = "Audio", fonts = "Fonts"
         var icon: String {
             switch self {
             case .media: "folder"
             case .captions: "captions.bubble"
-            case .music: "music.note"
+            case .audio: "waveform"
             case .fonts: "textformat"
             }
         }
@@ -27,7 +26,7 @@ struct MediaPanelView: View {
                 switch panelTab {
                 case .media: MediaTab()
                 case .captions: CaptionTab()
-                case .music: MusicTab()
+                case .audio: AudioPanelTab()
                 case .fonts: FontsTab()
                 }
             }
