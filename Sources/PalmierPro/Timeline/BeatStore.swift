@@ -7,7 +7,8 @@ struct BeatStoreStaleAnalysisError: Error {}
 final class BeatStore {
     private var analyses: [String: BeatAnalysis] = [:]
     private var failed: Set<String> = []
-    @ObservationIgnored private var tasks: [String: Task<BeatAnalysis, Error>] = [:]
+    @ObservationIgnored private var tasks: [String: (id: Int, force: Bool, task: Task<BeatAnalysis, Error>)] = [:]
+    @ObservationIgnored private var nextTaskID = 0
     @ObservationIgnored private var epoch: [String: Int] = [:]
 
     @ObservationIgnored var onBeatsReady: (() -> Void)?
@@ -40,22 +41,30 @@ final class BeatStore {
         }
     }
 
-    /// One in-flight task per mediaRef; every caller joins it. Results are dropped
-    /// when `invalidate`/`reset` bumped `epoch` while the analysis was running.
+    /// One in-flight task per mediaRef; every caller joins it. A forced request
+    /// supersedes a non-forced one by chaining after it, so redetect never gets
+    /// downgraded to a cache hit. Results are dropped when `invalidate`/`reset`
+    /// bumped `epoch` while the analysis was running.
     private func detectionTask(for asset: MediaAsset, force: Bool) -> Task<BeatAnalysis, Error> {
         let key = asset.id
-        if let existing = tasks[key] { return existing }
+        let predecessor = tasks[key]
+        if let predecessor, !force || predecessor.force { return predecessor.task }
+
         failed.remove(key)
         let startEpoch = epoch[key, default: 0]
+        nextTaskID += 1
+        let id = nextTaskID
 
         let url = asset.url
+        let previous = predecessor?.task
         let task = Task(priority: .utility) { @MainActor [weak self] in
+            _ = try? await previous?.value
             do {
                 let analysis = try await BeatDetector.analysis(for: url, mediaRef: key, force: force)
                 guard let self, self.epoch[key, default: 0] == startEpoch else {
                     throw BeatStoreStaleAnalysisError()
                 }
-                self.tasks[key] = nil
+                if self.tasks[key]?.id == id { self.tasks[key] = nil }
                 self.analyses[key] = analysis
                 self.onBeatsReady?()
                 return analysis
@@ -64,13 +73,13 @@ final class BeatStore {
                     Log.preview.error("beats failed mediaRef=\(key): \(Log.detail(error))")
                 }
                 if let self, self.epoch[key, default: 0] == startEpoch {
-                    self.tasks[key] = nil
+                    if self.tasks[key]?.id == id { self.tasks[key] = nil }
                     self.failed.insert(key)
                 }
                 throw error
             }
         }
-        tasks[key] = task
+        tasks[key] = (id, force, task)
         return task
     }
 

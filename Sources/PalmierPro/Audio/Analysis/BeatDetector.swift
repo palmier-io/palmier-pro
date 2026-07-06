@@ -16,6 +16,9 @@ enum BeatDetector {
 
     private static let pipelineGate = AsyncSemaphore(value: 2)
 
+    // @concurrent keeps decode + detection off the caller's actor even if the
+    // default nonisolated-async execution semantics change.
+    @concurrent
     static func analysis(for sourceURL: URL, mediaRef: String, force: Bool = false) async throws -> BeatAnalysis {
         if !force, let cached = cachedAnalysis(for: sourceURL, mediaRef: mediaRef) { return cached }
         try await pipelineGate.wait()
