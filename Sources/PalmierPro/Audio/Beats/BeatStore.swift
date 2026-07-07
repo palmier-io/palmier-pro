@@ -1,7 +1,6 @@
 import Foundation
 
-/// In-memory beat analyses keyed by mediaRef, with in-flight dedup.
-/// The clip renderer and snap engine read synchronously; detection populates async.
+/// Stores beats for each mediaRef. Avoids doing the same detection twice.
 @MainActor
 final class BeatStore {
     private var analyses: [String: BeatAnalysis] = [:]

@@ -8,8 +8,7 @@ struct BeatAnalysis: Codable, Sendable, Equatable {
     let downbeats: [Double]
 }
 
-/// On-device beat/downbeat detection via the bundled Beat This model (ISMIR 2024, MIT).
-/// Audio in, beat times out — the mel frontend is folded into the Core ML graph.
+/// Detects beats and downbeats on-device using the bundled Beat This Core ML model.
 final class BeatDetector: @unchecked Sendable {
     enum DetectError: Error {
         case modelMissing
@@ -134,8 +133,7 @@ final class BeatDetector: @unchecked Sendable {
 
     // MARK: - Inference
 
-    /// Runs fixed-size chunks with `border`-frame overlap, keeping interior frames only
-    /// (Beat This split_predict_aggregate, keep_first). Logits are per 20ms frame.
+    /// Processes audio in overlapping chunks, keeping only the middle (non-border) frames. Returns logits per 20ms frame.
     private func predictLogits(samples: [Float]) throws -> (beat: [Float], downbeat: [Float]) {
         let totalFrames = max(1, samples.count / Self.hop + 1)
         var beat = [Float](repeating: -.infinity, count: totalFrames)
@@ -196,8 +194,7 @@ final class BeatDetector: @unchecked Sendable {
 
     // MARK: - Postprocess
 
-    /// Local maxima of sigmoid(logit) above 0.5 → seconds (minimal postprocessing;
-    /// the model is trained to need no DBN).
+    /// Picks times (in seconds) where sigmoid(logit) is a local max above 0.5.
     private static func pickPeaks(_ logits: [Float], threshold: Float = 0.5) -> [Double] {
         guard logits.count > 2 else { return [] }
         var times: [Double] = []

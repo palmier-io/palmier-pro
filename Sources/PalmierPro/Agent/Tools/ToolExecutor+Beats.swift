@@ -14,8 +14,7 @@ extension ToolExecutor {
             throw ToolError("Media file not on disk: \(asset.url.lastPathComponent)")
         }
 
-        // Shared store: same cache and in-flight dedup as the context menu,
-        // and beat ticks appear on the clip when analysis lands.
+        // Use shared cache to prevent duplicate beat detection.
         let analysis = try await editor.mediaVisualCache.beats.detect(for: asset).value
 
         let range = try Self.beatsRange(args, duration: asset.duration)
