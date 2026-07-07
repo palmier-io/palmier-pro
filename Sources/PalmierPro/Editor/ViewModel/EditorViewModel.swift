@@ -148,7 +148,13 @@ final class EditorViewModel {
     }
     // MARK: - Media library (in-memory, rebuilt on project open)
 
-    var mediaAssets: [MediaAsset] = []
+    var mediaAssets: [MediaAsset] = [] {
+        didSet {
+            mediaAssetsById = Dictionary(mediaAssets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        }
+    }
+    /// O(1) lookup for draw-path callers; rebuilt on any `mediaAssets` mutation.
+    private(set) var mediaAssetsById: [String: MediaAsset] = [:]
     var offlineMediaRefs: Set<String> = []
     var unprocessableMediaRefs: Set<String> = []
     var missingMediaRefs: Set<String> = []

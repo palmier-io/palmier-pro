@@ -13,20 +13,33 @@ enum BundledFonts {
         guard !registered else { return }
         registered = true
 
-        // Avoid `Bundle.module` — its SwiftPM-generated accessor fatalErrors
-        // when the resource bundle isn't on disk, taking the whole app down at
-        // launch. Locate `Fonts/` manually and degrade to a warning instead.
+        // Manually locate Fonts/ instead of Bundle.module to avoid SwiftPM crash.
         guard let fontsRoot = findFontsRoot() else {
             Log.app.warning("BundledFonts: Fonts/ not found in main bundle; skipping registration")
             return
         }
 
+        // Run font registration off the main thread.
+        Task.detached(priority: .userInitiated) {
+            let familySet = registerFonts(under: fontsRoot)
+            // Precompute to avoid delay on first font picker open.
+            let system = NSFontManager.shared.availableFontFamilies
+                .filter { !familySet.contains($0) }
+                .map { (name: $0, previewable: canPreviewText(family: $0)) }
+            await MainActor.run {
+                families = familySet.sorted()
+                cachedSystemFamilies = system
+            }
+        }
+    }
+
+    private nonisolated static func registerFonts(under fontsRoot: URL) -> Set<String> {
         let fm = FileManager.default
         guard let enumerator = fm.enumerator(
             at: fontsRoot,
             includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles]
-        ) else { return }
+        ) else { return [] }
 
         var urls: [URL] = []
         var familySet = Set<String>()
@@ -46,7 +59,7 @@ enum BundledFonts {
 
         guard !urls.isEmpty else {
             Log.app.warning("BundledFonts: no TTF/OTF files under \(fontsRoot.path)")
-            return
+            return []
         }
 
         // URL-based; descriptor-based registration trips on variable fonts
@@ -64,8 +77,8 @@ enum BundledFonts {
             return true
         }
 
-        families = familySet.sorted()
-        Log.app.notice("BundledFonts: registered \(urls.count) files across \(families.count) families")
+        Log.app.notice("BundledFonts: registered \(urls.count) files across \(familySet.count) families")
+        return familySet
     }
 
     // MARK: - System fonts (for picker)
@@ -83,9 +96,7 @@ enum BundledFonts {
         return result
     }
 
-     /// Checks both possible layouts — `dev.sh`'s assembled `.app` flattens
-    /// Fonts/ into Contents/Resources/ even in debug builds, while a raw
-    /// `swift run` leaves it inside the SwiftPM-generated resource bundle.
+     // Handles both flattened and bundled Fonts/ layouts
     private static func findFontsRoot() -> URL? {
         guard let resourceURL = Bundle.main.resourceURL else { return nil }
         let candidates = [
@@ -97,7 +108,7 @@ enum BundledFonts {
 
     /// False for symbol/emoji/dingbat fonts — they'd render the family name
     /// as glyphs instead of letters.
-    private static func canPreviewText(family: String) -> Bool {
+    private nonisolated static func canPreviewText(family: String) -> Bool {
         guard let font = NSFont(name: family, size: 12) else { return false }
         let charset = font.coveredCharacterSet
         for scalar in "Aa1".unicodeScalars where !charset.contains(scalar) {
