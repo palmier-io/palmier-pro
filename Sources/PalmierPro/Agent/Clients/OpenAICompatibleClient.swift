@@ -46,6 +46,21 @@ struct OpenAICompatibleConfig: Sendable {
     static let openRouterBaseURL = URL(string: "https://openrouter.ai/api/v1")!
     static let modelDefaultsKey = "agentOpenRouterModel"
 
+    /// Routes through the Kawenreel LLM proxy edge function. The signed-in user's
+    /// session token is the credential; the provider API key lives server-side.
+    static func kawenreelProxy(accessToken: String) -> OpenAICompatibleConfig {
+        OpenAICompatibleConfig(
+            baseURL: SupabaseConfig.url.appendingPathComponent("functions/v1/llm-proxy"),
+            apiKey: accessToken,
+            model: UserDefaults.standard.string(forKey: modelDefaultsKey) ?? defaultModel,
+            maxTokens: 8192,
+            enablePromptCache: true,
+            temperature: nil,
+            referer: nil,
+            appTitle: infoString("CFBundleName")
+        )
+    }
+
     /// Builds the active config from keychain + overrides, or nil when no key is set.
     static func resolved() -> OpenAICompatibleConfig? {
         guard let key = OpenRouterKeychain.load(), !key.isEmpty else { return nil }

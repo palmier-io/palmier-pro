@@ -31,6 +31,23 @@ NOTARY_PROFILE="kawenreel-notary"   # default
 SENTRY_DSN="..."                    # optional; telemetry is a no-op without it
 ```
 
+## LLM proxy (required for signed-in agent use)
+
+The app's default agent path calls the `llm-proxy` edge function; your OpenRouter key
+lives only there. One-time setup:
+
+```bash
+supabase db push                                    # creates llm_usage_daily + increment_llm_usage
+supabase secrets set OPENROUTER_API_KEY=sk-or-...   # never put this in the app
+supabase secrets set LLM_DAILY_REQUEST_LIMIT=200    # optional, default 200 requests/user/day
+supabase secrets set LLM_ALLOWED_MODELS=google/gemini-2.5-flash-lite  # optional, comma-separated
+supabase functions deploy llm-proxy gdrive-list gdrive-download
+```
+
+Also set a spend cap on the OpenRouter key itself (openrouter.ai → key settings) as a
+backstop, and enable email confirmation for sign-ups in the Supabase Auth settings so
+one person can't script unlimited accounts.
+
 ## Cutting a release
 
 ```bash

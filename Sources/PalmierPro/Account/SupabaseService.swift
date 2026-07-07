@@ -11,6 +11,9 @@ final class SupabaseService {
 
     let client: SupabaseClient
     private(set) var currentUser: User?
+    /// Kept fresh by the auth state loop (including token refreshes); used as the
+    /// per-user credential for edge-function calls like the LLM proxy.
+    private(set) var currentAccessToken: String?
     private(set) var didLoadInitialSession = false
     var isSignedIn: Bool { currentUser != nil }
 
@@ -28,6 +31,7 @@ final class SupabaseService {
             guard let self else { return }
             for await state in self.client.auth.authStateChanges {
                 self.currentUser = state.session?.user
+                self.currentAccessToken = state.session?.accessToken
                 self.didLoadInitialSession = true
                 self.onAuthChange?(self.currentUser != nil)
             }

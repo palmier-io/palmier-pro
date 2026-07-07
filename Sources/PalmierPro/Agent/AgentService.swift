@@ -70,8 +70,7 @@ final class AgentService {
             return hasApiKey
         case .defaultSetting:
             if hasOpenRouterKey { return true }
-            let account = AccountService.shared
-            return account.isSignedIn && account.hasCredits
+            return SupabaseService.shared.isSignedIn
         }
     }
 
@@ -127,8 +126,8 @@ final class AgentService {
             if let config = OpenAICompatibleConfig.resolved() {
                 return OpenAICompatibleClient(config: config)
             }
-            if AccountService.shared.isSignedIn {
-                return PalmierClient(model: chosen)
+            if let token = SupabaseService.shared.currentAccessToken {
+                return OpenAICompatibleClient(config: .kawenreelProxy(accessToken: token))
             }
             return nil
         }
