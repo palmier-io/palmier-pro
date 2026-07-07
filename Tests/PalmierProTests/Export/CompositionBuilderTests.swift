@@ -94,6 +94,21 @@ struct CompositionBuildValidationTests {
 @Suite("CompositionBuilder.buildVisuals — instructions")
 struct CompositionBuildVisualInstructionTests {
 
+    @Test func videoCompositionDoesNotOverrideSourceColorimetry() {
+        let timeline = Fixtures.timeline(fps: 30, tracks: [])
+
+        let (_, videoComposition) = CompositionBuilder.buildVisuals(
+            timeline: timeline,
+            trackMappings: [],
+            compositionDuration: .zero,
+            renderSize: CGSize(width: 320, height: 180)
+        )
+
+        #expect(videoComposition.colorPrimaries == nil)
+        #expect(videoComposition.colorTransferFunction == nil)
+        #expect(videoComposition.colorYCbCrMatrix == nil)
+    }
+
     @Test func textInstructionsPreserveLayerOrderAcrossCaptionBoundaries() {
         let topA = textClip(id: "top-a", start: 0, duration: 10)
         let topB = textClip(id: "top-b", start: 10, duration: 10)
@@ -126,6 +141,62 @@ struct CompositionBuildVisualInstructionTests {
         var clip = Fixtures.clip(id: id, mediaRef: "text-\(id)", mediaType: .text, start: start, duration: duration)
         clip.textContent = id
         return clip
+    }
+}
+
+@Suite("FrameRenderer — color tags")
+struct FrameRendererColorTagTests {
+
+    @Test func propagatesSourceTransferAndGammaTags() throws {
+        let source = try pixelBuffer()
+        let output = try pixelBuffer()
+        CVBufferSetAttachment(source, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
+        CVBufferSetAttachment(source, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_UseGamma, .shouldPropagate)
+        CVBufferSetAttachment(source, kCVImageBufferGammaLevelKey, NSNumber(value: 2.4), .shouldPropagate)
+        CVBufferSetAttachment(source, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, .shouldPropagate)
+
+        let clip = Fixtures.clip(id: "clip", mediaRef: "src", start: 0, duration: 1)
+        let layer = LayerPlan(source: .track(7), clip: clip, natSize: CGSize(width: 2, height: 2), preferredTransform: .identity)
+        let instruction = CompositorInstruction(
+            timeRange: CMTimeRange(start: .zero, duration: CMTime(value: 1, timescale: 30)),
+            layers: [layer],
+            renderSize: CGSize(width: 2, height: 2),
+            fps: 30
+        )
+
+        FrameRenderer.render(
+            instruction: instruction,
+            sourceFrame: { $0 == 7 ? source : nil },
+            compositionTime: .zero,
+            into: output,
+            context: CustomVideoCompositor.ciContext
+        )
+
+        #expect(CVBufferCopyAttachment(output, kCVImageBufferColorPrimariesKey, nil) as? String == kCVImageBufferColorPrimaries_ITU_R_709_2 as String)
+        #expect(CVBufferCopyAttachment(output, kCVImageBufferCGColorSpaceKey, nil) != nil)
+        #expect(CVBufferCopyAttachment(output, kCVImageBufferTransferFunctionKey, nil) as? String == kCVImageBufferTransferFunction_UseGamma as String)
+        #expect((CVBufferCopyAttachment(output, kCVImageBufferGammaLevelKey, nil) as? NSNumber)?.doubleValue == 2.4)
+        #expect(CVBufferCopyAttachment(output, kCVImageBufferYCbCrMatrixKey, nil) as? String == kCVImageBufferYCbCrMatrix_ITU_R_709_2 as String)
+    }
+
+    private func pixelBuffer() throws -> CVPixelBuffer {
+        var buffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            nil,
+            2,
+            2,
+            kCVPixelFormatType_32BGRA,
+            [kCVPixelBufferCGImageCompatibilityKey as String: true] as CFDictionary,
+            &buffer
+        )
+        let pixelBuffer = try #require(buffer)
+        #expect(status == kCVReturnSuccess)
+        CVPixelBufferLockBaseAddress(pixelBuffer, [])
+        if let base = CVPixelBufferGetBaseAddress(pixelBuffer) {
+            memset(base, 255, CVPixelBufferGetDataSize(pixelBuffer))
+        }
+        CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
+        return pixelBuffer
     }
 }
 

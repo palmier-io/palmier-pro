@@ -20,8 +20,15 @@ enum FrameRenderer {
             layers: instruction.layers, over: base, frame: frame,
             renderSize: instruction.renderSize, sourceFrame: sourceFrame, gateByClipRange: false
         )
-        context.render(accum, to: output, bounds: renderRect, colorSpace: nil)
-        tag709(output)
+        let tagSource = colorTagSource(
+            layers: instruction.layers,
+            frame: frame,
+            sourceFrame: sourceFrame,
+            gateByClipRange: false
+        )
+        let outputColorSpace = tagSource.flatMap(colorSpace(for:)) ?? fallbackVideoColorSpace
+        context.render(accum, to: output, bounds: renderRect, colorSpace: outputColorSpace)
+        tagOutput(output, source: tagSource, colorSpace: outputColorSpace)
     }
 
     /// Bottom→top layer stack; `gateByClipRange` skips group children outside `frame`.
@@ -101,7 +108,81 @@ enum FrameRenderer {
         return (f?.outputImage ?? blended).cropped(to: background.extent)
     }
 
-    /// Tag output Rec. 709 at the buffer level so downstream reads our bytes correctly.
+    private static func tagOutput(
+        _ output: CVPixelBuffer,
+        source: CVPixelBuffer?,
+        colorSpace: CGColorSpace
+    ) {
+        if let source {
+            copyColorTags(from: source, to: output)
+        } else {
+            tag709(output)
+        }
+        CVBufferSetAttachment(output, kCVImageBufferCGColorSpaceKey, colorSpace, .shouldPropagate)
+    }
+
+    private static func colorTagSource(
+        layers: [LayerPlan],
+        frame: Int,
+        sourceFrame: (CMPersistentTrackID) -> CVPixelBuffer?,
+        gateByClipRange: Bool
+    ) -> CVPixelBuffer? {
+        for layer in layers.reversed() {
+            if gateByClipRange, !layer.clip.contains(timelineFrame: frame) { continue }
+            guard layer.clip.opacityAt(frame: frame) > 0 else { continue }
+            switch layer.source {
+            case .track(let id):
+                if let buffer = sourceFrame(id) { return buffer }
+            case .text:
+                continue
+            case .group(let children, _):
+                if let buffer = colorTagSource(
+                    layers: children,
+                    frame: frame,
+                    sourceFrame: sourceFrame,
+                    gateByClipRange: true
+                ) {
+                    return buffer
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func copyColorTags(from source: CVPixelBuffer, to output: CVPixelBuffer) {
+        let keys: [CFString] = [
+            kCVImageBufferICCProfileKey,
+            kCVImageBufferCGColorSpaceKey,
+            kCVImageBufferColorPrimariesKey,
+            kCVImageBufferTransferFunctionKey,
+            kCVImageBufferGammaLevelKey,
+            kCVImageBufferYCbCrMatrixKey,
+            kCVImageBufferMasteringDisplayColorVolumeKey,
+            kCVImageBufferContentLightLevelInfoKey,
+        ]
+        for key in keys {
+            if let value = CVBufferCopyAttachment(source, key, nil) {
+                CVBufferSetAttachment(output, key, value, .shouldPropagate)
+            } else {
+                CVBufferRemoveAttachment(output, key)
+            }
+        }
+    }
+
+    private static let fallbackVideoColorSpace =
+        CGColorSpace(name: CGColorSpace.itur_709) ?? CGColorSpaceCreateDeviceRGB()
+
+    private static func colorSpace(for buffer: CVPixelBuffer) -> CGColorSpace? {
+        if let attachments = CVBufferCopyAttachments(buffer, .shouldPropagate),
+           let unmanaged = CVImageBufferCreateColorSpaceFromAttachments(attachments) {
+            return unmanaged.takeRetainedValue()
+        }
+        guard let attachment = CVBufferCopyAttachment(buffer, kCVImageBufferCGColorSpaceKey, nil) else {
+            return nil
+        }
+        return (attachment as! CGColorSpace)
+    }
+
     private static func tag709(_ buffer: CVPixelBuffer) {
         CVBufferSetAttachment(buffer, kCVImageBufferColorPrimariesKey,
                               kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
@@ -122,7 +203,10 @@ enum FrameRenderer {
         guard alpha > 0 else { return nil }
 
         // Undo premultiplied alpha to avoid dark edges.
-        let image = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
+        let image = CIImage(
+            cvPixelBuffer: buffer,
+            options: [.colorSpace: colorSpace(for: buffer) ?? fallbackVideoColorSpace]
+        )
             .unpremultiplyingAlpha()
         return applyClipPipeline(
             image: image, srcHeight: CGFloat(CVPixelBufferGetHeight(buffer)), layer: layer,
