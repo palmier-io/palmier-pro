@@ -44,7 +44,9 @@ struct TimelineTileView: View {
             if timeline.totalFrames > 0 {
                 durationBadge
             }
-            if posterImage != nil {
+            if timeline.isMulticam {
+                multicamBadge
+            } else if posterImage != nil {
                 timelineBadge
             }
         } menuItems: {
@@ -55,6 +57,22 @@ struct TimelineTileView: View {
             Button("Delete", role: .destructive) { onDelete() }
                 .disabled(!canDelete)
         }
+    }
+
+    private var multicamBadge: some View {
+        VStack {
+            HStack {
+                Text("MULTICAM")
+                    .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.bold))
+                    .foregroundStyle(.black.opacity(AppTheme.Opacity.prominent))
+                    .padding(.horizontal, AppTheme.Spacing.xs)
+                    .padding(.vertical, AppTheme.Spacing.xxs)
+                    .background(Color(AppTheme.TrackColor.multicam), in: RoundedRectangle(cornerRadius: AppTheme.Radius.xs))
+                Spacer()
+            }
+            Spacer()
+        }
+        .padding(AppTheme.Spacing.xs)
     }
 
     // Matches AssetThumbnailView: type badge top-leading, duration bottom-trailing.

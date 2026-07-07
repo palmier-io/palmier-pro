@@ -321,10 +321,15 @@ final class TimelineView: NSView {
         } ?? [:]
 
         let linkOffsets = editor.linkGroupOffsets()
+        let multicamChildIds = Set(editor.timelines.lazy.filter(\.isMulticam).map(\.id))
 
         clipDisplayRects.removeAll(keepingCapacity: true)
         for (ti, track) in editor.timeline.tracks.enumerated() {
-            for clip in track.clips {
+            for modelClip in track.clips {
+                let isMulticamClip = modelClip.sourceClipType == .sequence
+                    && multicamChildIds.contains(modelClip.mediaRef)
+                let clip = isMulticamClip ? editor.audioBearer(for: modelClip) : modelClip
+                let multicamSegments = isMulticamClip ? editor.multicamRenderSegments(for: modelClip) : nil
                 let isSelected = editor.selectedClipIds.contains(clip.id)
                 let clipMissing = editor.isClipMediaOffline(clip)
                 let clipGenerating = editor.isClipMediaGenerating(clip)
@@ -338,7 +343,8 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(previewClip, type: clip.mediaType, in: previewRect,
                                           isSelected: isSelected, opacity: CGFloat(AppTheme.Opacity.prominent), context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          displayName: editor.clipDisplayLabel(for: modelClip),
+                                          multicamSegments: isMulticamClip ? editor.multicamRenderSegments(for: previewClip) : nil, multicamBadge: isMulticamClip,
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
                     continue
@@ -352,7 +358,8 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(clip, type: clip.mediaType, in: originalRect,
                                           isSelected: drag.isDuplicate && isSelected, opacity: originalOpacity, context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          displayName: editor.clipDisplayLabel(for: modelClip),
+                                          multicamSegments: multicamSegments, multicamBadge: isMulticamClip,
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
 
@@ -377,7 +384,8 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(ghostClip, type: clip.mediaType, in: ghostRect,
                                           isSelected: true, opacity: 0.7, context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          displayName: editor.clipDisplayLabel(for: modelClip),
+                                          multicamSegments: isMulticamClip ? editor.multicamRenderSegments(for: ghostClip) : nil, multicamBadge: isMulticamClip,
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
                     continue
@@ -410,7 +418,8 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(previewClip, type: clip.mediaType, in: previewRect,
                                           isSelected: isSelected, context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          displayName: editor.clipDisplayLabel(for: modelClip),
+                                          multicamSegments: isMulticamClip ? editor.multicamRenderSegments(for: previewClip) : nil, multicamBadge: isMulticamClip,
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
                     continue
@@ -425,8 +434,9 @@ final class TimelineView: NSView {
                         ClipRenderer.draw(shiftedClip, type: clip.mediaType, in: shiftedRect,
                                           isSelected: isSelected, context: ctx,
                                           cache: editor.mediaVisualCache,
-                                          displayName: editor.clipDisplayLabel(for: clip),
+                                          displayName: editor.clipDisplayLabel(for: modelClip),
                                           linkOffset: linkOffsets[clip.id],
+                                          multicamSegments: isMulticamClip ? editor.multicamRenderSegments(for: shiftedClip) : nil, multicamBadge: isMulticamClip,
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
                     continue
@@ -438,8 +448,9 @@ final class TimelineView: NSView {
                 ClipRenderer.draw(clip, type: clip.mediaType, in: rect,
                                   isSelected: isSelected, context: ctx,
                                   cache: editor.mediaVisualCache,
-                                  displayName: editor.clipDisplayLabel(for: clip),
+                                  displayName: editor.clipDisplayLabel(for: modelClip),
                                   linkOffset: linkOffsets[clip.id],
+                                  multicamSegments: multicamSegments, multicamBadge: isMulticamClip,
                                   fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
             }
         }
@@ -910,7 +921,8 @@ final class TimelineView: NSView {
         nestClipsItem.target = self
         nestItems.append(nestClipsItem)
         if clip.sourceClipType == .sequence {
-            let openItem = NSMenuItem(title: "Open Timeline", action: #selector(performOpenNestedTimeline(_:)), keyEquivalent: "")
+            let isGroup = editor.multicamContext(clip: clip) != nil
+            let openItem = NSMenuItem(title: isGroup ? "Open Group" : "Open Timeline", action: #selector(performOpenNestedTimeline(_:)), keyEquivalent: "")
             openItem.target = self
             openItem.representedObject = clip.mediaRef
             nestItems.append(openItem)
@@ -919,6 +931,30 @@ final class TimelineView: NSView {
                 decomposeItem.target = self
                 decomposeItem.representedObject = clip.id
                 nestItems.append(decomposeItem)
+            }
+        }
+
+        // Multicam: switch the active angle at this segment.
+        if let source = editor.timeline.multicam {
+            let showing = editor.timeline.tracks
+                .first { $0.id == source.programTrackId }?
+                .clips.first { clickFrame >= $0.startFrame && clickFrame < $0.endFrame }?.mediaRef
+            if let item = switchAngleItem(members: source.angles.filter { $0.mediaRef != showing },
+                                          atFrame: clickFrame) {
+                nestItems.append(item)
+            }
+            if source.angles.count >= 2 {
+                let submenu = NSMenu()
+                for layout in VideoLayout.allCases {
+                    let item = NSMenuItem(title: layout.displayName, action: #selector(performApplyChildLayout(_:)), keyEquivalent: "")
+                    item.target = self
+                    item.representedObject = ["frame": clickFrame, "layout": layout.rawValue] as [String: Any]
+                    submenu.addItem(item)
+                    if layout == .full { submenu.addItem(.separator()) }
+                }
+                let parent = NSMenuItem(title: "Layout", action: nil, keyEquivalent: "")
+                parent.submenu = submenu
+                nestItems.append(parent)
             }
         }
 
@@ -1085,6 +1121,35 @@ final class TimelineView: NSView {
         guard let item = sender as? NSMenuItem,
               let timelineId = item.representedObject as? String else { return }
         editor.activateTimeline(timelineId)
+    }
+
+    private func switchAngleItem(members: [MulticamSource.Member], atFrame frame: Int) -> NSMenuItem? {
+        guard !members.isEmpty else { return nil }
+        let submenu = NSMenu()
+        for member in members {
+            let item = NSMenuItem(title: member.angleLabel, action: #selector(performSwitchChildSegment(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = ["frame": frame, "angle": member.angleLabel] as [String: Any]
+            submenu.addItem(item)
+        }
+        let parent = NSMenuItem(title: "Switch Angle", action: nil, keyEquivalent: "")
+        parent.submenu = submenu
+        return parent
+    }
+
+    @objc private func performApplyChildLayout(_ sender: Any?) {
+        guard let info = (sender as? NSMenuItem)?.representedObject as? [String: Any],
+              let frame = info["frame"] as? Int,
+              let raw = info["layout"] as? String,
+              let layout = VideoLayout(rawValue: raw) else { return }
+        editor.applyChildLayout(atFrame: frame, layout: layout)
+    }
+
+    @objc private func performSwitchChildSegment(_ sender: Any?) {
+        guard let info = (sender as? NSMenuItem)?.representedObject as? [String: Any],
+              let angle = info["angle"] as? String,
+              let frame = info["frame"] as? Int else { return }
+        editor.switchChildSegment(atFrame: frame, to: angle)
     }
 
     @objc private func performSetVolumeKfInterpolation(_ sender: Any?) {

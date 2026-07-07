@@ -34,6 +34,13 @@ struct InspectorView: View {
                 clipInspectorContent()
             } else if let asset = selectedMediaAsset {
                 mediaAssetInspectorContent(asset)
+            } else if editor.timeline.isMulticam {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
+                        MulticamInspectorSection(childId: editor.activeTimelineId)
+                    }
+                    .padding(AppTheme.Spacing.lg)
+                }
             } else {
                 projectMetadataContent
             }
@@ -306,6 +313,9 @@ struct InspectorView: View {
                             case .textAnimate:
                                 if !selectedTextClips.isEmpty { TextAnimateTab(clips: selectedTextClips) }
                             case .video:
+                                if let clip = selectedVisualClip, let context = editor.multicamContext(clip: clip) {
+                                    MulticamInspectorSection(childId: context.child.id)
+                                }
                                 videoTabContent()
                             case .audio:
                                 audioTabContent()
