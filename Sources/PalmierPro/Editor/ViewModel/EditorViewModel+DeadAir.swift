@@ -5,7 +5,7 @@ extension EditorViewModel {
 
     /// The dead-air span under `timelineFrame` in `clip`, as a timeline range. Nil when the frame isn't dead air.
     func deadAirSpanRange(clip: Clip, atTimelineFrame frame: Int) -> FrameRange? {
-        guard let mask = mediaVisualCache.deadAirMask(for: clip.mediaRef), !mask.isEmpty else { return nil }
+        guard let mask = deadAirMask(for: clip), !mask.isEmpty else { return nil }
         let cellFrames = VoiceActivity.chunkDuration * Double(max(1, timeline.fps))
         let sourceFrame = Double(clip.trimStartFrame) + Double(frame - clip.startFrame) * clip.speed
         let cell = Int(sourceFrame / cellFrames)
@@ -19,7 +19,7 @@ extension EditorViewModel {
 
     /// Every dead-air span visible within `clip`, as timeline ranges.
     func deadAirRanges(for clip: Clip) -> [FrameRange] {
-        guard let mask = mediaVisualCache.deadAirMask(for: clip.mediaRef), !mask.isEmpty else { return [] }
+        guard let mask = deadAirMask(for: clip), !mask.isEmpty else { return [] }
         let cellFrames = VoiceActivity.chunkDuration * Double(max(1, timeline.fps))
         var ranges: [FrameRange] = []
         var i = 0
@@ -78,6 +78,13 @@ extension EditorViewModel {
         }
         guard sections > 0 || refusal != nil else { return nil }
         return (sections, removedFrames, refusal)
+    }
+
+    // Multicam uses intersecting mic masks in child-frame domain.
+    private func deadAirMask(for clip: Clip) -> [Bool]? {
+        clip.sourceClipType == .sequence
+            ? multicamDeadAirMask(for: clip)
+            : mediaVisualCache.deadAirMask(for: clip.mediaRef)
     }
 
     private func timelineRange(clip: Clip, sourceStart: Double, sourceEnd: Double) -> FrameRange? {

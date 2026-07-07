@@ -20,7 +20,7 @@ extension EditorViewModel {
 
     // MARK: - Public API
 
-    /// Trim one or more clips in a single undo group. Overwrite-style
+    /// Trim clips in one undo group without re-timing.
     func trimClips(_ edits: [(clipId: String, trimStartFrame: Int, trimEndFrame: Int)]) {
         guard !edits.isEmpty else { return }
         undoManager?.beginUndoGrouping()
@@ -179,6 +179,9 @@ extension EditorViewModel {
 
     /// Ripple-deletes frame ranges on a track, including linked and sync-locked tracks. Tracks in `ignoreSyncLockTrackIndices` are unlocked for this call.
     func rippleDeleteRangesOnTrack(trackIndex: Int, ranges: [FrameRange], ignoreSyncLockTrackIndices: Set<Int> = []) -> RippleRangesOutcome {
+        guard !refusesMulticamStructureEdit() else {
+            return .refused("Timing is locked inside a multicam group — edit on the timeline that holds its clip.")
+        }
         guard timeline.tracks.indices.contains(trackIndex) else {
             return .refused("Track index out of range: \(trackIndex)")
         }

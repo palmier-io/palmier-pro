@@ -53,6 +53,7 @@ extension EditorViewModel {
     // MARK: - Reorder
     /// Instantly move the track with `id` to `targetIndex`, clamped to its track type zone. No undo.
     func reorderTrackLive(id: String, to targetIndex: Int) {
+        guard !refusesMulticamStructureEdit() else { return }
         guard let from = timeline.tracks.firstIndex(where: { $0.id == id }) else { return }
         let z = zones
         let isAudio = timeline.tracks[from].type == .audio
@@ -80,6 +81,7 @@ extension EditorViewModel {
     }
 
     func pruneEmptyTracks() {
+        guard !timeline.isMulticam else { return }
         timeline.tracks.removeAll(where: \.clips.isEmpty)
     }
 

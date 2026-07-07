@@ -103,6 +103,8 @@ extension EditorViewModel {
                 guard clip.mediaType == .video, let groupId = clip.linkGroupId else { return true }
                 return !linkGroupsWithAudio.contains(groupId)
             }
+            .map(audioBearer(for:))
+            .filter { $0.sourceClipType != .sequence }
             .sorted { $0.startFrame < $1.startFrame }
     }
 
@@ -164,7 +166,11 @@ extension EditorViewModel {
         let candidates = request.autoDetect ? captionTargets(ids: []) : captionTargets(ids: request.sourceClipIds)
         return candidates.compactMap { c in
             findClip(id: c.id).map {
-                CaptionTarget(id: c.id, trackId: timeline.tracks[$0.trackIndex].id, clip: timeline.tracks[$0.trackIndex].clips[$0.clipIndex])
+                CaptionTarget(
+                    id: c.id,
+                    trackId: timeline.tracks[$0.trackIndex].id,
+                    clip: audioBearer(for: timeline.tracks[$0.trackIndex].clips[$0.clipIndex])
+                )
             }
         }
     }
