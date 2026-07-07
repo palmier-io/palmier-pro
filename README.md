@@ -1,18 +1,16 @@
 <div align="center">
 
-# Palmier Pro
+# Kawenreel
 
 **The video editor built for AI.**
 
-<a href="https://github.com/palmier-io/palmier-pro/releases/latest/download/PalmierPro.dmg">
-  <img src="./assets/macos-badge.png" alt="Download Palmier Pro for macOS" width="180" />
+<a href="https://github.com/Ariffkmy/kawenreel/releases/latest/download/PalmierPro.dmg">
+  <img src="./assets/macos-badge.png" alt="Download Kawenreel for macOS" width="180" />
 </a>
 
 <sub><i>Requires macOS 26 (Tahoe) on Apple Silicon</i></sub>
 
-<a href="https://x.com/Palmier_io"><img src="https://img.shields.io/badge/Follow-%40Palmier__io-000000?style=flat&logo=x&logoColor=white" alt="Follow on X" /></a>
-<a href="https://discord.com/invite/SMVW6pKYmg"><img src="https://img.shields.io/badge/Join-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Join Discord" /></a>
-<a href="https://www.ycombinator.com/companies/palmier"><img src="https://img.shields.io/badge/Y%20Combinator-S24-orange" alt="Y Combinator S24" /></a>
+<sub>Based on <a href="https://github.com/palmier-io/palmier-pro">Palmier Pro</a> by Palmier, Inc. — GPL-3.0. Source for this build is available in this repository.</sub>
 
 <p>
   <strong>English</strong> ·

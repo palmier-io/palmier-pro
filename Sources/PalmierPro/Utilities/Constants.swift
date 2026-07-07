@@ -105,7 +105,7 @@ enum Trim {
 enum Project {
     static let fileExtension = "palmier"
     static let registryFilename = "project-registry.json"
-    static let typeIdentifier = "io.palmier.project"
+    static let typeIdentifier = "com.kawenreel.project"
     static let defaultProjectName = "Untitled Project"
     static let timelineFilename = "project.json"
     static let manifestFilename = "media.json"

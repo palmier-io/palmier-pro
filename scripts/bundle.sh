@@ -33,12 +33,24 @@ if [ -f "$ROOT/$ENV_FILE" ]; then
   set +a
 fi
 
-SIGNING_IDENTITY="${SIGNING_IDENTITY:-Developer ID Application: Palmier, Inc. (MMFLRC7562)}"
-NOTARY_PROFILE="${NOTARY_PROFILE:-palmier-notary}"
+SIGNING_IDENTITY="${SIGNING_IDENTITY:-}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-kawenreel-notary}"
 SENTRY_DSN="${SENTRY_DSN:-}"
-PROVISION_PROFILE="${PROVISION_PROFILE:-$ROOT/scripts/Palmier_Pro_Developer_ID.provisionprofile}"
+PROVISION_PROFILE="${PROVISION_PROFILE:-}"
 ENTITLEMENTS="$ROOT/scripts/PalmierPro.entitlements"
-KEYCHAIN_ACCESS_GROUP="${KEYCHAIN_ACCESS_GROUP:-MMFLRC7562.io.palmier.pro}"
+KEYCHAIN_ACCESS_GROUP="${KEYCHAIN_ACCESS_GROUP:-}"
+
+if [ -z "$SIGNING_IDENTITY" ]; then
+  case "$MODE" in
+    fast) SIGNING_IDENTITY="-" ;;  # ad-hoc for dev builds
+    sign|dist)
+      echo "error: SIGNING_IDENTITY is not set." >&2
+      echo "  export SIGNING_IDENTITY=\"Developer ID Application: <Your Name> (<TEAMID>)\"" >&2
+      echo "  (requires an Apple Developer Program membership; see docs/RELEASING.md)" >&2
+      exit 1
+      ;;
+  esac
+fi
 RESOURCES="$ROOT/Sources/PalmierPro/Resources"
 APP="$ROOT/.build/PalmierPro.app"
 ZIP="$ROOT/.build/PalmierPro.zip"
@@ -215,11 +227,11 @@ rm -f "$ZIP"
 echo "==> Building DMG"
 rm -f "$DMG"
 STAGING="$(mktemp -d)"
-cp -R "$APP" "$STAGING/PalmierPro.app"
+cp -R "$APP" "$STAGING/Kawenreel.app"
 ln -s /Applications "$STAGING/Applications"
 cp "$RESOURCES/AppIcon.icns" "$STAGING/.VolumeIcon.icns"
 hdiutil create \
-  -volname "PalmierPro" \
+  -volname "Kawenreel" \
   -srcfolder "$STAGING" \
   -ov -format UDZO \
   "$DMG"

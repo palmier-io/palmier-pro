@@ -7,7 +7,7 @@ import os
 /// Uncaught exceptions and fatal signals are written to
 /// `~/Library/Logs/PalmierPro/crash.log` with a backtrace.
 enum Log {
-    static let subsystem  = "io.palmier.pro"
+    static let subsystem  = "com.kawenreel.app"
     static let app        = CategoryLog("app")
     static let editor     = CategoryLog("editor")
     static let export     = CategoryLog("export")

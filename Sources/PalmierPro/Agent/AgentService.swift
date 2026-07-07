@@ -82,12 +82,9 @@ final class AgentService {
         switch providerMode {
         case .claudeOwnKey:
             return hasApiKey
-        case .ilmuAI:
-            return true
         case .defaultSetting:
             if hasOpenRouterKey { return true }
-            let account = AccountService.shared
-            return account.isSignedIn && account.hasCredits
+            return SupabaseService.shared.isSignedIn
         }
     }
 
@@ -139,14 +136,12 @@ final class AgentService {
         case .claudeOwnKey:
             guard hasApiKey else { return nil }
             return AnthropicClient(apiKey: apiKey, model: chosen)
-        case .ilmuAI:
-            return OpenAICompatibleClient(config: .ilmu())
         case .defaultSetting:
             if let config = OpenAICompatibleConfig.resolved() {
                 return OpenAICompatibleClient(config: config)
             }
-            if AccountService.shared.isSignedIn {
-                return PalmierClient(model: chosen)
+            if let token = SupabaseService.shared.currentAccessToken {
+                return OpenAICompatibleClient(config: .kawenreelProxy(accessToken: token))
             }
             return nil
         }

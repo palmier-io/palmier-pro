@@ -10,12 +10,12 @@
 	<array>
 		<dict>
 			<key>CFBundleTypeName</key>
-			<string>Palmier Project</string>
+			<string>Kawenreel Project</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>io.palmier.project</string>
+				<string>com.kawenreel.project</string>
 			</array>
 			<key>LSTypeIsPackage</key>
 			<true/>
@@ -28,7 +28,7 @@
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
-	<string>io.palmier.pro</string>
+	<string>com.kawenreel.app</string>
 	<key>CFBundleLocalizations</key>
 	<array>
 		<string>en</string>
@@ -44,20 +44,20 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.6.1</string>
+	<string>1.0.0</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>io.palmier.pro</string>
+			<string>com.kawenreel.app</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>palmier</string>
+				<string>kawenreel</string>
 			</array>
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>63</string>
+	<string>1</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>NSHighResolutionCapable</key>
@@ -65,9 +65,9 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
-	<string>https://raw.githubusercontent.com/palmier-io/palmier-pro/main/appcast.xml</string>
+	<string>https://raw.githubusercontent.com/Ariffkmy/kawenreel/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>Jh56mT+7YZSRsLylQIPyP+4/ahRtTPzfQQaKDZoBsio=</string>
+	<string>REPLACE_WITH_YOUR_ED25519_PUBLIC_KEY</string>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>
@@ -76,9 +76,9 @@
 				<string>com.apple.package</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>Palmier Project</string>
+			<string>Kawenreel Project</string>
 			<key>UTTypeIdentifier</key>
-			<string>io.palmier.project</string>
+			<string>com.kawenreel.project</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>

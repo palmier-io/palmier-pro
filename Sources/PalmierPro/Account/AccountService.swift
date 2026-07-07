@@ -161,8 +161,8 @@ final class AccountService {
             options: Clerk.Options(
                 keychainConfig: keychainConfig,
                 redirectConfig: .init(
-                    redirectUrl: "palmier://callback",
-                    callbackUrlScheme: "palmier"
+                    redirectUrl: "kawenreel://callback",
+                    callbackUrlScheme: "kawenreel"
                 )
             )
         )

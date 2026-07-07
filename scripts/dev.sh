@@ -18,7 +18,7 @@ if ! $stream; then
     exit 0
 fi
 
-echo "Streaming OSLog (subsystem=io.palmier.pro). Ctrl-C to quit app and stop." >&2
+echo "Streaming OSLog (subsystem=com.kawenreel.app). Ctrl-C to quit app and stop." >&2
 echo >&2
 
 cleanup() {
@@ -31,6 +31,6 @@ trap cleanup INT TERM EXIT
 
 ( sleep 0.5 && open "$ROOT/.build/PalmierPro.app" ) &
 log stream \
-    --predicate 'subsystem == "io.palmier.pro"' \
+    --predicate 'subsystem == "com.kawenreel.app"' \
     --level info \
     --style compact

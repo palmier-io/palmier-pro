@@ -77,21 +77,18 @@ struct OpenAICompatibleConfig: Sendable {
     static let openRouterBaseURL = URL(string: "https://openrouter.ai/api/v1")!
     static let modelDefaultsKey = "agentOpenRouterModel"
 
-    // MARK: - Ilmu AI (OpenAI-compatible gateway)
-    static let ilmuBaseURL = URL(string: "https://api.ilmu.ai/v1")!
-    static let ilmuModel = "ilmu-vision-v1.3"
-    static let ilmuAPIKey = "sk-9acecdd5a0666b7c791ce6f921326dd5c8cc91881f1e0c3c"
-
-    static func ilmu() -> OpenAICompatibleConfig {
+    /// Routes through the Kawenreel LLM proxy edge function. The signed-in user's
+    /// session token is the credential; the provider API key lives server-side.
+    static func kawenreelProxy(accessToken: String) -> OpenAICompatibleConfig {
         OpenAICompatibleConfig(
-            baseURL: ilmuBaseURL,
-            apiKey: ilmuAPIKey,
-            model: ilmuModel,
+            baseURL: SupabaseConfig.url.appendingPathComponent("functions/v1/llm-proxy"),
+            apiKey: accessToken,
+            model: UserDefaults.standard.string(forKey: modelDefaultsKey) ?? defaultModel,
             maxTokens: 8192,
-            enablePromptCache: false,
+            enablePromptCache: true,
             temperature: nil,
             referer: nil,
-            appTitle: "Kawenreel"
+            appTitle: infoString("CFBundleName")
         )
     }
 

@@ -2,6 +2,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 serve(async (req) => {
   try {
+    const authError = await requireUser(req)
+    if (authError) return authError
+
     const { fileId } = await req.json()
     if (!fileId) {
       return new Response(JSON.stringify({ error: "fileId required" }), { status: 400 })
@@ -36,6 +39,29 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 })
   }
 })
+
+// Only signed-in users may proxy Drive traffic; the shipped anon key alone is rejected.
+async function requireUser(req: Request): Promise<Response | null> {
+  const authHeader = req.headers.get("Authorization") ?? ""
+  const token = authHeader.replace(/^Bearer\s+/i, "")
+  if (!token) {
+    return new Response(JSON.stringify({ error: "Sign in required" }), { status: 401 })
+  }
+  const res = await fetch(`${Deno.env.get("SUPABASE_URL")}/auth/v1/user`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: Deno.env.get("SUPABASE_ANON_KEY")!,
+    },
+  })
+  if (!res.ok) {
+    return new Response(JSON.stringify({ error: "Sign in required" }), { status: 401 })
+  }
+  const user = await res.json()
+  if (!user?.id) {
+    return new Response(JSON.stringify({ error: "Sign in required" }), { status: 401 })
+  }
+  return null
+}
 
 async function getAccessToken(sa: any): Promise<string> {
   const now = Math.floor(Date.now() / 1000)

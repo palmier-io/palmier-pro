@@ -20,6 +20,7 @@ let package = Package(
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.3.3"),
         .package(url: "https://github.com/airbnb/lottie-ios", from: "4.6.1"),
         .package(url: "https://github.com/soniqo/speech-swift", from: "0.0.21"),
+        .package(url: "https://github.com/supabase/supabase-swift", from: "2.0.0"),
     ],
     targets: [
         .executableTarget(
@@ -37,6 +38,7 @@ let package = Package(
                 .product(name: "Lottie", package: "lottie-ios"),
                 .product(name: "SpeechEnhancement", package: "speech-swift"),
                 .product(name: "SpeechVAD", package: "speech-swift"),
+                .product(name: "Supabase", package: "supabase-swift"),
             ],
             path: "Sources/PalmierPro",
             exclude: [

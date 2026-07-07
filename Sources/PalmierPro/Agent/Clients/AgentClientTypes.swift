@@ -19,13 +19,11 @@ enum AnthropicModel: String, CaseIterable, Sendable {
 enum AgentProviderMode: String, CaseIterable, Sendable {
     case defaultSetting
     case claudeOwnKey
-    case ilmuAI
 
     var displayName: String {
         switch self {
         case .defaultSetting: "Default Setting"
         case .claudeOwnKey: "Claude (Your own API key)"
-        case .ilmuAI: "Ilmu AI"
         }
     }
 }

@@ -12,6 +12,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Start Sparkle updater
         _ = Updater.shared
 
+        // Restore the Supabase session (no gate — sign-in only unlocks the LLM proxy).
+        AuthCoordinator.start()
+
         if UserProfileStore.shared.isOnboarded {
             HomeWindowController.shared.showWindow(nil)
         } else {

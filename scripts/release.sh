@@ -136,7 +136,7 @@ b = os.environ["NEW_BUILD"]
 d = os.environ["PUBDATE"]
 l = os.environ["LENGTH"]
 s = os.environ["SIGNATURE"]
-url = f"https://github.com/palmier-io/palmier-pro/releases/download/v{v}/PalmierPro.dmg"
+url = f"https://github.com/Ariffkmy/kawenreel/releases/download/v{v}/PalmierPro.dmg"
 
 item = f"""        <item>
             <title>Version {v}</title>
@@ -165,4 +165,4 @@ git push origin main
 
 echo ""
 echo "==> Released $TAG"
-echo "    https://github.com/palmier-io/palmier-pro/releases/tag/$TAG"
+echo "    https://github.com/Ariffkmy/kawenreel/releases/tag/$TAG"

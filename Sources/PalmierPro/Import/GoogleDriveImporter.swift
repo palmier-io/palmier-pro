@@ -13,6 +13,7 @@ struct GDriveFileEntry: Codable, Sendable {
 /// Errors that can occur during a Google Drive import flow.
 enum GDriveError: LocalizedError {
     case invalidFolderUrl
+    case notSignedIn
     case fetchFailed(String)
     case downloadFailed(String)
     case importFailed(String)
@@ -20,6 +21,7 @@ enum GDriveError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidFolderUrl: return "Invalid Google Drive folder URL"
+        case .notSignedIn: return "Sign in to import from Google Drive."
         case .fetchFailed(let msg): return "Failed to list files: \(msg)"
         case .downloadFailed(let msg): return "Failed to download file: \(msg)"
         case .importFailed(let msg): return "Failed to import file: \(msg)"
@@ -66,6 +68,14 @@ final class GoogleDriveImporter {
     /// Max bytes for a single download (2 GB).
     private static let maxDownloadBytes: Int64 = 2 * 1024 * 1024 * 1024
 
+    /// The edge functions reject the anon key; they require a signed-in user's token.
+    private func userAccessToken() async throws -> String {
+        guard let session = try? await SupabaseService.shared.client.auth.session else {
+            throw GDriveError.notSignedIn
+        }
+        return session.accessToken
+    }
+
     /// Download timeout in seconds.
     private static let downloadTimeout: TimeInterval = 300
 
@@ -78,10 +88,12 @@ final class GoogleDriveImporter {
             .appendingPathComponent("functions/v1")
             .appendingPathComponent("gdrive-list")
 
+        let accessToken = try await userAccessToken()
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
         let body: [String: String] = ["folderUrl": folderUrl]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -143,8 +155,9 @@ final class GoogleDriveImporter {
         request.httpMethod = "POST"
         request.timeoutInterval = Self.downloadTimeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let accessToken = try await userAccessToken()
         request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(SupabaseConfig.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["fileId": entry.id])
 
         let delegate = ImportDownloadDelegate(maxBytes: Self.maxDownloadBytes)

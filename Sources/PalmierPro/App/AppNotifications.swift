@@ -4,7 +4,7 @@ import UserNotifications
 
 @MainActor
 enum AppNotifications {
-    private static let enabledKey = "io.palmier.pro.notifications.enabled"
+    private static let enabledKey = "com.kawenreel.app.notifications.enabled"
 
     static var isEnabled: Bool {
         get {
