@@ -169,6 +169,10 @@ enum ClipRenderer {
             drawTrimHandles(in: rect, context: context)
         }
 
+        if type == .audio, clip.sourceClipType != .sequence, let beats = cache?.beatAnalysis(for: clip.mediaRef) {
+            drawBeatTicks(analysis: beats, clip: clip, in: rect, fps: fps, context: context)
+        }
+
         if opacity < 1.0 {
             context.restoreGState()
         }
@@ -205,6 +209,49 @@ enum ClipRenderer {
             context.addPath(p)
             context.drawPath(using: .fillStroke)
         }
+    }
+
+    private static let beatTickColor = NSColor.systemOrange.withAlphaComponent(0.7).cgColor
+    private static let downbeatTickColor = NSColor.systemOrange.cgColor
+    private static let beatTickBackingColor = NSColor.black.withAlphaComponent(0.55).cgColor
+    private static let beatTickWidth: CGFloat = 1
+    private static let beatTickHeight: CGFloat = 7
+    private static let downbeatTickHeight: CGFloat = 14
+    private static let beatTickMinSpacing: CGFloat = 4
+
+    private static func drawBeatTicks(analysis: BeatAnalysis, clip: Clip, in rect: NSRect, fps: Int, context: CGContext) {
+        guard clip.durationFrames > 0, !analysis.beats.isEmpty else { return }
+        let pxPerFrame = rect.width / CGFloat(clip.durationFrames)
+        guard pxPerFrame > 0 else { return }
+        let body = clipBodyRect(in: rect)
+        guard body.height > downbeatTickHeight * 2 else { return }
+
+        // Downbeats draw at every zoom; beats fill in where spacing allows.
+        // Beat and downbeat peaks are picked independently, so match with tolerance.
+        var ticks: [CGRect] = []
+        var downTicks: [CGRect] = []
+        let downbeats = analysis.downbeats
+        let tolerance = 0.03
+        var downIndex = 0
+        var lastX = -CGFloat.greatestFiniteMagnitude
+        for t in analysis.beats {
+            guard let frame = clip.timelineFrame(sourceSeconds: t, fps: fps) else { continue }
+            let x = rect.minX + CGFloat(frame - clip.startFrame) * pxPerFrame
+            while downIndex < downbeats.count, downbeats[downIndex] < t - tolerance { downIndex += 1 }
+            let isDown = downIndex < downbeats.count && abs(downbeats[downIndex] - t) <= tolerance
+            guard isDown || x - lastX >= beatTickMinSpacing else { continue }
+            lastX = x
+            let height = isDown ? downbeatTickHeight : beatTickHeight
+            let tick = CGRect(x: x - beatTickWidth / 2, y: body.minY, width: beatTickWidth, height: height)
+            if isDown { downTicks.append(tick) } else { ticks.append(tick) }
+        }
+        guard !(ticks.isEmpty && downTicks.isEmpty) else { return }
+        context.setFillColor(beatTickBackingColor)
+        context.fill((ticks + downTicks).map { CGRect(x: $0.minX - 1, y: $0.minY, width: $0.width + 2, height: $0.height + 1) })
+        context.setFillColor(beatTickColor)
+        context.fill(ticks)
+        context.setFillColor(downbeatTickColor)
+        context.fill(downTicks)
     }
 
     // MARK: - Waveform

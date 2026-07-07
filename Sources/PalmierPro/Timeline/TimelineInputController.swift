@@ -236,7 +236,8 @@ final class TimelineInputController {
             let targets = SnapEngine.collectTargets(
                 tracks: editor.timeline.tracks,
                 playheadFrame: editor.currentFrame,
-                includePlayhead: true
+                includePlayhead: true,
+                beatFrames: editor.beatSnapFrames(for:)
             )
             let rangeEndFrame: Int
             if let snap = SnapEngine.findSnap(
@@ -261,7 +262,8 @@ final class TimelineInputController {
                 tracks: editor.timeline.tracks,
                 playheadFrame: editor.currentFrame,
                 excludeClipIds: allDraggedIds,
-                includePlayhead: true
+                includePlayhead: true,
+                beatFrames: editor.beatSnapFrames(for:)
             )
 
             // Let any selected edge drive snapping, not just the lead start.
@@ -307,7 +309,9 @@ final class TimelineInputController {
                 tracks: editor.timeline.tracks,
                 playheadFrame: editor.currentFrame,
                 excludeClipIds: [drag.clipId],
-                includePlayhead: true
+                includePlayhead: true,
+                beatFrames: editor.beatSnapFrames(for:),
+                includeExcludedClipBeats: true
             )
             let snappedStart: Int
             if let snap = SnapEngine.findSnap(
@@ -336,7 +340,9 @@ final class TimelineInputController {
                 tracks: editor.timeline.tracks,
                 playheadFrame: editor.currentFrame,
                 excludeClipIds: [drag.clipId],
-                includePlayhead: true
+                includePlayhead: true,
+                beatFrames: editor.beatSnapFrames(for:),
+                includeExcludedClipBeats: true
             )
             let snappedEnd: Int
             if let snap = SnapEngine.findSnap(
@@ -544,7 +550,8 @@ final class TimelineInputController {
             let targets = SnapEngine.collectTargets(
                 tracks: editor.timeline.tracks,
                 playheadFrame: editor.currentFrame,
-                includePlayhead: true
+                includePlayhead: true,
+                beatFrames: editor.beatSnapFrames(for:)
             )
             if let snap = SnapEngine.findSnap(
                 position: candidate,

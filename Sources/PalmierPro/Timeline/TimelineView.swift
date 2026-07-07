@@ -950,6 +950,15 @@ final class TimelineView: NSView {
             syncItem.submenu = syncMenu
             syncItems.append(syncItem)
         }
+        if clip.sourceClipType != .sequence,
+           let asset = editor.mediaAssets.first(where: { $0.id == clip.mediaRef }),
+           asset.type == .audio || (asset.type == .video && asset.hasAudio) {
+            let hasBeats = editor.mediaVisualCache.beats.analysis(for: clip.mediaRef) != nil
+            let beatsItem = NSMenuItem(title: hasBeats ? "Redetect Beats" : "Detect Beats", action: #selector(performDetectBeats(_:)), keyEquivalent: "")
+            beatsItem.target = self
+            beatsItem.representedObject = clip.mediaRef
+            syncItems.append(beatsItem)
+        }
 
         for group in [timelineItems, aiItems, nestItems, mediaItems, syncItems] where !group.isEmpty {
             if !menu.items.isEmpty { menu.addItem(.separator()) }
@@ -1184,7 +1193,8 @@ final class TimelineView: NSView {
         }
         let totalDur = assets.reduce(0) { $0 + editor.clipDurationFrames(for: $1, segment: externalDragSegments[$1.id]) }
         let targets = SnapEngine.collectTargets(
-            tracks: editor.timeline.tracks
+            tracks: editor.timeline.tracks,
+            beatFrames: editor.beatSnapFrames(for:)
         )
         if let snap = SnapEngine.findSnap(
             position: candidate,

@@ -41,6 +41,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case getTranscript = "get_transcript"
     case removeWords = "remove_words"
     case removeSilence = "remove_silence"
+    case detectBeats = "detect_beats"
 
     // Text & captions
     case addTexts = "add_texts"
@@ -600,6 +601,18 @@ enum ToolDefinitions {
             name: .removeSilence,
             description: "Remove dead air — quiet, speech-free sections — from the timeline's audio, ripple-closing the gaps. Sections come from on-device speech detection (the same spans marked red on waveforms): non-speech runs whose level sits well below the recording's own speech level, so music beds and loud ambience are never cut, and speech-boundary slop keeps the cuts from feeling clipped. Cuts linked A/V partners and honors sync lock; the whole pass is one undoable action.\n\nUse this to tighten pacing (long pauses, dead space between takes) before or instead of word-level edits: remove_silence handles pauses, remove_words handles fillers and flubbed lines. No transcript needed. If it reports no dead air, speech analysis may still be running in the background — wait a moment and retry. Takes no arguments.",
             inputSchema: objectSchema(properties: [:], required: [])
+        ),
+        AgentTool(
+            name: .detectBeats,
+            description: "Detect musical beats and downbeats in a media asset's audio, on-device. Returns beats and downbeats in SOURCE seconds (multiply by fps for frame values, same convention as search_media hits) plus estimated bpm. Downbeats mark bar starts — cut on downbeats for edits that land musically; beats are fine for faster montage rhythms.\n\nUse for beat-synced editing: snapping cuts to a music bed, building montages where clip boundaries hit the beat, or timing text/caption entrances to the bar. To place a cut at a beat B on a clip, the timeline frame is startFrame + (B × fps − trimStartFrame) / speed. Works on music; speech or ambience returns few or no beats. Runs locally — no subscription needed.",
+            inputSchema: objectSchema(
+                properties: [
+                    "mediaRef": ["type": "string", "description": "Audio or video asset id from get_media."],
+                    "startSeconds": ["type": "number", "description": "Optional. Analyze from this source-media second."],
+                    "endSeconds": ["type": "number", "description": "Optional. Analyze up to this source-media second."],
+                ],
+                required: ["mediaRef"]
+            )
         ),
         AgentTool(
             name: .addTexts,
