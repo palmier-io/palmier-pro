@@ -28,6 +28,11 @@ enum MainMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
         menu.addItem(.separator())
+        let signInItem = menu.addItem(withTitle: "Sign In…", action: #selector(AppDelegate.signIn(_:)), keyEquivalent: "")
+        signInItem.target = NSApp.delegate
+        let signOutItem = menu.addItem(withTitle: "Sign Out", action: #selector(AppDelegate.signOut(_:)), keyEquivalent: "")
+        signOutItem.target = NSApp.delegate
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Kawenreel", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.submenu = menu
         return item

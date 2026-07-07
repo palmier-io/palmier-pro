@@ -107,4 +107,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let editor = AppState.shared.activeProject?.editorViewModel else { return }
         editor.tour.start(in: editor)
     }
+
+    @MainActor
+    @objc func signIn(_ sender: Any?) {
+        SignInWindowController.shared.showWindow(nil)
+        SignInWindowController.shared.window?.makeKeyAndOrderFront(nil)
+    }
+
+    @MainActor
+    @objc func signOut(_ sender: Any?) {
+        Task { await SupabaseService.shared.signOut() }
+    }
+
+    @MainActor
+    @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        switch item.action {
+        case #selector(signIn(_:)): return !SupabaseService.shared.isSignedIn
+        case #selector(signOut(_:)): return SupabaseService.shared.isSignedIn
+        default: return true
+        }
+    }
 }
