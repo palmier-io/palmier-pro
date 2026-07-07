@@ -583,13 +583,36 @@ extension EditorViewModel {
         }
     }
 
-    func finalizeImportedAsset(_ asset: MediaAsset) async {
+    @discardableResult
+    func finalizeImportedAsset(_ asset: MediaAsset) async -> Bool {
         Log.project.notice(
             "media finalize start asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)",
             telemetry: "Media asset finalize started",
             data: ["assetId": Telemetry.shortId(asset.id), "type": asset.type.rawValue]
         )
-        await asset.loadMetadata()
+        let metadataLoaded = await asset.loadMetadata()
+        guard metadataLoaded else {
+            if FileManager.default.fileExists(atPath: asset.url.path) {
+                unprocessableMediaRefs.insert(asset.id)
+            } else {
+                missingMediaRefs.insert(asset.id)
+            }
+            if asset.isGenerating || asset.isGenerated || asset.importInput != nil {
+                asset.generationStatus = .failed("Could not read media file.")
+            }
+            updateManifestMetadata(for: asset)
+            Log.project.warning(
+                "media finalize unreadable asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)",
+                telemetry: "Media asset finalize unreadable",
+                data: ["assetId": Telemetry.shortId(asset.id), "type": asset.type.rawValue]
+            )
+            refreshMissingMediaCache()
+            refreshPreviewForFinalizedAsset(asset)
+            return false
+        }
+        if asset.isGenerating {
+            asset.generationStatus = .none
+        }
         updateManifestMetadata(for: asset)
         if FileManager.default.fileExists(atPath: asset.url.path) {
             missingMediaRefs.remove(asset.id)
@@ -623,6 +646,7 @@ extension EditorViewModel {
                 "hasAudio": asset.hasAudio
             ]
         )
+        return true
     }
 
     private func refreshPreviewForFinalizedAsset(_ asset: MediaAsset) {

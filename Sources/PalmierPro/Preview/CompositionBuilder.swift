@@ -122,6 +122,7 @@ enum CompositionBuilder {
         var clipTransforms: [String: CGAffineTransform] = [:]
         var offlineMediaRefs: Set<String> = []
         var unprocessableMediaRefs: Set<String> = []
+        var failedLoadOutcomes: [SourceLoadKey: LoadOutcome] = [:]
 
         init(
             composition: AVMutableComposition,
@@ -290,17 +291,38 @@ enum CompositionBuilder {
     }
 
     private static func loadSource(clip: Clip, mediaType: AVMediaType, ctx: BuildContext) async throws -> LoadOutcome {
-        try await loadSource(
+        let key = SourceLoadKey(mediaRef: clip.mediaRef, mediaType: mediaType)
+        if let failedOutcome = ctx.failedLoadOutcomes[key] {
+            return failedOutcome
+        }
+        let outcome = try await loadSource(
             clip: clip, mediaType: mediaType, resolveURL: ctx.resolveURL,
             resolveSourceSize: ctx.resolveSourceSize, missingMediaRefs: ctx.missingMediaRefs,
             renderSize: ctx.renderSize
         )
+        switch outcome {
+        case .loaded:
+            break
+        case .offline, .unprocessable:
+            ctx.failedLoadOutcomes[key] = outcome
+        }
+        return outcome
     }
 
     private enum LoadOutcome {
         case loaded(asset: AVURLAsset, track: AVAssetTrack)
         case offline
         case unprocessable
+    }
+
+    private struct SourceLoadKey: Hashable {
+        let mediaRef: String
+        let mediaType: String
+
+        init(mediaRef: String, mediaType: AVMediaType) {
+            self.mediaRef = mediaRef
+            self.mediaType = mediaType.rawValue
+        }
     }
 
     private static func loadSource(
@@ -354,7 +376,7 @@ enum CompositionBuilder {
             }
             return .loaded(asset: sourceAsset, track: sourceTrack)
         } catch {
-            Log.preview.error("loadTracks failed — skipping clip. clipId=\(clip.id) mediaRef=\(clip.mediaRef): \(error.localizedDescription)")
+            Log.preview.warning("loadTracks failed — skipping clip. clipId=\(clip.id) mediaRef=\(clip.mediaRef): \(error.localizedDescription)")
             return .offline
         }
     }

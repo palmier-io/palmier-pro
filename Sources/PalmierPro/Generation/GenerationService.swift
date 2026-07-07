@@ -251,11 +251,12 @@ final class GenerationService {
             }.value
 
             asset.pendingDownloadURL = nil
-            asset.generationStatus = .none
             editor.importMediaAsset(asset, skipAppend: true)
-            editor.appendGenerationLog(for: asset)
-            await editor.finalizeImportedAsset(asset)
-            return true
+            let finalized = await editor.finalizeImportedAsset(asset)
+            if finalized {
+                editor.appendGenerationLog(for: asset)
+            }
+            return finalized
         } catch {
             let message = error.localizedDescription
             Log.generation.error("download failed url=\(remoteURL.absoluteString) error=\(message)")

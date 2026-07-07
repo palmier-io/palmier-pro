@@ -1,5 +1,8 @@
+import CoreGraphics
 import Foundation
+import ImageIO
 import Testing
+import UniformTypeIdentifiers
 @testable import PalmierPro
 
 /// Holds both editor and executor strongly so the executor's weak ref to the editor
@@ -123,7 +126,7 @@ struct ToolExecutorImportMediaTests {
         defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let source = root.appendingPathComponent("source.png")
-        try Data("fake-png".utf8).write(to: source)
+        try writeTestPNG(to: source)
 
         let h = ToolHarness()
         h.editor.projectURL = root.appendingPathComponent("Import.palmier", isDirectory: true)
@@ -151,6 +154,57 @@ struct ToolExecutorImportMediaTests {
         #expect(h.editor.mediaManifest.entries.first?.importInput == nil)
     }
 
+    @Test func importPathLeavesUnreadableMediaFailed() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp-import-invalid-path-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let source = root.appendingPathComponent("source.png")
+        try Data("fake-png".utf8).write(to: source)
+
+        let h = ToolHarness()
+        h.editor.projectURL = root.appendingPathComponent("Import.palmier", isDirectory: true)
+
+        let result = await h.runRaw("import_media", args: [
+            "source": ["path": source.path],
+            "name": "Unreadable Still",
+        ])
+
+        #expect(result.isError == false)
+        let asset = try #require(h.editor.mediaAssets.first)
+        try await waitForImportFailure(in: h.editor, assetId: asset.id)
+
+        #expect(asset.generationStatus == .failed("Could not read media file."))
+        #expect(asset.importInput?.sourcePath == source.path)
+        #expect(h.editor.mediaManifest.entries.first?.importInput?.sourcePath == source.path)
+    }
+
+    @Test func unreadableFinalizeRefreshesTimelinePreview() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp-finalize-invalid-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let source = root.appendingPathComponent("bad.png")
+        try Data("fake-png".utf8).write(to: source)
+
+        let editor = EditorViewModel()
+        let asset = MediaAsset(id: "bad-image", url: source, type: .image, name: "Bad Still")
+        asset.importInput = MediaImportInput(sourcePath: source.path, createdAt: Date())
+        asset.generationStatus = .downloading
+        editor.importMediaAsset(asset)
+        editor.timeline = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [
+                Fixtures.clip(mediaRef: asset.id, mediaType: .image, start: 0, duration: 30),
+            ]),
+        ])
+        let before = editor.timelineRenderRevision
+
+        let finalized = await editor.finalizeImportedAsset(asset)
+
+        #expect(finalized == false)
+        #expect(editor.timelineRenderRevision == before + 1)
+    }
+
     private func waitForImportCompletion(in editor: EditorViewModel, assetId: String) async throws {
         for _ in 0..<100 {
             if let status = editor.mediaAssets.first(where: { $0.id == assetId })?.generationStatus,
@@ -160,6 +214,38 @@ struct ToolExecutorImportMediaTests {
             try await Task.sleep(nanoseconds: 10_000_000)
         }
         Issue.record("import did not complete")
+    }
+
+    private func waitForImportFailure(in editor: EditorViewModel, assetId: String) async throws {
+        for _ in 0..<100 {
+            if let status = editor.mediaAssets.first(where: { $0.id == assetId })?.generationStatus,
+               case .failed = status {
+                return
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        Issue.record("import did not fail")
+    }
+
+    private func writeTestPNG(to url: URL) throws {
+        let width = 2
+        let height = 2
+        let context = try #require(CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.setFillColor(CGColor(srgbRed: 0.2, green: 0.4, blue: 0.8, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
+        let destination = try #require(CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, try #require(context.makeImage()), nil)
+        guard CGImageDestinationFinalize(destination) else {
+            throw NSError(domain: "ToolExecutorImportMediaTests", code: 1)
+        }
     }
 }
 
