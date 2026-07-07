@@ -275,7 +275,7 @@ final class VideoEngine {
                 kCIInputExtentKey: ext, "inputScale": 1.0, "inputCount": count,
             ])
             var raw = [Float](repeating: 0, count: count * 4)
-            CustomVideoCompositor.ciContext.render(
+            ColorScopes.context.render(
                 hist, toBitmap: &raw, rowBytes: count * 4 * MemoryLayout<Float>.size,
                 bounds: CGRect(x: 0, y: 0, width: count, height: 1), format: .RGBAf, colorSpace: nil)
             return raw
