@@ -2,6 +2,8 @@ import AVFoundation
 import Testing
 @testable import PalmierPro
 
+// Serialized: concurrent Core ML model loads segfault on virtualized CI runners.
+@Suite(.serialized)
 struct BeatDetectorTests {
     /// 120 BPM click track, accented downbeats every 4 beats — same signal the
     /// Python conversion was validated against.
