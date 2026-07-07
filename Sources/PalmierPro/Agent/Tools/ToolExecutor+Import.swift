@@ -277,9 +277,12 @@ extension ToolExecutor {
 
     @MainActor
     private static func finishImportedAsset(_ asset: MediaAsset, editor: EditorViewModel) async {
-        await editor.finalizeImportedAsset(asset)
+        let finalized = await editor.finalizeImportedAsset(asset)
+        guard finalized else {
+            editor.onProjectCheckpointRequired?()
+            return
+        }
         asset.importInput = nil
-        asset.generationStatus = .none
         editor.updateManifestMetadata(for: asset)
         editor.onProjectCheckpointRequired?()
     }
