@@ -607,6 +607,7 @@ extension EditorViewModel {
                 data: ["assetId": Telemetry.shortId(asset.id), "type": asset.type.rawValue]
             )
             refreshMissingMediaCache()
+            refreshPreviewForFinalizedAsset(asset)
             return false
         }
         if asset.isGenerating {

@@ -179,6 +179,32 @@ struct ToolExecutorImportMediaTests {
         #expect(h.editor.mediaManifest.entries.first?.importInput?.sourcePath == source.path)
     }
 
+    @Test func unreadableFinalizeRefreshesTimelinePreview() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp-finalize-invalid-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let source = root.appendingPathComponent("bad.png")
+        try Data("fake-png".utf8).write(to: source)
+
+        let editor = EditorViewModel()
+        let asset = MediaAsset(id: "bad-image", url: source, type: .image, name: "Bad Still")
+        asset.importInput = MediaImportInput(sourcePath: source.path, createdAt: Date())
+        asset.generationStatus = .downloading
+        editor.importMediaAsset(asset)
+        editor.timeline = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [
+                Fixtures.clip(mediaRef: asset.id, mediaType: .image, start: 0, duration: 30),
+            ]),
+        ])
+        let before = editor.timelineRenderRevision
+
+        let finalized = await editor.finalizeImportedAsset(asset)
+
+        #expect(finalized == false)
+        #expect(editor.timelineRenderRevision == before + 1)
+    }
+
     private func waitForImportCompletion(in editor: EditorViewModel, assetId: String) async throws {
         for _ in 0..<100 {
             if let status = editor.mediaAssets.first(where: { $0.id == assetId })?.generationStatus,
