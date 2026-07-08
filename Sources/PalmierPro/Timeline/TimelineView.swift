@@ -9,6 +9,7 @@ final class TimelineView: NSView {
     private(set) var snapOverlay: SnapIndicatorOverlay!
     private var generatingClipOverlays: [String: NSHostingView<ClipGeneratingOverlay>] = [:]
     private var clipDisplayRects: [String: NSRect] = [:]
+    private(set) var hoveredClipId: String?
     private let canvas = TimelineCanvasView()
 
     // MARK: - Init
@@ -137,6 +138,12 @@ final class TimelineView: NSView {
 
     func markZoomApplied() {
         lastAppliedZoomScale = editor.zoomScale
+    }
+
+    func setHoveredClipId(_ clipId: String?) {
+        guard hoveredClipId != clipId else { return }
+        hoveredClipId = clipId
+        needsDisplay = true
     }
 
     @discardableResult
@@ -436,7 +443,7 @@ final class TimelineView: NSView {
                 clipDisplayRects[clip.id] = rect
                 guard rect.intersects(dirtyRect) else { continue }
                 ClipRenderer.draw(clip, type: clip.mediaType, in: rect,
-                                  isSelected: isSelected, context: ctx,
+                                  isSelected: isSelected, isHovered: hoveredClipId == clip.id, context: ctx,
                                   cache: editor.mediaVisualCache,
                                   displayName: editor.clipDisplayLabel(for: clip),
                                   linkOffset: linkOffsets[clip.id],
@@ -776,6 +783,11 @@ final class TimelineView: NSView {
 
     override func mouseMoved(with event: NSEvent) {
         inputController.mouseMoved(with: event, geometry: geometry)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        setHoveredClipId(nil)
+        NSCursor.arrow.set()
     }
 
     override func scrollWheel(with event: NSEvent) {
@@ -1149,7 +1161,7 @@ final class TimelineView: NSView {
         for area in trackingAreas { removeTrackingArea(area) }
         addTrackingArea(NSTrackingArea(
             rect: bounds,
-            options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect],
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
             owner: self
         ))
     }

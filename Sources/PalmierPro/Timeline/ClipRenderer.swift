@@ -6,7 +6,7 @@ enum ClipRenderer {
 
     static let volumeKeyframeSize: CGFloat = 7
     static let volumeKeyframeHitSize: CGFloat = 14
-    static let volumeFadeHandleEdgeInset: CGFloat = 6
+    static let volumeFadeHandleEdgeInset: CGFloat = Trim.handleWidth + volumeKeyframeHitSize / 2 + AppTheme.Spacing.xxs
     static let volumeRubberBandTopDb: Double = 6
     static let volumeRubberBandBottomDb: Double = -60
     static let fadeKneeTopInset: CGFloat = 4
@@ -39,13 +39,10 @@ enum ClipRenderer {
         return volumeRubberBandTopDb - frac * (volumeRubberBandTopDb - volumeRubberBandBottomDb)
     }
 
-    static func fadeHandleRenderX(in clipRect: NSRect, kfOffset: Int, isLeft: Bool, pxPerFrame: CGFloat) -> CGFloat {
+    static func fadeHandleRenderX(in clipRect: NSRect, kfOffset: Int, pxPerFrame: CGFloat) -> CGFloat {
         let actual = clipRect.minX + CGFloat(kfOffset) * pxPerFrame
-        if isLeft {
-            return max(clipRect.minX + volumeFadeHandleEdgeInset, actual)
-        } else {
-            return min(clipRect.maxX - volumeFadeHandleEdgeInset, actual)
-        }
+        let edgeInset = min(volumeFadeHandleEdgeInset, max(0, clipRect.width / 2))
+        return min(clipRect.maxX - edgeInset, max(clipRect.minX + edgeInset, actual))
     }
 
     static func draw(
@@ -53,6 +50,7 @@ enum ClipRenderer {
         type: ClipType,
         in rect: NSRect,
         isSelected: Bool,
+        isHovered: Bool = false,
         opacity: CGFloat = 1.0,
         context: CGContext,
         cache: MediaVisualCache? = nil,
@@ -108,10 +106,11 @@ enum ClipRenderer {
                          clip: clip, type: colorType, in: audioRect, context: context)
         }
 
+        let showsFadeControls = isSelected || isHovered
         if type == .audio {
-            drawVolumeRubberBand(clip: clip, in: rect, isSelected: isSelected, context: context)
+            drawVolumeRubberBand(clip: clip, in: rect, isSelected: isSelected, showsFadeControls: showsFadeControls, context: context)
         } else {
-            drawOpacityFades(clip: clip, in: rect, isSelected: isSelected, context: context)
+            drawOpacityFades(clip: clip, in: rect, showsFadeControls: showsFadeControls, context: context)
         }
 
         // Color-coded left edge strip (uses the same source-type as the fill).
@@ -387,13 +386,19 @@ enum ClipRenderer {
 
     // MARK: - Volume rubber band
 
-    private static func drawVolumeRubberBand(clip: Clip, in rect: NSRect, isSelected: Bool, context: CGContext) {
+    private static func drawVolumeRubberBand(
+        clip: Clip,
+        in rect: NSRect,
+        isSelected: Bool,
+        showsFadeControls: Bool,
+        context: CGContext
+    ) {
         guard clip.durationFrames > 0 else { return }
         let pxPerFrame = rect.width / CGFloat(clip.durationFrames)
         guard pxPerFrame > 0 else { return }
 
         let body = clipBodyRect(in: rect)
-        let alpha: CGFloat = isSelected ? 0.95 : 0.75
+        let alpha: CGFloat = showsFadeControls ? 0.95 : 0.75
         let lineColor = NSColor.white.withAlphaComponent(alpha).cgColor
         let fadeColor = NSColor.white.withAlphaComponent(alpha * 0.7).cgColor
 
@@ -444,8 +449,8 @@ enum ClipRenderer {
         // Fade endpoints. Knees sit in a fixed "fade lane" near the top of the body
         let leftOffset = min(clip.fadeInFrames, clip.durationFrames)
         let rightOffset = max(0, clip.durationFrames - clip.fadeOutFrames)
-        let leftKneeX = fadeHandleRenderX(in: rect, kfOffset: leftOffset, isLeft: true, pxPerFrame: pxPerFrame)
-        let rightKneeX = fadeHandleRenderX(in: rect, kfOffset: rightOffset, isLeft: false, pxPerFrame: pxPerFrame)
+        let leftKneeX = fadeHandleRenderX(in: rect, kfOffset: leftOffset, pxPerFrame: pxPerFrame)
+        let rightKneeX = fadeHandleRenderX(in: rect, kfOffset: rightOffset, pxPerFrame: pxPerFrame)
         let kneeY = fadeKneeY(in: body)
         let silenceY = body.maxY
 
@@ -471,52 +476,53 @@ enum ClipRenderer {
             )
         }
 
-        guard isSelected else { return }
+        guard showsFadeControls else { return }
 
-        context.setFillColor(lineColor)
-        context.setStrokeColor(NSColor.black.withAlphaComponent(0.5).cgColor)
-        context.setLineWidth(0.5)
         let half = volumeKeyframeSize / 2
 
-        // 4) Keyframe diamonds — independent of the fade knees.
-        for kf in clip.volumeTrack?.keyframes ?? []
-            where kf.frame >= 0 && kf.frame <= clip.durationFrames {
-            let cx = rect.minX + CGFloat(kf.frame) * pxPerFrame
-            let cy = y(forDb: kf.value, in: body)
-            let p = CGMutablePath()
-            p.move(to: CGPoint(x: cx, y: cy - half))
-            p.addLine(to: CGPoint(x: cx + half, y: cy))
-            p.addLine(to: CGPoint(x: cx, y: cy + half))
-            p.addLine(to: CGPoint(x: cx - half, y: cy))
-            p.closeSubpath()
-            context.addPath(p)
-            context.drawPath(using: .fillStroke)
+        if isSelected {
+            context.setFillColor(lineColor)
+            context.setStrokeColor(NSColor.black.withAlphaComponent(0.5).cgColor)
+            context.setLineWidth(0.5)
+
+            // 4) Keyframe diamonds — independent of the fade knees.
+            for kf in clip.volumeTrack?.keyframes ?? []
+                where kf.frame >= 0 && kf.frame <= clip.durationFrames {
+                let cx = rect.minX + CGFloat(kf.frame) * pxPerFrame
+                let cy = y(forDb: kf.value, in: body)
+                let p = CGMutablePath()
+                p.move(to: CGPoint(x: cx, y: cy - half))
+                p.addLine(to: CGPoint(x: cx + half, y: cy))
+                p.addLine(to: CGPoint(x: cx, y: cy + half))
+                p.addLine(to: CGPoint(x: cx - half, y: cy))
+                p.closeSubpath()
+                context.addPath(p)
+                context.drawPath(using: .fillStroke)
+            }
         }
 
         // 5) Knees — sit in the fade lane near the top of the body.
         let leftKneeRect = CGRect(x: leftKneeX - half, y: kneeY - half, width: volumeKeyframeSize, height: volumeKeyframeSize)
         let rightKneeRect = CGRect(x: rightKneeX - half, y: kneeY - half, width: volumeKeyframeSize, height: volumeKeyframeSize)
-        context.fill(leftKneeRect)
-        context.stroke(leftKneeRect)
-        context.fill(rightKneeRect)
-        context.stroke(rightKneeRect)
+        drawFadeHandle(in: leftKneeRect, edge: .left, fillColor: lineColor, context: context)
+        drawFadeHandle(in: rightKneeRect, edge: .right, fillColor: lineColor, context: context)
     }
 
-    private static func drawOpacityFades(clip: Clip, in rect: NSRect, isSelected: Bool, context: CGContext) {
+    private static func drawOpacityFades(clip: Clip, in rect: NSRect, showsFadeControls: Bool, context: CGContext) {
         guard clip.durationFrames > 0 else { return }
-        guard clip.fadeInFrames > 0 || clip.fadeOutFrames > 0 || isSelected else { return }
+        guard clip.fadeInFrames > 0 || clip.fadeOutFrames > 0 || showsFadeControls else { return }
         let pxPerFrame = rect.width / CGFloat(clip.durationFrames)
         guard pxPerFrame > 0 else { return }
 
         let body = clipBodyRect(in: rect)
-        let alpha: CGFloat = isSelected ? 0.95 : 0.75
+        let alpha: CGFloat = showsFadeControls ? 0.95 : 0.75
         let lineColor = NSColor.white.withAlphaComponent(alpha).cgColor
         let fadeColor = NSColor.white.withAlphaComponent(alpha * 0.7).cgColor
 
         let leftOffset = min(clip.fadeInFrames, clip.durationFrames)
         let rightOffset = max(0, clip.durationFrames - clip.fadeOutFrames)
-        let leftKneeX = fadeHandleRenderX(in: rect, kfOffset: leftOffset, isLeft: true, pxPerFrame: pxPerFrame)
-        let rightKneeX = fadeHandleRenderX(in: rect, kfOffset: rightOffset, isLeft: false, pxPerFrame: pxPerFrame)
+        let leftKneeX = fadeHandleRenderX(in: rect, kfOffset: leftOffset, pxPerFrame: pxPerFrame)
+        let rightKneeX = fadeHandleRenderX(in: rect, kfOffset: rightOffset, pxPerFrame: pxPerFrame)
         let kneeY = fadeKneeY(in: body)
         let silenceY = body.maxY
 
@@ -544,18 +550,64 @@ enum ClipRenderer {
             )
         }
 
-        guard isSelected else { return }
+        guard showsFadeControls else { return }
 
-        context.setFillColor(lineColor)
-        context.setStrokeColor(NSColor.black.withAlphaComponent(0.5).cgColor)
-        context.setLineWidth(0.5)
         let half = volumeKeyframeSize / 2
         let leftKneeRect = CGRect(x: leftKneeX - half, y: kneeY - half, width: volumeKeyframeSize, height: volumeKeyframeSize)
         let rightKneeRect = CGRect(x: rightKneeX - half, y: kneeY - half, width: volumeKeyframeSize, height: volumeKeyframeSize)
-        context.fill(leftKneeRect)
-        context.stroke(leftKneeRect)
-        context.fill(rightKneeRect)
-        context.stroke(rightKneeRect)
+        drawFadeHandle(in: leftKneeRect, edge: .left, fillColor: lineColor, context: context)
+        drawFadeHandle(in: rightKneeRect, edge: .right, fillColor: lineColor, context: context)
+    }
+
+    private static func drawFadeHandle(
+        in rect: CGRect,
+        edge: FadeEdge,
+        fillColor: CGColor,
+        context: CGContext
+    ) {
+        context.saveGState()
+        defer { context.restoreGState() }
+
+        context.setFillColor(fillColor)
+        context.setStrokeColor(AppTheme.Background.base.withAlphaComponent(CGFloat(AppTheme.Opacity.strong)).cgColor)
+        context.setLineWidth(AppTheme.BorderWidth.hairline)
+        context.fill(rect)
+        context.stroke(rect)
+
+        let glyphRect = rect.insetBy(dx: AppTheme.BorderWidth.medium, dy: AppTheme.BorderWidth.medium)
+        guard glyphRect.width > 0, glyphRect.height > 0 else { return }
+
+        let start: CGPoint
+        let end: CGPoint
+        let fillCorner: CGPoint
+        switch edge {
+        case .left:
+            start = CGPoint(x: glyphRect.minX, y: glyphRect.maxY)
+            end = CGPoint(x: glyphRect.maxX, y: glyphRect.minY)
+            fillCorner = CGPoint(x: glyphRect.maxX, y: glyphRect.maxY)
+        case .right:
+            start = CGPoint(x: glyphRect.minX, y: glyphRect.minY)
+            end = CGPoint(x: glyphRect.maxX, y: glyphRect.maxY)
+            fillCorner = CGPoint(x: glyphRect.minX, y: glyphRect.maxY)
+        }
+
+        let fill = CGMutablePath()
+        fill.move(to: start)
+        fill.addLine(to: fillCorner)
+        fill.addLine(to: end)
+        fill.closeSubpath()
+        context.addPath(fill)
+        context.setFillColor(AppTheme.Background.base.withAlphaComponent(CGFloat(AppTheme.Opacity.strong)).cgColor)
+        context.fillPath()
+
+        context.beginPath()
+        context.move(to: start)
+        context.addLine(to: end)
+        context.setStrokeColor(AppTheme.Background.base.withAlphaComponent(CGFloat(AppTheme.Opacity.prominent)).cgColor)
+        context.setLineWidth(AppTheme.BorderWidth.thin)
+        context.setLineCap(.round)
+        context.setLineJoin(.round)
+        context.strokePath()
     }
 
     private static func drawFadeWedge(
