@@ -2,6 +2,8 @@ import AVFoundation
 import CoreML
 import Foundation
 
+private final class BeatDetectorBundleToken {}
+
 struct BeatAnalysis: Codable, Sendable, Equatable {
     let bpm: Double            // 0 when indeterminate
     let beats: [Double]        // seconds in source media
@@ -67,12 +69,24 @@ final class BeatDetector: @unchecked Sendable {
     }
 
     init(computeUnits: MLComputeUnits = .all) throws {
-        guard let url = Bundle.module.url(forResource: "BeatThis", withExtension: "mlmodelc", subdirectory: "Models") else {
+        guard let url = Self.modelURL() else {
             throw DetectError.modelMissing
         }
         let config = MLModelConfiguration()
         config.computeUnits = computeUnits
         box = ModelBox(model: try MLModel(contentsOf: url, configuration: config))
+    }
+
+    private static func modelURL() -> URL? {
+        var candidates = [
+            Bundle.main.resourceURL?.appendingPathComponent("Models/BeatThis.mlmodelc"),
+            Bundle.main.resourceURL?.appendingPathComponent("PalmierPro_PalmierPro.bundle/Models/BeatThis.mlmodelc"),
+        ].compactMap { $0 }
+        if Bundle.main.bundleURL.pathExtension != "app" {
+            let buildDir = Bundle(for: BeatDetectorBundleToken.self).bundleURL.deletingLastPathComponent()
+            candidates.append(buildDir.appendingPathComponent("PalmierPro_PalmierPro.bundle/Models/BeatThis.mlmodelc"))
+        }
+        return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
     }
 
     /// MLModel.prediction isn't safe to call concurrently; the actor serializes model use.

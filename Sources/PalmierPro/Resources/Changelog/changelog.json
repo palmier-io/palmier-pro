@@ -2,13 +2,22 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.6.1",
-      "date": "2026-07-04",
+      "version": "0.6.3",
+      "date": "2026-07-07",
       "sections": [
         {
           "heading": "New",
           "items": [
-            "Multiple timelines support: You can now create multiple timelines within a project and nest them inside each other."
+            "On-device speech detection: Palmier Pro can now detect speakers and silence using Silero VAD and WeSpeaker modeels.",
+            "On-device beat detection: Palmier Pro can now detect beats for your audio clips. Right click an audio clip -> Detect Beats, or ask your agent!"
+          ]
+        },
+        {
+          "heading": "Improved",
+          "items": [
+            "Agent tools: More efficient context management",
+            "UI: Better clip UI in the timeline.",
+            "More accurate clip sync by audio"
           ]
         }
       ]
