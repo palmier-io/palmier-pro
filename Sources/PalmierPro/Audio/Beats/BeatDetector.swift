@@ -26,7 +26,7 @@ final class BeatDetector: @unchecked Sendable {
     private static let border = 6
     private static let strideFrames = chunkFrames - 2 * border
 
-    private let model: MLModel
+    private let box: ModelBox
 
     // MARK: - Cached analysis (UI + agent entry point)
 
@@ -72,13 +72,23 @@ final class BeatDetector: @unchecked Sendable {
         }
         let config = MLModelConfiguration()
         config.computeUnits = computeUnits
-        model = try MLModel(contentsOf: url, configuration: config)
+        box = ModelBox(model: try MLModel(contentsOf: url, configuration: config))
+    }
+
+    /// MLModel.prediction isn't safe to call concurrently; the actor serializes model use.
+    private actor ModelBox {
+        private let model: MLModel
+        init(model: MLModel) { self.model = model }
+
+        func predictLogits(samples: [Float]) throws -> (beat: [Float], downbeat: [Float]) {
+            try BeatDetector.predictLogits(samples: samples, model: model)
+        }
     }
 
     func detect(in mediaURL: URL) async throws -> BeatAnalysis {
         let samples = try await Self.decodeAudio(from: mediaURL)
         guard !samples.isEmpty else { return BeatAnalysis(bpm: 0, beats: [], downbeats: []) }
-        let (beatLogits, downbeatLogits) = try predictLogits(samples: samples)
+        let (beatLogits, downbeatLogits) = try await box.predictLogits(samples: samples)
         let beats = Self.pickPeaks(beatLogits)
         return BeatAnalysis(
             bpm: Self.estimateBPM(beats) ?? 0,
@@ -134,7 +144,7 @@ final class BeatDetector: @unchecked Sendable {
     // MARK: - Inference
 
     /// Processes audio in overlapping chunks, keeping only the middle (non-border) frames. Returns logits per 20ms frame.
-    private func predictLogits(samples: [Float]) throws -> (beat: [Float], downbeat: [Float]) {
+    private static func predictLogits(samples: [Float], model: MLModel) throws -> (beat: [Float], downbeat: [Float]) {
         let totalFrames = max(1, samples.count / Self.hop + 1)
         var beat = [Float](repeating: -.infinity, count: totalFrames)
         var downbeat = [Float](repeating: -.infinity, count: totalFrames)
@@ -150,7 +160,7 @@ final class BeatDetector: @unchecked Sendable {
                 let dstLo = srcLo - sampleStart
                 chunk.replaceSubrange(dstLo..<(dstLo + srcHi - srcLo), with: samples[srcLo..<srcHi])
             }
-            let (b, d) = try predictChunk(chunk)
+            let (b, d) = try predictChunk(chunk, model: model)
             for i in Self.border..<(Self.chunkFrames - Self.border) {
                 let global = chunkStart + i
                 guard global >= 0, global < totalFrames else { continue }
@@ -164,7 +174,7 @@ final class BeatDetector: @unchecked Sendable {
         return (beat, downbeat)
     }
 
-    private func predictChunk(_ chunk: [Float]) throws -> (beat: [Float], downbeat: [Float]) {
+    private static func predictChunk(_ chunk: [Float], model: MLModel) throws -> (beat: [Float], downbeat: [Float]) {
         let array = try MLMultiArray(shape: [NSNumber(value: Self.chunkSamples)], dataType: .float32)
         chunk.withUnsafeBufferPointer { src in
             array.withUnsafeMutableBytes { dst, _ in
