@@ -1,14 +1,14 @@
-# Beat This — beat detection
+# Beat This - beat detection
 
-Neural beat/downbeat tracking for the `detect_beats` agent tool, timeline beat
-ticks, and snap-to-beat. Runs fully on-device; the compiled model is bundled in
+[Beat This](https://github.com/CPJKU/beat_this) is a model that tracks neural
+beat/downbeat. Runs fully on-device; the compiled model is bundled in
 the app at `Sources/PalmierPro/Resources/Models/BeatThis.mlmodelc` (6.6 MB).
 
 ## The model
 
 Beat This `small0` (https://github.com/CPJKU/beat_this — "Beat This! Accurate
 Beat Tracking Without DBN Postprocessing", ISMIR 2024). The log-mel frontend is
-folded into the Core ML graph: input is raw PCM (661059 samples = 30 s at
+folded into the Core ML graph: input is raw PCM (661059 samples = 30s at
 22050 Hz mono), outputs are framewise beat/downbeat logits (1, 1500), 20 ms per
 frame. FP16.
 
