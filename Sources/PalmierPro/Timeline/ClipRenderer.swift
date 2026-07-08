@@ -447,10 +447,8 @@ enum ClipRenderer {
         // 5) Knees — sit in the fade lane near the top of the body.
         let leftKneeRect = CGRect(x: leftKneeX - half, y: kneeY - half, width: volumeKeyframeSize, height: volumeKeyframeSize)
         let rightKneeRect = CGRect(x: rightKneeX - half, y: kneeY - half, width: volumeKeyframeSize, height: volumeKeyframeSize)
-        context.fill(leftKneeRect)
-        context.stroke(leftKneeRect)
-        context.fill(rightKneeRect)
-        context.stroke(rightKneeRect)
+        drawFadeHandle(in: leftKneeRect, edge: .left, fillColor: lineColor, context: context)
+        drawFadeHandle(in: rightKneeRect, edge: .right, fillColor: lineColor, context: context)
     }
 
     private static func drawOpacityFades(clip: Clip, in rect: NSRect, showsFadeControls: Bool, context: CGContext) {
@@ -503,10 +501,71 @@ enum ClipRenderer {
         let half = volumeKeyframeSize / 2
         let leftKneeRect = CGRect(x: leftKneeX - half, y: kneeY - half, width: volumeKeyframeSize, height: volumeKeyframeSize)
         let rightKneeRect = CGRect(x: rightKneeX - half, y: kneeY - half, width: volumeKeyframeSize, height: volumeKeyframeSize)
-        context.fill(leftKneeRect)
-        context.stroke(leftKneeRect)
-        context.fill(rightKneeRect)
-        context.stroke(rightKneeRect)
+        drawFadeHandle(in: leftKneeRect, edge: .left, fillColor: lineColor, context: context)
+        drawFadeHandle(in: rightKneeRect, edge: .right, fillColor: lineColor, context: context)
+    }
+
+    private static func drawFadeHandle(
+        in rect: CGRect,
+        edge: FadeEdge,
+        fillColor: CGColor,
+        context: CGContext
+    ) {
+        context.saveGState()
+        defer { context.restoreGState() }
+
+        context.setFillColor(fillColor)
+        context.setStrokeColor(AppTheme.Background.base.withAlphaComponent(CGFloat(AppTheme.Opacity.strong)).cgColor)
+        context.setLineWidth(AppTheme.BorderWidth.hairline)
+        context.fill(rect)
+        context.stroke(rect)
+
+        let glyphRect = rect.insetBy(dx: AppTheme.BorderWidth.medium, dy: AppTheme.BorderWidth.medium)
+        guard glyphRect.width > 0, glyphRect.height > 0 else { return }
+
+        context.addPath(fadeHandleFillPath(in: glyphRect, edge: edge))
+        context.setFillColor(AppTheme.Background.base.withAlphaComponent(CGFloat(AppTheme.Opacity.strong)).cgColor)
+        context.fillPath()
+
+        context.addPath(fadeHandleLinePath(in: glyphRect, edge: edge))
+        context.setStrokeColor(AppTheme.Background.base.withAlphaComponent(CGFloat(AppTheme.Opacity.prominent)).cgColor)
+        context.setLineWidth(AppTheme.BorderWidth.thin)
+        context.setLineCap(.round)
+        context.setLineJoin(.round)
+        context.strokePath()
+    }
+
+    private static func fadeHandleFillPath(in rect: CGRect, edge: FadeEdge) -> CGPath {
+        let path = CGMutablePath()
+        switch edge {
+        case .left:
+            path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        case .right:
+            path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        }
+        path.closeSubpath()
+        return path
+    }
+
+    private static func fadeHandleLinePath(in rect: CGRect, edge: FadeEdge) -> CGPath {
+        let path = CGMutablePath()
+        let start: CGPoint
+        let end: CGPoint
+        switch edge {
+        case .left:
+            start = CGPoint(x: rect.minX, y: rect.maxY)
+            end = CGPoint(x: rect.maxX, y: rect.minY)
+        case .right:
+            start = CGPoint(x: rect.minX, y: rect.minY)
+            end = CGPoint(x: rect.maxX, y: rect.maxY)
+        }
+        path.move(to: start)
+        path.addLine(to: end)
+        return path
     }
 
     private static func drawFadeWedge(
