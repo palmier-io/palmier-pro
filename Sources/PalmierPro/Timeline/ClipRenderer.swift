@@ -39,13 +39,10 @@ enum ClipRenderer {
         return volumeRubberBandTopDb - frac * (volumeRubberBandTopDb - volumeRubberBandBottomDb)
     }
 
-    static func fadeHandleRenderX(in clipRect: NSRect, kfOffset: Int, isLeft: Bool, pxPerFrame: CGFloat) -> CGFloat {
+    static func fadeHandleRenderX(in clipRect: NSRect, kfOffset: Int, pxPerFrame: CGFloat) -> CGFloat {
         let actual = clipRect.minX + CGFloat(kfOffset) * pxPerFrame
-        if isLeft {
-            return max(clipRect.minX + volumeFadeHandleEdgeInset, actual)
-        } else {
-            return min(clipRect.maxX - volumeFadeHandleEdgeInset, actual)
-        }
+        let edgeInset = min(volumeFadeHandleEdgeInset, max(0, clipRect.width / 2))
+        return min(clipRect.maxX - edgeInset, max(clipRect.minX + edgeInset, actual))
     }
 
     static func draw(
@@ -393,8 +390,8 @@ enum ClipRenderer {
         // Fade endpoints. Knees sit in a fixed "fade lane" near the top of the body
         let leftOffset = min(clip.fadeInFrames, clip.durationFrames)
         let rightOffset = max(0, clip.durationFrames - clip.fadeOutFrames)
-        let leftKneeX = fadeHandleRenderX(in: rect, kfOffset: leftOffset, isLeft: true, pxPerFrame: pxPerFrame)
-        let rightKneeX = fadeHandleRenderX(in: rect, kfOffset: rightOffset, isLeft: false, pxPerFrame: pxPerFrame)
+        let leftKneeX = fadeHandleRenderX(in: rect, kfOffset: leftOffset, pxPerFrame: pxPerFrame)
+        let rightKneeX = fadeHandleRenderX(in: rect, kfOffset: rightOffset, pxPerFrame: pxPerFrame)
         let kneeY = fadeKneeY(in: body)
         let silenceY = body.maxY
 
@@ -465,8 +462,8 @@ enum ClipRenderer {
 
         let leftOffset = min(clip.fadeInFrames, clip.durationFrames)
         let rightOffset = max(0, clip.durationFrames - clip.fadeOutFrames)
-        let leftKneeX = fadeHandleRenderX(in: rect, kfOffset: leftOffset, isLeft: true, pxPerFrame: pxPerFrame)
-        let rightKneeX = fadeHandleRenderX(in: rect, kfOffset: rightOffset, isLeft: false, pxPerFrame: pxPerFrame)
+        let leftKneeX = fadeHandleRenderX(in: rect, kfOffset: leftOffset, pxPerFrame: pxPerFrame)
+        let rightKneeX = fadeHandleRenderX(in: rect, kfOffset: rightOffset, pxPerFrame: pxPerFrame)
         let kneeY = fadeKneeY(in: body)
         let silenceY = body.maxY
 
