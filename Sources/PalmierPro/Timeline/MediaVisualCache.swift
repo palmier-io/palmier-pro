@@ -73,6 +73,7 @@ final class MediaVisualCache {
     func generateWaveform(for asset: MediaAsset) {
         guard asset.type == .audio || (asset.type == .video && asset.hasAudio) else { return }
         speech.generate(for: asset)
+        beats.hydrate(for: asset)
         let key = asset.id
         guard waveformSamples[key] == nil, !waveformInFlight.contains(key) else { return }
         waveformInFlight.insert(key)

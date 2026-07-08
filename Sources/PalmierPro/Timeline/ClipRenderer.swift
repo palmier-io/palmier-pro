@@ -220,30 +220,41 @@ enum ClipRenderer {
     private static let beatTickMinSpacing: CGFloat = 4
 
     private static func drawBeatTicks(analysis: BeatAnalysis, clip: Clip, in rect: NSRect, fps: Int, context: CGContext) {
-        guard clip.durationFrames > 0, !analysis.beats.isEmpty else { return }
+        guard clip.durationFrames > 0, !analysis.beats.isEmpty || !analysis.downbeats.isEmpty else { return }
         let pxPerFrame = rect.width / CGFloat(clip.durationFrames)
         guard pxPerFrame > 0 else { return }
         let body = clipBodyRect(in: rect)
         guard body.height > downbeatTickHeight * 2 else { return }
 
-        // Downbeats draw at every zoom; beats fill in where spacing allows.
-        // Beat and downbeat peaks are picked independently, so match with tolerance.
+        // Merge beats and downbeats: if a beat is close to a downbeat, treat it as the downbeat.
+        // Always show downbeats; show beats where there's space.
+        let tolerance = 0.03
         var ticks: [CGRect] = []
         var downTicks: [CGRect] = []
-        let downbeats = analysis.downbeats
-        let tolerance = 0.03
-        var downIndex = 0
+        var beatIndex = 0
         var lastX = -CGFloat.greatestFiniteMagnitude
-        for t in analysis.beats {
-            guard let frame = clip.timelineFrame(sourceSeconds: t, fps: fps) else { continue }
+        func appendTick(_ t: Double, isDown: Bool) {
+            guard let frame = clip.timelineFrame(sourceSeconds: t, fps: fps) else { return }
             let x = rect.minX + CGFloat(frame - clip.startFrame) * pxPerFrame
-            while downIndex < downbeats.count, downbeats[downIndex] < t - tolerance { downIndex += 1 }
-            let isDown = downIndex < downbeats.count && abs(downbeats[downIndex] - t) <= tolerance
-            guard isDown || x - lastX >= beatTickMinSpacing else { continue }
+            guard isDown || x - lastX >= beatTickMinSpacing else { return }
             lastX = x
             let height = isDown ? downbeatTickHeight : beatTickHeight
             let tick = CGRect(x: x - beatTickWidth / 2, y: body.minY, width: beatTickWidth, height: height)
             if isDown { downTicks.append(tick) } else { ticks.append(tick) }
+        }
+        for down in analysis.downbeats {
+            while beatIndex < analysis.beats.count, analysis.beats[beatIndex] < down - tolerance {
+                appendTick(analysis.beats[beatIndex], isDown: false)
+                beatIndex += 1
+            }
+            if beatIndex < analysis.beats.count, abs(analysis.beats[beatIndex] - down) <= tolerance {
+                beatIndex += 1  // coincident beat renders as the downbeat
+            }
+            appendTick(down, isDown: true)
+        }
+        while beatIndex < analysis.beats.count {
+            appendTick(analysis.beats[beatIndex], isDown: false)
+            beatIndex += 1
         }
         guard !(ticks.isEmpty && downTicks.isEmpty) else { return }
         context.setFillColor(beatTickBackingColor)
