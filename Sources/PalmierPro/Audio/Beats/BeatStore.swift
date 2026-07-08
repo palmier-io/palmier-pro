@@ -4,6 +4,7 @@ import Foundation
 @MainActor
 final class BeatStore {
     private var analyses: [String: BeatAnalysis] = [:]
+    private var fileTags: [String: String] = [:]
     private var tasks: [String: Task<BeatAnalysis, Error>] = [:]
 
     var onBeatsReady: (() -> Void)?
@@ -15,8 +16,9 @@ final class BeatStore {
     @discardableResult
     func detect(for asset: MediaAsset, force: Bool = false) -> Task<BeatAnalysis, Error> {
         let key = asset.id
+        let tag = DiskCache.sizeMtimeTag(for: asset.url)
         if !force {
-            if let existing = analyses[key] { return Task { existing } }
+            if let existing = analyses[key], fileTags[key] == tag { return Task { existing } }
             if let running = tasks[key] { return running }
         }
         tasks[key]?.cancel()
@@ -26,6 +28,7 @@ final class BeatStore {
             let analysis = try await BeatDetector.analysis(for: url, mediaRef: key, force: force)
             try Task.checkCancellation()
             analyses[key] = analysis
+            fileTags[key] = tag
             onBeatsReady?()
             return analysis
         }
@@ -37,11 +40,13 @@ final class BeatStore {
         tasks.values.forEach { $0.cancel() }
         tasks.removeAll()
         analyses.removeAll()
+        fileTags.removeAll()
     }
 
     func invalidate(_ mediaRef: String) {
         tasks.removeValue(forKey: mediaRef)?.cancel()
         analyses.removeValue(forKey: mediaRef)
+        fileTags.removeValue(forKey: mediaRef)
     }
 }
 
