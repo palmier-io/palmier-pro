@@ -608,8 +608,8 @@ enum ToolDefinitions {
             inputSchema: objectSchema(
                 properties: [
                     "mediaRef": ["type": "string", "description": "Audio or video asset id from get_media."],
-                    "startSeconds": ["type": "number", "description": "Optional. Analyze from this source-media second."],
-                    "endSeconds": ["type": "number", "description": "Optional. Analyze up to this source-media second."],
+                    "startSeconds": ["type": "number", "description": "Optional. Return only beats at or after this source-media second. The whole file is analyzed once and cached; windowing trims the response, not the work."],
+                    "endSeconds": ["type": "number", "description": "Optional. Return only beats at or before this source-media second."],
                 ],
                 required: ["mediaRef"]
             )
