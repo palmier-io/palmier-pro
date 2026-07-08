@@ -755,7 +755,7 @@ enum ClipRenderer {
     private static func drawLabelBar(clip: Clip, type: ClipType, in labelRect: NSRect, clipRect: NSRect, context: CGContext, displayName: String? = nil, fps: Int) {
         guard clipRect.width > 20 else { return }
 
-        let timecode = formatTimecode(frame: clip.durationFrames, fps: fps)
+        let timecode = formatClipDuration(frame: clip.durationFrames, fps: fps)
         let rawName = displayName ?? clip.mediaRef
         let name = rawName.firstNonEmptyLine()
         let text = "\(name)  \(timecode)"
@@ -769,7 +769,7 @@ enum ClipRenderer {
             attributed.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: NSRange(location: 0, length: (name as NSString).length))
         }
         let size = attributed.size()
-        let inset: CGFloat = 6
+        let inset = AppTheme.Spacing.sm
         let origin = NSPoint(
             x: labelRect.minX + inset,
             y: labelRect.minY + (labelRect.height - size.height) / 2
@@ -779,6 +779,14 @@ enum ClipRenderer {
         context.clip(to: labelRect.insetBy(dx: inset, dy: 0))
         attributed.draw(at: origin)
         context.restoreGState()
+    }
+
+    private static func formatClipDuration(frame: Int, fps: Int) -> String {
+        let full = formatTimecode(frame: frame, fps: fps)
+        guard fps > 0, abs(frame) >= fps * 3600 else {
+            return full.hasPrefix("-") ? "-" + String(full.dropFirst(4)) : String(full.dropFirst(3))
+        }
+        return full
     }
 
     // MARK: - Out-of-sync offset badge
