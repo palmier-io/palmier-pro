@@ -7,8 +7,8 @@ extension ToolExecutor {
         try validateUnknownKeys(args, allowed: Self.detectBeatsAllowedKeys, path: "detect_beats")
         let mediaRef = try args.requireString("mediaRef")
         let asset = try asset(mediaRef, editor: editor)
-        guard asset.type == .video || asset.type == .audio else {
-            throw ToolError("detect_beats needs audio: \(mediaRef) is \(asset.type.rawValue).")
+        guard asset.type == .audio || (asset.type == .video && asset.hasAudio) else {
+            throw ToolError("detect_beats needs audio: \(mediaRef) is \(asset.type.rawValue)\(asset.type == .video ? " with no audio track" : "").")
         }
         guard FileManager.default.fileExists(atPath: asset.url.path) else {
             throw ToolError("Media file not on disk: \(asset.url.lastPathComponent)")

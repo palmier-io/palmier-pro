@@ -50,6 +50,7 @@ extension EditorViewModel {
         guard clip.sourceClipType != .sequence,
               let analysis = mediaVisualCache.beats.analysis(for: clip.mediaRef) else { return [] }
         let fps = timeline.fps
-        return analysis.beats.compactMap { clip.timelineFrame(sourceSeconds: $0, fps: fps) }
+        let frames = (analysis.beats + analysis.downbeats).compactMap { clip.timelineFrame(sourceSeconds: $0, fps: fps) }
+        return Array(Set(frames))
     }
 }
