@@ -17,11 +17,14 @@ extension ToolExecutor {
         // Use shared cache to prevent duplicate beat detection.
         let analysis = try await editor.mediaVisualCache.beats.detect(for: asset).value
 
+        guard !analysis.beats.isEmpty else {
+            return .ok(#"{"beats":[],"note":"No beats found — the audio may lack rhythmic content."}"#)
+        }
         let range = try Self.beatsRange(args, duration: asset.duration)
         let beats = Self.window(analysis.beats, range)
         let downbeats = Self.window(analysis.downbeats, range)
-        guard !beats.isEmpty else {
-            return .ok(#"{"beats":[],"note":"No beats found — the audio may lack rhythmic content."}"#)
+        if range != nil, beats.isEmpty, downbeats.isEmpty {
+            return .ok(#"{"beats":[],"note":"No beats in the requested window; the track has beats elsewhere — widen or drop startSeconds/endSeconds."}"#)
         }
 
         var out: [String: Any] = [
@@ -30,7 +33,8 @@ extension ToolExecutor {
             "beats": beats.map(Self.r2),
         ]
         if !downbeats.isEmpty { out["downbeats"] = downbeats.map(Self.r2) }
-        if analysis.bpm > 0 { out["bpm"] = NSDecimalNumber(string: String(format: "%.1f", analysis.bpm)) }
+        let bpm = range == nil ? analysis.bpm : (BeatDetector.estimateBPM(beats) ?? 0)
+        if bpm > 0 { out["bpm"] = NSDecimalNumber(string: String(format: "%.1f", bpm)) }
         guard let json = Self.jsonString(out) else { throw ToolError("Failed to encode result.") }
         return .ok(json)
     }

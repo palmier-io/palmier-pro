@@ -19,10 +19,12 @@ final class BeatStore {
             if let existing = analyses[key] { return Task { existing } }
             if let running = tasks[key] { return running }
         }
+        tasks[key]?.cancel()
         let url = asset.url
         let task = Task(priority: .utility) { @MainActor in
-            defer { tasks[key] = nil }
+            defer { if !Task.isCancelled { tasks[key] = nil } }
             let analysis = try await BeatDetector.analysis(for: url, mediaRef: key, force: force)
+            try Task.checkCancellation()
             analyses[key] = analysis
             onBeatsReady?()
             return analysis

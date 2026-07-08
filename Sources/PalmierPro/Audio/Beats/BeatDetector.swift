@@ -206,7 +206,8 @@ final class BeatDetector: @unchecked Sendable {
         return times
     }
 
-    private static func estimateBPM(_ beats: [Double]) -> Double? {
+    /// 60 / median inter-beat interval.
+    static func estimateBPM(_ beats: [Double]) -> Double? {
         guard beats.count > 2 else { return nil }
         let intervals = zip(beats.dropFirst(), beats).map(-).sorted()
         let median = intervals[intervals.count / 2]
