@@ -93,6 +93,7 @@ final class TimelineInputController {
 
         if let hit = hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) {
             let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
+            view.setHoveredClipId(clip.id)
             let rect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
             let isShift = event.modifierFlags.contains(.shift)
             let isOption = event.modifierFlags.contains(.option)
@@ -527,6 +528,7 @@ final class TimelineInputController {
         let scrollOffsetY = view.enclosingScrollView?.contentView.bounds.origin.y ?? 0
 
         if point.y >= scrollOffsetY && point.y < scrollOffsetY + geometry.rulerHeight {
+            view.setHoveredClipId(nil)
             if timelineRangeEdgeHit(at: point, geometry: geometry) != nil {
                 NSCursor.resizeLeftRight.set()
             } else if event.modifierFlags.contains(.shift) {
@@ -540,6 +542,7 @@ final class TimelineInputController {
         }
 
         if editor.toolMode == .razor && point.y >= scrollOffsetY + geometry.rulerHeight {
+            view.setHoveredClipId(nil)
             let candidate = geometry.frameAt(x: point.x)
             let targets = SnapEngine.collectTargets(
                 tracks: editor.timeline.tracks,
@@ -568,6 +571,7 @@ final class TimelineInputController {
 
         if let hit = hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) {
             let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
+            view.setHoveredClipId(clip.id)
             let rect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
             let localX = point.x - rect.minX
             if Self.isOnTrimZone(localX: localX, clipWidth: rect.width) {
@@ -583,6 +587,8 @@ final class TimelineInputController {
                 NSCursor.openHand.set()
                 return
             }
+        } else {
+            view.setHoveredClipId(nil)
         }
         NSCursor.arrow.set()
     }
@@ -603,6 +609,7 @@ final class TimelineInputController {
     }
 
     func fadeKneeHit(at point: NSPoint, clip: Clip, clipRect: NSRect) -> FadeEdge? {
+        guard editor.selectedClipIds.contains(clip.id) || view.hoveredClipId == clip.id else { return nil }
         let geo = view.geometry
         if geo.fadeKneeRect(clip: clip, edge: .left, in: clipRect).contains(point) { return .left }
         if geo.fadeKneeRect(clip: clip, edge: .right, in: clipRect).contains(point) { return .right }
