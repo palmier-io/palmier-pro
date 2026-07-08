@@ -475,9 +475,17 @@ final class VideoProject: NSDocument {
         cachedThumbnail = data
         guard let packageURL = fileURL else { return }
         let thumbURL = packageURL.appendingPathComponent(Project.thumbnailFilename, isDirectory: false)
-        try? await Task.detached(priority: .utility) {
+
+        // Pick up package mod date from our write so autosave won't hit "changed by another application".
+        let newDate: Date? = try? await Task.detached(priority: .utility) {
             try data.write(to: thumbURL, options: .atomic)
+            var resolved = packageURL
+            resolved.removeCachedResourceValue(forKey: .contentModificationDateKey)
+            return try resolved.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
         }.value
+        if let newDate {
+            fileModificationDate = newDate
+        }
     }
 
     // MARK: - Media restore
