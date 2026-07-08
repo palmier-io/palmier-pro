@@ -169,6 +169,10 @@ enum ClipRenderer {
             drawTrimHandles(in: rect, context: context)
         }
 
+        if markBeats, type == .audio, clip.sourceClipType != .sequence, let beats = cache?.beatAnalysis(for: clip.mediaRef) {
+            drawBeatTicks(analysis: beats, clip: clip, in: rect, fps: fps, context: context)
+        }
+
         if opacity < 1.0 {
             context.restoreGState()
         }
@@ -207,11 +211,66 @@ enum ClipRenderer {
         }
     }
 
+    private static let beatTickColor = NSColor.systemOrange.withAlphaComponent(0.7).cgColor
+    private static let downbeatTickColor = NSColor.systemOrange.cgColor
+    private static let beatTickBackingColor = NSColor.black.withAlphaComponent(0.55).cgColor
+    private static let beatTickWidth: CGFloat = 1
+    private static let beatTickHeight: CGFloat = 7
+    private static let downbeatTickHeight: CGFloat = 14
+    private static let beatTickMinSpacing: CGFloat = 4
+
+    private static func drawBeatTicks(analysis: BeatAnalysis, clip: Clip, in rect: NSRect, fps: Int, context: CGContext) {
+        guard clip.durationFrames > 0, !analysis.beats.isEmpty || !analysis.downbeats.isEmpty else { return }
+        let pxPerFrame = rect.width / CGFloat(clip.durationFrames)
+        guard pxPerFrame > 0 else { return }
+        let body = clipBodyRect(in: rect)
+        guard body.height > downbeatTickHeight * 2 else { return }
+
+        // Merge beats and downbeats: if a beat is close to a downbeat, treat it as the downbeat.
+        // Always show downbeats; show beats where there's space.
+        let tolerance = 0.03
+        var ticks: [CGRect] = []
+        var downTicks: [CGRect] = []
+        var beatIndex = 0
+        var lastX = -CGFloat.greatestFiniteMagnitude
+        func appendTick(_ t: Double, isDown: Bool) {
+            guard let frame = clip.timelineFrame(sourceSeconds: t, fps: fps) else { return }
+            let x = rect.minX + CGFloat(frame - clip.startFrame) * pxPerFrame
+            guard isDown || x - lastX >= beatTickMinSpacing else { return }
+            lastX = x
+            let height = isDown ? downbeatTickHeight : beatTickHeight
+            let tick = CGRect(x: x - beatTickWidth / 2, y: body.minY, width: beatTickWidth, height: height)
+            if isDown { downTicks.append(tick) } else { ticks.append(tick) }
+        }
+        for down in analysis.downbeats {
+            while beatIndex < analysis.beats.count, analysis.beats[beatIndex] < down - tolerance {
+                appendTick(analysis.beats[beatIndex], isDown: false)
+                beatIndex += 1
+            }
+            if beatIndex < analysis.beats.count, abs(analysis.beats[beatIndex] - down) <= tolerance {
+                beatIndex += 1  // coincident beat renders as the downbeat
+            }
+            appendTick(down, isDown: true)
+        }
+        while beatIndex < analysis.beats.count {
+            appendTick(analysis.beats[beatIndex], isDown: false)
+            beatIndex += 1
+        }
+        guard !(ticks.isEmpty && downTicks.isEmpty) else { return }
+        context.setFillColor(beatTickBackingColor)
+        context.fill((ticks + downTicks).map { CGRect(x: $0.minX - 1, y: $0.minY, width: $0.width + 2, height: $0.height + 1) })
+        context.setFillColor(beatTickColor)
+        context.fill(ticks)
+        context.setFillColor(downbeatTickColor)
+        context.fill(downTicks)
+    }
+
     // MARK: - Waveform
 
     private static let washColor = AppTheme.Status.error.withAlphaComponent(AppTheme.Opacity.medium).cgColor
     nonisolated(unsafe) static var speakerColors: [Int: CGColor] = [:]
     private static var markDeadAir: Bool { UserDefaults.standard.object(forKey: "markDeadAir") as? Bool ?? true }
+    private static var markBeats: Bool { UserDefaults.standard.object(forKey: "markBeats") as? Bool ?? true }
 
     private static func drawWaveform(
         samples: [Float],

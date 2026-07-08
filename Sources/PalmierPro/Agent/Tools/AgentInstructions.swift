@@ -54,6 +54,8 @@ enum AgentInstructions {
           re-read get_transcript before the next remove_words. ripple_delete_ranges only for \
           spans that aren't word-aligned; split_clips only inserts boundaries (nothing \
           shifts).
+        - Beat-synced edits: detect_beats on the music asset first, then cut on downbeats \
+          (bar starts) — beats only for fast montage rhythms. Times are source seconds.
         - Text: add_texts for authored overlays; add_captions transcribes the timeline's \
           spoken audio (no targeting) — restyle with update_text and the returned \
           captionGroupId. Color: apply_color (knobs merge; pass a clip's `color` object to \
