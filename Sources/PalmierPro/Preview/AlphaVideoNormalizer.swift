@@ -19,7 +19,7 @@ enum AlphaVideoNormalizer {
         let size = CGSize(width: abs(natSize.width), height: abs(natSize.height))
         guard size.width >= 2, size.height >= 2 else { return nil }
 
-        let filename = "\(mediaRef)_\(cacheTag(for: sourceURL))_premul.mov"
+        let filename = "\(mediaRef)_\(DiskCache.sizeMtimeTag(for: sourceURL))_premul.mov"
         let outputURL = ImageVideoGenerator.cacheDirectory.appendingPathComponent(filename)
         if FileManager.default.fileExists(atPath: outputURL.path) { return outputURL }
 
@@ -37,14 +37,6 @@ enum AlphaVideoNormalizer {
         return CMFormatDescriptionGetExtension(
             format, extensionKey: kCMFormatDescriptionExtension_ContainsAlphaChannel
         ) as? Bool ?? false
-    }
-
-    /// Cache key fragment that busts when the underlying file is replaced.
-    private static func cacheTag(for url: URL) -> String {
-        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
-        let size = (attrs?[.size] as? Int) ?? 0
-        let modified = (attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
-        return "\(size)_\(Int(modified))"
     }
 
     private static func transcode(

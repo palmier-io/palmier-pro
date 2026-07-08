@@ -178,6 +178,7 @@ enum AppTheme {
         static let image = NSColor(red: 0xB7/255.0, green: 0x2D/255.0, blue: 0xD2/255.0, alpha: 1)
         static let text = NSColor(red: 0xB7/255.0, green: 0x2D/255.0, blue: 0xD2/255.0, alpha: 1)
         static let lottie = NSColor(red: 0xE0/255.0, green: 0xA8/255.0, blue: 0x00/255.0, alpha: 1)
+        static let sequence = NSColor(red: 0x2D/255.0, green: 0x9D/255.0, blue: 0x78/255.0, alpha: 1)
     }
 
     // MARK: - Corner radii
@@ -268,6 +269,7 @@ enum AppTheme {
         static let projectCardWidth: CGFloat = 150
         static let projectCardHeight: CGFloat = 120
         static let timelineClipDetailMinWidth: CGFloat = 32
+        static let timelineTabRenameWidth: CGFloat = 120
         static let timelineClipLabelMinWidth: CGFloat = 56
         static let updateOverlayWidth: CGFloat = 640
     }
@@ -367,6 +369,7 @@ extension ClipType {
         case .image: AppTheme.TrackColor.image
         case .text: AppTheme.TrackColor.text
         case .lottie: AppTheme.TrackColor.lottie
+        case .sequence: AppTheme.TrackColor.sequence
         }
     }
 }

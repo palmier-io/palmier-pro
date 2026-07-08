@@ -13,9 +13,9 @@ fileprivate struct ApplyLayoutInput: DecodableToolArgs {
     let layout: String
     let slots: [SlotEntry]
     let startFrame: Int?
-    let durationFrames: Int?
+    let endFrame: Int?
     let fit: String?
-    static let allowedKeys: Set<String> = ["layout", "slots", "startFrame", "durationFrames", "fit"]
+    static let allowedKeys: Set<String> = ["layout", "slots", "startFrame", "endFrame", "fit"]
 }
 
 extension ToolExecutor {
@@ -90,12 +90,12 @@ extension ToolExecutor {
         }
 
         let startFrame = input.startFrame ?? 0
-        let duration = input.durationFrames ?? 0
+        let duration = input.endFrame.map { $0 - (input.startFrame ?? 0) } ?? 0
         var assetBySlot: [String: MediaAsset] = [:]
         var settingsNote: String?
         if usesMedia {
             guard startFrame >= 0 else { throw ToolError("startFrame must be >= 0 (got \(startFrame))") }
-            guard duration >= 1 else { throw ToolError("apply_layout placing new clips requires durationFrames >= 1.") }
+            guard duration >= 1 else { throw ToolError("apply_layout placing new clips requires endFrame > startFrame.") }
             for e in entries {
                 let a = try asset(e.entry.mediaRef!, editor: editor)
                 guard a.type == .video || a.type == .image else {
@@ -137,8 +137,8 @@ extension ToolExecutor {
             }
         }
 
-        let tracksBefore = Set(editor.timeline.tracks.map(\.id))
-        var summaries: [String] = []
+        let snapshot = timelineSnapshot(editor)
+        var slots: [String: [String]] = [:]
 
         editor.withTimelineSwap(actionName: "Apply Layout (Agent)") {
             var clipsBySlot: [String: [String]] = [:]
@@ -152,16 +152,11 @@ extension ToolExecutor {
                     guard let tid = trackBySlot[e.slot.id], let asset = assetBySlot[e.slot.id],
                           let tIdx = editor.timeline.tracks.firstIndex(where: { $0.id == tid }) else { continue }
                     let ids = editor.placeClip(asset: asset, trackIndex: tIdx, startFrame: startFrame, durationFrames: duration)
-                    if let primary = ids.first {
-                        clipsBySlot[e.slot.id] = [primary]
-                        summaries.append("\(e.slot.id) → \(primary)\(ids.count > 1 ? " (+audio \(ids[1]))" : "")")
-                    }
+                    if let primary = ids.first { clipsBySlot[e.slot.id] = [primary] }
                 }
             } else {
                 for e in entries {
-                    let cids = e.entry.clipIds!
-                    clipsBySlot[e.slot.id] = cids
-                    summaries.append("\(e.slot.id) → \(cids.joined(separator: ", "))")
+                    clipsBySlot[e.slot.id] = e.entry.clipIds!
                 }
             }
 
@@ -177,17 +172,20 @@ extension ToolExecutor {
                     editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].cropTrack = nil
                 }
             }
+            slots = clipsBySlot
         }
 
-        guard !summaries.isEmpty else { throw ToolError("apply_layout changed no clips.") }
+        guard !slots.isEmpty else { throw ToolError("apply_layout changed no clips.") }
 
-        var prefix = settingsNote.map { "\($0) " } ?? ""
-        let createdTracks = editor.timeline.tracks.enumerated()
-            .filter { !tracksBefore.contains($0.element.id) }
-            .map { "track \($0.offset) ('\(editor.timelineTrackDisplayLabel(at: $0.offset))', \($0.element.type.rawValue))" }
-        if !createdTracks.isEmpty { prefix += "Created \(createdTracks.joined(separator: ", ")). " }
-        let span = usesMedia ? " at frame \(startFrame) for \(duration)" : " on existing clips"
-        let tail = usesMedia ? "" : " Stacking follows current track order; reorder tracks if a PIP inset isn't on top."
-        return .ok("\(prefix)Applied '\(layout.rawValue)' layout (\(fit.rawValue))\(span): \(summaries.joined(separator: "; ")).\(tail)")
+        var notes = settingsNote.map { [$0] } ?? []
+        if !usesMedia {
+            notes.append("Stacking follows current track order (index 0 on top); fix with manage_tracks reorder if an inset isn't on top.")
+        }
+        return mutationResult(
+            editor, since: snapshot,
+            touched: slots.values.flatMap { $0 },
+            extra: ["layout": layout.rawValue, "slots": slots],
+            notes: notes
+        )
     }
 }

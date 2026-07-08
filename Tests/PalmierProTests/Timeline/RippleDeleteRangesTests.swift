@@ -133,6 +133,26 @@ struct RippleDeleteRangesTests {
         #expect(spans(e.timeline.tracks[0]) == spans(e.timeline.tracks[1]))
     }
 
+    @Test func linkedPartnerOnSyncLockOffTrackCutInSync() {
+        // Cut anchored on an unrelated track: the sync-locked audio a1 is cleared, so its
+        // linked video v1 must be cut too even though v1's track has sync lock off.
+        var v1 = Fixtures.clip(id: "v1", start: 0, duration: 100); v1.linkGroupId = "G"
+        var a1 = Fixtures.clip(id: "a1", mediaType: .audio, start: 0, duration: 100); a1.linkGroupId = "G"
+        let r1 = Fixtures.clip(id: "r1", mediaType: .audio, start: 0, duration: 100)
+        let e = editor([
+            Fixtures.videoTrack(clips: [v1]),
+            Fixtures.audioTrack(clips: [a1]),
+            Fixtures.audioTrack(clips: [r1]),
+        ])
+        e.timeline.tracks[0].syncLocked = false
+        let outcome = e.rippleDeleteRangesOnTrack(trackIndex: 2, ranges: [FrameRange(start: 40, end: 50)])
+        guard case .ok(let report) = outcome else { Issue.record("expected .ok"); return }
+        #expect(report.clearedTracks == 3)
+        #expect(spans(e.timeline.tracks[0]) == [[0, 40], [40, 90]])
+        #expect(spans(e.timeline.tracks[1]) == [[0, 40], [40, 90]])
+        #expect(spans(e.timeline.tracks[2]) == [[0, 40], [40, 90]])
+    }
+
     @Test func rippleInsertPushesDownstream() {
         // c1 [0,50), c2 [50,100). Insert a 30-frame asset at 50 → c2 pushed to [80,130).
         let track = Fixtures.videoTrack(clips: [

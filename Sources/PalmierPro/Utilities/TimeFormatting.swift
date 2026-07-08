@@ -28,7 +28,7 @@ func secondsToFrame(seconds: Double, fps: Int) -> Int {
 
 extension Double {
     func rounded(toPlaces places: Int) -> Double {
-        let factor = pow(10.0, Double(places))
+        let factor = Foundation.pow(10.0, Double(places))
         return (self * factor).rounded() / factor
     }
 }
