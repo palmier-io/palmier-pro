@@ -74,6 +74,7 @@ final class TimelineInputController {
         }
 
         if point.y >= scrollOffsetY && point.y < scrollOffsetY + geometry.rulerHeight {
+            view.setHoveredClipId(nil)
             let frame = geometry.frameAt(x: point.x)
             if let edge = timelineRangeEdgeHit(at: point, geometry: geometry) {
                 beginTimelineRangeEdgeDrag(edge)
@@ -215,6 +216,7 @@ final class TimelineInputController {
                 ))
             }
         } else {
+            view.setHoveredClipId(nil)
             if !event.modifierFlags.contains(.shift) {
                 editor.selectedClipIds.removeAll()
             }
