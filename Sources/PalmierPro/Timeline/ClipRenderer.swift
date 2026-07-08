@@ -176,9 +176,9 @@ enum ClipRenderer {
         for kf in clip.cropTrack?.keyframes ?? [] { frameSet.insert(kf.frame + absStart) }
         let frames = frameSet.sorted()
         guard !frames.isEmpty, clip.durationFrames > 0 else { return }
-        let pxPerFrame = (rect.width - 2 * Trim.handleWidth) / CGFloat(clip.durationFrames)
+        let pxPerFrame = rect.width / CGFloat(clip.durationFrames)
         guard pxPerFrame > 0 else { return }
-        let baseX = rect.minX + Trim.handleWidth
+        let baseX = rect.minX
         let y = rect.maxY - 5
         let half: CGFloat = 3
         context.setFillColor(NSColor.systemYellow.withAlphaComponent(0.95).cgColor)
