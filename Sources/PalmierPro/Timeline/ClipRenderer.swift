@@ -422,12 +422,13 @@ enum ClipRenderer {
 
         guard showsFadeControls else { return }
 
-        context.setFillColor(lineColor)
-        context.setStrokeColor(NSColor.black.withAlphaComponent(0.5).cgColor)
-        context.setLineWidth(0.5)
         let half = volumeKeyframeSize / 2
 
         if isSelected {
+            context.setFillColor(lineColor)
+            context.setStrokeColor(NSColor.black.withAlphaComponent(0.5).cgColor)
+            context.setLineWidth(0.5)
+
             // 4) Keyframe diamonds — independent of the fade knees.
             for kf in clip.volumeTrack?.keyframes ?? []
                 where kf.frame >= 0 && kf.frame <= clip.durationFrames {
@@ -495,9 +496,6 @@ enum ClipRenderer {
 
         guard showsFadeControls else { return }
 
-        context.setFillColor(lineColor)
-        context.setStrokeColor(NSColor.black.withAlphaComponent(0.5).cgColor)
-        context.setLineWidth(0.5)
         let half = volumeKeyframeSize / 2
         let leftKneeRect = CGRect(x: leftKneeX - half, y: kneeY - half, width: volumeKeyframeSize, height: volumeKeyframeSize)
         let rightKneeRect = CGRect(x: rightKneeX - half, y: kneeY - half, width: volumeKeyframeSize, height: volumeKeyframeSize)
@@ -523,49 +521,37 @@ enum ClipRenderer {
         let glyphRect = rect.insetBy(dx: AppTheme.BorderWidth.medium, dy: AppTheme.BorderWidth.medium)
         guard glyphRect.width > 0, glyphRect.height > 0 else { return }
 
-        context.addPath(fadeHandleFillPath(in: glyphRect, edge: edge))
+        let start: CGPoint
+        let end: CGPoint
+        let fillCorner: CGPoint
+        switch edge {
+        case .left:
+            start = CGPoint(x: glyphRect.minX, y: glyphRect.maxY)
+            end = CGPoint(x: glyphRect.maxX, y: glyphRect.minY)
+            fillCorner = CGPoint(x: glyphRect.maxX, y: glyphRect.maxY)
+        case .right:
+            start = CGPoint(x: glyphRect.minX, y: glyphRect.minY)
+            end = CGPoint(x: glyphRect.maxX, y: glyphRect.maxY)
+            fillCorner = CGPoint(x: glyphRect.minX, y: glyphRect.maxY)
+        }
+
+        let fill = CGMutablePath()
+        fill.move(to: start)
+        fill.addLine(to: fillCorner)
+        fill.addLine(to: end)
+        fill.closeSubpath()
+        context.addPath(fill)
         context.setFillColor(AppTheme.Background.base.withAlphaComponent(CGFloat(AppTheme.Opacity.strong)).cgColor)
         context.fillPath()
 
-        context.addPath(fadeHandleLinePath(in: glyphRect, edge: edge))
+        context.beginPath()
+        context.move(to: start)
+        context.addLine(to: end)
         context.setStrokeColor(AppTheme.Background.base.withAlphaComponent(CGFloat(AppTheme.Opacity.prominent)).cgColor)
         context.setLineWidth(AppTheme.BorderWidth.thin)
         context.setLineCap(.round)
         context.setLineJoin(.round)
         context.strokePath()
-    }
-
-    private static func fadeHandleFillPath(in rect: CGRect, edge: FadeEdge) -> CGPath {
-        let path = CGMutablePath()
-        switch edge {
-        case .left:
-            path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        case .right:
-            path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-            path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        }
-        path.closeSubpath()
-        return path
-    }
-
-    private static func fadeHandleLinePath(in rect: CGRect, edge: FadeEdge) -> CGPath {
-        let path = CGMutablePath()
-        let start: CGPoint
-        let end: CGPoint
-        switch edge {
-        case .left:
-            start = CGPoint(x: rect.minX, y: rect.maxY)
-            end = CGPoint(x: rect.maxX, y: rect.minY)
-        case .right:
-            start = CGPoint(x: rect.minX, y: rect.minY)
-            end = CGPoint(x: rect.maxX, y: rect.maxY)
-        }
-        path.move(to: start)
-        path.addLine(to: end)
-        return path
     }
 
     private static func drawFadeWedge(
