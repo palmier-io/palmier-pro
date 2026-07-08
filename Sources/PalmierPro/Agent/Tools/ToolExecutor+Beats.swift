@@ -17,7 +17,7 @@ extension ToolExecutor {
         // Use shared cache to prevent duplicate beat detection.
         let analysis = try await editor.mediaVisualCache.beats.detect(for: asset).value
 
-        guard !analysis.beats.isEmpty else {
+        guard !analysis.beats.isEmpty || !analysis.downbeats.isEmpty else {
             return .ok(#"{"beats":[],"note":"No beats found — the audio may lack rhythmic content."}"#)
         }
         let range = try Self.beatsRange(args, duration: asset.duration)
