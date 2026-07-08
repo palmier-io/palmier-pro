@@ -62,7 +62,7 @@ final class BeatStore {
 
 extension EditorViewModel {
     func beatSnapFrames(for clip: Clip) -> [Int] {
-        guard clip.sourceClipType != .sequence,
+        guard markBeats, clip.sourceClipType != .sequence,
               let analysis = mediaVisualCache.beats.analysis(for: clip.mediaRef) else { return [] }
         let fps = timeline.fps
         let frames = (analysis.beats + analysis.downbeats).compactMap { clip.timelineFrame(sourceSeconds: $0, fps: fps) }

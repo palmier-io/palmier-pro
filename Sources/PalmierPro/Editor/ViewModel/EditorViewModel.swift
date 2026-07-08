@@ -208,6 +208,15 @@ final class EditorViewModel {
         }
     }
 
+    var markBeats: Bool = {
+        UserDefaults.standard.object(forKey: "markBeats") as? Bool ?? true
+    }() {
+        didSet {
+            UserDefaults.standard.set(markBeats, forKey: "markBeats")
+            mediaVisualCache.timelineView?.needsDisplay = true
+        }
+    }
+
     var markSpeakers: Bool = {
         UserDefaults.standard.object(forKey: "markSpeakers") as? Bool ?? true
     }() {

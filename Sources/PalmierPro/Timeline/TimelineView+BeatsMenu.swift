@@ -1,10 +1,15 @@
 import AppKit
 
 extension TimelineView {
+    @objc func toggleMarkBeats(_ sender: Any?) {
+        editor.markBeats.toggle()
+    }
+
     @objc func performDetectBeats(_ sender: Any?) {
         guard let mediaRef = (sender as? NSMenuItem)?.representedObject as? String,
               let asset = editor.mediaAssets.first(where: { $0.id == mediaRef }) else { return }
         let force = editor.mediaVisualCache.beats.analysis(for: mediaRef) != nil
+        editor.markBeats = true
         let task = editor.mediaVisualCache.beats.detect(for: asset, force: force)
         Task { @MainActor [weak self] in
             guard let self else { return }

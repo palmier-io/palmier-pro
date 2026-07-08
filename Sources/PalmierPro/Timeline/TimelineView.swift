@@ -958,6 +958,12 @@ final class TimelineView: NSView {
             beatsItem.target = self
             beatsItem.representedObject = clip.mediaRef
             syncItems.append(beatsItem)
+            if hasBeats {
+                let markItem = NSMenuItem(title: "Mark Beats", action: #selector(toggleMarkBeats(_:)), keyEquivalent: "")
+                markItem.target = self
+                markItem.state = editor.markBeats ? .on : .off
+                syncItems.append(markItem)
+            }
         }
 
         for group in [timelineItems, aiItems, nestItems, mediaItems, syncItems] where !group.isEmpty {

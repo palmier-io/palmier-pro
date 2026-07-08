@@ -169,7 +169,7 @@ enum ClipRenderer {
             drawTrimHandles(in: rect, context: context)
         }
 
-        if type == .audio, clip.sourceClipType != .sequence, let beats = cache?.beatAnalysis(for: clip.mediaRef) {
+        if markBeats, type == .audio, clip.sourceClipType != .sequence, let beats = cache?.beatAnalysis(for: clip.mediaRef) {
             drawBeatTicks(analysis: beats, clip: clip, in: rect, fps: fps, context: context)
         }
 
@@ -270,6 +270,7 @@ enum ClipRenderer {
     private static let washColor = AppTheme.Status.error.withAlphaComponent(AppTheme.Opacity.medium).cgColor
     nonisolated(unsafe) static var speakerColors: [Int: CGColor] = [:]
     private static var markDeadAir: Bool { UserDefaults.standard.object(forKey: "markDeadAir") as? Bool ?? true }
+    private static var markBeats: Bool { UserDefaults.standard.object(forKey: "markBeats") as? Bool ?? true }
 
     private static func drawWaveform(
         samples: [Float],
