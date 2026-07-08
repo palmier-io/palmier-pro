@@ -9,6 +9,7 @@ final class TimelineView: NSView {
     private(set) var snapOverlay: SnapIndicatorOverlay!
     private var generatingClipOverlays: [String: NSHostingView<ClipGeneratingOverlay>] = [:]
     private var clipDisplayRects: [String: NSRect] = [:]
+    private(set) var hoveredClipId: String?
     private let canvas = TimelineCanvasView()
 
     // MARK: - Init
@@ -137,6 +138,12 @@ final class TimelineView: NSView {
 
     func markZoomApplied() {
         lastAppliedZoomScale = editor.zoomScale
+    }
+
+    func setHoveredClipId(_ clipId: String?) {
+        guard hoveredClipId != clipId else { return }
+        hoveredClipId = clipId
+        needsDisplay = true
     }
 
     @discardableResult
@@ -436,7 +443,7 @@ final class TimelineView: NSView {
                 clipDisplayRects[clip.id] = rect
                 guard rect.intersects(dirtyRect) else { continue }
                 ClipRenderer.draw(clip, type: clip.mediaType, in: rect,
-                                  isSelected: isSelected, context: ctx,
+                                  isSelected: isSelected, isHovered: hoveredClipId == clip.id, context: ctx,
                                   cache: editor.mediaVisualCache,
                                   displayName: editor.clipDisplayLabel(for: clip),
                                   linkOffset: linkOffsets[clip.id],
@@ -778,6 +785,11 @@ final class TimelineView: NSView {
         inputController.mouseMoved(with: event, geometry: geometry)
     }
 
+    override func mouseExited(with event: NSEvent) {
+        setHoveredClipId(nil)
+        NSCursor.arrow.set()
+    }
+
     override func scrollWheel(with event: NSEvent) {
         inputController.scrollWheel(with: event, geometry: geometry)
     }
@@ -949,6 +961,21 @@ final class TimelineView: NSView {
             }
             syncItem.submenu = syncMenu
             syncItems.append(syncItem)
+        }
+        if clip.sourceClipType != .sequence,
+           let asset = editor.mediaAssets.first(where: { $0.id == clip.mediaRef }),
+           asset.type == .audio || (asset.type == .video && asset.hasAudio) {
+            let hasBeats = editor.mediaVisualCache.beats.analysis(for: clip.mediaRef) != nil
+            let beatsItem = NSMenuItem(title: hasBeats ? "Redetect Beats" : "Detect Beats", action: #selector(performDetectBeats(_:)), keyEquivalent: "")
+            beatsItem.target = self
+            beatsItem.representedObject = clip.mediaRef
+            syncItems.append(beatsItem)
+            if hasBeats {
+                let markItem = NSMenuItem(title: "Mark Beats", action: #selector(toggleMarkBeats(_:)), keyEquivalent: "")
+                markItem.target = self
+                markItem.state = editor.markBeats ? .on : .off
+                syncItems.append(markItem)
+            }
         }
 
         for group in [timelineItems, aiItems, nestItems, mediaItems, syncItems] where !group.isEmpty {
@@ -1134,7 +1161,7 @@ final class TimelineView: NSView {
         for area in trackingAreas { removeTrackingArea(area) }
         addTrackingArea(NSTrackingArea(
             rect: bounds,
-            options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect],
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
             owner: self
         ))
     }
@@ -1189,7 +1216,8 @@ final class TimelineView: NSView {
         }
         let totalDur = assets.reduce(0) { $0 + editor.clipDurationFrames(for: $1, segment: externalDragSegments[$1.id]) }
         let targets = SnapEngine.collectTargets(
-            tracks: editor.timeline.tracks
+            tracks: editor.timeline.tracks,
+            beatFrames: editor.beatSnapFrames(for:)
         )
         if let snap = SnapEngine.findSnap(
             position: candidate,

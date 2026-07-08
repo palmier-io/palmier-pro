@@ -41,6 +41,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case getTranscript = "get_transcript"
     case removeWords = "remove_words"
     case removeSilence = "remove_silence"
+    case detectBeats = "detect_beats"
 
     // Text & captions
     case addTexts = "add_texts"
@@ -607,6 +608,18 @@ enum ToolDefinitions {
             inputSchema: objectSchema(properties: [:], required: [])
         ),
         AgentTool(
+            name: .detectBeats,
+            description: "Detect musical beats and downbeats in a media asset's audio, on-device. Returns beats and downbeats in SOURCE seconds (multiply by fps for frame values, same convention as search_media hits) plus estimated bpm. Downbeats mark bar starts — cut on downbeats for edits that land musically; beats are fine for faster montage rhythms.\n\nUse for beat-synced editing: snapping cuts to a music bed, building montages where clip boundaries hit the beat, or timing text/caption entrances to the bar. To place a cut at a beat B on a clip, the timeline frame is startFrame + (B × fps − trimStartFrame) / speed. Works on music; speech or ambience returns few or no beats. Runs locally — no subscription needed.",
+            inputSchema: objectSchema(
+                properties: [
+                    "mediaRef": ["type": "string", "description": "Audio or video asset id from get_media."],
+                    "startSeconds": ["type": "number", "description": "Optional. Return only beats at or after this source-media second. The whole file is analyzed once and cached; windowing trims the response, not the work."],
+                    "endSeconds": ["type": "number", "description": "Optional. Return only beats at or before this source-media second."],
+                ],
+                required: ["mediaRef"]
+            )
+        ),
+        AgentTool(
             name: .addTexts,
             description: "Adds text clips as timeline layers. Omit trackIndex on every entry to create one new top video track; otherwise set trackIndex on every entry. Transform is normalized text-box center/size; center-only auto-fits, all four fields override the box. Use add_captions for spoken audio captions. Unknown fields are rejected.",
             inputSchema: objectSchema(
@@ -893,7 +906,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .sendFeedback,
-            description: "Report an agent limitation or bug to the Palmier team so they can improve the product. Use when you can't do what the user asked because a capability or tool is missing or behaves wrong, the result is clearly off, or the user is plainly hitting a rough edge. This sends directly — there is no user confirmation step — so PARAPHRASE in your own words: never include verbatim user messages, prompts, file paths, media, transcript text, or any project content. App/OS version and your recent tool names are attached automatically. Use sparingly: at most once per distinct issue.",
+            description: "Report an agent limitation or bug to the Palmier team so they can improve the product. Use when you can't do what the user asked because a capability or tool is missing or behaves wrong, the result is clearly off, or the user is plainly hitting a rough edge. This sends directly — there is no user confirmation step — so write the report in English and PARAPHRASE in your own words: translate non-English user text to English, and never include verbatim user messages, prompts, file paths, media, transcript text, or any project content. App/OS version and your recent tool names are attached automatically. Use sparingly: at most once per distinct issue.",
             inputSchema: objectSchema(
                 properties: [
                     "category": ["type": "string", "enum": ["missing_capability", "wrong_result", "confusing_ux", "failure", "suggestion"], "description": "What kind of problem this is."],

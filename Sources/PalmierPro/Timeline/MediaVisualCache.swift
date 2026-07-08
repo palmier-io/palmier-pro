@@ -24,8 +24,15 @@ final class MediaVisualCache {
         MainActor.assumeIsolated { speakerMasks[mediaRef] }
     }
 
+    let beats = BeatStore()
+
+    nonisolated func beatAnalysis(for mediaRef: String) -> BeatAnalysis? {
+        beats.analysis(for: mediaRef)
+    }
+
     init() {
         speech.onMaskReady = { [weak self] in self?.timelineView?.needsDisplay = true }
+        beats.onBeatsReady = { [weak self] in self?.timelineView?.needsDisplay = true }
     }
 
     // MARK: - Video thumbnails (sorted by time)
@@ -66,6 +73,7 @@ final class MediaVisualCache {
     func generateWaveform(for asset: MediaAsset) {
         guard asset.type == .audio || (asset.type == .video && asset.hasAudio) else { return }
         speech.generate(for: asset)
+        beats.hydrate(for: asset)
         let key = asset.id
         guard waveformSamples[key] == nil, !waveformInFlight.contains(key) else { return }
         waveformInFlight.insert(key)
@@ -89,6 +97,7 @@ final class MediaVisualCache {
         waveformSamples.removeAll()
         speakerMasks.removeAll()
         speech.reset()
+        beats.reset()
         videoThumbnails.removeAll()
         imageThumbnails.removeAll()
         timelineView?.needsDisplay = true
@@ -99,6 +108,7 @@ final class MediaVisualCache {
         waveformSamples.removeValue(forKey: mediaRef)
         speakerMasks.removeValue(forKey: mediaRef)
         speech.invalidate(mediaRef)
+        beats.invalidate(mediaRef)
         videoThumbnails.removeValue(forKey: mediaRef)
         imageThumbnails.removeValue(forKey: mediaRef)
     }

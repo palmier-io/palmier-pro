@@ -160,7 +160,7 @@ struct TimelineGeometry {
         let kfOffset = edge == .left
             ? min(clip.fadeInFrames, clip.durationFrames)
             : max(0, clip.durationFrames - clip.fadeOutFrames)
-        let x = ClipRenderer.fadeHandleRenderX(in: clipRect, kfOffset: kfOffset, isLeft: edge == .left, pxPerFrame: pxPerFrame)
+        let x = ClipRenderer.fadeHandleRenderX(in: clipRect, kfOffset: kfOffset, pxPerFrame: pxPerFrame)
         let y = ClipRenderer.fadeKneeY(in: body)
         let half = ClipRenderer.volumeKeyframeHitSize / 2
         return NSRect(x: x - half, y: y - half, width: half * 2, height: half * 2)

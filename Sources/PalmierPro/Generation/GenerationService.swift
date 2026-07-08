@@ -306,15 +306,15 @@ final class GenerationService {
         }
     }
 
-    private func backendErrorMessage(_ error: Error) -> String {
+    private func backendError(_ error: Error) -> (code: String?, message: String) {
         struct Payload: Decodable { let code: String?; let message: String? }
         if case let ClientError.ConvexError(data) = error,
            let json = data.data(using: .utf8),
            let payload = try? JSONDecoder().decode(Payload.self, from: json),
            let message = payload.message {
-            return message
+            return (payload.code, message)
         }
-        return error.localizedDescription
+        return (nil, error.localizedDescription)
     }
 
     private func updateGenerationMetadata(
@@ -420,8 +420,16 @@ final class GenerationService {
                 projectId: editor.projectId,
             )
         } catch {
-            let message = backendErrorMessage(error)
-            Log.generation.error("submit failed model=\(genInput.model) error=\(message)")
+            let (code, message) = backendError(error)
+            let expected: Set<String> = [
+                "insufficient_credits", "subscription_required", "plan_required",
+                "rate_limited", "invalid_params",
+            ]
+            if let code, expected.contains(code) {
+                Log.generation.warning("submit failed model=\(genInput.model) code=\(code) error=\(message)")
+            } else {
+                Log.generation.error("submit failed model=\(genInput.model) error=\(message)")
+            }
             for placeholder in placeholders {
                 updateGenerationMetadata(placeholder, editor: editor, status: .failed(message))
             }
