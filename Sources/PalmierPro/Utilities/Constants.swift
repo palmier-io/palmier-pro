@@ -99,7 +99,7 @@ enum TimelineAutoScroll {
 
 enum Trim {
     static let handleWidth: CGFloat = 4.0
-    static let clipCornerRadius: CGFloat = 3.0
+    static let clipCornerRadius: CGFloat = AppTheme.Radius.xsSm
 }
 
 enum Project {

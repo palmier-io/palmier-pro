@@ -28,6 +28,7 @@ enum AppTheme {
         static let primary = NSColor.white.withAlphaComponent(0.16)
         static let subtle = NSColor.white.withAlphaComponent(0.12)
         static let divider = NSColor.white.withAlphaComponent(0.44)
+        static let timelineClip = NSColor.black
 
         static var primaryColor: Color { Color(primary) }
         static var subtleColor: Color { Color(subtle) }
@@ -167,18 +168,19 @@ enum AppTheme {
         static let moderate: Double = 0.25
         static let medium: Double = 0.35
         static let strong: Double = 0.55
+        static let high: Double = 0.70
         static let prominent: Double = 0.80
     }
 
     // MARK: - Track type colors
 
     enum TrackColor {
-        static let video = NSColor(red: 0x00/255.0, green: 0x91/255.0, blue: 0xC2/255.0, alpha: 1)
-        static let audio = NSColor(red: 0x58/255.0, green: 0xA8/255.0, blue: 0x22/255.0, alpha: 1)
-        static let image = NSColor(red: 0xB7/255.0, green: 0x2D/255.0, blue: 0xD2/255.0, alpha: 1)
-        static let text = NSColor(red: 0xB7/255.0, green: 0x2D/255.0, blue: 0xD2/255.0, alpha: 1)
-        static let lottie = NSColor(red: 0xE0/255.0, green: 0xA8/255.0, blue: 0x00/255.0, alpha: 1)
-        static let sequence = NSColor(red: 0x2D/255.0, green: 0x9D/255.0, blue: 0x78/255.0, alpha: 1)
+        static let video = NSColor(red: 0x1D/255.0, green: 0x58/255.0, blue: 0x78/255.0, alpha: 1)
+        static let audio = NSColor(red: 0x2E/255.0, green: 0x77/255.0, blue: 0x65/255.0, alpha: 1)
+        static let image = NSColor(red: 0x71/255.0, green: 0x54/255.0, blue: 0x86/255.0, alpha: 1)
+        static let text = NSColor(red: 0x71/255.0, green: 0x54/255.0, blue: 0x86/255.0, alpha: 1)
+        static let lottie = NSColor(red: 0xA0/255.0, green: 0x78/255.0, blue: 0x22/255.0, alpha: 1)
+        static let sequence = NSColor(red: 0xB9/255.0, green: 0xB2/255.0, blue: 0x9A/255.0, alpha: 1)
     }
 
     // MARK: - Corner radii
@@ -268,6 +270,7 @@ enum AppTheme {
         static let toolImagePreviewMaxHeight: CGFloat = 50
         static let projectCardWidth: CGFloat = 150
         static let projectCardHeight: CGFloat = 120
+        static let timelineClipBorderMinWidth: CGFloat = 8
         static let timelineClipDetailMinWidth: CGFloat = 32
         static let timelineTabRenameWidth: CGFloat = 120
         static let timelineClipLabelMinWidth: CGFloat = 56

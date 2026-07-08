@@ -70,19 +70,13 @@ enum ClipRenderer {
 
 
         let colorType = clip.sourceClipType
-        let baseColor = colorType.themeColor
-        let fill = isSelected
-            ? baseColor.withAlphaComponent(0.45)
-            : baseColor.withAlphaComponent(0.3)
-        context.setFillColor(fill.cgColor)
+        context.setFillColor(colorType.themeColor.cgColor)
         context.addPath(path)
         context.fillPath()
 
         // --- Layout zones ---
-        let stripWidth: CGFloat = 3
-        let handleW = Trim.handleWidth
-        let contentX = rect.minX + stripWidth + 1
-        let contentWidth = rect.width - stripWidth - 1 - handleW
+        let contentX = rect.minX
+        let contentWidth = rect.width
 
         // Label bar at top
         let labelRect = CGRect(x: contentX, y: rect.minY, width: contentWidth, height: labelBarHeight)
@@ -113,22 +107,17 @@ enum ClipRenderer {
             drawOpacityFades(clip: clip, in: rect, showsFadeControls: showsFadeControls, context: context)
         }
 
-        // Color-coded left edge strip (uses the same source-type as the fill).
-        let stripRect = NSRect(x: rect.minX, y: rect.minY, width: stripWidth, height: rect.height)
-        let stripPath = CGPath(roundedRect: stripRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
-        context.setFillColor(colorType.themeColor.cgColor)
-        context.addPath(stripPath)
-        context.fillPath()
-
         // Border
-        if isSelected {
-            context.setStrokeColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.9))
-            context.setLineWidth(1.5)
+        if rect.width >= AppTheme.ComponentSize.timelineClipBorderMinWidth {
+            context.setStrokeColor(AppTheme.Border.timelineClip.cgColor)
+            context.setLineWidth(AppTheme.BorderWidth.thin)
             context.addPath(path)
             context.strokePath()
-        } else {
-            context.setStrokeColor(AppTheme.Border.primary.cgColor)
-            context.setLineWidth(0.5)
+        }
+
+        if isSelected {
+            context.setStrokeColor(AppTheme.Text.primary.cgColor)
+            context.setLineWidth(AppTheme.BorderWidth.medium)
             context.addPath(path)
             context.strokePath()
         }
@@ -164,8 +153,6 @@ enum ClipRenderer {
 
         if showDetailChrome {
             drawKeyframeMarkers(clip: clip, in: rect, context: context)
-
-            drawTrimHandles(in: rect, context: context)
         }
 
         if markBeats, type == .audio, clip.sourceClipType != .sequence, let beats = cache?.beatAnalysis(for: clip.mediaRef) {
@@ -303,8 +290,7 @@ enum ClipRenderer {
         let lastBar = min(barCount, Int(ceil(visible.maxX - drawRect.minX)))
         guard firstBar < lastBar else { return }
 
-        let color = (type.themeColor.blended(withFraction: 0.3, of: .white) ?? type.themeColor).withAlphaComponent(0.85).cgColor
-        context.setFillColor(color)
+        context.setFillColor(AppTheme.Text.primary.withAlphaComponent(AppTheme.Opacity.high).cgColor)
 
         let dur = CGFloat(max(1, clip.durationFrames))
         let frameStep = dur / CGFloat(barCount)
@@ -829,16 +815,6 @@ enum ClipRenderer {
         context.restoreGState()
     }
 
-    // MARK: - Trim handles
-
-    private static func drawTrimHandles(in rect: NSRect, context: CGContext) {
-        let w = Trim.handleWidth
-        context.setFillColor(AppTheme.Text.muted.cgColor)
-        // Left handle
-        context.fill(NSRect(x: rect.minX, y: rect.minY, width: w, height: rect.height))
-        // Right handle
-        context.fill(NSRect(x: rect.maxX - w, y: rect.minY, width: w, height: rect.height))
-    }
 }
 
 private extension String {
