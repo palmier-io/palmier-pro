@@ -767,6 +767,7 @@ final class TimelineInputController {
     /// Option+scroll zooms; Cmd+scroll pans horizontally (maps vertical delta to X, for mouse wheels);
     /// plain scroll pans (forwarded to the scroll view, both axes).
     func scrollWheel(with event: NSEvent, geometry: TimelineGeometry) {
+        view.setHoveredClipId(nil)
         if event.modifierFlags.contains(.option) {
             let cursorDocX = view.convert(event.locationInWindow, from: nil).x
             applyZoom(factor: exp(event.scrollingDeltaY * Zoom.scrollSensitivity), anchorDocX: cursorDocX)
@@ -788,6 +789,7 @@ final class TimelineInputController {
 
     /// Trackpad pinch-to-zoom.
     func magnify(with event: NSEvent) {
+        view.setHoveredClipId(nil)
         let cursorDocX = view.convert(event.locationInWindow, from: nil).x
         applyZoom(factor: 1.0 + event.magnification * Zoom.magnifySensitivity, anchorDocX: cursorDocX)
     }
