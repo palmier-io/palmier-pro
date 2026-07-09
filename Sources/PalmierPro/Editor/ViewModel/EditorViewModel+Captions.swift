@@ -100,6 +100,9 @@ extension EditorViewModel {
         return pool
             .filter { clip in
                 guard captionCanTranscribe(clip) else { return false }
+                if let group = multicamGroup(of: clip) {
+                    return clip.mediaType == .audio && clip.mediaRef == group.master?.mediaRef
+                }
                 guard clip.mediaType == .video, let groupId = clip.linkGroupId else { return true }
                 return !linkGroupsWithAudio.contains(groupId)
             }

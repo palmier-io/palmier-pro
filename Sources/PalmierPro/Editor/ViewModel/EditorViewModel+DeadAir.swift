@@ -3,9 +3,20 @@ import AppKit
 /// Dead-air removal: maps SpeechMaskStore spans onto timeline ranges and ripple-deletes them.
 extension EditorViewModel {
 
+    private func deadAirMask(for clip: Clip) -> [Bool]? {
+        guard let member = multicamGroup(of: clip)?.member(mediaRef: clip.mediaRef) else {
+            return mediaVisualCache.deadAirMask(for: clip.mediaRef)
+        }
+        guard let groupMask = multicamDeadAirMask(for: clip) else { return nil }
+        let shift = Int((member.sync.offsetSeconds / VoiceActivity.chunkDuration).rounded())
+        if shift > 0 { return Array(groupMask.dropFirst(shift)) }
+        if shift < 0 { return [Bool](repeating: false, count: -shift) + groupMask }
+        return groupMask
+    }
+
     /// The dead-air span under `timelineFrame` in `clip`, as a timeline range. Nil when the frame isn't dead air.
     func deadAirSpanRange(clip: Clip, atTimelineFrame frame: Int) -> FrameRange? {
-        guard let mask = mediaVisualCache.deadAirMask(for: clip.mediaRef), !mask.isEmpty else { return nil }
+        guard let mask = deadAirMask(for: clip), !mask.isEmpty else { return nil }
         let cellFrames = VoiceActivity.chunkDuration * Double(max(1, timeline.fps))
         let sourceFrame = Double(clip.trimStartFrame) + Double(frame - clip.startFrame) * clip.speed
         let cell = Int(sourceFrame / cellFrames)
@@ -19,7 +30,7 @@ extension EditorViewModel {
 
     /// Every dead-air span visible within `clip`, as timeline ranges.
     func deadAirRanges(for clip: Clip) -> [FrameRange] {
-        guard let mask = mediaVisualCache.deadAirMask(for: clip.mediaRef), !mask.isEmpty else { return [] }
+        guard let mask = deadAirMask(for: clip), !mask.isEmpty else { return [] }
         let cellFrames = VoiceActivity.chunkDuration * Double(max(1, timeline.fps))
         var ranges: [FrameRange] = []
         var i = 0

@@ -148,6 +148,7 @@ private extension EditorViewModel {
                 var clone = p.source
                 clone.startFrame = p.dstStart
                 clone.freshenIds(groups: &groups)
+                clone.multicamGroupId = nil
                 if let oldGroup = p.source.linkGroupId, (groupCounts[oldGroup] ?? 0) <= 1 {
                     clone.linkGroupId = nil
                 }

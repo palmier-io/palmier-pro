@@ -22,6 +22,7 @@ extension EditorViewModel {
             ?? file.timelines[0].id
         openTimelineIds = (file.openTimelineIds ?? []).filter { ids.contains($0) }
         speakerRegistry = file.speakers ?? []
+        multicamGroups = file.multicamGroups ?? []
         syncSpeakerColors()
         if !openTimelineIds.contains(activeTimelineId) {
             openTimelineIds.append(activeTimelineId)
@@ -38,7 +39,8 @@ extension EditorViewModel {
             activeTimelineId: activeTimelineId,
             openTimelineIds: openTimelineIds,
             viewStates: liveViewStates.filter { ids.contains($0.key) },
-            speakers: speakerRegistry.isEmpty ? nil : speakerRegistry
+            speakers: speakerRegistry.isEmpty ? nil : speakerRegistry,
+            multicamGroups: savedMulticamGroups()
         )
     }
 

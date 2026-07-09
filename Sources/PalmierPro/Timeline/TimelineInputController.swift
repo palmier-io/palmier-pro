@@ -37,6 +37,26 @@ final class TimelineInputController {
     // MARK: - Mouse down
 
 
+    private func trimHeadroom(for clip: Clip, linked: Bool) -> (left: Int, right: Int) {
+        var clips = [clip]
+        if linked {
+            clips += editor.linkedPartnerIds(of: clip.id).compactMap { editor.clipFor(id: $0) }
+        }
+        var left = Int.max
+        var right = Int.max
+        for c in clips {
+            if let bounds = editor.multicamTrimBounds(for: c) {
+                left = min(left, bounds.left)
+                right = min(right, bounds.right)
+            } else if c.id == clip.id {
+                left = min(left, c.trimStartFrame)
+                right = min(right, effectiveTrimEnd(for: c))
+            }
+        }
+        return (left == .max ? clip.trimStartFrame : left,
+                right == .max ? effectiveTrimEnd(for: clip) : right)
+    }
+
     /// Nest trim limits come from the child's live length, not creation time.
     private func effectiveTrimEnd(for clip: Clip) -> Int {
         guard clip.sourceClipType == .sequence, let child = editor.timeline(for: clip.mediaRef) else {
@@ -163,32 +183,21 @@ final class TimelineInputController {
             } else if isCommand, clip.mediaType == .audio,
                       addVolumeKeyframeOnClick(at: point, clip: clip, clipRect: rect) {
                 dragState = .idle
-            } else if trimEdge == .left {
-                Self.trimCursor(for: .left).set()
-                dragState = .trimLeft(DragState.TrimDrag(
+            } else if let edge = trimEdge {
+                Self.trimCursor(for: edge).set()
+                let headroom = trimHeadroom(for: clip, linked: linkedOn)
+                let drag = DragState.TrimDrag(
                     clipId: clip.id,
                     trackIndex: hit.trackIndex,
-                    originalTrimStart: clip.trimStartFrame,
-                    originalTrimEnd: effectiveTrimEnd(for: clip),
+                    originalTrimStart: headroom.left,
+                    originalTrimEnd: headroom.right,
                     originalStartFrame: clip.startFrame,
                     originalDuration: clip.durationFrames,
                     hasNoSourceMedia: clip.mediaType == .image || clip.mediaType == .text,
                     propagateToLinked: linkedOn,
                     isRipple: rippleTrim
-                ))
-            } else if trimEdge == .right {
-                Self.trimCursor(for: .right).set()
-                dragState = .trimRight(DragState.TrimDrag(
-                    clipId: clip.id,
-                    trackIndex: hit.trackIndex,
-                    originalTrimStart: clip.trimStartFrame,
-                    originalTrimEnd: effectiveTrimEnd(for: clip),
-                    originalStartFrame: clip.startFrame,
-                    originalDuration: clip.durationFrames,
-                    hasNoSourceMedia: clip.mediaType == .image || clip.mediaType == .text,
-                    propagateToLinked: linkedOn,
-                    isRipple: rippleTrim
-                ))
+                )
+                dragState = edge == .left ? .trimLeft(drag) : .trimRight(drag)
             } else {
                 let grabFrame = geometry.frameAt(x: point.x)
                 var companions: [DragState.Participant] = []
@@ -466,6 +475,13 @@ final class TimelineInputController {
 
             case .newTrackAt(let insertIndex):
                 guard let leadTrackType = resolvedLeadTrackType(for: drag) else { break }
+                if !drag.isDuplicate,
+                   let reason = editor.multicamMoveViolation(moves: resolved.map {
+                       (clipId: $0.participant.clipId, toTrack: $0.trackIndex, toFrame: $0.frame + frameDelta)
+                   }) {
+                    editor.refuseWithToast(reason)
+                    break
+                }
                 editor.undoManager?.beginUndoGrouping()
                 let newIdx = editor.insertTrack(at: insertIndex, type: leadTrackType)
                 let moves = resolved.map { item in
