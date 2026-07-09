@@ -181,6 +181,7 @@ enum AppTheme {
         static let text = NSColor(red: 0x71/255.0, green: 0x54/255.0, blue: 0x86/255.0, alpha: 1)
         static let lottie = NSColor(red: 0xA0/255.0, green: 0x78/255.0, blue: 0x22/255.0, alpha: 1)
         static let sequence = NSColor(red: 0xB9/255.0, green: 0xB2/255.0, blue: 0x9A/255.0, alpha: 1)
+        static let multicam = NSColor.systemRed
     }
 
     // MARK: - Corner radii
@@ -274,6 +275,10 @@ enum AppTheme {
         static let timelineClipDetailMinWidth: CGFloat = 32
         static let timelineTabRenameWidth: CGFloat = 120
         static let timelineClipLabelMinWidth: CGFloat = 56
+        static let timelineBadgePadH: CGFloat = 4
+        static let timelineBadgePadV: CGFloat = 1
+        static let timelineBadgeMinWidth: CGFloat = 16
+        static let timelineDotSize: CGFloat = 5
         static let updateOverlayWidth: CGFloat = 640
     }
 

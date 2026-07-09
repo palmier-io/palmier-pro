@@ -56,6 +56,7 @@ enum ClipRenderer {
         cache: MediaVisualCache? = nil,
         displayName: String? = nil,
         linkOffset: Int? = nil,
+        multicamAngleLabel: String? = nil,
         fps: Int,
         isMissing: Bool = false,
         isGenerating: Bool = false
@@ -144,7 +145,13 @@ enum ClipRenderer {
         let showLabel = isSelected || rect.width >= AppTheme.ComponentSize.timelineClipLabelMinWidth
 
         if showLabel {
-            drawLabelBar(clip: clip, type: type, in: labelRect, clipRect: rect, context: context, displayName: displayName, fps: fps)
+            drawLabelBar(clip: clip, type: type, in: labelRect, clipRect: rect, context: context,
+                         displayName: displayName, badge: multicamAngleLabel, fps: fps)
+        } else if multicamAngleLabel != nil, rect.width >= AppTheme.ComponentSize.timelineClipBorderMinWidth {
+            let d = AppTheme.ComponentSize.timelineDotSize
+            let inset = AppTheme.Spacing.xxs
+            context.setFillColor(AppTheme.TrackColor.multicam.cgColor)
+            context.fillEllipse(in: CGRect(x: rect.minX + inset, y: rect.minY + inset, width: d, height: d))
         }
 
         if showDetailChrome, let linkOffset, linkOffset != 0 {
@@ -752,8 +759,41 @@ enum ClipRenderer {
 
     // MARK: - Label Bar
 
-    private static func drawLabelBar(clip: Clip, type: ClipType, in labelRect: NSRect, clipRect: NSRect, context: CGContext, displayName: String? = nil, fps: Int) {
+    @discardableResult
+    private static func drawPill(_ text: String, textColor: NSColor, fill: NSColor, fontSize: CGFloat, at origin: NSPoint, maxWidth: CGFloat, context: CGContext) -> NSRect? {
+        let padH = AppTheme.ComponentSize.timelineBadgePadH
+        let padV = AppTheme.ComponentSize.timelineBadgePadV
+        guard !text.isEmpty, maxWidth > AppTheme.ComponentSize.timelineBadgeMinWidth else { return nil }
+        let str = NSAttributedString(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: fontSize, weight: .semibold),
+            .foregroundColor: textColor,
+        ])
+        let size = str.size()
+        let rect = NSRect(x: origin.x, y: origin.y,
+                          width: min(size.width + padH * 2, maxWidth), height: size.height + padV * 2)
+        context.saveGState()
+        let path = CGPath(roundedRect: rect, cornerWidth: AppTheme.Radius.xs, cornerHeight: AppTheme.Radius.xs, transform: nil)
+        context.setFillColor(fill.cgColor)
+        context.addPath(path)
+        context.fillPath()
+        context.clip(to: rect.insetBy(dx: AppTheme.Spacing.xxs, dy: 0))
+        str.draw(at: NSPoint(x: rect.minX + padH, y: rect.minY + padV))
+        context.restoreGState()
+        return rect
+    }
+
+    private static func drawLabelBar(clip: Clip, type: ClipType, in labelRect: NSRect, clipRect: NSRect, context: CGContext, displayName: String? = nil, badge: String? = nil, fps: Int) {
         guard clipRect.width > 20 else { return }
+
+        var labelRect = labelRect
+        if let badge,
+           let chipRect = drawPill(badge, textColor: NSColor.black.withAlphaComponent(AppTheme.Opacity.prominent),
+                                   fill: AppTheme.TrackColor.multicam, fontSize: AppTheme.FontSize.xxs,
+                                   at: NSPoint(x: labelRect.minX + AppTheme.Spacing.xs, y: labelRect.minY + AppTheme.Spacing.xxs),
+                                   maxWidth: labelRect.width - AppTheme.Spacing.smMd, context: context) {
+            labelRect.origin.x = chipRect.maxX + AppTheme.Spacing.xxs
+            labelRect.size.width -= chipRect.width + AppTheme.Spacing.sm
+        }
 
         let timecode = formatClipDuration(frame: clip.durationFrames, fps: fps)
         let rawName = displayName ?? clip.mediaRef
@@ -795,32 +835,14 @@ enum ClipRenderer {
 
     private static func drawOffsetBadge(frames: Int, in rect: NSRect, context: CGContext) {
         let text = frames > 0 ? "+\(frames)" : "\(frames)"
-        let attrs: [NSAttributedString.Key: Any] = [
+        let padH = AppTheme.ComponentSize.timelineBadgePadH
+        let width = NSAttributedString(string: text, attributes: [
             .font: NSFont.systemFont(ofSize: AppTheme.FontSize.xs, weight: .semibold),
-            .foregroundColor: NSColor.white,
-        ]
-        let str = NSAttributedString(string: text, attributes: attrs)
-        let textSize = str.size()
-        let padH: CGFloat = 4
-        let padV: CGFloat = 1
-        let badgeWidth = textSize.width + padH * 2
-        let badgeHeight = textSize.height + padV * 2
-        let handleW = Trim.handleWidth
-        let badgeRect = NSRect(
-            x: rect.maxX - handleW - badgeWidth - 2,
-            y: rect.minY + 2,
-            width: badgeWidth,
-            height: badgeHeight
-        )
-        guard badgeRect.minX > rect.minX + 6 else { return }
-
-        context.saveGState()
-        let path = CGPath(roundedRect: badgeRect, cornerWidth: 3, cornerHeight: 3, transform: nil)
-        context.setFillColor(offsetBadgeColor.cgColor)
-        context.addPath(path)
-        context.fillPath()
-        str.draw(at: NSPoint(x: badgeRect.minX + padH, y: badgeRect.minY + padV))
-        context.restoreGState()
+        ]).size().width + padH * 2
+        let x = rect.maxX - Trim.handleWidth - width - AppTheme.Spacing.xxs
+        guard x > rect.minX + AppTheme.Spacing.sm else { return }
+        drawPill(text, textColor: .white, fill: offsetBadgeColor, fontSize: AppTheme.FontSize.xs,
+                 at: NSPoint(x: x, y: rect.minY + AppTheme.Spacing.xxs), maxWidth: width, context: context)
     }
 
 }
