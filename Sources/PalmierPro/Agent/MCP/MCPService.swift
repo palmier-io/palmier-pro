@@ -50,10 +50,7 @@ final class MCPService {
     }
 
     static var connectionHost: String {
-        let bindHost = bindHostPreference
-        guard bindHost == lanBindHost else { return bindHost }
-        let hostName = ProcessInfo.processInfo.hostName
-        return hostName.isEmpty ? bindHost : hostName
+        MCPHTTPServer.advertisedHost(forBindHost: bindHostPreference)
     }
 
     static var connectionURL: String {
@@ -92,21 +89,24 @@ final class MCPService {
         Task { @MainActor [weak self] in
             do {
                 try await httpServer.start()
+                guard let self, self.httpServer === httpServer else { return }
                 Log.mcp.notice("http server started host=\(bindHost) port=\(Self.port)")
-                self?.isRunning = true
+                self.isRunning = true
             } catch {
+                guard let self, self.httpServer === httpServer else { return }
                 Log.mcp.error("http server failed to start: \(error.localizedDescription)")
-                self?.isRunning = false
+                self.isRunning = false
             }
         }
     }
 
-    func stop() {
-        if let server = httpServer {
-            Task { await server.stop() }
-        }
+    func stop() async {
+        let server = httpServer
         httpServer = nil
         isRunning = false
+        if let server {
+            await server.stop()
+        }
         Log.mcp.notice("http server stopped")
     }
 
@@ -175,8 +175,9 @@ final class MCPService {
 
     private static func makeBearerToken() -> String {
         var bytes = [UInt8](repeating: 0, count: 32)
+        let count = bytes.count
         let status = bytes.withUnsafeMutableBytes { buffer in
-            SecRandomCopyBytes(kSecRandomDefault, bytes.count, buffer.baseAddress!)
+            SecRandomCopyBytes(kSecRandomDefault, count, buffer.baseAddress!)
         }
         guard status == errSecSuccess else {
             return (0..<4).map { _ in UUID().uuidString.replacingOccurrences(of: "-", with: "") }.joined()

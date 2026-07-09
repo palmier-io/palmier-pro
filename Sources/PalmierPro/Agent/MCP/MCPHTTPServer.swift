@@ -76,7 +76,7 @@ actor MCPHTTPServer {
         }
 
         if request.path == "/.well-known/oauth-protected-resource" {
-            let body = "{\"resource\":\"http://\(bindHost):\(port)\"}"
+            let body = "{\"resource\":\"http://\(Self.advertisedHost(forBindHost: bindHost)):\(port)\"}"
             sendRaw("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: \(body.utf8.count)\r\n\r\n\(body)", on: connection, keepAlive: true)
             receive(on: connection, transport: transport)
             return
@@ -177,6 +177,13 @@ actor MCPHTTPServer {
 
     nonisolated static func requiresBearerToken(bindHost: String) -> Bool {
         !isLoopbackHost(normalizedBindHost(bindHost))
+    }
+
+    nonisolated static func advertisedHost(forBindHost bindHost: String) -> String {
+        let host = normalizedBindHost(bindHost)
+        guard host == "0.0.0.0" else { return host }
+        let hostName = ProcessInfo.processInfo.hostName
+        return hostName.isEmpty ? host : hostName
     }
 
     nonisolated static func validationPipeline(port: UInt16, bindHost: String, bearerToken: String) -> StandardValidationPipeline {

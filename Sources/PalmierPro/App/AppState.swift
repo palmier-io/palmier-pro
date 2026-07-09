@@ -28,8 +28,11 @@ final class AppState {
     }
 
     func stopMCPService() {
-        mcpService?.stop()
+        guard let service = mcpService else { return }
         mcpService = nil
+        Task { @MainActor in
+            await service.stop()
+        }
     }
 
     func setMCPEnabled(_ enabled: Bool) {
@@ -56,9 +59,12 @@ final class AppState {
     }
 
     private func restartMCPServiceIfNeeded() {
-        guard MCPService.isEnabledPreference, mcpService != nil else { return }
-        stopMCPService()
-        startMCPService()
+        guard MCPService.isEnabledPreference, let service = mcpService else { return }
+        mcpService = nil
+        Task { @MainActor [weak self] in
+            await service.stop()
+            self?.startMCPService()
+        }
     }
 
     func showHome() {
