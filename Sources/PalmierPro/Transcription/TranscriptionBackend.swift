@@ -10,6 +10,11 @@ enum TranscriptionBackend {
         language: String?,
         projectId: String?
     ) async throws -> BackendTranscriptionSubmit {
+        if BackendMode.current.isLocal {
+            return try await LocalBackend.submitTranscription(
+                storageId: storageId, durationSeconds: durationSeconds, language: language
+            )
+        }
         guard let convex = AccountService.shared.convex else {
             throw GenerationBackendError.notConfigured
         }
@@ -26,6 +31,7 @@ enum TranscriptionBackend {
 
     @MainActor
     static func subscribe(jobId: String) -> AnyPublisher<BackendTranscriptionJob?, ClientError>? {
+        if BackendMode.current.isLocal { return LocalBackend.transcriptionPublisher(jobId: jobId) }
         guard let convex = AccountService.shared.convex else { return nil }
         return convex.subscribe(
             to: "transcriptions:byId",
@@ -48,6 +54,9 @@ enum TranscriptionBackend {
 
     @MainActor
     private static func resultRef(jobId: String) async throws -> BackendTranscriptionResultRef {
+        if BackendMode.current.isLocal {
+            return BackendTranscriptionResultRef(resultUrl: try await LocalBackend.transcriptionResultURL(jobId: jobId))
+        }
         guard let convex = AccountService.shared.convex else {
             throw GenerationBackendError.notConfigured
         }

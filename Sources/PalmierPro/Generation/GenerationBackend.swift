@@ -8,6 +8,7 @@ enum GenerationBackend {
     static func subscribe(
         jobId: String
     ) -> AnyPublisher<BackendGenerationJob?, ClientError>? {
+        if BackendMode.current.isLocal { return LocalBackend.generationPublisher(jobId: jobId) }
         guard let convex = AccountService.shared.convex else { return nil }
         return convex.subscribe(
             to: "generations:byId",
@@ -20,6 +21,9 @@ enum GenerationBackend {
         fileURL: URL,
         contentType: String,
     ) async throws -> String {
+        if BackendMode.current.isLocal {
+            return try await LocalBackend.uploadReference(fileURL: fileURL, contentType: contentType)
+        }
         guard let convex = AccountService.shared.convex else {
             throw GenerationBackendError.notConfigured
         }
@@ -36,6 +40,9 @@ enum GenerationBackend {
         params: BackendGenerationParams,
         projectId: String? = nil,
     ) async throws -> String {
+        if BackendMode.current.isLocal {
+            return try await LocalBackend.submitGeneration(model: model, params: params, projectId: projectId)
+        }
         guard let convex = AccountService.shared.convex else {
             throw GenerationBackendError.notConfigured
         }

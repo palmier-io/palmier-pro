@@ -108,12 +108,13 @@ final class AccountService {
     private(set) var authState: AuthState<String> = .loading
 
     var isSignedIn: Bool {
+        if BackendMode.current.isLocal { return true }
         guard !isMisconfigured, case .authenticated = authState else { return false }
         return true
     }
     var aiAllowed: Bool { isSignedIn && !isMisconfigured }
     var tier: AccountTier { account?.user.tier ?? .none }
-    var isPaid: Bool { tier.isPaid }
+    var isPaid: Bool { BackendMode.current.isLocal || tier.isPaid }
 
     var spentCredits: Int { account?.user.spentCreditsThisPeriod ?? 0 }
     var budgetCredits: Int? {
@@ -122,7 +123,10 @@ final class AccountService {
         return tierBudget + (user.purchasedCredits ?? 0)
     }
 
-    var remainingCredits: Int { max(0, (budgetCredits ?? 0) - spentCredits) }
+    var remainingCredits: Int {
+        if BackendMode.current.isLocal { return .max }
+        return max(0, (budgetCredits ?? 0) - spentCredits)
+    }
     var hasCredits: Bool { remainingCredits > 0 }
 
     @ObservationIgnored private(set) var convex: ConvexClientWithAuth<String>?
@@ -137,6 +141,12 @@ final class AccountService {
     func configure() {
         guard !didConfigure else { return }
         didConfigure = true
+
+        if BackendMode.current.isLocal {
+            isLoading = false
+            Log.account.notice("account in local backend mode", telemetry: "Account local mode")
+            return
+        }
 
         guard let publishableKey = BackendConfig.clerkPublishableKey,
               let deploymentURL = BackendConfig.convexDeploymentURL

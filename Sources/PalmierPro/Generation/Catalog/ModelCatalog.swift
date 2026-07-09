@@ -53,6 +53,10 @@ final class ModelCatalog {
     }
 
     private func startSubscription() {
+        if BackendMode.current.isLocal {
+            startLocalRefresh()
+            return
+        }
         guard let client = AccountService.shared.convex else { return }
 
         subscription = client
@@ -69,6 +73,24 @@ final class ModelCatalog {
                     self?.apply(entries)
                 }
             )
+    }
+
+    private func startLocalRefresh(attempt: Int = 0) {
+        retryTask?.cancel()
+        retryTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let entries = try await LocalBackend.models()
+                self.lastError = nil
+                self.apply(entries)
+            } catch {
+                self.lastError = error.localizedDescription
+                let delay = min(pow(2.0, Double(attempt)), 30)
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled else { return }
+                self.startLocalRefresh(attempt: attempt + 1)
+            }
+        }
     }
 
     private func handleFailure(_ err: ClientError) {

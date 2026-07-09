@@ -3,6 +3,9 @@ import Foundation
 
 enum BackendStorage {
     static func uploadStaged(fileURL: URL, contentType: String) async throws -> String {
+        if BackendMode.current.isLocal {
+            return try await LocalBackend.uploadStaged(fileURL: fileURL, contentType: contentType)
+        }
         let ticket = try await uploadTicket()
         guard let stagingURL = URL(string: ticket.uploadUrl) else {
             throw GenerationBackendError.transport("Invalid staging URL")
