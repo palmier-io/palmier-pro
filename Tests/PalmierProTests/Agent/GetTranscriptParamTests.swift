@@ -37,6 +37,13 @@ struct GetTranscriptParamTests {
         #expect(json?["words"] == nil)
     }
 
+    @Test func cloudTranscriptionRequiresCoveredUncachedCost() {
+        #expect(ToolExecutor.canUseCloudTranscription(isSignedIn: true, remainingCredits: 5, estimatedCost: 6) == false)
+        #expect(ToolExecutor.canUseCloudTranscription(isSignedIn: true, remainingCredits: 6, estimatedCost: 6) == true)
+        #expect(ToolExecutor.canUseCloudTranscription(isSignedIn: true, remainingCredits: 0, estimatedCost: 0) == true)
+        #expect(ToolExecutor.canUseCloudTranscription(isSignedIn: false, remainingCredits: 100, estimatedCost: 1) == false)
+    }
+
     @Test func wordRowsSpeakerRunsAndSegments() async throws {
         func w(_ i: Int, _ text: String, _ start: Int, _ end: Int, _ speaker: String?) -> TimelineWord {
             TimelineWord(index: i, clipId: "c1", trackIndex: 0, clipStartFrame: 0, clipEndFrame: 300,

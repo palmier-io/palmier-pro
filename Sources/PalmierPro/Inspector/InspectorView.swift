@@ -870,7 +870,10 @@ struct InspectorView: View {
                     metadataSection(title: "Generated") {
                         plainMetadataRow(label: "Model", value: ModelRegistry.displayName(for: gen.model))
                         if !gen.aspectRatio.isEmpty {
-                            plainMetadataRow(label: "Aspect Ratio", value: gen.aspectRatio)
+                            plainMetadataRow(
+                                label: "Aspect Ratio",
+                                value: ImageModelConfig.aspectRatioDisplayLabel(gen.aspectRatio)
+                            )
                         }
                         if let resolution = gen.resolution {
                             plainMetadataRow(label: "Resolution", value: resolution)

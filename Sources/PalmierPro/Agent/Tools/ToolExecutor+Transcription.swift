@@ -159,16 +159,32 @@ extension ToolExecutor {
     private static let inspectMaxSegments = 400
     private static let getTranscriptAllowedKeys: Set<String> = ["startFrame", "endFrame", "clipId", "wordTimestamps", "language", "granularity"]
 
-    func transcriptionContext(_ args: [String: Any], path: String, preferLast: Bool = false) async throws -> TranscriptionToolContext {
+    func transcriptionContext(
+        _ args: [String: Any],
+        path: String,
+        preferLast: Bool = false,
+        estimatedCloudCost: () async -> Int
+    ) async throws -> TranscriptionToolContext {
         if preferLast, let lastTranscriptContext {
             return lastTranscriptContext
         }
         let account = AccountService.shared
-        let provider: TranscriptionProvider = account.isSignedIn && account.hasCredits ? .cloud : .local
+        let cost = await estimatedCloudCost()
+        let provider: TranscriptionProvider = Self.canUseCloudTranscription(
+            isSignedIn: account.isSignedIn,
+            remainingCredits: account.remainingCredits,
+            estimatedCost: cost
+        ) ? .cloud : .local
         return TranscriptionToolContext(
             provider: provider,
             preferredLocale: provider == .cloud ? nil : try await Self.parseLocale(args, path: path)
         )
+    }
+
+    static func canUseCloudTranscription(isSignedIn: Bool, remainingCredits: Int, estimatedCost: Int) -> Bool {
+        guard isSignedIn else { return false }
+        guard estimatedCost > 0 else { return true }
+        return remainingCredits >= estimatedCost
     }
 
     static func parseLocale(_ args: [String: Any], path: String) async throws -> Locale? {
@@ -208,7 +224,9 @@ extension ToolExecutor {
             throw ToolError("granularity must be 'words' or 'segments' (got '\(granularity)')")
         }
 
-        let context = try await transcriptionContext(args, path: "get_transcript")
+        let context = try await transcriptionContext(args, path: "get_transcript") {
+            await editor.captionCloudCreditCost(for: .init(autoDetect: true, provider: .cloud))
+        }
         let transcript = try await timelineTranscript(editor, context: context)
         lastTranscriptContext = context
 

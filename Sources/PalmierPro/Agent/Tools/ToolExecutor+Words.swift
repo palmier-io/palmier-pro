@@ -25,7 +25,9 @@ extension ToolExecutor {
             aggressiveness = a
         } else { aggressiveness = .balanced }
 
-        let context = try await transcriptionContext(args, path: "remove_words", preferLast: true)
+        let context = try await transcriptionContext(args, path: "remove_words", preferLast: true) {
+            await editor.captionCloudCreditCost(for: .init(autoDetect: true, provider: .cloud))
+        }
         let transcript = try await timelineTranscript(editor, context: context)
         let allWords = transcript.words
         guard !allWords.isEmpty else { throw ToolError("No transcribable speech on the timeline.") }

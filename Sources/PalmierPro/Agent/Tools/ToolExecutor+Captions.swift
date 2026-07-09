@@ -35,7 +35,9 @@ extension ToolExecutor {
             maxWords = n
         }
 
-        let context = try await transcriptionContext(args, path: "add_captions")
+        let context = try await transcriptionContext(args, path: "add_captions") {
+            await editor.captionCloudCreditCost(for: .init(autoDetect: true, provider: .cloud))
+        }
         let provider = context.provider
         if provider == .cloud {
             if args.bool("censorProfanity") == true {
