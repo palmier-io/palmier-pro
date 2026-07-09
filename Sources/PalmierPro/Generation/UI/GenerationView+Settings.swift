@@ -1,5 +1,12 @@
 import SwiftUI
 
+private enum GenerationSettingsLayout {
+    static let popoverWidth: CGFloat = 220
+    static let imagePopoverWidth: CGFloat = 270
+    static let imageAspectGridMinWidth: CGFloat = 78
+    static let gridButtonMinHeight: CGFloat = 30
+}
+
 // Type tabs, model/voice pickers, and the settings popover.
 extension GenerationView {
 
@@ -128,7 +135,7 @@ extension GenerationView {
         if currentQualities != nil { parts.append(selectedQuality) }
         if selectedType == .video { parts.append("\(selectedDuration)s") }
         if !selectedAspectRatio.isEmpty, !currentAspectRatios.isEmpty {
-            parts.append(selectedAspectRatio)
+            parts.append(aspectRatioLabel(selectedAspectRatio))
         }
         if selectedType == .image, imageModel.maxImages > 1, selectedNumImages > 1 {
             parts.append("×\(selectedNumImages)")
@@ -138,6 +145,10 @@ extension GenerationView {
 
     private func resolutionLabel(_ id: String) -> String {
         selectedType == .image ? ImageModelConfig.resolutionDisplayLabel(id) : id
+    }
+
+    private func aspectRatioLabel(_ id: String) -> String {
+        selectedType == .image ? ImageModelConfig.aspectRatioDisplayLabel(id) : id
     }
 
     var settingsButton: some View {
@@ -173,7 +184,14 @@ extension GenerationView {
                 settingsPicker("Duration", selection: $selectedAudioDuration, options: durations) { "\($0)s" }
             }
             if !currentAspectRatios.isEmpty {
-                settingsPicker("Aspect Ratio", selection: $selectedAspectRatio, options: currentAspectRatios) { $0 }
+                settingsPicker(
+                    "Aspect Ratio",
+                    selection: $selectedAspectRatio,
+                    options: currentAspectRatios,
+                    gridMinWidth: selectedType == .image ? GenerationSettingsLayout.imageAspectGridMinWidth : nil
+                ) {
+                    aspectRatioLabel($0)
+                }
             }
             if let resolutions = currentResolutions {
                 settingsPicker("Resolution", selection: $selectedResolution, options: resolutions) { resolutionLabel($0) }
@@ -205,23 +223,30 @@ extension GenerationView {
             }
         }
         .padding(AppTheme.Spacing.lg)
-        .frame(width: 220)
+        .frame(width: selectedType == .image ? GenerationSettingsLayout.imagePopoverWidth : GenerationSettingsLayout.popoverWidth)
     }
 
-    private func settingsPicker<T: Hashable>(_ label: String, selection: Binding<T>, options: [T], format: @escaping (T) -> String) -> some View {
+    private func settingsPicker<T: Hashable>(
+        _ label: String,
+        selection: Binding<T>,
+        options: [T],
+        gridMinWidth: CGFloat? = nil,
+        format: @escaping (T) -> String
+    ) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             Text(label)
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-            if options.count <= 5 {
+            if options.count <= 5, gridMinWidth == nil {
                 Picker("", selection: selection) {
                     ForEach(options, id: \.self) { Text(format($0)).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .controlSize(.small)
             } else {
-                let cols = options.count == 6 ? 3 : 5
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: cols), spacing: 4) {
+                let columns = gridMinWidth.map { [GridItem(.adaptive(minimum: $0), spacing: AppTheme.Spacing.xs)] }
+                    ?? Array(repeating: GridItem(.flexible(), spacing: AppTheme.Spacing.xs), count: options.count == 6 ? 3 : 5)
+                LazyVGrid(columns: columns, spacing: AppTheme.Spacing.xs) {
                     ForEach(options, id: \.self) { option in
                         Button {
                             selection.wrappedValue = option
@@ -229,7 +254,10 @@ extension GenerationView {
                             Text(format(option))
                                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                                 .foregroundStyle(selection.wrappedValue == option ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
-                                .frame(maxWidth: .infinity)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity, minHeight: GenerationSettingsLayout.gridButtonMinHeight)
+                                .padding(.horizontal, AppTheme.Spacing.xs)
                                 .padding(.vertical, 4)
                                 .background(
                                     RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
