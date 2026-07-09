@@ -431,6 +431,7 @@ struct ExportView: View {
         case .h264:   0.63e6
         case .h265:   0.32e6
         case .prores: 9.0e6
+        case .hdr:    0.45e6
         }
         let bytesPerSec = bytesPerSecPerMP * max(0.1, megapixels)
         return ByteCountFormatter.string(fromByteCount: Int64(bytesPerSec * seconds), countStyle: .file)
@@ -469,7 +470,7 @@ struct ExportView: View {
             .xml
         case .fcpxml:
             UTType(filenameExtension: "fcpxml") ?? .xml
-        case .prores:
+        case .prores, .hevcHDR:
             .movie
         case .h264, .h265:
             .mpeg4Movie

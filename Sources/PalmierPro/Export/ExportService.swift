@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import CoreImage
 
 enum ExportError: LocalizedError {
     case unsupportedPreset
@@ -73,11 +74,16 @@ final class ExportService {
             }
             return
         }
-
         if acquireSlot {
             await ExportCoordinator.acquireExport()
         }
         defer { if acquireSlot { ExportCoordinator.endExport() } }
+
+        if format.isHDR {
+            await exportHDR(timeline: timeline, resolver: resolver, resolution: resolution,
+                            missingMediaRefs: missingMediaRefs, outputURL: outputURL)
+            return
+        }
 
         Log.export.notice(
             "export requested format=\(String(describing: format)) resolution=\(resolution.rawValue)",
@@ -214,6 +220,51 @@ final class ExportService {
         }
     }
 
+    /// Encode HEVC Main10 HDR; `HDRVideoExporter` converts the composition's SDR 709 frames to HLG.
+    private func exportHDR(
+        timeline: Timeline,
+        resolver: MediaResolver,
+        resolution: ExportResolution,
+        missingMediaRefs: Set<String>,
+        outputURL: URL
+    ) async {
+        isExporting = true
+        progress = 0
+        error = nil
+        defer { isExporting = false }
+        do {
+            let renderSize = resolution.renderSize(for: CGSize(width: timeline.width, height: timeline.height))
+            let result = try await CompositionBuilder.build(
+                timeline: timeline,
+                resolveURL: { resolver.resolveURL(for: $0) },
+                missingMediaRefs: missingMediaRefs,
+                renderSize: renderSize
+            )
+            try? FileManager.default.removeItem(at: outputURL)
+            Log.export.notice("hdr export start size=\(Int(renderSize.width))x\(Int(renderSize.height)) url=\(outputURL.lastPathComponent)")
+            let inputs = HDRVideoExporter.Inputs(
+                composition: result.composition,
+                videoComposition: result.videoComposition,
+                audioMix: result.audioMix
+            )
+            try await HDRVideoExporter.export(
+                inputs, renderSize: renderSize, transfer: .hlg, to: outputURL,
+                onProgress: { [weak self] p in Task { @MainActor in self?.progress = p } }
+            )
+            let outputSize = await Self.encodedVideoSize(of: outputURL) ?? renderSize
+            lastReport = ExportRunReport(
+                outputSize: outputSize,
+                offlineMediaRefs: result.offlineMediaRefs,
+                unprocessableMediaRefs: result.unprocessableMediaRefs
+            )
+            progress = 1.0
+            Log.export.notice("hdr export ok")
+        } catch {
+            self.error = Log.detail(error)
+            Log.export.error("hdr export failed: \(Log.detail(error))")
+        }
+    }
+
     /// Encoded dimensions of the written file (natural size with preferred
     /// transform applied), the source of truth when a preset clamped the size.
     private static func encodedVideoSize(of url: URL) async -> CGSize? {
@@ -287,8 +338,8 @@ final class ExportService {
             }
         case .prores:
             AVAssetExportPresetAppleProRes422LPCM
-        case .xml, .fcpxml:
-            AVAssetExportPresetPassthrough // unreachable — timeline formats return early
+        case .xml, .fcpxml, .hevcHDR:
+            AVAssetExportPresetPassthrough // unreachable — timeline formats and HDR return early
         }
     }
 }
