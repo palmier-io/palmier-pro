@@ -1,0 +1,414 @@
+<title>Palmier · 功能补齐 Backlog</title>
+<style>
+  :root {
+    --paper:#ECEEF0; --surface:#F8F9FA; --surface-2:#FFFFFF;
+    --ink:#1A1D23; --ink-soft:#565C66; --ink-faint:#8A909B;
+    --line:#D4D7DC; --line-soft:#E2E4E8;
+    --accent:#A9721F;
+    --p0:#C74B3E; --p1:#C08A2C; --p2:#4E77A8; --p3:#6D7480;
+    --p0-wash:#C74B3E1A; --p1-wash:#C08A2C1A; --p2-wash:#4E77A81A; --p3-wash:#6D74801A;
+    --dot-fill:#565C66; --dot-empty:#CBCFD5;
+    --font-ui:-apple-system,"SF Pro Text",system-ui,"Segoe UI",sans-serif;
+    --font-mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#121418; --surface:#191C21; --surface-2:#20242A;
+      --ink:#E7E9EC; --ink-soft:#9BA1AC; --ink-faint:#6B717C;
+      --line:#2A2E36; --line-soft:#23272E;
+      --accent:#D2A250;
+      --p0:#E06456; --p1:#DCA748; --p2:#6C97CB; --p3:#828994;
+      --p0-wash:#E0645622; --p1-wash:#DCA74822; --p2-wash:#6C97CB22; --p3-wash:#82899422;
+      --dot-fill:#9BA1AC; --dot-empty:#353A43;
+    }
+  }
+  :root[data-theme="light"] {
+    --paper:#ECEEF0; --surface:#F8F9FA; --surface-2:#FFFFFF;
+    --ink:#1A1D23; --ink-soft:#565C66; --ink-faint:#8A909B;
+    --line:#D4D7DC; --line-soft:#E2E4E8; --accent:#A9721F;
+    --p0:#C74B3E; --p1:#C08A2C; --p2:#4E77A8; --p3:#6D7480;
+    --p0-wash:#C74B3E1A; --p1-wash:#C08A2C1A; --p2-wash:#4E77A81A; --p3-wash:#6D74801A;
+    --dot-fill:#565C66; --dot-empty:#CBCFD5;
+  }
+  :root[data-theme="dark"] {
+    --paper:#121418; --surface:#191C21; --surface-2:#20242A;
+    --ink:#E7E9EC; --ink-soft:#9BA1AC; --ink-faint:#6B717C;
+    --line:#2A2E36; --line-soft:#23272E; --accent:#D2A250;
+    --p0:#E06456; --p1:#DCA748; --p2:#6C97CB; --p3:#828994;
+    --p0-wash:#E0645622; --p1-wash:#DCA74822; --p2-wash:#6C97CB22; --p3-wash:#82899422;
+    --dot-fill:#9BA1AC; --dot-empty:#353A43;
+  }
+
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--font-ui); line-height:1.55;
+    -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1080px; margin:0 auto; padding:clamp(1.4rem,4vw,3.2rem) clamp(1rem,4vw,2.4rem) 4rem; }
+
+  /* header */
+  .eyebrow { font-family:var(--font-mono); font-size:.72rem; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 .7rem; }
+  h1 { font-size:clamp(1.9rem,4.5vw,2.9rem); line-height:1.05; font-weight:800;
+    letter-spacing:-.02em; margin:0 0 .5rem; text-wrap:balance; }
+  .lede { font-size:1.02rem; color:var(--ink-soft); max-width:60ch; margin:0 0 1.1rem; }
+  .meta { display:flex; flex-wrap:wrap; gap:.4rem .9rem; font-family:var(--font-mono);
+    font-size:.74rem; color:var(--ink-faint); padding-top:1rem; border-top:1px solid var(--line); }
+  .meta span::before { content:"·"; margin-right:.7rem; color:var(--line); }
+  .meta span:first-child::before { display:none; }
+
+  /* legend */
+  .legend { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+    gap:1px; background:var(--line-soft); border:1px solid var(--line-soft);
+    border-radius:10px; overflow:hidden; margin:2.2rem 0; }
+  .legend > div { background:var(--surface); padding:.85rem 1rem; }
+  .legend h4 { margin:0 0 .55rem; font-family:var(--font-mono); font-size:.68rem;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; }
+  .prio-row { display:flex; align-items:center; gap:.5rem; font-size:.82rem; margin:.28rem 0; }
+  .swatch { width:11px; height:11px; border-radius:3px; flex:none; }
+  .dots { display:inline-flex; gap:3px; }
+  .dots i { width:7px; height:7px; border-radius:50%; background:var(--dot-empty); display:block; }
+  .dots i.on { background:var(--dot-fill); }
+  .legend p { margin:.2rem 0 0; font-size:.8rem; color:var(--ink-soft); }
+
+  /* map */
+  .map-sec { margin:2.6rem 0 3rem; }
+  .map-sec > h2 { font-size:1.15rem; font-weight:700; margin:0 0 .3rem; letter-spacing:-.01em; }
+  .map-sub { color:var(--ink-soft); font-size:.86rem; margin:0 0 1.3rem; }
+  .plot-frame { display:grid; grid-template-columns:auto 1fr; grid-template-rows:1fr auto;
+    gap:.55rem; }
+  .yaxis { grid-column:1; grid-row:1; writing-mode:vertical-rl; transform:rotate(180deg);
+    font-family:var(--font-mono); font-size:.68rem; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--ink-faint); text-align:center; align-self:center; }
+  .plot { grid-column:2; grid-row:1; position:relative; aspect-ratio:16/9; min-height:300px;
+    background:var(--surface); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .quad-hi { position:absolute; left:0; top:0; width:52%; height:52%;
+    background:linear-gradient(135deg,var(--accent),transparent); opacity:.10; }
+  .quad-label { position:absolute; font-family:var(--font-mono); font-size:.64rem;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); }
+  .grid-l { position:absolute; background:var(--line-soft); }
+  .grid-l.v { width:1px; top:0; bottom:0; }
+  .grid-l.h { height:1px; left:0; right:0; }
+  .node { position:absolute; width:26px; height:26px; border-radius:50%;
+    transform:translate(-50%,-50%); display:grid; place-items:center;
+    font-family:var(--font-mono); font-size:.72rem; font-weight:600; color:#fff;
+    border:2px solid var(--surface); cursor:default; }
+  .node.p0 { background:var(--p0); } .node.p1 { background:var(--p1); }
+  .node.p2 { background:var(--p2); } .node.p3 { background:var(--p3); }
+  .xaxis { grid-column:2; grid-row:2; text-align:center; font-family:var(--font-mono);
+    font-size:.68rem; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); }
+
+  /* tiers */
+  .tier { margin-top:2.8rem; }
+  .tier-head { display:flex; align-items:baseline; gap:.7rem; flex-wrap:wrap;
+    padding-bottom:.7rem; border-bottom:2px solid; margin-bottom:1.1rem; }
+  .tier-head .tag { font-family:var(--font-mono); font-size:.72rem; font-weight:700;
+    letter-spacing:.06em; padding:.16rem .5rem; border-radius:5px; color:#fff; }
+  .tier-head h3 { font-size:1.18rem; font-weight:700; margin:0; letter-spacing:-.01em; }
+  .tier-head .cnt { font-family:var(--font-mono); font-size:.76rem; color:var(--ink-faint);
+    margin-left:auto; }
+  .t0 .tier-head { border-color:var(--p0); } .t0 .tag { background:var(--p0); }
+  .t1 .tier-head { border-color:var(--p1); } .t1 .tag { background:var(--p1); }
+  .t2 .tier-head { border-color:var(--p2); } .t2 .tag { background:var(--p2); }
+  .t3 .tier-head { border-color:var(--p3); } .t3 .tag { background:var(--p3); }
+
+  .cards { display:grid; gap:.7rem; }
+  .card { display:grid; grid-template-columns:auto 1fr auto; gap:.4rem 1rem;
+    align-items:start; background:var(--surface); border:1px solid var(--line);
+    border-radius:11px; padding:.95rem 1.1rem; }
+  .card .num { grid-row:1/3; width:30px; height:30px; border-radius:8px; flex:none;
+    display:grid; place-items:center; font-family:var(--font-mono); font-weight:700;
+    font-size:.82rem; color:#fff; }
+  .t0 .num { background:var(--p0); } .t1 .num { background:var(--p1); }
+  .t2 .num { background:var(--p2); } .t3 .num { background:var(--p3); }
+  .card .title { grid-column:2; font-weight:650; font-size:1rem; letter-spacing:-.005em; }
+  .card .cat { display:inline-block; font-family:var(--font-mono); font-size:.66rem;
+    letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint);
+    border:1px solid var(--line); border-radius:4px; padding:.05rem .38rem; margin-left:.5rem;
+    vertical-align:middle; }
+  .card .why { grid-column:2; font-size:.865rem; color:var(--ink-soft); margin-top:.15rem; }
+  .card .why b { color:var(--ink); font-weight:600; }
+  .card .metrics { grid-column:3; grid-row:1/3; display:flex; flex-direction:column;
+    align-items:flex-end; gap:.45rem; text-align:right; white-space:nowrap; }
+  .metric { display:flex; align-items:center; gap:.4rem; font-family:var(--font-mono);
+    font-size:.66rem; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-faint); }
+  .metric .dots i { width:8px; height:8px; }
+  .impact-pips { display:inline-flex; gap:3px; }
+  .impact-pips i { width:8px; height:8px; border-radius:2px; background:var(--dot-empty); }
+  .impact-pips i.on { background:var(--accent); }
+
+  .foot { margin-top:3rem; padding:1.3rem 1.4rem; background:var(--surface);
+    border:1px solid var(--line); border-radius:12px; }
+  .foot h4 { margin:0 0 .5rem; font-size:.95rem; }
+  .foot p { margin:.35rem 0; font-size:.86rem; color:var(--ink-soft); }
+  .foot b { color:var(--ink); }
+
+  @media (max-width:560px) {
+    .card { grid-template-columns:auto 1fr; }
+    .card .metrics { grid-column:1/3; grid-row:auto; flex-direction:row; align-items:center;
+      justify-content:flex-start; gap:1rem; margin-top:.3rem; }
+    .card .title, .card .why { grid-column:2; }
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Product Backlog · 对标 剪映 / CapCut</p>
+    <h1>Palmier 功能补齐清单</h1>
+    <p class="lede">按投入产出比排序的补齐路线。优先级来自「用户影响 × 实现成本」,成本估算基于对现有代码库(Core Image 合成器、EffectRegistry、关键帧、Vision/CoreML 基建)的实测盘点——不少缺口能直接复用已有能力,成本比看上去低。</p>
+    <div class="meta">
+      <span>基于代码库实测</span><span>17 项</span><span>2026-07</span><span>Swift · macOS 26 · arm64</span>
+    </div>
+  </header>
+
+  <div class="legend">
+    <div>
+      <h4>优先级</h4>
+      <div class="prio-row"><span class="swatch" style="background:var(--p0)"></span>P0 · 现在做(高影响 · 低成本)</div>
+      <div class="prio-row"><span class="swatch" style="background:var(--p1)"></span>P1 · 下一步(高价值 · 中成本)</div>
+      <div class="prio-row"><span class="swatch" style="background:var(--p2)"></span>P2 · 排期靠后</div>
+      <div class="prio-row"><span class="swatch" style="background:var(--p3)"></span>P3 · 长线 / 昂贵</div>
+    </div>
+    <div>
+      <h4>实现成本 Effort</h4>
+      <div class="prio-row"><span class="dots"><i class="on"></i><i></i><i></i><i></i><i></i></span>1 · 复用现有能力</div>
+      <div class="prio-row"><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span>3 · 新模块 + UI</div>
+      <div class="prio-row"><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>5 · 架构改动 / 需模型</div>
+    </div>
+    <div>
+      <h4>用户影响 Impact</h4>
+      <div class="prio-row"><span class="impact-pips"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>刚需 · 一上手就缺</div>
+      <div class="prio-row"><span class="impact-pips"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span>进阶用户会缺</div>
+      <p>影响与成本均为 1–5 相对分,非绝对工时。</p>
+    </div>
+  </div>
+
+  <section class="map-sec">
+    <h2>影响 × 成本 地图</h2>
+    <p class="map-sub">左上角 = 高影响、低成本 = 先做。编号对应下方卡片。</p>
+    <div class="plot-frame">
+      <div class="yaxis">用户影响 →</div>
+      <div class="plot">
+        <div class="quad-hi"></div>
+        <div class="quad-label" style="left:1%;top:1.5%">▲ 先做</div>
+        <div class="quad-label" style="right:1.5%;bottom:2%">昂贵 · 低价值</div>
+        <div class="grid-l v" style="left:20%"></div>
+        <div class="grid-l v" style="left:40%"></div>
+        <div class="grid-l v" style="left:60%"></div>
+        <div class="grid-l v" style="left:80%"></div>
+        <div class="grid-l h" style="top:20%"></div>
+        <div class="grid-l h" style="top:40%"></div>
+        <div class="grid-l h" style="top:60%"></div>
+        <div class="grid-l h" style="top:80%"></div>
+
+        <div class="node p0" style="left:28%;top:9%" title="转场系统">1</div>
+        <div class="node p0" style="left:30%;top:29%" title="自动音频闪避">2</div>
+        <div class="node p0" style="left:23%;top:33%" title="创意特效包">3</div>
+        <div class="node p0" style="left:9%;top:49%" title="定格帧">4</div>
+        <div class="node p0" style="left:9%;top:69%" title="社交导出预设+GIF">5</div>
+
+        <div class="node p1" style="left:48%;top:9%" title="AI 智能抠像">6</div>
+        <div class="node p1" style="left:46%;top:28%" title="智能重构图">7</div>
+        <div class="node p1" style="left:55%;top:32%" title="形状/画笔蒙版">8</div>
+        <div class="node p1" style="left:29%;top:49%" title="倒放">9</div>
+        <div class="node p1" style="left:49%;top:49%" title="贴纸/素材库">10</div>
+
+        <div class="node p2" style="left:68%;top:29%" title="变速曲线">11</div>
+        <div class="node p2" style="left:88%;top:30%" title="AI 一键成片">12</div>
+        <div class="node p2" style="left:68%;top:49%" title="运动跟踪/防抖">13</div>
+        <div class="node p2" style="left:55%;top:51%" title="调整图层">14</div>
+        <div class="node p2" style="left:49%;top:69%" title="音频 EQ/压缩">15</div>
+
+        <div class="node p3" style="left:88%;top:49%" title="光流补帧">16</div>
+        <div class="node p3" style="left:69%;top:69%" title="磁性时间线">17</div>
+      </div>
+      <div class="xaxis">实现成本 →</div>
+    </div>
+  </section>
+
+  <!-- P0 -->
+  <section class="tier t0">
+    <div class="tier-head"><span class="tag">P0</span><h3>现在做</h3><span class="cnt">高影响 · 低成本 · 快赢</span></div>
+    <div class="cards">
+      <div class="card">
+        <div class="num">1</div>
+        <div class="title">转场系统<span class="cat">Timeline</span></div>
+        <div class="why"><b>最大缺口。</b>叠化 / 溶解优先,擦除与创意转场随后。合成器已逐帧混合两条轨道,交叉溶解基本是「在重叠区插值两片段」,成本很低。需给 Clip 加 transition 模型 + 拖拽 UI。</div>
+        <div class="metrics">
+          <div class="metric">Effort<span class="dots"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span></div>
+          <div class="metric">Impact<span class="impact-pips"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="num">2</div>
+        <div class="title">自动音频闪避 Ducking<span class="cat">Audio</span></div>
+        <div class="why">音乐遇人声自动压低。<b>几乎是组合现有能力</b>——已有 VAD 语音活动检测 + 音量关键帧,把前者的区间转成后者的自动增益即可。</div>
+        <div class="metrics">
+          <div class="metric">Effort<span class="dots"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span></div>
+          <div class="metric">Impact<span class="impact-pips"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="num">3</div>
+        <div class="title">创意特效包<span class="cat">Effects</span></div>
+        <div class="why">故障 / 抖动 / VHS / 分屏光效等「好玩」特效。<b>基建已在</b>:EffectRegistry + kernel 管线成熟,现有全是校正类,增量补 kernel 就能扩出创意目录。</div>
+        <div class="metrics">
+          <div class="metric">Effort<span class="dots"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span></div>
+          <div class="metric">Impact<span class="impact-pips"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="num">4</div>
+        <div class="title">定格帧 Freeze frame<span class="cat">Speed</span></div>
+        <div class="why">在某帧定住一段时长。复用现有取帧逻辑,是变速家族里最便宜的一项,可先落地。</div>
+        <div class="metrics">
+          <div class="metric">Effort<span class="dots"><i class="on"></i><i></i><i></i><i></i><i></i></span></div>
+          <div class="metric">Impact<span class="impact-pips"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="num">5</div>
+        <div class="title">社交导出预设 + GIF<span class="cat">Export</span></div>
+        <div class="why">TikTok / YouTube / Reels 一键码率+尺寸,加 GIF。<b>纯预设 + 编码分支</b>,现有导出栈已支持多格式,快赢。</div>
+        <div class="metrics">
+          <div class="metric">Effort<span class="dots"><i class="on"></i><i></i><i></i><i></i><i></i></span></div>
+          <div class="metric">Impact<span class="impact-pips"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- P1 -->
+  <section class="tier t1">
+    <div class="tier-head"><span class="tag">P1</span><h3>下一步</h3><span class="cnt">高价值 · 中成本</span></div>
+    <div class="cards">
+      <div class="card">
+        <div class="num">6</div>
+        <div class="title">AI 智能抠像<span class="cat">Matte / AI</span></div>
+        <div class="why">人像 / 主体去背(现只有绿幕色度键)。已有 CoreML 基建(如 BeatThis 模型),接入分割模型即可;<b>注意模型下载策略</b>,与现有 Matte 纯色底图区分开。</div>
+        <div class="metrics">
+          <div class="metric">Effort<span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></div>
+          <div class="metric">Impact<span class="impact-pips"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="num">7</div>
+        <div class="title">智能重构图 Auto-reframe<span class="cat">Reframe / AI</span></div>
+        <div class="why">横转竖跟主体自动构图。用 Vision 显著性 / 人脸检测生成锚点,<b>直接喂给现有 crop / position 关键帧</b>系统。对内容复用价值高。</div>
+        <div class="metrics">
+          <div class="metric">Effort<span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></div>
+          <div class="metric">Impact<span class="impact-pips"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="num">8</div>
+        <div class="title">形状 / 画笔蒙版<span class="cat">Compositing</span></div>
+        <div class="why">局部调色、局部模糊、遮挡的基础。色度键已证明 kernel + 合成链能力,补形状 mask 数据 + 绘制 UI。</div>
+        <div class="metrics">
+          <div class="metric">Effort<span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></div>
+          <div class="metric">Impact<span class="impact-pips"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="num">9</div>
+        <div class="title">倒放 Reverse<span class="cat">Speed</span></div>
+        <div class="why">反向解码 / 取帧。独立、需求高、成本中等,可与定格一起补齐变速基础盘。</div>
+        <div class="metrics">
+          <div class="metric">Effort<span class="dots"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span></div>
+          <div class="metric">Impact<span class="impact-pips"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="num">10</div>
+        <div class="title">贴纸 / 图形素材库<span class="cat">Assets</span></div>
+        <div class="why">渲染等同现有图片片段,工作量在<b>新资产类型 + 库 UI</b>,而非合成。花字 / 表情包生态的入口。</div>
+        <div class="metrics">
+          <div class="metric">Effort<span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></div>
+          <div class="metric">Impact<span class="impact-pips"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- P2 -->
+  <section class="tier t2">
+    <div class="tier-head"><span class="tag">P2</span><h3>排期靠后</h3><span class="cnt">成本升高或价值中等</span></div>
+    <div class="cards">
+      <div class="card">
+        <div class="num">11</div>
+        <div class="title">变速曲线 Speed ramp<span class="cat">Speed</span></div>
+        <div class="why">需时间重映射 + 音频配合,现有 <code>Clip.speed</code> 标量要改成可关键帧。价值高但触及时间轴计算,晚于定格 / 倒放。</div>
+        <div class="metrics">
+          <div class="metric">Effort<span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span></div>
+          <div class="metric">Impact<span class="impact-pips"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="num">12</div>
+        <div class="title">AI 一键成片 / 自动混剪<span class="cat">AI / Templates</span></div>
+        <div class="why">大系统。可<b>借现有 agent + 卡点检测</b>做「AI auto-montage」降低门槛,而非做剪映式模板市场,契合产品定位。</div>
+        <div class="metrics">
+          <div class="metric">Effort<span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span></div>
+          <div class="metric">Impact<span class="impact-pips"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="num">13</div>
+        <div class="title">运动跟踪 / 防抖<span class="cat">Vision</span></div>
+        <div class="why">Vision 有现成稳定 API(防抖较易),物体跟踪更重。跟踪马赛克 / 跟踪贴字依赖它。</div>
+        <div class="metrics">
+          <div class="metric">Effort<span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span></div>
+          <div class="metric">Impact<span class="impact-pips"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="num">14</div>
+        <div class="title">调整图层 Adjustment layer<span class="cat">Compositing</span></div>
+        <div class="why">特效目前仅挂单片段,跨片段统一调色需<b>架构改动</b>。对调色重度用户价值明显。</div>
+        <div class="metrics">
+          <div class="metric">Effort<span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></div>
+          <div class="metric">Impact<span class="impact-pips"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="num">15</div>
+        <div class="title">音频 EQ / 压缩器机架<span class="cat">Audio</span></div>
+        <div class="why">AVAudioUnit 接入。已有降噪,补 EQ / 压缩属锦上添花,专业音频用户会用到。</div>
+        <div class="metrics">
+          <div class="metric">Effort<span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></div>
+          <div class="metric">Impact<span class="impact-pips"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- P3 -->
+  <section class="tier t3">
+    <div class="tier-head"><span class="tag">P3</span><h3>长线 / 昂贵</h3><span class="cnt">投入产出比低,暂缓</span></div>
+    <div class="cards">
+      <div class="card">
+        <div class="num">16</div>
+        <div class="title">光流补帧<span class="cat">Speed / AI</span></div>
+        <div class="why">丝滑慢动作需帧插值模型,计算与集成都重。除非慢动作是核心卖点,否则暂缓。</div>
+        <div class="metrics">
+          <div class="metric">Effort<span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span></div>
+          <div class="metric">Impact<span class="impact-pips"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="num">17</div>
+        <div class="title">磁性时间线<span class="cat">Timeline</span></div>
+        <div class="why">时间轴架构改动,而现有 ripple 已覆盖大部分诉求,价值有限。定位为专业 NLE 时非必需。</div>
+        <div class="metrics">
+          <div class="metric">Effort<span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span></div>
+          <div class="metric">Impact<span class="impact-pips"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="foot">
+    <h4>取舍原则</h4>
+    <p>Palmier 定位是 <b>filmmaker 的 AI-native 专业工具</b>,不是剪映的复刻。它在<b>专业调色(色轮/曲线/HSL/示波器/LUT)、完整关键帧、生成式 AI 全家桶、16 混合模式与 PiP 布局</b>上已领先剪映——这些是护城河,别为追平大众功能而稀释。</p>
+    <p>补齐重点是那些<b>「消费级好玩但恰好能复用现有基建」</b>的项(P0 全部如此),优先吃掉左上角的高 ROI 缺口;<b>模板 / 磁性时间线 / 光流</b>这类要么偏离定位、要么昂贵,能等。</p>
+  </div>
+</div>
