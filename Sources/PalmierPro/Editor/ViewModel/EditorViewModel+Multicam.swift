@@ -61,6 +61,13 @@ extension EditorViewModel {
         multicamGroup(of: clip)?.member(mediaRef: clip.mediaRef)?.angleLabel
     }
 
+    func multicamAudioBearers(of group: MulticamSource) -> [MulticamSource.Member] {
+        group.members.filter { member in
+            member.usable && (member.providesAudio
+                || mediaAssets.first { $0.id == member.mediaRef }?.hasAudio == true)
+        }
+    }
+
     func refuseWithToast(_ reason: String) {
         mediaPanelToast = MediaPanelToast(stringLiteral: reason)
         NSSound.beep()
@@ -432,7 +439,7 @@ extension EditorViewModel {
                 throw ToolError("Layout \(request.layout.rawValue) takes at most \(request.layout.slots.count) angle(s): \(request.layout.slots.map(\.id).joined(separator: ", ")).")
             }
             return MulticamEngine.Entry(range: request.range,
-                                        slots: try request.angles.map { try resolveAngle($0, group: group) },
+                                        slots: try request.angles.map { try resolveMember($0, group: group) },
                                         layout: request.layout)
         }
         var outcome = MulticamEngine.Outcome()
@@ -464,12 +471,15 @@ extension EditorViewModel {
             AngleSwitchRequest(range: clip.startFrame..<clip.endFrame, layout: layout, angles: angles))
     }
 
-    private func resolveAngle(_ label: String, group: MulticamSource) throws -> MulticamSource.Member {
-        guard let member = group.member(labeled: label), member.providesVideo else {
-            throw ToolError("Unknown angle '\(label)'. Angles: \(group.angles.map(\.angleLabel).joined(separator: ", ")).")
+    private func resolveMember(_ label: String, group: MulticamSource, audio: Bool = false) throws -> MulticamSource.Member {
+        let noun = audio ? "mic" : "angle"
+        let candidates = audio ? multicamAudioBearers(of: group) : group.angles
+        guard let member = group.member(labeled: label),
+              audio ? candidates.contains(where: { $0.id == member.id }) : member.providesVideo else {
+            throw ToolError("Unknown \(noun) '\(label)'. \(noun.capitalized)s: \(candidates.map(\.angleLabel).joined(separator: ", ")).")
         }
         guard member.usable else {
-            throw ToolError("Angle '\(label)' isn't synced — pin an offset or recreate the group.")
+            throw ToolError("\(noun.capitalized) '\(label)' isn't synced — pin an offset or recreate the group.")
         }
         return member
     }
@@ -506,10 +516,10 @@ extension EditorViewModel {
         let programTrack = multicamClips(of: group.id)
             .filter { timeline.tracks[$0.trackIndex].type == .video && $0.clip.mediaType != .audio }
             .map(\.trackIndex).max()
-        if loc.trackIndex != programTrack {
+        if clip.mediaType == .audio || loc.trackIndex != programTrack {
             do {
-                let member = try resolveAngle(angle, group: group)
-                withTimelineSwap(actionName: "Switch Angle") {
+                let member = try resolveMember(angle, group: group, audio: clip.mediaType == .audio)
+                withTimelineSwap(actionName: clip.mediaType == .audio ? "Switch Mic" : "Switch Angle") {
                     MulticamEngine.rewrite(&timeline.tracks[loc.trackIndex].clips[loc.clipIndex],
                                            group: group, to: member,
                                            sourceDurations: multicamSourceDurations(group), fps: timeline.fps)

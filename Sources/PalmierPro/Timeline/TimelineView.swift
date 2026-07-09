@@ -1009,13 +1009,11 @@ final class TimelineView: NSView {
 
         var multicamItems: [NSMenuItem] = []
         if let group = editor.multicamGroup(of: clip) {
-            if clip.mediaType != .audio {
-                if let item = switchAngleItem(group: group, clip: clip) {
-                    multicamItems.append(item)
-                }
-                if group.angles.count >= 2 {
-                    multicamItems.append(layoutItem(clip: clip))
-                }
+            if let item = switchMemberItem(group: group, clip: clip) {
+                multicamItems.append(item)
+            }
+            if clip.mediaType != .audio, group.angles.count >= 2 {
+                multicamItems.append(layoutItem(clip: clip))
             }
             let ungroupItem = NSMenuItem(title: "Ungroup Multicam", action: #selector(performUngroupMulticam(_:)), keyEquivalent: "")
             ungroupItem.target = self
@@ -1070,18 +1068,19 @@ final class TimelineView: NSView {
 
     // MARK: - Multicam menu
 
-    private func switchAngleItem(group: MulticamSource, clip: Clip) -> NSMenuItem? {
-        let angles = group.angles
-        guard angles.contains(where: { $0.mediaRef != clip.mediaRef }) else { return nil }
+    private func switchMemberItem(group: MulticamSource, clip: Clip) -> NSMenuItem? {
+        let audio = clip.mediaType == .audio
+        let members = audio ? editor.multicamAudioBearers(of: group) : group.angles
+        guard members.contains(where: { $0.mediaRef != clip.mediaRef }) else { return nil }
         let submenu = NSMenu()
-        for member in angles {
+        for member in members {
             let item = NSMenuItem(title: member.angleLabel, action: #selector(performSwitchMulticamSegment(_:)), keyEquivalent: "")
             item.target = self
             item.state = member.mediaRef == clip.mediaRef ? .on : .off
             item.representedObject = ["clipId": clip.id, "angle": member.angleLabel] as [String: Any]
             submenu.addItem(item)
         }
-        let parent = NSMenuItem(title: "Switch Angle", action: nil, keyEquivalent: "")
+        let parent = NSMenuItem(title: audio ? "Switch Mic" : "Switch Angle", action: nil, keyEquivalent: "")
         parent.submenu = submenu
         return parent
     }

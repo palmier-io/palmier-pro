@@ -164,6 +164,41 @@ struct MulticamTests {
         #expect(h.editor.multicamClips(of: groupId).count == 2)
     }
 
+    @Test func switchMicRewritesAudioClipInPlace() throws {
+        let h = ToolHarness()
+        h.addAsset(id: "camA", type: .video, duration: 120, hasAudio: true)
+        h.addAsset(id: "lapel", type: .audio, duration: 130)
+        h.addAsset(id: "room", type: .audio, duration: 125)
+        let (groupId, _) = try h.editor.createMulticamGroup(
+            specs: [
+                .init(mediaRef: "camA", kind: .angle, angleLabel: "cam-a"),
+                .init(mediaRef: "lapel", kind: .mic, angleLabel: "lapel"),
+                .init(mediaRef: "room", kind: .mic, angleLabel: "room"),
+            ],
+            syncMaps: [
+                "camA": .init(offsetSeconds: 0, confidence: 1),
+                "lapel": .init(offsetSeconds: 2, confidence: 1),
+                "room": .init(offsetSeconds: 0, confidence: 1),
+            ],
+            masterRef: "lapel", name: "MC", startFrame: 0
+        )
+        // Chop the lapel lane, then switch just the middle piece to the room mic.
+        let lapel = h.editor.multicamClips(of: groupId).first { $0.clip.mediaRef == "lapel" }!.clip
+        _ = h.editor.splitClip(clipId: lapel.id, atFrame: 600)
+        let mid = h.editor.multicamClips(of: groupId).first { $0.clip.mediaRef == "lapel" && $0.clip.startFrame == 600 }!.clip
+        _ = h.editor.splitClip(clipId: mid.id, atFrame: 1200)
+        let target = h.editor.multicamClips(of: groupId).first { $0.clip.mediaRef == "lapel" && $0.clip.startFrame == 600 }!.clip
+
+        h.editor.switchMulticamSegment(clipId: target.id, to: "room")
+        let swapped = h.editor.clipFor(id: target.id)!
+        #expect(swapped.mediaRef == "room")
+        // Same real moment on the room mic's clock: lapel trim 540 + 2s·30.
+        #expect(swapped.trimStartFrame == 600)
+        #expect(swapped.startFrame == 600 && swapped.endFrame == 1200)
+        // Neighbors untouched.
+        #expect(h.editor.multicamClips(of: groupId).map(\.clip).filter { $0.mediaRef == "lapel" }.count == 2)
+    }
+
     // MARK: - Switching
 
     @Test func switchRewritesTrimThroughSyncMaps() throws {
