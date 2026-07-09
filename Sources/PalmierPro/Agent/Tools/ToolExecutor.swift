@@ -48,7 +48,6 @@ final class ToolExecutor {
                 await Task.yield()
                 #endif
                 let result = try await run(tool, editor, resolved)
-                try Task.checkCancellation()
                 await Task.yield()
                 // Record any edit that actually changed the timeline so `undo` can revert it.
                 if tool != .undo, !result.isError, editor.timeline != before,
