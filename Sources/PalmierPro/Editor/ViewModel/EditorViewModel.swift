@@ -62,6 +62,7 @@ final class EditorViewModel {
     var denoiseBaked: Set<String> = []
     var speechAnalyzingCount: Int = 0
     var speakerRegistry: [SpeakerRegistryEntry] = []
+    var multicamGroups: [MulticamSource] = []
     var speakerAssignments: [String: [String: Int]] = [:]
     var speakerIdentifyPhase: String?
     var speakerIdentifyInFlight: Bool { speakerIdentifyPhase != nil }
