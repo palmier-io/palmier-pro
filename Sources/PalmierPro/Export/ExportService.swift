@@ -219,9 +219,7 @@ final class ExportService {
         }
     }
 
-    /// Build the composition, then encode HEVC Main10 HDR. The compositor renders SDR Rec.709
-    /// (grades, effects, and titles already baked in via the videoComposition); `HDRVideoExporter`
-    /// converts 709 → HLG per frame.
+    /// Encode HEVC Main10 HDR; `HDRVideoExporter` converts the composition's SDR 709 frames to HLG.
     private func exportHDR(
         timeline: Timeline,
         resolver: MediaResolver,

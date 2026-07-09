@@ -2,12 +2,9 @@ import AVFoundation
 import CoreImage
 import VideoToolbox
 
-/// HEVC Main10 BT.2020 HLG/PQ export via `AVAssetReader` → `AVAssetWriter`, since
-/// `AVAssetExportSession` presets can't emit 10-bit HDR. The videoComposition's compositor bakes
-/// grades, effects, and titles into each SDR Rec.709 frame; we convert 709 → HLG per frame here.
+/// HEVC Main10 BT.2020 HLG/PQ export; `AVAssetExportSession` presets can't emit 10-bit HDR.
 enum HDRVideoExporter {
 
-    /// SDR working space for the read frames; 709 → HLG maps SDR white to graphics-white.
     static let sdrWorkingSpace = CGColorSpace(name: CGColorSpace.itur_709)
         ?? CGColorSpaceCreateDeviceRGB()
 
@@ -50,7 +47,6 @@ enum HDRVideoExporter {
 
     // MARK: - Export
 
-    /// Non-Sendable AV handles crossed explicitly; exporter is sole owner.
     struct Inputs: @unchecked Sendable {
         let composition: AVComposition
         let videoComposition: AVVideoComposition
@@ -71,9 +67,8 @@ enum HDRVideoExporter {
         guard !videoTracks.isEmpty else { throw HDRExportError(reason: "no video tracks") }
         let totalSeconds = try await composition.load(.duration).seconds
 
-        // The compositor renders SDR Rec.709; we convert 709 → HLG BT.2020 per frame in CoreImage.
-        // Relabeling the composition as HLG (what we used to do) tags the output HDR without
-        // converting the pixels, so SDR midtones display at HDR brightness — blown out.
+        // Convert 709 → HLG per frame in CoreImage; relabeling the composition as HLG would tag
+        // the output HDR without converting pixels, blowing out SDR midtones.
         let reader = try AVAssetReader(asset: composition)
         let videoOutput = AVAssetReaderVideoCompositionOutput(
             videoTracks: videoTracks, videoSettings: readerVideoSettings
@@ -95,9 +90,8 @@ enum HDRVideoExporter {
         guard writer.canAdd(videoInput) else { throw HDRExportError(reason: "cannot add video input") }
         writer.add(videoInput)
 
-        // Audio (optional): mix down to PCM, re-encode to AAC. Add the reader output and writer
-        // input atomically — both or neither. An audio reader output that nobody drains stalls the
-        // reader's shared read-ahead and deadlocks the video pump.
+        // Add the audio reader output and writer input atomically — an output nobody drains stalls
+        // the reader's shared read-ahead and deadlocks the video pump.
         var audioOutput: AVAssetReaderAudioMixOutput?
         var audioInput: AVAssetWriterInput?
         if !audioTracks.isEmpty {
@@ -120,8 +114,7 @@ enum HDRVideoExporter {
             }
         }
 
-        // Every HDR frame is processed in CoreImage: decode the SDR 709 frame and convert
-        // 709 → HLG on output. The adaptor must be created before the writer starts.
+        // The adaptor must be created before the writer starts.
         let attrs: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: pixelFormat,
             kCVPixelBufferWidthKey as String: Int(renderSize.width),
@@ -131,8 +124,7 @@ enum HDRVideoExporter {
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(
             assetWriterInput: videoInput, sourcePixelBufferAttributes: attrs
         )
-        // Render into the space that matches the tagged transfer, or the encoded pixels won't
-        // agree with the color metadata.
+        // Render into the space matching the tagged transfer, or pixels won't agree with metadata.
         let transferName = transfer == .pq ? CGColorSpace.itur_2100_PQ : CGColorSpace.itur_2100_HLG
         let outputSpace = CGColorSpace(name: transferName)
             ?? CGColorSpace(name: CGColorSpace.itur_2020) ?? sdrWorkingSpace
@@ -178,8 +170,7 @@ enum HDRVideoExporter {
         }
     }
 
-    /// Records the first pump failure so the caller surfaces an error instead of finalizing a
-    /// truncated file as if it succeeded.
+    /// Records the first pump failure so the caller errors instead of finalizing a truncated file.
     private final class FailureBox: @unchecked Sendable {
         private let lock = NSLock()
         private var stored: String?
@@ -193,7 +184,7 @@ enum HDRVideoExporter {
         }
     }
 
-    /// `@unchecked Sendable`: each box is driven from one dedicated serial queue.
+    /// Each box is driven from one dedicated serial queue.
     private final class PumpBox: @unchecked Sendable {
         let input: AVAssetWriterInput
         let output: AVAssetReaderOutput
@@ -206,7 +197,6 @@ enum HDRVideoExporter {
     }
 
     /// Drain one reader output into one writer input, honoring back-pressure.
-    /// `onSeconds` (video pump only) reports each appended sample's PTS in seconds, throttled.
     private static func pump(_ box: PumpBox, failure: FailureBox, onSeconds: (@Sendable (Double) -> Void)? = nil) async {
         let queue = DispatchQueue(label: "hdr.pump.\(box.input.mediaType.rawValue)")
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
@@ -219,8 +209,7 @@ enum HDRVideoExporter {
                         return
                     }
                     if !box.input.append(sample) {
-                        // Abort: cancel the shared reader so the video pump's undrained output
-                        // unblocks instead of stalling read-ahead and deadlocking waitForAll.
+                        // Cancel the shared reader so the other pump's undrained output unblocks.
                         failure.set("audio append failed")
                         box.reader.cancelReading()
                         box.input.markAsFinished()
@@ -236,7 +225,7 @@ enum HDRVideoExporter {
         }
     }
 
-    /// Bundles the non-Sendable CoreImage handles for the 709 → HLG video pump.
+    /// Non-Sendable CoreImage handles for the 709 → HLG video pump.
     private struct ProcessingContext: @unchecked Sendable {
         let input: AVAssetWriterInput
         let output: AVAssetReaderOutput
@@ -248,8 +237,7 @@ enum HDRVideoExporter {
         let outputSpace: CGColorSpace
     }
 
-    /// Like `pump`, but converts each SDR 709 frame to a fresh 10-bit HLG buffer and writes it
-    /// via the pixel-buffer adaptor.
+    /// Like `pump`, but converts each SDR 709 frame to a 10-bit HLG buffer via the adaptor.
     private static func pumpVideoProcessed(
         _ c: ProcessingContext, failure: FailureBox, onSeconds: (@Sendable (Double) -> Void)? = nil
     ) async {
@@ -267,8 +255,6 @@ enum HDRVideoExporter {
                     }
                     let pts = CMSampleBufferGetPresentationTimeStamp(sample)
                     let image = CIImage(cvPixelBuffer: srcBuffer, options: [.colorSpace: c.inputSpace])
-                    // On any abort, cancel the shared reader so a concurrent audio pump unblocks
-                    // (its undrained output would otherwise stall read-ahead and deadlock waitForAll).
                     guard let pool = c.adaptor.pixelBufferPool else {
                         failure.set("pixel buffer pool unavailable")
                         c.reader.cancelReading(); c.input.markAsFinished(); cont.resume(); return
