@@ -272,6 +272,23 @@ final class AppState {
         try await openProjectAsync(at: url, register: false, options: options)
     }
 
+    func duplicateProject(at url: URL) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [Self.projectContentType]
+        panel.nameFieldStringValue = "\(url.deletingPathExtension().lastPathComponent) Copy"
+        panel.directoryURL = url.deletingLastPathComponent()
+        panel.title = "Duplicate Project"
+        panel.begin { response in
+            guard response == .OK, let dest = panel.url else { return }
+            do {
+                try FileManager.default.copyItem(at: url, to: dest)
+                AppState.shared.openProject(at: dest)
+            } catch {
+                NSAlert(error: error).runModal()
+            }
+        }
+    }
+
     func openProjectFromPanel() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [Self.projectContentType]
