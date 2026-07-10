@@ -225,7 +225,6 @@ final class ExportService {
                         telemetry: "Export cancelled",
                         data: ["format": String(describing: format), "resolution": resolution.rawValue]
                     )
-                    videoAnalytics.fail()
                 } else {
                     self.error = Log.detail(error)
                     Log.export.error(

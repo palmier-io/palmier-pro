@@ -258,8 +258,8 @@ final class AppState {
 
     private func showExistingProject(at url: URL, register: Bool, options: ProjectOpenOptions) -> VideoProject? {
         if let existing = openProjects.first(where: { Self.sameFile($0.fileURL, url) }) {
-            showEditor(for: existing)
             if register { ProjectRegistry.shared.register(url) }
+            showEditor(for: existing)
             apply(options, to: existing.editorViewModel)
             return existing
         }
@@ -273,12 +273,15 @@ final class AppState {
     private func recordProjectOpened(_ project: VideoProject) {
         let properties = project.editorViewModel.analyticsSnapshot()
         Analytics.capture(.projectOpened, properties: properties)
-        Analytics.captureProjectActive(projectId: project.editorViewModel.projectId, properties: properties)
+        if let projectId = project.editorViewModel.projectId {
+            Analytics.captureProjectActive(projectId: projectId, properties: properties)
+        }
     }
 
     private func recordProjectActive(_ project: VideoProject) {
+        guard let projectId = project.editorViewModel.projectId else { return }
         let properties = project.editorViewModel.analyticsSnapshot()
-        Analytics.captureProjectActive(projectId: project.editorViewModel.projectId, properties: properties)
+        Analytics.captureProjectActive(projectId: projectId, properties: properties)
     }
 
     private func apply(_ options: ProjectOpenOptions, to editor: EditorViewModel) {
