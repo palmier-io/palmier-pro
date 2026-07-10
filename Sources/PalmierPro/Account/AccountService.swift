@@ -208,6 +208,7 @@ final class AccountService {
 
         let user = Clerk.shared.user
         Telemetry.setUser(id: user?.id)
+        Analytics.identifyUser(id: user?.id)
         let name = [user?.firstName, user?.lastName]
             .compactMap { $0 }
             .joined(separator: " ")
@@ -286,12 +287,17 @@ final class AccountService {
                 receiveValue: { [weak self] response in
                     self?.account = response
                     self?.lastError = nil
+                    Analytics.identifyUser(
+                        id: Clerk.shared.user?.id,
+                        properties: ["tier": response.user.tier.rawValue]
+                    )
                 }
             )
     }
 
     private func clearAccount() {
         Telemetry.setUser(id: nil)
+        Analytics.resetUser()
         accountSubscription?.cancel()
         accountSubscription = nil
         buyCreditsTask?.cancel()

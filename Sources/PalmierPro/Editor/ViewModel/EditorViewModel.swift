@@ -165,12 +165,7 @@ final class EditorViewModel {
     var projectURL: URL? {
         didSet {
             guard projectURL != oldValue else { return }
-            projectId = projectURL.flatMap { url in
-                let resolved = url.standardizedFileURL
-                return ProjectRegistry.shared.entries
-                    .first(where: { $0.url.standardizedFileURL == resolved })?
-                    .id.uuidString
-            }
+            refreshProjectId()
         }
     }
     private(set) var projectId: String?
@@ -311,6 +306,16 @@ final class EditorViewModel {
             "unprocessableMedia": unprocessableMediaRefs.count,
             "generationLogEntries": generationLog.entries.count,
             "agentSessions": agentService.sessions.count
+        ]
+    }
+
+    func refreshProjectId() {
+        projectId = projectURL.flatMap { ProjectRegistry.shared.id(for: $0)?.uuidString }
+    }
+
+    func analyticsSnapshot() -> [String: Any] {
+        return [
+            "project_id": projectId ?? "unknown",
         ]
     }
 

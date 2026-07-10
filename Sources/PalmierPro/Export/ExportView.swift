@@ -490,7 +490,8 @@ struct ExportView: View {
                     fcpxmlVersion: fcpxmlVersion,
                     fcpxmlTarget: fcpxmlTarget,
                     missingMediaRefs: editor.missingMediaRefs,
-                    outputURL: url
+                    outputURL: url,
+                    analyticsContext: ExportAnalyticsContext(source: "manual", projectId: editor.projectId)
                 )
                 if service.error == nil {
                     editor.showExportDialog = false
@@ -514,7 +515,8 @@ struct ExportView: View {
                     manifest: editor.mediaManifest,
                     generationLog: editor.generationLog,
                     sourceProjectURL: editor.projectURL,
-                    outputURL: url
+                    outputURL: url,
+                    analyticsContext: ExportAnalyticsContext(source: "manual", projectId: editor.projectId)
                 )
                 guard let report, service.error == nil else { return }
                 if report.missing.isEmpty {
