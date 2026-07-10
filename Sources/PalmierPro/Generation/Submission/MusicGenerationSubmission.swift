@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 /// Generates music from music tab and places it on the timeline
@@ -41,8 +42,9 @@ struct MusicGenerationSubmission {
                 missingMediaRefs: editor.missingMediaRefs,
                 startFrame: source.startFrame,
                 frameCount: source.frameCount,
-                shortSide: 360,
-                includeAudio: false
+                shortSide: 240,
+                includeAudio: false,
+                preset: AVAssetExportPresetLowQuality
             )
             defer { try? FileManager.default.removeItem(at: mp4) }
             onPhase(.uploading)
