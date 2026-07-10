@@ -76,6 +76,11 @@ actor MCPHTTPServer {
         }
 
         if request.path == "/.well-known/oauth-protected-resource" {
+            if let rejection = accessRejection(for: request) {
+                writeResponse(rejection, on: connection, transport: transport, keepAlive: false)
+                return
+            }
+
             let body = "{\"resource\":\"http://\(Self.advertisedHost(forBindHost: bindHost)):\(port)\"}"
             sendRaw("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: \(body.utf8.count)\r\n\r\n\(body)", on: connection, keepAlive: true)
             receive(on: connection, transport: transport)
