@@ -216,7 +216,8 @@ final class AppState {
         panel.begin { [self] response in
             guard response == .OK, let url = panel.url else { return }
             let doc = instantiateProject(at: url)
-            doc.save(to: url, ofType: VideoProject.typeIdentifier, for: .saveOperation) { _ in
+            doc.save(to: url, ofType: VideoProject.typeIdentifier, for: .saveOperation) { error in
+                guard error == nil else { return }
                 ProjectRegistry.shared.register(url)
                 doc.editorViewModel.refreshProjectId()
                 self.recordProjectCreated(doc)
