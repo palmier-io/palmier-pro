@@ -87,6 +87,8 @@ final class AppState {
 
     func showEditor(for project: VideoProject) {
         activeProject = project
+        project.editorViewModel.refreshProjectId()
+        recordProjectActive(project)
         HomeWindowController.shared.window?.orderOut(nil)
         project.showWindows()
     }
@@ -199,6 +201,9 @@ final class AppState {
             throw error
         }
         ProjectRegistry.shared.register(url)
+        doc.editorViewModel.refreshProjectId()
+        recordProjectCreated(doc)
+        recordProjectOpened(doc)
         return doc
     }
 
@@ -211,8 +216,12 @@ final class AppState {
         panel.begin { [self] response in
             guard response == .OK, let url = panel.url else { return }
             let doc = instantiateProject(at: url)
-            doc.save(to: url, ofType: VideoProject.typeIdentifier, for: .saveOperation) { _ in
+            doc.save(to: url, ofType: VideoProject.typeIdentifier, for: .saveOperation) { error in
+                guard error == nil else { return }
                 ProjectRegistry.shared.register(url)
+                doc.editorViewModel.refreshProjectId()
+                self.recordProjectCreated(doc)
+                self.recordProjectOpened(doc)
             }
         }
     }
@@ -242,18 +251,38 @@ final class AppState {
         doc.showWindows()
         NSDocumentController.shared.addDocument(doc)
         if register { ProjectRegistry.shared.register(resolved) }
+        doc.editorViewModel.refreshProjectId()
+        recordProjectOpened(doc)
         apply(options, to: doc.editorViewModel)
         return doc
     }
 
     private func showExistingProject(at url: URL, register: Bool, options: ProjectOpenOptions) -> VideoProject? {
         if let existing = openProjects.first(where: { Self.sameFile($0.fileURL, url) }) {
-            showEditor(for: existing)
             if register { ProjectRegistry.shared.register(url) }
+            showEditor(for: existing)
             apply(options, to: existing.editorViewModel)
             return existing
         }
         return nil
+    }
+
+    private func recordProjectCreated(_ project: VideoProject) {
+        Analytics.capture(.projectCreated, properties: project.editorViewModel.analyticsSnapshot())
+    }
+
+    private func recordProjectOpened(_ project: VideoProject) {
+        let properties = project.editorViewModel.analyticsSnapshot()
+        Analytics.capture(.projectOpened, properties: properties)
+        if let projectId = project.editorViewModel.projectId {
+            Analytics.captureProjectActive(projectId: projectId, properties: properties)
+        }
+    }
+
+    private func recordProjectActive(_ project: VideoProject) {
+        guard let projectId = project.editorViewModel.projectId else { return }
+        let properties = project.editorViewModel.analyticsSnapshot()
+        Analytics.captureProjectActive(projectId: projectId, properties: properties)
     }
 
     private func apply(_ options: ProjectOpenOptions, to editor: EditorViewModel) {

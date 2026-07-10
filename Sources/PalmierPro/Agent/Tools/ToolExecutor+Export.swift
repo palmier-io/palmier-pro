@@ -93,7 +93,8 @@ extension ToolExecutor {
                 resolution: resolution,
                 missingMediaRefs: missingMediaRefs,
                 outputURL: outputURL,
-                acquireSlot: false
+                acquireSlot: false,
+                analyticsContext: ExportAnalyticsContext(source: "agent", projectId: editor.projectId)
             )
             if let error = service.error {
                 AppNotifications.exportFailed(name: name, reason: error)
@@ -124,23 +125,18 @@ extension ToolExecutor {
     }
 
     private func exportXML(_ editor: EditorViewModel, timeline: Timeline, outputURL: URL) async throws -> ToolResult {
-        if FileManager.default.fileExists(atPath: outputURL.path) {
-            do {
-                try FileManager.default.removeItem(at: outputURL)
-            } catch {
-                throw ToolError("export_project: \(error.localizedDescription)")
-            }
-        }
-        do {
-            try await XMLExporter.export(
-                timeline: timeline, resolver: editor.mediaResolver,
-                resolveTimeline: editor.timelineResolver(), outputURL: outputURL
-            )
-        } catch {
-            throw ToolError("export_project: XML export failed: \(error.localizedDescription)")
-        }
-        guard FileManager.default.fileExists(atPath: outputURL.path) else {
-            throw ToolError("export_project: XML export failed")
+        let service = ExportService()
+        await service.export(
+            timeline: timeline,
+            resolver: editor.mediaResolver,
+            resolveTimeline: editor.timelineResolver(),
+            format: .xml,
+            resolution: .matchTimeline,
+            outputURL: outputURL,
+            analyticsContext: ExportAnalyticsContext(source: "agent", projectId: editor.projectId)
+        )
+        guard service.error == nil, FileManager.default.fileExists(atPath: outputURL.path) else {
+            throw ToolError("export_project: \(service.error ?? "XML export failed")")
         }
         let warnings = nestExportWarnings(editor, timeline: timeline)
         return try jsonResult([
@@ -158,23 +154,19 @@ extension ToolExecutor {
     }
 
     private func exportFCPXML(_ editor: EditorViewModel, timeline: Timeline, target: FCPXMLTarget, outputURL: URL) async throws -> ToolResult {
-        if FileManager.default.fileExists(atPath: outputURL.path) {
-            do {
-                try FileManager.default.removeItem(at: outputURL)
-            } catch {
-                throw ToolError("export_project: \(error.localizedDescription)")
-            }
-        }
-        do {
-            try await FCPXMLExporter.export(
-                timeline: timeline, resolver: editor.mediaResolver,
-                resolveTimeline: editor.timelineResolver(), target: target, outputURL: outputURL
-            )
-        } catch {
-            throw ToolError("export_project: FCPXML export failed: \(error.localizedDescription)")
-        }
-        guard FileManager.default.fileExists(atPath: outputURL.path) else {
-            throw ToolError("export_project: FCPXML export failed")
+        let service = ExportService()
+        await service.export(
+            timeline: timeline,
+            resolver: editor.mediaResolver,
+            resolveTimeline: editor.timelineResolver(),
+            format: .fcpxml,
+            resolution: .matchTimeline,
+            fcpxmlTarget: target,
+            outputURL: outputURL,
+            analyticsContext: ExportAnalyticsContext(source: "agent", projectId: editor.projectId)
+        )
+        guard service.error == nil, FileManager.default.fileExists(atPath: outputURL.path) else {
+            throw ToolError("export_project: \(service.error ?? "FCPXML export failed")")
         }
         let warnings = nestExportWarnings(editor, timeline: timeline)
         return try jsonResult([
@@ -213,7 +205,8 @@ extension ToolExecutor {
             generationLog: editor.generationLog,
             sourceProjectURL: editor.projectURL,
             outputURL: outputURL,
-            acquireSlot: false
+            acquireSlot: false,
+            analyticsContext: ExportAnalyticsContext(source: "agent", projectId: editor.projectId)
         ) else {
             throw ToolError("export_project: \(service.error ?? "Palmier project export failed")")
         }

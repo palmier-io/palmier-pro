@@ -78,12 +78,7 @@ struct ModelsPane: View {
     }
 
     private func sectionView(_ section: Section) -> some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            Text(section.title.uppercased())
-                .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
-                .tracking(AppTheme.Tracking.tight)
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-
+        SettingsSection(title: section.title) {
             VStack(spacing: 0) {
                 ForEach(Array(section.rows.enumerated()), id: \.element.id) { index, row in
                     modelRow(row)
