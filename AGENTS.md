@@ -9,6 +9,29 @@ swift build
 swift run
 ```
 
+## Local dev signing (keychain "Always Allow" that sticks)
+
+`swift run` ad-hoc-signs the binary, and the signature changes every build — so the
+Keychain grant for the Claude API key never matches on relaunch and you get
+re-prompted. Launch via `scripts/run-signed.sh`, which signs with a **stable
+identity + fixed identifier** so "Always Allow" persists across rebuilds.
+
+`run-signed.sh` has no pinned default identity — it auto-picks the *first*
+`Apple Development:` cert, which is ambiguous on this machine. Pin the owner's cert:
+
+```bash
+# Apple Development: zhen Wu (TGW7JBN5G6)
+export SIGNING_IDENTITY=C1169D0A26059CDD4209CC52F851C5BBD8076A89
+```
+
+Combined with local backend mode (see palmier-gateway):
+
+```bash
+PALMIER_BACKEND=local PALMIER_GATEWAY_URL=http://localhost:5474 \
+SIGNING_IDENTITY=C1169D0A26059CDD4209CC52F851C5BBD8076A89 \
+scripts/run-signed.sh
+```
+
 ## Code style
 
 - Keep comments minimal. Only write one when the *why* is non-obvious. Don't restate what the code does, don't narrate the current change, don't leave `// removed X` breadcrumbs. One short line max — no multi-line comment blocks or paragraph docstrings.
@@ -41,4 +64,3 @@ Rule: **any drop target that spans an area containing other drop targets must us
 Palmier Pro speaks like a quietly capable native Mac app for filmmakers: direct, technical, calm, and 
 confident. Prefer Apple HIG-style terseness over warmth. Never chatty or cute. Never marketing. When the
 product needs to ask for action, lead with the action verb; when it reports state, name the thing.
-
