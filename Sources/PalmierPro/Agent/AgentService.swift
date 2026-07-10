@@ -46,7 +46,7 @@ final class AgentService {
 
     var availableModels: [AnthropicModel] {
         if hasApiKey { return AnthropicModel.allCases }
-        return AccountService.shared.isPaid ? [.sonnet5] : [.haiku45]
+        return [.sonnet5]
     }
 
     private func selectClient() -> (any AgentClient)? {
