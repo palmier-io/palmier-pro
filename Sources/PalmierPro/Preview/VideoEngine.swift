@@ -10,7 +10,7 @@ enum PreviewSeekMode: String {
 @MainActor
 final class VideoEngine {
     private(set) var player = AVPlayer()
-    private let scrubAudioEngine = ScrubAudioEngine()
+    private let scrubAudioEngine: ScrubAudioEngine
 
     weak var previewView: PreviewNSView?
 
@@ -31,6 +31,7 @@ final class VideoEngine {
 
     init(editor: EditorViewModel) {
         self.editor = editor
+        scrubAudioEngine = ScrubAudioEngine(meter: editor.audioMeter)
         setupTimeObserver()
     }
 
@@ -427,6 +428,7 @@ final class VideoEngine {
             MainActor.assumeIsolated {
                 guard let self, let editor = self.editor else { return }
                 guard editor.isPlaying, !editor.isScrubbing else { return }
+                self.scrubAudioEngine.meterPlayback(at: time)
 
                 let frame = secondsToFrame(seconds: time.seconds, fps: editor.timeline.fps)
                 let duration = editor.activePreviewDurationFrames

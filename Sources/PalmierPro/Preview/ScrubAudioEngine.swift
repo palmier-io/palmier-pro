@@ -38,9 +38,12 @@ final class ScrubAudioEngine {
     nonisolated private static let cacheFrameCount = 96_000
     nonisolated private static let grainFrameCount = 2_400
     nonisolated private static let fadeFrameCount = 144
+    nonisolated private static let meterFrameCount = 960
+    nonisolated private static let meterPrefetchFrameCount = 12_000
 
     private let engine = AVAudioEngine()
     private let playerNode = AVAudioPlayerNode()
+    private let meter: AudioMeterHub
     private let format = AVAudioFormat(
         commonFormat: .pcmFormatFloat32,
         sampleRate: ScrubAudioEngine.sampleRate,
@@ -52,12 +55,14 @@ final class ScrubAudioEngine {
     private var sourceGeneration = 0
     private var cache: PCMWindow?
     private var latestRequest: Request?
+    private var latestMeterSample: Int64?
     private var lastRequestedSample: Int64?
     private var lastDirection: Direction = .forward
     private var decodeTask: Task<Void, Never>?
     private var pendingDecodeRange: Range<Int64>?
 
-    init() {
+    init(meter: AudioMeterHub) {
+        self.meter = meter
         engine.attach(playerNode)
         engine.connect(playerNode, to: engine.mainMixerNode, format: format)
         engine.prepare()
@@ -68,6 +73,7 @@ final class ScrubAudioEngine {
         sourceGeneration &+= 1
         cache = nil
         source = asset.map { Source(asset: $0, audioMix: audioMix, generation: sourceGeneration) }
+        meter.reset()
         if asset != nil { startEngineIfNeeded() }
     }
 
@@ -85,6 +91,7 @@ final class ScrubAudioEngine {
             direction = lastDirection
         }
         lastRequestedSample = sample
+        latestMeterSample = nil
 
         let request = Request(sample: sample, direction: direction, generation: source.generation)
         latestRequest = request
@@ -95,11 +102,29 @@ final class ScrubAudioEngine {
         }
     }
 
+    func meterPlayback(at time: CMTime) {
+        guard let source, time.isValid else { return }
+        let seconds = time.seconds
+        guard seconds.isFinite else { return }
+
+        let sample = Int64((seconds * Self.sampleRate).rounded())
+        latestMeterSample = sample
+        if let cache, canMeter(sample: sample, from: cache) {
+            publishMeter(sample: sample, from: cache)
+            if sample + Int64(Self.meterPrefetchFrameCount) >= cache.endSample {
+                requestWindow(around: sample, source: source)
+            }
+        } else {
+            requestWindow(around: sample, source: source)
+        }
+    }
+
     func stopScrubbing() {
         decodeTask?.cancel()
         decodeTask = nil
         pendingDecodeRange = nil
         latestRequest = nil
+        latestMeterSample = nil
         lastRequestedSample = nil
         lastDirection = .forward
         playerNode.stop()
@@ -133,11 +158,20 @@ final class ScrubAudioEngine {
             guard source.generation == self.source?.generation, let window else { return }
             self.cache = window
 
-            guard let request = self.latestRequest, request.generation == source.generation else { return }
-            if self.canServe(sample: request.sample, from: window) {
-                self.play(request: request, from: window)
-            } else {
-                self.requestWindow(around: request.sample, source: source)
+            if let request = self.latestRequest, request.generation == source.generation {
+                if self.canServe(sample: request.sample, from: window) {
+                    self.play(request: request, from: window)
+                } else {
+                    self.requestWindow(around: request.sample, source: source)
+                }
+                return
+            }
+            if let meterSample = self.latestMeterSample {
+                if self.canMeter(sample: meterSample, from: window) {
+                    self.publishMeter(sample: meterSample, from: window)
+                } else {
+                    self.requestWindow(around: meterSample, source: source)
+                }
             }
         }
     }
@@ -146,10 +180,12 @@ final class ScrubAudioEngine {
         guard window.hasAudioTracks,
               let buffer = makeGrain(request: request, from: window)
         else {
+            meter.ingest(.silence)
             playerNode.stop()
             return
         }
 
+        meter.ingest(AudioLevelAnalyzer.analyze(buffer))
         startEngineIfNeeded()
         playerNode.scheduleBuffer(buffer, at: nil, options: .interrupts)
         if !playerNode.isPlaying { playerNode.play() }
@@ -159,6 +195,20 @@ final class ScrubAudioEngine {
         let halfGrain = Int64(Self.grainFrameCount / 2)
         let hasLeftContext = window.startSample == 0 || sample - halfGrain >= window.startSample
         return window.contains(sample) && hasLeftContext && sample + halfGrain < window.endSample
+    }
+
+    private func canMeter(sample: Int64, from window: PCMWindow) -> Bool {
+        sample >= window.startSample
+            && sample + Int64(Self.meterFrameCount) <= window.endSample
+    }
+
+    private func publishMeter(sample: Int64, from window: PCMWindow) {
+        let start = Int(sample - window.startSample)
+        let range = start..<(start + Self.meterFrameCount)
+        let analysis = window.hasAudioTracks
+            ? AudioLevelAnalyzer.analyze(left: window.left, right: window.right, range: range)
+            : .silence
+        meter.ingest(analysis)
     }
 
     private func makeGrain(request: Request, from window: PCMWindow) -> AVAudioPCMBuffer? {
