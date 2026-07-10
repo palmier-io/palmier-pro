@@ -22,6 +22,65 @@ struct ExportRunReport {
     let unprocessableMediaRefs: Set<String>
 }
 
+struct ExportAnalyticsContext {
+    var source: String = "manual"
+    var projectId: String?
+}
+
+private struct ExportAnalyticsRun {
+    private let basePayload: [String: Any]
+    private let started: ContinuousClock.Instant
+
+    init(
+        mode: String,
+        format: ExportFormat,
+        resolution: ExportResolution?,
+        context: ExportAnalyticsContext
+    ) {
+        self.basePayload = [
+            "source": context.source,
+            "project_id": context.projectId ?? "unknown",
+            "mode": mode,
+            "format": format.displayName,
+            "resolution": resolution?.rawValue ?? "n/a",
+        ]
+        self.started = ContinuousClock.now
+    }
+
+    init(palmierContext context: ExportAnalyticsContext) {
+        self.basePayload = [
+            "source": context.source,
+            "project_id": context.projectId ?? "unknown",
+            "mode": "palmier",
+            "format": "Palmier",
+        ]
+        self.started = ContinuousClock.now
+    }
+
+    func begin() {
+        Analytics.capture(.exportStarted, properties: basePayload)
+    }
+
+    func finish() {
+        Analytics.capture(.exportFinished, properties: timedPayload())
+    }
+
+    func fail() {
+        Analytics.capture(.exportFailed, properties: timedPayload())
+    }
+
+    private func timedPayload() -> [String: Any] {
+        var payload = basePayload
+        payload["export_duration_seconds"] = Self.durationSeconds(since: started)
+        return payload
+    }
+
+    private static func durationSeconds(since started: ContinuousClock.Instant) -> Double {
+        let duration = started.duration(to: .now)
+        return Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+    }
+}
+
 @Observable
 @MainActor
 final class ExportService {
@@ -40,7 +99,8 @@ final class ExportService {
         fcpxmlTarget: FCPXMLTarget = .default,
         missingMediaRefs: Set<String> = [],
         outputURL: URL,
-        acquireSlot: Bool = true
+        acquireSlot: Bool = true,
+        analyticsContext: ExportAnalyticsContext = .init()
     ) async {
         error = nil
         lastReport = nil
@@ -50,6 +110,13 @@ final class ExportService {
 
         if format == .xml || format == .fcpxml {
             let name = format.fileExtension
+            let analytics = ExportAnalyticsRun(
+                mode: name,
+                format: format,
+                resolution: nil,
+                context: analyticsContext
+            )
+            analytics.begin()
             Log.export.notice(
                 "export requested format=\(name)",
                 telemetry: "Export started",
@@ -64,6 +131,7 @@ final class ExportService {
                 }
                 progress = 1.0
                 Log.export.notice("export ok format=\(name)", telemetry: "Export finished", data: ["format": name])
+                analytics.finish()
             } catch {
                 self.error = Log.detail(error)
                 Log.export.error(
@@ -71,17 +139,31 @@ final class ExportService {
                     telemetry: "Export failed",
                     data: ["format": name, "error": Log.detail(error)]
                 )
+                analytics.fail()
             }
             return
         }
+        let videoAnalytics = ExportAnalyticsRun(
+            mode: "video",
+            format: format,
+            resolution: resolution,
+            context: analyticsContext
+        )
         if acquireSlot {
             await ExportCoordinator.acquireExport()
         }
         defer { if acquireSlot { ExportCoordinator.endExport() } }
 
         if format.isHDR {
-            await exportHDR(timeline: timeline, resolver: resolver, resolution: resolution,
-                            missingMediaRefs: missingMediaRefs, outputURL: outputURL)
+            videoAnalytics.begin()
+            await exportHDR(
+                timeline: timeline,
+                resolver: resolver,
+                resolution: resolution,
+                missingMediaRefs: missingMediaRefs,
+                outputURL: outputURL,
+                analytics: videoAnalytics
+            )
             return
         }
 
@@ -97,6 +179,7 @@ final class ExportService {
                 "fps": timeline.fps
             ]
         )
+        videoAnalytics.begin()
 
         do {
             let prepared = try await makeExportSession(
@@ -133,6 +216,7 @@ final class ExportService {
                     telemetry: "Export finished",
                     data: ["format": String(describing: format), "resolution": resolution.rawValue]
                 )
+                videoAnalytics.finish()
             } catch {
                 if (error as NSError).domain == NSCocoaErrorDomain && (error as NSError).code == NSUserCancelledError {
                     self.error = "Export was cancelled"
@@ -141,6 +225,7 @@ final class ExportService {
                         telemetry: "Export cancelled",
                         data: ["format": String(describing: format), "resolution": resolution.rawValue]
                     )
+                    videoAnalytics.fail()
                 } else {
                     self.error = Log.detail(error)
                     Log.export.error(
@@ -148,6 +233,7 @@ final class ExportService {
                         telemetry: "Export failed",
                         data: ["format": String(describing: format), "resolution": resolution.rawValue, "error": Log.detail(error)]
                     )
+                    videoAnalytics.fail()
                 }
             }
 
@@ -159,6 +245,7 @@ final class ExportService {
                 telemetry: "Export setup failed",
                 data: ["format": String(describing: format), "resolution": resolution.rawValue, "error": Log.detail(error)]
             )
+            videoAnalytics.fail()
         }
 
     }
@@ -171,13 +258,15 @@ final class ExportService {
         generationLog: GenerationLog,
         sourceProjectURL: URL?,
         outputURL: URL,
-        acquireSlot: Bool = true
+        acquireSlot: Bool = true,
+        analyticsContext: ExportAnalyticsContext = .init()
     ) async -> PalmierProjectExporter.Report? {
         isExporting = true
         progress = 0
         error = nil
         lastReport = nil
         defer { isExporting = false }
+        let analytics = ExportAnalyticsRun(palmierContext: analyticsContext)
 
         if acquireSlot {
             await ExportCoordinator.acquireExport()
@@ -185,6 +274,7 @@ final class ExportService {
         defer { if acquireSlot { ExportCoordinator.endExport() } }
 
         do {
+            analytics.begin()
             Log.export.notice(
                 "palmier export start url=\(outputURL.lastPathComponent)",
                 telemetry: "Palmier project export started",
@@ -208,6 +298,7 @@ final class ExportService {
                 telemetry: "Palmier project export finished",
                 data: ["collected": report.collected.count, "missing": report.missing.count]
             )
+            analytics.finish()
             return report
         } catch {
             self.error = Log.detail(error)
@@ -216,6 +307,7 @@ final class ExportService {
                 telemetry: "Palmier project export failed",
                 data: ["error": Log.detail(error)]
             )
+            analytics.fail()
             return nil
         }
     }
@@ -226,7 +318,8 @@ final class ExportService {
         resolver: MediaResolver,
         resolution: ExportResolution,
         missingMediaRefs: Set<String>,
-        outputURL: URL
+        outputURL: URL,
+        analytics: ExportAnalyticsRun
     ) async {
         isExporting = true
         progress = 0
@@ -259,9 +352,11 @@ final class ExportService {
             )
             progress = 1.0
             Log.export.notice("hdr export ok")
+            analytics.finish()
         } catch {
             self.error = Log.detail(error)
             Log.export.error("hdr export failed: \(Log.detail(error))")
+            analytics.fail()
         }
     }
 

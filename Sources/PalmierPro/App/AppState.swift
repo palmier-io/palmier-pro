@@ -87,6 +87,8 @@ final class AppState {
 
     func showEditor(for project: VideoProject) {
         activeProject = project
+        project.editorViewModel.refreshProjectId()
+        recordProjectActive(project)
         HomeWindowController.shared.window?.orderOut(nil)
         project.showWindows()
     }
@@ -199,6 +201,9 @@ final class AppState {
             throw error
         }
         ProjectRegistry.shared.register(url)
+        doc.editorViewModel.refreshProjectId()
+        recordProjectCreated(doc)
+        recordProjectOpened(doc)
         return doc
     }
 
@@ -213,6 +218,9 @@ final class AppState {
             let doc = instantiateProject(at: url)
             doc.save(to: url, ofType: VideoProject.typeIdentifier, for: .saveOperation) { _ in
                 ProjectRegistry.shared.register(url)
+                doc.editorViewModel.refreshProjectId()
+                self.recordProjectCreated(doc)
+                self.recordProjectOpened(doc)
             }
         }
     }
@@ -242,6 +250,8 @@ final class AppState {
         doc.showWindows()
         NSDocumentController.shared.addDocument(doc)
         if register { ProjectRegistry.shared.register(resolved) }
+        doc.editorViewModel.refreshProjectId()
+        recordProjectOpened(doc)
         apply(options, to: doc.editorViewModel)
         return doc
     }
@@ -254,6 +264,21 @@ final class AppState {
             return existing
         }
         return nil
+    }
+
+    private func recordProjectCreated(_ project: VideoProject) {
+        Analytics.capture(.projectCreated, properties: project.editorViewModel.analyticsSnapshot())
+    }
+
+    private func recordProjectOpened(_ project: VideoProject) {
+        let properties = project.editorViewModel.analyticsSnapshot()
+        Analytics.capture(.projectOpened, properties: properties)
+        Analytics.captureProjectActive(projectId: project.editorViewModel.projectId, properties: properties)
+    }
+
+    private func recordProjectActive(_ project: VideoProject) {
+        let properties = project.editorViewModel.analyticsSnapshot()
+        Analytics.captureProjectActive(projectId: project.editorViewModel.projectId, properties: properties)
     }
 
     private func apply(_ options: ProjectOpenOptions, to editor: EditorViewModel) {
