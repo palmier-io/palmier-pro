@@ -130,8 +130,12 @@ private struct SettingsDetail: View {
                             case .account:
                                 AccountPane()
                             case .general:
-                                NotificationsPane()
-                                PrivacyPane()
+                                SettingsSection(title: "Notification") {
+                                    NotificationsPane()
+                                }
+                                SettingsSection(title: "Telemetry") {
+                                    PrivacyPane()
+                                }
                             case .models:
                                 ModelsPane()
                             case .agent:
@@ -151,6 +155,22 @@ private struct SettingsDetail: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+struct SettingsSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            Text(title)
+                .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .textCase(.uppercase)
+                .tracking(AppTheme.Tracking.wide)
+            content()
+        }
     }
 }
 
