@@ -20,6 +20,7 @@ enum AppTheme {
         static var prominentColor: Color { Color(prominent) }
         static var previewCanvasColor: Color { .black }
         static var placeholderColor: Color { Color(placeholder) }
+        static var clearColor: Color { .clear }
     }
 
     // MARK: - Borders

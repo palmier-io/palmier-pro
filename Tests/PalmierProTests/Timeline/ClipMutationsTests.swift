@@ -398,6 +398,22 @@ struct WritePositionTests {
 @MainActor
 struct ClipPropertyCommitTests {
 
+    @Test func sampledChromaKeyUndoes() throws {
+        let clip = Fixtures.clip(id: "clip", start: 0, duration: 30)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let undoManager = UndoManager()
+        e.undoManager = undoManager
+
+        e.toggleChromaKeySampling(clipId: clip.id)
+        e.commitChromaKeySample(hue: 1.0 / 3.0, clipId: clip.id)
+
+        let effect = try #require(e.clipFor(id: clip.id)?.effects?.first)
+        #expect(effect.params["tolerance"]?.value == 0.15)
+        #expect(effect.params["softness"]?.value == 0.1)
+        undoManager.undo()
+        #expect(e.clipFor(id: clip.id)?.effects == nil)
+    }
+
     @Test func commitClipPropertiesGroupsMultipleClipUndo() {
         var a = Fixtures.clip(id: "a", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
         var b = Fixtures.clip(id: "b", mediaRef: "text", mediaType: .text, start: 30, duration: 30)

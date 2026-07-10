@@ -346,6 +346,38 @@ final class VideoEngine {
         return bins
     }
 
+    func sampleKeyHue(at normalizedPoint: CGPoint, frame: Int? = nil) async -> Double? {
+        guard let item = player.currentItem else { return nil }
+        let time = frame.map { CMTime(value: CMTimeValue($0), timescale: CMTimeScale(editor?.timeline.fps ?? 30)) }
+            ?? player.currentTime()
+        let generator = AVAssetImageGenerator(asset: item.asset)
+        generator.videoComposition = item.videoComposition
+        guard let cg = try? await generator.image(at: time).image else { return nil }
+        return Self.sampleKeyHue(from: cg, at: normalizedPoint)
+    }
+
+    nonisolated static func sampleKeyHue(
+        from cg: CGImage,
+        at normalizedPoint: CGPoint,
+    ) -> Double? {
+        let image = CIImage(cgImage: cg)
+        let center = CGPoint(
+            x: normalizedPoint.x * image.extent.width,
+            y: (1 - normalizedPoint.y) * image.extent.height
+        )
+        let patch = CGRect(x: center.x - 4, y: center.y - 4, width: 9, height: 9)
+            .intersection(image.extent)
+        let average = image.applyingFilter("CIAreaAverage", parameters: [kCIInputExtentKey: CIVector(cgRect: patch)])
+        var rgba = [Float](repeating: 0, count: 4)
+        ColorScopes.context.render(
+            average, toBitmap: &rgba, rowBytes: 4 * MemoryLayout<Float>.size,
+            bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBAf, colorSpace: nil)
+        var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
+        NSColor(red: CGFloat(rgba[0]), green: CGFloat(rgba[1]), blue: CGFloat(rgba[2]), alpha: 1)
+            .getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+        return saturation >= 0.12 ? Double(hue) : nil
+    }
+
     // MARK: - Seek Coordinator
 
     private func enqueueInteractiveSeek(time: CMTime, tolerance: CMTime) {

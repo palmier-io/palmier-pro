@@ -58,7 +58,7 @@ enum PreviewHitTester {
         return lx >= left && lx <= right && ly >= top && ly <= bottom
     }
 
-    private static func videoContentRect(in viewSize: CGSize, timeline: Timeline) -> CGRect {
+    static func videoContentRect(in viewSize: CGSize, timeline: Timeline) -> CGRect {
         guard viewSize.width > 0, viewSize.height > 0 else { return .zero }
         let videoAspect = CGFloat(timeline.width) / CGFloat(timeline.height)
         let viewAspect = viewSize.width / viewSize.height
