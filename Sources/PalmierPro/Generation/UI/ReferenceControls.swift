@@ -4,30 +4,16 @@ private struct ReferenceAssetPreview: View {
     let asset: MediaAsset
 
     var body: some View {
-        Group {
+        ZStack {
+            Color.black
             if let thumbnail = asset.thumbnail {
                 Image(nsImage: thumbnail)
                     .resizable()
-                    .aspectRatio(contentMode: .fill)
+                    .aspectRatio(contentMode: .fit)
             } else {
-                ZStack {
-                    Color(nsColor: asset.type.themeColor)
-                        .opacity(AppTheme.Opacity.muted)
-                    VStack(spacing: AppTheme.Spacing.xs) {
-                        Image(systemName: asset.type.sfSymbolName)
-                            .font(.system(size: AppTheme.FontSize.xl))
-                            .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        Text(asset.name)
-                            .font(.system(
-                                size: AppTheme.FontSize.xxs,
-                                weight: AppTheme.FontWeight.medium
-                            ))
-                            .foregroundStyle(AppTheme.Text.secondaryColor)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .padding(.horizontal, AppTheme.Spacing.xs)
-                    }
-                }
+                Image(systemName: asset.type.sfSymbolName)
+                    .font(.system(size: AppTheme.FontSize.xl))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
         }
         .accessibilityElement(children: .ignore)
