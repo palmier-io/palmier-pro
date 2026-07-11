@@ -5,7 +5,8 @@ import CoreImage
 enum PreviewSeekMode: String {
     case exact
     case interactiveScrub
-    case audibleStep
+    case audibleStepForward
+    case audibleStepBackward
 }
 
 @MainActor
@@ -90,8 +91,9 @@ final class VideoEngine {
         case .interactiveScrub:
             scrubAudioEngine.scrub(to: time)
             enqueueInteractiveSeek(time: time, tolerance: tolerance)
-        case .audibleStep:
-            scrubAudioEngine.scrub(to: time)
+        case .audibleStepForward, .audibleStepBackward:
+            if editor.isPlaying { pause() }
+            scrubAudioEngine.scrub(to: time, movingForward: mode == .audibleStepForward)
             cancelInteractiveSeek()
             performSeek(time: time, tolerance: tolerance)
         }

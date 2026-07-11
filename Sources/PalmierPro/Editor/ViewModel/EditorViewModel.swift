@@ -398,10 +398,10 @@ final class EditorViewModel {
         videoEngine?.togglePlayback()
     }
 
-    func stepForward() { seekToFrame(currentFrame + 1, mode: .audibleStep) }
-    func stepBackward() { seekToFrame(currentFrame - 1, mode: .audibleStep) }
-    func skipForward(frames: Int = 5) { seekToFrame(currentFrame + frames, mode: .audibleStep) }
-    func skipBackward(frames: Int = 5) { seekToFrame(currentFrame - frames, mode: .audibleStep) }
+    func stepForward() { seekToFrame(currentFrame + 1, mode: .audibleStepForward) }
+    func stepBackward() { seekToFrame(currentFrame - 1, mode: .audibleStepBackward) }
+    func skipForward(frames: Int = 5) { seekToFrame(currentFrame + frames, mode: .audibleStepForward) }
+    func skipBackward(frames: Int = 5) { seekToFrame(currentFrame - frames, mode: .audibleStepBackward) }
 
     // MARK: - Shared infrastructure
 

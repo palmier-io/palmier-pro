@@ -72,7 +72,7 @@ final class ScrubAudioEngine {
         if asset != nil { startEngineIfNeeded() }
     }
 
-    func scrub(to time: CMTime) {
+    func scrub(to time: CMTime, movingForward: Bool? = nil) {
         guard let source, time.isValid else { return }
         let seconds = time.seconds
         guard seconds.isFinite else { return }
@@ -80,7 +80,10 @@ final class ScrubAudioEngine {
         let sample = Int64((seconds * Self.sampleRate).rounded())
         guard sample != lastRequestedSample else { return }
         let direction: Direction
-        if let previous = lastRequestedSample {
+        if let movingForward {
+            direction = movingForward ? .forward : .reverse
+            lastDirection = direction
+        } else if let previous = lastRequestedSample {
             direction = sample > previous ? .forward : .reverse
             lastDirection = direction
         } else {
@@ -177,6 +180,7 @@ final class ScrubAudioEngine {
     }
 
     private func play(request: Request, from window: PCMWindow) {
+        latestRequest = nil
         guard window.hasAudioTracks,
               let buffer = makeGrain(request: request, from: window)
         else {
