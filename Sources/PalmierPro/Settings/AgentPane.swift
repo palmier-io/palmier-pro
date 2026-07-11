@@ -6,6 +6,8 @@ struct AgentPane: View {
     @State private var hasKey: Bool = false
     @State private var maskedKey: String = ""
     @State private var draft: String = ""
+    @State private var currentBaseURL: String = ""
+    @State private var baseURLDraft: String = ""
     @FocusState private var isFocused: Bool
 
     private let consoleURL = URL(string: "https://console.anthropic.com/settings/keys")!
@@ -13,6 +15,7 @@ struct AgentPane: View {
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
             apiKeySection
+            baseURLSection
             Divider().overlay(AppTheme.Border.subtleColor)
             mcpSection
         }
@@ -117,6 +120,9 @@ struct AgentPane: View {
     private func applyKey(_ key: String) {
         hasKey = !key.isEmpty
         maskedKey = mask(key)
+        let stored = AnthropicEndpoint.storedBaseURL() ?? ""
+        currentBaseURL = stored
+        baseURLDraft = stored
     }
 
     private func save() {
@@ -151,6 +157,81 @@ struct AgentPane: View {
     private func mask(_ key: String) -> String {
         guard key.count > 4 else { return String(repeating: "\u{2022}", count: 32) }
         return String(repeating: "\u{2022}", count: 36) + key.suffix(4)
+    }
+
+    // MARK: - API base URL
+
+    private var baseURLSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            baseURLHeader
+            baseURLField
+        }
+    }
+
+    private var baseURLHeader: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            Text("API Base URL")
+                .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+
+            Text("Route requests through an Anthropic-compatible proxy or gateway like VibeProxy. Leave blank to use \(AnthropicEndpoint.defaultBaseURL).")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var baseURLField: some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            TextField(AnthropicEndpoint.defaultBaseURL, text: $baseURLDraft)
+                .textFieldStyle(.plain)
+                .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+                .onSubmit(saveBaseURL)
+                .padding(.horizontal, AppTheme.Spacing.md)
+                .padding(.vertical, AppTheme.Spacing.smMd)
+                .background(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                        .fill(Color.black.opacity(AppTheme.Opacity.muted))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                        .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
+                )
+            baseURLTrailingControl
+        }
+    }
+
+    @ViewBuilder
+    private var baseURLTrailingControl: some View {
+        let trimmed = baseURLDraft.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty, trimmed != currentBaseURL {
+            Button("Save", action: saveBaseURL)
+                .buttonStyle(.capsule(.prominent, size: .regular))
+                .controlSize(.large)
+        } else if !currentBaseURL.isEmpty {
+            Button(action: resetBaseURL) {
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.system(size: AppTheme.FontSize.md))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
+            }
+            .buttonStyle(.capsule(.secondary, size: .regular))
+            .controlSize(.large)
+            .help("Reset to default endpoint")
+        }
+    }
+
+    private func saveBaseURL() {
+        let raw = baseURLDraft.trimmingCharacters(in: .whitespaces)
+        guard !raw.isEmpty else { return }
+        AnthropicEndpoint.save(raw)
+        refresh()
+    }
+
+    private func resetBaseURL() {
+        AnthropicEndpoint.save("")
+        refresh()
     }
 
     // MARK: - MCP server
