@@ -1,64 +1,126 @@
-import AVFoundation
 import Foundation
-import ImageIO
 
-struct TimelineWord {
-    let index: Int
-    let clipId: String
-    let trackIndex: Int
-    let clipStartFrame: Int
-    let clipEndFrame: Int
-    let text: String
-    let startFrame: Int
-    let endFrame: Int
-}
-
+// get_timeline, create_timeline, set_active_timeline.
 extension ToolExecutor {
-    private static let defaultReadVideoFrames = 6
-    private static let readVideoMaxFrames = 12
-    private nonisolated static let readVideoFrameMaxDimension: CGFloat = 512
-    private nonisolated static let readVideoJPEGQuality: CGFloat = 0.7
-    private static let inspectMaxSegments = 400
-    private static let inspectMaxWords = 10000
-
-    private static let getTimelineAllowedKeys: Set<String> = ["startFrame", "endFrame"]
-    private static let captionRowLimit = 200
-    private static let captionRowFormat = ["clipId", "startFrame", "durationFrames", "text"]
+    private static let getTimelineAllowedKeys: Set<String> = ["startFrame", "endFrame", "captionDetail"]
 
     func getTimeline(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.getTimelineAllowedKeys, path: "get_timeline")
-        var window: Range<Int>?
-        if args.int("startFrame") != nil || args.int("endFrame") != nil {
-            let s = args.int("startFrame") ?? 0
-            let e = args.int("endFrame") ?? Int.max
-            guard s < e else {
-                throw ToolError("Invalid window [\(s), \(e)): startFrame must be less than endFrame")
-            }
-            window = s..<e
-        }
+        let window = try Self.frameWindow(args)
+        let captionDetail = args["captionDetail"] as? Bool ?? false
 
-        guard var dict = try? JSONSerialization.jsonObject(
-            with: JSONEncoder().encode(editor.timeline)
-        ) as? [String: Any] else { throw ToolError("Failed to encode timeline") }
-        if var tracks = dict["tracks"] as? [[String: Any]] {
-            for i in tracks.indices {
-                tracks[i] = Self.compactTrack(tracks[i], window: window)
-                // Report the displayed label (mirrored video numbering), not the stored seed.
-                tracks[i]["label"] = editor.timelineTrackDisplayLabel(at: i)
-            }
-            dict["tracks"] = tracks
+        guard var dict = Self.rawTimelineDict(editor.timeline) else { throw ToolError("Failed to encode timeline") }
+        dict.removeValue(forKey: "settingsConfigured")
+        if let tracks = dict["tracks"] as? [[String: Any]] {
+            dict["tracks"] = Self.compactTracks(tracks, editor: editor, window: window, captionDetail: captionDetail)
         }
         dict["totalFrames"] = editor.timeline.totalFrames
+        dict["durationSeconds"] = Double(editor.timeline.totalFrames) / Double(max(editor.timeline.fps, 1))
         if let window {
             dict["window"] = [window.lowerBound, min(window.upperBound, editor.timeline.totalFrames)]
         }
         dict["currentFrame"] = editor.currentFrame
-        dict["canGenerate"] = AccountService.shared.isSignedIn && AccountService.shared.hasCredits
+        dict["canGenerate"] = Self.canGenerate
+        let liveGroupIds = editor.referencedMulticamGroupIds()
+        let liveGroups = editor.multicamGroups.filter { liveGroupIds.contains($0.id) }
+        if !liveGroups.isEmpty {
+            dict["multicamGroups"] = liveGroups.map { g -> [String: Any] in
+                ["groupId": g.id, "name": g.name,
+                 "angles": g.angles.map(\.angleLabel), "mics": g.mics.map(\.angleLabel)]
+            }
+        }
+        if editor.timelines.count > 1 {
+            dict["timelines"] = timelineEntries(editor)
+        }
         guard let json = Self.jsonString(roundJSONFloatingPointNumbers(dict, toPlaces: 3)) else {
             throw ToolError("Failed to encode timeline")
         }
         return .ok(json)
     }
+
+    static var canGenerate: Bool { AccountService.shared.isSignedIn && AccountService.shared.hasCredits }
+
+    static func rawTimelineDict(_ timeline: Timeline) -> [String: Any]? {
+        try? JSONSerialization.jsonObject(with: JSONEncoder().encode(timeline)) as? [String: Any]
+    }
+
+    func timelineEntries(_ editor: EditorViewModel, detailed: Bool = false) -> [[String: Any]] {
+        editor.timelines.map { t in
+            var e: [String: Any] = ["timelineId": t.id, "name": t.name]
+            if t.id == editor.activeTimelineId { e["active"] = true }
+            if detailed {
+                e["durationSeconds"] = Double(t.totalFrames) / Double(max(t.fps, 1))
+                if let path = folderPathString(t.folderId, editor: editor) { e["folder"] = path }
+            }
+            return e
+        }
+    }
+
+    static func frameWindow(_ args: [String: Any]) throws -> Range<Int>? {
+        guard args.int("startFrame") != nil || args.int("endFrame") != nil else { return nil }
+        let s = args.int("startFrame") ?? 0
+        let e = args.int("endFrame") ?? Int.max
+        guard s < e else {
+            throw ToolError("Invalid window [\(s), \(e)): startFrame must be less than endFrame")
+        }
+        return s..<e
+    }
+
+    func createTimeline(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        try validateUnknownKeys(args, allowed: ["name", "from"], path: "create_timeline")
+        let id: String
+        let note: String
+        if let fromRef = args.string("from") {
+            guard let source = editor.timeline(for: fromRef) else {
+                throw ToolError("No timeline with id '\(fromRef)'. get_media lists the project's timelines.")
+            }
+            guard let newId = editor.duplicateTimeline(fromRef) else {
+                throw ToolError("Couldn't duplicate \"\(source.name)\".")
+            }
+            id = newId
+            if let name = args.string("name") { editor.renameTimeline(id, to: name) }
+            note = "Duplicated \"\(source.name)\" and switched to the copy. Its clip and track ids are new — re-read get_timeline before editing."
+        } else {
+            id = editor.createTimeline(name: args.string("name"))
+            note = "Empty and now active; all edit tools target it."
+        }
+        let payload: [String: Any] = [
+            "timelineId": id,
+            "name": editor.timeline(for: id)?.name ?? "",
+            "active": true,
+            "note": note,
+        ]
+        return .ok(Self.jsonString(payload) ?? "{}")
+    }
+
+    func setActiveTimeline(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        try validateUnknownKeys(args, allowed: ["timelineId"], path: "set_active_timeline")
+        guard let id = args.string("timelineId") else { throw ToolError("timelineId is required") }
+        guard let target = editor.timeline(for: id) else {
+            throw ToolError("No timeline with id '\(id)'. get_media lists the project's timelines.")
+        }
+        var payload: [String: Any] = [
+            "timelineId": target.id,
+            "name": target.name,
+            "active": true,
+            "totalFrames": target.totalFrames,
+            "fps": target.fps,
+            "trackCount": target.tracks.count,
+        ]
+        if editor.activeTimelineId == target.id {
+            payload["note"] = "Already the active timeline."
+        } else {
+            editor.activateTimeline(target.id)
+            payload["note"] = "Re-read get_timeline — clip and track ids from the previous timeline no longer apply."
+        }
+        return .ok(Self.jsonString(payload) ?? "{}")
+    }
+
+    // MARK: - Payload shaping
+
+    private static let captionRowLimit = 200
+    private static let captionRowFormat = ["clipId", "startFrame", "endFrame", "text"]
+    private static let captionPreviewLimit = 60
 
     private static let trackDefaults: [String: Any] = ["muted": false, "hidden": false, "syncLocked": true]
 
@@ -74,10 +136,131 @@ extension ToolExecutor {
         return obj
     }()
 
-    private static func compactTrack(_ track: [String: Any], window: Range<Int>?) -> [String: Any] {
+    static func compactTracks(
+        _ tracks: [[String: Any]], editor: EditorViewModel, window: Range<Int>?, captionDetail: Bool
+    ) -> [[String: Any]] {
+        let fold = linkFoldPlan(tracks)
+        var grades: [String: [String: Any]] = [:]
+        for track in editor.timeline.tracks {
+            for clip in track.clips {
+                if let c = colorObject(from: clip.effects) { grades[clip.id] = c }
+            }
+        }
+        return tracks.indices.map { i in
+            var track = compactTrack(tracks[i], window: window, captionDetail: captionDetail, fold: fold, grades: grades)
+            // Report the displayed label (mirrored video numbering), not the stored seed.
+            track["label"] = editor.timelineTrackDisplayLabel(at: i)
+            track["index"] = i
+            track.removeValue(forKey: "id")
+            track.removeValue(forKey: "displayHeight")
+            if let count = fold.foldedCountByTrack[i] { track["linkedClips"] = count }
+            let gaps = trackGaps(editor.timeline.tracks[i])
+            if !gaps.isEmpty { track["gaps"] = gaps }
+            return track
+        }
+    }
+
+    /// Empty spans between non-caption clips; leading/trailing space reads off the clip frames.
+    private static func trackGaps(_ track: Track) -> [[Int]] {
+        let spans = track.clips
+            .filter { $0.captionGroupId == nil }
+            .map { [$0.startFrame, $0.startFrame + $0.durationFrames] }
+            .sorted { $0[0] < $1[0] }
+        var gaps: [[Int]] = []
+        var maxEnd: Int?
+        for span in spans {
+            if let m = maxEnd, span[0] > m { gaps.append([m, span[0]]) }
+            maxEnd = max(maxEnd ?? span[1], span[1])
+        }
+        return gaps
+    }
+
+    // MARK: - Linked audio fold
+
+    /// Visual+audio linked pairs fold into the visual clip; linkage reads structurally, not via linkGroupId.
+    struct LinkFold {
+        var partnerByVisualId: [String: (clip: [String: Any], trackIndex: Int)] = [:]
+        var foldedAudioIds: Set<String> = []
+        var foldedCountByTrack: [Int: Int] = [:]
+    }
+
+    private static func linkFoldPlan(_ tracks: [[String: Any]]) -> LinkFold {
+        var groups: [String: [(clip: [String: Any], trackIndex: Int)]] = [:]
+        for (ti, track) in tracks.enumerated() {
+            for clip in track["clips"] as? [[String: Any]] ?? [] {
+                if let gid = clip["linkGroupId"] as? String {
+                    groups[gid, default: []].append((clip, ti))
+                }
+            }
+        }
+        var plan = LinkFold()
+        for members in groups.values where members.count == 2 {
+            guard let audio = members.first(where: { ($0.clip["mediaType"] as? String) == "audio" }),
+                  let visual = members.first(where: { ($0.clip["mediaType"] as? String) != "audio" }),
+                  let visualId = visual.clip["id"] as? String,
+                  let audioId = audio.clip["id"] as? String else { continue }
+            plan.partnerByVisualId[visualId] = (audio.clip, audio.trackIndex)
+            plan.foldedAudioIds.insert(audioId)
+            plan.foldedCountByTrack[audio.trackIndex, default: 0] += 1
+        }
+        return plan
+    }
+
+    /// The folded audio partner: id, track, and only what deviates from its visual clip.
+    private static func audioSummary(
+        _ partner: [String: Any], trackIndex: Int, visual: [String: Any]
+    ) -> [String: Any] {
+        var out: [String: Any] = ["id": partner["id"] ?? "", "track": trackIndex]
+        let pStart = intValue(partner["startFrame"])
+        let pDur = intValue(partner["durationFrames"])
+        if pStart != intValue(visual["startFrame"]) || pDur != intValue(visual["durationFrames"]) {
+            out["frames"] = [pStart, pStart + pDur]
+        }
+        for key in ["trimStartFrame", "trimEndFrame", "speed"] {
+            if let pv = partner[key] as? NSNumber, let vv = visual[key] as? NSNumber, pv != vv {
+                out[key] = pv
+            }
+        }
+        let stripped = strippingDefaults(compactClipKeyframes(partner), clipDefaults)
+        for key in ["volume", "fadeInFrames", "fadeOutFrames", "fadeInInterpolation", "fadeOutInterpolation", "keyframes"] {
+            if let v = stripped[key] { out[key] = v }
+        }
+        if let fx = stripped["effects"] as? [[String: Any]] {
+            let cleaned = compactEffects(fx)
+            if !cleaned.isEmpty { out["effects"] = cleaned }
+        }
+        return out
+    }
+
+    /// Read shape for the effect stack: no ids (removal is by type), flat params, enabled
+    /// only when false. color.* entries live in the clip's `color` object instead.
+    private static func compactEffects(_ raw: [[String: Any]]) -> [[String: Any]] {
+        raw.compactMap { e in
+            guard let type = e["type"] as? String, !type.hasPrefix("color.") else { return nil }
+            var out: [String: Any] = ["type": type]
+            if let params = e["params"] as? [String: Any] {
+                var flat: [String: Any] = [:]
+                for (k, v) in params {
+                    guard let p = v as? [String: Any] else { flat[k] = v; continue }
+                    flat[k] = p["value"] ?? p["string"] ?? (p["track"] != nil ? "animated" : nil) ?? v
+                }
+                if !flat.isEmpty { out["params"] = flat }
+            }
+            if let enabled = e["enabled"] as? Bool, !enabled { out["enabled"] = false }
+            return out
+        }
+    }
+
+    // MARK: - Track and clip compaction
+
+    private static func compactTrack(
+        _ track: [String: Any], window: Range<Int>?, captionDetail: Bool, fold: LinkFold, grades: [String: [String: Any]]
+    ) -> [String: Any] {
         var out = strippingDefaults(track, trackDefaults)
         guard let rawClips = track["clips"] as? [[String: Any]] else { return out }
-        let compacted = rawClips.map { compactClip($0) }
+        let compacted = rawClips
+            .filter { !fold.foldedAudioIds.contains(($0["id"] as? String) ?? "") }
+            .map { compactClip($0, fold: fold, grades: grades) }
 
         var loose: [[String: Any]] = []
         var groupOrder: [String] = []
@@ -93,20 +276,23 @@ extension ToolExecutor {
 
         var groups: [[String: Any]] = []
         for gid in groupOrder {
-            let (group, deviants) = captionGroup(gid: gid, members: grouped[gid] ?? [], window: window)
+            let (group, deviants) = captionGroup(gid: gid, members: grouped[gid] ?? [], window: window, detail: captionDetail)
             groups.append(group)
             loose.append(contentsOf: deviants)
         }
-        loose.sort { intValue($0["startFrame"]) < intValue($1["startFrame"]) }
+        loose.sort { intValue(($0["frames"] as? [Any])?.first) < intValue(($1["frames"] as? [Any])?.first) }
 
         let visible = window.map { w in loose.filter { clipIntersects($0, w) } } ?? loose
-        out["clips"] = visible
+        out.removeValue(forKey: "clips")
+        if !visible.isEmpty { out["clips"] = visible }
         if visible.count < loose.count { out["totalClips"] = loose.count }
         if !groups.isEmpty { out["captionGroups"] = groups }
         return out
     }
 
-    private static func compactClip(_ clip: [String: Any]) -> [String: Any] {
+    private static func compactClip(
+        _ clip: [String: Any], fold: LinkFold, grades: [String: [String: Any]]
+    ) -> [String: Any] {
         var out = compactClipKeyframes(clip)
         if let s = out["sourceClipType"] as? String, s == out["mediaType"] as? String {
             out.removeValue(forKey: "sourceClipType")
@@ -116,7 +302,21 @@ extension ToolExecutor {
             out.removeValue(forKey: "trimStartFrame")
             out.removeValue(forKey: "trimEndFrame")
         }
-        return strippingDefaults(out, clipDefaults)
+        out = strippingDefaults(out, clipDefaults)
+        if let id = out["id"] as? String, let grade = grades[id] { out["color"] = grade }
+        if let fx = out["effects"] as? [[String: Any]] {
+            let cleaned = compactEffects(fx)
+            if cleaned.isEmpty { out.removeValue(forKey: "effects") } else { out["effects"] = cleaned }
+        }
+        let start = intValue(out["startFrame"])
+        out["frames"] = [start, start + intValue(out["durationFrames"])]
+        out.removeValue(forKey: "startFrame")
+        out.removeValue(forKey: "durationFrames")
+        if let id = out["id"] as? String, let partner = fold.partnerByVisualId[id] {
+            out["audio"] = audioSummary(partner.clip, trackIndex: partner.trackIndex, visual: clip)
+            out.removeValue(forKey: "linkGroupId")
+        }
+        return out
     }
 
     /// Removes keys whose values equal the defaults; recurses into nested objects.
@@ -134,11 +334,13 @@ extension ToolExecutor {
         return out
     }
 
-    /// Collapses one caption group into shared properties + compact rows.
+    // MARK: - Caption groups
+
+    /// Collapses one caption group into shared properties + a summary (default) or compact rows (detail).
     private static func captionGroup(
-        gid: String, members: [[String: Any]], window: Range<Int>?
+        gid: String, members: [[String: Any]], window: Range<Int>?, detail: Bool
     ) -> (group: [String: Any], deviants: [[String: Any]]) {
-        let rowKeys: Set<String> = ["id", "startFrame", "durationFrames", "textContent", "captionGroupId"]
+        let rowKeys: Set<String> = ["id", "frames", "textContent", "captionGroupId", "wordTimings"]
         var counts: [String: Int] = [:]
         var modalKey = ""
         var shared: [String: Any] = [:]
@@ -164,12 +366,13 @@ extension ToolExecutor {
         var frameMin = Int.max
         var frameMax = 0
         for (clip, key) in entries {
-            let start = intValue(clip["startFrame"])
-            let end = start + intValue(clip["durationFrames"])
+            let frames = clip["frames"] as? [Any]
+            let start = intValue(frames?.first)
+            let end = intValue(frames?.last)
             frameMin = min(frameMin, start)
             frameMax = max(frameMax, end)
             if key == modalKey {
-                rows.append([clip["id"] ?? "", start, end - start, clip["textContent"] ?? ""])
+                rows.append([clip["id"] ?? "", start, end, clip["textContent"] ?? ""])
             } else {
                 deviants.append(clip)
             }
@@ -177,36 +380,41 @@ extension ToolExecutor {
 
         let total = rows.count
         if let window {
-            rows = rows.filter { intValue($0[1]) < window.upperBound && intValue($0[1]) + intValue($0[2]) > window.lowerBound }
+            rows = rows.filter { intValue($0[1]) < window.upperBound && intValue($0[2]) > window.lowerBound }
         }
         rows.sort { intValue($0[1]) < intValue($1[1]) }
-        let shown = Array(rows.prefix(captionRowLimit))
 
         var group: [String: Any] = [
             "captionGroupId": gid,
             "clipCount": total,
             "frameRange": [frameMin, frameMax],
-            "clipFormat": captionRowFormat,
-            "clips": shown,
         ]
         if !shared.isEmpty { group["shared"] = shared }
+
+        guard detail else {
+            if let first = rows.first?[3] as? String, let last = rows.last?[3] as? String {
+                group["textPreview"] = rows.count == 1
+                    ? truncate(first)
+                    : "\(truncate(first)) … \(truncate(last))"
+            }
+            group["clipsNote"] = "Per-clip rows omitted — re-read with captionDetail:true for \(captionRowFormat) rows; get_transcript has the spoken words."
+            return (group, deviants)
+        }
+
+        let shown = Array(rows.prefix(captionRowLimit))
+        group["clipFormat"] = captionRowFormat
+        group["clips"] = shown
         if shown.count < total {
             group["clipsNote"] = "Showing \(shown.count) of \(total) caption clips. Page with startFrame/endFrame."
         }
         return (group, deviants)
     }
 
-    private static func canonicalJSON(_ obj: [String: Any]) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]) else { return "" }
-        return String(data: data, encoding: .utf8) ?? ""
+    private static func truncate(_ text: String) -> String {
+        text.count > captionPreviewLimit ? String(text.prefix(captionPreviewLimit)) + "…" : text
     }
 
-    private static func clipIntersects(_ clip: [String: Any], _ window: Range<Int>) -> Bool {
-        let start = intValue(clip["startFrame"])
-        return start < window.upperBound && start + intValue(clip["durationFrames"]) > window.lowerBound
-    }
-
-    private static func intValue(_ v: Any?) -> Int { (v as? NSNumber)?.intValue ?? 0 }
+    // MARK: - Keyframes
 
     private static func compactClipKeyframes(_ clip: [String: Any]) -> [String: Any] {
         var out = clip
@@ -219,22 +427,59 @@ extension ToolExecutor {
             ("scaleTrack", "scale", KeyframeValueShape.pair),
             ("cropTrack", "crop", KeyframeValueShape.crop),
         ] {
-            if let track = clip[trackKey] as? [String: Any],
-               let kfs = track["keyframes"] as? [[String: Any]],
-               !kfs.isEmpty {
-                keyframes[propKey] = kfs.map { kf -> [Any] in
-                    var row: [Any] = [kf["frame"] ?? 0]
-                    row.append(contentsOf: valueShape.values(from: kf["value"]))
-                    if let interp = kf["interpolationOut"] as? String, interp != "smooth" {
-                        row.append(interp)
-                    }
-                    return row
-                }
+            defer { out.removeValue(forKey: trackKey) }
+            guard let track = clip[trackKey] as? [String: Any],
+                  let kfs = track["keyframes"] as? [[String: Any]],
+                  !kfs.isEmpty else { continue }
+
+            let values = kfs.map { valueShape.values(from: $0["value"]).map { ($0 as? NSNumber)?.doubleValue ?? 0 } }
+            if let first = values.first, values.allSatisfy({ nearlyEqual($0, first) }),
+               collapseConstantKeyframes(first, propKey: propKey, clip: clip, into: &out) {
+                continue
             }
-            out.removeValue(forKey: trackKey)
+
+            keyframes[propKey] = kfs.map { kf -> [Any] in
+                var row: [Any] = [kf["frame"] ?? 0]
+                row.append(contentsOf: valueShape.values(from: kf["value"]))
+                if let interp = kf["interpolationOut"] as? String, interp != "smooth" {
+                    row.append(interp)
+                }
+                return row
+            }
         }
         if !keyframes.isEmpty { out["keyframes"] = keyframes }
         return out
+    }
+
+    /// True when absorbed: identity tracks vanish; constants become the static field when it's at default.
+    private static func collapseConstantKeyframes(
+        _ value: [Double], propKey: String, clip: [String: Any], into out: inout [String: Any]
+    ) -> Bool {
+        switch propKey {
+        case "volume", "opacity":
+            if nearlyEqual(value, [1]) { return true }
+            guard (clip[propKey] as? NSNumber)?.doubleValue == 1 else { return false }
+            out[propKey] = value[0]
+            return true
+        case "rotation":
+            return nearlyEqual(value, [0])
+        case "position":
+            return nearlyEqual(value, [0, 0])
+        case "scale":
+            return nearlyEqual(value, [1, 1])
+        case "crop":
+            if nearlyEqual(value, [0, 0, 0, 0]) { return true }
+            let staticCrop = clip["crop"] as? [String: Any] ?? [:]
+            guard staticCrop.values.allSatisfy({ (($0 as? NSNumber)?.doubleValue ?? 0) == 0 }) else { return false }
+            out["crop"] = ["top": value[0], "right": value[1], "bottom": value[2], "left": value[3]]
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func nearlyEqual(_ a: [Double], _ b: [Double]) -> Bool {
+        a.count == b.count && zip(a, b).allSatisfy { abs($0 - $1) < 0.0005 }
     }
 
     private enum KeyframeValueShape {
@@ -254,520 +499,17 @@ extension ToolExecutor {
         }
     }
 
-    func getMedia(_ editor: EditorViewModel) throws -> ToolResult {
-        guard let obj = Self.encodeAsJSONObject(editor.mediaManifest),
-              let json = Self.jsonString(roundJSONFloatingPointNumbers(obj, toPlaces: 3)) else {
-            throw ToolError("Failed to encode media manifest")
-        }
-        return .ok(json)
+    // MARK: - Small helpers
+
+    private static func canonicalJSON(_ obj: [String: Any]) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]) else { return "" }
+        return String(data: data, encoding: .utf8) ?? ""
     }
 
-    static func parseLocale(_ args: [String: Any], path: String) async throws -> Locale? {
-        guard let lang = args.string("language") else { return nil }
-        let candidate = Locale(identifier: lang)
-        guard let match = Transcription.matchLocale(candidates: [candidate], supported: await Transcription.supportedLocales()) else {
-            throw ToolError("\(path): on-device transcription does not support language '\(lang)'.")
-        }
-        return match
+    private static func clipIntersects(_ clip: [String: Any], _ window: Range<Int>) -> Bool {
+        let frames = clip["frames"] as? [Any]
+        return intValue(frames?.first) < window.upperBound && intValue(frames?.last) > window.lowerBound
     }
 
-    private static let inspectMediaAllowedKeys: Set<String> = [
-        "mediaRef", "clipId", "maxFrames", "startSeconds", "endSeconds", "wordTimestamps", "overview", "language",
-    ]
-
-    func inspectMedia(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
-        try validateUnknownKeys(args, allowed: Self.inspectMediaAllowedKeys, path: "inspect_media")
-        let mediaRef = try args.requireString("mediaRef")
-        let asset = try asset(mediaRef, editor: editor)
-        let url = asset.url
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            switch asset.generationStatus {
-            case .downloading:
-                throw ToolError("Asset \(asset.id) is still downloading. Poll get_media and retry once generationStatus becomes 'none'.")
-            case .generating:
-                throw ToolError("Asset \(asset.id) is still generating. Poll get_media and retry once generationStatus becomes 'none'.")
-            case .rendering:
-                throw ToolError("Asset \(asset.id) is still rendering. Poll get_media and retry once generationStatus becomes 'none'.")
-            case .failed(let msg):
-                throw ToolError("Asset \(asset.id) failed: \(msg)")
-            case .none:
-                throw ToolError("Media file not on disk: \(url.lastPathComponent)")
-            }
-        }
-
-        var mapping: (clip: Clip, fps: Int)?
-        if let clipId = args.string("clipId") {
-            guard let loc = editor.findClip(id: clipId) else {
-                throw ToolError("Clip not found: \(clipId)")
-            }
-            let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-            guard clip.mediaRef == mediaRef else {
-                throw ToolError("Clip \(clipId) does not reference mediaRef \(mediaRef) (it references \(clip.mediaRef))")
-            }
-            mapping = (clip, editor.timeline.fps)
-        }
-
-        let preferredLocale = try await Self.parseLocale(args, path: "inspect_media")
-
-        switch asset.type {
-        case .image: return try await readImage(asset: asset, args: args)
-        case .video: return try await readVideo(editor: editor, asset: asset, args: args, mapping: mapping, preferredLocale: preferredLocale)
-        case .audio: return try await readAudio(editor: editor, asset: asset, args: args, mapping: mapping, preferredLocale: preferredLocale)
-        case .lottie: return try await readLottie(asset: asset, args: args)
-        case .text: throw ToolError("Text clips are not stored as media assets.")
-        }
-    }
-
-    private static func sourceRange(_ args: [String: Any], duration: Double) throws -> ClosedRange<Double>? {
-        let start = args.double("startSeconds")
-        let end = args.double("endSeconds")
-        guard start != nil || end != nil else { return nil }
-        let s = max(start ?? 0, 0)
-        let e = min(end ?? duration, duration)
-        guard s < e else {
-            throw ToolError("Invalid time range [\(s), \(e)] for media of duration \(duration)s")
-        }
-        return s...e
-    }
-
-    static func timelineMappingMeta(clip: Clip, fps: Int) -> [String: Any] {
-        [
-            "clipId": clip.id,
-            "clipStartFrame": clip.startFrame,
-            "clipEndFrame": clip.endFrame,
-            "fps": fps,
-            "note": "transcription segments/words are project frames for this clip; out-of-range entries are dropped.",
-        ]
-    }
-
-    private func readImage(asset: MediaAsset, args: [String: Any]) async throws -> ToolResult {
-        let url = asset.url
-        let encoded = await Task.detached(priority: .userInitiated) {
-            ImageEncoder.encode(url: url).map {
-                (base64: $0.data.base64EncodedString(), mime: $0.mime, encodedByteSize: $0.data.count)
-            }
-        }.value
-        guard let encoded else {
-            throw ToolError("Failed to read or decode image file")
-        }
-
-        let fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.uint64Value ?? 0
-        var meta = Self.baseMeta(for: asset)
-        meta["mimeType"] = encoded.mime
-        meta["byteSize"] = fileSize
-        meta["encodedByteSize"] = encoded.encodedByteSize
-        if let props = Self.imagePropertiesSummary(at: url) {
-            meta["imageProperties"] = props
-        }
-
-        guard let metaJSON = Self.jsonString(roundJSONFloatingPointNumbers(meta, toPlaces: 3)) else {
-            throw ToolError("Failed to encode metadata")
-        }
-        return ToolResult(
-            content: [.image(base64: encoded.base64, mediaType: encoded.mime), .text(metaJSON)],
-            isError: false
-        )
-    }
-
-    private func readVideo(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil, preferredLocale: Locale? = nil) async throws -> ToolResult {
-        guard asset.duration > 0 else { throw ToolError("Video has zero duration: \(asset.name)") }
-
-        let range = try Self.sourceRange(args, duration: asset.duration)
-        let windowStart = range?.lowerBound ?? 0
-        let windowEnd = range?.upperBound ?? asset.duration
-
-        var meta = Self.baseMeta(for: asset)
-        meta["hasAudio"] = asset.hasAudio
-        if let range { meta["timeRange"] = [range.lowerBound, range.upperBound] }
-
-        // Frames/overview and transcription touch independent subsystems — run them concurrently
-        let url = asset.url
-        let hasAudio = asset.hasAudio
-        let wantsOverview = args.bool("overview") == true
-        let requested = args.int("maxFrames") ?? Self.defaultReadVideoFrames
-        let frameCount = max(1, min(requested, Self.readVideoMaxFrames))
-        async let visualTask = Self.extractVisual(
-            url: url, name: asset.name, overview: wantsOverview,
-            frameCount: frameCount, start: windowStart, end: windowEnd
-        )
-        async let transcriptTask: Result<TranscriptionResult, Error>? = {
-            guard hasAudio else { return nil }
-            do { return .success(try await TranscriptCache.shared.transcript(for: url, isVideo: true, range: range, preferredLocale: preferredLocale)) }
-            catch { return .failure(error) }
-        }()
-
-        var imageBlocks: [ToolResult.Block] = []
-        switch try await visualTask {
-        case .overview(let jpeg, let timestamps):
-            meta["overview"] = ["tileTimestamps": timestamps.map { $0.jsonRounded(toPlaces: 3) }]
-            imageBlocks = [.image(base64: jpeg.base64EncodedString(), mediaType: "image/jpeg")]
-        case .frames(let frames):
-            meta["frameTimestamps"] = frames.map { $0.timestamp.jsonRounded(toPlaces: 3) }
-            imageBlocks = frames.map { .image(base64: $0.jpeg.base64EncodedString(), mediaType: "image/jpeg") }
-        }
-
-        switch await transcriptTask {
-        case .success(let transcript):
-            meta["transcription"] = Self.transcriptionMeta(
-                from: transcript, mapping: mapping, includeWords: args.bool("wordTimestamps") ?? false
-            )
-        case .failure(let error):
-            Log.transcription.error("video transcription failed: \(error.localizedDescription)")
-            meta["transcriptionError"] = error.localizedDescription
-        case nil:
-            break
-        }
-        if let mapping { meta["timelineMapping"] = Self.timelineMappingMeta(clip: mapping.clip, fps: mapping.fps) }
-
-        guard let metaJSON = Self.jsonString(roundJSONFloatingPointNumbers(meta, toPlaces: 3)) else {
-            throw ToolError("Failed to encode metadata")
-        }
-        return ToolResult(content: imageBlocks + [.text(metaJSON)], isError: false)
-    }
-
-    private enum Visual: Sendable {
-        case frames([(timestamp: Double, jpeg: Data)])
-        case overview(jpeg: Data, timestamps: [Double])
-    }
-
-    private nonisolated static func extractVisual(
-        url: URL, name: String, overview: Bool, frameCount: Int, start: Double, end: Double
-    ) async throws -> Visual {
-        if overview {
-            do {
-                let sheet = try await OverviewRenderer.make(url: url, start: start, end: end)
-                return .overview(jpeg: sheet.jpeg, timestamps: sheet.timestamps)
-            } catch {
-                throw ToolError("Overview failed: \(error.localizedDescription)")
-            }
-        }
-
-        let asset = AVURLAsset(url: url)
-        guard (try? await asset.loadTracks(withMediaType: .video).first) != nil else {
-            throw ToolError("No video track available in \(name)")
-        }
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(
-            width: readVideoFrameMaxDimension,
-            height: readVideoFrameMaxDimension
-        )
-        generator.requestedTimeToleranceBefore = CMTime(seconds: 0.25, preferredTimescale: 600)
-        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.25, preferredTimescale: 600)
-
-        var frames: [(timestamp: Double, jpeg: Data)] = []
-        for i in 0..<frameCount {
-            let t = start + (end - start) * (Double(i) + 0.5) / Double(frameCount)
-            let cmTime = CMTime(seconds: t, preferredTimescale: 600)
-            guard let cgImage = try? await generator.image(at: cmTime).image else { continue }
-            guard let jpeg = ImageEncoder.encodeJPEG(cgImage, quality: readVideoJPEGQuality) else { continue }
-            frames.append((timestamp: t, jpeg: jpeg))
-        }
-        guard !frames.isEmpty else { throw ToolError("Failed to extract frames from \(name)") }
-        return .frames(frames)
-    }
-
-    private func readLottie(asset: MediaAsset, args: [String: Any]) async throws -> ToolResult {
-        let count = max(1, min(args.int("maxFrames") ?? Self.defaultReadVideoFrames, Self.readVideoMaxFrames))
-        let (lottieMeta, frames) = try await LottieVideoGenerator.sampleFrames(fileAt: asset.url, count: count)
-        guard !frames.isEmpty else { throw ToolError("Failed to render Lottie frames from \(asset.name)") }
-
-        var meta = Self.baseMeta(for: asset)
-        meta["framerate"] = lottieMeta.framerate
-        meta["frameCount"] = lottieMeta.frameCount
-        meta["durationSeconds"] = lottieMeta.duration
-        meta["sampledFrameIndices"] = frames.map(\.frameIndex)
-        meta["note"] = "Lottie frames sampled evenly across the animation; transparent areas composited over gray."
-
-        let imageBlocks: [ToolResult.Block] = frames.compactMap { frame in
-            Self.compositeJPEG(frame.image).map { .image(base64: $0.base64EncodedString(), mediaType: "image/jpeg") }
-        }
-        guard !imageBlocks.isEmpty else { throw ToolError("Failed to encode Lottie frames") }
-        guard let metaJSON = Self.jsonString(roundJSONFloatingPointNumbers(meta, toPlaces: 3)) else {
-            throw ToolError("Failed to encode metadata")
-        }
-        return ToolResult(content: imageBlocks + [.text(metaJSON)], isError: false)
-    }
-
-    /// Composites an alpha frame over mid-gray so transparent regions read clearly to the model.
-    private static func compositeJPEG(_ image: CGImage, quality: CGFloat = 0.7) -> Data? {
-        guard let context = CGContext(
-            data: nil, width: image.width, height: image.height,
-            bitsPerComponent: 8, bytesPerRow: 0,
-            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
-        ) else { return nil }
-        let rect = CGRect(x: 0, y: 0, width: image.width, height: image.height)
-        context.setFillColor(gray: 0.5, alpha: 1)
-        context.fill(rect)
-        context.draw(image, in: rect)
-        return context.makeImage().flatMap { ImageEncoder.encodeJPEG($0, quality: quality) }
-    }
-
-    private func readAudio(editor: EditorViewModel, asset: MediaAsset, args: [String: Any], mapping: (clip: Clip, fps: Int)? = nil, preferredLocale: Locale? = nil) async throws -> ToolResult {
-        let range = try Self.sourceRange(args, duration: asset.duration)
-        let transcript: TranscriptionResult
-        do {
-            transcript = try await TranscriptCache.shared.transcript(for: asset.url, isVideo: false, range: range, preferredLocale: preferredLocale)
-        } catch {
-            throw ToolError("Transcription failed: \(error.localizedDescription)")
-        }
-
-        var meta = Self.baseMeta(for: asset)
-        if let range { meta["timeRange"] = [range.lowerBound, range.upperBound] }
-        let transcription = Self.transcriptionMeta(
-            from: transcript, mapping: mapping, includeWords: args.bool("wordTimestamps") ?? false
-        )
-        for (k, v) in transcription { meta[k] = v }
-        if let mapping { meta["timelineMapping"] = Self.timelineMappingMeta(clip: mapping.clip, fps: mapping.fps) }
-        guard let metaJSON = Self.jsonString(roundJSONFloatingPointNumbers(meta, toPlaces: 3)) else {
-            throw ToolError("Failed to encode metadata")
-        }
-        return .ok(metaJSON)
-    }
-
-    private static func transcriptionMeta(
-        from transcript: TranscriptionResult,
-        mapping: (clip: Clip, fps: Int)? = nil,
-        includeWords: Bool = false
-    ) -> [String: Any] {
-        var out: [String: Any] = [
-            "timing": mapping == nil ? "sourceSeconds" : "projectFrames",
-        ]
-        if let lang = transcript.language { out["language"] = lang }
-
-        let rows: [(row: [Any], sourceEnd: Double)]
-        if let mapping {
-            rows = transcript.segments.compactMap { s in
-                guard let f = spanFrames(start: s.start, end: s.end, clip: mapping.clip, fps: mapping.fps) else { return nil }
-                return ([s.text, f.start, f.end], s.end)
-            }
-        } else {
-            rows = transcript.segments.map { ([$0.text, round2OrNull($0.start), round2OrNull($0.end)], $0.end) }
-        }
-        out["segments"] = rows.prefix(inspectMaxSegments).map(\.row)
-        if rows.count > inspectMaxSegments, let lastEnd = rows.prefix(inspectMaxSegments).last?.sourceEnd {
-            out["totalSegments"] = rows.count
-            out["nextStartSeconds"] = round2OrNull(lastEnd)
-            out["segmentsNote"] = "First \(inspectMaxSegments) of \(rows.count) segments. Continue with startSeconds = nextStartSeconds."
-        }
-
-        if includeWords {
-            let words: [[Any]]
-            if let mapping {
-                words = wordFrames(transcript, clip: mapping.clip, fps: mapping.fps).map { [$0.text, $0.start, $0.end] }
-            } else {
-                words = transcript.words.map { [$0.text, round2OrNull($0.start), round2OrNull($0.end)] }
-            }
-            out["words"] = Array(words.prefix(inspectMaxWords))
-            if words.count > inspectMaxWords {
-                out["totalWords"] = words.count
-                out["wordsNote"] = "First \(inspectMaxWords) of \(words.count) words. Narrow with startSeconds/endSeconds."
-            }
-        }
-        return out
-    }
-
-    private static let getTranscriptAllowedKeys: Set<String> = ["startFrame", "endFrame", "clipId", "wordTimestamps", "language"]
-
-    func getTranscript(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
-        try validateUnknownKeys(args, allowed: Self.getTranscriptAllowedKeys, path: "get_transcript")
-        let fps = editor.timeline.fps
-        let clipFilter = args.string("clipId")
-        let windowStart = args.int("startFrame")
-        let windowEnd = args.int("endFrame")
-        if let s = windowStart, let e = windowEnd, s >= e {
-            throw ToolError("startFrame (\(s)) must be less than endFrame (\(e))")
-        }
-        if let clipFilter {
-            guard editor.findClip(id: clipFilter) != nil else {
-                throw ToolError("Clip \(clipFilter) not found.")
-            }
-            guard editor.captionTargets(ids: []).contains(where: { $0.id == clipFilter }) else {
-                throw ToolError("Clip \(clipFilter) has no transcribable audio. If it's a video with linked audio, scope to the linked audio clip instead.")
-            }
-        }
-        let preferredLocale = try await Self.parseLocale(args, path: "get_transcript")
-
-        let (allWords, skipped) = try await timelineWords(editor, preferredLocale: preferredLocale)
-
-        var clipsOut: [[String: Any]] = []
-        var totalWords = 0
-        var remaining = Self.inspectMaxWords
-        var lastEnd: Int?
-        forEachTimelineClipGroup(in: allWords) { clipId, trackIndex, clipStartFrame, clipEndFrame, clipWords in
-            if let clipFilter, clipId != clipFilter { return }
-
-            var rows: [[Any]] = []
-            for w in clipWords {
-                if let ws = windowStart, w.endFrame <= ws { continue }
-                if let we = windowEnd, w.startFrame >= we { continue }
-                totalWords += 1
-                guard remaining > 0 else { continue }
-                rows.append([w.index, w.text, w.startFrame, w.endFrame])
-                remaining -= 1
-                lastEnd = w.endFrame
-            }
-            guard !rows.isEmpty else { return }
-            clipsOut.append(["clipId": clipId, "trackIndex": trackIndex,
-                             "startFrame": clipStartFrame, "endFrame": clipEndFrame,
-                             "words": rows])
-        }
-
-        var out: [String: Any] = [
-            "fps": fps, "timing": "projectFrames",
-            "wordFormat": ["index", "text", "start", "end"], "clips": clipsOut,
-        ]
-        if totalWords > Self.inspectMaxWords {
-            out["totalWords"] = totalWords
-            if let lastEnd {
-                out["nextStartFrame"] = lastEnd
-                out["wordsNote"] = "First \(Self.inspectMaxWords) of \(totalWords) words. Continue with startFrame = nextStartFrame."
-            }
-        }
-        if !skipped.isEmpty { out["skipped"] = skipped }
-
-        guard let json = Self.jsonString(out) else { throw ToolError("Failed to encode transcript") }
-        return .ok(json)
-    }
-
-    func timelineWords(_ editor: EditorViewModel, preferredLocale: Locale? = nil) async throws -> (words: [TimelineWord], skipped: [[String: Any]]) {
-        let fps = editor.timeline.fps
-        let assetsById = Dictionary(editor.mediaAssets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        struct Frag { let clipId: String; let trackIndex: Int; let clip: Clip; let url: URL; let isVideo: Bool }
-        var frags: [Frag] = []
-        var isVideoByURL: [URL: Bool] = [:]
-        for clip in editor.captionTargets(ids: []) {
-            guard let loc = editor.findClip(id: clip.id), let asset = assetsById[clip.mediaRef] else { continue }
-            let isVideo = asset.type == .video
-            frags.append(Frag(clipId: clip.id, trackIndex: loc.trackIndex, clip: clip, url: asset.url, isVideo: isVideo))
-            isVideoByURL[asset.url] = isVideo
-        }
-
-        // Transcribe each unique source once (cached); skip — don't fail — on per-asset errors.
-        var transcripts: [URL: TranscriptionResult] = [:]
-        var skipped: [[String: Any]] = []
-        for url in Set(frags.map(\.url)) {
-            do { transcripts[url] = try await TranscriptCache.shared.transcript(for: url, isVideo: isVideoByURL[url] ?? true, range: nil, preferredLocale: preferredLocale) }
-            catch { skipped.append(["file": url.lastPathComponent, "reason": error.localizedDescription]) }
-        }
-
-        var words: [TimelineWord] = []
-        for frag in frags.sorted(by: { $0.clip.startFrame < $1.clip.startFrame }) {
-            guard let transcript = transcripts[frag.url] else { continue }
-            let visStart = Double(frag.clip.trimStartFrame)
-            let visEnd = visStart + Double(frag.clip.durationFrames) * max(frag.clip.speed, 0.0001)
-            var rows: [(start: Int, end: Int, text: String)] = []
-            for w in transcript.words {
-                guard let s = w.start, let e = w.end else { continue }
-                // Assign a word to the clip whose visible range contains its midpoint.
-                let midFrame = (s + e) / 2 * Double(fps)
-                guard midFrame >= visStart, midFrame < visEnd,
-                      let f = Self.spanFrames(start: s, end: e, clip: frag.clip, fps: fps) else { continue }
-                rows.append((f.start, f.end, w.text))
-            }
-            rows.sort { ($0.start, $0.end) < ($1.start, $1.end) }
-            for r in rows {
-                words.append(TimelineWord(
-                    index: words.count, clipId: frag.clipId, trackIndex: frag.trackIndex,
-                    clipStartFrame: frag.clip.startFrame, clipEndFrame: frag.clip.endFrame,
-                    text: r.text, startFrame: r.start, endFrame: r.end
-                ))
-            }
-        }
-        return (words, skipped)
-    }
-
-    func forEachTimelineClipGroup(
-        in allWords: [TimelineWord],
-        _ body: (String, Int, Int, Int, ArraySlice<TimelineWord>) -> Void
-    ) {
-        var i = allWords.startIndex
-        while i < allWords.endIndex {
-            let clipId = allWords[i].clipId
-            var j = allWords.index(after: i)
-            while j < allWords.endIndex, allWords[j].clipId == clipId { j = allWords.index(after: j) }
-            body(clipId, allWords[i].trackIndex, allWords[i].clipStartFrame, allWords[i].clipEndFrame, allWords[i..<j])
-            i = j
-        }
-    }
-
-    func msToFrames(_ ms: Double, fps: Int) -> Int {
-        Int((ms / 1000 * Double(fps)).rounded())
-    }
-
-    /// Maps a clip's transcript words to (text, startFrame, endFrame) in project frames,
-    /// dropping words that fall outside the clip's visible span.
-    private static func wordFrames(_ transcript: TranscriptionResult, clip: Clip, fps: Int) -> [(text: String, start: Int, end: Int)] {
-        transcript.words.compactMap { w in
-            guard let s = w.start, let e = w.end, let f = spanFrames(start: s, end: e, clip: clip, fps: fps) else { return nil }
-            return (w.text, f.start, f.end)
-        }
-    }
-
-    /// Source-seconds span → project frames, clamped to the clip's visible window first so a boundary-straddler yields its real sliver, not a fabricated full-clip span. nil if not visible.
-    private static func spanFrames(start: Double, end: Double, clip: Clip, fps: Int) -> (start: Int, end: Int)? {
-        let fpsD = Double(fps)
-        let visStart = Double(clip.trimStartFrame)
-        let visEnd = visStart + Double(clip.durationFrames) * max(clip.speed, 0.0001)
-        let s = max(start * fpsD, visStart)
-        let e = min(end * fpsD, visEnd)
-        guard e > s else { return nil }
-        func toTimeline(_ sourceFrame: Double) -> Int {
-            Int((Double(clip.startFrame) + (sourceFrame - visStart) / max(clip.speed, 0.0001)).rounded())
-        }
-        let a = toTimeline(s)
-        return (a, max(a, toTimeline(e)))
-    }
-
-    private static func round2OrNull(_ x: Double?) -> Any {
-        guard let x, x.isFinite else { return NSNull() }
-        return NSDecimalNumber(string: String(format: "%.2f", x))
-    }
-
-    private static func baseMeta(for asset: MediaAsset) -> [String: Any] {
-        var meta: [String: Any] = [
-            "id": asset.id, "name": asset.name,
-            "type": asset.type.rawValue, "duration": asset.duration.jsonRounded(toPlaces: 3),
-            "fileName": asset.url.lastPathComponent,
-            "generationStatus": generationStatusString(asset.generationStatus),
-        ]
-        if let w = asset.sourceWidth { meta["sourceWidth"] = w }
-        if let h = asset.sourceHeight { meta["sourceHeight"] = h }
-        if let fps = asset.sourceFPS { meta["sourceFPS"] = fps }
-        if let gi = asset.generationInput, let obj = encodeAsJSONObject(gi) {
-            meta["generationInput"] = obj
-        }
-        return meta
-    }
-
-    private static func encodeAsJSONObject<T: Encodable>(_ value: T) -> Any? {
-        guard let data = try? JSONEncoder().encode(value),
-              let obj = try? JSONSerialization.jsonObject(with: data)
-        else { return nil }
-        return obj
-    }
-
-    private static func generationStatusString(_ status: MediaAsset.GenerationStatus) -> String {
-        switch status {
-        case .none: "none"
-        case .generating: "generating"
-        case .downloading: "downloading"
-        case .rendering: "rendering"
-        case .failed(let message): "failed: \(message)"
-        }
-    }
-
-    private static func imagePropertiesSummary(at url: URL) -> [String: Any]? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
-        else { return nil }
-        var out: [String: Any] = [:]
-        if let v = props[kCGImagePropertyPixelWidth] { out["pixelWidth"] = v }
-        if let v = props[kCGImagePropertyPixelHeight] { out["pixelHeight"] = v }
-        if let v = props[kCGImagePropertyOrientation] { out["orientation"] = v }
-        if let v = props[kCGImagePropertyDepth] { out["depth"] = v }
-        if let v = props[kCGImagePropertyColorModel] { out["colorModel"] = v }
-        return out.isEmpty ? nil : out
-    }
+    private static func intValue(_ v: Any?) -> Int { (v as? NSNumber)?.intValue ?? 0 }
 }

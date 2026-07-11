@@ -33,18 +33,23 @@ final class MCPService {
     }
 
     func start() {
-        let toolExecutor = toolExecutor
-        let httpServer = MCPHTTPServer(port: Self.port) {
+        let toolExecutor = self.toolExecutor
+        let httpServer = MCPHTTPServer(
+            port: Self.port,
+            onSessionStarted: {
+                Analytics.capture(.mcpSessionStarted, properties: ["source": "mcp"])
+            }
+        ) {
             let server = Server(
                 name: "palmier-pro",
                 version: "1.0.0",
-                instructions: AgentInstructions.serverInstructions,
+                instructions: AgentInstructions.serverInstructions + AgentInstructions.projectNavigation,
                 capabilities: .init(
                     resources: .init(subscribe: false, listChanged: false),
                     tools: .init(listChanged: false)
                 )
             )
-            await Self.registerTools(on: server, toolExecutor: toolExecutor)
+            await Self.registerTools(on: server, executor: toolExecutor)
             await Self.registerResources(on: server)
             return server
         }
@@ -70,8 +75,8 @@ final class MCPService {
         Log.mcp.notice("http server stopped")
     }
 
-    private nonisolated static func registerTools(on server: Server, toolExecutor: ToolExecutor) async {
-        let tools: [Tool] = ToolDefinitions.all.map { def in
+    private nonisolated static func registerTools(on server: Server, executor: ToolExecutor) async {
+        let tools: [Tool] = ToolDefinitions.mcpServer.map { def in
             Tool(name: def.name.rawValue, description: def.description, inputSchema: def.mcpSchemaValue)
         }
 
@@ -80,16 +85,14 @@ final class MCPService {
         }
 
         await server.withMethodHandler(CallTool.self) { params in
-            await Self.dispatchCall(params, toolExecutor: toolExecutor)
+            await dispatchCall(params, executor: executor)
         }
     }
 
-    private nonisolated static func dispatchCall(_ params: CallTool.Parameters, toolExecutor: ToolExecutor) async -> CallTool.Result {
-        guard ToolName(rawValue: params.name) != nil else {
-            return ToolResult.error("Unknown tool: \(params.name)").toMCPResult()
-        }
+    // Convert args on the main actor so the non-Sendable dict never crosses the hop.
+    private static func dispatchCall(_ params: CallTool.Parameters, executor: ToolExecutor) async -> CallTool.Result {
         let args = ToolArgsBridge.argsFromMCP(params.arguments ?? [:])
-        let result = await toolExecutor.execute(name: params.name, args: args)
+        let result = await executor.execute(name: params.name, args: args)
         return result.toMCPResult()
     }
 
@@ -114,23 +117,18 @@ final class MCPService {
         }
 
         await server.withMethodHandler(ReadResource.self) { params in
-            await readResource(uri: params.uri)
+            await Self.readResource(uri: params.uri)
         }
     }
 
-    private nonisolated static func readResource(uri: String) async -> ReadResource.Result {
+    @MainActor
+    private static func readResource(uri: String) -> ReadResource.Result {
         switch uri {
         case "palmier://models/video":
-            let models = await MainActor.run { VideoModelConfig.allModels }
-            let json = await Task.detached(priority: .utility) {
-                ToolExecutor.jsonString(models.map { ToolExecutor.videoModelInfo($0) }) ?? "[]"
-            }.value
+            let json = ToolExecutor.jsonString(VideoModelConfig.allModels.map { ToolExecutor.videoModelInfo($0) }) ?? "[]"
             return .init(contents: [.text(json, uri: uri, mimeType: "application/json")])
         case "palmier://models/image":
-            let models = await MainActor.run { ImageModelConfig.allModels }
-            let json = await Task.detached(priority: .utility) {
-                ToolExecutor.jsonString(models.map { ToolExecutor.imageModelInfo($0) }) ?? "[]"
-            }.value
+            let json = ToolExecutor.jsonString(ImageModelConfig.allModels.map { ToolExecutor.imageModelInfo($0) }) ?? "[]"
             return .init(contents: [.text(json, uri: uri, mimeType: "application/json")])
         default:
             return .init(contents: [.text("Unknown resource: \(uri)", uri: uri)])

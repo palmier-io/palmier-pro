@@ -20,6 +20,7 @@ enum AppTheme {
         static var prominentColor: Color { Color(prominent) }
         static var previewCanvasColor: Color { .black }
         static var placeholderColor: Color { Color(placeholder) }
+        static var clearColor: Color { .clear }
     }
 
     // MARK: - Borders
@@ -28,6 +29,7 @@ enum AppTheme {
         static let primary = NSColor.white.withAlphaComponent(0.16)
         static let subtle = NSColor.white.withAlphaComponent(0.12)
         static let divider = NSColor.white.withAlphaComponent(0.44)
+        static let timelineClip = NSColor.black
 
         static var primaryColor: Color { Color(primary) }
         static var subtleColor: Color { Color(subtle) }
@@ -64,6 +66,10 @@ enum AppTheme {
         )
     }
 
+    enum Update {
+        static let accent = Accent.timecodeColor
+    }
+
     // MARK: - Adjust sliders
 
     enum Slider {
@@ -76,6 +82,20 @@ enum AppTheme {
         static let tintGradient = [Color(red: 0.42, green: 0.78, blue: 0.45), Color(red: 0.82, green: 0.38, blue: 0.72)]
         /// Master luma track: near-black → near-white.
         static let lumaGradient = [Color(white: 0.05), Color(white: 0.95)]
+    }
+
+    enum AudioMeter {
+        static let panelWidth: CGFloat = 32
+        static let barWidth: CGFloat = 8
+        static let refreshInterval: Double = 1.0 / 30.0
+        static let rulerStepDb: Float = 6
+        static let rulerMajorStepDb: Float = 12
+        static let yellowThresholdDb: Float = -20
+        static let redThresholdDb: Float = -6
+
+        static let greenSegment = Color(red: 0.08, green: 0.78, blue: 0.22)
+        static let yellowSegment = Color(red: 0.98, green: 0.84, blue: 0.10)
+        static let redSegment = Color(red: 0.90, green: 0.24, blue: 0.20)
     }
 
     // MARK: - Color wheels
@@ -163,17 +183,20 @@ enum AppTheme {
         static let moderate: Double = 0.25
         static let medium: Double = 0.35
         static let strong: Double = 0.55
+        static let high: Double = 0.70
         static let prominent: Double = 0.80
     }
 
     // MARK: - Track type colors
 
     enum TrackColor {
-        static let video = NSColor(red: 0x00/255.0, green: 0x91/255.0, blue: 0xC2/255.0, alpha: 1)
-        static let audio = NSColor(red: 0x58/255.0, green: 0xA8/255.0, blue: 0x22/255.0, alpha: 1)
-        static let image = NSColor(red: 0xB7/255.0, green: 0x2D/255.0, blue: 0xD2/255.0, alpha: 1)
-        static let text = NSColor(red: 0xB7/255.0, green: 0x2D/255.0, blue: 0xD2/255.0, alpha: 1)
-        static let lottie = NSColor(red: 0xE0/255.0, green: 0xA8/255.0, blue: 0x00/255.0, alpha: 1)
+        static let video = NSColor(red: 0x1D/255.0, green: 0x58/255.0, blue: 0x78/255.0, alpha: 1)
+        static let audio = NSColor(red: 0x2E/255.0, green: 0x77/255.0, blue: 0x65/255.0, alpha: 1)
+        static let image = NSColor(red: 0x71/255.0, green: 0x54/255.0, blue: 0x86/255.0, alpha: 1)
+        static let text = NSColor(red: 0x71/255.0, green: 0x54/255.0, blue: 0x86/255.0, alpha: 1)
+        static let lottie = NSColor(red: 0xA0/255.0, green: 0x78/255.0, blue: 0x22/255.0, alpha: 1)
+        static let sequence = NSColor(red: 0xB9/255.0, green: 0xB2/255.0, blue: 0x9A/255.0, alpha: 1)
+        static let multicam = NSColor.systemRed
     }
 
     // MARK: - Corner radii
@@ -263,15 +286,24 @@ enum AppTheme {
         static let toolImagePreviewMaxHeight: CGFloat = 50
         static let projectCardWidth: CGFloat = 150
         static let projectCardHeight: CGFloat = 120
+        static let timelineClipBorderMinWidth: CGFloat = 8
+        static let timelineClipDetailMinWidth: CGFloat = 32
+        static let timelineTabRenameWidth: CGFloat = 120
+        static let timelineClipLabelMinWidth: CGFloat = 56
+        static let timelineBadgePadH: CGFloat = 4
+        static let timelineBadgePadV: CGFloat = 1
+        static let timelineBadgeMinWidth: CGFloat = 16
+        static let timelineDotSize: CGFloat = 5
         static let updateOverlayWidth: CGFloat = 640
     }
 
     enum Window {
-        static let homeDefault = NSSize(width: 1200, height: 1200)
+        static let homeDefault = NSSize(width: 1200, height: 880)
         static let homeMin = NSSize(width: 760, height: 480)
-        static let projectDefault = NSSize(width: 1600, height: 1000)
         static let projectMin = NSSize(width: 960, height: 600)
         static let projectTitlebarTrailingWidth: CGFloat = 280
+        static let settingsDefault = NSSize(width: 1200, height: 900)
+        static let settingsMin = NSSize(width: 860, height: 640)
     }
 
     enum Caption {
@@ -298,6 +330,16 @@ enum AppTheme {
     enum MediaPanel {
         static let tabRailWidth: CGFloat = IconSize.lg + Spacing.sm * 2
         static let contextRowHeight: CGFloat = IconSize.md
+    }
+
+    enum Export {
+        static let sheetWidth: CGFloat = 560
+        static let sheetHeight: CGFloat = 520
+    }
+
+    enum Matte {
+        static let sheetWidth: CGFloat = 280
+        static let controlWidth: CGFloat = 116
     }
 
     // MARK: - Shadows
@@ -350,6 +392,7 @@ extension ClipType {
         case .image: AppTheme.TrackColor.image
         case .text: AppTheme.TrackColor.text
         case .lottie: AppTheme.TrackColor.lottie
+        case .sequence: AppTheme.TrackColor.sequence
         }
     }
 }

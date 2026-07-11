@@ -5,7 +5,6 @@ import Combine
 /// The RPC layer for the backend
 @MainActor
 enum GenerationBackend {
-    /// Reactive subscription to a single generation job pushed by Convex.
     static func subscribe(
         jobId: String
     ) -> AnyPublisher<BackendGenerationJob?, ClientError>? {
@@ -17,7 +16,6 @@ enum GenerationBackend {
         )
     }
 
-    /// Uploads a file to backend in three steps:
     static func uploadReference(
         fileURL: URL,
         contentType: String,
@@ -25,27 +23,7 @@ enum GenerationBackend {
         guard let convex = AccountService.shared.convex else {
             throw GenerationBackendError.notConfigured
         }
-
-        // 1. Mint a Convex storage ticket
-        let ticket: StagingTicket = try await convex.mutation("uploads:generateUploadTicket")
-        guard let stagingURL = URL(string: ticket.uploadUrl) else {
-            throw GenerationBackendError.transport("Invalid staging URL")
-        }
-
-        // 2. POST the bytes to the upload URL
-        var stagingReq = URLRequest(url: stagingURL)
-        stagingReq.httpMethod = "POST"
-        stagingReq.setValue(contentType, forHTTPHeaderField: "Content-Type")
-        let (stagingRespData, stagingResp) = try await URLSession.shared.upload(
-            for: stagingReq,
-            fromFile: fileURL,
-        )
-        try assertHTTPOK(respData: stagingRespData, response: stagingResp)
-        let storageId = try JSONDecoder()
-            .decode(StagingUploadResponse.self, from: stagingRespData)
-            .storageId
-
-        // 3. Commit the upload
+        let storageId = try await BackendStorage.uploadStaged(fileURL: fileURL, contentType: contentType)
         let result: UrlResponse = try await convex.action(
             "uploads:commitUpload",
             with: ["storageId": storageId],
@@ -71,22 +49,6 @@ enum GenerationBackend {
             with: args,
         )
         return result.jobId
-    }
-
-    private static func assertHTTPOK(respData: Data, response: URLResponse) throws {
-        guard let http = response as? HTTPURLResponse else {
-            throw GenerationBackendError.transport("Non-HTTP response")
-        }
-        if (200..<300).contains(http.statusCode) { return }
-        let detail = String(data: respData, encoding: .utf8) ?? ""
-        if let parsed = try? JSONDecoder().decode(BackendErrorEnvelope.self, from: respData) {
-            throw GenerationBackendError.api(
-                status: http.statusCode,
-                code: parsed.error.code,
-                message: parsed.error.message,
-            )
-        }
-        throw GenerationBackendError.transport("HTTP \(http.statusCode): \(detail)")
     }
 }
 
@@ -136,26 +98,10 @@ enum GenerationBackendError: LocalizedError {
     }
 }
 
-private struct StagingTicket: Decodable, Sendable {
-    let uploadUrl: String
-}
-
-private struct StagingUploadResponse: Decodable, Sendable {
-    let storageId: String
-}
-
 private struct UrlResponse: Decodable, Sendable {
     let url: String
 }
 
 private struct SubmitGenerationResult: Decodable, Sendable {
     let jobId: String
-}
-
-private struct BackendErrorEnvelope: Decodable, Sendable {
-    struct Inner: Decodable, Sendable {
-        let code: String
-        let message: String
-    }
-    let error: Inner
 }

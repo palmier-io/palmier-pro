@@ -89,6 +89,18 @@ struct RippleDeleteRangesTests {
         #expect(starts(e.timeline.tracks[1]) == [110])
     }
 
+    @Test func syncLockedFollowerCutInSync() {
+        // Master audio spanning the same span as video gets the cut, not just a shift.
+        let v = Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 100)])
+        let a = Fixtures.audioTrack(clips: [Fixtures.clip(id: "a1", start: 0, duration: 100)])
+        let e = editor([v, a])
+        let outcome = e.rippleDeleteRanges(anchorClipId: "c1", ranges: [FrameRange(start: 40, end: 50)])
+        guard case .ok(let report) = outcome else { Issue.record("expected .ok"); return }
+        #expect(report.clearedTracks == 2)
+        #expect(spans(e.timeline.tracks[0]) == [[0, 40], [40, 90]])
+        #expect(spans(e.timeline.tracks[1]) == [[0, 40], [40, 90]])
+    }
+
     @Test func trackWideCutSpansMultipleClips() {
         // Two contiguous clips on one track; one call removes a range from each and closes both gaps.
         let track = Fixtures.videoTrack(clips: [
@@ -121,6 +133,26 @@ struct RippleDeleteRangesTests {
         #expect(spans(e.timeline.tracks[0]) == spans(e.timeline.tracks[1]))
     }
 
+    @Test func linkedPartnerOnSyncLockOffTrackCutInSync() {
+        // Cut anchored on an unrelated track: the sync-locked audio a1 is cleared, so its
+        // linked video v1 must be cut too even though v1's track has sync lock off.
+        var v1 = Fixtures.clip(id: "v1", start: 0, duration: 100); v1.linkGroupId = "G"
+        var a1 = Fixtures.clip(id: "a1", mediaType: .audio, start: 0, duration: 100); a1.linkGroupId = "G"
+        let r1 = Fixtures.clip(id: "r1", mediaType: .audio, start: 0, duration: 100)
+        let e = editor([
+            Fixtures.videoTrack(clips: [v1]),
+            Fixtures.audioTrack(clips: [a1]),
+            Fixtures.audioTrack(clips: [r1]),
+        ])
+        e.timeline.tracks[0].syncLocked = false
+        let outcome = e.rippleDeleteRangesOnTrack(trackIndex: 2, ranges: [FrameRange(start: 40, end: 50)])
+        guard case .ok(let report) = outcome else { Issue.record("expected .ok"); return }
+        #expect(report.clearedTracks == 3)
+        #expect(spans(e.timeline.tracks[0]) == [[0, 40], [40, 90]])
+        #expect(spans(e.timeline.tracks[1]) == [[0, 40], [40, 90]])
+        #expect(spans(e.timeline.tracks[2]) == [[0, 40], [40, 90]])
+    }
+
     @Test func rippleInsertPushesDownstream() {
         // c1 [0,50), c2 [50,100). Insert a 30-frame asset at 50 → c2 pushed to [80,130).
         let track = Fixtures.videoTrack(clips: [
@@ -139,8 +171,8 @@ struct RippleDeleteRangesTests {
         #expect(s.contains([80, 130]))
     }
 
-    @Test func refusesWhenSyncLockedFollowerWouldCollide() {
-        // a2 would slide left onto a1 → whole edit refused, nothing moves.
+    @Test func syncLockedFollowerCutAvoidsShiftCollision() {
+        // a1 is trimmed by the cut so a2 can shift left without overlapping.
         let v = Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 100)])
         let a = Fixtures.audioTrack(clips: [
             Fixtures.clip(id: "a1", start: 0, duration: 95),
@@ -148,8 +180,27 @@ struct RippleDeleteRangesTests {
         ])
         let e = editor([v, a])
         let outcome = e.rippleDeleteRanges(anchorClipId: "c1", ranges: [FrameRange(start: 40, end: 50)])
-        guard case .refused = outcome else { Issue.record("expected .refused"); return }
-        #expect(spans(e.timeline.tracks[0]) == [[0, 100]])
+        guard case .ok = outcome else { Issue.record("expected .ok"); return }
+        #expect(spans(e.timeline.tracks[0]) == [[0, 40], [40, 90]])
+        #expect(spans(e.timeline.tracks[1]) == [[0, 40], [40, 85], [90, 140]])
+    }
+
+    @Test func ignoreSyncLockedTracksLetsCutProceedAndLeavesThemInPlace() {
+        // Same collision as above, but exempting the blocking track lets the cut run;
+        // the anchor closes its gap while the exempted track's clips stay put.
+        let v = Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 100)])
+        let a = Fixtures.audioTrack(clips: [
+            Fixtures.clip(id: "a1", start: 0, duration: 95),
+            Fixtures.clip(id: "a2", start: 100, duration: 50),
+        ])
+        let e = editor([v, a])
+        let outcome = e.rippleDeleteRangesOnTrack(
+            trackIndex: 0,
+            ranges: [FrameRange(start: 40, end: 50)],
+            ignoreSyncLockTrackIndices: [1]
+        )
+        guard case .ok = outcome else { Issue.record("expected .ok"); return }
+        #expect(spans(e.timeline.tracks[0]) == [[0, 40], [40, 90]])
         #expect(starts(e.timeline.tracks[1]) == [0, 100])
     }
 }

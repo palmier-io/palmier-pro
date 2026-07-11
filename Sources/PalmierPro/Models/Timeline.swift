@@ -6,11 +6,21 @@ struct ClipLocation: Equatable, Sendable {
     let clipIndex: Int
 }
 
-struct Timeline: Codable, Sendable, Equatable {
+/// Written on tab switch and save, not live — playhead mutates every frame.
+struct TimelineViewState: Codable, Sendable, Equatable {
+    var playheadFrame: Int = 0
+    var zoomScale: Double = Defaults.pixelsPerFrame
+    var scrollOffsetX: Double = 0
+}
+
+struct Timeline: Codable, Sendable, Equatable, Identifiable {
+    var id: String = UUID().uuidString
+    var name: String = "Timeline 1"
     var fps: Int = 30
     var width: Int = 1920
     var height: Int = 1080
     var settingsConfigured: Bool = false
+    var folderId: String?
     var tracks: [Track] = []
 
     var totalFrames: Int {
@@ -19,6 +29,64 @@ struct Timeline: Codable, Sendable, Equatable {
             maxFrame = max(maxFrame, track.endFrame)
         }
         return maxFrame
+    }
+
+    var nestedTimelineIds: Set<String> {
+        var ids: Set<String> = []
+        for track in tracks {
+            for clip in track.clips where clip.mediaType == .sequence || clip.sourceClipType == .sequence {
+                ids.insert(clip.mediaRef)
+            }
+        }
+        return ids
+    }
+
+    var hasAudioClips: Bool {
+        tracks.contains { $0.type == .audio && !$0.clips.isEmpty }
+    }
+
+    /// Reachable nested timelines, breadth-first, deduped, excluding self and filtered by `include`.
+    func reachableTimelines(
+        resolve: (String) -> Timeline?,
+        maxDepth: Int = Int.max,
+        include: (Timeline) -> Bool = { _ in true }
+    ) -> [Timeline] {
+        var found: [Timeline] = []
+        var seen: Set<String> = [id]
+        var queue: [(t: Timeline, depth: Int)] = [(self, 0)]
+        var i = 0
+        while i < queue.count {
+            let (t, depth) = queue[i]
+            i += 1
+            guard depth < maxDepth else { continue }
+            for clip in t.tracks.flatMap(\.clips) where clip.sourceClipType == .sequence {
+                guard seen.insert(clip.mediaRef).inserted,
+                      let child = resolve(clip.mediaRef), include(child) else { continue }
+                found.append(child)
+                queue.append((child, depth + 1))
+            }
+        }
+        return found
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, fps, width, height, settingsConfigured, folderId, tracks
+    }
+}
+
+extension Timeline {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString,
+            name: (try? c.decode(String.self, forKey: .name)) ?? "Timeline 1",
+            fps: try c.decode(Int.self, forKey: .fps),
+            width: try c.decode(Int.self, forKey: .width),
+            height: try c.decode(Int.self, forKey: .height),
+            settingsConfigured: (try? c.decode(Bool.self, forKey: .settingsConfigured)) ?? false,
+            folderId: try? c.decode(String.self, forKey: .folderId),
+            tracks: try c.decode([Track].self, forKey: .tracks)
+        )
     }
 }
 
@@ -30,7 +98,6 @@ struct Track: Codable, Sendable, Equatable, Identifiable {
     var syncLocked: Bool = true
     var clips: [Clip] = []
 
-    /// Display-only height, not serialized. Reset to default on project open.
     var displayHeight: CGFloat = 50
 
     var endFrame: Int {
@@ -54,7 +121,7 @@ struct Track: Codable, Sendable, Equatable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, type, muted, hidden, syncLocked, clips
+        case id, type, muted, hidden, syncLocked, clips, displayHeight
     }
 }
 
@@ -67,7 +134,9 @@ extension Track {
             muted: (try? c.decode(Bool.self, forKey: .muted)) ?? false,
             hidden: (try? c.decode(Bool.self, forKey: .hidden)) ?? false,
             syncLocked: (try? c.decode(Bool.self, forKey: .syncLocked)) ?? true,
-            clips: (try? c.decode([Clip].self, forKey: .clips)) ?? []
+            clips: (try? c.decode([Clip].self, forKey: .clips)) ?? [],
+            displayHeight: (try? c.decode(CGFloat.self, forKey: .displayHeight))
+                .map { min(max($0, TrackSize.minHeight), TrackSize.maxHeight) } ?? 50
         )
     }
 }
@@ -93,10 +162,13 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var crop: Crop = Crop()
     var linkGroupId: String?
     var captionGroupId: String?
+    var multicamGroupId: String?
 
     // Text clips only.
     var textContent: String?
     var textStyle: TextStyle?
+    var textAnimation: TextAnimation?
+    var wordTimings: [WordTiming]?
 
     // Keyframe tracks for each animatable property. Nil when no animation exists.
     var opacityTrack: KeyframeTrack<Double>?
@@ -108,18 +180,23 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
 
     var effects: [Effect]?
 
+    /// How this clip composites over the tracks below it. nil = normal (source-over).
+    var blendMode: BlendMode?
+
     private enum CodingKeys: String, CodingKey {
         case id, mediaRef, mediaType, sourceClipType, startFrame, durationFrames
         case trimStartFrame, trimEndFrame, speed, volume
         case fadeInFrames, fadeOutFrames, fadeInInterpolation, fadeOutInterpolation
         case opacity, transform, crop
-        case linkGroupId, captionGroupId, textContent, textStyle
+        case linkGroupId, captionGroupId, multicamGroupId, textContent, textStyle, textAnimation, wordTimings
         case opacityTrack, positionTrack, scaleTrack, rotationTrack, cropTrack, volumeTrack
-        case effects
+        case effects, blendMode
     }
 
     /// Frame where this clip ends on the timeline
     var endFrame: Int { startFrame + durationFrames }
+
+    var supportsRetiming: Bool { sourceClipType != .sequence }
 
     /// Source frames consumed by the visible portion
     var sourceFramesConsumed: Int { Int((Double(durationFrames) * speed).rounded()) }
@@ -200,6 +277,17 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         return volume * kfGain * fadeMultiplier(at: frame)
     }
 
+    var hasDenoiseEnabled: Bool {
+        effects?.contains { $0.type == Clip.denoiseEffectType && $0.enabled } ?? false
+    }
+
+    var denoiseAmount: Double {
+        effects?.first { $0.type == Clip.denoiseEffectType }?.params["amount"]?.value ?? Clip.defaultDenoiseAmount
+    }
+
+    static let denoiseEffectType = "audio.denoise"
+    static let defaultDenoiseAmount: Double = 0.6
+
     func rawVolumeAt(frame: Int) -> Double {
         let kfGain: Double
         if let track = volumeTrack, track.isActive {
@@ -242,6 +330,20 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
 enum FadeEdge { case left, right }
 
 extension Clip {
+    /// Fresh clip id; link/caption group ids remapped consistently via `groups`.
+    mutating func freshenIds(groups: inout [String: String]) {
+        func remap(_ old: String?) -> String? {
+            guard let old else { return nil }
+            if let new = groups[old] { return new }
+            let new = UUID().uuidString
+            groups[old] = new
+            return new
+        }
+        id = UUID().uuidString
+        linkGroupId = remap(linkGroupId)
+        captionGroupId = remap(captionGroupId)
+    }
+
     /// Drops volume keyframes outside `durationFrames`. Kept for callers that only touch volume.
     mutating func clampVolumeKfsToDuration() {
         volumeTrack = clampedKeyframeTrack(volumeTrack)
@@ -299,6 +401,16 @@ extension Clip {
         fadeOutFrames = max(0, min(fadeOutFrames, durationFrames - fadeInFrames))
     }
 
+    mutating func rescaleWordTimings(from oldDuration: Int) {
+        guard mediaType == .text, let timings = wordTimings, oldDuration > 0, durationFrames > 0 else { return }
+        let scale = Double(durationFrames) / Double(oldDuration)
+        wordTimings = timings.map { timing in
+            let start = min(max(0, Int((Double(timing.startFrame) * scale).rounded())), max(0, durationFrames - 1))
+            let end = min(max(start + 1, Int((Double(timing.endFrame) * scale).rounded())), durationFrames)
+            return WordTiming(text: timing.text, startFrame: start, endFrame: end)
+        }
+    }
+
     /// Set the fade length for one edge and clamp to fit.
     mutating func setFade(_ edge: FadeEdge, frames: Int) {
         let v = max(0, frames)
@@ -325,7 +437,9 @@ extension Clip {
     }
 
     mutating func setDuration(_ newDuration: Int) {
+        let oldDuration = durationFrames
         durationFrames = newDuration
+        rescaleWordTimings(from: oldDuration)
         clampKeyframesToDuration()
         clampFadesToDuration()
     }
@@ -352,20 +466,24 @@ extension Clip {
             crop: (try? c.decode(Crop.self, forKey: .crop)) ?? Crop(),
             linkGroupId: try? c.decode(String.self, forKey: .linkGroupId),
             captionGroupId: try? c.decode(String.self, forKey: .captionGroupId),
+            multicamGroupId: try? c.decode(String.self, forKey: .multicamGroupId),
             textContent: try? c.decode(String.self, forKey: .textContent),
             textStyle: try? c.decode(TextStyle.self, forKey: .textStyle),
+            textAnimation: try? c.decode(TextAnimation.self, forKey: .textAnimation),
+            wordTimings: try? c.decode([WordTiming].self, forKey: .wordTimings),
             opacityTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .opacityTrack),
             positionTrack: try? c.decode(KeyframeTrack<AnimPair>.self, forKey: .positionTrack),
             scaleTrack: try? c.decode(KeyframeTrack<AnimPair>.self, forKey: .scaleTrack),
             rotationTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .rotationTrack),
             cropTrack: try? c.decode(KeyframeTrack<Crop>.self, forKey: .cropTrack),
             volumeTrack: try? c.decode(KeyframeTrack<Double>.self, forKey: .volumeTrack),
-            effects: try? c.decode([Effect].self, forKey: .effects)
+            effects: try? c.decode([Effect].self, forKey: .effects),
+            blendMode: try? c.decode(BlendMode.self, forKey: .blendMode)
         )
     }
 }
 
-struct Transform: Codable, Sendable, Equatable {
+struct Transform: Codable, Sendable, Equatable, Hashable {
     var centerX: Double = 0.5
     var centerY: Double = 0.5
     var width: Double = 1

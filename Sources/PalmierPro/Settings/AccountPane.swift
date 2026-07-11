@@ -41,7 +41,7 @@ struct AccountPane: View {
 
     @ViewBuilder
     private var unpaidSection: some View {
-        section(title: "Subscription") {
+        SettingsSection(title: "Subscription") {
             Text("Subscribe to use AI generation.")
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
@@ -135,7 +135,7 @@ struct AccountPane: View {
 
     @ViewBuilder
     private var subscriptionSection: some View {
-        section(title: "Subscription") {
+        SettingsSection(title: "Subscription") {
             Text(account.tier.planLabel)
                 .font(.system(size: AppTheme.FontSize.md, weight: .medium))
                 .foregroundStyle(AppTheme.Text.primaryColor)
@@ -156,7 +156,7 @@ struct AccountPane: View {
 
     @ViewBuilder
     private var creditsSection: some View {
-        section(title: "Credits") {
+        SettingsSection(title: "Credits") {
             HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
                 remainingCard
                 buyCard
@@ -219,21 +219,6 @@ struct AccountPane: View {
             RoundedRectangle(cornerRadius: AppTheme.Radius.md)
                 .stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
         )
-    }
-
-    @ViewBuilder
-    private func section<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content,
-    ) -> some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            Text(title)
-                .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .textCase(.uppercase)
-                .tracking(AppTheme.Tracking.wide)
-            content()
-        }
     }
 
     private var formattedPeriodEnd: String? {

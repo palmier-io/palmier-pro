@@ -5,6 +5,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case general
     case models
     case agent
+    case skills
     case storage
 
     var id: String { rawValue }
@@ -15,6 +16,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .general: return "General"
         case .models: return "Models"
         case .agent: return "Agent"
+        case .skills: return "Skills"
         case .storage: return "Storage"
         }
     }
@@ -25,6 +27,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .general: return "gearshape"
         case .models: return "square.stack.3d.up"
         case .agent: return "paperplane"
+        case .skills: return "book.closed"
         case .storage: return "internaldrive"
         }
     }
@@ -53,7 +56,12 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.black.opacity(AppTheme.Opacity.medium))
         }
-        .frame(minWidth: 760, idealWidth: 980, minHeight: 480, idealHeight: 640)
+        .frame(
+            minWidth: AppTheme.Window.settingsMin.width,
+            maxWidth: .infinity,
+            minHeight: AppTheme.Window.settingsMin.height,
+            maxHeight: .infinity
+        )
         .background(.ultraThinMaterial)
         .focusEffectDisabled()
         .onAppear {
@@ -112,26 +120,56 @@ private struct SettingsDetail: View {
             .padding(.top, AppTheme.Spacing.xxl)
             .padding(.bottom, AppTheme.Spacing.lgXl)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
-                    switch tab {
-                    case .account:
-                        AccountPane()
-                    case .general:
-                        NotificationsPane()
-                        PrivacyPane()
-                    case .models:
-                        ModelsPane()
-                    case .agent:
-                        AgentPane()
-                    case .storage:
-                        StoragePane()
+            Group {
+                if tab == .skills {
+                    SkillsPane()
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
+                            switch tab {
+                            case .account:
+                                AccountPane()
+                            case .general:
+                                SettingsSection(title: "Notification") {
+                                    NotificationsPane()
+                                }
+                                SettingsSection(title: "Telemetry") {
+                                    PrivacyPane()
+                                }
+                            case .models:
+                                ModelsPane()
+                            case .agent:
+                                AgentPane()
+                            case .skills:
+                                EmptyView()
+                            case .storage:
+                                StoragePane()
+                            }
+                        }
+                        .padding(.horizontal, AppTheme.Spacing.xlXxl)
+                        .padding(.bottom, AppTheme.Spacing.xlXxl)
                     }
+                    .scrollEdgeEffectStyle(.soft, for: .top)
                 }
-                .padding(.horizontal, AppTheme.Spacing.xlXxl)
-                .padding(.bottom, AppTheme.Spacing.xlXxl)
             }
-            .scrollEdgeEffectStyle(.soft, for: .top)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+struct SettingsSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            Text(title)
+                .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .textCase(.uppercase)
+                .tracking(AppTheme.Tracking.wide)
+            content()
         }
     }
 }
@@ -173,11 +211,12 @@ final class SettingsWindowController: NSWindowController {
     private init() {
         let initialView = SettingsView().tint(AppTheme.Accent.primary)
         let hosting = NSHostingController(rootView: AnyView(initialView))
+        hosting.sizingOptions = .minSize
         let window = NSWindow(contentViewController: hosting)
-        window.setContentSize(NSSize(width: 980, height: 640))
-        window.minSize = NSSize(width: 760, height: 480)
+        window.setContentSize(AppTheme.Window.settingsDefault)
+        window.minSize = AppTheme.Window.settingsMin
         window.title = "Settings"
-        window.setFrameAutosaveName("PalmierProSettings-v2")
+        window.setFrameAutosaveName("PalmierProSettings-v4")
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = AppTheme.Background.base.withAlphaComponent(0.4)
         window.isOpaque = false

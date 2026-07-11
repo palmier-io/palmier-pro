@@ -36,6 +36,8 @@ fi
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-Developer ID Application: Palmier, Inc. (MMFLRC7562)}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-palmier-notary}"
 SENTRY_DSN="${SENTRY_DSN:-}"
+POSTHOG_PROJECT_TOKEN="${POSTHOG_PROJECT_TOKEN:-}"
+POSTHOG_HOST="${POSTHOG_HOST:-https://us.i.posthog.com}"
 PROVISION_PROFILE="${PROVISION_PROFILE:-$ROOT/scripts/Palmier_Pro_Developer_ID.provisionprofile}"
 ENTITLEMENTS="$ROOT/scripts/PalmierPro.entitlements"
 KEYCHAIN_ACCESS_GROUP="${KEYCHAIN_ACCESS_GROUP:-MMFLRC7562.io.palmier.pro}"
@@ -61,6 +63,16 @@ if [ -n "$SENTRY_DSN" ]; then
   /usr/libexec/PlistBuddy -c "Add :SentryDSN string $SENTRY_DSN" "$APP/Contents/Info.plist"
 else
   echo "==> SENTRY_DSN not set — telemetry will be a no-op in this build"
+fi
+
+if [ -n "$POSTHOG_PROJECT_TOKEN" ]; then
+  echo "==> Injecting PostHog analytics config into Info.plist"
+  /usr/libexec/PlistBuddy -c "Delete :PostHogProjectToken" "$APP/Contents/Info.plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Add :PostHogProjectToken string $POSTHOG_PROJECT_TOKEN" "$APP/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Delete :PostHogHost" "$APP/Contents/Info.plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Add :PostHogHost string $POSTHOG_HOST" "$APP/Contents/Info.plist"
+else
+  echo "==> POSTHOG_PROJECT_TOKEN not set — product analytics will be a no-op in this build"
 fi
 
 inject_plist() {
@@ -97,10 +109,26 @@ fi
 if [ -d "$RES_BUNDLE/Images" ]; then
   cp -R "$RES_BUNDLE/Images" "$APP/Contents/Resources/"
 fi
+# .lproj folders must live at the bundle root for macOS to resolve them —
+# flatten out of Resources/Localization/ even though that's just an org folder.
+if [ -d "$RES_BUNDLE/Localization" ]; then
+  for locale_dir in "$RES_BUNDLE/Localization"/*.lproj; do
+    [ -d "$locale_dir" ] && cp -R "$locale_dir" "$APP/Contents/Resources/"
+  done
+else
+  echo "!! missing Localization/ in SwiftPM resource bundle at $RES_BUNDLE" >&2
+  exit 1
+fi
 if [ -d "$RES_BUNDLE/Changelog" ]; then
   cp -R "$RES_BUNDLE/Changelog" "$APP/Contents/Resources/"
 else
   echo "!! missing Changelog/ in SwiftPM resource bundle at $RES_BUNDLE" >&2
+  exit 1
+fi
+if [ -d "$RES_BUNDLE/Models" ]; then
+  cp -R "$RES_BUNDLE/Models" "$APP/Contents/Resources/"
+else
+  echo "!! missing Models/ in SwiftPM resource bundle at $RES_BUNDLE" >&2
   exit 1
 fi
 
@@ -109,6 +137,18 @@ if ! ls "$RES_BUNDLE"/*.metallib >/dev/null 2>&1; then
   exit 1
 fi
 cp "$RES_BUNDLE"/*.metallib "$APP/Contents/Resources/"
+
+MLX_METALLIB="$ROOT/.build/$CONFIG/mlx.metallib"
+if [ ! -f "$MLX_METALLIB" ]; then
+  echo "==> Building MLX metallib ($CONFIG)"
+  BUILD_DIR="$ROOT/.build" "$ROOT/.build/checkouts/speech-swift/scripts/build_mlx_metallib.sh" "$CONFIG"
+fi
+if [ ! -f "$MLX_METALLIB" ]; then
+  echo "!! missing $MLX_METALLIB — on-device speech features (VAD, speaker ID) would die silently" >&2
+  exit 1
+fi
+mkdir -p "$APP/Contents/Resources/mlx-swift_Cmlx.bundle"
+cp "$MLX_METALLIB" "$APP/Contents/Resources/mlx-swift_Cmlx.bundle/default.metallib"
 
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/PalmierPro"
 touch "$APP"

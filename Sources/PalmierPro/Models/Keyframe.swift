@@ -37,6 +37,21 @@ struct KeyframeTrack<Value: Codable & Sendable & Equatable>: Codable, Sendable, 
     }
 }
 
+extension KeyframeTrack where Value: KeyframeInterpolatable {
+    func rebased(by offset: Int, fallback: Value) -> KeyframeTrack? {
+        guard isActive else { return nil }
+        let boundary = sample(at: offset, fallback: fallback)
+        var kfs = keyframes
+            .filter { $0.frame >= offset }
+            .map { Keyframe(frame: $0.frame - offset, value: $0.value, interpolationOut: $0.interpolationOut) }
+        if kfs.first?.frame != 0 {
+            let interp = keyframes.last { $0.frame < offset }?.interpolationOut ?? .smooth
+            kfs.insert(Keyframe(frame: 0, value: boundary, interpolationOut: interp), at: 0)
+        }
+        return kfs.isEmpty ? nil : KeyframeTrack(keyframes: kfs)
+    }
+}
+
 @inlinable func smoothstep(_ t: Double) -> Double { t * t * (3 - 2 * t) }
 
 protocol KeyframeInterpolatable {

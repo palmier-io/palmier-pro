@@ -156,5 +156,4 @@ struct ToolbarView: View {
         .buttonStyle(.plain)
         .help(help)
     }
-
 }

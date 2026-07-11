@@ -43,4 +43,10 @@ struct HistogramTests {
         let h = try #require(VideoEngine.histogram(from: solid(0.5, 0.5, 0.5)))
         #expect((110...145).contains(argmax(h.r)), "mid-gray sits near bin 128, got \(argmax(h.r))")
     }
+
+    @Test func samplesChromaKeyHue() throws {
+        let hue = try #require(VideoEngine.sampleKeyHue(from: solid(0, 1, 0), at: CGPoint(x: 0.5, y: 0.5)))
+        #expect(abs(hue - 1.0 / 3.0) < 0.01)
+        #expect(VideoEngine.sampleKeyHue(from: solid(0.5, 0.5, 0.5), at: CGPoint(x: 0.5, y: 0.5)) == nil)
+    }
 }

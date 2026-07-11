@@ -8,7 +8,11 @@ struct DiskCache: Sendable {
     let directory: URL
 
     init(named name: String) {
-        directory = Self.rootDirectory.appendingPathComponent(name, isDirectory: true)
+        self.init(directory: Self.rootDirectory.appendingPathComponent(name, isDirectory: true))
+    }
+
+    init(directory: URL) {
+        self.directory = directory
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
@@ -24,6 +28,14 @@ struct DiskCache: Sendable {
             total += Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
         }
         return total
+    }
+
+    /// Cache key fragment that busts when the underlying file is replaced.
+    static func sizeMtimeTag(for url: URL) -> String {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let size = (attrs?[.size] as? Int) ?? 0
+        let modified = (attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        return "\(size)_\(Int(modified))"
     }
 
     func clear() {

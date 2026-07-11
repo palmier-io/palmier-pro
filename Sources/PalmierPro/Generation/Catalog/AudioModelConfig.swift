@@ -61,6 +61,7 @@ struct AudioModelConfig: Identifiable, Sendable {
 
     var id: String { entry.id }
     var displayName: String { entry.displayName }
+    var paidOnly: Bool { entry.paidOnly }
 
     var category: Category {
         switch caps.category {
@@ -80,7 +81,7 @@ struct AudioModelConfig: Identifiable, Sendable {
     var inputs: [Input] { (caps.inputs ?? ["text"]).compactMap(Input.init(rawValue:)) }
     var promptLabel: String { caps.promptLabel ?? "Describe the sound" }
     var minSeconds: Int { caps.minSeconds ?? 1 }
-    var maxSeconds: Int { caps.maxSeconds ?? 900 }
+    var maxSeconds: Int { caps.maxSeconds ?? 600 }
 
     func validate(spanSeconds: Double) -> String? {
         let s = Int(spanSeconds.rounded())

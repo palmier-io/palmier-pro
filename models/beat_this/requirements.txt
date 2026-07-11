@@ -1,0 +1,7 @@
+# torch pinned to coremltools 9's tested version; 2.12 breaks jit tracing internals
+torch==2.7.0
+torchaudio==2.7.0
+coremltools>=9.0,<10
+numpy<2
+soundfile
+beat_this @ git+https://github.com/CPJKU/beat_this

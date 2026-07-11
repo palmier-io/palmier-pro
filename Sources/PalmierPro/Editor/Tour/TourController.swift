@@ -35,12 +35,14 @@ enum TourAnchorID: Hashable {
     case generation
     case smartSearch
     case screenshotButton
+    case skillsButton
     case timelineRuler
 
     var hostPanel: EditorViewModel.FocusedPanel {
         switch self {
         case .importButton, .generateButton, .generation, .smartSearch: return .media
         case .screenshotButton: return .preview
+        case .skillsButton: return .agent
         case .timelineRuler: return .timeline
         }
     }
@@ -153,6 +155,8 @@ final class TourController {
                      instruction: "This is the timeline ruler. Shift+drag on the ruler to select a range to render. You can pick any slot to AI edit or generate music that fits that range."),
             TourStep(kind: .spotlight(.panel(.agent)), title: "AI agent",
                      instruction: "Chat with your agent! It can generate content, edit clips, organize your assets, and much more. Start by signing in, or bring your own Anthropic API key."),
+            TourStep(kind: .spotlight(.element(.skillsButton)), title: "Skills",
+                     instruction: "Open Skills to browse community playbooks, create your own, or add them to other agents."),
             TourStep(kind: .outro, title: "You're all set",
                      instruction: "Start creating, or explore these to get the most out of Palmier Pro."),
         ]

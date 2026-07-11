@@ -10,10 +10,9 @@ fileprivate struct AddClipsInput: DecodableToolArgs {
         let mediaRef: String
         let trackIndex: Int?
         let startFrame: Int
-        let durationFrames: Int
-        let trimStartFrame: Int?
-        let trimEndFrame: Int?
-        static let allowedKeys: Set<String> = ["mediaRef", "trackIndex", "startFrame", "durationFrames", "trimStartFrame", "trimEndFrame"]
+        let endFrame: Int?
+        let source: [Double]?
+        static let allowedKeys: Set<String> = ["mediaRef", "trackIndex", "startFrame", "endFrame", "source"]
     }
 }
 
@@ -26,9 +25,8 @@ fileprivate struct InsertClipsInput: DecodableToolArgs {
     struct Entry: DecodableToolArgs {
         let mediaRef: String
         let durationFrames: Int?
-        let trimStartFrame: Int?
-        let trimEndFrame: Int?
-        static let allowedKeys: Set<String> = ["mediaRef", "durationFrames", "trimStartFrame", "trimEndFrame"]
+        let source: [Double]?
+        static let allowedKeys: Set<String> = ["mediaRef", "durationFrames", "source"]
     }
 }
 
@@ -58,7 +56,7 @@ fileprivate struct SplitClipsInput: DecodableToolArgs {
 }
 
 fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
-    let clipIds: [String]
+    let clipIds: [String]?
     let durationFrames: Int?
     let trimStartFrame: Int?
     let trimEndFrame: Int?
@@ -66,26 +64,21 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     let volume: Double?
     let opacity: Double?
     let transform: ParsedTransform?
-    let content: String?
-    let fontName: String?
-    let fontSize: Double?
-    let color: String?
-    let alignment: String?
+    let blendMode: String?
 
-    static let allowedKeys: Set<String> = [
+    static let allowedKeys: Set<String> = Set([
         "clipIds",
         "durationFrames", "trimStartFrame", "trimEndFrame", "speed",
         "volume", "opacity",
         "transform",
-        "content", "fontName", "fontSize", "color", "alignment",
-    ]
+        "blendMode",
+    ])
 
     var hasAnyProperty: Bool {
         durationFrames != nil || trimStartFrame != nil || trimEndFrame != nil
             || speed != nil || volume != nil || opacity != nil
             || transform != nil
-            || content != nil || fontName != nil || fontSize != nil
-            || color != nil || alignment != nil
+            || blendMode != nil
     }
 }
 
@@ -94,7 +87,8 @@ fileprivate struct RippleDeleteRangesInput: DecodableToolArgs {
     let trackIndex: Int?
     let ranges: [[Double]]
     let units: String?
-    static let allowedKeys: Set<String> = ["clipId", "trackIndex", "ranges", "units"]
+    let ignoreSyncLockedTracks: [Int]?
+    static let allowedKeys: Set<String> = ["clipId", "trackIndex", "ranges", "units", "ignoreSyncLockedTracks"]
 }
 
 fileprivate struct SetKeyframesInput: DecodableToolArgs {
@@ -137,6 +131,48 @@ fileprivate struct ParsedMove {
 
 extension ToolExecutor {
 
+    /// Resolves (trimStart, duration, trimEnd) for a clip placement. One length expression per
+    /// domain: `source: [startSeconds, endSeconds]` picks a span of the asset (unclamped for
+    /// stills — an image is an unbounded still), an exact frame count pins the timeline length.
+    fileprivate func resolvePlacement(
+        _ asset: MediaAsset, fps: Int,
+        durationFrames: Int?, source: [Double]?, path: String, framesLabel: String = "durationFrames"
+    ) throws -> (trimStart: Int, duration: Int, trimEnd: Int?) {
+        guard durationFrames == nil || source == nil else {
+            throw ToolError("\(path): set source OR \(framesLabel), not both — source picks a span of the asset, \(framesLabel) an exact timeline length.")
+        }
+        let isStill = asset.type == .image
+        let sourceLen = secondsToFrame(seconds: asset.duration, fps: fps)
+
+        if let source {
+            guard source.count == 2 else {
+                throw ToolError("\(path): source must be [startSeconds, endSeconds] (got \(source.count) element\(source.count == 1 ? "" : "s"))")
+            }
+            guard asset.duration > 0 || isStill else {
+                throw ToolError("\(path): source needs a known source length; this asset has none. Use \(framesLabel).")
+            }
+            let start = max(source[0], 0)
+            let end = isStill ? source[1] : min(source[1], asset.duration)
+            guard end > start else {
+                throw ToolError("\(path): source end (\(source[1])) must be greater than start (\(source[0]))\(isStill ? "" : "; source is \(asset.duration)s").")
+            }
+            let trimStart = secondsToFrame(seconds: start, fps: fps)
+            let duration = max(1, secondsToFrame(seconds: end, fps: fps) - trimStart)
+            return (trimStart, duration, nil)
+        }
+        if let d = durationFrames {
+            guard d >= 1 else { throw ToolError("\(path): \(framesLabel) must span at least 1 frame") }
+            if !isStill, sourceLen > 0, d > sourceLen {
+                throw ToolError("\(path): \(framesLabel) spans \(d) frames but the source is only \(sourceLen).")
+            }
+            return (0, d, nil)
+        }
+        guard sourceLen > 0 else {
+            throw ToolError("\(path): \(framesLabel) is required for this asset — its source length is unknown.")
+        }
+        return (0, sourceLen, nil)
+    }
+
     // MARK: add_clips
 
     func addClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
@@ -151,10 +187,10 @@ extension ToolExecutor {
             }
         }
 
-        var specs: [AddClipSpec] = []
-        specs.reserveCapacity(input.entries.count)
+        var prepared: [(entry: AddClipsInput.Entry, asset: MediaAsset, trackId: String?)] = []
+        prepared.reserveCapacity(input.entries.count)
         for (idx, entry) in input.entries.enumerated() {
-            let asset = try asset(entry.mediaRef, editor: editor)
+            let asset = try clipSource(entry.mediaRef, editor: editor, path: "entries[\(idx)]")
             var trackId: String? = nil
             if let ti = entry.trackIndex {
                 guard editor.timeline.tracks.indices.contains(ti) else {
@@ -166,54 +202,46 @@ extension ToolExecutor {
                 }
                 trackId = editor.timeline.tracks[ti].id
             }
-            guard entry.durationFrames >= 1 else {
-                throw ToolError("entries[\(idx)]: durationFrames must be >= 1 (got \(entry.durationFrames))")
-            }
             guard entry.startFrame >= 0 else {
                 throw ToolError("entries[\(idx)]: startFrame must be >= 0 (got \(entry.startFrame))")
             }
-            if let t = entry.trimStartFrame, t < 0 {
-                throw ToolError("entries[\(idx)]: trimStartFrame must be >= 0 (got \(t))")
-            }
-            if let t = entry.trimEndFrame, t < 0 {
-                throw ToolError("entries[\(idx)]: trimEndFrame must be >= 0 (got \(t))")
-            }
-            specs.append(.init(asset: asset, trackId: trackId, startFrame: entry.startFrame, durationFrames: entry.durationFrames, trimStartFrame: entry.trimStartFrame, trimEndFrame: entry.trimEndFrame))
+            prepared.append((entry, asset, trackId))
         }
 
         // All-or-none for trackIndex: a new track at index 0 would shift any explicit indices.
-        let omittedCount = specs.filter { $0.trackId == nil }.count
-        guard omittedCount == 0 || omittedCount == specs.count else {
-            throw ToolError("Mixed trackIndex: \(omittedCount) of \(specs.count) entries omitted trackIndex. Either set it on every entry or omit it on every entry (to auto-create shared tracks).")
+        let omittedCount = prepared.filter { $0.trackId == nil }.count
+        guard omittedCount == 0 || omittedCount == prepared.count else {
+            throw ToolError("Mixed trackIndex: \(omittedCount) of \(prepared.count) entries omitted trackIndex. Either set it on every entry or omit it on every entry (to auto-create shared tracks).")
         }
 
-        let settingsNote = applySettingsIfNeededForAgent(editor, assets: specs.map(\.asset))
+        let settingsNote = applySettingsIfNeededForAgent(editor, assets: prepared.map(\.asset).filter { $0.type != .sequence })
 
-        let actionName = specs.count == 1 ? "Add Clip (Agent)" : "Add Clips (Agent)"
-        let (createdTracks, summaries) = try withUndoGroup(editor, actionName: actionName) { () -> ([String], [String]) in
-            var createdTracks: [String] = []
-            // IDs already attributed to the response so the post-batch side-effect
-            // sweep doesn't double-count them.
-            var reportedTrackIds: Set<String> = []
-            let reportTrack: (Int) -> Void = { idx in
-                let t = editor.timeline.tracks[idx]
-                createdTracks.append("track \(idx) ('\(editor.timelineTrackDisplayLabel(at: idx))', \(t.type.rawValue))")
-                reportedTrackIds.insert(t.id)
+        var specs: [AddClipSpec] = []
+        specs.reserveCapacity(prepared.count)
+        for (idx, p) in prepared.enumerated() {
+            if let end = p.entry.endFrame, end <= p.entry.startFrame {
+                throw ToolError("entries[\(idx)]: endFrame (\(end)) must be greater than startFrame (\(p.entry.startFrame))")
             }
+            let place = try resolvePlacement(p.asset, fps: editor.timeline.fps,
+                                             durationFrames: p.entry.endFrame.map { $0 - p.entry.startFrame },
+                                             source: p.entry.source, path: "entries[\(idx)]", framesLabel: "endFrame")
+            specs.append(.init(asset: p.asset, trackId: p.trackId, startFrame: p.entry.startFrame,
+                               durationFrames: place.duration, trimStartFrame: place.trimStart, trimEndFrame: place.trimEnd))
+        }
+
+        let snapshot = timelineSnapshot(editor)
+        let actionName = specs.count == 1 ? "Add Clip (Agent)" : "Add Clips (Agent)"
+        try withUndoGroup(editor, actionName: actionName) {
             if omittedCount == specs.count {
                 let needsVideo = specs.contains { $0.asset.type != .audio }
                 let needsAudio = specs.contains { $0.asset.type == .audio }
                 var videoTrackId: String? = nil
                 var audioTrackId: String? = nil
                 if needsVideo {
-                    let idx = editor.insertTrack(at: 0, type: .video)
-                    videoTrackId = editor.timeline.tracks[idx].id
-                    reportTrack(idx)
+                    videoTrackId = editor.timeline.tracks[editor.insertTrack(at: 0, type: .video)].id
                 }
                 if needsAudio {
-                    let idx = editor.insertTrack(at: 0, type: .audio)
-                    audioTrackId = editor.timeline.tracks[idx].id
-                    reportTrack(idx)
+                    audioTrackId = editor.timeline.tracks[editor.insertTrack(at: 0, type: .audio)].id
                 }
                 for i in specs.indices {
                     specs[i].trackId = (specs[i].asset.type == .audio) ? audioTrackId : videoTrackId
@@ -221,8 +249,6 @@ extension ToolExecutor {
             }
 
             var allAdded: [String] = []
-            var summaries: [String] = []
-            let tracksBefore = Set(editor.timeline.tracks.map(\.id))
             let nonEmptyBefore = Set(editor.timeline.tracks.filter { !$0.clips.isEmpty }.map(\.id))
 
             let orderedIndices = specs.indices.sorted {
@@ -243,36 +269,23 @@ extension ToolExecutor {
                     startFrame: spec.startFrame, durationFrames: spec.durationFrames,
                     trimStartFrame: spec.trimStartFrame, trimEndFrame: spec.trimEndFrame
                 )
-                guard let primary = ids.first else {
+                guard !ids.isEmpty else {
                     throw ToolError("entries[\(i)]: failed to place clip on track \(trackIdx) at frame \(spec.startFrame)")
                 }
                 allAdded.append(contentsOf: ids)
-                let pairedNote = ids.count > 1 ? " (+linked audio \(ids[1]))" : ""
-                var trimNote = ""
-                if let t = spec.trimStartFrame, t != 0 { trimNote += " trimStart \(t)" }
-                if let t = spec.trimEndFrame, t != 0 { trimNote += " trimEnd \(t)" }
-                summaries.append("\(primary) on track \(trackIdx) @ \(spec.startFrame) for \(spec.durationFrames)\(trimNote)\(pairedNote)")
             }
 
             for track in editor.timeline.tracks where track.clips.isEmpty && nonEmptyBefore.contains(track.id) {
                 editor.removeTrack(id: track.id)
             }
 
-            for (idx, track) in editor.timeline.tracks.enumerated()
-                where !tracksBefore.contains(track.id) && !reportedTrackIds.contains(track.id) {
-                reportTrack(idx)
-            }
             let addedIds = allAdded
-            editor.undoManager?.registerUndo(withTarget: editor) { vm in
+            editor.registerTimelineUndo { vm in
                 vm.removeClips(ids: Set(addedIds))
             }
-            return (createdTracks, summaries)
         }
         editor.notifyTimelineChanged()
-
-        var prefix = createdTracks.isEmpty ? "" : "Created \(createdTracks.joined(separator: ", ")). "
-        if let note = settingsNote { prefix = "\(note) \(prefix)" }
-        return .ok("\(prefix)Added \(specs.count) clip\(specs.count == 1 ? "" : "s"): \(summaries.joined(separator: "; "))")
+        return mutationResult(editor, since: snapshot, notes: settingsNote.map { [$0] } ?? [])
     }
 
     // MARK: insert_clips
@@ -297,42 +310,31 @@ extension ToolExecutor {
         var resolvedAssets: [MediaAsset] = []
         resolvedAssets.reserveCapacity(input.entries.count)
         for (idx, entry) in input.entries.enumerated() {
-            let asset = try asset(entry.mediaRef, editor: editor)
+            let asset = try clipSource(entry.mediaRef, editor: editor, path: "entries[\(idx)]")
             guard asset.type.isCompatible(with: targetType) else {
                 throw ToolError("entries[\(idx)]: asset type \(asset.type.rawValue) is not compatible with \(targetType.rawValue) track at index \(input.trackIndex)")
-            }
-            if let t = entry.trimStartFrame, t < 0 {
-                throw ToolError("entries[\(idx)]: trimStartFrame must be >= 0 (got \(t))")
-            }
-            if let t = entry.trimEndFrame, t < 0 {
-                throw ToolError("entries[\(idx)]: trimEndFrame must be >= 0 (got \(t))")
             }
             resolvedAssets.append(asset)
         }
 
-        let settingsNote = applySettingsIfNeededForAgent(editor, assets: resolvedAssets)
+        let settingsNote = applySettingsIfNeededForAgent(editor, assets: resolvedAssets.filter { $0.type != .sequence })
 
         var specs: [EditorViewModel.RippleInsertSpec] = []
         specs.reserveCapacity(input.entries.count)
         for (idx, entry) in input.entries.enumerated() {
-            let asset = resolvedAssets[idx]
-            let duration = entry.durationFrames ?? editor.clipDurationFrames(for: asset, segment: nil)
-            guard duration >= 1 else {
-                throw ToolError("entries[\(idx)]: durationFrames must be >= 1 (got \(duration))")
-            }
-            specs.append(.init(asset: asset, durationFrames: duration, trimStartFrame: entry.trimStartFrame, trimEndFrame: entry.trimEndFrame))
+            let place = try resolvePlacement(resolvedAssets[idx], fps: editor.timeline.fps,
+                                             durationFrames: entry.durationFrames,
+                                             source: entry.source, path: "entries[\(idx)]")
+            specs.append(.init(asset: resolvedAssets[idx], durationFrames: place.duration,
+                               trimStartFrame: place.trimStart, trimEndFrame: place.trimEnd))
         }
 
-        let totalPush = specs.reduce(0) { $0 + $1.durationFrames }
-        let tracksBefore = editor.timeline.tracks.count
+        let snapshot = timelineSnapshot(editor)
         let ids = editor.rippleInsertClips(specs: specs, trackIndex: input.trackIndex, atFrame: input.atFrame)
         guard !ids.isEmpty else {
             throw ToolError("Insert failed on track \(input.trackIndex) at frame \(input.atFrame)")
         }
-        let audioNote = editor.timeline.tracks.count > tracksBefore
-            ? " Created an audio track (appended) for the linked audio." : ""
-        let settingsPrefix = settingsNote.map { "\($0) " } ?? ""
-        return .ok("\(settingsPrefix)Inserted \(specs.count) clip\(specs.count == 1 ? "" : "s") at frame \(input.atFrame) on track \(input.trackIndex), pushed later clips +\(totalPush)f: \(ids.joined(separator: ", ")).\(audioNote)")
+        return mutationResult(editor, since: snapshot, notes: settingsNote.map { [$0] } ?? [])
     }
 
     // MARK: remove_clips
@@ -345,16 +347,9 @@ extension ToolExecutor {
             guard editor.findClip(id: id) != nil else { throw ToolError("Clip not found: \(id)") }
         }
         let expanded = editor.expandToLinkGroup(Set(clipIds))
-        let tracksBefore = Set(editor.timeline.tracks.map(\.id))
+        let snapshot = timelineSnapshot(editor)
         editor.removeClips(ids: expanded)
-        let prunedCount = tracksBefore.subtracting(editor.timeline.tracks.map(\.id)).count
-
-        let extras = expanded.count - clipIds.count
-        let linkedNote = extras > 0 ? " (+\(extras) linked)" : ""
-        let pruneNote = prunedCount > 0
-            ? ". Pruned \(prunedCount) empty track\(prunedCount == 1 ? "" : "s") — track indices have shifted; re-read with get_timeline before next index-based call"
-            : ""
-        return .ok("Removed \(expanded.count) clip\(expanded.count == 1 ? "" : "s")\(linkedNote)\(pruneNote): \(clipIds.joined(separator: ", "))")
+        return mutationResult(editor, since: snapshot)
     }
 
     // MARK: move_clips
@@ -408,44 +403,40 @@ extension ToolExecutor {
                 seen.insert(pm.clipId)
             }
         }
-        let linkedCount = allMoves.count - parsed.count
 
+        var moves: [(clipId: String, toTrack: Int, toFrame: Int)] = []
+        for m in allMoves {
+            guard let loc = editor.findClip(id: m.clipId) else { continue }
+            let currentTrackIdx = loc.trackIndex
+            let currentFrame = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame
+            let toTrack: Int
+            if let destId = m.destTrackId,
+               let idx = editor.timeline.tracks.firstIndex(where: { $0.id == destId }) {
+                toTrack = idx
+            } else {
+                toTrack = currentTrackIdx
+            }
+            moves.append((clipId: m.clipId, toTrack: toTrack, toFrame: m.toFrame ?? currentFrame))
+        }
+        if let reason = editor.multicamMoveViolation(moves: moves) {
+            throw ToolError(reason)
+        }
+
+        let snapshot = timelineSnapshot(editor)
         let moveActionName = parsed.count == 1 ? "Move Clip (Agent)" : "Move Clips (Agent)"
         withUndoGroup(editor, actionName: moveActionName) {
-            var moves: [(clipId: String, toTrack: Int, toFrame: Int)] = []
-            for m in allMoves {
-                guard let loc = editor.findClip(id: m.clipId) else { continue }
-                let currentTrackIdx = loc.trackIndex
-                let currentFrame = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame
-                let toTrack: Int
-                if let destId = m.destTrackId,
-                   let idx = editor.timeline.tracks.firstIndex(where: { $0.id == destId }) {
-                    toTrack = idx
-                } else {
-                    toTrack = currentTrackIdx
-                }
-                moves.append((clipId: m.clipId, toTrack: toTrack, toFrame: m.toFrame ?? currentFrame))
-            }
             if !moves.isEmpty { editor.moveClips(moves) }
         }
 
-        let linkedNote = linkedCount > 0 ? " (+\(linkedCount) linked)" : ""
-        let summary = parsed.map { p -> String in
-            var bits: [String] = []
-            if p.destTrackId != nil { bits.append("track") }
-            if p.toFrame != nil { bits.append("frame") }
-            return "\(p.clipId): \(bits.joined(separator: ", "))"
-        }.joined(separator: "; ")
-        return .ok("Moved \(parsed.count) clip\(parsed.count == 1 ? "" : "s")\(linkedNote): \(summary)")
+        return mutationResult(editor, since: snapshot, touched: allMoves.map(\.clipId))
     }
 
     // MARK: set_clip_properties
 
-    private static let textOnlyKeys: Set<String> = ["content", "fontName", "fontSize", "color", "alignment"]
-
     func setClipProperties(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let input: SetClipPropertiesInput = try decodeToolArgs(args, path: "set_clip_properties")
-        guard !input.clipIds.isEmpty else { throw ToolError("Missing or empty 'clipIds' array") }
+        let clipIds = input.clipIds ?? []
+        guard !clipIds.isEmpty else { throw ToolError("Provide a non-empty 'clipIds' array") }
         guard input.hasAnyProperty else {
             throw ToolError("set_clip_properties needs at least one property to apply")
         }
@@ -467,26 +458,32 @@ extension ToolExecutor {
         if let t = input.trimEndFrame, t < 0 {
             throw ToolError("trimEndFrame must be >= 0 (got \(t))")
         }
-        let color = try parseColorHex(input.color, path: "set_clip_properties")
-        let alignment = try parseAlignment(input.alignment, path: "set_clip_properties")
 
-        // Resolve clipIds + collect types so we can reject text-only fields on non-text clips.
+        // Resolve clipIds + collect types for blend-mode validation.
         var clipTypes: [String: ClipType] = [:]
-        for id in input.clipIds {
+        for id in clipIds {
             guard let loc = editor.findClip(id: id) else { throw ToolError("Clip not found: \(id)") }
             clipTypes[id] = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].mediaType
         }
-        let textOnlyUsed = [
-            input.content   != nil ? "content"   : nil,
-            input.fontName  != nil ? "fontName"  : nil,
-            input.fontSize  != nil ? "fontSize"  : nil,
-            input.color     != nil ? "color"     : nil,
-            input.alignment != nil ? "alignment" : nil,
-        ].compactMap { $0 }
-        if !textOnlyUsed.isEmpty {
-            let nonText = clipTypes.filter { $0.value != .text }.map { $0.key }.sorted()
-            if !nonText.isEmpty {
-                throw ToolError("text-only fields '\(textOnlyUsed.joined(separator: "', '"))' rejected on non-text clips: \(nonText.joined(separator: ", "))")
+
+        if clipIds.contains(where: { editor.clipFor(id: $0)?.multicamGroupId != nil }),
+           input.trimStartFrame != nil || input.trimEndFrame != nil || input.durationFrames != nil || input.speed != nil {
+            throw ToolError("Timing fields would slip a multicam clip out of sync — switch angles with change_cam; split/delete and property fields (volume, opacity, transform) stay editable.")
+        }
+
+        // blendMode applies only to visual (video/image) clips. "normal" clears it.
+        var blendMode: BlendMode?
+        let setBlendMode = input.blendMode != nil
+        if let raw = input.blendMode {
+            let nonVisual = clipTypes.filter { $0.value == .text || $0.value == .audio }.map(\.key).sorted()
+            if !nonVisual.isEmpty {
+                throw ToolError("blendMode only applies to video/image clips: \(nonVisual.joined(separator: ", "))")
+            }
+            if raw != "normal" {
+                guard let m = BlendMode(rawValue: raw) else {
+                    throw ToolError("invalid blendMode '\(raw)'. Valid: \(BlendMode.allCases.map(\.rawValue).joined(separator: ", "))")
+                }
+                blendMode = m
             }
         }
 
@@ -495,14 +492,24 @@ extension ToolExecutor {
         let propagatesTiming = input.durationFrames != nil || input.trimStartFrame != nil
             || input.trimEndFrame != nil || input.speed != nil
         let partners: Set<String> = propagatesTiming
-            ? editor.timingPropagationPartners(of: Set(input.clipIds))
+            ? editor.timingPropagationPartners(of: Set(clipIds))
             : []
 
-        let setActionName = input.clipIds.count == 1 ? "Set Clip Property (Agent)" : "Set Clip Properties (Agent)"
-        let summaries: [String] = withUndoGroup(editor, actionName: setActionName) {
-            var summaries: [String] = []
-            for id in input.clipIds {
-                let isText = clipTypes[id] == .text
+        var notes: [String] = []
+        let clearedKeyframes = clipIds.filter { id in
+            guard let loc = editor.findClip(id: id) else { return false }
+            let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            return (input.volume != nil && clip.volumeTrack != nil)
+                || (input.opacity != nil && clip.opacityTrack != nil)
+        }
+        if !clearedKeyframes.isEmpty {
+            notes.append("Setting a scalar cleared existing keyframes on: \(clearedKeyframes.joined(separator: ", ")).")
+        }
+
+        let snapshot = timelineSnapshot(editor)
+        let setActionName = clipIds.count == 1 ? "Set Clip Property (Agent)" : "Set Clip Properties (Agent)"
+        withUndoGroup(editor, actionName: setActionName) {
+            for id in clipIds {
                 let changed = Self.applyPropertyChanges(
                     durationFrames: input.durationFrames,
                     trimStartFrame: input.trimStartFrame,
@@ -511,19 +518,12 @@ extension ToolExecutor {
                     volume: input.volume,
                     opacity: input.opacity,
                     transform: input.transform,
-                    content: isText ? input.content : nil,
-                    fontName: isText ? input.fontName : nil,
-                    fontSize: isText ? input.fontSize : nil,
-                    color: isText ? color : nil,
-                    alignment: isText ? alignment : nil,
+                    blendMode: blendMode,
+                    setBlendMode: setBlendMode,
                     clipId: id,
                     editor: editor
                 )
-                // Match the inspector: refit bbox after content/font change when caller didn't set a box.
-                if isText && input.transform == nil && (input.content != nil || input.fontName != nil || input.fontSize != nil) {
-                    editor.fitTextClipToContent(clipId: id)
-                }
-                summaries.append("\(id)\(changed.isEmpty ? " (no-op)" : ": \(changed.joined(separator: ", "))")")
+                notes.append(contentsOf: changed.filter { $0.contains("skipped") }.map { "\(id): \($0)" })
             }
             for partnerId in partners {
                 guard let pLoc = editor.findClip(id: partnerId) else { continue }
@@ -534,16 +534,13 @@ extension ToolExecutor {
                     trimEndFrame:   partnerIsText ? nil : input.trimEndFrame,
                     speed:          partnerIsText ? nil : input.speed,
                     volume: nil, opacity: nil, transform: nil,
-                    content: nil, fontName: nil, fontSize: nil, color: nil, alignment: nil,
+                    blendMode: nil, setBlendMode: false,
                     clipId: partnerId,
                     editor: editor
                 )
             }
-            return summaries
         }
-
-        let linkedNote = partners.isEmpty ? "" : " (+\(partners.count) linked)"
-        return .ok("Updated \(input.clipIds.count) clip\(input.clipIds.count == 1 ? "" : "s")\(linkedNote): \(summaries.joined(separator: "; "))")
+        return mutationResult(editor, since: snapshot, touched: clipIds + Array(partners), notes: notes)
     }
 
     fileprivate static func applyPropertyChanges(
@@ -554,38 +551,36 @@ extension ToolExecutor {
         volume: Double?,
         opacity: Double?,
         transform: ParsedTransform?,
-        content: String?,
-        fontName: String?,
-        fontSize: Double?,
-        color: TextStyle.RGBA?,
-        alignment: TextStyle.Alignment?,
+        blendMode: BlendMode?,
+        setBlendMode: Bool,
         clipId: String,
         editor: EditorViewModel
     ) -> [String] {
         var changed: [String] = []
         editor.commitClipProperty(clipId: clipId) { clip in
             if let v = durationFrames {
-                clip.durationFrames = v
-                clip.clampKeyframesToDuration()
-                clip.clampFadesToDuration()
+                clip.setDuration(v)
                 changed.append("durationFrames")
             }
             if let v = trimStartFrame { clip.trimStartFrame = v; changed.append("trimStartFrame") }
             if let v = trimEndFrame   { clip.trimEndFrame   = v; changed.append("trimEndFrame") }
             if let v = speed {
-                if durationFrames == nil, v > 0 {
-                    let sourceConsumed = Double(clip.durationFrames) * clip.speed
-                    clip.durationFrames = max(1, Int((sourceConsumed / v).rounded()))
-                    clip.clampKeyframesToDuration()
-                    clip.clampFadesToDuration()
-                    changed.append("durationFrames")
+                if !clip.supportsRetiming {
+                    changed.append("speed skipped (nested timelines don't support retiming)")
+                } else {
+                    if durationFrames == nil, v > 0 {
+                        let sourceConsumed = Double(clip.durationFrames) * clip.speed
+                        clip.setDuration(max(1, safeInt((sourceConsumed / v).rounded()) ?? clip.durationFrames))
+                        changed.append("durationFrames")
+                    }
+                    clip.speed = v
+                    changed.append("speed")
                 }
-                clip.speed = v
-                changed.append("speed")
             }
             // Setting a scalar clears any existing keyframe track on the same property.
             if let v = volume         { clip.volume  = v; clip.volumeTrack  = nil; changed.append("volume") }
             if let v = opacity        { clip.opacity = v; clip.opacityTrack = nil; changed.append("opacity") }
+            if setBlendMode           { clip.blendMode = blendMode; changed.append("blendMode") }
             if let t = transform {
                 let cur = clip.transform
                 var next = Transform(
@@ -598,15 +593,6 @@ extension ToolExecutor {
                 next.flipVertical = t.flipVertical ?? cur.flipVertical
                 clip.transform = next
                 changed.append("transform")
-            }
-            if content != nil || fontName != nil || fontSize != nil || color != nil || alignment != nil {
-                if let c = content { clip.textContent = c; changed.append("content") }
-                var style = clip.textStyle ?? TextStyle()
-                if let f = fontName  { style.fontName = f; changed.append("fontName") }
-                if let s = fontSize  { style.fontSize = s; changed.append("fontSize") }
-                if let c = color     { style.color = c; changed.append("color") }
-                if let a = alignment { style.alignment = a; changed.append("alignment") }
-                clip.textStyle = style
             }
         }
         return changed
@@ -653,8 +639,9 @@ extension ToolExecutor {
             }
         }
 
-        let action = rows.isEmpty ? "cleared" : "set \(rows.count)"
-        return .ok("\(action) keyframes on \(input.property) for \(input.clipId)")
+        let snapshot = timelineSnapshot(editor)
+        let notes = rows.isEmpty ? ["Cleared \(input.property) keyframes."] : []
+        return mutationResult(editor, since: snapshot, touched: [input.clipId], notes: notes)
     }
 
     // MARK: split_clips
@@ -704,13 +691,9 @@ extension ToolExecutor {
         }
 
         guard !points.isEmpty else { throw ToolError("No valid split points") }
-        let rightIds = editor.splitClips(at: points)
-        let cutList = points
-            .sorted { $0.trackIndex == $1.trackIndex ? $0.atFrame < $1.atFrame : $0.trackIndex < $1.trackIndex }
-            .map { "track \($0.trackIndex)@\($0.atFrame)" }
-            .joined(separator: ", ")
-        let newNote = rightIds.isEmpty ? "" : " New right-half clip(s): \(rightIds.joined(separator: ", "))."
-        return .ok("Split \(points.count) point(s) [\(cutList)].\(newNote) Re-read with get_timeline for updated ranges.")
+        let snapshot = timelineSnapshot(editor)
+        _ = editor.splitClips(at: points)
+        return mutationResult(editor, since: snapshot)
     }
 
     // MARK: ripple_delete_ranges
@@ -750,8 +733,8 @@ extension ToolExecutor {
                     : Double(clip.startFrame) + (v * Double(fps) - Double(clip.trimStartFrame)) / max(clip.speed, 0.0001)
             }
             for r in input.ranges {
-                let s = max(clip.startFrame, min(clip.endFrame, Int(toFrame(r[0]).rounded())))
-                let e = max(clip.startFrame, min(clip.endFrame, Int(toFrame(r[1]).rounded())))
+                let s = clampInt(toFrame(r[0]), min: clip.startFrame, max: clip.endFrame)
+                let e = clampInt(toFrame(r[1]), min: clip.startFrame, max: clip.endFrame)
                 if e > s { frameRanges.append(FrameRange(start: s, end: e)) } else { dropped += 1 }
             }
             guard !frameRanges.isEmpty else {
@@ -767,8 +750,8 @@ extension ToolExecutor {
                 throw ToolError("Track index out of range: \(trackIndex)")
             }
             for r in input.ranges {
-                let s = max(0, Int(r[0].rounded()))
-                let e = Int(r[1].rounded())
+                let s = clampInt(r[0], min: 0, max: editor.timeline.totalFrames)
+                let e = clampInt(r[1], min: 0, max: editor.timeline.totalFrames)
                 if e > s { frameRanges.append(FrameRange(start: s, end: e)) } else { dropped += 1 }
             }
             guard !frameRanges.isEmpty else {
@@ -777,23 +760,19 @@ extension ToolExecutor {
             resolvedTrackIndex = trackIndex
         }
 
-        switch editor.rippleDeleteRangesOnTrack(trackIndex: resolvedTrackIndex, ranges: frameRanges) {
+        let ignoreSyncLocked = Set(input.ignoreSyncLockedTracks ?? [])
+        let snapshot = timelineSnapshot(editor)
+        switch editor.rippleDeleteRangesOnTrack(trackIndex: resolvedTrackIndex, ranges: frameRanges, ignoreSyncLockTrackIndices: ignoreSyncLocked) {
         case .refused(let reason):
             throw ToolError(reason)
         case .ok(let report):
-            var payload: [String: Any] = [
-                "removedFrames": report.removedFrames,
-                "clearedTracks": report.clearedTracks,
-                "shiftedClips": report.shiftedClips,
-                "anchorTrackIndex": report.anchorTrackIndex,
-                "resultingClips": report.resultingFragments.map {
-                    ["clipId": $0.clipId, "startFrame": $0.startFrame, "durationFrames": $0.durationFrames]
-                },
-            ]
-            if !report.removedClipIds.isEmpty { payload["removedClipIds"] = report.removedClipIds }
-            if dropped > 0 { payload["rangesIgnored"] = dropped }
-            guard let json = Self.jsonString(payload) else { throw ToolError("Failed to encode result") }
-            return .ok(json)
+            var extra: [String: Any] = ["removedFrames": report.removedFrames]
+            if dropped > 0 { extra["rangesIgnored"] = dropped }
+            return mutationResult(
+                editor, since: snapshot,
+                touched: report.resultingFragments.map(\.clipId),
+                extra: extra
+            )
         }
     }
 
@@ -852,8 +831,8 @@ extension ToolExecutor {
 
     private static func kfInt(_ raw: Any, at path: String) throws -> Int {
         if let v = raw as? Int { return v }
-        if let v = raw as? Double { return Int(v) }
-        if let v = raw as? NSNumber { return v.intValue }
+        if let v = raw as? Double, let i = safeInt(v) { return i }
+        if let v = raw as? NSNumber, let i = safeInt(v.doubleValue) { return i }
         throw ToolError("\(path): expected integer")
     }
 
@@ -877,36 +856,94 @@ extension ToolExecutor {
         return i
     }
 
-    private static let removeTracksAllowedKeys: Set<String> = ["trackIndexes"]
+    // MARK: manage_tracks
 
-    func removeTracks(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
-        try validateUnknownKeys(args, allowed: Self.removeTracksAllowedKeys, path: "remove_tracks")
-        guard let raw = args["trackIndexes"] as? [Any], !raw.isEmpty else {
-            throw ToolError("remove_tracks: trackIndexes must be a non-empty array of integers")
-        }
-        var removed: [[String: Any]] = []
-        var ids: [String] = []
-        var seen = Set<Int>()
-        for entry in raw {
-            guard let i = (entry as? Int) ?? (entry as? NSNumber)?.intValue else {
-                throw ToolError("remove_tracks: trackIndexes must be integers (got \(entry))")
+    func manageTracks(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        try validateUnknownKeys(args, allowed: ["reorder", "set", "remove"], path: "manage_tracks")
+        let tracks = editor.timeline.tracks
+
+        func trackId(_ index: Int, _ path: String) throws -> String {
+            guard tracks.indices.contains(index) else {
+                throw ToolError("\(path): track index \(index) out of range (timeline has \(tracks.count) tracks)")
             }
-            guard seen.insert(i).inserted else { continue }
-            guard editor.timeline.tracks.indices.contains(i) else {
-                throw ToolError("remove_tracks: track index \(i) out of range (timeline has \(editor.timeline.tracks.count) tracks)")
+            return tracks[index].id
+        }
+
+        var reorders: [(id: String, to: Int)] = []
+        for (i, raw) in (args["reorder"] as? [Any] ?? []).enumerated() {
+            guard let entry = raw as? [String: Any] else { throw ToolError("reorder[\(i)] must be an object") }
+            try validateUnknownKeys(entry, allowed: ["index", "to"], path: "reorder[\(i)]")
+            guard let index = entry.int("index"), let to = entry.int("to") else {
+                throw ToolError("reorder[\(i)]: 'index' and 'to' are required")
             }
-            let track = editor.timeline.tracks[i]
-            ids.append(track.id)
-            removed.append([
-                "trackIndex": i,
-                "label": editor.timelineTrackDisplayLabel(at: i),
-                "clipCount": track.clips.count,
-            ])
+            reorders.append((try trackId(index, "reorder[\(i)]"), to))
         }
-        editor.removeTracks(ids: ids)
-        guard let json = Self.jsonString(["removedTracks": removed]) else {
-            throw ToolError("Failed to encode result")
+
+        var flagSets: [(id: String, muted: Bool?, hidden: Bool?, syncLocked: Bool?)] = []
+        for (i, raw) in (args["set"] as? [Any] ?? []).enumerated() {
+            guard let entry = raw as? [String: Any] else { throw ToolError("set[\(i)] must be an object") }
+            try validateUnknownKeys(entry, allowed: ["index", "muted", "hidden", "syncLocked"], path: "set[\(i)]")
+            guard let index = entry.int("index") else { throw ToolError("set[\(i)]: 'index' is required") }
+            let muted = entry["muted"] as? Bool
+            let hidden = entry["hidden"] as? Bool
+            let syncLocked = entry["syncLocked"] as? Bool
+            guard muted != nil || hidden != nil || syncLocked != nil else {
+                throw ToolError("set[\(i)]: pass at least one of muted, hidden, syncLocked")
+            }
+            flagSets.append((try trackId(index, "set[\(i)]"), muted, hidden, syncLocked))
         }
-        return .ok(json)
+
+        var removeIds: [String] = []
+        for (i, raw) in (args["remove"] as? [Any] ?? []).enumerated() {
+            guard let index = (raw as? Int) ?? (raw as? NSNumber)?.intValue else {
+                throw ToolError("remove[\(i)] must be a track index")
+            }
+            removeIds.append(try trackId(index, "remove[\(i)]"))
+        }
+
+        guard !reorders.isEmpty || !flagSets.isEmpty || !removeIds.isEmpty else {
+            throw ToolError("Nothing to do — pass at least one of reorder, set, remove.")
+        }
+
+        let multicamTrackIds = Set(tracks.filter { t in
+            t.clips.contains { $0.multicamGroupId != nil }
+        }.map(\.id))
+        if removeIds.contains(where: { multicamTrackIds.contains($0) }) {
+            throw ToolError("A multicam group's track can't be removed — delete the group's clips first (remove_clips) and the empty track prunes itself.")
+        }
+        if flagSets.contains(where: { multicamTrackIds.contains($0.id) && $0.syncLocked == false }) {
+            throw ToolError("Sync lock stays on for a multicam group's tracks — unlocking would let ripples shift the group's members apart.")
+        }
+
+        let snapshot = timelineSnapshot(editor)
+        withUndoGroup(editor, actionName: "Manage Tracks (Agent)") {
+            if !reorders.isEmpty {
+                let before = editor.timeline
+                for r in reorders { editor.reorderTrackLive(id: r.id, to: r.to) }
+                editor.commitTrackReorder(before: before)
+            }
+            for f in flagSets {
+                guard let idx = editor.timeline.tracks.firstIndex(where: { $0.id == f.id }) else { continue }
+                let track = editor.timeline.tracks[idx]
+                if let m = f.muted, track.muted != m { editor.toggleTrackMute(trackIndex: idx) }
+                if let h = f.hidden, track.hidden != h { editor.toggleTrackHidden(trackIndex: idx) }
+                if let s = f.syncLocked, track.syncLocked != s { editor.toggleTrackSyncLock(trackIndex: idx) }
+            }
+            if !removeIds.isEmpty { editor.removeTracks(ids: removeIds) }
+        }
+
+        let order = editor.timeline.tracks.indices.map { i -> [String: Any] in
+            let t = editor.timeline.tracks[i]
+            var entry: [String: Any] = ["index": i, "label": editor.timelineTrackDisplayLabel(at: i), "type": t.type.rawValue]
+            if t.muted { entry["muted"] = true }
+            if t.hidden { entry["hidden"] = true }
+            if !t.syncLocked { entry["syncLocked"] = false }
+            return entry
+        }
+        var notes: [String] = []
+        if !reorders.isEmpty || !removeIds.isEmpty {
+            notes.append("Track indices changed — 'tracks' is the new order; index 0 renders on top.")
+        }
+        return mutationResult(editor, since: snapshot, extra: ["tracks": order], notes: notes)
     }
 }

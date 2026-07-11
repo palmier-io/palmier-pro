@@ -72,6 +72,12 @@ extension EditorViewModel {
             guard timeline.tracks.indices.contains(dstTrack) else { continue }
             let trackType = timeline.tracks[dstTrack].type
             guard trackType.isCompatible(with: entry.clip.mediaType) else { continue }
+            // A pasted nest must not make this timeline contain itself.
+            if entry.clip.sourceClipType == .sequence,
+               wouldCreateNestCycle(nesting: entry.clip.mediaRef, into: activeTimelineId) {
+                mediaPanelToast = "Can't paste \"\(clipDisplayLabel(for: entry.clip))\" here — it would nest this timeline inside itself."
+                continue
+            }
             placements.append(ClonePlacement(
                 source: entry.clip,
                 trackId: timeline.tracks[dstTrack].id,
@@ -128,7 +134,7 @@ private extension EditorViewModel {
         for p in placements {
             if let g = p.source.linkGroupId { groupCounts[g, default: 0] += 1 }
         }
-        var groupRemap: [String: String] = [:]
+        var groups: [String: String] = [:]
 
         var newIds: [String] = []
         withTimelineSwap(actionName: actionName) {
@@ -140,17 +146,10 @@ private extension EditorViewModel {
             for p in placements {
                 guard let ti = timeline.tracks.firstIndex(where: { $0.id == p.trackId }) else { continue }
                 var clone = p.source
-                clone.id = UUID().uuidString
                 clone.startFrame = p.dstStart
-                if let oldGroup = p.source.linkGroupId, (groupCounts[oldGroup] ?? 0) > 1 {
-                    if let mapped = groupRemap[oldGroup] {
-                        clone.linkGroupId = mapped
-                    } else {
-                        let new = UUID().uuidString
-                        groupRemap[oldGroup] = new
-                        clone.linkGroupId = new
-                    }
-                } else {
+                clone.freshenIds(groups: &groups)
+                clone.multicamGroupId = nil
+                if let oldGroup = p.source.linkGroupId, (groupCounts[oldGroup] ?? 0) <= 1 {
                     clone.linkGroupId = nil
                 }
                 timeline.tracks[ti].clips.append(clone)

@@ -27,6 +27,20 @@ struct UndoToolTests {
         #expect(h.editor.timeline.tracks[0].clips[0].durationFrames == 100) // back to the original
     }
 
+    @Test func undoRevertsOnlyTheMostRecentToolCall() async throws {
+        let (h, um) = harness()
+        _ = um
+        _ = await h.runRaw("split_clips", args: ["trackIndex": 0, "frames": [30]])
+        #expect(h.editor.timeline.tracks[0].clips.count == 2)
+        _ = await h.runRaw("ripple_delete_ranges", args: ["trackIndex": 0, "ranges": [[40, 50]]])
+
+        let result = await h.runRaw("undo")
+        #expect(result.isError == false)
+        // Only the ripple reverts — the split from the earlier call must survive.
+        #expect(h.editor.timeline.tracks[0].clips.count == 2)
+        #expect(h.editor.timeline.tracks[0].clips.map(\.durationFrames) == [30, 70])
+    }
+
     @Test func refusesWhenAssistantHasNotEdited() async throws {
         let (h, um) = harness()
         _ = um

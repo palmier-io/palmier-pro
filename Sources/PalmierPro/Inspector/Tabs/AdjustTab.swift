@@ -73,9 +73,7 @@ extension InspectorView {
 
     private var chromaKeyControls: [EffectControl] {
         [
-            EffectControl(effectId: "key.chroma", paramKey: "keyHue", label: "Key Hue"),
-            EffectControl(effectId: "key.chroma", paramKey: "tolerance", label: "Tolerance"),
-            EffectControl(effectId: "key.chroma", paramKey: "softness", label: "Softness"),
+            EffectControl(effectId: "key.chroma", paramKey: "tolerance", label: "Range"),
             EffectControl(effectId: "key.chroma", paramKey: "spill", label: "Spill"),
         ]
     }
@@ -213,6 +211,17 @@ extension InspectorView {
                     .frame(width: AppTheme.IconSize.xxs, alignment: .center)
                 sectionTitleLabel(title: title)
                 Spacer(minLength: 0)
+                if title == "Chroma Key", clips.count == 1, let clip = clips.first {
+                    let sampling = editor.chromaKeySamplingClipId == clip.id
+                    Button { editor.toggleChromaKeySampling(clipId: clip.id) } label: {
+                        Image(systemName: "eyedropper")
+                            .foregroundStyle(sampling ? AppTheme.Accent.primary : AppTheme.Text.secondaryColor)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(editor.activePreviewTab != .timeline)
+                    .help(sampling ? "Cancel key color sampling" : "Sample key color")
+                    .accessibilityLabel(sampling ? "Cancel Key Color Sampling" : "Sample Key Color")
+                }
             }
             .contentShape(Rectangle())
             .onTapGesture {

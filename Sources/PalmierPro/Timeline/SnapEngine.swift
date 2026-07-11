@@ -8,7 +8,7 @@ enum SnapEngine {
     struct SnapTarget {
         let frame: Int
         let kind: Kind
-        enum Kind { case playhead, clipEdge }
+        enum Kind { case playhead, clipEdge, beat }
     }
 
     struct SnapResult {
@@ -32,16 +32,26 @@ enum SnapEngine {
         tracks: [Track],
         playheadFrame: Int = 0,
         excludeClipIds: Set<String> = [],
-        includePlayhead: Bool = false
+        includePlayhead: Bool = false,
+        beatFrames: ((Clip) -> [Int])? = nil,
+        includeExcludedClipBeats: Bool = false
     ) -> [SnapTarget] {
         var targets: [SnapTarget] = []
         if includePlayhead {
             targets.append(SnapTarget(frame: playheadFrame, kind: .playhead))
         }
         for track in tracks {
-            for clip in track.clips where !excludeClipIds.contains(clip.id) {
-                targets.append(SnapTarget(frame: clip.startFrame, kind: .clipEdge))
-                targets.append(SnapTarget(frame: clip.endFrame, kind: .clipEdge))
+            for clip in track.clips {
+                let excluded = excludeClipIds.contains(clip.id)
+                if !excluded {
+                    targets.append(SnapTarget(frame: clip.startFrame, kind: .clipEdge))
+                    targets.append(SnapTarget(frame: clip.endFrame, kind: .clipEdge))
+                }
+                if let beatFrames, !excluded || includeExcludedClipBeats {
+                    for frame in beatFrames(clip) {
+                        targets.append(SnapTarget(frame: frame, kind: .beat))
+                    }
+                }
             }
         }
         return targets
@@ -80,7 +90,7 @@ enum SnapEngine {
             for target in targets {
                 let threshold: Double = switch target.kind {
                 case .playhead: baseFrameThreshold * Snap.playheadMultiplier
-                case .clipEdge: baseFrameThreshold
+                case .clipEdge, .beat: baseFrameThreshold
                 }
                 let dist = abs(Double(probePos - target.frame))
                 if dist <= threshold, dist < (best?.distance ?? .infinity) {

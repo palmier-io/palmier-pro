@@ -20,7 +20,14 @@ final class TimelineInputController {
         case end
     }
 
+    private enum TrimEdge {
+        case left
+        case right
+    }
+
     private static let timelineRangeEdgeHitSlop: CGFloat = 8
+    private static let trimLeftCursor = makeTrimCursor(edge: .left)
+    private static let trimRightCursor = makeTrimCursor(edge: .right)
 
     init(editor: EditorViewModel, view: TimelineView) {
         self.editor = editor
@@ -28,6 +35,35 @@ final class TimelineInputController {
     }
 
     // MARK: - Mouse down
+
+
+    private func trimHeadroom(for clip: Clip, linked: Bool) -> (left: Int, right: Int) {
+        var clips = [clip]
+        if linked {
+            clips += editor.linkedPartnerIds(of: clip.id).compactMap { editor.clipFor(id: $0) }
+        }
+        var left = Int.max
+        var right = Int.max
+        for c in clips {
+            if let bounds = editor.multicamTrimBounds(for: c) {
+                left = min(left, bounds.left)
+                right = min(right, bounds.right)
+            } else if c.id == clip.id {
+                left = min(left, c.trimStartFrame)
+                right = min(right, effectiveTrimEnd(for: c))
+            }
+        }
+        return (left == .max ? clip.trimStartFrame : left,
+                right == .max ? effectiveTrimEnd(for: clip) : right)
+    }
+
+    /// Nest trim limits come from the child's live length, not creation time.
+    private func effectiveTrimEnd(for clip: Clip) -> Int {
+        guard clip.sourceClipType == .sequence, let child = editor.timeline(for: clip.mediaRef) else {
+            return clip.trimEndFrame
+        }
+        return max(0, child.totalFrames - clip.trimStartFrame - clip.durationFrames)
+    }
 
     func mouseDown(with event: NSEvent, geometry: TimelineGeometry) {
         let point = view.convert(event.locationInWindow, from: nil)
@@ -38,6 +74,11 @@ final class TimelineInputController {
             let ti = geometry.trackAt(y: point.y)
             if let hit = hitTestClip(at: point, trackIndex: ti, geometry: geometry) {
                 let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
+                if clip.sourceClipType == .sequence {
+                    editor.activateTimeline(clip.mediaRef)
+                    dragState = .idle
+                    return
+                }
                 if let asset = editor.mediaAssets.first(where: { $0.id == clip.mediaRef }) {
                     editor.selectMediaAsset(asset)
                     editor.mediaPanelRevealAssetId = asset.id
@@ -53,6 +94,7 @@ final class TimelineInputController {
         }
 
         if point.y >= scrollOffsetY && point.y < scrollOffsetY + geometry.rulerHeight {
+            view.setHoveredClipId(nil)
             let frame = geometry.frameAt(x: point.x)
             if let edge = timelineRangeEdgeHit(at: point, geometry: geometry) {
                 beginTimelineRangeEdgeDrag(edge)
@@ -79,13 +121,23 @@ final class TimelineInputController {
 
         if let hit = hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) {
             let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
+            view.setHoveredClipId(clip.id)
             let rect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
             let isShift = event.modifierFlags.contains(.shift)
             let isOption = event.modifierFlags.contains(.option)
             // Linked behavior is always on; Option is the per-drag override.
             let linkedOn = !isOption
 
-            if isShift {
+            let localX = point.x - rect.minX
+            let trimEdge = isOption ? nil : Self.trimEdge(localX: localX, clipWidth: rect.width)
+            let onTrimHandle = trimEdge != nil
+            let rippleTrim = isShift && onTrimHandle
+
+            if rippleTrim {
+                if !editor.selectedClipIds.contains(clip.id) {
+                    editor.selectedClipIds = linkedOn ? editor.expandToLinkGroup([clip.id]) : [clip.id]
+                }
+            } else if isShift {
                 if editor.selectedClipIds.contains(clip.id) {
                     if linkedOn {
                         editor.selectedClipIds.subtract(editor.expandToLinkGroup([clip.id]))
@@ -103,7 +155,6 @@ final class TimelineInputController {
                 editor.selectedClipIds = linkedOn ? editor.expandToLinkGroup([clip.id]) : [clip.id]
             }
 
-            let localX = point.x - rect.minX
             let isCommand = event.modifierFlags.contains(.command)
 
             if let edge = fadeKneeHit(at: point, clip: clip, clipRect: rect) {
@@ -132,28 +183,21 @@ final class TimelineInputController {
             } else if isCommand, clip.mediaType == .audio,
                       addVolumeKeyframeOnClick(at: point, clip: clip, clipRect: rect) {
                 dragState = .idle
-            } else if !isOption, localX <= Trim.handleWidth {
-                dragState = .trimLeft(DragState.TrimDrag(
+            } else if let edge = trimEdge {
+                Self.trimCursor(for: edge).set()
+                let headroom = trimHeadroom(for: clip, linked: linkedOn)
+                let drag = DragState.TrimDrag(
                     clipId: clip.id,
                     trackIndex: hit.trackIndex,
-                    originalTrimStart: clip.trimStartFrame,
-                    originalTrimEnd: clip.trimEndFrame,
+                    originalTrimStart: headroom.left,
+                    originalTrimEnd: headroom.right,
                     originalStartFrame: clip.startFrame,
                     originalDuration: clip.durationFrames,
                     hasNoSourceMedia: clip.mediaType == .image || clip.mediaType == .text,
-                    propagateToLinked: linkedOn
-                ))
-            } else if !isOption, localX >= rect.width - Trim.handleWidth {
-                dragState = .trimRight(DragState.TrimDrag(
-                    clipId: clip.id,
-                    trackIndex: hit.trackIndex,
-                    originalTrimStart: clip.trimStartFrame,
-                    originalTrimEnd: clip.trimEndFrame,
-                    originalStartFrame: clip.startFrame,
-                    originalDuration: clip.durationFrames,
-                    hasNoSourceMedia: clip.mediaType == .image || clip.mediaType == .text,
-                    propagateToLinked: linkedOn
-                ))
+                    propagateToLinked: linkedOn,
+                    isRipple: rippleTrim
+                )
+                dragState = edge == .left ? .trimLeft(drag) : .trimRight(drag)
             } else {
                 let grabFrame = geometry.frameAt(x: point.x)
                 var companions: [DragState.Participant] = []
@@ -181,6 +225,7 @@ final class TimelineInputController {
                 ))
             }
         } else {
+            view.setHoveredClipId(nil)
             if !event.modifierFlags.contains(.shift) {
                 editor.selectedClipIds.removeAll()
             }
@@ -213,7 +258,8 @@ final class TimelineInputController {
             let targets = SnapEngine.collectTargets(
                 tracks: editor.timeline.tracks,
                 playheadFrame: editor.currentFrame,
-                includePlayhead: true
+                includePlayhead: true,
+                beatFrames: editor.beatSnapFrames(for:)
             )
             let rangeEndFrame: Int
             if let snap = SnapEngine.findSnap(
@@ -238,7 +284,8 @@ final class TimelineInputController {
                 tracks: editor.timeline.tracks,
                 playheadFrame: editor.currentFrame,
                 excludeClipIds: allDraggedIds,
-                includePlayhead: true
+                includePlayhead: true,
+                beatFrames: editor.beatSnapFrames(for:)
             )
 
             // Let any selected edge drive snapping, not just the lead start.
@@ -284,7 +331,9 @@ final class TimelineInputController {
                 tracks: editor.timeline.tracks,
                 playheadFrame: editor.currentFrame,
                 excludeClipIds: [drag.clipId],
-                includePlayhead: true
+                includePlayhead: true,
+                beatFrames: editor.beatSnapFrames(for:),
+                includeExcludedClipBeats: true
             )
             let snappedStart: Int
             if let snap = SnapEngine.findSnap(
@@ -313,7 +362,9 @@ final class TimelineInputController {
                 tracks: editor.timeline.tracks,
                 playheadFrame: editor.currentFrame,
                 excludeClipIds: [drag.clipId],
-                includePlayhead: true
+                includePlayhead: true,
+                beatFrames: editor.beatSnapFrames(for:),
+                includeExcludedClipBeats: true
             )
             let snappedEnd: Int
             if let snap = SnapEngine.findSnap(
@@ -424,6 +475,13 @@ final class TimelineInputController {
 
             case .newTrackAt(let insertIndex):
                 guard let leadTrackType = resolvedLeadTrackType(for: drag) else { break }
+                if !drag.isDuplicate,
+                   let reason = editor.multicamMoveViolation(moves: resolved.map {
+                       (clipId: $0.participant.clipId, toTrack: $0.trackIndex, toFrame: $0.frame + frameDelta)
+                   }) {
+                    editor.refuseWithToast(reason)
+                    break
+                }
                 editor.undoManager?.beginUndoGrouping()
                 let newIdx = editor.insertTrack(at: insertIndex, type: leadTrackType)
                 let moves = resolved.map { item in
@@ -439,22 +497,30 @@ final class TimelineInputController {
 
         case .trimLeft(let drag):
             if drag.deltaFrames != 0 {
-                editor.commitTrim(
-                    clipId: drag.clipId,
-                    edge: .left,
-                    deltaFrames: drag.deltaFrames,
-                    propagateToLinked: drag.propagateToLinked
-                )
+                if drag.isRipple {
+                    editor.rippleTrimClip(clipId: drag.clipId, edge: .left, deltaFrames: drag.deltaFrames, propagateToLinked: drag.propagateToLinked)
+                } else {
+                    editor.commitTrim(
+                        clipId: drag.clipId,
+                        edge: .left,
+                        deltaFrames: drag.deltaFrames,
+                        propagateToLinked: drag.propagateToLinked
+                    )
+                }
             }
 
         case .trimRight(let drag):
             if drag.deltaFrames != 0 {
-                editor.commitTrim(
-                    clipId: drag.clipId,
-                    edge: .right,
-                    deltaFrames: drag.deltaFrames,
-                    propagateToLinked: drag.propagateToLinked
-                )
+                if drag.isRipple {
+                    editor.rippleTrimClip(clipId: drag.clipId, edge: .right, deltaFrames: drag.deltaFrames, propagateToLinked: drag.propagateToLinked)
+                } else {
+                    editor.commitTrim(
+                        clipId: drag.clipId,
+                        edge: .right,
+                        deltaFrames: drag.deltaFrames,
+                        propagateToLinked: drag.propagateToLinked
+                    )
+                }
             }
 
         case .audioVolumeKf(let drag):
@@ -496,6 +562,7 @@ final class TimelineInputController {
         let scrollOffsetY = view.enclosingScrollView?.contentView.bounds.origin.y ?? 0
 
         if point.y >= scrollOffsetY && point.y < scrollOffsetY + geometry.rulerHeight {
+            view.setHoveredClipId(nil)
             if timelineRangeEdgeHit(at: point, geometry: geometry) != nil {
                 NSCursor.resizeLeftRight.set()
             } else if event.modifierFlags.contains(.shift) {
@@ -509,11 +576,13 @@ final class TimelineInputController {
         }
 
         if editor.toolMode == .razor && point.y >= scrollOffsetY + geometry.rulerHeight {
+            view.setHoveredClipId(nil)
             let candidate = geometry.frameAt(x: point.x)
             let targets = SnapEngine.collectTargets(
                 tracks: editor.timeline.tracks,
                 playheadFrame: editor.currentFrame,
-                includePlayhead: true
+                includePlayhead: true,
+                beatFrames: editor.beatSnapFrames(for:)
             )
             if let snap = SnapEngine.findSnap(
                 position: candidate,
@@ -537,10 +606,11 @@ final class TimelineInputController {
 
         if let hit = hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) {
             let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
+            view.setHoveredClipId(clip.id)
             let rect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
             let localX = point.x - rect.minX
-            if Self.isOnTrimZone(localX: localX, clipWidth: rect.width) {
-                NSCursor.resizeLeftRight.set()
+            if let trimEdge = Self.trimEdge(localX: localX, clipWidth: rect.width) {
+                Self.trimCursor(for: trimEdge).set()
                 return
             }
             if fadeKneeHit(at: point, clip: clip, clipRect: rect) != nil {
@@ -552,12 +622,66 @@ final class TimelineInputController {
                 NSCursor.openHand.set()
                 return
             }
+        } else {
+            view.setHoveredClipId(nil)
         }
         NSCursor.arrow.set()
     }
 
-    private static func isOnTrimZone(localX: CGFloat, clipWidth: CGFloat) -> Bool {
-        localX <= Trim.handleWidth || localX >= clipWidth - Trim.handleWidth
+    private static func trimEdge(localX: CGFloat, clipWidth: CGFloat) -> TrimEdge? {
+        if localX <= Trim.handleWidth { return .left }
+        if localX >= clipWidth - Trim.handleWidth { return .right }
+        return nil
+    }
+
+    private static func trimCursor(for edge: TrimEdge) -> NSCursor {
+        switch edge {
+        case .left: trimLeftCursor
+        case .right: trimRightCursor
+        }
+    }
+
+    private static func makeTrimCursor(edge: TrimEdge) -> NSCursor {
+        let size = NSSize(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
+        let image = NSImage(size: size, flipped: false) { rect in
+            let midX = rect.midX
+            let midY = rect.midY
+            let direction: CGFloat = edge == .left ? 1 : -1
+            let bracket = NSBezierPath()
+            let bracketTop = midY + AppTheme.Spacing.smMd
+            let bracketBottom = midY - AppTheme.Spacing.smMd
+            let capX = midX + direction * AppTheme.Spacing.sm
+            bracket.move(to: NSPoint(x: midX, y: bracketBottom))
+            bracket.line(to: NSPoint(x: midX, y: bracketTop))
+            bracket.move(to: NSPoint(x: midX, y: bracketTop))
+            bracket.line(to: NSPoint(x: capX, y: bracketTop))
+            bracket.move(to: NSPoint(x: midX, y: bracketBottom))
+            bracket.line(to: NSPoint(x: capX, y: bracketBottom))
+            bracket.lineCapStyle = .square
+
+            AppTheme.Background.base.setStroke()
+            bracket.lineWidth = AppTheme.BorderWidth.thick + AppTheme.BorderWidth.thin
+            bracket.stroke()
+            AppTheme.Status.error.setStroke()
+            bracket.lineWidth = AppTheme.BorderWidth.thick
+            bracket.stroke()
+
+            let arrowTipX = midX + direction * AppTheme.Spacing.md
+            let arrowBaseX = midX + direction * AppTheme.Spacing.xs
+            let arrow = NSBezierPath()
+            arrow.move(to: NSPoint(x: arrowTipX, y: midY))
+            arrow.line(to: NSPoint(x: arrowBaseX, y: midY + AppTheme.Spacing.sm))
+            arrow.line(to: NSPoint(x: arrowBaseX, y: midY - AppTheme.Spacing.sm))
+            arrow.close()
+            arrow.lineJoinStyle = .round
+            arrow.lineWidth = AppTheme.BorderWidth.thick
+            AppTheme.Text.primary.setStroke()
+            arrow.stroke()
+            AppTheme.Status.error.setFill()
+            arrow.fill()
+            return true
+        }
+        return NSCursor(image: image, hotSpot: NSPoint(x: size.width / 2, y: size.height / 2))
     }
 
     func audioVolumeKfHit(at point: NSPoint, clip: Clip, clipRect: NSRect) -> Int? {
@@ -572,6 +696,7 @@ final class TimelineInputController {
     }
 
     func fadeKneeHit(at point: NSPoint, clip: Clip, clipRect: NSRect) -> FadeEdge? {
+        guard editor.selectedClipIds.contains(clip.id) || view.hoveredClipId == clip.id else { return nil }
         let geo = view.geometry
         if geo.fadeKneeRect(clip: clip, edge: .left, in: clipRect).contains(point) { return .left }
         if geo.fadeKneeRect(clip: clip, edge: .right, in: clipRect).contains(point) { return .right }
@@ -665,6 +790,7 @@ final class TimelineInputController {
     /// Option+scroll zooms; Cmd+scroll pans horizontally (maps vertical delta to X, for mouse wheels);
     /// plain scroll pans (forwarded to the scroll view, both axes).
     func scrollWheel(with event: NSEvent, geometry: TimelineGeometry) {
+        view.setHoveredClipId(nil)
         if event.modifierFlags.contains(.option) {
             let cursorDocX = view.convert(event.locationInWindow, from: nil).x
             applyZoom(factor: exp(event.scrollingDeltaY * Zoom.scrollSensitivity), anchorDocX: cursorDocX)
@@ -686,6 +812,7 @@ final class TimelineInputController {
 
     /// Trackpad pinch-to-zoom.
     func magnify(with event: NSEvent) {
+        view.setHoveredClipId(nil)
         let cursorDocX = view.convert(event.locationInWindow, from: nil).x
         applyZoom(factor: 1.0 + event.magnification * Zoom.magnifySensitivity, anchorDocX: cursorDocX)
     }

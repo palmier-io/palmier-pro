@@ -26,7 +26,7 @@ struct TitleBarTrailingView: View {
         HStack(spacing: AppTheme.Spacing.sm) {
             Spacer(minLength: 0)
 
-            UpdateBadgeView()
+            UpdateProjectBadge()
 
             Button(action: { editor.showExportDialog = true }) {
                 HStack(spacing: AppTheme.Spacing.xs) {

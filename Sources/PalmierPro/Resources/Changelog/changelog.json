@@ -2,13 +2,14 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.4.2",
-      "date": "2026-06-25",
+      "version": "0.6.4",
+      "date": "2026-07-09",
       "sections": [
         {
           "heading": "New",
           "items": [
-            "New set_project_settings tool - Agent can now set project settings (fps, resolution, aspect ratio) for you."
+            "Multicam editing: Agent can now work with multiple camera footage with better tools. Especially useful for podcast or other multi-camera setups.",
+            "10-bit HDR export: New HEVC 10-bit HDR export option."
           ]
         }
       ]

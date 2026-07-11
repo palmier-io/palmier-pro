@@ -29,6 +29,7 @@ struct ChromaKeyKernelTests {
         #expect(alpha(0.8, 0.2, 0.2) > 0.95, "red stays opaque")
         #expect(alpha(0.7, 0.55, 0.45) > 0.95, "skin tone stays opaque")
         #expect(alpha(0.5, 0.5, 0.5) > 0.95, "gray stays opaque (not saturated)")
+        #expect(alpha(0.01, 0.05, 0.015) > 0.95, "near-black chroma noise stays opaque")
     }
 
     @Test func toleranceZeroIsNoOp() {

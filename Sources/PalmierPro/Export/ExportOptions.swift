@@ -1,23 +1,28 @@
 import AVFoundation
 
 enum ExportFormat {
-    case h264, h265, prores, xml
+    case h264, h265, prores, xml, fcpxml
+    /// HEVC Main10, BT.2020 + HLG — preserves 10-bit HDR (via AVAssetWriter).
+    case hevcHDR
 
     var fileExtension: String {
         switch self {
         case .h264, .h265: "mp4"
-        case .prores: "mov"
+        case .prores, .hevcHDR: "mov"
         case .xml: "xml"
+        case .fcpxml: "fcpxml"
         }
     }
 
     var utType: AVFileType? {
         switch self {
         case .h264, .h265: .mp4
-        case .prores: .mov
-        case .xml: nil
+        case .prores, .hevcHDR: .mov
+        case .xml, .fcpxml: nil
         }
     }
+
+    var isHDR: Bool { self == .hevcHDR }
 }
 
 enum ExportResolution: String, CaseIterable, Identifiable {
@@ -54,26 +59,27 @@ enum ExportResolution: String, CaseIterable, Identifiable {
     }
 }
 
-enum ExportMode: String, CaseIterable, Identifiable {
-    case video = "Video (.mp4)"
-    case xml = "Timeline (.xml)"
-    case palmierProject = "Palmier Project (.palmier)"
-
-    var id: String { rawValue }
-}
-
 enum VideoCodec: String, CaseIterable, Identifiable {
     case h264 = "H.264"
     case h265 = "H.265"
     case prores = "ProRes"
+    case hdr = "HEVC 10-bit HDR"
 
     var id: String { rawValue }
+
+    var containerLabel: String {
+        switch self {
+        case .h264, .h265: "MPEG-4 (.mp4)"
+        case .prores, .hdr: "QuickTime (.mov)"
+        }
+    }
 
     var exportFormat: ExportFormat {
         switch self {
         case .h264: .h264
         case .h265: .h265
         case .prores: .prores
+        case .hdr: .hevcHDR
         }
     }
 
@@ -82,13 +88,18 @@ enum VideoCodec: String, CaseIterable, Identifiable {
         case .h264: self = .h264
         case .h265: self = .h265
         case .prores: self = .prores
-        case .xml: return nil
+        case .hevcHDR: self = .hdr
+        case .xml, .fcpxml: return nil
         }
     }
 }
 
 extension ExportFormat {
     var displayName: String {
-        VideoCodec(exportFormat: self)?.rawValue ?? "XML"
+        switch self {
+        case .xml: "XML"
+        case .fcpxml: "FCPXML"
+        default: VideoCodec(exportFormat: self)?.rawValue ?? "Video"
+        }
     }
 }
