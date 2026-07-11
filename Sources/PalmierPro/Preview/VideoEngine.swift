@@ -5,11 +5,14 @@ import CoreImage
 enum PreviewSeekMode: String {
     case exact
     case interactiveScrub
+    case audibleStepForward
+    case audibleStepBackward
 }
 
 @MainActor
 final class VideoEngine {
     private(set) var player = AVPlayer()
+    private let scrubAudioEngine: ScrubAudioEngine
 
     weak var previewView: PreviewNSView?
 
@@ -30,6 +33,7 @@ final class VideoEngine {
 
     init(editor: EditorViewModel) {
         self.editor = editor
+        scrubAudioEngine = ScrubAudioEngine(meter: editor.audioMeter)
         setupTimeObserver()
     }
 
@@ -38,6 +42,7 @@ final class VideoEngine {
         rebuildTask = nil
         compositionCache.removeAll()
         invalidateSeekState()
+        scrubAudioEngine.teardown()
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         timeObserver = nil
     }
@@ -46,6 +51,7 @@ final class VideoEngine {
 
     func play() {
         guard let editor else { return }
+        scrubAudioEngine.stopScrubbing()
         editor.isPlaying = true
         guard rebuildTask == nil else { return }
         let frame = playbackStartFrame(for: editor)
@@ -54,11 +60,13 @@ final class VideoEngine {
     }
 
     func pause() {
+        scrubAudioEngine.stopScrubbing()
         editor?.isPlaying = false
         player.pause()
     }
 
     func resumePlayback() {
+        scrubAudioEngine.stopScrubbing()
         editor?.isPlaying = true
         player.play()
     }
@@ -77,10 +85,17 @@ final class VideoEngine {
 
         switch mode {
         case .exact:
+            scrubAudioEngine.stopScrubbing()
             cancelInteractiveSeek()
             performSeek(time: time, tolerance: tolerance)
         case .interactiveScrub:
+            scrubAudioEngine.scrub(to: time)
             enqueueInteractiveSeek(time: time, tolerance: tolerance)
+        case .audibleStepForward, .audibleStepBackward:
+            if editor.isPlaying { pause() }
+            scrubAudioEngine.scrub(to: time, movingForward: mode == .audibleStepForward)
+            cancelInteractiveSeek()
+            performSeek(time: time, tolerance: tolerance)
         }
     }
 
@@ -126,6 +141,7 @@ final class VideoEngine {
 
     private func replacePlayerItem(_ item: AVPlayerItem?, reason: String) {
         invalidateSeekState()
+        scrubAudioEngine.configure(asset: item?.asset, audioMix: item?.audioMix)
         player.replaceCurrentItem(with: item)
         Log.preview.debug("seek state invalidated reason=\(reason)")
     }
@@ -241,6 +257,10 @@ final class VideoEngine {
         )
         currentItem.audioMix = audioMix
         currentItem.videoComposition = videoComposition
+        scrubAudioEngine.configure(asset: currentItem.asset, audioMix: audioMix, resetMeter: false)
+        if editor.isPlaying {
+            scrubAudioEngine.meterPlayback(at: player.currentTime())
+        }
     }
 
     // MARK: - Scopes
@@ -450,6 +470,7 @@ final class VideoEngine {
             MainActor.assumeIsolated {
                 guard let self, let editor = self.editor else { return }
                 guard editor.isPlaying, !editor.isScrubbing else { return }
+                self.scrubAudioEngine.meterPlayback(at: time)
 
                 let frame = secondsToFrame(seconds: time.seconds, fps: editor.timeline.fps)
                 let duration = editor.activePreviewDurationFrames
