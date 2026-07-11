@@ -21,6 +21,14 @@ extension ToolExecutor {
         }
         dict["currentFrame"] = editor.currentFrame
         dict["canGenerate"] = Self.canGenerate
+        let liveGroupIds = editor.referencedMulticamGroupIds()
+        let liveGroups = editor.multicamGroups.filter { liveGroupIds.contains($0.id) }
+        if !liveGroups.isEmpty {
+            dict["multicamGroups"] = liveGroups.map { g -> [String: Any] in
+                ["groupId": g.id, "name": g.name,
+                 "angles": g.angles.map(\.angleLabel), "mics": g.mics.map(\.angleLabel)]
+            }
+        }
         if editor.timelines.count > 1 {
             dict["timelines"] = timelineEntries(editor)
         }
@@ -48,7 +56,7 @@ extension ToolExecutor {
         }
     }
 
-    private static func frameWindow(_ args: [String: Any]) throws -> Range<Int>? {
+    static func frameWindow(_ args: [String: Any]) throws -> Range<Int>? {
         guard args.int("startFrame") != nil || args.int("endFrame") != nil else { return nil }
         let s = args.int("startFrame") ?? 0
         let e = args.int("endFrame") ?? Int.max

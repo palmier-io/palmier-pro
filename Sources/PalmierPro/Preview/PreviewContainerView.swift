@@ -37,7 +37,9 @@ struct PreviewContainerView: View {
                     if let overlay = offlineOverlay(timelineState: timelineState) {
                         offlinePreview(assetId: overlay.assetId, path: overlay.path, isUnprocessable: overlay.isUnprocessable)
                     }
-                    if editor.cropEditingActive {
+                    if editor.chromaKeySamplingClipId != nil {
+                        ChromaKeySamplerOverlayView()
+                    } else if editor.cropEditingActive {
                         CropOverlayView()
                     } else {
                         TransformOverlayView()
@@ -72,6 +74,9 @@ struct PreviewContainerView: View {
             }
         }
         .background(AppTheme.Background.surfaceColor)
+        .onChange(of: editor.activePreviewTabId) { _, _ in
+            editor.cancelChromaKeySampling()
+        }
     }
 
     // MARK: - Transport bar

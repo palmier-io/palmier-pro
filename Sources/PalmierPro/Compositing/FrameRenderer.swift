@@ -261,6 +261,7 @@ enum FrameRenderer {
         // Conjugate the AV top-left-origin mapping into CI's bottom-left space.
         let ci = flipY(srcHeight).concatenating(av).concatenating(flipY(renderSize.height))
         image = image.transformed(by: ci)
+        image = image.premultiplyingAlpha()
 
         if bakeOpacity, alpha < 1 {
             // Fade alpha only; scaling RGB would double-fade
@@ -291,6 +292,7 @@ enum FrameRenderer {
                 image = descriptor.render(image, effect: effect, atOffset: offset)
             }
         }
+        image = image.premultiplyingAlpha()
 
         if bakeOpacity, alpha < 1 {
             image = image.applyingFilter("CIColorMatrix", parameters: [

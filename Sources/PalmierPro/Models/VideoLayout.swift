@@ -30,6 +30,21 @@ enum VideoLayout: String, CaseIterable, Sendable {
     case mainSidebar = "main_sidebar"
     case threeUp = "three_up"
 
+    var displayName: String {
+        switch self {
+        case .full: "Full Frame"
+        case .sideBySide: "Side by Side"
+        case .topBottom: "Top / Bottom"
+        case .pipBottomRight: "PiP Bottom Right"
+        case .pipBottomLeft: "PiP Bottom Left"
+        case .pipTopRight: "PiP Top Right"
+        case .pipTopLeft: "PiP Top Left"
+        case .grid2x2: "Grid 2×2"
+        case .mainSidebar: "Main + Sidebar"
+        case .threeUp: "Three-Up"
+        }
+    }
+
     private static let pipInset = 0.28
     private static let pipMargin = 0.035
 

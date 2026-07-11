@@ -162,6 +162,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var crop: Crop = Crop()
     var linkGroupId: String?
     var captionGroupId: String?
+    var multicamGroupId: String?
 
     // Text clips only.
     var textContent: String?
@@ -187,7 +188,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         case trimStartFrame, trimEndFrame, speed, volume
         case fadeInFrames, fadeOutFrames, fadeInInterpolation, fadeOutInterpolation
         case opacity, transform, crop
-        case linkGroupId, captionGroupId, textContent, textStyle, textAnimation, wordTimings
+        case linkGroupId, captionGroupId, multicamGroupId, textContent, textStyle, textAnimation, wordTimings
         case opacityTrack, positionTrack, scaleTrack, rotationTrack, cropTrack, volumeTrack
         case effects, blendMode
     }
@@ -465,6 +466,7 @@ extension Clip {
             crop: (try? c.decode(Crop.self, forKey: .crop)) ?? Crop(),
             linkGroupId: try? c.decode(String.self, forKey: .linkGroupId),
             captionGroupId: try? c.decode(String.self, forKey: .captionGroupId),
+            multicamGroupId: try? c.decode(String.self, forKey: .multicamGroupId),
             textContent: try? c.decode(String.self, forKey: .textContent),
             textStyle: try? c.decode(TextStyle.self, forKey: .textStyle),
             textAnimation: try? c.decode(TextAnimation.self, forKey: .textAnimation),

@@ -2,23 +2,33 @@ import SwiftUI
 
 struct PrivacyPane: View {
     @State private var telemetryEnabled: Bool = Telemetry.isEnabled
+    @State private var analyticsEnabled: Bool = Analytics.isEnabled
 
-    private var didChange: Bool {
+    private var telemetryDidChange: Bool {
         telemetryEnabled != Telemetry.enabledForCurrentLaunch
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             SettingsToggleRow(
-                title: "Send anonymous crash and error reports",
-                subtitle: "Helps us find and fix issues. Crash reports go to Sentry. Your media and project content are never collected.",
+                title: "Share product telemetry",
+                subtitle: "We do not collect media or project content.",
+                isOn: $analyticsEnabled
+            )
+            .onChange(of: analyticsEnabled) { _, newValue in
+                Analytics.isEnabled = newValue
+            }
+
+            SettingsToggleRow(
+                title: "Send crash and error reports",
+                subtitle: "Helps us find and fix issues by sharing crash and error reports. Your media and project content are never collected.",
                 isOn: $telemetryEnabled
             )
             .onChange(of: telemetryEnabled) { _, newValue in
                 Telemetry.isEnabled = newValue
             }
 
-            if didChange {
+            if telemetryDidChange {
                 HStack(spacing: AppTheme.Spacing.xs) {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: AppTheme.FontSize.xs, weight: .medium))

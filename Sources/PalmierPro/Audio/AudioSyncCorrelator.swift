@@ -9,6 +9,21 @@ enum AudioSyncCorrelator {
 
     static let minOverlap = 16
 
+    static func seededCorrelate(
+        reference: [Float], target: [Float], seedHops: Int?, seedWindowHops: Int,
+        maxLagHops: Int, minOverlapHops: Int, minConfidence: Double
+    ) async -> Result? {
+        let result = await Task.detached(priority: .userInitiated) { () -> Result? in
+            if let seedHops,
+               let seeded = correlate(reference: reference, target: target, maxLagHops: seedWindowHops,
+                                      centerLagHops: seedHops, minOverlapHops: minOverlapHops),
+               seeded.confidence >= minConfidence { return seeded }
+            return correlate(reference: reference, target: target, maxLagHops: maxLagHops, minOverlapHops: minOverlapHops)
+        }.value
+        guard let result, result.confidence >= minConfidence else { return nil }
+        return result
+    }
+
     static func correlate(
         reference: [Float], target: [Float], maxLagHops: Int,
         centerLagHops: Int = 0, minOverlapHops: Int = minOverlap

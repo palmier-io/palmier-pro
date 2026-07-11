@@ -21,6 +21,11 @@ final class ProjectRegistry {
         entries.sorted { $0.lastOpenedDate > $1.lastOpenedDate }
     }
 
+    func id(for url: URL) -> UUID? {
+        let resolved = url.standardizedFileURL
+        return entries.first { $0.url.standardizedFileURL == resolved }?.id
+    }
+
     private let fileURL: URL
     private let disk = ProjectRegistryDisk()
     private var isLoading = false

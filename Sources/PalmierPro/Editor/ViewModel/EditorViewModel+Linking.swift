@@ -93,9 +93,18 @@ extension EditorViewModel {
     /// Batch-compute out-of-sync offsets for every linked clip in a single
     /// pass. Clips in sync (or unlinked) are absent from the returned map.
     func linkGroupOffsets() -> [String: Int] {
+        let fps = timeline.fps
+        let membersByGroup: [String: [String: MulticamSource.Member]] = multicamGroups.reduce(into: [:]) {
+            $0[$1.id] = $1.members.reduce(into: [:]) { $0[$1.mediaRef] = $1 }
+        }
         var byGroup: [String: [(id: String, start: Int)]] = [:]
+        var mcByGroup: [String: [(id: String, start: Int, range: Range<Int>)]] = [:]
         for track in timeline.tracks {
             for clip in track.clips {
+                if let mcId = clip.multicamGroupId, let member = membersByGroup[mcId]?[clip.mediaRef] {
+                    mcByGroup[mcId, default: []].append(
+                        (clip.id, member.anchorFrame(of: clip, fps: fps), clip.startFrame..<clip.endFrame))
+                }
                 guard let gid = clip.linkGroupId else { continue }
                 byGroup[gid, default: []].append((clip.id, clip.startFrame - clip.trimStartFrame))
             }
@@ -103,10 +112,28 @@ extension EditorViewModel {
         var offsets: [String: Int] = [:]
         for (_, entries) in byGroup where entries.count > 1 {
             let ref = entries.lazy.map(\.start).min()!
-            for entry in entries {
-                let delta = entry.start - ref
-                if delta != 0 { offsets[entry.id] = delta }
+            for entry in entries where entry.start != ref {
+                offsets[entry.id] = entry.start - ref
             }
+        }
+        for (_, entries) in mcByGroup where entries.count > 1 {
+            var cluster: [(id: String, start: Int, range: Range<Int>)] = []
+            var clusterEnd = Int.min
+            func flush() {
+                guard cluster.count > 1, let ref = cluster.lazy.map(\.start).min() else { return }
+                for entry in cluster where entry.start != ref {
+                    offsets[entry.id] = entry.start - ref
+                }
+            }
+            for entry in entries.sorted(by: { $0.range.lowerBound < $1.range.lowerBound }) {
+                if entry.range.lowerBound >= clusterEnd {
+                    flush()
+                    cluster = []
+                }
+                cluster.append(entry)
+                clusterEnd = max(clusterEnd, entry.range.upperBound)
+            }
+            flush()
         }
         return offsets
     }
@@ -140,17 +167,20 @@ extension EditorViewModel {
     func commitTrim(clipId: String, edge: TrimEdge, deltaFrames: Int, propagateToLinked: Bool) {
         guard let loc = findClip(id: clipId) else { return }
         let leadClip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        let leadNew = trimValues(for: leadClip, edge: edge, delta: deltaFrames)
-        var edits: [(clipId: String, trimStartFrame: Int, trimEndFrame: Int)] = [
-            (clipId, leadNew.trimStart, leadNew.trimEnd)
-        ]
+        var targets = [leadClip]
         if propagateToLinked {
-            for partnerId in linkedPartnerIds(of: clipId) {
-                guard let pLoc = findClip(id: partnerId) else { continue }
-                let partner = timeline.tracks[pLoc.trackIndex].clips[pLoc.clipIndex]
-                let p = trimValues(for: partner, edge: edge, delta: deltaFrames)
-                edits.append((partnerId, p.trimStart, p.trimEnd))
+            targets += linkedPartnerIds(of: clipId).compactMap { pid in
+                findClip(id: pid).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex] }
             }
+        }
+        var deltaFrames = deltaFrames
+        for target in targets {
+            guard let bounds = multicamTrimBounds(for: target) else { continue }
+            deltaFrames = edge == .left ? max(deltaFrames, -bounds.left) : min(deltaFrames, bounds.right)
+        }
+        let edits = targets.map { clip -> (clipId: String, trimStartFrame: Int, trimEndFrame: Int) in
+            let v = trimValues(for: clip, edge: edge, delta: deltaFrames)
+            return (clip.id, v.trimStart, v.trimEnd)
         }
         trimClips(edits)
     }

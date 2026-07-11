@@ -20,6 +20,7 @@ enum AppTheme {
         static var prominentColor: Color { Color(prominent) }
         static var previewCanvasColor: Color { .black }
         static var placeholderColor: Color { Color(placeholder) }
+        static var clearColor: Color { .clear }
     }
 
     // MARK: - Borders
@@ -81,6 +82,20 @@ enum AppTheme {
         static let tintGradient = [Color(red: 0.42, green: 0.78, blue: 0.45), Color(red: 0.82, green: 0.38, blue: 0.72)]
         /// Master luma track: near-black → near-white.
         static let lumaGradient = [Color(white: 0.05), Color(white: 0.95)]
+    }
+
+    enum AudioMeter {
+        static let panelWidth: CGFloat = 32
+        static let barWidth: CGFloat = 8
+        static let refreshInterval: Double = 1.0 / 30.0
+        static let rulerStepDb: Float = 6
+        static let rulerMajorStepDb: Float = 12
+        static let yellowThresholdDb: Float = -20
+        static let redThresholdDb: Float = -6
+
+        static let greenSegment = Color(red: 0.08, green: 0.78, blue: 0.22)
+        static let yellowSegment = Color(red: 0.98, green: 0.84, blue: 0.10)
+        static let redSegment = Color(red: 0.90, green: 0.24, blue: 0.20)
     }
 
     // MARK: - Color wheels
@@ -181,6 +196,7 @@ enum AppTheme {
         static let text = NSColor(red: 0x71/255.0, green: 0x54/255.0, blue: 0x86/255.0, alpha: 1)
         static let lottie = NSColor(red: 0xA0/255.0, green: 0x78/255.0, blue: 0x22/255.0, alpha: 1)
         static let sequence = NSColor(red: 0xB9/255.0, green: 0xB2/255.0, blue: 0x9A/255.0, alpha: 1)
+        static let multicam = NSColor.systemRed
     }
 
     // MARK: - Corner radii
@@ -274,6 +290,10 @@ enum AppTheme {
         static let timelineClipDetailMinWidth: CGFloat = 32
         static let timelineTabRenameWidth: CGFloat = 120
         static let timelineClipLabelMinWidth: CGFloat = 56
+        static let timelineBadgePadH: CGFloat = 4
+        static let timelineBadgePadV: CGFloat = 1
+        static let timelineBadgeMinWidth: CGFloat = 16
+        static let timelineDotSize: CGFloat = 5
         static let updateOverlayWidth: CGFloat = 640
     }
 

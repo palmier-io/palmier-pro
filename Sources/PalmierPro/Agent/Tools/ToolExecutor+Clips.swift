@@ -403,23 +403,28 @@ extension ToolExecutor {
                 seen.insert(pm.clipId)
             }
         }
+
+        var moves: [(clipId: String, toTrack: Int, toFrame: Int)] = []
+        for m in allMoves {
+            guard let loc = editor.findClip(id: m.clipId) else { continue }
+            let currentTrackIdx = loc.trackIndex
+            let currentFrame = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame
+            let toTrack: Int
+            if let destId = m.destTrackId,
+               let idx = editor.timeline.tracks.firstIndex(where: { $0.id == destId }) {
+                toTrack = idx
+            } else {
+                toTrack = currentTrackIdx
+            }
+            moves.append((clipId: m.clipId, toTrack: toTrack, toFrame: m.toFrame ?? currentFrame))
+        }
+        if let reason = editor.multicamMoveViolation(moves: moves) {
+            throw ToolError(reason)
+        }
+
         let snapshot = timelineSnapshot(editor)
         let moveActionName = parsed.count == 1 ? "Move Clip (Agent)" : "Move Clips (Agent)"
         withUndoGroup(editor, actionName: moveActionName) {
-            var moves: [(clipId: String, toTrack: Int, toFrame: Int)] = []
-            for m in allMoves {
-                guard let loc = editor.findClip(id: m.clipId) else { continue }
-                let currentTrackIdx = loc.trackIndex
-                let currentFrame = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame
-                let toTrack: Int
-                if let destId = m.destTrackId,
-                   let idx = editor.timeline.tracks.firstIndex(where: { $0.id == destId }) {
-                    toTrack = idx
-                } else {
-                    toTrack = currentTrackIdx
-                }
-                moves.append((clipId: m.clipId, toTrack: toTrack, toFrame: m.toFrame ?? currentFrame))
-            }
             if !moves.isEmpty { editor.moveClips(moves) }
         }
 
@@ -459,6 +464,11 @@ extension ToolExecutor {
         for id in clipIds {
             guard let loc = editor.findClip(id: id) else { throw ToolError("Clip not found: \(id)") }
             clipTypes[id] = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex].mediaType
+        }
+
+        if clipIds.contains(where: { editor.clipFor(id: $0)?.multicamGroupId != nil }),
+           input.trimStartFrame != nil || input.trimEndFrame != nil || input.durationFrames != nil || input.speed != nil {
+            throw ToolError("Timing fields would slip a multicam clip out of sync — switch angles with change_cam; split/delete and property fields (volume, opacity, transform) stay editable.")
         }
 
         // blendMode applies only to visual (video/image) clips. "normal" clears it.
@@ -893,6 +903,16 @@ extension ToolExecutor {
 
         guard !reorders.isEmpty || !flagSets.isEmpty || !removeIds.isEmpty else {
             throw ToolError("Nothing to do — pass at least one of reorder, set, remove.")
+        }
+
+        let multicamTrackIds = Set(tracks.filter { t in
+            t.clips.contains { $0.multicamGroupId != nil }
+        }.map(\.id))
+        if removeIds.contains(where: { multicamTrackIds.contains($0) }) {
+            throw ToolError("A multicam group's track can't be removed — delete the group's clips first (remove_clips) and the empty track prunes itself.")
+        }
+        if flagSets.contains(where: { multicamTrackIds.contains($0.id) && $0.syncLocked == false }) {
+            throw ToolError("Sync lock stays on for a multicam group's tracks — unlocking would let ripples shift the group's members apart.")
         }
 
         let snapshot = timelineSnapshot(editor)

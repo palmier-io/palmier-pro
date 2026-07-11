@@ -62,6 +62,7 @@ final class EditorViewModel {
     var denoiseBaked: Set<String> = []
     var speechAnalyzingCount: Int = 0
     var speakerRegistry: [SpeakerRegistryEntry] = []
+    var multicamGroups: [MulticamSource] = []
     var speakerAssignments: [String: [String: Int]] = [:]
     var speakerIdentifyPhase: String?
     var speakerIdentifyInFlight: Bool { speakerIdentifyPhase != nil }
@@ -129,6 +130,7 @@ final class EditorViewModel {
     /// Clip ids currently awaiting an AI-generated replacement.
     var pendingReplacements: Set<String> = []
     var cropEditingActive: Bool = false
+    var chromaKeySamplingClipId: String?
     var cropAspectLock: CropAspectLock = .free
     var previewTabs: [PreviewTab] = [.timeline]
     var activePreviewTabId: String = PreviewTab.timeline.id
@@ -164,12 +166,7 @@ final class EditorViewModel {
     var projectURL: URL? {
         didSet {
             guard projectURL != oldValue else { return }
-            projectId = projectURL.flatMap { url in
-                let resolved = url.standardizedFileURL
-                return ProjectRegistry.shared.entries
-                    .first(where: { $0.url.standardizedFileURL == resolved })?
-                    .id.uuidString
-            }
+            refreshProjectId()
         }
     }
     private(set) var projectId: String?
@@ -313,12 +310,24 @@ final class EditorViewModel {
         ]
     }
 
+    func refreshProjectId() {
+        projectId = projectURL.flatMap { ProjectRegistry.shared.id(for: $0)?.uuidString }
+    }
+
+    func analyticsSnapshot() -> [String: Any] {
+        return [
+            "project_id": projectId ?? "unknown",
+        ]
+    }
+
     func updateTelemetryContext() {
         Telemetry.setExtra(value: telemetrySnapshot(), key: "project")
     }
 
     /// Preview playback bridge.
     var videoEngine: VideoEngine?
+
+    let audioMeter = AudioMeterHub()
 
     @ObservationIgnored
     let playheadState = PreviewPlayheadState()
@@ -390,10 +399,10 @@ final class EditorViewModel {
         videoEngine?.togglePlayback()
     }
 
-    func stepForward() { seekToFrame(currentFrame + 1) }
-    func stepBackward() { seekToFrame(currentFrame - 1) }
-    func skipForward(frames: Int = 5) { seekToFrame(currentFrame + frames) }
-    func skipBackward(frames: Int = 5) { seekToFrame(currentFrame - frames) }
+    func stepForward() { seekToFrame(currentFrame + 1, mode: .audibleStepForward) }
+    func stepBackward() { seekToFrame(currentFrame - 1, mode: .audibleStepBackward) }
+    func skipForward(frames: Int = 5) { seekToFrame(currentFrame + frames, mode: .audibleStepForward) }
+    func skipBackward(frames: Int = 5) { seekToFrame(currentFrame - frames, mode: .audibleStepBackward) }
 
     // MARK: - Shared infrastructure
 

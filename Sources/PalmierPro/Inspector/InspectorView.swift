@@ -10,6 +10,7 @@ struct InspectorView: View {
         case video = "Video"
         case effects = "Adjust"
         case audio = "Audio"
+        case multicam = "Multicam"
         case ai = "AI Edit"
     }
 
@@ -40,6 +41,7 @@ struct InspectorView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: editor.selectedClipIds) { _, _ in
+            editor.cancelChromaKeySampling()
             if !editor.isMarqueeSelecting { resolvePreferredTab() }
         }
         .onChange(of: editor.isMarqueeSelecting) { _, selecting in
@@ -250,8 +252,16 @@ struct InspectorView: View {
             tabs.append(.effects)
         }
         if !audios.isEmpty { tabs.append(.audio) }
+        if selectedMulticamGroupId != nil { tabs.append(.multicam) }
         if aiEditEligible && !AccountService.shared.isMisconfigured { tabs.append(.ai) }
         return tabs
+    }
+
+    /// Group of the first stamped clip in the selection, if it still resolves.
+    var selectedMulticamGroupId: String? {
+        (nonTextVisualClips + selectedAudioClips)
+            .compactMap(\.multicamGroupId)
+            .first { editor.multicamGroup(id: $0) != nil }
     }
 
     /// True when the selection resolves to a single AI-editable visual clip.
@@ -309,6 +319,10 @@ struct InspectorView: View {
                                 videoTabContent()
                             case .audio:
                                 audioTabContent()
+                            case .multicam:
+                                if let groupId = selectedMulticamGroupId {
+                                    MulticamTab(groupId: groupId)
+                                }
                             case .effects, .ai, .none:
                                 EmptyView()
                             }

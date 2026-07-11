@@ -171,6 +171,10 @@ final class EditorWindowController: NSWindowController {
                 editorViewModel.cancelMediaSwap()
                 return true
             }
+            if editorViewModel.chromaKeySamplingClipId != nil {
+                editorViewModel.cancelChromaKeySampling()
+                return true
+            }
             if editorViewModel.cropEditingActive {
                 editorViewModel.cropEditingActive = false
                 return true

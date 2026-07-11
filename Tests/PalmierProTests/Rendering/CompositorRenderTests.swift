@@ -253,6 +253,25 @@ extension CompositorRenderTests {
         #expect(isWhite(f.br), "transparent overlay region shows bg through: \(f.br)")
     }
 
+    @Test func chromaKeyRevealsBackground() async throws {
+        var keyed = CompositorFixtures.patternClip(id: "keyed")
+        keyed.effects = [Effect.make("key.chroma", [
+            "keyHue": 0.333,
+            "tolerance": 0.5,
+            "softness": 0.3,
+            "spill": 0,
+        ])]
+        var background = CompositorFixtures.patternClip(id: "background")
+        background.transform = Transform(flipHorizontal: true)
+
+        let f = try await Self.render(Self.timelineWith(
+            Fixtures.videoTrack(clips: [keyed]),
+            Fixtures.videoTrack(clips: [background])
+        ), frame: 15)
+
+        #expect(isRed(f.tr), "keyed green should reveal the red background: \(f.tr)")
+    }
+
     @Test func adjacentClipsBothRender() async throws {
         var second = CompositorFixtures.patternClip(id: "c2", start: 30, duration: 30)
         second.transform = Transform(flipHorizontal: true)

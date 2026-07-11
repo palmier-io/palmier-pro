@@ -9,6 +9,9 @@ final class TimelineView: NSView {
     private(set) var snapOverlay: SnapIndicatorOverlay!
     private var generatingClipOverlays: [String: NSHostingView<ClipGeneratingOverlay>] = [:]
     private var clipDisplayRects: [String: NSRect] = [:]
+    private var derivedCacheRevision: Int = -1
+    private var cachedLinkOffsets: [String: Int] = [:]
+    private var cachedAngleLabels: [String: [String: String]] = [:]
     private(set) var hoveredClipId: String?
     private let canvas = TimelineCanvasView()
 
@@ -327,9 +330,23 @@ final class TimelineView: NSView {
             Dictionary(uniqueKeysWithValues: $0.resizes.map { ($0.clipId, $0) })
         } ?? [:]
 
-        let linkOffsets = editor.linkGroupOffsets()
+        if derivedCacheRevision != editor.timelineRenderRevision {
+            derivedCacheRevision = editor.timelineRenderRevision
+            cachedLinkOffsets = editor.linkGroupOffsets()
+            cachedAngleLabels = Dictionary(
+                uniqueKeysWithValues: editor.multicamGroups.map { group in
+                    (group.id, group.members.reduce(into: [:]) { $0[$1.mediaRef] = $1.angleLabel })
+                })
+        }
+        let linkOffsets = cachedLinkOffsets
+        let anglesByGroup = cachedAngleLabels
+        func angleLabel(_ clip: Clip) -> String? {
+            guard let groupId = clip.multicamGroupId else { return nil }
+            return anglesByGroup[groupId]?[clip.mediaRef]
+        }
 
         clipDisplayRects.removeAll(keepingCapacity: true)
+        var deferredDraws: [() -> Void] = []
         for (ti, track) in editor.timeline.tracks.enumerated() {
             for clip in track.clips {
                 let isSelected = editor.selectedClipIds.contains(clip.id)
@@ -346,6 +363,7 @@ final class TimelineView: NSView {
                                           isSelected: isSelected, opacity: CGFloat(AppTheme.Opacity.prominent), context: ctx,
                                           cache: editor.mediaVisualCache,
                                           displayName: editor.clipDisplayLabel(for: clip),
+                                          multicamAngleLabel: angleLabel(clip),
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
                     continue
@@ -360,6 +378,7 @@ final class TimelineView: NSView {
                                           isSelected: drag.isDuplicate && isSelected, opacity: originalOpacity, context: ctx,
                                           cache: editor.mediaVisualCache,
                                           displayName: editor.clipDisplayLabel(for: clip),
+                                          multicamAngleLabel: angleLabel(clip),
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
 
@@ -385,6 +404,7 @@ final class TimelineView: NSView {
                                           isSelected: true, opacity: 0.7, context: ctx,
                                           cache: editor.mediaVisualCache,
                                           displayName: editor.clipDisplayLabel(for: clip),
+                                          multicamAngleLabel: angleLabel(clip),
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
                     continue
@@ -414,11 +434,17 @@ final class TimelineView: NSView {
                     let previewRect = geo.clipRect(for: previewClip, trackIndex: ti)
                     clipDisplayRects[clip.id] = previewRect
                     if previewRect.intersects(dirtyRect) {
-                        ClipRenderer.draw(previewClip, type: clip.mediaType, in: previewRect,
-                                          isSelected: isSelected, context: ctx,
-                                          cache: editor.mediaVisualCache,
-                                          displayName: editor.clipDisplayLabel(for: clip),
-                                          fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
+                        let chip = angleLabel(clip)
+                        let cache = editor.mediaVisualCache
+                        let name = editor.clipDisplayLabel(for: clip)
+                        let fps = editor.timeline.fps
+                        deferredDraws.append {
+                            ClipRenderer.draw(previewClip, type: clip.mediaType, in: previewRect,
+                                              isSelected: isSelected, context: ctx,
+                                              cache: cache, displayName: name,
+                                              multicamAngleLabel: chip,
+                                              fps: fps, isMissing: clipMissing, isGenerating: clipGenerating)
+                        }
                     }
                     continue
                 }
@@ -434,6 +460,7 @@ final class TimelineView: NSView {
                                           cache: editor.mediaVisualCache,
                                           displayName: editor.clipDisplayLabel(for: clip),
                                           linkOffset: linkOffsets[clip.id],
+                                          multicamAngleLabel: angleLabel(clip),
                                           fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
                     }
                     continue
@@ -447,9 +474,11 @@ final class TimelineView: NSView {
                                   cache: editor.mediaVisualCache,
                                   displayName: editor.clipDisplayLabel(for: clip),
                                   linkOffset: linkOffsets[clip.id],
+                                  multicamAngleLabel: angleLabel(clip),
                                   fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
             }
         }
+        deferredDraws.forEach { $0() }
 
         // Red wall at the obstacle frame — the sync-locked clip edge the ripple butts against.
         if let wall = ripplePlan?.blockedAtFrame {
@@ -978,7 +1007,21 @@ final class TimelineView: NSView {
             }
         }
 
-        for group in [timelineItems, aiItems, nestItems, mediaItems, syncItems] where !group.isEmpty {
+        var multicamItems: [NSMenuItem] = []
+        if let group = editor.multicamGroup(of: clip) {
+            if let item = switchMemberItem(group: group, clip: clip) {
+                multicamItems.append(item)
+            }
+            if clip.mediaType != .audio, group.angles.count >= 2 {
+                multicamItems.append(layoutItem(clip: clip))
+            }
+            let ungroupItem = NSMenuItem(title: "Ungroup Multicam", action: #selector(performUngroupMulticam(_:)), keyEquivalent: "")
+            ungroupItem.target = self
+            ungroupItem.representedObject = group.id
+            multicamItems.append(ungroupItem)
+        }
+
+        for group in [timelineItems, aiItems, nestItems, mediaItems, syncItems, multicamItems] where !group.isEmpty {
             if !menu.items.isEmpty { menu.addItem(.separator()) }
             group.forEach { menu.addItem($0) }
         }
@@ -1016,7 +1059,68 @@ final class TimelineView: NSView {
         saveItem.target = self
         menu.addItem(saveItem)
 
+        if let item = switchAngleInRangeItem() {
+            menu.addItem(item)
+        }
+
         addClearRangeItem(to: menu)
+    }
+
+    // MARK: - Multicam menu
+
+    private func switchMemberItem(group: MulticamSource, clip: Clip) -> NSMenuItem? {
+        let audio = clip.mediaType == .audio
+        let members = audio ? editor.multicamAudioBearers(of: group) : group.angles
+        guard members.contains(where: { $0.mediaRef != clip.mediaRef }) else { return nil }
+        let submenu = NSMenu()
+        for member in members {
+            let item = NSMenuItem(title: member.angleLabel, action: #selector(performSwitchMulticamSegment(_:)), keyEquivalent: "")
+            item.target = self
+            item.state = member.mediaRef == clip.mediaRef ? .on : .off
+            item.representedObject = ["clipId": clip.id, "angle": member.angleLabel] as [String: Any]
+            submenu.addItem(item)
+        }
+        let parent = NSMenuItem(title: audio ? "Switch Mic" : "Switch Angle", action: nil, keyEquivalent: "")
+        parent.submenu = submenu
+        return parent
+    }
+
+    private func layoutItem(clip: Clip) -> NSMenuItem {
+        let submenu = NSMenu()
+        for layout in VideoLayout.allCases {
+            let item = NSMenuItem(title: layout.displayName, action: #selector(performApplyMulticamLayout(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = ["clipId": clip.id, "layout": layout.rawValue] as [String: Any]
+            submenu.addItem(item)
+            if layout == .full { submenu.addItem(.separator()) }
+        }
+        let parent = NSMenuItem(title: "Layout", action: nil, keyEquivalent: "")
+        parent.submenu = submenu
+        return parent
+    }
+
+    private func switchAngleInRangeItem() -> NSMenuItem? {
+        guard let range = editor.validSelectedTimelineRange else { return nil }
+        let groupIds = Set(editor.timeline.tracks.flatMap { track in
+            track.clips.compactMap { clip in
+                clip.startFrame < range.endFrame && clip.endFrame > range.startFrame
+                    ? clip.multicamGroupId : nil
+            }
+        })
+        guard groupIds.count == 1,
+              let group = groupIds.first.flatMap({ editor.multicamGroup(id: $0) }),
+              !group.angles.isEmpty else { return nil }
+        let submenu = NSMenu()
+        for member in group.angles {
+            let item = NSMenuItem(title: member.angleLabel, action: #selector(performSwitchAngleInRange(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = ["groupId": group.id, "angle": member.angleLabel,
+                                      "start": range.startFrame, "end": range.endFrame] as [String: Any]
+            submenu.addItem(item)
+        }
+        let parent = NSMenuItem(title: "Switch Angle in Range", action: nil, keyEquivalent: "")
+        parent.submenu = submenu
+        return parent
     }
 
     private func addClearRangeItem(to menu: NSMenu) {
@@ -1154,7 +1258,38 @@ final class TimelineView: NSView {
         needsDisplay = true
     }
 
+    @objc private func performSwitchMulticamSegment(_ sender: Any?) {
+        guard let info = (sender as? NSMenuItem)?.representedObject as? [String: Any],
+              let clipId = info["clipId"] as? String,
+              let angle = info["angle"] as? String else { return }
+        editor.switchMulticamSegment(clipId: clipId, to: angle)
+        needsDisplay = true
+    }
 
+    @objc private func performApplyMulticamLayout(_ sender: Any?) {
+        guard let info = (sender as? NSMenuItem)?.representedObject as? [String: Any],
+              let clipId = info["clipId"] as? String,
+              let raw = info["layout"] as? String,
+              let layout = VideoLayout(rawValue: raw) else { return }
+        editor.applyMulticamLayout(clipId: clipId, layout: layout)
+        needsDisplay = true
+    }
+
+    @objc private func performUngroupMulticam(_ sender: Any?) {
+        guard let groupId = (sender as? NSMenuItem)?.representedObject as? String else { return }
+        editor.ungroupMulticam(groupId: groupId)
+        needsDisplay = true
+    }
+
+    @objc private func performSwitchAngleInRange(_ sender: Any?) {
+        guard let info = (sender as? NSMenuItem)?.representedObject as? [String: Any],
+              let groupId = info["groupId"] as? String,
+              let angle = info["angle"] as? String,
+              let start = info["start"] as? Int,
+              let end = info["end"] as? Int, start < end else { return }
+        editor.switchMulticamRange(groupId: groupId, range: start..<end, angle: angle)
+        needsDisplay = true
+    }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()

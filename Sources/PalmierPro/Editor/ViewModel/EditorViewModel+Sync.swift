@@ -19,6 +19,7 @@ extension EditorViewModel {
         static let dateSeedWindowSeconds: Double = 3
         /// Thinner overlaps produce spurious edge matches that can beat the true alignment.
         static let minOverlapSeconds: Double = 3
+        static let memberSearchWindowSeconds: Double = 240
     }
 
     /// Timeline start frame that aligns the target's first frame to the reference by wall-clock timecode.
@@ -86,11 +87,10 @@ extension EditorViewModel {
         }
         typealias Hit = (rawStart: Int, confidence: Double)
         var anchors: [(rawStart: Int, clip: AudioClip)] = []
-        var candidates: [(clip: AudioClip, direct: Hit?)] = []
+        var candidates: [(clip: AudioClip, direct: Hit?, tcRawStart: Int?)] = []
         var placements: [(clipId: String, rawStart: Int, confidence: Double, method: SyncMethod)] = []
         var refAudioTried = false
 
-        // Seed match with capture dates; fallback to window if weak or missing.
         func match(_ anchor: (rawStart: Int, clip: AudioClip), _ target: AudioClip) async -> Hit? {
             var seedHops: Int?
             if let anchorDate = timingCache[anchor.clip.mediaRef]?.captureDate,
@@ -99,18 +99,11 @@ extension EditorViewModel {
                     + Double(target.trimStartFrame - anchor.clip.trimStartFrame) / fps
                 seedHops = Int((lagSeconds / hop).rounded())
             }
-            let reference = anchor.clip.samples
-            let samples = target.samples
-            let result = await Task.detached(priority: .userInitiated) { () -> AudioSyncCorrelator.Result? in
-                if let seedHops,
-                   let seeded = AudioSyncCorrelator.correlate(
-                       reference: reference, target: samples, maxLagHops: seedWindow,
-                       centerLagHops: seedHops, minOverlapHops: minOverlap),
-                   seeded.confidence >= minConfidence { return seeded }
-                return AudioSyncCorrelator.correlate(
-                    reference: reference, target: samples, maxLagHops: maxLag, minOverlapHops: minOverlap)
-            }.value
-            guard let result, result.confidence >= minConfidence else { return nil }
+            guard let result = await AudioSyncCorrelator.seededCorrelate(
+                reference: anchor.clip.samples, target: target.samples, seedHops: seedHops,
+                seedWindowHops: seedWindow, maxLagHops: maxLag, minOverlapHops: minOverlap,
+                minConfidence: minConfidence
+            ) else { return nil }
             let lagFrames = Double(result.lagHops) * hop * fps / max(anchor.clip.speed, SyncDefaults.minSpeed)
             return (Int((Double(anchor.rawStart) + lagFrames).rounded()), result.confidence)
         }
@@ -125,6 +118,7 @@ extension EditorViewModel {
             guard seenUnits.insert(unitKey).inserted else { continue }
             let unitClips = unit(of: targetClip)
 
+            var tcHint: (clipId: String, rawStart: Int)?
             if let (refCarrier, refTC) = refTCCarrier, let (carrier, targetTC) = tcCarrier(in: unitClips) {
                 guard let liveRef = liveClip(refCarrier.id), let liveCarrier = liveClip(carrier.id) else {
                     report.failures.append((targetId, "Clip not found.")); continue
@@ -133,8 +127,11 @@ extension EditorViewModel {
                     refStartFrame: liveRef.startFrame, refTrimStartFrame: liveRef.trimStartFrame,
                     refSpeed: liveRef.speed, refTimecode: refTC,
                     targetTrimStartFrame: liveCarrier.trimStartFrame, targetTimecode: targetTC, fps: fps)
-                placements.append((carrier.id, rawStart, 1.0, .timecode))
-                continue
+                if mode == .timecode {
+                    placements.append((carrier.id, rawStart, 1.0, .timecode))
+                    continue
+                }
+                tcHint = (carrier.id, rawStart)
             }
             if mode == .timecode {
                 report.failures.append((targetId, refTCCarrier == nil
@@ -144,11 +141,13 @@ extension EditorViewModel {
 
             guard let bearer = unitClips.first(where: { $0.mediaType == .audio && captionCanTranscribe($0) })
                 ?? unitClips.first(where: { captionCanTranscribe($0) }) else {
+                if let tcHint { placements.append((tcHint.clipId, tcHint.rawStart, 1.0, .timecode)); continue }
                 report.failures.append((targetId, mode == .auto
                     ? "No source timecode, and clip has no audio." : "Clip has no audio."))
                 continue
             }
             guard let env = await envelope(of: bearer, fps: fps), !env.samples.isEmpty else {
+                if let tcHint { placements.append((tcHint.clipId, tcHint.rawStart, 1.0, .timecode)); continue }
                 report.failures.append((bearer.id, "Clip has no audio.")); continue
             }
             if !refAudioTried {
@@ -161,27 +160,34 @@ extension EditorViewModel {
                 }
             }
             guard let refAnchor = anchors.first else {
+                if let tcHint { placements.append((tcHint.clipId, tcHint.rawStart, 1.0, .timecode)); continue }
                 report.failures.append((bearer.id, mode == .auto && refTCCarrier == nil
                     ? "Reference has no source timecode or audio." : "Reference clip has no audio."))
                 continue
             }
             guard let liveBearer = liveClip(bearer.id) else {
+                if let tcHint { placements.append((tcHint.clipId, tcHint.rawStart, 1.0, .timecode)); continue }
                 report.failures.append((bearer.id, "Clip not found.")); continue
             }
             let clip = AudioClip(
                 clipId: bearer.id, samples: env.samples, speed: liveBearer.speed,
                 mediaRef: liveBearer.mediaRef, trimStartFrame: liveBearer.trimStartFrame)
-            candidates.append((clip, await match(refAnchor, clip)))
+            candidates.append((clip, await match(refAnchor, clip), tcHint?.rawStart))
         }
 
         // Place the most confident match first; weaker clips may align better to those placed after.
         candidates.sort { ($0.direct?.confidence ?? 0) > ($1.direct?.confidence ?? 0) }
-        for (clip, direct) in candidates {
+        for (clip, direct, tcRawStart) in candidates {
             var best = direct
             for anchor in anchors.dropFirst() {
                 if let hit = await match(anchor, clip), hit.confidence > (best?.confidence ?? 0) { best = hit }
             }
             guard let best else {
+                if let tcRawStart {
+                    placements.append((clip.clipId, tcRawStart, 1.0, .timecode))
+                    anchors.append((tcRawStart, clip))
+                    continue
+                }
                 report.failures.append((clip.clipId, "No confident alignment — clips may not overlap.")); continue
             }
             placements.append((clip.clipId, best.rawStart, best.confidence, .audio))
@@ -247,7 +253,8 @@ extension EditorViewModel {
     }
 
     func syncSelection() -> (referenceClipId: String, targetClipIds: [String])? {
-        let selected = timeline.tracks.flatMap(\.clips).filter { selectedClipIds.contains($0.id) }
+        let selected = timeline.tracks.flatMap(\.clips)
+            .filter { selectedClipIds.contains($0.id) && $0.multicamGroupId == nil }
         var units: [String: [Clip]] = [:]
         for clip in selected { units[clip.linkGroupId ?? clip.id, default: []].append(clip) }
 

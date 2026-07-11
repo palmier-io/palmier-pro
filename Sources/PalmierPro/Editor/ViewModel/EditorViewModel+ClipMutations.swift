@@ -56,6 +56,11 @@ extension EditorViewModel {
         }
         guard !clipInfos.isEmpty else { return }
 
+        if let reason = multicamMoveViolation(moves: clipInfos.map { ($0.clip.id, $0.toTrack, $0.toFrame) }) {
+            refuseWithToast(reason)
+            return
+        }
+
         let actionName = moves.count == 1 ? "Move Clip" : "Move Clips"
         withTimelineSwap(actionName: actionName) {
             // Pull moved clips off their source tracks first, so clearRegion on
@@ -130,35 +135,7 @@ extension EditorViewModel {
     private func splitSingleClip(clipId: String, atFrame: Int) -> String? {
         guard let loc = findClip(id: clipId) else { return nil }
         let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        guard atFrame > clip.startFrame && atFrame < clip.endFrame else { return nil }
-
-        let splitOffset = atFrame - clip.startFrame
-        let leftSource = Int((Double(splitOffset) * clip.speed).rounded())
-        let rightSource = Int((Double(clip.durationFrames - splitOffset) * clip.speed).rounded())
-
-        var left = clip
-        left.durationFrames = splitOffset
-        left.trimEndFrame = clip.trimEndFrame + rightSource
-        left.fadeOutFrames = 0
-        left.clampFadesToDuration()
-
-        var right = clip
-        right.id = UUID().uuidString
-        right.startFrame = atFrame
-        right.durationFrames = clip.durationFrames - splitOffset
-        right.trimStartFrame = clip.trimStartFrame + leftSource
-        right.fadeInFrames = 0
-        right.clampFadesToDuration()
-
-        // Split every animatable track at the cut, inserting a boundary keyframe so each
-        // curve stays continuous across the split (rather than copying the whole track to
-        // both halves, which leaves out-of-range/unrebased keyframes on each side).
-        (left.opacityTrack,  right.opacityTrack)  = splitKeyframeTrack(clip.opacityTrack,  at: splitOffset, fallback: clip.opacity)
-        (left.volumeTrack,   right.volumeTrack)   = splitKeyframeTrack(clip.volumeTrack,   at: splitOffset, fallback: clip.volume)
-        (left.positionTrack, right.positionTrack) = splitKeyframeTrack(clip.positionTrack, at: splitOffset, fallback: AnimPair(a: 0, b: 0))
-        (left.scaleTrack,    right.scaleTrack)    = splitKeyframeTrack(clip.scaleTrack,    at: splitOffset, fallback: AnimPair(a: 1, b: 1))
-        (left.rotationTrack, right.rotationTrack) = splitKeyframeTrack(clip.rotationTrack, at: splitOffset, fallback: 0)
-        (left.cropTrack,     right.cropTrack)     = splitKeyframeTrack(clip.cropTrack,     at: splitOffset, fallback: clip.crop)
+        guard let (left, right) = Self.splitValues(of: clip, atFrame: atFrame) else { return nil }
 
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = left
         timeline.tracks[loc.trackIndex].clips.append(right)
@@ -174,8 +151,37 @@ extension EditorViewModel {
         return right.id
     }
 
+    nonisolated static func splitValues(of clip: Clip, atFrame: Int) -> (left: Clip, right: Clip)? {
+        guard atFrame > clip.startFrame && atFrame < clip.endFrame else { return nil }
+        let splitOffset = atFrame - clip.startFrame
+        let leftSource = Int((Double(splitOffset) * clip.speed).rounded())
+        let rightSource = Int((Double(clip.durationFrames - splitOffset) * clip.speed).rounded())
+
+        var left = clip
+        left.durationFrames = splitOffset
+        left.trimEndFrame = clip.trimEndFrame + rightSource
+        left.fadeOutFrames = 0
+
+        var right = clip
+        right.id = UUID().uuidString
+        right.startFrame = atFrame
+        right.durationFrames = clip.durationFrames - splitOffset
+        right.trimStartFrame = clip.trimStartFrame + leftSource
+        right.fadeInFrames = 0
+
+        (left.opacityTrack,  right.opacityTrack)  = splitKeyframeTrack(clip.opacityTrack,  at: splitOffset, fallback: clip.opacity)
+        (left.volumeTrack,   right.volumeTrack)   = splitKeyframeTrack(clip.volumeTrack,   at: splitOffset, fallback: clip.volume)
+        (left.positionTrack, right.positionTrack) = splitKeyframeTrack(clip.positionTrack, at: splitOffset, fallback: AnimPair(a: 0, b: 0))
+        (left.scaleTrack,    right.scaleTrack)    = splitKeyframeTrack(clip.scaleTrack,    at: splitOffset, fallback: AnimPair(a: 1, b: 1))
+        (left.rotationTrack, right.rotationTrack) = splitKeyframeTrack(clip.rotationTrack, at: splitOffset, fallback: 0)
+        (left.cropTrack,     right.cropTrack)     = splitKeyframeTrack(clip.cropTrack,     at: splitOffset, fallback: clip.crop)
+        left.clampFadesToDuration()
+        right.clampFadesToDuration()
+        return (left, right)
+    }
+
     /// Splits a keyframe track at splitOffset, keeping both sides continuous. Returns (track, track) if empty.
-    private func splitKeyframeTrack<Value: KeyframeInterpolatable & Codable & Sendable & Equatable>(
+    nonisolated static func splitKeyframeTrack<Value: KeyframeInterpolatable & Codable & Sendable & Equatable>(
         _ track: KeyframeTrack<Value>?, at splitOffset: Int, fallback: Value
     ) -> (left: KeyframeTrack<Value>?, right: KeyframeTrack<Value>?) {
         guard let track, track.isActive else { return (track, track) }
@@ -206,7 +212,16 @@ extension EditorViewModel {
 
     // MARK: - Speed
 
+    func refusesMulticamRetime(clipIds: [String], quiet: Bool = false) -> Bool {
+        guard clipIds.contains(where: { clipFor(id: $0)?.multicamGroupId != nil }) else { return false }
+        if !quiet {
+            refuseWithToast("Can't change speed on a multicam clip — it would slip out of sync with the group.")
+        }
+        return true
+    }
+
     func applyClipSpeed(clipId: String, newSpeed: Double) {
+        guard !refusesMulticamRetime(clipIds: [clipId], quiet: true) else { return }
         guard let loc = findClip(id: clipId) else { return }
         guard timeline.tracks[loc.trackIndex].clips[loc.clipIndex].supportsRetiming else { return }
         if preDragTimeline == nil {
@@ -219,6 +234,7 @@ extension EditorViewModel {
     }
 
     func commitClipSpeed(ids: [String], newSpeed: Double) {
+        guard !refusesMulticamRetime(clipIds: ids) else { return }
         let before: Timeline = preDragTimeline ?? timeline
         for id in ids {
             guard let loc = findClip(id: id) else { continue }
@@ -699,10 +715,10 @@ extension EditorViewModel {
     // MARK: - Overwrite region
 
     /// Clear a region on a track by removing, trimming, or splitting the clips that overlap it.
-    func clearRegion(trackIndex: Int, start: Int, end: Int, prune: Bool = true) {
+    func clearRegion(trackIndex: Int, start: Int, end: Int, prune: Bool = true, excluding: Set<String> = []) {
         guard timeline.tracks.indices.contains(trackIndex) else { return }
         let actions = OverwriteEngine.computeOverwrite(
-            clips: timeline.tracks[trackIndex].clips,
+            clips: timeline.tracks[trackIndex].clips.filter { !excluding.contains($0.id) },
             regionStart: start,
             regionEnd: end
         )

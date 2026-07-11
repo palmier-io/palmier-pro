@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 extension ToolExecutor {
@@ -248,6 +249,9 @@ extension ToolExecutor {
             guard let fileURL = editor.mediaResolver.resolveURL(for: videoAsset.id) else {
                 throw ToolError("Could not read the video source file.")
             }
+            if let err = model.validate(spanSeconds: videoAsset.duration) {
+                throw ToolError(err)
+            }
             videoURL = try await GenerationBackend.uploadReference(fileURL: fileURL, contentType: "video/mp4")
             spanSeconds = videoAsset.duration
         } else if let start = args.int("videoSourceStartFrame"), let end = args.int("videoSourceEndFrame") {
@@ -257,12 +261,16 @@ extension ToolExecutor {
             guard start >= 0, end > start else {
                 throw ToolError("videoSourceEndFrame must be greater than videoSourceStartFrame (>= 0).")
             }
+            if let err = model.validate(spanSeconds: Double(end - start) / Double(max(1, editor.timeline.fps))) {
+                throw ToolError(err)
+            }
             let mp4 = try await TimelineRenderer.render(
                 timeline: editor.timeline, resolver: editor.mediaResolver,
                 resolveTimeline: editor.timelineResolver(),
                 missingMediaRefs: editor.missingMediaRefs,
                 startFrame: start, frameCount: end - start,
-                shortSide: 360, includeAudio: false
+                shortSide: 240, includeAudio: false,
+                preset: AVAssetExportPresetLowQuality
             )
             defer { try? FileManager.default.removeItem(at: mp4) }
             videoURL = try await GenerationBackend.uploadReference(fileURL: mp4, contentType: "video/mp4")

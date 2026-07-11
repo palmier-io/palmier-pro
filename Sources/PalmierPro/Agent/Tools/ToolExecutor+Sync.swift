@@ -12,6 +12,9 @@ extension ToolExecutor {
         var targets = args.stringArray("targetClipIds")
         if let single = args.string("targetClipId") { targets.append(single) }
         guard !targets.isEmpty else { throw ToolError("sync_clips: provide targetClipId or targetClipIds.") }
+        if (targets + [referenceClipId]).contains(where: { editor.clipFor(id: $0)?.multicamGroupId != nil }) {
+            throw ToolError("sync_clips: multicam clips are already aligned by their group's sync maps — re-syncing would move them out of the group.")
+        }
 
         var mode = EditorViewModel.SyncMode.auto
         if let raw = args.string("mode") {

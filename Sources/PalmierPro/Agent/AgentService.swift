@@ -46,7 +46,7 @@ final class AgentService {
 
     var availableModels: [AnthropicModel] {
         if hasApiKey { return AnthropicModel.allCases }
-        return AccountService.shared.isPaid ? [.sonnet5] : [.haiku45]
+        return [.sonnet5]
     }
 
     private func selectClient() -> (any AgentClient)? {
@@ -307,6 +307,14 @@ final class AgentService {
         let contextHint = referencedMentions.isEmpty
             ? nil
             : AgentMentionContext.hint(referencedMentions, editor: editor)
+        let beginsSession = !messages.contains { $0.role == .user }
+        let analyticsPayload: [String: Any] = [
+            "project_id": editor?.projectId ?? "unknown",
+            "model": effectiveModel.rawValue,
+        ]
+        if beginsSession {
+            Analytics.capture(.agentSessionStarted, properties: analyticsPayload)
+        }
 
         resolveOrphanToolUses()
         messages.append(AgentMessage(

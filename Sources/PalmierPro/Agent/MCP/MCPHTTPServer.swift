@@ -7,6 +7,7 @@ actor MCPHTTPServer {
 
     private let port: UInt16
     private let makeServer: @Sendable () async -> Server
+    private let onSessionStarted: @Sendable () -> Void
     private nonisolated(unsafe) var listener: NWListener?
 
     private struct Session {
@@ -20,8 +21,13 @@ actor MCPHTTPServer {
     private static let sessionIdleLimit: Duration = .seconds(3600)
     private static let sessionCountLimit = 32
 
-    init(port: UInt16, makeServer: @escaping @Sendable () async -> Server) {
+    init(
+        port: UInt16,
+        onSessionStarted: @escaping @Sendable () -> Void = {},
+        makeServer: @escaping @Sendable () async -> Server
+    ) {
         self.port = port
+        self.onSessionStarted = onSessionStarted
         self.makeServer = makeServer
     }
 
@@ -149,6 +155,7 @@ actor MCPHTTPServer {
                 pruneIdleSessions()
                 sessions[assigned] = Session(server: server, transport: transport, lastUsed: .now)
                 Log.mcp.notice("session started id=\(assigned) total=\(self.sessions.count)")
+                onSessionStarted()
             } else {
                 await transport.disconnect()
             }

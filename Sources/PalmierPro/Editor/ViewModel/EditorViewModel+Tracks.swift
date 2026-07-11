@@ -94,6 +94,14 @@ extension EditorViewModel {
     }
 
     func toggleTrackSyncLock(trackIndex: Int) {
+        if timeline.tracks.indices.contains(trackIndex),
+           timeline.tracks[trackIndex].syncLocked,
+           let clip = timeline.tracks[trackIndex].clips.first(where: { $0.multicamGroupId != nil }),
+           let group = multicamGroup(of: clip) {
+            mediaPanelToast = "Can't unlock sync on a multicam track — \"\(group.name)\" stays aligned through it."
+            NSSound.beep()
+            return
+        }
         toggleTrackFlag(trackIndex: trackIndex, keyPath: \.syncLocked, onName: "Sync Lock Track", offName: "Unlock Track Sync")
     }
 

@@ -2,22 +2,14 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.6.3",
-      "date": "2026-07-07",
+      "version": "0.6.4",
+      "date": "2026-07-09",
       "sections": [
         {
           "heading": "New",
           "items": [
-            "On-device speech detection: Palmier Pro can now detect speakers and silence using Silero VAD and WeSpeaker modeels.",
-            "On-device beat detection: Palmier Pro can now detect beats for your audio clips. Right click an audio clip -> Detect Beats, or ask your agent!"
-          ]
-        },
-        {
-          "heading": "Improved",
-          "items": [
-            "Agent tools: More efficient context management",
-            "UI: Better clip UI in the timeline.",
-            "More accurate clip sync by audio"
+            "Multicam editing: Agent can now work with multiple camera footage with better tools. Especially useful for podcast or other multi-camera setups.",
+            "10-bit HDR export: New HEVC 10-bit HDR export option."
           ]
         }
       ]

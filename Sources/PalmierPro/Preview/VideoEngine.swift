@@ -5,11 +5,14 @@ import CoreImage
 enum PreviewSeekMode: String {
     case exact
     case interactiveScrub
+    case audibleStepForward
+    case audibleStepBackward
 }
 
 @MainActor
 final class VideoEngine {
     private(set) var player = AVPlayer()
+    private let scrubAudioEngine: ScrubAudioEngine
 
     weak var previewView: PreviewNSView?
 
@@ -30,6 +33,7 @@ final class VideoEngine {
 
     init(editor: EditorViewModel) {
         self.editor = editor
+        scrubAudioEngine = ScrubAudioEngine(meter: editor.audioMeter)
         setupTimeObserver()
     }
 
@@ -38,6 +42,7 @@ final class VideoEngine {
         rebuildTask = nil
         compositionCache.removeAll()
         invalidateSeekState()
+        scrubAudioEngine.teardown()
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         timeObserver = nil
     }
@@ -46,6 +51,7 @@ final class VideoEngine {
 
     func play() {
         guard let editor else { return }
+        scrubAudioEngine.stopScrubbing()
         editor.isPlaying = true
         guard rebuildTask == nil else { return }
         let frame = playbackStartFrame(for: editor)
@@ -54,11 +60,13 @@ final class VideoEngine {
     }
 
     func pause() {
+        scrubAudioEngine.stopScrubbing()
         editor?.isPlaying = false
         player.pause()
     }
 
     func resumePlayback() {
+        scrubAudioEngine.stopScrubbing()
         editor?.isPlaying = true
         player.play()
     }
@@ -77,10 +85,17 @@ final class VideoEngine {
 
         switch mode {
         case .exact:
+            scrubAudioEngine.stopScrubbing()
             cancelInteractiveSeek()
             performSeek(time: time, tolerance: tolerance)
         case .interactiveScrub:
+            scrubAudioEngine.scrub(to: time)
             enqueueInteractiveSeek(time: time, tolerance: tolerance)
+        case .audibleStepForward, .audibleStepBackward:
+            if editor.isPlaying { pause() }
+            scrubAudioEngine.scrub(to: time, movingForward: mode == .audibleStepForward)
+            cancelInteractiveSeek()
+            performSeek(time: time, tolerance: tolerance)
         }
     }
 
@@ -126,6 +141,7 @@ final class VideoEngine {
 
     private func replacePlayerItem(_ item: AVPlayerItem?, reason: String) {
         invalidateSeekState()
+        scrubAudioEngine.configure(asset: item?.asset, audioMix: item?.audioMix)
         player.replaceCurrentItem(with: item)
         Log.preview.debug("seek state invalidated reason=\(reason)")
     }
@@ -241,6 +257,10 @@ final class VideoEngine {
         )
         currentItem.audioMix = audioMix
         currentItem.videoComposition = videoComposition
+        scrubAudioEngine.configure(asset: currentItem.asset, audioMix: audioMix, resetMeter: false)
+        if editor.isPlaying {
+            scrubAudioEngine.meterPlayback(at: player.currentTime())
+        }
     }
 
     // MARK: - Scopes
@@ -346,6 +366,38 @@ final class VideoEngine {
         return bins
     }
 
+    func sampleKeyHue(at normalizedPoint: CGPoint, frame: Int? = nil) async -> Double? {
+        guard let item = player.currentItem else { return nil }
+        let time = frame.map { CMTime(value: CMTimeValue($0), timescale: CMTimeScale(editor?.timeline.fps ?? 30)) }
+            ?? player.currentTime()
+        let generator = AVAssetImageGenerator(asset: item.asset)
+        generator.videoComposition = item.videoComposition
+        guard let cg = try? await generator.image(at: time).image else { return nil }
+        return Self.sampleKeyHue(from: cg, at: normalizedPoint)
+    }
+
+    nonisolated static func sampleKeyHue(
+        from cg: CGImage,
+        at normalizedPoint: CGPoint,
+    ) -> Double? {
+        let image = CIImage(cgImage: cg)
+        let center = CGPoint(
+            x: normalizedPoint.x * image.extent.width,
+            y: (1 - normalizedPoint.y) * image.extent.height
+        )
+        let patch = CGRect(x: center.x - 4, y: center.y - 4, width: 9, height: 9)
+            .intersection(image.extent)
+        let average = image.applyingFilter("CIAreaAverage", parameters: [kCIInputExtentKey: CIVector(cgRect: patch)])
+        var rgba = [Float](repeating: 0, count: 4)
+        ColorScopes.context.render(
+            average, toBitmap: &rgba, rowBytes: 4 * MemoryLayout<Float>.size,
+            bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBAf, colorSpace: nil)
+        var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
+        NSColor(red: CGFloat(rgba[0]), green: CGFloat(rgba[1]), blue: CGFloat(rgba[2]), alpha: 1)
+            .getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+        return saturation >= 0.12 ? Double(hue) : nil
+    }
+
     // MARK: - Seek Coordinator
 
     private func enqueueInteractiveSeek(time: CMTime, tolerance: CMTime) {
@@ -418,6 +470,7 @@ final class VideoEngine {
             MainActor.assumeIsolated {
                 guard let self, let editor = self.editor else { return }
                 guard editor.isPlaying, !editor.isScrubbing else { return }
+                self.scrubAudioEngine.meterPlayback(at: time)
 
                 let frame = secondsToFrame(seconds: time.seconds, fps: editor.timeline.fps)
                 let duration = editor.activePreviewDurationFrames
