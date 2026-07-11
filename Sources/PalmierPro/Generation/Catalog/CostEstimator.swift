@@ -85,7 +85,7 @@ enum CostEstimator {
                 numImages: genInput.numImages ?? 1
             )
         case .audio(let m):
-            let duration = (m.durations != nil || m.inputs.contains(.video)) ? genInput.duration : nil
+            let duration = (m.durations != nil || m.acceptsSourceMedia) ? genInput.duration : nil
             return audioCost(model: m, prompt: genInput.prompt, durationSeconds: duration)
         case .upscale(let m):
             return upscaleCost(model: m, durationSeconds: genInput.duration)

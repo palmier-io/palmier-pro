@@ -6,7 +6,7 @@ struct AIEditMenu: View {
     @Environment(EditorViewModel.self) private var editor
 
     var body: some View {
-        if availableActions.isEmpty {
+        if availableActions.isEmpty && availableAudioTransforms.isEmpty {
             EmptyView()
         } else if !aiAllowed {
             Button("AI Edit") {}.disabled(true)
@@ -36,6 +36,12 @@ struct AIEditMenu: View {
                 if availableActions.contains(.generateSFX) {
                     Button("\(VideoToAudioEditKind.sfx.title)…") { videoAudio(kind: .sfx) }
                 }
+                if !availableActions.isEmpty && !availableAudioTransforms.isEmpty {
+                    Divider()
+                }
+                ForEach(availableAudioTransforms, id: \.category) { kind in
+                    Button(kind.menuTitle) { audioTransform(kind: kind) }
+                }
                 if availableActions.contains(.rerun) {
                     Button("Rerun") { rerun() }
                 }
@@ -58,6 +64,10 @@ struct AIEditMenu: View {
         EditAction.available(for: asset)
     }
 
+    private var availableAudioTransforms: [AudioTransformEditKind] {
+        AudioTransformEditKind.available(for: asset)
+    }
+
     private func runUpscale(_ model: UpscaleModelConfig) {
         _ = EditSubmitter.submitUpscale(asset: asset, model: model, editor: editor)
     }
@@ -69,6 +79,11 @@ struct AIEditMenu: View {
 
     private func videoAudio(kind: VideoToAudioEditKind) {
         guard let stored = EditSubmitter.videoAudioSeed(for: asset, kind: kind) else { return }
+        editor.seedGenerationPanel(asset: asset, stored: stored)
+    }
+
+    private func audioTransform(kind: AudioTransformEditKind) {
+        guard let stored = EditSubmitter.audioTransformSeed(for: asset, kind: kind) else { return }
         editor.seedGenerationPanel(asset: asset, stored: stored)
     }
 

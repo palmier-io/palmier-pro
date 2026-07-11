@@ -25,7 +25,7 @@ enum GenerationBackend {
             return try await LocalBackend.uploadReference(fileURL: fileURL, contentType: contentType)
         }
         guard let convex = AccountService.shared.convex else {
-            throw GenerationBackendError.notConfigured
+            throw BackendError.notConfigured
         }
         let storageId = try await BackendStorage.uploadStaged(fileURL: fileURL, contentType: contentType)
         let result: UrlResponse = try await convex.action(
@@ -44,7 +44,7 @@ enum GenerationBackend {
             return try await LocalBackend.submitGeneration(model: model, params: params, projectId: projectId)
         }
         guard let convex = AccountService.shared.convex else {
-            throw GenerationBackendError.notConfigured
+            throw BackendError.notConfigured
         }
         let args: [String: ConvexEncodable?] = [
             "model": model,
@@ -89,20 +89,6 @@ struct BackendGenerationJob: Decodable, Sendable {
     let errorMessage: String?
     let costCredits: Int?
     let completedAt: Double?
-}
-
-enum GenerationBackendError: LocalizedError {
-    case notConfigured
-    case transport(String)
-    case api(status: Int, code: String, message: String)
-
-    var errorDescription: String? {
-        switch self {
-        case .notConfigured: return "Palmier backend not configured."
-        case .transport(let s): return s
-        case .api(_, _, let message): return message
-        }
-    }
 }
 
 private struct UrlResponse: Decodable, Sendable {

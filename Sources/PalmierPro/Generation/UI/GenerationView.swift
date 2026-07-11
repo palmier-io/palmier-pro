@@ -22,6 +22,7 @@ struct GenerationView: View {
     @State var styleInstructions = ""
     @State var instrumental = false
     @State var selectedAudioDuration = 30
+    @State var selectedTargetLanguage = ""
     @State var generateAudio = true
     @State var showSettingsPopover = false
     @FocusState private var isPromptFocused: Bool
@@ -50,9 +51,9 @@ struct GenerationView: View {
     @State var sourceVideoTargeted = false
     @State var motionReferenceTargeted = false
 
-    // Source video for video-to-audio models (Sonilo, Mirelo)
-    @State var audioVideoSource: MediaAsset?
-    @State var audioVideoTargeted = false
+    // Source media for audio transformations and video-to-audio models
+    @State var audioSource: MediaAsset?
+    @State var audioSourceTargeted = false
 
     @State var isPopulatingPanel = false
     @State var editFolderId: String?
@@ -318,8 +319,8 @@ struct GenerationView: View {
             }
         } else if selectedType == .image && imageModel.supportsImageReference {
             imageReferenceStrip
-        } else if selectedType == .audio && audioModel.inputs.contains(.video) {
-            audioVideoStrip
+        } else if selectedType == .audio && audioModel.acceptsSourceMedia {
+            audioSourceStrip
         }
     }
 
@@ -368,6 +369,7 @@ struct GenerationView: View {
                 ), attachmentAnchor: .point(.topLeading), arrowEdge: .top) {
                     refMentionPopover
                 }
+                .disabled(!isPromptEnabled)
 
             if prompt.isEmpty {
                 Text(promptPlaceholder)
@@ -379,6 +381,8 @@ struct GenerationView: View {
             }
         }
         .frame(height: promptHeight)
+        .opacity(isPromptEnabled ? AppTheme.Opacity.opaque : AppTheme.Opacity.muted)
+        .accessibilityHint(isPromptEnabled ? "" : "This model does not use a prompt")
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measuredPromptHeight = $0 }
     }
 
@@ -423,6 +427,9 @@ struct GenerationView: View {
                 modelPicker
                 if selectedType == .audio, audioModel.voices != nil {
                     voicePicker
+                }
+                if selectedType == .audio, audioModel.targetLanguages != nil {
+                    languagePicker
                 }
                 if hasAnySettings { settingsButton }
 

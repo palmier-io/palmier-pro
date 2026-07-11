@@ -4,7 +4,8 @@ import AppKit
 extension TimelineView {
     func aiEditSubmenu(for clipId: String) -> NSMenu? {
         let actions = editor.aiEditActions(clipId: clipId)
-        guard !actions.isEmpty else { return nil }
+        let audioTransforms = editor.aiAudioTransformKinds(clipId: clipId)
+        guard !actions.isEmpty || !audioTransforms.isEmpty else { return nil }
         let submenu = NSMenu()
         submenu.autoenablesItems = false
         let aiAllowed = editor.aiEditAllowed
@@ -63,6 +64,25 @@ extension TimelineView {
                 submenu.addItem(createItem)
             }
         }
+        if !audioTransforms.isEmpty {
+            if !submenu.items.isEmpty { submenu.addItem(.separator()) }
+            for kind in audioTransforms {
+                let paidBlocked = kind.model?.paidOnly == true && !isPaid
+                let title = paidBlocked ? "\(kind.menuTitle) (Paid)" : kind.menuTitle
+                let item = NSMenuItem(
+                    title: title,
+                    action: #selector(performAIEditAudioTransform(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.representedObject = [
+                    "clipId": clipId,
+                    "kind": kind == .cleanup ? "cleanup" : "dubbing",
+                ]
+                item.isEnabled = aiAllowed && !paidBlocked
+                submenu.addItem(item)
+            }
+        }
         return submenu.items.isEmpty ? nil : submenu
     }
 
@@ -89,6 +109,16 @@ extension TimelineView {
               let clipId = info["clipId"] as? String,
               let kind = info["kind"] as? String else { return }
         editor.beginAIVideoAudio(clipId: clipId, kind: kind == "music" ? .music : .sfx)
+    }
+
+    @objc private func performAIEditAudioTransform(_ sender: Any?) {
+        guard let info = (sender as? NSMenuItem)?.representedObject as? [String: Any],
+              let clipId = info["clipId"] as? String,
+              let kind = info["kind"] as? String else { return }
+        editor.beginAIAudioTransform(
+            clipId: clipId,
+            kind: kind == "cleanup" ? .cleanup : .dubbing
+        )
     }
 
     @objc private func performAIEditCreateVideo(_ sender: Any?) {

@@ -122,6 +122,36 @@ extension GenerationView {
         .hoverHighlight()
     }
 
+    var languagePicker: some View {
+        Menu {
+            if let languages = audioModel.targetLanguages {
+                ForEach(languages, id: \.self) { code in
+                    Button(AudioModelConfig.languageName(code)) { selectedTargetLanguage = code }
+                }
+            }
+        } label: {
+            HStack(spacing: AppTheme.Spacing.xs) {
+                Image(systemName: "globe")
+                    .font(.system(size: AppTheme.FontSize.xxs))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                Text(AudioModelConfig.languageName(selectedTargetLanguage))
+                    .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+            }
+            .padding(.horizontal, AppTheme.Spacing.xs)
+            .padding(.vertical, AppTheme.Spacing.xs)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .hoverHighlight()
+        .help("Target Language")
+    }
+
     // MARK: - Settings
 
     var settingsSummary: String {

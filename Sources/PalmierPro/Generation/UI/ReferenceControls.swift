@@ -1,5 +1,26 @@
 import SwiftUI
 
+private struct ReferenceAssetPreview: View {
+    let asset: MediaAsset
+
+    var body: some View {
+        ZStack {
+            Color.black
+            if let thumbnail = asset.thumbnail {
+                Image(nsImage: thumbnail)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                Image(systemName: asset.type.sfSymbolName)
+                    .font(.system(size: AppTheme.FontSize.xl))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(asset.name), \(asset.type.trackLabel)")
+    }
+}
+
 /// Thumbnail tile for a reference asset with an optional @-tag badge and remove button.
 struct RefCard: View {
     let asset: MediaAsset
@@ -7,45 +28,35 @@ struct RefCard: View {
     let onRemove: () -> Void
 
     var body: some View {
-        Group {
-            if let thumb = asset.thumbnail {
-                Image(nsImage: thumb).resizable().aspectRatio(contentMode: .fill)
-            } else {
-                ZStack {
-                    Rectangle().fill(.quaternary)
-                    Image(systemName: asset.type.sfSymbolName)
-                        .font(.system(size: AppTheme.FontSize.mdLg))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+        ReferenceAssetPreview(asset: asset)
+            .frame(width: AppTheme.GenerationPanel.referenceTileWidth, height: AppTheme.GenerationPanel.referenceTileHeight)
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
+            .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.thin))
+            .overlay(alignment: .bottomLeading) {
+                if let tag {
+                    Text(tag)
+                        .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, AppTheme.Spacing.xs)
+                        .padding(.vertical, AppTheme.Spacing.xxs)
+                        .background(Color.black.opacity(AppTheme.Opacity.strong), in: Capsule())
+                        .padding(AppTheme.Spacing.xs)
                 }
             }
-        }
-        .frame(width: AppTheme.GenerationPanel.referenceTileWidth, height: AppTheme.GenerationPanel.referenceTileHeight)
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
-        .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-            .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.thin))
-        .overlay(alignment: .bottomLeading) {
-            if let tag {
-                Text(tag)
-                    .font(.system(size: AppTheme.FontSize.xxs, weight: .medium))
-                    .monospacedDigit()
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, AppTheme.Spacing.xs)
-                    .padding(.vertical, AppTheme.Spacing.xxs)
-                    .background(Color.black.opacity(AppTheme.Opacity.strong), in: Capsule())
-                    .padding(AppTheme.Spacing.xs)
+            .overlay(alignment: .topTrailing) {
+                Button { onRemove() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: AppTheme.FontSize.smMd))
+                        .foregroundStyle(.white.opacity(AppTheme.Opacity.prominent))
+                        .shadow(radius: 2)
+                        .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove \(asset.name)")
             }
-        }
-        .overlay(alignment: .topTrailing) {
-            Button { onRemove() } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: AppTheme.FontSize.smMd))
-                    .foregroundStyle(.white.opacity(AppTheme.Opacity.prominent))
-                    .shadow(radius: 2)
-                    .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-        }
     }
 }
 
@@ -103,28 +114,23 @@ struct FrameSlot: View {
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
 
             if let asset {
-                Group {
-                    if let thumb = asset.thumbnail {
-                        Image(nsImage: thumb).resizable().aspectRatio(contentMode: .fill)
-                    } else {
-                        Rectangle().fill(.quaternary)
+                ReferenceAssetPreview(asset: asset)
+                    .frame(width: AppTheme.GenerationPanel.referenceTileWidth, height: AppTheme.GenerationPanel.referenceTileHeight)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
+                    .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                        .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.thin))
+                    .overlay(alignment: .topTrailing) {
+                        Button { onClear() } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: AppTheme.FontSize.smMd))
+                                .foregroundStyle(.white.opacity(AppTheme.Opacity.prominent))
+                                .shadow(radius: 2)
+                                .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Remove \(asset.name)")
                     }
-                }
-                .frame(width: AppTheme.GenerationPanel.referenceTileWidth, height: AppTheme.GenerationPanel.referenceTileHeight)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm))
-                .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.thin))
-                .overlay(alignment: .topTrailing) {
-                    Button { onClear() } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: AppTheme.FontSize.smMd))
-                            .foregroundStyle(.white.opacity(AppTheme.Opacity.prominent))
-                            .shadow(radius: 2)
-                            .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
             } else {
                 RefDropZone(
                     isTargeted: $isTargeted,

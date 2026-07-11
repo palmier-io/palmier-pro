@@ -16,7 +16,7 @@ enum TranscriptionBackend {
             )
         }
         guard let convex = AccountService.shared.convex else {
-            throw GenerationBackendError.notConfigured
+            throw BackendError.notConfigured
         }
         let args: [String: ConvexEncodable?] = [
             "storageId": storageId,
@@ -58,7 +58,7 @@ enum TranscriptionBackend {
             return BackendTranscriptionResultRef(resultUrl: try await LocalBackend.transcriptionResultURL(jobId: jobId))
         }
         guard let convex = AccountService.shared.convex else {
-            throw GenerationBackendError.notConfigured
+            throw BackendError.notConfigured
         }
         return try await convex.action(
             "transcriptions:result",
@@ -69,7 +69,7 @@ enum TranscriptionBackend {
     @MainActor
     static func waitForResult(jobId: String) async throws -> TranscriptionResult {
         guard let publisher = subscribe(jobId: jobId) else {
-            throw GenerationBackendError.notConfigured
+            throw BackendError.notConfigured
         }
         for await job in jobStream(from: publisher) {
             guard let job else { continue }
