@@ -87,7 +87,7 @@ enum LUTLoader {
             }
         }
 
-        guard dimension > 1, dimension <= 64,
+        guard dimension > 1, dimension <= 128,
               values.count == dimension * dimension * dimension * 3,
               domainMin.count == 3, domainMax.count == 3 else { return nil }
 
