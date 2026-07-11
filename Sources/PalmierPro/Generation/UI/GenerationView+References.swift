@@ -226,7 +226,7 @@ extension GenerationView {
         imageReferences.removeAll()
         resetRefPools()
         sourceVideo = nil
-        audioVideoSource = nil
+        audioSource = nil
     }
 
     private var refCounterLabel: String {
@@ -306,16 +306,26 @@ extension GenerationView {
         }
     }
 
-    var audioVideoStrip: some View {
+    var audioSourceStrip: some View {
         FrameSlot(
-            label: "Source Video",
-            asset: audioVideoSource,
-            isTargeted: $audioVideoTargeted,
-            accepting: [.video],
-            iconName: "video.badge.plus",
-            onDrop: { audioVideoSource = $0 },
-            onClear: { audioVideoSource = nil },
+            label: audioSourceLabel,
+            asset: audioSource,
+            isTargeted: $audioSourceTargeted,
+            accepting: audioSourceTypes,
+            iconName: audioSourceTypes == [.video] ? "video.badge.plus" : "waveform",
+            onDrop: { audioSource = $0 },
+            onClear: { audioSource = nil },
             onError: flashDropError
         )
+    }
+
+    private var audioSourceTypes: Set<ClipType> {
+        Set([ClipType.audio, .video].filter { audioModel.acceptsSource($0) })
+    }
+
+    private var audioSourceLabel: String {
+        if audioSourceTypes == [.audio] { return "Source Audio" }
+        if audioSourceTypes == [.video] { return "Source Video" }
+        return "Source Media"
     }
 }

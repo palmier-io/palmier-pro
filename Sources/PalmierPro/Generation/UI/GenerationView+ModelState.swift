@@ -78,12 +78,25 @@ extension GenerationView {
 
     var trimmedPrompt: String { prompt.trimmingCharacters(in: .whitespaces) }
     var isPromptEmpty: Bool { trimmedPrompt.isEmpty }
+    var isPromptEnabled: Bool {
+        selectedType != .audio || audioModel.inputs.contains(.text)
+    }
+
+    var initialAudioTargetLanguage: String {
+        guard let languages = audioModel.targetLanguages else { return "" }
+        if let preferred = audioModel.defaultTargetLanguage,
+           languages.contains(preferred) {
+            return preferred
+        }
+        return languages.first ?? ""
+    }
 
     var hasAnySettings: Bool {
         switch selectedType {
         case .video: return !videoModel.durations.isEmpty || !videoModel.aspectRatios.isEmpty || videoModel.resolutions != nil || videoModel.audioDiscountRate != nil
         case .image: return !imageModel.aspectRatios.isEmpty || imageModel.resolutions != nil || imageModel.qualities != nil || imageModel.maxImages > 1
-        case .audio: return audioModel.supportsInstrumental || audioModel.durations != nil
+        case .audio:
+            return audioModel.supportsInstrumental || audioModel.durations != nil
         }
     }
 
@@ -148,6 +161,7 @@ extension GenerationView {
             case .tts: "Text to speak\(audioPromptHint)"
             case .music: "Describe the music style or mood\(audioPromptHint)"
             case .sfx: "Describe the sound\(audioPromptHint)"
+            case .cleanup, .dubbing: "No prompt needed"
             }
         }
     }
@@ -162,19 +176,19 @@ extension GenerationView {
         return max(0, Int((sourceVideo?.duration ?? 0).rounded()))
     }
 
-    var effectiveAudioVideoSpanSeconds: Double {
-        guard let source = audioVideoSource else { return 0 }
-        if let trim = audioVideoTrimmedSource(for: source), trim.hasTrim {
+    var effectiveAudioSourceSpanSeconds: Double {
+        guard let source = audioSource else { return 0 }
+        if let trim = audioSourceTrimmedSource(for: source), trim.hasTrim {
             return trim.durationSeconds
         }
         return source.duration
     }
 
-    var effectiveAudioVideoSeconds: Int {
-        max(1, Int(effectiveAudioVideoSpanSeconds.rounded()))
+    var effectiveAudioSourceSeconds: Int {
+        max(1, Int(effectiveAudioSourceSpanSeconds.rounded()))
     }
 
-    func audioVideoTrimmedSource(for source: MediaAsset) -> TrimmedSource? {
+    func audioSourceTrimmedSource(for source: MediaAsset) -> TrimmedSource? {
         guard let trim = editor.pendingEditTrimmedSource, trim.sourceURL == source.url else { return nil }
         return trim
     }

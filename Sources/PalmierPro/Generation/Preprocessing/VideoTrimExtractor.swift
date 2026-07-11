@@ -1,19 +1,6 @@
 import AVFoundation
 import Foundation
 
-/// Describes a clip's visible source range so an AI action can upload just
-/// that portion instead of the full source media.
-struct TrimmedSource: Sendable {
-    let sourceURL: URL
-    let trimStartFrame: Int
-    let trimEndFrame: Int
-    let sourceFramesConsumed: Int
-    let fps: Int
-
-    var hasTrim: Bool { trimStartFrame > 0 || trimEndFrame > 0 }
-    var durationSeconds: Double { Double(sourceFramesConsumed) / Double(max(1, fps)) }
-}
-
 /// Exports the visible range of a video clip to a temp mp4 file.
 enum VideoTrimExtractor {
     struct ExtractionError: LocalizedError {
@@ -47,12 +34,7 @@ enum VideoTrimExtractor {
             throw ExtractionError(reason: "could not create video track")
         }
 
-        let timescale = CMTimeScale(trim.fps)
-        let sourceStart = CMTime(value: CMTimeValue(trim.trimStartFrame), timescale: timescale)
-        let sourceDuration = CMTime(value: CMTimeValue(trim.sourceFramesConsumed), timescale: timescale)
-        let sourceRange = CMTimeRange(start: sourceStart, duration: sourceDuration)
-
-        try compVideo.insertTimeRange(sourceRange, of: videoTrack, at: .zero)
+        try compVideo.insertTimeRange(trim.timeRange, of: videoTrack, at: .zero)
         compVideo.preferredTransform = try await videoTrack.load(.preferredTransform)
 
         if let audioTrack = audioTracks.first,
@@ -60,7 +42,7 @@ enum VideoTrimExtractor {
                withMediaType: .audio,
                preferredTrackID: kCMPersistentTrackID_Invalid
            ) {
-            try? compAudio.insertTimeRange(sourceRange, of: audioTrack, at: .zero)
+            try? compAudio.insertTimeRange(trim.timeRange, of: audioTrack, at: .zero)
         }
 
         let outputURL = FileManager.default.temporaryDirectory

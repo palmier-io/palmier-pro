@@ -264,12 +264,14 @@ struct InspectorView: View {
             .first { editor.multicamGroup(id: $0) != nil }
     }
 
-    /// True when the selection resolves to a single AI-editable visual clip.
-    /// A linked video+audio pair counts as one
+    /// True when the selection resolves to one AI-editable media source.
+    /// A linked video+audio pair counts as one source.
     private var aiEditEligible: Bool {
         let visuals = selectedVisualClips
         let audios = selectedAudioClips
-        guard visuals.count == 1, resolvedClipAsset != nil else { return false }
+        guard resolvedClipAsset != nil else { return false }
+        if visuals.isEmpty { return audios.count == 1 }
+        guard visuals.count == 1 else { return false }
         if audios.isEmpty { return true }
         let partners = Set(editor.linkedPartnerIds(of: visuals[0].id))
         return audios.allSatisfy { partners.contains($0.id) }
@@ -281,9 +283,9 @@ struct InspectorView: View {
         return tabs.contains(preferredTab) ? preferredTab : tabs.first
     }
 
-    /// The visual-or-image MediaAsset backing the currently selected visual clip.
+    /// Media asset backing the selected visual clip, or a standalone audio clip.
     private var resolvedClipAsset: MediaAsset? {
-        guard let clip = selectedVisualClip, clip.mediaType.isVisual else { return nil }
+        guard let clip = selectedVisualClip ?? selectedAudioClip else { return nil }
         return editor.mediaAssets.first { $0.id == clip.mediaRef }
     }
 
@@ -304,7 +306,7 @@ struct InspectorView: View {
             }
             Group {
                 if activeTab == .ai, let asset = resolvedClipAsset {
-                    AIEditTab(asset: asset, clipId: selectedVisualClip?.id)
+                    AIEditTab(asset: asset, clipId: selectedVisualClip?.id ?? selectedAudioClip?.id)
                 } else if activeTab == .effects {
                     ScrollView { effectsTabContent() }
                 } else {

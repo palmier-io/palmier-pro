@@ -17,8 +17,10 @@ extension GenerationView {
             return false
         }
         if selectedType == .audio {
-            if audioModel.inputs.contains(.video) {
-                return audioVideoSource != nil
+            if audioModel.acceptsSourceMedia {
+                guard audioSource != nil else { return false }
+                guard let languages = audioModel.targetLanguages else { return true }
+                return languages.contains(selectedTargetLanguage)
             }
             return trimmedPrompt.count >= audioModel.minPromptLength
         }
@@ -44,8 +46,8 @@ extension GenerationView {
                 numImages: selectedNumImages
             )
         case .audio:
-            let duration: Int? = audioModel.inputs.contains(.video)
-                ? (audioVideoSource == nil ? nil : effectiveAudioVideoSeconds)
+            let duration: Int? = audioModel.acceptsSourceMedia
+                ? (audioSource == nil ? nil : effectiveAudioSourceSeconds)
                 : (audioModel.durations != nil ? selectedAudioDuration : nil)
             return CostEstimator.audioCost(
                 model: audioModel, prompt: trimmedPrompt, durationSeconds: duration
@@ -163,9 +165,10 @@ extension GenerationView {
                 numImages: imageCount
             )
         case .audio:
-            if audioModel.inputs.contains(.video) {
-                guard audioVideoSource != nil else { return "Drop a video to score." }
-                return audioModel.validate(spanSeconds: effectiveAudioVideoSpanSeconds)
+            if audioModel.acceptsSourceMedia {
+                guard audioSource != nil else { return "Add source media." }
+                return audioModel.validate(spanSeconds: effectiveAudioSourceSpanSeconds)
+                    ?? audioModel.validate(params: audioParams(audioDuration: audioDuration))
             }
             return audioModel.validate(params: audioParams(audioDuration: audioDuration))
         }
@@ -179,8 +182,10 @@ extension GenerationView {
             styleInstructions: audioModel.supportsStyleInstructions && !styleInstructions.isEmpty
                 ? styleInstructions : nil,
             instrumental: audioModel.supportsInstrumental ? instrumental : false,
-            durationSeconds: (audioModel.durations != nil || audioModel.inputs.contains(.video)) ? audioDuration : nil,
-            videoURL: videoURL
+            durationSeconds: (audioModel.durations != nil || audioModel.acceptsSourceMedia) ? audioDuration : nil,
+            videoURL: videoURL,
+            sourceURL: nil,
+            targetLanguage: audioModel.targetLanguages != nil ? selectedTargetLanguage : nil
         )
     }
 
@@ -191,7 +196,7 @@ extension GenerationView {
         }
         let audioDuration: Int = {
             guard selectedType == .audio else { return 0 }
-            if audioModel.inputs.contains(.video) { return effectiveAudioVideoSeconds }
+            if audioModel.acceptsSourceMedia { return effectiveAudioSourceSeconds }
             return audioModel.durations != nil ? selectedAudioDuration : 0
         }()
         if let err = preflightValidation(audioDuration: audioDuration) {
@@ -213,6 +218,8 @@ extension GenerationView {
                 ? styleInstructions : nil,
             instrumental: selectedType == .audio && audioModel.supportsInstrumental
                 ? instrumental : nil,
+            targetLanguage: selectedType == .audio && audioModel.targetLanguages != nil
+                ? selectedTargetLanguage : nil,
             generateAudio: supportsAudioToggle ? generateAudio : nil
         )
         let imageCount: Int = {
@@ -314,53 +321,39 @@ extension GenerationView {
         case .audio:
             let model = audioModel
             let onCompleteAudio = makeOnComplete(false)
-            if model.inputs.contains(.video), let asset = audioVideoSource {
-                let folderId = editFolderId ?? asset.folderId ?? editor.mediaPanelCurrentFolderId
-                let trimmedSource = audioVideoTrimmedSource(for: asset)
-                let params = audioParams(audioDuration: audioDuration)
-                genInput.referenceVideoAssetIds = [asset.id]
-                let audioOnComplete: (@MainActor (MediaAsset) -> Void)? = {
-                    guard pendingAudioPlacement != nil else { return onCompleteAudio }
-                    return { [weak editorRef] asset in
-                        editorRef?.finalizeGeneratingClip(placeholderId: asset.id, asset: asset)
-                        onCompleteAudio?(asset)
-                    }
-                }()
-                let audioAssetId = AudioGenerationSubmission.make(
-                    genInput: genInput,
-                    model: model,
-                    params: params,
-                    folderId: folderId,
-                    references: [asset],
-                    trimmedSourceOverride: trimmedSource
-                ).submit(
-                    service: editor.generationService,
-                    projectURL: editor.projectURL,
-                    editor: editor,
-                    onComplete: audioOnComplete,
-                    onFailure: onFailure
-                )
-                if let placement = pendingAudioPlacement {
-                    editor.placeGeneratingAudioClip(
-                        placeholderId: audioAssetId,
-                        startFrame: placement.startFrame,
-                        spanSeconds: placement.spanSeconds,
-                        actionName: placement.actionName
-                    )
+            let sourceAsset = model.acceptsSourceMedia ? audioSource : nil
+            if let sourceAsset {
+                genInput.setAudioSourceAsset(sourceAsset)
+            }
+            let audioOnComplete: (@MainActor (MediaAsset) -> Void)? = {
+                guard pendingAudioPlacement != nil else { return onCompleteAudio }
+                return { [weak editorRef] asset in
+                    editorRef?.finalizeGeneratingClip(placeholderId: asset.id, asset: asset)
+                    onCompleteAudio?(asset)
                 }
-            } else {
-                let params = audioParams(audioDuration: audioDuration)
-                AudioGenerationSubmission.make(
-                    genInput: genInput,
-                    model: model,
-                    params: params,
-                    folderId: editFolderId ?? editor.mediaPanelCurrentFolderId
-                ).submit(
-                    service: editor.generationService,
-                    projectURL: editor.projectURL,
-                    editor: editor,
-                    onComplete: onCompleteAudio,
-                    onFailure: onFailure
+            }()
+            let audioAssetId = AudioGenerationSubmission.make(
+                genInput: genInput,
+                model: model,
+                params: audioParams(audioDuration: audioDuration),
+                folderId: editFolderId
+                    ?? sourceAsset?.folderId
+                    ?? editor.mediaPanelCurrentFolderId,
+                references: sourceAsset.map { [$0] } ?? [],
+                trimmedSourceOverride: sourceAsset.flatMap(audioSourceTrimmedSource)
+            ).submit(
+                service: editor.generationService,
+                projectURL: editor.projectURL,
+                editor: editor,
+                onComplete: audioOnComplete,
+                onFailure: onFailure
+            )
+            if let placement = pendingAudioPlacement {
+                editor.placeGeneratingAudioClip(
+                    placeholderId: audioAssetId,
+                    startFrame: placement.startFrame,
+                    spanSeconds: placement.spanSeconds,
+                    actionName: placement.actionName
                 )
             }
         }
@@ -412,6 +405,12 @@ extension GenerationView {
         }
         if let n = stored.numImages { selectedNumImages = max(1, n) }
         if let v = stored.voice, !v.isEmpty { selectedVoice = v }
+        if let language = stored.targetLanguage,
+           audioModel.targetLanguages?.contains(language) == true {
+            selectedTargetLanguage = language
+        } else if selectedType == .audio {
+            selectedTargetLanguage = initialAudioTargetLanguage
+        }
         lyrics = stored.lyrics ?? ""
         styleInstructions = stored.styleInstructions ?? ""
         instrumental = stored.instrumental ?? false
@@ -450,7 +449,8 @@ extension GenerationView {
         case .image:
             imageReferences = primary
         case .audio:
-            audioVideoSource = (stored.referenceVideoAssetIds ?? []).compactMap(lookup).first
+            audioSource = (stored.referenceAudioAssetIds ?? []).compactMap(lookup).first
+                ?? (stored.referenceVideoAssetIds ?? []).compactMap(lookup).first
         }
 
         editFolderId = asset.folderId
@@ -461,6 +461,7 @@ extension GenerationView {
     func resetAudioState() {
         let model = audioModel
         selectedVoice = model.defaultVoice ?? ""
+        selectedTargetLanguage = initialAudioTargetLanguage
         if !model.supportsLyrics { lyrics = "" }
         if !model.supportsStyleInstructions { styleInstructions = "" }
         if !model.supportsInstrumental { instrumental = false }

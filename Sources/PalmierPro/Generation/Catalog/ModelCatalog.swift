@@ -244,7 +244,7 @@ struct ImageCaps: Decodable, Sendable {
 }
 
 struct AudioCaps: Decodable, Sendable {
-    let category: String   // "tts" | "music" | "sfx"
+    let category: String
     let voices: [String]?
     let defaultVoice: String?
     let supportsLyrics: Bool
@@ -252,10 +252,12 @@ struct AudioCaps: Decodable, Sendable {
     let supportsStyleInstructions: Bool
     let durations: [Int]?
     let minPromptLength: Int
-    let inputs: [String]? // "text" | "video"
+    let inputs: [String]?
     let promptLabel: String?
     let minSeconds: Int?
     let maxSeconds: Int?
+    let targetLanguages: [String]?
+    let defaultTargetLanguage: String?
 }
 
 struct UpscaleCaps: Decodable, Sendable {

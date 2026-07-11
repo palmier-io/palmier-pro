@@ -17,6 +17,7 @@ struct CapsuleButtonStyle: ButtonStyle {
         let variant: Variant
         let size: Size
         let fill: AnyShapeStyle?
+        @Environment(\.isEnabled) private var isEnabled
         @State private var hovered = false
 
         private var fontSize: CGFloat { size == .small ? AppTheme.FontSize.xs : AppTheme.FontSize.smMd }
@@ -24,12 +25,14 @@ struct CapsuleButtonStyle: ButtonStyle {
         private var vPadding: CGFloat { size == .small ? AppTheme.Spacing.xs : AppTheme.Spacing.smMd }
 
         private var foreground: AnyShapeStyle {
-            variant == .prominent
+            guard isEnabled else { return AnyShapeStyle(AppTheme.Text.mutedColor) }
+            return variant == .prominent
                 ? AnyShapeStyle(AppTheme.Background.baseColor)
                 : AnyShapeStyle(AppTheme.Text.secondaryColor)
         }
         private var background: AnyShapeStyle {
-            variant == .prominent
+            guard isEnabled else { return AnyShapeStyle(AppTheme.Background.prominentColor) }
+            return variant == .prominent
                 ? (fill ?? AnyShapeStyle(AppTheme.Accent.primary))
                 : AnyShapeStyle(AppTheme.Background.prominentColor)
         }
@@ -41,11 +44,14 @@ struct CapsuleButtonStyle: ButtonStyle {
                 .padding(.horizontal, hPadding)
                 .padding(.vertical, vPadding)
                 .background(Capsule(style: .continuous).fill(background))
-                .overlay(Capsule(style: .continuous).fill(.white.opacity(hovered ? AppTheme.Opacity.faint : 0)))
-                .opacity(configuration.isPressed ? AppTheme.Opacity.strong : AppTheme.Opacity.opaque)
+                .overlay(Capsule(style: .continuous).fill(.white.opacity(isEnabled && hovered ? AppTheme.Opacity.faint : 0)))
+                .opacity(isEnabled
+                    ? (configuration.isPressed ? AppTheme.Opacity.strong : AppTheme.Opacity.opaque)
+                    : AppTheme.Opacity.strong)
                 .contentShape(Capsule(style: .continuous))
-                .onHover { hovered = $0 }
+                .onHover { hovered = isEnabled && $0 }
                 .animation(.easeOut(duration: AppTheme.Anim.hover), value: hovered)
+                .animation(.easeOut(duration: AppTheme.Anim.hover), value: isEnabled)
         }
     }
 }

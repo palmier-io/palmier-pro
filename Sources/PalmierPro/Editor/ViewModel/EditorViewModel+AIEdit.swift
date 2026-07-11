@@ -9,7 +9,17 @@ extension EditorViewModel {
         guard let (clip, asset) = aiEditClipAsset(clipId), clip.mediaType.isVisual else { return [] }
         return EditAction.available(
             for: asset,
-            effectiveDurationOverride: aiEditTrimmedSource(clip: clip, asset: asset)?.durationSeconds
+            effectiveDurationOverride: aiEditTrimmedSource(clipId: clipId)?.durationSeconds
+        )
+    }
+
+    func aiAudioTransformKinds(clipId: String) -> [AudioTransformEditKind] {
+        guard let (clip, asset) = aiEditClipAsset(clipId),
+              clip.mediaType == .audio || clip.mediaType.isVisual else { return [] }
+        let duration = aiEditTrimmedSource(clipId: clipId)?.durationSeconds
+        return AudioTransformEditKind.available(
+            for: asset,
+            effectiveDurationOverride: duration
         )
     }
 
@@ -28,13 +38,13 @@ extension EditorViewModel {
             asset: asset,
             stored: stored,
             replacementClipId: clipId,
-            trimmedSource: aiEditTrimmedSource(clip: clip, asset: asset)
+            trimmedSource: aiEditTrimmedSource(clipId: clipId)
         )
     }
 
     func runAIUpscale(clipId: String, model: UpscaleModelConfig) {
-        guard let (clip, asset) = aiEditClipAsset(clipId) else { return }
-        let trim = aiEditTrimmedSource(clip: clip, asset: asset)
+        guard let (_, asset) = aiEditClipAsset(clipId) else { return }
+        let trim = aiEditTrimmedSource(clipId: clipId)
         let handlers = clipReplacementHandlers(clipId: clipId, resetTrim: trim != nil)
         _ = EditSubmitter.submitUpscale(
             asset: asset, model: model, editor: self,
@@ -46,17 +56,44 @@ extension EditorViewModel {
 
     /// Music/SFX: output is new audio, so no source replacement — place it on the timeline at the clip.
     func beginAIVideoAudio(clipId: String, kind: VideoToAudioEditKind) {
-        guard let (clip, asset) = aiEditClipAsset(clipId),
+        guard let (_, asset) = aiEditClipAsset(clipId),
               let stored = EditSubmitter.videoAudioSeed(for: asset, kind: kind) else { return }
-        let trim = aiEditTrimmedSource(clip: clip, asset: asset)
-        let span = trim?.durationSeconds
-            ?? (asset.duration > 0 ? asset.duration : Double(clip.durationFrames) / Double(max(1, timeline.fps)))
-        let placement = PendingAudioPlacement(
-            startFrame: clip.startFrame,
-            spanSeconds: max(span, 1 / Double(max(1, timeline.fps))),
+        let trim = aiEditTrimmedSource(clipId: clipId)
+        guard let placement = aiAudioPlacement(
+            clipId: clipId,
+            trimmedSource: trim,
             actionName: kind.timelineActionName
-        )
+        ) else { return }
         seedGenerationPanel(asset: asset, stored: stored, trimmedSource: trim, audioPlacement: placement)
+    }
+
+    func beginAIAudioTransform(
+        clipId: String,
+        kind: AudioTransformEditKind,
+        useTrimmedClip: Bool = true,
+        placeOnTimeline: Bool = true
+    ) {
+        guard let (_, asset) = aiEditClipAsset(clipId) else { return }
+        let trim = useTrimmedClip ? aiEditTrimmedSource(clipId: clipId) : nil
+        let placement = placeOnTimeline
+            ? aiAudioPlacement(
+                clipId: clipId,
+                trimmedSource: trim,
+                actionName: kind.timelineActionName
+            )
+            : nil
+        if placeOnTimeline && placement == nil { return }
+        guard let stored = EditSubmitter.audioTransformSeed(
+            for: asset,
+            kind: kind,
+            durationOverride: placement?.spanSeconds ?? trim?.durationSeconds
+        ) else { return }
+        seedGenerationPanel(
+            asset: asset,
+            stored: stored,
+            trimmedSource: trim,
+            audioPlacement: placement
+        )
     }
 
     func beginAIRerun(clipId: String) {
@@ -99,14 +136,33 @@ extension EditorViewModel {
         return (clip, asset)
     }
 
-    private func aiEditTrimmedSource(clip: Clip, asset: MediaAsset) -> TrimmedSource? {
-        guard asset.type == .video, clip.trimStartFrame > 0 || clip.trimEndFrame > 0 else { return nil }
+    func aiEditTrimmedSource(clipId: String) -> TrimmedSource? {
+        guard let (clip, asset) = aiEditClipAsset(clipId) else { return nil }
+        guard asset.type == .video || asset.type == .audio,
+              clip.trimStartFrame > 0 || clip.trimEndFrame > 0 else { return nil }
         return TrimmedSource(
             sourceURL: asset.url,
             trimStartFrame: clip.trimStartFrame,
             trimEndFrame: clip.trimEndFrame,
             sourceFramesConsumed: clip.sourceFramesConsumed,
             fps: timeline.fps
+        )
+    }
+
+    func aiAudioPlacement(
+        clipId: String,
+        trimmedSource: TrimmedSource?,
+        actionName: String
+    ) -> PendingAudioPlacement? {
+        guard let (clip, asset) = aiEditClipAsset(clipId) else { return nil }
+        let span = trimmedSource?.durationSeconds
+            ?? (asset.duration > 0
+                ? asset.duration
+                : Double(clip.durationFrames) / Double(max(1, timeline.fps)))
+        return PendingAudioPlacement(
+            startFrame: clip.startFrame,
+            spanSeconds: max(span, 1 / Double(max(1, timeline.fps))),
+            actionName: actionName
         )
     }
 
