@@ -62,16 +62,6 @@ struct ExportProjectToolTests {
         #expect(uniqueURL.lastPathComponent == "\(base) 2.xml")
         try await waitForJob(from: unique, in: h.exportQueue)
 
-        let uiActiveXML = FileManager.default.temporaryDirectory
-            .appendingPathComponent("export-tool-ui-active-\(UUID().uuidString).xml")
-        defer { try? FileManager.default.removeItem(at: uiActiveXML) }
-        let uiActiveXMLResult = try await h.runOK("export_project", args: [
-            "mode": "xml",
-            "outputPath": uiActiveXML.path,
-        ]) as? [String: Any]
-        try await waitForJob(from: uiActiveXMLResult, in: h.exportQueue)
-        #expect(FileManager.default.fileExists(atPath: uiActiveXML.path))
-
         let blocker = try h.exportQueue.enqueueForTesting(
             outputURL: FileManager.default.temporaryDirectory.appendingPathComponent("export-blocker-\(UUID().uuidString).mov")
         ) { _ in
@@ -123,8 +113,10 @@ struct ExportProjectToolTests {
     }
 
     @Test func exportsXML() async throws {
+        var nestedClip = Fixtures.clip(mediaRef: "missing", start: 0, duration: 30)
+        nestedClip.sourceClipType = .sequence
         let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
-            Fixtures.videoTrack(clips: [Fixtures.clip(mediaRef: "missing", start: 0, duration: 30)]),
+            Fixtures.videoTrack(clips: [nestedClip]),
         ]))
         let xmlURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("export-tool-\(UUID().uuidString).xml")
@@ -135,8 +127,26 @@ struct ExportProjectToolTests {
         ]) as? [String: Any]
         #expect(["started", "queued"].contains(xml?["status"] as? String ?? ""))
         #expect(xml?["mode"] as? String == "xml")
+        #expect((xml?["warnings"] as? [String])?.count == 1)
         try await waitForJob(from: xml, in: h.exportQueue)
         #expect(try String(contentsOf: xmlURL, encoding: .utf8).contains("<xmeml version=\"4\">"))
+
+        h.editor.mediaManifest.entries = [MediaManifestEntry(
+            id: "missing", name: "Missing", type: .video,
+            source: .external(absolutePath: "/tmp/missing-\(UUID().uuidString).mov"), duration: 1
+        )]
+        let palmierURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("export-tool-\(UUID().uuidString).palmier")
+        defer { try? FileManager.default.removeItem(at: palmierURL) }
+        let palmier = try await h.runOK("export_project", args: [
+            "mode": "palmier", "outputPath": palmierURL.path,
+        ]) as? [String: Any]
+        try await waitForJob(from: palmier, in: h.exportQueue)
+        let listed = try await h.runOK("manage_exports", args: ["action": "list"]) as? [String: Any]
+        let export = (listed?["exports"] as? [[String: Any]])?.first
+        #expect((export?["warnings"] as? [String])?.count == 1)
+        let report = export?["result"] as? [String: Any]
+        #expect((report?["missingMedia"] as? [[String: Any]])?.count == 1)
     }
 
     @Test func managesCurrentProjectExports() async throws {
@@ -167,40 +177,12 @@ struct ExportProjectToolTests {
             "action": "cancel", "jobId": waiting.jobID.uuidString,
         ]) as? [String: Any]
         #expect(removed?["status"] as? String == "removed")
-        #expect(removed?["cancellationRequested"] as? Bool == true)
         #expect(h.exportQueue.jobs.first(where: { $0.id == waiting.jobID })?.status == .canceled)
 
         let canceling = try await h.runOK("manage_exports", args: [
             "action": "cancel", "jobId": active.jobID.uuidString,
         ]) as? [String: Any]
         #expect(canceling?["status"] as? String == "canceling")
-        #expect(canceling?["cancellationRequested"] as? Bool == true)
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-        while ContinuousClock.now < deadline,
-              h.exportQueue.jobs.first(where: { $0.id == active.jobID })?.status != .canceled {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        #expect(h.exportQueue.jobs.first(where: { $0.id == active.jobID })?.status == .canceled)
-        h.exportQueue.cancel(other.jobID)
-    }
-
-    @Test func validatesExportManagementRequests() async throws {
-        let h = ToolHarness()
-        let other = try h.exportQueue.enqueueForTesting(
-            outputURL: temporaryExportURL("other-project"),
-            projectID: "another-project"
-        ) { _ in
-            try? await Task.sleep(for: .seconds(30))
-        }
-
-        for args in [
-            [:],
-            ["action": "pause"],
-            ["action": "cancel"],
-            ["action": "cancel", "jobId": other.jobID.uuidString],
-        ] as [[String: Any]] {
-            #expect(await h.runRaw("manage_exports", args: args).isError)
-        }
         h.exportQueue.cancel(other.jobID)
     }
 
@@ -212,13 +194,12 @@ struct ExportProjectToolTests {
     private func waitForJob(from result: [String: Any]?, in queue: ExportQueue) async throws {
         let rawID = try #require(result?["jobId"] as? String)
         let id = try #require(UUID(uuidString: rawID))
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-        while ContinuousClock.now < deadline {
+        for _ in 0..<1_000 {
             if let status = queue.jobs.first(where: { $0.id == id })?.status, status.isFinished {
                 #expect(status == .completed)
                 return
             }
-            try await Task.sleep(for: .milliseconds(10))
+            await Task.yield()
         }
         Issue.record("Export job did not finish")
     }

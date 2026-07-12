@@ -4,7 +4,7 @@ import Foundation
 /// into the new bundle's `media/` directory and rewritten to a project-relative source
 enum PalmierProjectExporter {
 
-    struct Report: Equatable {
+    struct Report: Equatable, Sendable {
         /// Entry ids that were `.external` and are now bundled.
         var collected: [String] = []
         /// Already-internal media files copied across.
@@ -14,7 +14,13 @@ enum PalmierProjectExporter {
         /// Total bytes copied into the new bundle.
         var totalBytes: Int64 = 0
 
-        struct Missing: Equatable { var id: String; var name: String }
+        struct Missing: Equatable, Sendable { var id: String; var name: String }
+
+        var warnings: [String] {
+            guard !missing.isEmpty else { return [] }
+            let files = missing.count == 1 ? "media file was" : "media files were"
+            return ["\(missing.count) \(files) missing and could not be included."]
+        }
     }
 
     @discardableResult

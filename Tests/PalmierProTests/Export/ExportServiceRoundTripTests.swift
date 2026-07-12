@@ -106,40 +106,32 @@ struct ExportServiceRoundTripTests {
     }
 
     @Test func cancellationPreservesExistingOutput() async throws {
-        let renderSize = CGSize(width: 320, height: 180)
-        let blackURL = try await ImageVideoGenerator.blackVideo(size: renderSize)
-        let mediaRef = "black-cancel-fixture"
-        var manifest = MediaManifest()
-        manifest.entries = [MediaManifestEntry(
-            id: mediaRef, name: "black", type: .video,
-            source: .external(absolutePath: blackURL.path), duration: 60
-        )]
-        let resolver = MediaResolver(manifest: { manifest }, projectURL: { nil })
-        let clip = Fixtures.clip(id: "cancel", mediaRef: mediaRef, start: 0, duration: 1_800)
-        var timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
-        timeline.width = Int(renderSize.width)
-        timeline.height = Int(renderSize.height)
-
         let outURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("export-cancel-\(UUID().uuidString).mp4")
+            .appendingPathComponent("export-cancel-\(UUID().uuidString).xml")
         defer { try? FileManager.default.removeItem(at: outURL) }
         let existing = Data("existing-output".utf8)
         try existing.write(to: outURL)
 
-        let service = ExportService()
-        service.onPhaseChange = { phase in
-            if phase == .exporting { service.cancel() }
+        func run(_ service: ExportService) async {
+            await service.export(
+                timeline: Fixtures.timeline(),
+                resolver: MediaResolver(manifest: { MediaManifest() }, projectURL: { nil }),
+                format: .xml,
+                resolution: .matchTimeline,
+                outputURL: outURL
+            )
         }
-        await service.export(
-            timeline: timeline,
-            resolver: resolver,
-            format: .h264,
-            resolution: .r720p,
-            outputURL: outURL
-        )
 
-        #expect(service.wasCancelled)
-        #expect(service.error == nil)
+        let preCanceled = ExportService()
+        preCanceled.cancel()
+        await run(preCanceled)
+        #expect(preCanceled.wasCancelled)
+        #expect(try Data(contentsOf: outURL) == existing)
+
+        let active = ExportService()
+        active.onPhaseChange = { if $0 == .exporting { active.cancel() } }
+        await run(active)
+        #expect(active.wasCancelled)
         #expect(try Data(contentsOf: outURL) == existing)
     }
 }

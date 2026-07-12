@@ -91,7 +91,9 @@ final class ExportService {
     var progress: Double = 0
     var error: String?
     var lastReport: ExportRunReport?
+    var lastPalmierReport: PalmierProjectExporter.Report?
     var wasCancelled = false
+    private(set) var didCommitOutput = false
     var onPhaseChange: ((Phase) -> Void)?
     var onProgressChange: ((Double) -> Void)?
     private var activeCancellation: (() -> Void)?
@@ -102,9 +104,12 @@ final class ExportService {
         case ended
     }
 
-    func cancel() {
+    @discardableResult
+    func cancel() -> Bool {
+        guard !didCommitOutput else { return false }
         wasCancelled = true
         activeCancellation?()
+        return true
     }
 
     func export(
@@ -199,7 +204,7 @@ final class ExportService {
         videoAnalytics.begin()
 
         do {
-            try Task.checkCancellation()
+            try checkCancellation()
             let prepared = try await makeExportSession(
                 timeline: timeline, resolver: resolver, resolveTimeline: resolveTimeline,
                 format: format, resolution: resolution,
@@ -278,7 +283,6 @@ final class ExportService {
                 videoAnalytics.fail()
             }
         }
-
     }
 
     /// Writes a self-contained `.palmier` bundle (all media collected internally).
@@ -296,7 +300,7 @@ final class ExportService {
         let analytics = ExportAnalyticsRun(palmierContext: analyticsContext)
 
         do {
-            try Task.checkCancellation()
+            try checkCancellation()
             analytics.begin()
             setPhase(.exporting)
             Log.export.notice(
@@ -322,8 +326,8 @@ final class ExportService {
             } onCancel: {
                 worker.cancel()
             }
-            if wasCancelled { throw CancellationError() }
-            try Task.checkCancellation()
+            lastPalmierReport = report
+            didCommitOutput = true
             setProgress(1)
             Log.export.notice(
                 "palmier export ok collected=\(report.collected.count) missing=\(report.missing.count)",
@@ -359,7 +363,7 @@ final class ExportService {
         analytics: ExportAnalyticsRun
     ) async {
         do {
-            try Task.checkCancellation()
+            try checkCancellation()
             let renderSize = resolution.renderSize(for: CGSize(width: timeline.width, height: timeline.height))
             let result = try await CompositionBuilder.build(
                 timeline: timeline,
@@ -367,7 +371,7 @@ final class ExportService {
                 missingMediaRefs: missingMediaRefs,
                 renderSize: renderSize
             )
-            try Task.checkCancellation()
+            try checkCancellation()
             try await withStagedOutput(to: outputURL) { stagingURL in
                 Log.export.notice("hdr export start size=\(Int(renderSize.width))x\(Int(renderSize.height)) url=\(outputURL.lastPathComponent)")
                 let inputs = HDRVideoExporter.Inputs(
@@ -420,7 +424,8 @@ final class ExportService {
     private func reset() {
         error = nil
         lastReport = nil
-        wasCancelled = false
+        lastPalmierReport = nil
+        didCommitOutput = false
         setProgress(0)
         setPhase(.preparing)
     }
@@ -434,14 +439,19 @@ final class ExportService {
         to outputURL: URL,
         operation: (URL) async throws -> T
     ) async throws -> T {
-        try Task.checkCancellation()
+        try checkCancellation()
         let stagingURL = Self.stagingURL(for: outputURL)
         defer { try? FileManager.default.removeItem(at: stagingURL) }
         let result = try await operation(stagingURL)
+        try checkCancellation()
+        try Self.commit(stagingURL: stagingURL, to: outputURL)
+        didCommitOutput = true
+        return result
+    }
+
+    private func checkCancellation() throws {
         if wasCancelled { throw CancellationError() }
         try Task.checkCancellation()
-        try Self.commit(stagingURL: stagingURL, to: outputURL)
-        return result
     }
 
     private static func stagingURL(for outputURL: URL) -> URL {

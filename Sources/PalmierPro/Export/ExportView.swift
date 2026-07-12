@@ -289,41 +289,25 @@ struct ExportView: View {
         exportQueue.jobs(for: projectQueueID)
     }
 
-    private var projectActiveJobs: [ExportJob] {
-        projectJobs.filter { $0.status.isRunning }
-    }
-
-    private var projectWaitingJobs: [ExportJob] {
-        projectJobs.filter { $0.status == .waiting }
-    }
-
-    private var projectRecentJobs: [ExportJob] {
-        Array(projectJobs.filter { $0.status.isFinished }.reversed())
-    }
-
     private var logHeader: some View {
-        HStack(spacing: AppTheme.Spacing.sm) {
+        let pendingCount = projectJobs.count { $0.status.isPending }
+        return HStack(spacing: AppTheme.Spacing.sm) {
             Text("Export Queue")
                 .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.semibold))
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
-            if !projectActiveJobs.isEmpty || !projectWaitingJobs.isEmpty {
-                Text("\(projectActiveJobs.count + projectWaitingJobs.count)")
+            if pendingCount > 0 {
+                Text("\(pendingCount)")
                     .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.semibold))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
             }
 
             Spacer()
 
-            Button { exportQueue.clearFinished(for: projectQueueID) } label: {
-                Image(systemName: "trash")
-                    .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
-                    .hoverHighlight()
+            exportIconButton("trash", help: "Clear Finished") {
+                exportQueue.clearFinished(for: projectQueueID)
             }
-            .buttonStyle(.plain)
-            .disabled(projectRecentJobs.isEmpty)
-            .help("Clear Finished")
-            .accessibilityLabel("Clear Finished")
+            .disabled(!projectJobs.contains { $0.status.isFinished })
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .padding(.vertical, AppTheme.Spacing.md)
@@ -353,7 +337,7 @@ struct ExportView: View {
 
     private func exportLogRow(_ job: ExportJob) -> some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            Text(exportTimestamp(job))
+            Text(job.createdAt.formatted(date: .omitted, time: .shortened))
                 .font(.system(size: AppTheme.FontSize.xxs))
                 .foregroundStyle(AppTheme.Text.mutedColor)
                 .monospacedDigit()
@@ -363,7 +347,7 @@ struct ExportView: View {
             exportStatusIcon(job.status)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
-                .accessibilityLabel(exportStatusLabel(job.status))
+                .accessibilityLabel(job.status.rawValue.capitalized)
 
             Text(job.filename)
                 .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
@@ -432,60 +416,33 @@ struct ExportView: View {
     private func exportAction(_ job: ExportJob) -> some View {
         switch job.status {
         case .waiting:
-            Button { exportQueue.cancel(job.id) } label: {
-                Image(systemName: "xmark")
-                    .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
-                    .hoverHighlight()
-            }
-            .buttonStyle(.plain)
-            .help("Remove from Queue")
-            .accessibilityLabel("Remove from Queue")
+            exportIconButton("xmark", help: "Remove from Queue") { exportQueue.cancel(job.id) }
         case .preparing, .exporting:
-            Button { exportQueue.cancel(job.id) } label: {
-                Image(systemName: "stop.fill")
-                    .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
-                    .hoverHighlight()
-            }
-            .buttonStyle(.plain)
-            .help("Cancel Export")
-            .accessibilityLabel("Cancel Export")
+            exportIconButton("stop.fill", help: "Cancel Export") { exportQueue.cancel(job.id) }
         case .completed:
-            Button { NSWorkspace.shared.activateFileViewerSelecting([job.outputURL]) } label: {
-                Image(systemName: "folder")
-                    .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
-                    .hoverHighlight()
+            exportIconButton("folder", help: "Reveal in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([job.outputURL])
             }
-            .buttonStyle(.plain)
-            .help("Reveal in Finder")
-            .accessibilityLabel("Reveal in Finder")
         case .failed, .canceled:
-            Button { exportQueue.remove(job.id) } label: {
-                Image(systemName: "xmark")
-                    .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
-                    .hoverHighlight()
-            }
-            .buttonStyle(.plain)
-            .help("Dismiss")
-            .accessibilityLabel("Dismiss")
+            exportIconButton("xmark", help: "Dismiss") { exportQueue.remove(job.id) }
         case .canceling:
             EmptyView()
         }
     }
 
-    private func exportStatusLabel(_ status: ExportJobStatus) -> String {
-        switch status {
-        case .waiting: "Queued"
-        case .preparing: "Preparing"
-        case .exporting: "Rendering"
-        case .canceling: "Canceling"
-        case .completed: "Completed"
-        case .failed: "Failed"
-        case .canceled: "Canceled"
+    private func exportIconButton(
+        _ systemName: String,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
+                .hoverHighlight()
         }
-    }
-
-    private func exportTimestamp(_ job: ExportJob) -> String {
-        job.createdAt.formatted(date: .omitted, time: .shortened)
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(help)
     }
 
     // MARK: - Bottom bar

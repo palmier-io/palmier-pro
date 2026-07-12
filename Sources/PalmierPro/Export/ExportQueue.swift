@@ -5,10 +5,10 @@ enum ExportJobSource: String, Sendable {
     case agent
 }
 
-enum ExportJobStatus: Sendable {
-    case waiting
+enum ExportJobStatus: String, Sendable {
+    case waiting = "queued"
     case preparing
-    case exporting
+    case exporting = "rendering"
     case canceling
     case completed
     case failed
@@ -41,6 +41,8 @@ struct ExportJob: Identifiable, Sendable {
     var status: ExportJobStatus
     var progress: Double
     var error: String?
+    var warnings: [String]
+    var palmierReport: PalmierProjectExporter.Report?
 }
 
 struct ExportQueueSubmission: Sendable {
@@ -103,10 +105,11 @@ final class ExportQueue {
         outputURL: URL,
         source: ExportJobSource,
         projectID: String,
-        analyticsProjectID: String?
+        analyticsProjectID: String?,
+        warnings: [String] = []
     ) throws -> ExportQueueSubmission {
         let resolver = resolver.snapshot()
-        return try enqueue(outputURL: outputURL, projectID: projectID, source: source) { service in
+        return try enqueue(outputURL: outputURL, projectID: projectID, source: source, warnings: warnings) { service in
             await service.export(
                 timeline: timeline,
                 resolver: resolver,
@@ -145,18 +148,23 @@ final class ExportQueue {
         }
     }
 
-    func cancel(_ id: UUID) {
-        guard let index = jobs.firstIndex(where: { $0.id == id }) else { return }
+    @discardableResult
+    func cancel(_ id: UUID) -> Bool {
+        guard let index = jobs.firstIndex(where: { $0.id == id }) else { return false }
         switch jobs[index].status {
         case .waiting:
             operations[id] = nil
             jobs[index].status = .canceled
+            return true
         case .preparing, .exporting:
+            if let activeService, !activeService.cancel() { return false }
             jobs[index].status = .canceling
-            activeService?.cancel()
             activeTask?.cancel()
+            return true
+        case .canceling:
+            return true
         default:
-            break
+            return false
         }
     }
 
@@ -184,6 +192,8 @@ final class ExportQueue {
         outputURL: URL,
         projectID: String,
         source: ExportJobSource,
+        warnings: [String] = [],
+        palmierReport: PalmierProjectExporter.Report? = nil,
         operation: @escaping Operation
     ) throws -> ExportQueueSubmission {
         guard !isDestinationReserved(outputURL) else {
@@ -199,7 +209,9 @@ final class ExportQueue {
             outputURL: outputURL,
             createdAt: .now,
             status: .waiting,
-            progress: 0
+            progress: 0,
+            warnings: warnings,
+            palmierReport: palmierReport
         ))
         operations[id] = operation
         startNext()
@@ -231,7 +243,9 @@ final class ExportQueue {
         await operation(service)
 
         let status: ExportJobStatus
-        if service.wasCancelled || Task.isCancelled || job(id)?.status == .canceling {
+        if service.didCommitOutput {
+            status = .completed
+        } else if service.wasCancelled || job(id)?.status == .canceling {
             status = .canceled
         } else if service.error != nil {
             status = .failed
@@ -245,12 +259,11 @@ final class ExportQueue {
 
         guard source == .agent, let filename, let outputURL else { return }
         if status == .completed {
-            let report = service.lastReport
             AppNotifications.exportComplete(
                 name: filename,
                 outputURL: outputURL,
-                size: report?.outputSize,
-                warningCount: (report?.offlineMediaRefs.count ?? 0) + (report?.unprocessableMediaRefs.count ?? 0)
+                size: service.lastReport?.outputSize,
+                warningCount: job(id)?.warningCount(service.lastReport) ?? 0
             )
         } else if status == .failed {
             AppNotifications.exportFailed(name: filename, reason: service.error ?? "Export failed")
@@ -262,6 +275,10 @@ final class ExportQueue {
         jobs[index].status = status
         jobs[index].progress = status == .completed ? 1 : service.progress
         jobs[index].error = service.error
+        if let report = service.lastPalmierReport {
+            jobs[index].palmierReport = report
+            jobs[index].warnings = report.warnings
+        }
         operations[id] = nil
         activeID = nil
         activeTask = nil
@@ -283,4 +300,14 @@ final class ExportQueue {
         jobs.first { $0.id == id }
     }
 
+}
+
+private extension ExportJob {
+    func warningCount(_ mediaReport: ExportRunReport?) -> Int {
+        if let palmierReport { return palmierReport.missing.count }
+        if let mediaReport {
+            return mediaReport.offlineMediaRefs.count + mediaReport.unprocessableMediaRefs.count
+        }
+        return warnings.count
+    }
 }

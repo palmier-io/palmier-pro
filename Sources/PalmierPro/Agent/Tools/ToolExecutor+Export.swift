@@ -16,7 +16,7 @@ extension ToolExecutor {
                     "jobId": job.id.uuidString,
                     "filename": job.filename,
                     "path": job.outputURL.path,
-                    "status": job.status.toolName,
+                    "status": job.status.rawValue,
                     "progress": Int((job.progress * 100).rounded()),
                 ]
                 if let index = waitingIDs.firstIndex(of: job.id) {
@@ -24,6 +24,12 @@ extension ToolExecutor {
                 }
                 if let error = job.error {
                     row["error"] = error
+                }
+                if !job.warnings.isEmpty {
+                    row["warnings"] = job.warnings
+                }
+                if let report = job.palmierReport {
+                    row["result"] = report.toolPayload
                 }
                 return row
             }
@@ -44,14 +50,13 @@ extension ToolExecutor {
                 responseStatus = "removed"
                 cancellationRequested = true
             case .preparing, .exporting:
-                exportQueue.cancel(id)
-                responseStatus = "canceling"
-                cancellationRequested = true
+                cancellationRequested = exportQueue.cancel(id)
+                responseStatus = cancellationRequested ? "canceling" : job.status.rawValue
             case .canceling:
                 responseStatus = "canceling"
                 cancellationRequested = true
             case .completed, .failed, .canceled:
-                responseStatus = job.status.toolName
+                responseStatus = job.status.rawValue
                 cancellationRequested = false
             }
             return try jsonResult([
@@ -148,6 +153,9 @@ extension ToolExecutor {
         target: FCPXMLTarget,
         outputURL: URL
     ) throws -> ToolResult {
+        let warnings = format == .xml || format == .fcpxml
+            ? nestExportWarnings(editor, timeline: timeline)
+            : []
         let submission = try exportQueue.enqueueVideo(
             timeline: timeline,
             resolver: editor.mediaResolver,
@@ -159,10 +167,11 @@ extension ToolExecutor {
             outputURL: outputURL,
             source: .agent,
             projectID: editor.exportQueueProjectID,
-            analyticsProjectID: editor.projectId
+            analyticsProjectID: editor.projectId,
+            warnings: warnings
         )
 
-        return try jsonResult([
+        var payload: [String: Any] = [
             "status": submission.started ? "started" : "queued",
             "jobId": submission.jobID.uuidString,
             "queuePosition": submission.queuePosition,
@@ -174,7 +183,19 @@ extension ToolExecutor {
             "durationSeconds": Double(timeline.totalFrames) / Double(max(1, timeline.fps)),
             "fps": timeline.fps,
             "note": "The export is available in the Export dialog.",
-        ])
+        ]
+        if !warnings.isEmpty { payload["warnings"] = warnings }
+        return try jsonResult(payload)
+    }
+
+    private func nestExportWarnings(_ editor: EditorViewModel, timeline: Timeline) -> [String] {
+        let dropped = timeline.tracks.flatMap(\.clips).count {
+            $0.sourceClipType == .sequence && $0.mediaType != .audio
+                && (editor.timeline(for: $0.mediaRef)?.totalFrames ?? 0) == 0
+        }
+        guard dropped > 0 else { return [] }
+        let clips = dropped == 1 ? "clip was" : "clips were"
+        return ["\(dropped) nested timeline \(clips) skipped because the source timeline is empty or missing."]
     }
 
     private func enqueuePalmierExport(_ editor: EditorViewModel, outputURL: URL) throws -> ToolResult {
@@ -189,14 +210,15 @@ extension ToolExecutor {
             analyticsProjectID: editor.projectId
         )
 
-        return try jsonResult([
+        let payload: [String: Any] = [
             "status": submission.started ? "started" : "queued",
             "jobId": submission.jobID.uuidString,
             "queuePosition": submission.queuePosition,
             "mode": ExportProjectMode.palmier.rawValue,
             "path": outputURL.path,
             "note": "The export is available in the Export dialog.",
-        ])
+        ]
+        return try jsonResult(payload)
     }
 
     private func exportDestination(
@@ -292,17 +314,14 @@ private struct ManageExportsArgs: DecodableToolArgs {
     var jobId: String?
 }
 
-private extension ExportJobStatus {
-    var toolName: String {
-        switch self {
-        case .waiting: "queued"
-        case .preparing: "preparing"
-        case .exporting: "rendering"
-        case .canceling: "canceling"
-        case .completed: "completed"
-        case .failed: "failed"
-        case .canceled: "canceled"
-        }
+private extension PalmierProjectExporter.Report {
+    var toolPayload: [String: Any] {
+        [
+            "collectedMediaRefs": collected,
+            "copiedInternalMediaCount": copiedInternal,
+            "missingMedia": missing.map { ["id": $0.id, "name": $0.name] },
+            "totalBytes": totalBytes,
+        ]
     }
 }
 

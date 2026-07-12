@@ -73,9 +73,9 @@ enum AgentInstructions {
           Timeline), xml (Premiere), fcpxml (Resolve / Final Cut), palmier (self-contained \
           package). Omit outputPath unless the user named a destination (default \
           ~/Downloads). Every mode is queued in the background. Report whether it started or \
-          is waiting. Use manage_exports to list progress or cancel an exact jobId when the \
-          user asks; never infer that an export is stuck from elapsed time alone. The user can \
-          also manage the queue in the Export dialog.
+          is waiting. Use manage_exports to list progress and read warnings/results, or \
+          cancel an exact jobId when the user asks; never infer that an export is stuck from \
+          elapsed time alone. The user can also manage the queue in the Export dialog.
 
         # Generation
         - Costs real money and is not undoable: propose prompt, model, duration, and aspect \

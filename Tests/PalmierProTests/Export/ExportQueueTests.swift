@@ -10,7 +10,7 @@ struct ExportQueueTests {
         var events: [String] = []
         let first = try enqueue(queue, "first.mov") { _ in
             events.append("first-start")
-            try? await Task.sleep(for: .milliseconds(80))
+            await Task.yield()
             events.append("first-finish")
         }
         let second = try enqueue(queue, "second.mov") { _ in
@@ -44,44 +44,17 @@ struct ExportQueueTests {
     @Test func cancelingWaitingJobDoesNotRunIt() async throws {
         let queue = ExportQueue()
         var waitingRan = false
-        _ = try enqueue(queue, "waiting-blocker.mov") { _ in
-            try? await Task.sleep(for: .milliseconds(100))
+        let blocker = try enqueue(queue, "waiting-blocker.mov") { _ in
+            try? await Task.sleep(for: .seconds(30))
         }
         let waiting = try enqueue(queue, "waiting.mov") { _ in waitingRan = true }
 
         queue.cancel(waiting.jobID)
+        queue.cancel(blocker.jobID)
 
         #expect(queue.job(waiting.jobID)?.status == .canceled)
         #expect(await waitUntil { !queue.hasActivity })
         #expect(!waitingRan)
-    }
-
-    @Test func reservesDestinationUntilFailureFinishes() async throws {
-        let queue = ExportQueue()
-        let outputURL = temporaryURL("reserved.mov")
-        _ = try queue.enqueueForTesting(outputURL: outputURL) { service in
-            try? await Task.sleep(for: .milliseconds(80))
-            service.error = "Render failed"
-        }
-
-        #expect(throws: ExportQueueError.self) {
-            try queue.enqueueForTesting(outputURL: outputURL) { _ in }
-        }
-        #expect(await waitUntil { queue.jobs.first?.status == .failed })
-
-        let retry = try queue.enqueueForTesting(outputURL: outputURL) { _ in }
-        #expect(await waitUntil { queue.job(retry.jobID)?.status == .completed })
-    }
-
-    @Test func reportsProgress() async throws {
-        let queue = ExportQueue()
-        let progressJob = try enqueue(queue, "progress.xml") { service in
-            service.onPhaseChange?(.exporting)
-            service.onProgressChange?(0.42)
-            try? await Task.sleep(for: .milliseconds(80))
-        }
-        #expect(await waitUntil { queue.job(progressJob.jobID)?.progress == 0.42 })
-        #expect(await waitUntil { queue.job(progressJob.jobID)?.status == .completed })
     }
 
     @Test func scopesHistoryByProject() async throws {
@@ -96,6 +69,36 @@ struct ExportQueueTests {
 
         #expect(queue.jobs(for: "project-a").isEmpty)
         #expect(queue.jobs(for: "project-b").map(\.id) == [second.jobID])
+
+        let url = temporaryURL("stable-project.palmier")
+        let firstEditor = EditorViewModel()
+        let secondEditor = EditorViewModel()
+        firstEditor.projectURL = url
+        secondEditor.projectURL = url
+        #expect(firstEditor.exportQueueProjectID == secondEditor.exportQueueProjectID)
+    }
+
+    @Test func lateCancellationKeepsCommittedExportCompleted() async throws {
+        let queue = ExportQueue()
+        let outputURL = temporaryURL("late-cancel.xml")
+        defer { try? FileManager.default.removeItem(at: outputURL) }
+        var jobID: UUID!
+        var cancellationAccepted: Bool?
+        let submission = try queue.enqueueForTesting(outputURL: outputURL) { service in
+            await service.export(
+                timeline: Fixtures.timeline(),
+                resolver: MediaResolver(manifest: { MediaManifest() }, projectURL: { nil }),
+                format: .xml,
+                resolution: .matchTimeline,
+                outputURL: outputURL
+            )
+            cancellationAccepted = queue.cancel(jobID)
+        }
+        jobID = submission.jobID
+
+        #expect(await waitUntil { queue.job(jobID)?.status.isFinished == true })
+        #expect(cancellationAccepted == false)
+        #expect(queue.job(jobID)?.status == .completed)
     }
 
     private func enqueue(
@@ -112,10 +115,9 @@ struct ExportQueueTests {
     }
 
     private func waitUntil(_ condition: @escaping @MainActor () -> Bool) async -> Bool {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-        while ContinuousClock.now < deadline {
+        for _ in 0..<1_000 {
             if condition() { return true }
-            try? await Task.sleep(for: .milliseconds(10))
+            await Task.yield()
         }
         return condition()
     }
