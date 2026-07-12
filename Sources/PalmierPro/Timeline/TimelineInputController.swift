@@ -28,6 +28,7 @@ final class TimelineInputController {
     private static let timelineRangeEdgeHitSlop: CGFloat = 8
     private static let trimLeftCursor = makeTrimCursor(edge: .left)
     private static let trimRightCursor = makeTrimCursor(edge: .right)
+    private static let slipCursor = makeSlipCursor()
 
     init(editor: EditorViewModel, view: TimelineView) {
         self.editor = editor
@@ -50,19 +51,28 @@ final class TimelineInputController {
                 right = min(right, bounds.right)
             } else if c.id == clip.id {
                 left = min(left, c.trimStartFrame)
-                right = min(right, effectiveTrimEnd(for: c))
+                right = min(right, editor.effectiveTrimEnd(for: c))
             }
         }
         return (left == .max ? clip.trimStartFrame : left,
-                right == .max ? effectiveTrimEnd(for: clip) : right)
+                right == .max ? editor.effectiveTrimEnd(for: clip) : right)
     }
 
-    /// Nest trim limits come from the child's live length, not creation time.
-    private func effectiveTrimEnd(for clip: Clip) -> Int {
-        guard clip.sourceClipType == .sequence, let child = editor.timeline(for: clip.mediaRef) else {
-            return clip.trimEndFrame
+    /// Timeline-frame slip caps: the tightest source headroom across the clip
+    /// and (when linked) its partners, through each clip's own speed.
+    private func slipHeadroom(for clip: Clip, linked: Bool) -> (right: Int, left: Int) {
+        var clips = [clip]
+        if linked {
+            clips += editor.linkedPartnerIds(of: clip.id).compactMap { editor.clipFor(id: $0) }
         }
-        return max(0, child.totalFrames - clip.trimStartFrame - clip.durationFrames)
+        var right = Int.max
+        var left = Int.max
+        for c in clips where c.mediaType != .image && c.mediaType != .text {
+            let speed = max(c.speed, 0.001)
+            right = min(right, Int((Double(c.trimStartFrame) / speed).rounded(.down)))
+            left = min(left, Int((Double(editor.effectiveTrimEnd(for: c)) / speed).rounded(.down)))
+        }
+        return (right == .max ? 0 : right, left == .max ? 0 : left)
     }
 
     func mouseDown(with event: NSEvent, geometry: TimelineGeometry) {
@@ -198,6 +208,24 @@ final class TimelineInputController {
                     isRipple: rippleTrim
                 )
                 dragState = edge == .left ? .trimLeft(drag) : .trimRight(drag)
+            } else if editor.toolMode == .trim {
+                if clip.multicamGroupId != nil {
+                    editor.refuseWithToast("Can't slip a multicam clip — it would go out of sync with the group.")
+                    dragState = .idle
+                } else if clip.mediaType == .image || clip.mediaType == .text {
+                    dragState = .idle
+                } else {
+                    Self.slipCursor.set()
+                    let headroom = slipHeadroom(for: clip, linked: linkedOn)
+                    dragState = .slip(DragState.SlipDrag(
+                        clipId: clip.id,
+                        trackIndex: hit.trackIndex,
+                        grabFrame: geometry.frameAt(x: point.x),
+                        maxRightDelta: headroom.right,
+                        maxLeftDelta: headroom.left,
+                        propagateToLinked: linkedOn
+                    ))
+                }
             } else {
                 let grabFrame = geometry.frameAt(x: point.x)
                 var companions: [DragState.Participant] = []
@@ -391,6 +419,12 @@ final class TimelineInputController {
             }
             dragState = .trimRight(drag)
 
+        case .slip(var drag):
+            snapIndicatorX = nil
+            let delta = frame - drag.grabFrame
+            drag.deltaFrames = max(-drag.maxLeftDelta, min(drag.maxRightDelta, delta))
+            dragState = .slip(drag)
+
         case .audioVolumeKf(let drag):
             dragState = .audioVolumeKf(applyVolumeKfDrag(drag, cursorFrame: frame, cursorY: point.y, geometry: geometry))
 
@@ -523,6 +557,15 @@ final class TimelineInputController {
                 }
             }
 
+        case .slip(let drag):
+            if drag.deltaFrames != 0 {
+                editor.commitSlip(
+                    clipId: drag.clipId,
+                    deltaFrames: drag.deltaFrames,
+                    propagateToLinked: drag.propagateToLinked
+                )
+            }
+
         case .audioVolumeKf(let drag):
             if drag.currentFrame != drag.originalFrame || drag.currentDb != drag.originalDb {
                 editor.commitMoveVolumeKeyframe(clipId: drag.clipId)
@@ -622,6 +665,14 @@ final class TimelineInputController {
                 NSCursor.openHand.set()
                 return
             }
+            if editor.toolMode == .trim {
+                if clip.multicamGroupId == nil, clip.mediaType != .image, clip.mediaType != .text {
+                    Self.slipCursor.set()
+                } else {
+                    NSCursor.operationNotAllowed.set()
+                }
+                return
+            }
         } else {
             view.setHoveredClipId(nil)
         }
@@ -672,6 +723,48 @@ final class TimelineInputController {
             arrow.move(to: NSPoint(x: arrowTipX, y: midY))
             arrow.line(to: NSPoint(x: arrowBaseX, y: midY + AppTheme.Spacing.sm))
             arrow.line(to: NSPoint(x: arrowBaseX, y: midY - AppTheme.Spacing.sm))
+            arrow.close()
+            arrow.lineJoinStyle = .round
+            arrow.lineWidth = AppTheme.BorderWidth.thick
+            AppTheme.Text.primary.setStroke()
+            arrow.stroke()
+            AppTheme.Status.error.setFill()
+            arrow.fill()
+            return true
+        }
+        return NSCursor(image: image, hotSpot: NSPoint(x: size.width / 2, y: size.height / 2))
+    }
+
+    /// Slip glyph: two fixed edge ticks with a double-headed arrow between them —
+    /// content slides while the clip edges stay put.
+    private static func makeSlipCursor() -> NSCursor {
+        let size = NSSize(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
+        let image = NSImage(size: size, flipped: false) { rect in
+            let midX = rect.midX
+            let midY = rect.midY
+            let ticks = NSBezierPath()
+            for direction: CGFloat in [-1, 1] {
+                let x = midX + direction * AppTheme.Spacing.md
+                ticks.move(to: NSPoint(x: x, y: midY - AppTheme.Spacing.smMd))
+                ticks.line(to: NSPoint(x: x, y: midY + AppTheme.Spacing.smMd))
+            }
+            ticks.lineCapStyle = .square
+
+            AppTheme.Background.base.setStroke()
+            ticks.lineWidth = AppTheme.BorderWidth.thick + AppTheme.BorderWidth.thin
+            ticks.stroke()
+            AppTheme.Status.error.setStroke()
+            ticks.lineWidth = AppTheme.BorderWidth.thick
+            ticks.stroke()
+
+            let arrow = NSBezierPath()
+            arrow.move(to: NSPoint(x: midX - AppTheme.Spacing.sm, y: midY))
+            arrow.line(to: NSPoint(x: midX - AppTheme.Spacing.xxs, y: midY + AppTheme.Spacing.xs))
+            arrow.line(to: NSPoint(x: midX - AppTheme.Spacing.xxs, y: midY - AppTheme.Spacing.xs))
+            arrow.close()
+            arrow.move(to: NSPoint(x: midX + AppTheme.Spacing.sm, y: midY))
+            arrow.line(to: NSPoint(x: midX + AppTheme.Spacing.xxs, y: midY + AppTheme.Spacing.xs))
+            arrow.line(to: NSPoint(x: midX + AppTheme.Spacing.xxs, y: midY - AppTheme.Spacing.xs))
             arrow.close()
             arrow.lineJoinStyle = .round
             arrow.lineWidth = AppTheme.BorderWidth.thick

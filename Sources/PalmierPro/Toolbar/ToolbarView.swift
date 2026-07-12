@@ -19,6 +19,7 @@ struct ToolbarView: View {
             HStack(spacing: AppTheme.Spacing.md) {
                 toolModeButton("cursorarrow", mode: .pointer, help: "Pointer (V)")
                 toolModeButton("scissors", mode: .razor, help: "Razor (C)")
+                toolModeButton("arrow.left.and.right", mode: .trim, help: "Trim (T)")
             }
 
             Divider()

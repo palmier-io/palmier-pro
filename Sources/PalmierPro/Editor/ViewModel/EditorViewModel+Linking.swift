@@ -185,6 +185,49 @@ extension EditorViewModel {
         trimClips(edits)
     }
 
+    /// Nest trim limits come from the child's live length, not creation time.
+    func effectiveTrimEnd(for clip: Clip) -> Int {
+        guard clip.sourceClipType == .sequence, let child = timeline(for: clip.mediaRef) else {
+            return clip.trimEndFrame
+        }
+        return max(0, child.totalFrames - clip.trimStartFrame - clip.durationFrames)
+    }
+
+    /// Slip: shift which source range plays without moving the clip on the timeline.
+    /// Positive delta (drag right) reveals earlier material: trimStart -= d, trimEnd += d.
+    func commitSlip(clipId: String, deltaFrames: Int, propagateToLinked: Bool) {
+        guard let loc = findClip(id: clipId) else { return }
+        let lead = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        var targets = [lead]
+        if propagateToLinked {
+            targets += linkedPartnerIds(of: clipId).compactMap { pid in
+                findClip(id: pid).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex] }
+            }
+        }
+        targets = targets.filter {
+            $0.mediaType != .image && $0.mediaType != .text && $0.multicamGroupId == nil
+        }
+        guard !targets.isEmpty else { return }
+
+        // Clamp the shared timeline delta to the tightest headroom in the group.
+        var delta = deltaFrames
+        for t in targets {
+            let speed = max(t.speed, 0.001)
+            delta = min(delta, Int((Double(t.trimStartFrame) / speed).rounded(.down)))
+            delta = max(delta, -Int((Double(effectiveTrimEnd(for: t)) / speed).rounded(.down)))
+        }
+        guard delta != 0 else { return }
+
+        mutateClips(ids: Set(targets.map(\.id)),
+                    actionName: targets.count == 1 ? "Slip Clip" : "Slip Clips") { c in
+            let sourceDelta = Int((Double(delta) * c.speed).rounded())
+            // Lockstep clamp so rounding through speed never drives a trim negative.
+            let applied = max(-c.trimEndFrame, min(c.trimStartFrame, sourceDelta))
+            c.trimStartFrame -= applied
+            c.trimEndFrame += applied
+        }
+    }
+
     func trimValues(for clip: Clip, edge: TrimEdge, delta: Int) -> (trimStart: Int, trimEnd: Int) {
         let sourceDelta = Int((Double(delta) * clip.speed).rounded())
         // Image/Text clips have no source-material bound, so their trim fields can go negative

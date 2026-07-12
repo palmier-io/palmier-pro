@@ -315,6 +315,15 @@ final class TimelineView: NSView {
             return Set(editor.linkedPartnerIds(of: drag.clipId))
         }()
 
+        let slipDrag: DragState.SlipDrag? = {
+            if case .slip(let drag) = inputController.dragState { return drag }
+            return nil
+        }()
+        let slipPartnerIds: Set<String> = {
+            guard let drag = slipDrag, drag.propagateToLinked else { return [] }
+            return Set(editor.linkedPartnerIds(of: drag.clipId))
+        }()
+
         // Live ripple-trim layout: downstream clips shift while the edge is dragged.
         let ripplePlan: EditorViewModel.RippleTrimPlan? = {
             guard let (drag, isLeft) = trimDrag, drag.isRipple else { return nil }
@@ -440,6 +449,31 @@ final class TimelineView: NSView {
                         let fps = editor.timeline.fps
                         deferredDraws.append {
                             ClipRenderer.draw(previewClip, type: clip.mediaType, in: previewRect,
+                                              isSelected: isSelected, context: ctx,
+                                              cache: cache, displayName: name,
+                                              multicamAngleLabel: chip,
+                                              fps: fps, isMissing: clipMissing, isGenerating: clipGenerating)
+                        }
+                    }
+                    continue
+                }
+
+                if let drag = slipDrag, clip.id == drag.clipId || slipPartnerIds.contains(clip.id) {
+                    var previewClip = clip
+                    let sourceDelta = Int((Double(drag.deltaFrames) * clip.speed).rounded())
+                    let applied = max(-clip.trimEndFrame, min(clip.trimStartFrame, sourceDelta))
+                    previewClip.trimStartFrame = clip.trimStartFrame - applied
+                    previewClip.trimEndFrame = clip.trimEndFrame + applied
+                    // Slip never moves the clip: rect is the resting rect, only content shifts.
+                    let rect = geo.clipRect(for: clip, trackIndex: ti)
+                    clipDisplayRects[clip.id] = rect
+                    if rect.intersects(dirtyRect) {
+                        let chip = angleLabel(clip)
+                        let cache = editor.mediaVisualCache
+                        let name = editor.clipDisplayLabel(for: clip)
+                        let fps = editor.timeline.fps
+                        deferredDraws.append {
+                            ClipRenderer.draw(previewClip, type: clip.mediaType, in: rect,
                                               isSelected: isSelected, context: ctx,
                                               cache: cache, displayName: name,
                                               multicamAngleLabel: chip,
