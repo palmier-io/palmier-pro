@@ -92,7 +92,7 @@ final class MCPService {
     // Convert args on the main actor so the non-Sendable dict never crosses the hop.
     private static func dispatchCall(_ params: CallTool.Parameters, executor: ToolExecutor) async -> CallTool.Result {
         let args = ToolArgsBridge.argsFromMCP(params.arguments ?? [:])
-        let result = await executor.execute(name: params.name, args: args)
+        let result = await executor.execute(name: params.name, args: args, source: "mcp")
         return result.toMCPResult()
     }
 

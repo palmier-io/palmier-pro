@@ -21,24 +21,50 @@ final class ToolExecutor {
     var feedbackState = FeedbackState()
     var lastTranscriptContext: TranscriptionToolContext?
 
-    func execute(name: String, args: [String: Any]) async -> ToolResult {
+    func execute(name: String, args: [String: Any], source: String = "agent") async -> ToolResult {
+        let started = ContinuousClock.now
         guard let tool = ToolName(rawValue: name) else {
+            captureToolAnalytics(
+                toolName: name,
+                source: source,
+                projectId: editor?.projectId,
+                status: "failed",
+                started: started,
+                failureReason: "unknown_tool"
+            )
             return .error("Unknown tool: \(name)")
         }
 
         // project tools act on AppState before editor is available
         switch tool {
         case .getProjects, .openProject, .newProject, .closeProject:
-            return await runProjectTool(tool, args)
+            let result = await runProjectTool(tool, args)
+            captureToolAnalytics(
+                toolName: tool.rawValue,
+                source: source,
+                projectId: editor?.projectId,
+                status: result.isError ? "failed" : "finished",
+                started: started
+            )
+            return result
         default:
             break
         }
 
-        guard let editor else { return .error("Editor not available") }
+        guard let editor else {
+            captureToolAnalytics(
+                toolName: tool.rawValue,
+                source: source,
+                projectId: nil,
+                status: "failed",
+                started: started,
+                failureReason: "editor_unavailable"
+            )
+            return .error("Editor not available")
+        }
         let before = editor.timelines
         let idsBefore = currentIdUniverse(editor)
         let result: ToolResult
-        let started = ContinuousClock.now
         Log.agent.notice(
             "tool start name=\(tool.rawValue)",
             telemetry: "Agent tool started",
@@ -77,8 +103,48 @@ final class ToolExecutor {
                 data: payload
             )
         }
+        captureToolAnalytics(
+            toolName: tool.rawValue,
+            source: source,
+            projectId: editor.projectId,
+            status: result.isError ? "failed" : "finished",
+            started: started,
+            timelineChanged: editor.timelines != before
+        )
         // Shorten on pre ∪ post ids: new ids and just-removed ids both stay short.
         return await shorteningIds(in: result, editor: editor, alsoKnown: idsBefore)
+    }
+
+    private func captureToolAnalytics(
+        toolName: String,
+        source: String,
+        projectId: String?,
+        status: String,
+        started: ContinuousClock.Instant? = nil,
+        timelineChanged: Bool? = nil,
+        failureReason: String? = nil
+    ) {
+        var payload: [String: Any] = [
+            "tool_name": toolName,
+            "source": source,
+            "project_id": projectId ?? "unknown",
+            "status": status,
+        ]
+        if let started {
+            payload["tool_duration_seconds"] = durationSeconds(since: started)
+        }
+        if let timelineChanged {
+            payload["timeline_changed"] = timelineChanged
+        }
+        if let failureReason {
+            payload["failure_reason"] = failureReason
+        }
+        Analytics.capture(.agentToolCalled, properties: payload)
+    }
+
+    private func durationSeconds(since started: ContinuousClock.Instant) -> Double {
+        let duration = started.duration(to: .now)
+        return Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
     }
 
     private func run(_ tool: ToolName, _ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
