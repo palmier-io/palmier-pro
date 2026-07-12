@@ -24,6 +24,12 @@ final class MediaResolver: @unchecked Sendable {
         Self.expectedURLMap(entries: manifest().entries, projectURL: projectURL())
     }
 
+    func snapshot() -> MediaResolver {
+        let manifest = manifest()
+        let projectURL = projectURL()
+        return MediaResolver(manifest: { manifest }, projectURL: { projectURL })
+    }
+
     static func expectedURLMap(entries: [MediaManifestEntry], projectURL: URL?) -> [String: URL] {
         Dictionary(uniqueKeysWithValues: entries.compactMap { entry in
             expectedURL(for: entry, projectURL: projectURL).map { (entry.id, $0) }

@@ -60,6 +60,7 @@ enum HDRVideoExporter {
         to outputURL: URL,
         onProgress: (@Sendable (Double) -> Void)? = nil
     ) async throws {
+        try Task.checkCancellation()
         let composition = inputs.composition
         let videoComposition = inputs.videoComposition
         let audioMix = inputs.audioMix
@@ -150,10 +151,18 @@ enum HDRVideoExporter {
         }
         let failure = FailureBox()
         let audioPump = (audioInput != nil && audioOutput != nil) ? PumpBox(audioInput!, audioOutput!, reader) : nil
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask { await pumpVideoProcessed(processing, failure: failure, onSeconds: progressReporter) }
-            if let audioPump { group.addTask { await pump(audioPump, failure: failure) } }
-            await group.waitForAll()
+        nonisolated(unsafe) let unsafeReader = reader
+        nonisolated(unsafe) let unsafeWriter = writer
+        try await withTaskCancellationHandler {
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await pumpVideoProcessed(processing, failure: failure, onSeconds: progressReporter) }
+                if let audioPump { group.addTask { await pump(audioPump, failure: failure) } }
+                await group.waitForAll()
+            }
+            try Task.checkCancellation()
+        } onCancel: {
+            unsafeReader.cancelReading()
+            unsafeWriter.cancelWriting()
         }
 
         if let reason = failure.reason {
@@ -164,6 +173,7 @@ enum HDRVideoExporter {
         if reader.status == .failed {
             throw HDRExportError(reason: reader.error?.localizedDescription ?? "reader failed")
         }
+        try Task.checkCancellation()
         await writer.finishWriting()
         if writer.status != .completed {
             throw HDRExportError(reason: writer.error?.localizedDescription ?? "writer status \(writer.status.rawValue)")

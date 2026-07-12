@@ -21,20 +21,32 @@ struct TitleBarLeadingView: View {
 
 struct TitleBarTrailingView: View {
     @Environment(EditorViewModel.self) var editor
+    @State private var exportQueue = ExportQueue.shared
 
     var body: some View {
+        let jobs = exportQueue.jobs(for: editor.exportQueueProjectID)
+        let activeCount = jobs.count { $0.status.isRunning }
+        let waitingCount = jobs.count { $0.status == .waiting }
+
         HStack(spacing: AppTheme.Spacing.sm) {
-            Spacer(minLength: 0)
+            Spacer(minLength: AppTheme.Spacing.zero)
 
             UpdateProjectBadge()
 
             Button(action: { editor.showExportDialog = true }) {
                 HStack(spacing: AppTheme.Spacing.xs) {
-                    Image(systemName: "square.and.arrow.up")
-                    .offset(y: -1)
+                    Group {
+                        if activeCount > 0 {
+                            exportActivityDot
+                        } else {
+                            Image(systemName: "square.and.arrow.up")
+                                .offset(y: -1)
+                        }
+                    }
+                    .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
                     Text("Export")
                 }
-                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .padding(.horizontal, AppTheme.Spacing.sm)
                 .frame(height: AppTheme.IconSize.lg)
@@ -42,8 +54,25 @@ struct TitleBarTrailingView: View {
                 .help("Export (⌘E)")
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(
+                activeCount == 0 && waitingCount == 0
+                    ? "Export"
+                    : "Export, \(activeCount) active, \(waitingCount) waiting"
+            )
 
             UserAvatarButton()
         }
+    }
+
+    private var exportActivityDot: some View {
+        PhaseAnimator([false, true]) { dimmed in
+            Circle()
+                .fill(AppTheme.Status.warningColor)
+                .frame(width: AppTheme.Export.activityDotSize, height: AppTheme.Export.activityDotSize)
+                .opacity(dimmed ? AppTheme.Opacity.medium : AppTheme.Opacity.opaque)
+        } animation: { _ in
+            .easeInOut(duration: AppTheme.Anim.pulse)
+        }
+        .accessibilityHidden(true)
     }
 }

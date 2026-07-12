@@ -1,6 +1,75 @@
 import Foundation
 
 extension ToolExecutor {
+    func manageExports(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        let input: ManageExportsArgs = try decodeToolArgs(args, path: "manage_exports")
+        let projectJobs = exportQueue.jobs(for: editor.exportQueueProjectID)
+
+        switch input.action {
+        case "list":
+            guard input.jobId == nil else {
+                throw ToolError("manage_exports: jobId only applies to cancel")
+            }
+            let waitingIDs = exportQueue.jobs.filter { $0.status == .waiting }.map(\.id)
+            let exports = projectJobs.reversed().map { job -> [String: Any] in
+                var row: [String: Any] = [
+                    "jobId": job.id.uuidString,
+                    "filename": job.filename,
+                    "path": job.outputURL.path,
+                    "status": job.status.rawValue,
+                    "progress": Int((job.progress * 100).rounded()),
+                ]
+                if let index = waitingIDs.firstIndex(of: job.id) {
+                    row["queuePosition"] = index + 1
+                }
+                if let error = job.error {
+                    row["error"] = error
+                }
+                if !job.warnings.isEmpty {
+                    row["warnings"] = job.warnings
+                }
+                if let report = job.palmierReport {
+                    row["result"] = report.toolPayload
+                }
+                return row
+            }
+            return try jsonResult(["exports": Array(exports)], tool: "manage_exports")
+        case "cancel":
+            guard let rawID = input.jobId, let id = UUID(uuidString: rawID) else {
+                throw ToolError("manage_exports: cancel requires a valid jobId")
+            }
+            guard let job = projectJobs.first(where: { $0.id == id }) else {
+                throw ToolError("manage_exports: export not found in the current project")
+            }
+
+            let responseStatus: String
+            let cancellationRequested: Bool
+            switch job.status {
+            case .waiting:
+                exportQueue.cancel(id)
+                responseStatus = "removed"
+                cancellationRequested = true
+            case .preparing, .exporting:
+                cancellationRequested = exportQueue.cancel(id)
+                responseStatus = cancellationRequested ? "canceling" : job.status.rawValue
+            case .canceling:
+                responseStatus = "canceling"
+                cancellationRequested = true
+            case .completed, .failed, .canceled:
+                responseStatus = job.status.rawValue
+                cancellationRequested = false
+            }
+            return try jsonResult([
+                "jobId": job.id.uuidString,
+                "filename": job.filename,
+                "status": responseStatus,
+                "cancellationRequested": cancellationRequested,
+            ], tool: "manage_exports")
+        default:
+            throw ToolError("manage_exports: action must be list or cancel")
+        }
+    }
+
     func exportProject(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         let input: ExportProjectArgs = try decodeToolArgs(args, path: "export_project")
         let mode = try ExportProjectMode(named: input.mode)
@@ -47,9 +116,15 @@ extension ToolExecutor {
             guard timeline.totalFrames > 0 else {
                 throw ToolError("export_project: timeline is empty")
             }
-            return try exportVideo(editor, timeline: timeline, format: format, resolution: resolution, outputURL: outputURL)
+            return try enqueueExport(
+                editor, timeline: timeline, mode: mode, format: format,
+                resolution: resolution, target: .default, outputURL: outputURL
+            )
         case .xml:
-            return try await exportXML(editor, timeline: timeline, outputURL: outputURL)
+            return try enqueueExport(
+                editor, timeline: timeline, mode: mode, format: .xml,
+                resolution: .matchTimeline, target: .default, outputURL: outputURL
+            )
         case .fcpxml:
             let target: FCPXMLTarget
             if let raw = input.fcpxmlTarget {
@@ -60,127 +135,57 @@ extension ToolExecutor {
             } else {
                 target = .default
             }
-            return try await exportFCPXML(editor, timeline: timeline, target: target, outputURL: outputURL)
+            return try enqueueExport(
+                editor, timeline: timeline, mode: mode, format: .fcpxml,
+                resolution: .matchTimeline, target: target, outputURL: outputURL
+            )
         case .palmier:
-            return try await exportPalmier(editor, outputURL: outputURL)
+            return try enqueuePalmierExport(editor, outputURL: outputURL)
         }
     }
 
-    private func exportVideo(
+    private func enqueueExport(
         _ editor: EditorViewModel,
         timeline: Timeline,
+        mode: ExportProjectMode,
         format: ExportFormat,
         resolution: ExportResolution,
+        target: FCPXMLTarget,
         outputURL: URL
     ) throws -> ToolResult {
-        guard ExportCoordinator.beginExportIfIdle() else {
-            throw ToolError("export_project: Another export is already in progress.")
-        }
-
-        let resolver = editor.mediaResolver
-        let missingMediaRefs = editor.missingMediaRefs
-        let name = outputURL.lastPathComponent
-        let resolveTimeline = editor.timelineResolver()
-
-        Task { @MainActor in
-            defer { ExportCoordinator.endExport() }
-            let service = ExportService()
-            await service.export(
-                timeline: timeline,
-                resolver: resolver,
-                resolveTimeline: resolveTimeline,
-                format: format,
-                resolution: resolution,
-                missingMediaRefs: missingMediaRefs,
-                outputURL: outputURL,
-                acquireSlot: false,
-                analyticsContext: ExportAnalyticsContext(source: "agent", projectId: editor.projectId)
-            )
-            if let error = service.error {
-                AppNotifications.exportFailed(name: name, reason: error)
-            } else {
-                let report = service.lastReport
-                let warningCount = (report?.offlineMediaRefs.count ?? 0) + (report?.unprocessableMediaRefs.count ?? 0)
-                AppNotifications.exportComplete(
-                    name: name,
-                    outputURL: outputURL,
-                    size: report?.outputSize,
-                    warningCount: warningCount
-                )
-            }
-        }
-
-        return try jsonResult([
-            "status": "started",
-            "mode": ExportProjectMode.video.rawValue,
-            "path": outputURL.path,
-            "codec": format.displayName,
-            "resolution": resolution.rawValue,
-            "timeline": timeline.name,
-            "durationFrames": timeline.totalFrames,
-            "durationSeconds": Double(timeline.totalFrames) / Double(max(1, timeline.fps)),
-            "fps": timeline.fps,
-            "note": "Rendering in the background. A system notification will report completion or failure.",
-        ])
-    }
-
-    private func exportXML(_ editor: EditorViewModel, timeline: Timeline, outputURL: URL) async throws -> ToolResult {
-        let service = ExportService()
-        await service.export(
+        let warnings = format == .xml || format == .fcpxml
+            ? nestExportWarnings(editor, timeline: timeline)
+            : []
+        let submission = try exportQueue.enqueueVideo(
             timeline: timeline,
             resolver: editor.mediaResolver,
             resolveTimeline: editor.timelineResolver(),
-            format: .xml,
-            resolution: .matchTimeline,
-            outputURL: outputURL,
-            analyticsContext: ExportAnalyticsContext(source: "agent", projectId: editor.projectId)
-        )
-        guard service.error == nil, FileManager.default.fileExists(atPath: outputURL.path) else {
-            throw ToolError("export_project: \(service.error ?? "XML export failed")")
-        }
-        let warnings = nestExportWarnings(editor, timeline: timeline)
-        return try jsonResult([
-            "status": "exported",
-            "mode": ExportProjectMode.xml.rawValue,
-            "path": outputURL.path,
-            "timeline": timeline.name,
-            "width": timeline.width,
-            "height": timeline.height,
-            "durationFrames": timeline.totalFrames,
-            "durationSeconds": Double(timeline.totalFrames) / Double(max(1, timeline.fps)),
-            "fps": timeline.fps,
-            "warnings": warnings,
-        ])
-    }
-
-    private func exportFCPXML(_ editor: EditorViewModel, timeline: Timeline, target: FCPXMLTarget, outputURL: URL) async throws -> ToolResult {
-        let service = ExportService()
-        await service.export(
-            timeline: timeline,
-            resolver: editor.mediaResolver,
-            resolveTimeline: editor.timelineResolver(),
-            format: .fcpxml,
-            resolution: .matchTimeline,
+            format: format,
+            resolution: resolution,
             fcpxmlTarget: target,
+            missingMediaRefs: editor.missingMediaRefs,
             outputURL: outputURL,
-            analyticsContext: ExportAnalyticsContext(source: "agent", projectId: editor.projectId)
+            source: .agent,
+            projectID: editor.exportQueueProjectID,
+            analyticsProjectID: editor.projectId,
+            warnings: warnings
         )
-        guard service.error == nil, FileManager.default.fileExists(atPath: outputURL.path) else {
-            throw ToolError("export_project: \(service.error ?? "FCPXML export failed")")
-        }
-        let warnings = nestExportWarnings(editor, timeline: timeline)
-        return try jsonResult([
-            "status": "exported",
-            "mode": ExportProjectMode.fcpxml.rawValue,
+
+        var payload: [String: Any] = [
+            "status": submission.started ? "started" : "queued",
+            "jobId": submission.jobID.uuidString,
+            "queuePosition": submission.queuePosition,
+            "mode": mode.rawValue,
             "path": outputURL.path,
+            "format": format.displayName,
             "timeline": timeline.name,
-            "width": timeline.width,
-            "height": timeline.height,
             "durationFrames": timeline.totalFrames,
             "durationSeconds": Double(timeline.totalFrames) / Double(max(1, timeline.fps)),
             "fps": timeline.fps,
-            "warnings": warnings,
-        ])
+            "note": "The export is available in the Export dialog.",
+        ]
+        if !warnings.isEmpty { payload["warnings"] = warnings }
+        return try jsonResult(payload)
     }
 
     private func nestExportWarnings(_ editor: EditorViewModel, timeline: Timeline) -> [String] {
@@ -189,43 +194,31 @@ extension ToolExecutor {
                 && (editor.timeline(for: $0.mediaRef)?.totalFrames ?? 0) == 0
         }
         guard dropped > 0 else { return [] }
-        return ["\(dropped) nested timeline clip(s) were skipped — their timelines are empty or missing."]
+        let clips = dropped == 1 ? "clip was" : "clips were"
+        return ["\(dropped) nested timeline \(clips) skipped because the source timeline is empty or missing."]
     }
 
-    private func exportPalmier(_ editor: EditorViewModel, outputURL: URL) async throws -> ToolResult {
-        guard ExportCoordinator.beginExportIfIdle() else {
-            throw ToolError("export_project: Another export is already in progress.")
-        }
-        defer { ExportCoordinator.endExport() }
-
-        let service = ExportService()
-        guard let report = await service.exportPalmierProject(
+    private func enqueuePalmierExport(_ editor: EditorViewModel, outputURL: URL) throws -> ToolResult {
+        let submission = try exportQueue.enqueuePalmierProject(
             projectFile: editor.projectFileSnapshot(),
             manifest: editor.mediaManifest,
             generationLog: editor.generationLog,
             sourceProjectURL: editor.projectURL,
             outputURL: outputURL,
-            acquireSlot: false,
-            analyticsContext: ExportAnalyticsContext(source: "agent", projectId: editor.projectId)
-        ) else {
-            throw ToolError("export_project: \(service.error ?? "Palmier project export failed")")
-        }
+            source: .agent,
+            projectID: editor.exportQueueProjectID,
+            analyticsProjectID: editor.projectId
+        )
 
-        let missing = report.missing.map { ["id": $0.id, "name": $0.name] }
-        let warnings = missing.isEmpty
-            ? []
-            : ["Exported, but \(missing.count) media file\(missing.count == 1 ? "" : "s") were missing and could not be included."]
-
-        return try jsonResult([
-            "status": warnings.isEmpty ? "exported" : "exportedWithWarnings",
+        let payload: [String: Any] = [
+            "status": submission.started ? "started" : "queued",
+            "jobId": submission.jobID.uuidString,
+            "queuePosition": submission.queuePosition,
             "mode": ExportProjectMode.palmier.rawValue,
             "path": outputURL.path,
-            "collectedMediaRefs": report.collected,
-            "copiedInternalMediaCount": report.copiedInternal,
-            "missingMedia": missing,
-            "totalBytes": report.totalBytes,
-            "warnings": warnings,
-        ])
+            "note": "The export is available in the Export dialog.",
+        ]
+        return try jsonResult(payload)
     }
 
     private func exportDestination(
@@ -292,7 +285,7 @@ extension ToolExecutor {
 
     private func uniqueExportURL(_ url: URL) -> URL {
         let fm = FileManager.default
-        guard fm.fileExists(atPath: url.path) else { return url }
+        guard fm.fileExists(atPath: url.path) || exportQueue.isDestinationReserved(url) else { return url }
 
         let directory = url.deletingLastPathComponent()
         let ext = url.pathExtension
@@ -301,16 +294,34 @@ extension ToolExecutor {
         while true {
             let filename = ext.isEmpty ? "\(base) \(index)" : "\(base) \(index).\(ext)"
             let candidate = directory.appendingPathComponent(filename)
-            if !fm.fileExists(atPath: candidate.path) { return candidate }
+            if !fm.fileExists(atPath: candidate.path), !exportQueue.isDestinationReserved(candidate) { return candidate }
             index += 1
         }
     }
 
-    private func jsonResult(_ payload: [String: Any]) throws -> ToolResult {
+    private func jsonResult(_ payload: [String: Any], tool: String = "export_project") throws -> ToolResult {
         guard let json = Self.jsonString(payload) else {
-            throw ToolError("export_project: failed to encode export report")
+            throw ToolError("\(tool): failed to encode export report")
         }
         return .ok(json)
+    }
+}
+
+private struct ManageExportsArgs: DecodableToolArgs {
+    static let allowedKeys: Set<String> = ["action", "jobId"]
+
+    let action: String
+    var jobId: String?
+}
+
+private extension PalmierProjectExporter.Report {
+    var toolPayload: [String: Any] {
+        [
+            "collectedMediaRefs": collected,
+            "copiedInternalMediaCount": copiedInternal,
+            "missingMedia": missing.map { ["id": $0.id, "name": $0.name] },
+            "totalBytes": totalBytes,
+        ]
     }
 }
 

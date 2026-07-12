@@ -11,12 +11,14 @@ import UniformTypeIdentifiers
 final class ToolHarness {
     let editor: EditorViewModel
     let executor: ToolExecutor
+    let exportQueue: ExportQueue
 
-    init(timeline: Timeline = Fixtures.timeline()) {
+    init(timeline: Timeline = Fixtures.timeline(), exportQueue: ExportQueue = ExportQueue()) {
         let editor = EditorViewModel()
         editor.timeline = timeline
         self.editor = editor
-        self.executor = ToolExecutor(editor: editor)
+        self.exportQueue = exportQueue
+        self.executor = ToolExecutor(editor: editor, exportQueue: exportQueue)
     }
 
     /// Run a tool by name and decode the .ok text payload as JSON.

@@ -30,7 +30,7 @@ struct ExportProjectToolTests {
         #expect(ToolHarness.textOf(emptyTimeline).contains("timeline is empty"))
     }
 
-    @Test func handlesDestinationsAndExportGate() async throws {
+    @Test func handlesDestinationsAndQueue() async throws {
         let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
             Fixtures.videoTrack(clips: [Fixtures.clip(mediaRef: "missing", start: 0, duration: 30)]),
         ]))
@@ -60,28 +60,25 @@ struct ExportProjectToolTests {
         defer { try? FileManager.default.removeItem(at: uniqueURL) }
         #expect(uniqueURL.deletingLastPathComponent().standardizedFileURL == downloads.standardizedFileURL)
         #expect(uniqueURL.lastPathComponent == "\(base) 2.xml")
+        try await waitForJob(from: unique, in: h.exportQueue)
 
-        await ExportCoordinator.acquireExport()
-        defer { ExportCoordinator.endExport() }
-
-        let uiActiveXML = FileManager.default.temporaryDirectory
-            .appendingPathComponent("export-tool-ui-active-\(UUID().uuidString).xml")
-        defer { try? FileManager.default.removeItem(at: uiActiveXML) }
-        let uiActiveXMLResult = await h.runRaw("export_project", args: [
-            "mode": "xml",
-            "outputPath": uiActiveXML.path,
-        ])
-        #expect(!uiActiveXMLResult.isError)
-        #expect(FileManager.default.fileExists(atPath: uiActiveXML.path))
-
+        let blocker = try h.exportQueue.enqueueForTesting(
+            outputURL: FileManager.default.temporaryDirectory.appendingPathComponent("export-blocker-\(UUID().uuidString).mov")
+        ) { _ in
+            try? await Task.sleep(for: .seconds(30))
+        }
         let uiActiveVideo = FileManager.default.temporaryDirectory
             .appendingPathComponent("export-tool-ui-active-\(UUID().uuidString).mp4")
-        let uiActiveResult = await h.runRaw("export_project", args: [
+        let uiActiveResult = try await h.runOK("export_project", args: [
             "mode": "video",
             "outputPath": uiActiveVideo.path,
-        ])
-        #expect(uiActiveResult.isError)
-        #expect(ToolHarness.textOf(uiActiveResult).contains("Another export"))
+        ]) as? [String: Any]
+        #expect(uiActiveResult?["status"] as? String == "queued")
+        #expect(uiActiveResult?["queuePosition"] as? Int == 1)
+        if let rawID = uiActiveResult?["jobId"] as? String, let id = UUID(uuidString: rawID) {
+            h.exportQueue.cancel(id)
+        }
+        h.exportQueue.cancel(blocker.jobID)
         #expect(!FileManager.default.fileExists(atPath: uiActiveVideo.path))
     }
 
@@ -104,6 +101,7 @@ struct ExportProjectToolTests {
         #expect(result?["durationFrames"] as? Int == 42)
         // Exporting by id doesn't switch the active timeline.
         #expect(h.editor.activeTimelineId == activeBefore)
+        try await waitForJob(from: result, in: h.exportQueue)
         let xml = String(decoding: try Data(contentsOf: out), as: UTF8.self)
         #expect(xml.contains("<name>B-Roll Cut</name>"))
 
@@ -115,8 +113,10 @@ struct ExportProjectToolTests {
     }
 
     @Test func exportsXML() async throws {
+        var nestedClip = Fixtures.clip(mediaRef: "missing", start: 0, duration: 30)
+        nestedClip.sourceClipType = .sequence
         let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
-            Fixtures.videoTrack(clips: [Fixtures.clip(mediaRef: "missing", start: 0, duration: 30)]),
+            Fixtures.videoTrack(clips: [nestedClip]),
         ]))
         let xmlURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("export-tool-\(UUID().uuidString).xml")
@@ -125,8 +125,82 @@ struct ExportProjectToolTests {
             "mode": "xml",
             "outputPath": xmlURL.path,
         ]) as? [String: Any]
-        #expect(xml?["status"] as? String == "exported")
+        #expect(["started", "queued"].contains(xml?["status"] as? String ?? ""))
         #expect(xml?["mode"] as? String == "xml")
+        #expect((xml?["warnings"] as? [String])?.count == 1)
+        try await waitForJob(from: xml, in: h.exportQueue)
         #expect(try String(contentsOf: xmlURL, encoding: .utf8).contains("<xmeml version=\"4\">"))
+
+        h.editor.mediaManifest.entries = [MediaManifestEntry(
+            id: "missing", name: "Missing", type: .video,
+            source: .external(absolutePath: "/tmp/missing-\(UUID().uuidString).mov"), duration: 1
+        )]
+        let palmierURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("export-tool-\(UUID().uuidString).palmier")
+        defer { try? FileManager.default.removeItem(at: palmierURL) }
+        let palmier = try await h.runOK("export_project", args: [
+            "mode": "palmier", "outputPath": palmierURL.path,
+        ]) as? [String: Any]
+        try await waitForJob(from: palmier, in: h.exportQueue)
+        let listed = try await h.runOK("manage_exports", args: ["action": "list"]) as? [String: Any]
+        let export = (listed?["exports"] as? [[String: Any]])?.first
+        #expect((export?["warnings"] as? [String])?.count == 1)
+        let report = export?["result"] as? [String: Any]
+        #expect((report?["missingMedia"] as? [[String: Any]])?.count == 1)
+    }
+
+    @Test func managesCurrentProjectExports() async throws {
+        let h = ToolHarness()
+        let projectID = h.editor.exportQueueProjectID
+        let active = try h.exportQueue.enqueueForTesting(
+            outputURL: temporaryExportURL("active"),
+            projectID: projectID
+        ) { _ in
+            try? await Task.sleep(for: .seconds(30))
+        }
+        let waiting = try h.exportQueue.enqueueForTesting(
+            outputURL: temporaryExportURL("waiting"),
+            projectID: projectID
+        ) { _ in }
+        let other = try h.exportQueue.enqueueForTesting(
+            outputURL: temporaryExportURL("other"),
+            projectID: "another-project"
+        ) { _ in }
+
+        let listed = try await h.runOK("manage_exports", args: ["action": "list"]) as? [String: Any]
+        let exports = try #require(listed?["exports"] as? [[String: Any]])
+        #expect(exports.map { $0["jobId"] as? String } == [waiting.jobID.uuidString, active.jobID.uuidString])
+        #expect(exports.first?["status"] as? String == "queued")
+        #expect(exports.first?["queuePosition"] as? Int == 1)
+
+        let removed = try await h.runOK("manage_exports", args: [
+            "action": "cancel", "jobId": waiting.jobID.uuidString,
+        ]) as? [String: Any]
+        #expect(removed?["status"] as? String == "removed")
+        #expect(h.exportQueue.jobs.first(where: { $0.id == waiting.jobID })?.status == .canceled)
+
+        let canceling = try await h.runOK("manage_exports", args: [
+            "action": "cancel", "jobId": active.jobID.uuidString,
+        ]) as? [String: Any]
+        #expect(canceling?["status"] as? String == "canceling")
+        h.exportQueue.cancel(other.jobID)
+    }
+
+    private func temporaryExportURL(_ name: String) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("manage-exports-\(name)-\(UUID().uuidString).mov")
+    }
+
+    private func waitForJob(from result: [String: Any]?, in queue: ExportQueue) async throws {
+        let rawID = try #require(result?["jobId"] as? String)
+        let id = try #require(UUID(uuidString: rawID))
+        for _ in 0..<1_000 {
+            if let status = queue.jobs.first(where: { $0.id == id })?.status, status.isFinished {
+                #expect(status == .completed)
+                return
+            }
+            await Task.yield()
+        }
+        Issue.record("Export job did not finish")
     }
 }

@@ -126,7 +126,7 @@ final class SearchIndexCoordinator {
         )
         worker = Task(priority: .utility) { [weak self] in
             while let self, !Task.isCancelled, let asset = self.dequeue() {
-                while ExportCoordinator.isExportActive, !Task.isCancelled {
+                while ExportQueue.shared.isExportActive, !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(2))
                 }
                 self.currentAssetFraction = 0
@@ -168,7 +168,7 @@ final class SearchIndexCoordinator {
         do {
             async let transcriptDone: Void = {
                 if transcribe {
-                    try await ExportCoordinator.waitWhileExportActive()
+                    try await ExportQueue.shared.waitWhileExportActive()
                     _ = try await TranscriptCache.shared.transcript(for: url, isVideo: isVideo, range: nil)
                 }
             }()

@@ -4,7 +4,7 @@ import Foundation
 /// into the new bundle's `media/` directory and rewritten to a project-relative source
 enum PalmierProjectExporter {
 
-    struct Report: Equatable {
+    struct Report: Equatable, Sendable {
         /// Entry ids that were `.external` and are now bundled.
         var collected: [String] = []
         /// Already-internal media files copied across.
@@ -14,7 +14,13 @@ enum PalmierProjectExporter {
         /// Total bytes copied into the new bundle.
         var totalBytes: Int64 = 0
 
-        struct Missing: Equatable { var id: String; var name: String }
+        struct Missing: Equatable, Sendable { var id: String; var name: String }
+
+        var warnings: [String] {
+            guard !missing.isEmpty else { return [] }
+            let files = missing.count == 1 ? "media file was" : "media files were"
+            return ["\(missing.count) \(files) missing and could not be included."]
+        }
     }
 
     @discardableResult
@@ -27,7 +33,9 @@ enum PalmierProjectExporter {
         progress: (@Sendable (Double) -> Void)? = nil
     ) throws -> Report {
         let fm = FileManager.default
-        let staging = fm.temporaryDirectory.appendingPathComponent("palmier-export-\(UUID().uuidString)", isDirectory: true)
+        let parent = destURL.deletingLastPathComponent()
+        try fm.createDirectory(at: parent, withIntermediateDirectories: true)
+        let staging = parent.appendingPathComponent(".palmier-export-\(UUID().uuidString).partial", isDirectory: true)
         let mediaDir = staging.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
         try fm.createDirectory(at: mediaDir, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: staging) }
@@ -38,6 +46,7 @@ enum PalmierProjectExporter {
         let total = max(1, manifest.entries.count)
 
         for (index, entry) in manifest.entries.enumerated() {
+            try Task.checkCancellation()
             defer { progress?(Double(index + 1) / Double(total)) }
 
             guard let srcURL = sourceURL(for: entry.source, projectURL: sourceProjectURL),
@@ -53,7 +62,7 @@ enum PalmierProjectExporter {
                 relativePath = existing
             } else {
                 let dest = uniqueURL(in: mediaDir, preferredName: filename(for: entry, sourceURL: srcURL), fm: fm)
-                try fm.copyItem(at: srcURL, to: dest)
+                try copyFile(from: srcURL, to: dest, fm: fm)
                 relativePath = "\(Project.mediaDirectoryName)/\(dest.lastPathComponent)"
                 relativePathBySource[key] = relativePath
                 report.totalBytes += fileSize(dest, fm: fm)
@@ -70,19 +79,24 @@ enum PalmierProjectExporter {
         newManifest.entries = newEntries
 
         let encoder = JSONEncoder()
+        try Task.checkCancellation()
         try encoder.encode(projectFile).write(to: staging.appendingPathComponent(Project.timelineFilename))
         try encoder.encode(newManifest).write(to: staging.appendingPathComponent(Project.manifestFilename))
         try encoder.encode(generationLog).write(to: staging.appendingPathComponent(Project.generationLogFilename))
 
         // Carry across non-media bundle contents (thumbnail, chat history) when present.
         if let sourceProjectURL {
+            try Task.checkCancellation()
             copyIfPresent(Project.thumbnailFilename, from: sourceProjectURL, to: staging, fm: fm)
             copyIfPresent(ChatSessionStore.dirName, from: sourceProjectURL, to: staging, fm: fm)
         }
 
-        if fm.fileExists(atPath: destURL.path) { try fm.removeItem(at: destURL) }
-        try fm.createDirectory(at: destURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try fm.moveItem(at: staging, to: destURL)
+        try Task.checkCancellation()
+        if fm.fileExists(atPath: destURL.path) {
+            _ = try fm.replaceItemAt(destURL, withItemAt: staging)
+        } else {
+            try fm.moveItem(at: staging, to: destURL)
+        }
         return report
     }
 
@@ -126,6 +140,25 @@ enum PalmierProjectExporter {
         let src = source.appendingPathComponent(name)
         guard fm.fileExists(atPath: src.path) else { return }
         try? fm.copyItem(at: src, to: staging.appendingPathComponent(name))
+    }
+
+    private static func copyFile(from source: URL, to destination: URL, fm: FileManager) throws {
+        _ = fm.createFile(atPath: destination.path, contents: nil)
+        do {
+            let reader = try FileHandle(forReadingFrom: source)
+            let writer = try FileHandle(forWritingTo: destination)
+            defer {
+                try? reader.close()
+                try? writer.close()
+            }
+            while let data = try reader.read(upToCount: 4 * 1024 * 1024), !data.isEmpty {
+                try Task.checkCancellation()
+                try writer.write(contentsOf: data)
+            }
+        } catch {
+            try? fm.removeItem(at: destination)
+            throw error
+        }
     }
 
     private static func fileSize(_ url: URL, fm: FileManager) -> Int64 {
