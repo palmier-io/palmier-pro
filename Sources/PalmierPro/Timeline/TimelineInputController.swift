@@ -75,6 +75,31 @@ final class TimelineInputController {
         return (right == .max ? 0 : right, left == .max ? 0 : left)
     }
 
+    /// Viewer two-up for a slip drag: the previewed in/out source frames of the
+    /// slipped clip (or its linked video partner when the grab is on audio).
+    private func slipPreviewState(for clip: Clip, deltaFrames: Int, linked: Bool) -> SlipPreviewState? {
+        var display = clip
+        if display.mediaType != .video || display.sourceClipType == .sequence {
+            guard linked,
+                  let partner = editor.linkedPartnerIds(of: clip.id)
+                    .compactMap({ editor.clipFor(id: $0) })
+                    .first(where: { $0.mediaType == .video && $0.sourceClipType != .sequence })
+            else { return nil }
+            display = partner
+        }
+        guard let url = editor.mediaResolver.expectedURL(for: display.mediaRef) else { return nil }
+        let sourceDelta = Int((Double(deltaFrames) * display.speed).rounded())
+        let applied = max(-display.trimEndFrame, min(display.trimStartFrame, sourceDelta))
+        let inFrame = display.trimStartFrame - applied
+        let outFrame = inFrame + max(0, display.sourceFramesConsumed - 1)
+        return SlipPreviewState(
+            url: url,
+            inSourceFrame: inFrame,
+            outSourceFrame: outFrame,
+            fps: editor.timeline.fps
+        )
+    }
+
     func mouseDown(with event: NSEvent, geometry: TimelineGeometry) {
         let point = view.convert(event.locationInWindow, from: nil)
         let scrollOffsetY = view.enclosingScrollView?.contentView.bounds.origin.y ?? 0
@@ -216,6 +241,7 @@ final class TimelineInputController {
                     dragState = .idle
                 } else {
                     Self.slipCursor.set()
+                    if editor.isPlaying { editor.pause() }
                     let headroom = slipHeadroom(for: clip, linked: linkedOn)
                     dragState = .slip(DragState.SlipDrag(
                         clipId: clip.id,
@@ -225,6 +251,7 @@ final class TimelineInputController {
                         maxLeftDelta: headroom.left,
                         propagateToLinked: linkedOn
                     ))
+                    editor.slipPreview = slipPreviewState(for: clip, deltaFrames: 0, linked: linkedOn)
                 }
             } else {
                 let grabFrame = geometry.frameAt(x: point.x)
@@ -421,8 +448,11 @@ final class TimelineInputController {
 
         case .slip(var drag):
             snapIndicatorX = nil
-            let delta = frame - drag.grabFrame
-            drag.deltaFrames = max(-drag.maxLeftDelta, min(drag.maxRightDelta, delta))
+            let delta = max(-drag.maxLeftDelta, min(drag.maxRightDelta, frame - drag.grabFrame))
+            if delta != drag.deltaFrames, let clip = editor.clipFor(id: drag.clipId) {
+                editor.slipPreview = slipPreviewState(for: clip, deltaFrames: delta, linked: drag.propagateToLinked)
+            }
+            drag.deltaFrames = delta
             dragState = .slip(drag)
 
         case .audioVolumeKf(let drag):
@@ -558,6 +588,7 @@ final class TimelineInputController {
             }
 
         case .slip(let drag):
+            editor.slipPreview = nil
             if drag.deltaFrames != 0 {
                 editor.commitSlip(
                     clipId: drag.clipId,
