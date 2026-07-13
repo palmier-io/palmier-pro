@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 
 @MainActor
@@ -36,15 +37,8 @@ final class ScrubAudioEngine {
     nonisolated private static let meterFrameCount = 960
     nonisolated private static let meterPrefetchFrameCount = 12_000
 
-    private let engine = AVAudioEngine()
-    private let playerNode = AVAudioPlayerNode()
     private let meter: AudioMeterHub
-    private let format = AVAudioFormat(
-        commonFormat: .pcmFormatFloat32,
-        sampleRate: ScrubAudioEngine.sampleRate,
-        channels: ScrubAudioEngine.channelCount,
-        interleaved: false
-    )!
+    private let output = ScrubAudioOutput(sampleRate: sampleRate)
 
     private var source: Source?
     private var sourceGeneration = 0
@@ -55,12 +49,16 @@ final class ScrubAudioEngine {
     private var lastDirection: Direction = .forward
     private var decodeTask: Task<Void, Never>?
     private var pendingDecodeRange: Range<Int64>?
+    private var lifecycleObservers: [(center: NotificationCenter, token: NSObjectProtocol)] = []
 
     init(meter: AudioMeterHub) {
         self.meter = meter
-        engine.attach(playerNode)
-        engine.connect(playerNode, to: engine.mainMixerNode, format: format)
-        engine.prepare()
+        observeLifecycle()
+    }
+
+    isolated deinit {
+        removeLifecycleObservers()
+        output.invalidate()
     }
 
     func configure(asset: AVAsset?, audioMix: AVAudioMix?, resetMeter: Bool = true) {
@@ -69,7 +67,6 @@ final class ScrubAudioEngine {
         cache = nil
         source = asset.map { Source(asset: $0, audioMix: audioMix, generation: sourceGeneration) }
         if resetMeter { meter.reset() }
-        if asset != nil { startEngineIfNeeded() }
     }
 
     func scrub(to time: CMTime, movingForward: Bool? = nil) {
@@ -119,6 +116,11 @@ final class ScrubAudioEngine {
     }
 
     func stopScrubbing() {
+        resetScrubState()
+        output.stop()
+    }
+
+    private func resetScrubState() {
         decodeTask?.cancel()
         decodeTask = nil
         pendingDecodeRange = nil
@@ -126,14 +128,21 @@ final class ScrubAudioEngine {
         latestMeterSample = nil
         lastRequestedSample = nil
         lastDirection = .forward
-        playerNode.stop()
     }
 
     func teardown() {
-        stopScrubbing()
+        resetScrubState()
         source = nil
         cache = nil
-        engine.stop()
+        output.invalidate()
+        removeLifecycleObservers()
+    }
+
+    private func removeLifecycleObservers() {
+        for observer in lifecycleObservers {
+            observer.center.removeObserver(observer.token)
+        }
+        lifecycleObservers.removeAll()
     }
 
     private func requestWindow(around sample: Int64, source: Source) {
@@ -181,18 +190,19 @@ final class ScrubAudioEngine {
 
     private func play(request: Request, from window: PCMWindow) {
         latestRequest = nil
-        guard window.hasAudioTracks,
-              let buffer = makeGrain(request: request, from: window)
-        else {
+        guard window.hasAudioTracks else {
             meter.ingest(.silence)
-            playerNode.stop()
+            output.stop()
             return
         }
 
-        meter.ingest(AudioLevelAnalyzer.analyze(buffer))
-        startEngineIfNeeded()
-        playerNode.scheduleBuffer(buffer, at: nil, options: .interrupts)
-        if !playerNode.isPlaying { playerNode.play() }
+        let grain = makeGrain(request: request, from: window)
+        meter.ingest(AudioLevelAnalyzer.analyze(
+            left: grain.left,
+            right: grain.right,
+            range: grain.left.indices
+        ))
+        output.play(grain)
     }
 
     private func canServe(sample: Int64, from window: PCMWindow) -> Bool {
@@ -219,13 +229,10 @@ final class ScrubAudioEngine {
         meter.ingest(analysis)
     }
 
-    private func makeGrain(request: Request, from window: PCMWindow) -> AVAudioPCMBuffer? {
+    private func makeGrain(request: Request, from window: PCMWindow) -> ScrubAudioGrain {
         let frameCount = Self.grainFrameCount
-        guard let buffer = AVAudioPCMBuffer(
-            pcmFormat: format,
-            frameCapacity: AVAudioFrameCount(frameCount)
-        ), let channels = buffer.floatChannelData else { return nil }
-        buffer.frameLength = AVAudioFrameCount(frameCount)
+        var left = [Float](repeating: 0, count: frameCount)
+        var right = [Float](repeating: 0, count: frameCount)
 
         let halfGrain = Int64(frameCount / 2)
         for outputIndex in 0..<frameCount {
@@ -238,23 +245,42 @@ final class ScrubAudioEngine {
             let cacheIndex = Int(sourceSample - window.startSample)
             let gain = Self.edgeGain(at: outputIndex, frameCount: frameCount)
             if window.left.indices.contains(cacheIndex) {
-                channels[0][outputIndex] = window.left[cacheIndex] * gain
-                channels[1][outputIndex] = window.right[cacheIndex] * gain
-            } else {
-                channels[0][outputIndex] = 0
-                channels[1][outputIndex] = 0
+                left[outputIndex] = window.left[cacheIndex] * gain
+                right[outputIndex] = window.right[cacheIndex] * gain
             }
         }
-        return buffer
+        return ScrubAudioGrain(left: left, right: right)
     }
 
-    private func startEngineIfNeeded() {
-        guard !engine.isRunning else { return }
-        do {
-            try engine.start()
-        } catch {
-            Log.preview.error("scrub audio engine failed: \(error.localizedDescription)")
+    private func observeLifecycle() {
+        let appCenter = NotificationCenter.default
+        let resignObserver = appCenter.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.suspendOutput()
+            }
         }
+        lifecycleObservers.append((appCenter, resignObserver))
+
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        let sleepObserver = workspaceCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.suspendOutput()
+            }
+        }
+        lifecycleObservers.append((workspaceCenter, sleepObserver))
+    }
+
+    private func suspendOutput() {
+        resetScrubState()
+        output.invalidate()
     }
 
     private static func edgeGain(at index: Int, frameCount: Int) -> Float {
