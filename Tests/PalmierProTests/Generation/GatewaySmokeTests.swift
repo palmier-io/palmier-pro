@@ -41,6 +41,36 @@ struct GatewaySmokeTests {
         return dest
     }
 
+    /// End-to-end video through the real bridge + our runner (create → poll →
+    /// download). Run alone: `GATEWAY_SMOKE_KEY=… swift test --filter liveVideoGeneration`.
+    @Test func liveVideoGeneration() async throws {
+        let client = client
+        GatewayGenerationRunner.videoPollInterval = .seconds(3)
+        GatewayGenerationRunner.videoTimeout = .seconds(300)
+        // Unique per run: the bridge doesn't yet nonce its video workflow, so an
+        // identical prompt hits ComfyUI's execution cache and 500s ("completed but
+        // no output file recorded"). See the protoBanana#38 finding.
+        let job = GatewayVideoJob(
+            model: GatewayVideoModels.resolve(GatewayVideoModels.gen),
+            prompt: "a slow drone push-in over a misty pine forest at dawn [\(UUID().uuidString.prefix(8))]",
+            seconds: 2, size: "768x512"
+        )
+        var createdId: String?
+        let url = try await GatewayGenerationRunner.executeVideo(job, client: client) { id in
+            createdId = id
+        }
+        let id = try #require(createdId)
+        let bytes = try Data(contentsOf: url)
+        // mp4/ISO-BMFF: 'ftyp' box marker at offset 4.
+        let ftyp = bytes.count > 8 ? String(decoding: bytes[4..<8], as: UTF8.self) : ""
+        #expect(ftyp == "ftyp", "downloaded content is not an mp4 (marker=\(ftyp))")
+        #expect(bytes.count > 10_000, "suspiciously small clip: \(bytes.count) bytes")
+        let dest = outDir.appendingPathComponent("video-\(id).mp4")
+        try? FileManager.default.removeItem(at: dest)
+        try FileManager.default.copyItem(at: url, to: dest)
+        print("gateway-smoke VIDEO: job \(id) → \(bytes.count) bytes → \(dest.path)")
+    }
+
     @Test func fullImageSuite() async throws {
         let client = client
         let available = Set(try await client.listModels().map(\.id))
