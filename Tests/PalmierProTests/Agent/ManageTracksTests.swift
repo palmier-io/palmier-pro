@@ -33,6 +33,9 @@ struct ManageTracksTests {
 
     @Test func reordersWithinTypeZoneWithoutClipChurn() async throws {
         let h = harness()
+        let timeline = try await h.runOK("get_timeline") as? [String: Any]
+        let tracks = try #require(timeline?["tracks"] as? [[String: Any]])
+        let textRef = try #require(tracks[0]["trackId"] as? String)
         let movedId = h.editor.timeline.tracks[1].id
         let json = try await h.runOK("manage_tracks", args: ["reorder": [["index": 1, "to": 0]]]) as? [String: Any]
         #expect(h.editor.timeline.tracks[0].id == movedId)
@@ -41,7 +44,19 @@ struct ManageTracksTests {
         #expect(json?["shifted"] == nil)
         let order = json?["tracks"] as? [[String: Any]]
         #expect(order?.count == 3)
-        #expect(((json?["notes"] as? [String])?.first ?? "").contains("Track indices changed"))
+        let receipt = (json?["reordered"] as? [[String: Any]])?.first
+        #expect(receipt?["to"] as? Int == 0)
+        #expect(receipt?["changed"] as? Bool == true)
+        let movedRef = try #require(order?.first?["trackId"] as? String)
+        let noOp = try await h.runOK("manage_tracks", args: [
+            "reorder": [["trackId": movedRef, "to": 0]],
+        ]) as? [String: Any]
+        #expect(((noOp?["reordered"] as? [[String: Any]])?.first?["changed"] as? Bool) == false)
+
+        let remove = try await h.runOK("manage_tracks", args: ["remove": [["trackId": textRef]]]) as? [String: Any]
+        #expect(h.editor.timeline.tracks.contains { $0.id == movedId })
+        #expect(!h.editor.timeline.tracks.contains { $0.clips.contains { $0.mediaType == .text } })
+        #expect(((remove?["removedTracks"] as? [[String: Any]])?.first?["trackId"] as? String) == textRef)
     }
 
     @Test func setsMuteHiddenAndSyncLock() async throws {
@@ -63,8 +78,12 @@ struct ManageTracksTests {
 
     @Test func rejectsOutOfRangeIndexAndEmptyCall() async throws {
         let h = harness()
+        let before = h.editor.timeline
         #expect(await h.runRaw("manage_tracks", args: ["remove": [5]]).isError)
-        #expect(h.editor.timeline.tracks.count == 3)
+        #expect(await h.runRaw("manage_tracks", args: ["remove": [1.5]]).isError)
+        #expect(await h.runRaw("manage_tracks", args: ["reorder": [["index": 2, "to": 0]]]).isError)
+        #expect(await h.runRaw("manage_tracks", args: ["reorder": [["index": 1, "to": 99]]]).isError)
+        #expect(h.editor.timeline == before)
         #expect(await h.runRaw("manage_tracks", args: [:]).isError)
     }
 }

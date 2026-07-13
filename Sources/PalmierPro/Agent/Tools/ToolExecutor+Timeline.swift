@@ -151,7 +151,7 @@ extension ToolExecutor {
             // Report the displayed label (mirrored video numbering), not the stored seed.
             track["label"] = editor.timelineTrackDisplayLabel(at: i)
             track["index"] = i
-            track.removeValue(forKey: "id")
+            track["trackId"] = track.removeValue(forKey: "id")
             track.removeValue(forKey: "displayHeight")
             if let count = fold.foldedCountByTrack[i] { track["linkedClips"] = count }
             let gaps = trackGaps(editor.timeline.tracks[i])

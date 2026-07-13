@@ -8,7 +8,7 @@ extension ToolExecutor {
         "clipId", "sourceClipId", "referenceClipId", "targetClipId",
         "mediaRef", "startFrameMediaRef", "endFrameMediaRef",
         "sourceVideoMediaRef", "videoSourceMediaRef", "sourceMediaRef",
-        "captionGroupId", "timelineId", "item", "from", "reference",
+        "captionGroupId", "timelineId", "trackId", "item", "from", "reference",
         "groupId", "memberId",
     ]
     private static let arrayIdKeys: Set<String> = [
@@ -22,6 +22,7 @@ extension ToolExecutor {
         var ids = Set<String>()
         for timeline in editor.timelines { ids.insert(timeline.id) }
         for track in editor.timeline.tracks {
+            ids.insert(track.id)
             for clip in track.clips {
                 ids.insert(clip.id)
                 if let captionGroupId = clip.captionGroupId { ids.insert(captionGroupId) }

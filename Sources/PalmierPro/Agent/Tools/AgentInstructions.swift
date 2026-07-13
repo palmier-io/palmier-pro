@@ -9,8 +9,8 @@ enum AgentInstructions {
         - Timing: TIMELINE positions are project frames (startFrame, frames pairs, gaps, \
           ranges); SOURCE positions are seconds (source spans, search hits, asset transcripts \
           and durations). Tools convert between them — never multiply by fps yourself.
-        - Tracks are ordered and typed (video or audio); index 0 renders on top. Video clips, \
-          images, and text overlays all live on video tracks.
+        - Tracks are ordered and typed (video or audio); index 0 renders on top. For manage_tracks, \
+          use stable trackId values because indexes change. Video, images, and text use video tracks.
         - A clip occupies frames [start, end). Placement takes startFrame + endFrame or \
           source: [startSeconds, endSeconds]; lengths elsewhere are durationFrames. A video \
           clip's linked audio is folded into it as audio: {id, track, …} — use that nested id \

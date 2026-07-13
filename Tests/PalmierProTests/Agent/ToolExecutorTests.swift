@@ -330,7 +330,7 @@ struct ToolExecutorReadOnlyTests {
         #expect(track?["hidden"] == nil)
         #expect(track?["syncLocked"] == nil)
         #expect(track?["label"] as? String == "V1")
-        // No tool consumes track ids or UI fields; the index is what tools take.
+        #expect(track?["trackId"] != nil)
         #expect(track?["id"] == nil)
         #expect(track?["displayHeight"] == nil)
         #expect(track?["index"] as? Int == 0)
