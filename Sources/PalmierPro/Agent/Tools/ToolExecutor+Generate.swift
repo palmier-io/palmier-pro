@@ -182,7 +182,7 @@ extension ToolExecutor {
     ) throws -> ToolResult {
         guard !prompt.isEmpty else { throw ToolError("Empty prompt") }
         if OpenAICompatGenerationClient.gatewayConfigured {
-            return try generateImageViaGateway(editor, args, prompt: prompt)
+            return try gatewayGenerateImage(editor, args, prompt: prompt)
         }
         let modelId = try args.string("model") ?? defaultModelId(
             ImageModelConfig.allModels.map { (id: $0.id, paidOnly: $0.paidOnly) }, kind: "image")
@@ -225,42 +225,6 @@ extension ToolExecutor {
             editor: editor
         )
         return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), aspect: \(aspectRatio)")
-    }
-
-    /// Image generation routed to the OpenAI-compatible gateway. Skips the Convex
-    /// catalog — the model is whatever image alias the gateway exposes.
-    private func generateImageViaGateway(
-        _ editor: EditorViewModel, _ args: [String: Any], prompt: String
-    ) throws -> ToolResult {
-        guard let modelId = args.string("model"), !modelId.isEmpty else {
-            throw ToolError("Specify an image 'model' your gateway exposes (one of your configured image aliases).")
-        }
-        let aspectRatio = args.string("aspectRatio") ?? ""
-        let resolution = args.string("resolution")
-        let numImages = max(1, min(4, args.int("numImages") ?? 1))
-
-        let genInput = GenerationInput(
-            prompt: prompt, model: modelId, duration: 0,
-            aspectRatio: aspectRatio, resolution: resolution, quality: nil
-        )
-        let folderId = try resolveFolder(args, editor: editor)
-        let placeholderId = editor.generationService.generate(
-            genInput: genInput,
-            assetType: .image,
-            placeholderDuration: 0,
-            numImages: numImages,
-            folderId: folderId,
-            buildParams: { uploaded in
-                .image(ImageGenerationParams(
-                    prompt: prompt, aspectRatio: aspectRatio, resolution: resolution,
-                    quality: nil, imageURLs: uploaded, numImages: numImages
-                ))
-            },
-            fileExtension: "png",
-            projectURL: editor.projectURL,
-            editor: editor
-        )
-        return .ok("Generation started (gateway). Placeholder asset ID: \(placeholderId). Model: \(modelId).")
     }
 
     func generateAudio(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {

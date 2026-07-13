@@ -186,6 +186,7 @@ struct AgentPane: View {
                 text: $gatewayKeyDraft,
                 secure: true
             )
+            GatewayImageAliasesSection()
             HStack(spacing: AppTheme.Spacing.sm) {
                 Button("Save", action: saveGateway)
                     .buttonStyle(.capsule(.prominent, size: .regular))

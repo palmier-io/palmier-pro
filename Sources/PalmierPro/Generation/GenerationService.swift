@@ -418,18 +418,6 @@ final class GenerationService {
         Log.generation.notice("run \(runId) start model=\(genInput.model) placeholders=\(placeholders.count)")
         defer { Log.generation.notice("run \(runId) settled") }
 
-        // Gateway path: OpenAI-compatible image generation is synchronous — no Convex.
-        if OpenAICompatGenerationClient.gatewayConfigured,
-           case .image(let imageParams) = params,
-           let client = OpenAICompatGenerationClient.fromGateway() {
-            await runGatewayImageJob(
-                client: client, model: genInput.model, params: imageParams,
-                placeholders: placeholders, editor: editor,
-                onComplete: onComplete, onFailure: onFailure
-            )
-            return
-        }
-
         let jobId: String
         do {
             jobId = try await GenerationBackend.submit(
@@ -648,45 +636,72 @@ final class GenerationService {
         }
     }
 
-    // MARK: - Gateway (OpenAI-compatible) image generation
+    // MARK: - Gateway (OpenAI-compatible) generation
 
-    private func runGatewayImageJob(
-        client: OpenAICompatGenerationClient,
-        model: String,
-        params: ImageGenerationParams,
-        placeholders: [MediaAsset],
+    /// Entry point for gateway image jobs (generate / edit / compose). Creates the
+    /// placeholders, then hands the job to GatewayGenerationRunner; results land
+    /// through the same finalizeSuccess as hosted jobs. Returns the primary
+    /// placeholder id.
+    func generateViaGateway(
+        job: GatewayImageJob,
+        name: String?,
+        folderId: String?,
+        projectURL: URL?,
         editor: EditorViewModel,
-        onComplete: (@MainActor (MediaAsset) -> Void)?,
-        onFailure: (@MainActor () -> Void)?
-    ) async {
-        do {
-            let urls = try await client.generateImages(
-                model: model,
-                prompt: params.prompt,
-                n: placeholders.count,
-                size: Self.imageSize(resolution: params.resolution)
-            )
-            await finalizeSuccess(
-                urlStrings: urls.map(\.absoluteString),
-                placeholders: placeholders, editor: editor,
-                onComplete: onComplete, onFailure: onFailure
-            )
-        } catch {
-            let message = error.localizedDescription
-            Log.generation.error("gateway image gen failed model=\(model) error=\(message)")
-            for placeholder in placeholders {
-                placeholder.generationStatus = .failed(message)
-            }
-            onFailure?()
+        onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
+        onFailure: (@MainActor () -> Void)? = nil
+    ) -> String {
+        var genInput = GenerationInput(
+            prompt: job.prompt, model: job.model, duration: 0,
+            aspectRatio: "", resolution: job.size, quality: nil
+        )
+        genInput.numImages = job.n
+        genInput.createdAt = Date()
+
+        let resolvedFolderId = folderId.flatMap { id in
+            editor.folder(id: id) != nil ? id : nil
         }
-    }
+        let destDir = Self.destinationDirectory(for: projectURL)
+        let baseName = name ?? String(job.prompt.prefix(30))
+        var placeholders: [MediaAsset] = []
+        for outputIndex in 0..<max(1, job.n) {
+            var placeholderInput = genInput
+            placeholderInput.outputIndex = outputIndex
+            let placeholder = createPlaceholder(
+                type: .image, name: baseName, duration: 0,
+                genInput: placeholderInput, folderId: resolvedFolderId,
+                destDir: destDir, fileExtension: "png", editor: editor
+            )
+            placeholder.generationStatus = .generating
+            placeholders.append(placeholder)
+        }
+        let primaryId = placeholders[0].id
 
-    /// Only set an explicit size when the caller gave a concrete WxH; otherwise let the
-    /// model/gateway pick (arbitrary gateway models reject sizes they don't support).
-    private static func imageSize(resolution: String?) -> String? {
-        guard let r = resolution?.trimmingCharacters(in: .whitespacesAndNewlines),
-              ImageModelConfig.parseWxH(r) != nil else { return nil }
-        return r
+        Task { @MainActor [weak self, weak editor] in
+            guard let self, let editor else { return }
+            guard let client = OpenAICompatGenerationClient.fromGateway() else {
+                for placeholder in placeholders {
+                    self.updateGenerationMetadata(placeholder, editor: editor, status: .failed("Gateway not configured"))
+                }
+                onFailure?()
+                return
+            }
+            do {
+                let urls = try await GatewayGenerationRunner.execute(job, client: client)
+                await self.finalizeSuccess(
+                    urlStrings: urls.map(\.absoluteString),
+                    placeholders: placeholders, editor: editor,
+                    onComplete: onComplete, onFailure: onFailure
+                )
+            } catch {
+                let message = error.localizedDescription
+                Log.generation.error("gateway image job failed model=\(job.model) error=\(message)")
+                for placeholder in placeholders {
+                    self.updateGenerationMetadata(placeholder, editor: editor, status: .failed(message))
+                }
+                onFailure?()
+            }
+        }
+        return primaryId
     }
-
 }

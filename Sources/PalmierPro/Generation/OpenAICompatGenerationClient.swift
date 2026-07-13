@@ -29,30 +29,145 @@ struct OpenAICompatGenerationClient: Sendable {
         return OpenAICompatGenerationClient(baseURL: url, apiKey: GatewayKeychain.load() ?? "")
     }
 
-    /// POST /images/generations; returns the generated images as remote URLs or local
-    /// files (base64 responses are written to temp files).
-    func generateImages(model: String, prompt: String, n: Int, size: String?) async throws -> [URL] {
-        let endpoint = baseURL.appendingPathComponent("images/generations")
-        var request = URLRequest(url: endpoint)
+    /// ComfyUI queues jobs behind the gateway; renders can take minutes.
+    static let requestTimeout: TimeInterval = 300
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = requestTimeout
+        return URLSession(configuration: config)
+    }()
+
+    private func request(path: String, contentType: String? = nil) -> URLRequest {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
         request.httpMethod = "POST"
         if !apiKey.isEmpty {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
-        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        if let contentType {
+            request.setValue(contentType, forHTTPHeaderField: "content-type")
+        }
+        return request
+    }
 
-        var body: [String: Any] = ["model": model, "prompt": prompt, "n": max(1, n)]
-        if let size, !size.isEmpty { body["size"] = size }
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (data, response) = try await URLSession.shared.data(for: request)
+    private func send(_ request: URLRequest) async throws -> Data {
+        let (data, response) = try await Self.session.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
             throw OpenAICompatGenerationError.httpError(
                 status: http.statusCode, body: String(data: data, encoding: .utf8) ?? ""
             )
         }
+        return data
+    }
 
+    /// POST /images/generations; returns the generated images as remote URLs or local
+    /// files (base64 responses are written to temp files).
+    func generateImages(
+        model: String, prompt: String, n: Int, size: String?,
+        seed: Int? = nil, negativePrompt: String? = nil
+    ) async throws -> [URL] {
+        var req = request(path: "images/generations", contentType: "application/json")
+        var body: [String: Any] = [
+            "model": model, "prompt": prompt, "n": max(1, n),
+            "response_format": "b64_json",
+        ]
+        if let size, !size.isEmpty { body["size"] = size }
+        if let seed { body["seed"] = seed }
+        if let negativePrompt, !negativePrompt.isEmpty { body["negative_prompt"] = negativePrompt }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return try Self.materialize(images: Self.decodeImages(from: try await send(req)))
+    }
+
+    /// POST /images/edits (multipart) — the protoBanana editing suite. Op-specific
+    /// knobs (grounding, margins, person_image, seed) ride `fields`.
+    func editImage(
+        model: String, prompt: String, image: Data,
+        mask: Data? = nil, fields: [String: String] = [:]
+    ) async throws -> [URL] {
+        let boundary = "pd-\(UUID().uuidString)"
+        var req = request(path: "images/edits", contentType: "multipart/form-data; boundary=\(boundary)")
+        var allFields = fields
+        allFields["model"] = model
+        allFields["prompt"] = prompt
+        allFields["response_format"] = "b64_json"
+        var parts: [MultipartPart] = [.init(name: "image", filename: "image.png", contentType: "image/png", data: image)]
+        if let mask {
+            parts.append(.init(name: "mask", filename: "mask.png", contentType: "image/png", data: mask))
+        }
+        req.httpBody = Self.multipartBody(boundary: boundary, fields: allFields, parts: parts)
+        return try Self.materialize(images: Self.decodeImages(from: try await send(req)))
+    }
+
+    /// POST /chat/completions on the compose (chat) alias — the only channel that
+    /// accepts 2–3 reference images. The image comes back as a markdown-embedded
+    /// data URL in the assistant message.
+    func chatCompose(model: String, prompt: String, images: [Data]) async throws -> [URL] {
+        var req = request(path: "chat/completions", contentType: "application/json")
+        var content: [[String: Any]] = [["type": "text", "text": prompt]]
+        for image in images {
+            content.append([
+                "type": "image_url",
+                "image_url": ["url": "data:image/png;base64," + image.base64EncodedString()],
+            ])
+        }
+        let body: [String: Any] = [
+            "model": model,
+            "messages": [["role": "user", "content": content]],
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let data = try await send(req)
+        guard let bytes = Self.extractChatImage(from: data) else {
+            let text = String(data: data, encoding: .utf8) ?? ""
+            throw OpenAICompatGenerationError.api("Compose returned no image: \(text.prefix(200))")
+        }
+        return try Self.materialize(images: [.base64(bytes)])
+    }
+
+    // MARK: - Multipart + chat parsing (pure, testable)
+
+    struct MultipartPart: Sendable, Equatable {
+        let name: String
+        let filename: String
+        let contentType: String
+        let data: Data
+    }
+
+    static func multipartBody(boundary: String, fields: [String: String], parts: [MultipartPart]) -> Data {
+        var body = Data()
+        func append(_ s: String) { body.append(Data(s.utf8)) }
+        for (key, value) in fields.sorted(by: { $0.key < $1.key }) {
+            append("--\(boundary)\r\n")
+            append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n")
+            append("\(value)\r\n")
+        }
+        for part in parts {
+            append("--\(boundary)\r\n")
+            append("Content-Disposition: form-data; name=\"\(part.name)\"; filename=\"\(part.filename)\"\r\n")
+            append("Content-Type: \(part.contentType)\r\n\r\n")
+            body.append(part.data)
+            append("\r\n")
+        }
+        append("--\(boundary)--\r\n")
+        return body
+    }
+
+    /// Pulls the first markdown-embedded image data URL out of a chat completion.
+    static func extractChatImage(from data: Data) -> Data? {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = obj["choices"] as? [[String: Any]],
+              let message = choices.first?["message"] as? [String: Any],
+              let content = message["content"] as? String else { return nil }
+        return extractDataURLImage(from: content)
+    }
+
+    static func extractDataURLImage(from text: String) -> Data? {
+        guard let range = text.range(of: #"data:image/(?:png|jpeg|webp);base64,([A-Za-z0-9+/=]+)"#, options: .regularExpression),
+              let comma = text[range].firstIndex(of: ",") else { return nil }
+        return Data(base64Encoded: String(text[text.index(after: comma)..<range.upperBound]))
+    }
+
+    private static func materialize(images: [DecodedImage]) throws -> [URL] {
         var urls: [URL] = []
-        for image in try Self.decodeImages(from: data) {
+        for image in images {
             switch image {
             case .url(let u):
                 urls.append(u)

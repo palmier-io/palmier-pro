@@ -67,6 +67,15 @@ enum ToolName: String, CaseIterable, Sendable {
     case generateAudio = "generate_audio"
     case upscaleMedia = "upscale_media"
 
+    // Gateway image suite (requires an OpenAI-compatible gateway)
+    case editImage = "edit_image"
+    case regionEdit = "region_edit"
+    case removeBackground = "remove_background"
+    case outpaintImage = "outpaint_image"
+    case identityEdit = "identity_edit"
+    case composeImages = "compose_images"
+    case typographyImage = "typography_image"
+
     // Meta
     case sendFeedback = "send_feedback"
     case readSkill = "read_skill"
@@ -988,6 +997,109 @@ enum ToolDefinitions {
                     "sourceClipId": ["type": "string", "description": "Optional. Video clip id (from get_timeline) referencing mediaRef. When set and the clip is trimmed, only the clip's visible range is upscaled, not the full source."],
                 ],
                 required: ["mediaRef"]
+            )
+        ),
+        AgentTool(
+            name: .editImage,
+            description: "Applies a global instruction edit to an image asset (\"make it night\", \"watercolor style\", \"make the cat blue\"). Gateway image tool: works when get_timeline reports canGenerate and an OpenAI-compatible gateway is configured. Returns a placeholder asset ID immediately; the edited image appears in get_media once ready. For changing ONE object while leaving the rest untouched, use region_edit instead. Not undoable.",
+            inputSchema: objectSchema(
+                properties: [
+                    "imageMediaRef": ["type": "string", "description": "ID of the image asset to edit."],
+                    "prompt": ["type": "string", "description": "The edit instruction."],
+                    "seed": ["type": "integer", "description": "Optional. Fixed seed for reproducibility; omit for a fresh random seed."],
+                    "name": ["type": "string", "description": "Optional display name for the result asset."],
+                    "folder": ["type": "string", "description": "Optional media folder path for the result."],
+                ],
+                required: ["imageMediaRef", "prompt"]
+            )
+        ),
+        AgentTool(
+            name: .regionEdit,
+            description: "Changes one named object or region in an image and leaves everything else pixel-identical (\"the man's tie\" -> \"a red bow tie\"). The region is grounded from plain text (SAM 3) — describe WHAT to select, not where. Gateway image tool; placeholder-ID flow like edit_image.",
+            inputSchema: objectSchema(
+                properties: [
+                    "imageMediaRef": ["type": "string", "description": "ID of the image asset to edit."],
+                    "region": ["type": "string", "description": "Plain-text description of the object/region to change (e.g. 'the sign above the door')."],
+                    "prompt": ["type": "string", "description": "What the region should become."],
+                    "seed": ["type": "integer", "description": "Optional fixed seed."],
+                    "name": ["type": "string", "description": "Optional display name for the result asset."],
+                    "folder": ["type": "string", "description": "Optional media folder path for the result."],
+                ],
+                required: ["imageMediaRef", "region", "prompt"]
+            )
+        ),
+        AgentTool(
+            name: .removeBackground,
+            description: "Cuts the subject out of an image onto a transparent background (sticker/cutout). The result is a PNG with alpha — drop it on a track above footage as an overlay. Gateway image tool; placeholder-ID flow like edit_image.",
+            inputSchema: objectSchema(
+                properties: [
+                    "imageMediaRef": ["type": "string", "description": "ID of the image asset to cut out."],
+                    "name": ["type": "string", "description": "Optional display name for the result asset."],
+                    "folder": ["type": "string", "description": "Optional media folder path for the result."],
+                ],
+                required: ["imageMediaRef"]
+            )
+        ),
+        AgentTool(
+            name: .outpaintImage,
+            description: "Extends an image's canvas outward by pixel margins, generating what the new areas contain — reframe a 16:9 still for a 9:16 vertical, widen a backdrop, give a title breathing room. At least one margin must be non-zero. Gateway image tool; placeholder-ID flow like edit_image.",
+            inputSchema: objectSchema(
+                properties: [
+                    "imageMediaRef": ["type": "string", "description": "ID of the image asset to extend."],
+                    "prompt": ["type": "string", "description": "Optional. What the new areas should contain (default: continue the scene)."],
+                    "left": ["type": "integer", "description": "Pixels to add on the left."],
+                    "top": ["type": "integer", "description": "Pixels to add on top."],
+                    "right": ["type": "integer", "description": "Pixels to add on the right."],
+                    "bottom": ["type": "integer", "description": "Pixels to add on the bottom."],
+                    "seed": ["type": "integer", "description": "Optional fixed seed."],
+                    "name": ["type": "string", "description": "Optional display name for the result asset."],
+                    "folder": ["type": "string", "description": "Optional media folder path for the result."],
+                ],
+                required: ["imageMediaRef"]
+            )
+        ),
+        AgentTool(
+            name: .identityEdit,
+            description: "Edits an image while preserving a person's face/identity. Single-ref: edit the image itself keeping the person recognizable. Two-ref: imageMediaRef is the SCENE, personMediaRef is the PERSON to place in it — this ordering is load-bearing. groundingPx (512-1536, default 768) trades edit adherence (lower) against facial likeness (higher). Set realism=true only for photographic results — it markedly improves face quality and skin texture; leave false for stylized/illustrated looks. Gateway image tool; placeholder-ID flow like edit_image.",
+            inputSchema: objectSchema(
+                properties: [
+                    "imageMediaRef": ["type": "string", "description": "The image to edit (two-ref mode: the scene)."],
+                    "prompt": ["type": "string", "description": "The edit instruction."],
+                    "personMediaRef": ["type": "string", "description": "Optional. The person reference image (two-ref mode)."],
+                    "groundingPx": ["type": "integer", "description": "Optional, 512-1536. Lower = better edit adherence, higher = better facial likeness."],
+                    "realism": ["type": "boolean", "description": "Optional. true adds a realism adapter for photographic human results."],
+                    "seed": ["type": "integer", "description": "Optional fixed seed."],
+                    "name": ["type": "string", "description": "Optional display name for the result asset."],
+                    "folder": ["type": "string", "description": "Optional media folder path for the result."],
+                ],
+                required: ["imageMediaRef", "prompt"]
+            )
+        ),
+        AgentTool(
+            name: .composeImages,
+            description: "Combines 2-3 reference images into one new image (\"put the character from image 1 in the outfit from image 2\"). Refer to inputs by position ('image 1', 'image 2') in the prompt — order follows imageMediaRefs. Gateway image tool; placeholder-ID flow like edit_image.",
+            inputSchema: objectSchema(
+                properties: [
+                    "imageMediaRefs": ["type": "array", "items": ["type": "string"], "description": "2-3 image asset IDs, in the order the prompt refers to them."],
+                    "prompt": ["type": "string", "description": "How to combine them."],
+                    "name": ["type": "string", "description": "Optional display name for the result asset."],
+                    "folder": ["type": "string", "description": "Optional media folder path for the result."],
+                ],
+                required: ["imageMediaRefs", "prompt"]
+            )
+        ),
+        AgentTool(
+            name: .typographyImage,
+            description: "Generates a text-heavy image — posters, title cards, logos — with a model that renders accurate text (Ideogram). Put the EXACT wording in quotes in the prompt. Occasionally the model refuses stochastically and returns a flat gray card: do NOT retry the same prompt; reword it or ask the user. Gateway image tool; placeholder-ID flow like edit_image.",
+            inputSchema: objectSchema(
+                properties: [
+                    "prompt": ["type": "string", "description": "The poster/title description, with exact text in quotes."],
+                    "resolution": ["type": "string", "description": "Optional 'WxH' (e.g. '1216x832')."],
+                    "seed": ["type": "integer", "description": "Optional fixed seed."],
+                    "name": ["type": "string", "description": "Optional display name for the result asset."],
+                    "folder": ["type": "string", "description": "Optional media folder path for the result."],
+                ],
+                required: ["prompt"]
             )
         ),
         AgentTool(
