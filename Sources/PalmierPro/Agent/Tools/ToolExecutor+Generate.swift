@@ -238,6 +238,45 @@ extension ToolExecutor {
         return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(job.model), duration: \(duration)s (\(mode)). Poll get_media with this id; the result lands as a video asset.")
     }
 
+    /// generate_audio when the gateway is configured: ACE-Step **music**
+    /// generation (sync). TTS/voiceover and dubbing route to a different backend
+    /// (Fish stack), so they're rejected by name here rather than silently
+    /// falling through to the hosted sign-in guard.
+    private func gatewayGenerateAudio(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        let prompt = (args.string("prompt") ?? "").trimmingCharacters(in: .whitespaces)
+        guard !prompt.isEmpty else {
+            throw ToolError("The gateway audio model generates music from a prompt — describe the style, mood, or genre.")
+        }
+        if args.string("voice") != nil {
+            throw ToolError("The gateway audio model is ACE-Step music generation, not TTS — omit `voice`. Speech routes to a separate backend.")
+        }
+        if args.string("sourceMediaRef") != nil || args.string("videoSourceMediaRef") != nil || args.string("targetLanguage") != nil {
+            throw ToolError("Dubbing and source-media audio aren't on the gateway path yet — ACE-Step generates music from a text prompt.")
+        }
+        var job = GatewayAudioJob(
+            model: args.string("model") ?? GatewayAudioModels.resolve(GatewayAudioModels.gen),
+            prompt: prompt
+        )
+        job.lyrics = args.string("lyrics")
+        let hasLyrics = !(job.lyrics?.isEmpty ?? true)
+        job.instrumental = args.bool("instrumental") ?? !hasLyrics
+        job.seconds = args.int("duration")
+        job.seed = args.int("seed")
+        if let format = args.string("format") { job.format = format }
+
+        let folderId = try resolveFolder(args, editor: editor, fallbackReferences: [])
+        let placeholderId = editor.generationService.generateViaGateway(
+            audioJob: job,
+            name: args.string("name"),
+            folderId: folderId,
+            projectURL: editor.projectURL,
+            editor: editor
+        )
+        let kind = job.instrumental ? "instrumental" : (hasLyrics ? "song" : "music")
+        let dur = job.seconds.map { "\($0)s " } ?? ""
+        return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(job.model), \(dur)\(kind). Poll get_media with this id; the result lands as an audio asset.")
+    }
+
     private func imageAsset(_ id: String, editor: EditorViewModel, label: String) throws -> MediaAsset {
         let a = try asset(id, editor: editor, label: label)
         guard a.type == .image else {
@@ -311,6 +350,9 @@ extension ToolExecutor {
     }
 
     func generateAudio(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
+        if OpenAICompatGenerationClient.gatewayConfigured {
+            return try gatewayGenerateAudio(editor, args)
+        }
         guard AccountService.shared.isSignedIn else {
             throw ToolError("Generation requires signing in to the hosted backend. Tell the user to sign in.")
         }
@@ -570,12 +612,19 @@ extension ToolExecutor {
             if let mode = model.mode { info["mode"] = mode }
             out.append(info)
         }
-        // The video model is served by the bridge, not LiteLLM, so it never
-        // appears in /v1/models — inject it so the agent knows it exists.
+        // The video and music models are served off-gateway (LTX bridge, ACE-Step
+        // adapter), so they never appear in /v1/models — inject them so the agent
+        // knows they exist.
         if filter == nil || filter?.isEmpty == true || filter == "video" {
             let videoId = GatewayVideoModels.resolve(GatewayVideoModels.gen)
             if !out.contains(where: { ($0["id"] as? String) == videoId }) {
                 out.append(["id": videoId, "type": "video", "mode": "video_generation"])
+            }
+        }
+        if filter == nil || filter?.isEmpty == true || filter == "audio" {
+            let audioId = GatewayAudioModels.resolve(GatewayAudioModels.gen)
+            if !out.contains(where: { ($0["id"] as? String) == audioId }) {
+                out.append(["id": audioId, "type": "audio", "mode": "music_generation"])
             }
         }
         let body: [String: Any] = ["models": out, "loaded": true, "source": "gateway"]

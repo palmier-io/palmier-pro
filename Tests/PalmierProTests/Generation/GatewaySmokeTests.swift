@@ -71,6 +71,32 @@ struct GatewaySmokeTests {
         print("gateway-smoke VIDEO: job \(id) → \(bytes.count) bytes → \(dest.path)")
     }
 
+    /// Live music generation through the real ACE-Step adapter + our runner.
+    /// The adapter isn't gateway-fronted yet, so it has its own URL (default the
+    /// Tailscale dev endpoint). Run: `GATEWAY_SMOKE_KEY=… swift test --filter liveMusicGeneration`.
+    @Test func liveMusicGeneration() async throws {
+        let base = Self.env["GATEWAY_SMOKE_AUDIO_URL"] ?? "http://protolabs:8110/v1"
+        let client = OpenAICompatGenerationClient(
+            baseURL: URL(string: base)!, apiKey: Self.env["GATEWAY_SMOKE_KEY"] ?? "")
+        var job = GatewayAudioJob(
+            model: GatewayAudioModels.resolve(GatewayAudioModels.gen),
+            prompt: "warm lo-fi hip hop, mellow rhodes, vinyl crackle [\(UUID().uuidString.prefix(8))]")
+        job.instrumental = true
+        job.seconds = 6
+        let urls = try await GatewayGenerationRunner.executeAudio(job, client: client)
+        let out = try #require(urls.first)
+        let bytes = try Data(contentsOf: out)
+        #expect(bytes.count > 5_000, "suspiciously small clip: \(bytes.count) bytes")
+        // mp3: "ID3" tag, or an MPEG audio frame sync (0xFF, next byte 0b111xxxxx).
+        let head = [UInt8](bytes.prefix(3))
+        let isMP3 = head == [0x49, 0x44, 0x33] || (head.first == 0xFF && head.count > 1 && (head[1] & 0xE0) == 0xE0)
+        #expect(isMP3, "not an mp3 (head=\(head.map { String(format: "%02x", $0) }.joined()))")
+        let dest = outDir.appendingPathComponent("music-\(out.lastPathComponent)")
+        try? FileManager.default.removeItem(at: dest)
+        try FileManager.default.copyItem(at: out, to: dest)
+        print("gateway-smoke MUSIC: \(bytes.count) bytes → \(dest.path)")
+    }
+
     @Test func fullImageSuite() async throws {
         let client = client
         let available = Set(try await client.listModels().map(\.id))

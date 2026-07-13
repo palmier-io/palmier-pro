@@ -222,6 +222,54 @@ struct OpenAICompatGenerationClient: Sendable {
         )
     }
 
+    // MARK: - Audio (ACE-Step music — GATEWAY_CONTRACT.md audio section)
+
+    /// POST /audio/generations — music generation (JSON, sync b64). Writes each
+    /// returned clip to a temp file with the requested container extension.
+    func generateMusic(
+        model: String, prompt: String, lyrics: String?, instrumental: Bool,
+        seconds: Int?, n: Int = 1, seed: Int? = nil, negativePrompt: String? = nil,
+        format: String = "mp3"
+    ) async throws -> [URL] {
+        var req = request(path: "audio/generations", contentType: "application/json")
+        var body: [String: Any] = [
+            "model": model, "prompt": prompt, "instrumental": instrumental,
+            "response_format": "b64_json", "format": format, "n": max(1, n),
+        ]
+        if let lyrics, !lyrics.isEmpty { body["lyrics"] = lyrics }
+        if let seconds { body["seconds"] = seconds }
+        if let seed { body["seed"] = seed }
+        if let negativePrompt, !negativePrompt.isEmpty { body["negative_prompt"] = negativePrompt }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return try Self.materializeAudio(from: try await send(req), format: format)
+    }
+
+    /// Decode the `{data: [{b64_json, seed, duration_s}], format}` envelope into
+    /// temp audio files. Shared by generation and (later) the edit ops.
+    static func materializeAudio(from data: Data, format: String) throws -> [URL] {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw OpenAICompatGenerationError.decodeFailed
+        }
+        if let err = obj["error"] as? [String: Any], let message = err["message"] as? String {
+            throw OpenAICompatGenerationError.api(message)
+        }
+        guard let items = obj["data"] as? [[String: Any]] else {
+            throw OpenAICompatGenerationError.decodeFailed
+        }
+        let ext = format.isEmpty ? "mp3" : format
+        var urls: [URL] = []
+        for item in items {
+            if let b64 = item["b64_json"] as? String, let bytes = Data(base64Encoded: b64) {
+                let tmp = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("genaud-\(UUID().uuidString.prefix(8)).\(ext)")
+                try bytes.write(to: tmp)
+                urls.append(tmp)
+            }
+        }
+        if urls.isEmpty { throw OpenAICompatGenerationError.emptyResponse }
+        return urls
+    }
+
     // MARK: - Multipart + chat parsing (pure, testable)
 
     struct MultipartPart: Sendable, Equatable {

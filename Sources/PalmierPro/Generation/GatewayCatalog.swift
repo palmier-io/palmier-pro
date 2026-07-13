@@ -88,3 +88,15 @@ enum GatewayVideoModels {
         return saved.isEmpty ? alias.fallback : saved
     }
 }
+
+/// Gateway alias for ACE-Step music (GATEWAY_CONTRACT.md audio section).
+enum GatewayAudioModels {
+    static let gen = GatewayImageModels.Alias(
+        key: "gatewayAudioGenModel", label: "Music generation", fallback: "protolabs/ace-step"
+    )
+
+    static func resolve(_ alias: GatewayImageModels.Alias) -> String {
+        let saved = UserDefaults.standard.string(forKey: alias.key) ?? ""
+        return saved.isEmpty ? alias.fallback : saved
+    }
+}

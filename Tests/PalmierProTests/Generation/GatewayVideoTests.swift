@@ -78,7 +78,9 @@ final class VideoBridgeStub: URLProtocol {
 struct GatewayVideoTests {
     private static let stubClient: OpenAICompatGenerationClient = {
         let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [VideoBridgeStub.self]
+        // Register every stub host — the gateway client shares one global session,
+        // so parallel suites must not clobber each other's protocol (host-filtered).
+        config.protocolClasses = [VideoBridgeStub.self, AudioAdapterStub.self]
         OpenAICompatGenerationClient.session = URLSession(configuration: config)
         GatewayGenerationRunner.videoPollInterval = .milliseconds(5)
         return OpenAICompatGenerationClient(baseURL: URL(string: "https://stub.test/v1")!, apiKey: "k")

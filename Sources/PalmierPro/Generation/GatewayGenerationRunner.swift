@@ -37,6 +37,20 @@ struct GatewayVideoJob: Sendable {
     var lastFrameURL: URL?        // image; with an image input_reference → first-last-frame
 }
 
+/// ACE-Step music generation (GATEWAY_CONTRACT.md audio section). Sync b64 — no
+/// polling. Edit ops (extend/repaint/edit) land on the same shape via a follow-up.
+struct GatewayAudioJob: Sendable {
+    let model: String
+    let prompt: String
+    var lyrics: String?
+    var instrumental: Bool = false
+    var seconds: Int?
+    var n: Int = 1
+    var seed: Int?
+    var negativePrompt: String?
+    var format: String = "mp3"
+}
+
 /// Pure routing: how many references → which op. nil = unmappable.
 enum GatewayImageRouting {
     static func op(forReferenceCount count: Int) -> GatewayImageJob.Op? {
@@ -184,6 +198,15 @@ enum GatewayGenerationRunner {
         )
         await onCreated(id)
         return try await pollVideo(id: id, client: client)
+    }
+
+    /// ACE-Step music generation — sync bytes back, no job/poll (unlike video).
+    static func executeAudio(_ job: GatewayAudioJob, client: OpenAICompatGenerationClient) async throws -> [URL] {
+        try await client.generateMusic(
+            model: job.model, prompt: job.prompt, lyrics: job.lyrics,
+            instrumental: job.instrumental, seconds: job.seconds, n: job.n,
+            seed: job.seed, negativePrompt: job.negativePrompt, format: job.format
+        )
     }
 
     /// Container extensions the bridge treats as an extend guide rather than a still.

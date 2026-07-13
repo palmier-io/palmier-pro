@@ -821,6 +821,83 @@ final class GenerationService {
 
     static let gatewayVideoJobPrefix = "gateway-video:"
 
+    /// Entry point for gateway audio jobs (ACE-Step music). Sync — creates the
+    /// placeholders, runs the job, finalizes through the shared path. `n` clips
+    /// land as separate audio assets. Returns the primary placeholder id.
+    func generateViaGateway(
+        audioJob job: GatewayAudioJob,
+        name: String?,
+        folderId: String?,
+        projectURL: URL?,
+        editor: EditorViewModel,
+        onComplete: (@MainActor (MediaAsset) -> Void)? = nil,
+        onFailure: (@MainActor () -> Void)? = nil
+    ) -> String {
+        var genInput = GenerationInput(
+            prompt: job.prompt, model: job.model, duration: job.seconds ?? 0,
+            aspectRatio: "", resolution: nil, quality: nil
+        )
+        genInput.numImages = job.n
+        genInput.createdAt = Date()
+
+        let resolvedFolderId = folderId.flatMap { id in
+            editor.folder(id: id) != nil ? id : nil
+        }
+        let destDir = Self.destinationDirectory(for: projectURL)
+        let baseName = name ?? String(job.prompt.prefix(30))
+        var placeholders: [MediaAsset] = []
+        for outputIndex in 0..<max(1, job.n) {
+            var placeholderInput = genInput
+            placeholderInput.outputIndex = outputIndex
+            let placeholder = createPlaceholder(
+                type: .audio, name: baseName, duration: Double(job.seconds ?? 0),
+                genInput: placeholderInput, folderId: resolvedFolderId,
+                destDir: destDir, fileExtension: job.format, editor: editor
+            )
+            placeholder.generationStatus = .generating
+            placeholders.append(placeholder)
+        }
+        let primaryId = placeholders[0].id
+
+        Task { @MainActor [weak self, weak editor] in
+            guard let self, let editor else { return }
+            await self.runGatewayAudioJob(job, placeholders: placeholders, editor: editor,
+                                          onComplete: onComplete, onFailure: onFailure)
+        }
+        return primaryId
+    }
+
+    private func runGatewayAudioJob(
+        _ job: GatewayAudioJob,
+        placeholders: [MediaAsset],
+        editor: EditorViewModel,
+        onComplete: (@MainActor (MediaAsset) -> Void)?,
+        onFailure: (@MainActor () -> Void)?
+    ) async {
+        guard let client = OpenAICompatGenerationClient.fromGateway() else {
+            for placeholder in placeholders {
+                updateGenerationMetadata(placeholder, editor: editor, status: .failed("Gateway not configured"))
+            }
+            onFailure?()
+            return
+        }
+        do {
+            let urls = try await GatewayGenerationRunner.executeAudio(job, client: client)
+            await finalizeSuccess(
+                urlStrings: urls.map(\.absoluteString),
+                placeholders: placeholders, editor: editor,
+                onComplete: onComplete, onFailure: onFailure
+            )
+        } catch {
+            let message = error.localizedDescription
+            Log.generation.error("gateway audio job failed model=\(job.model) error=\(message)")
+            for placeholder in placeholders {
+                updateGenerationMetadata(placeholder, editor: editor, status: .failed(message))
+            }
+            onFailure?()
+        }
+    }
+
     /// Entry point for gateway video jobs (text/image-to-video via the LTX
     /// bridge). Creates one video placeholder, then hands the job to
     /// GatewayGenerationRunner.executeVideo; the clip lands through the same
