@@ -34,9 +34,9 @@ extension ToolExecutor {
         try validateUnknownKeys(args, allowed: [], path: "manage_project action='list'")
         let openDocs = AppState.shared.openProjects
         let openURLs = Set(openDocs.compactMap { $0.fileURL?.standardizedFileURL })
-        let active = selectedProject
+        let active = sessionProject
         let activeURL = active?.fileURL?.standardizedFileURL
-        let visible = visibleProject
+        let visible = frontmostProject
         let visibleURL = visible?.fileURL?.standardizedFileURL
 
         // Only registered projects, sorted by most recently opened.
@@ -74,7 +74,7 @@ extension ToolExecutor {
             throw ToolError("No project at \(url.path).")
         }
         let doc = try await AppState.shared.openProjectAsync(at: url)
-        selectProject(doc)
+        bindProject(doc)
         notifyNowEditing(doc)
         let result = ToolResult.ok(Self.jsonString(projectSnapshot(doc, status: "active")) ?? "{}")
         return await shorteningIds(in: result, editor: doc.editorViewModel)
@@ -89,7 +89,7 @@ extension ToolExecutor {
         let settingsArgs = args.filter { ["fps", "aspectRatio", "quality"].contains($0.key) }
         let settings = try settingsArgs.isEmpty ? nil : validateProjectSettings(settingsArgs)
         let doc = try await AppState.shared.createProject(named: name)
-        selectProject(doc)
+        bindProject(doc)
         if let settings {
             _ = try setProjectSettings(doc.editorViewModel, settings)
         }
@@ -111,31 +111,31 @@ extension ToolExecutor {
                 throw ToolError("Project at \(url.path) isn't open.")
             }
             target = doc
-        } else if let active = selectedProject {
+        } else if let active = sessionProject {
             target = active
         } else {
             throw ToolError("No project is open.")
         }
         let name = target.displayName ?? Project.defaultProjectName
-        let wasSelected = selectedProject === target
+        let wasSelected = sessionProject === target
         do {
             try await AppState.shared.closeProject(target)
         } catch {
             throw ToolError("Couldn't save '\(name)' — project left open. \(error.localizedDescription)")
         }
-        if wasSelected { selectProject(nil) }
+        if wasSelected { bindProject(nil) }
         var payload: [String: Any] = [
             "status": "closed",
             "name": name,
             "openCount": AppState.shared.openProjects.count,
         ]
-        if let nowActive = selectedProject {
+        if let nowActive = sessionProject {
             payload["active"] = [
                 "name": nowActive.displayName ?? Project.defaultProjectName,
                 "path": nowActive.fileURL?.path ?? "",
             ]
         }
-        if let visible = visibleProject {
+        if let visible = frontmostProject {
             payload["visible"] = [
                 "name": visible.displayName ?? Project.defaultProjectName,
                 "path": visible.fileURL?.path ?? "",

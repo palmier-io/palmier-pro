@@ -6,46 +6,44 @@ struct ToolError: Error { let message: String; init(_ m: String) { self.message 
 /// Tool implementations live in the `ToolExecutor+*.swift` extension files.
 @MainActor
 final class ToolExecutor {
-    private let editorProvider: () -> EditorViewModel?
-    private let projectProvider: (() -> VideoProject?)?
-    private weak var selectedProjectDocument: VideoProject?
-    private var hasProjectSelection = false
-    private var selectedProjectName: String?
+    // In-app chat stays with the editor owned by its project window.
+    private weak var inAppEditor: EditorViewModel?
+    // External MCP observes the frontmost project only to guard writes.
+    private let frontmostProjectProvider: (() -> VideoProject?)?
+    // External MCP stays on this project until manage_project rebinds it.
+    private weak var boundProject: VideoProject?
     let exportQueue: ExportQueue
 
     var editor: EditorViewModel? {
-        projectProvider == nil ? editorProvider() : selectedProject?.editorViewModel
+        frontmostProjectProvider == nil ? inAppEditor : sessionProject?.editorViewModel
     }
 
-    var selectedProject: VideoProject? {
-        guard let projectProvider else { return nil }
-        if !hasProjectSelection, let project = projectProvider() {
-            selectProject(project)
-        }
-        guard let project = selectedProjectDocument,
+    var sessionProject: VideoProject? {
+        guard frontmostProjectProvider != nil,
+              let project = boundProject,
               AppState.shared.openProjects.contains(where: { $0 === project }) else { return nil }
         return project
     }
 
-    var visibleProject: VideoProject? { projectProvider?() }
+    var frontmostProject: VideoProject? { frontmostProjectProvider?() }
 
     init(editor: EditorViewModel, exportQueue: ExportQueue = .shared) {
-        self.editorProvider = { [weak editor] in editor }
-        self.projectProvider = nil
+        self.inAppEditor = editor
+        self.frontmostProjectProvider = nil
         self.exportQueue = exportQueue
     }
 
     init(projectProvider: @escaping () -> VideoProject?, exportQueue: ExportQueue = .shared) {
-        self.editorProvider = { nil }
-        self.projectProvider = projectProvider
+        let project = projectProvider()
+        self.inAppEditor = nil
+        self.frontmostProjectProvider = projectProvider
+        self.boundProject = project
         self.exportQueue = exportQueue
     }
 
-    func selectProject(_ project: VideoProject?) {
-        guard projectProvider != nil else { return }
-        selectedProjectDocument = project
-        selectedProjectName = project?.displayName
-        hasProjectSelection = true
+    func bindProject(_ project: VideoProject?) {
+        guard frontmostProjectProvider != nil else { return }
+        boundProject = project
     }
 
     private var agentUndoStack: [String] = []
@@ -151,13 +149,13 @@ final class ToolExecutor {
     }
 
     private func projectFocusError() -> String? {
-        guard projectProvider != nil else { return nil }
-        let selected = selectedProject
-        let visible = visibleProject
-        guard hasProjectSelection, selected !== visible else { return nil }
-        let selectedName = selected?.displayName ?? selectedProjectName ?? "no project"
-        let visibleName = visible?.displayName ?? "no project"
-        return "This session is on '\(selectedName)', but '\(visibleName)' is active in Palmier Pro. Activate '\(selectedName)' or call manage_project with action='open' before making changes."
+        guard frontmostProjectProvider != nil else { return nil }
+        let session = sessionProject
+        let frontmost = frontmostProject
+        guard session !== frontmost else { return nil }
+        let sessionName = session?.displayName ?? boundProject?.displayName ?? "no project"
+        let frontmostName = frontmost?.displayName ?? "no project"
+        return "This session is on '\(sessionName)', but '\(frontmostName)' is active in Palmier Pro. Activate '\(sessionName)' or call manage_project with action='open' before making changes."
     }
 
     private static func canReadInactiveProject(_ tool: ToolName) -> Bool {
