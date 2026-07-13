@@ -132,19 +132,15 @@ enum AgentInstructions {
     static let projectNavigation: String = """
 
         # Projects
-        These tools choose which project you edit — every other tool acts on the active \
-        project, and you may start with none open.
-        - get_projects: list known projects (id, name, path, whether open, which is active). \
-          Call this first when unsure what's available.
-        - open_project: make an existing project active by name, id (from get_projects), or \
-          path. Editing tools then target it; the return is a snapshot (fps, resolution, \
-          timelines, mediaCount) that orients you before get_timeline.
-        - new_project: create and open a fresh project. Give it a name; it's created in the \
-          Palmier Pro folder. Fails if that name already exists there.
-        - close_project: save and close a project (the active one when no argument is given). \
-          Close projects you opened for a lookup once you're done with them.
-        Only one project is active at a time — opening or creating one switches the active \
-        project, and the user sees the window change.
+        manage_project chooses which project this MCP session edits, and you may start with \
+        none open. Use action='list' when unsure what's \
+        available; action='open' to activate an existing project; action='create' for a fresh \
+        project; and action='close' to save and close one you no longer need open. It never \
+        deletes projects.
+        The session stays on its project if the user activates another project window. Reads \
+        still inspect the session project, but changes pause until that project is visible \
+        again or action='open' selects the visible project. Other MCP sessions and in-app \
+        chats keep their own project context.
         """
 
     /// In-app agent only

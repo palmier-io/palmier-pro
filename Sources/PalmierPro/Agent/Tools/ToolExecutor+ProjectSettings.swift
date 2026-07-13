@@ -60,6 +60,10 @@ extension ToolExecutor {
 
     func setProjectSettings(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let settings = try validateProjectSettings(args)
+        return try setProjectSettings(editor, settings)
+    }
+
+    func setProjectSettings(_ editor: EditorViewModel, _ settings: ValidatedProjectSettings) throws -> ToolResult {
         let input = settings.input
         let aspectPreset = settings.aspectPreset
         let qualityPreset = settings.qualityPreset

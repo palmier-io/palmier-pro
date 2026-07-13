@@ -3,10 +3,7 @@ import MCP
 
 enum ToolName: String, CaseIterable, Sendable {
     // Projects
-    case getProjects = "get_projects"
-    case openProject = "open_project"
-    case newProject = "new_project"
-    case closeProject = "close_project"
+    case manageProject = "manage_project"
 
     // Timelines
     case getTimeline = "get_timeline"
@@ -1032,58 +1029,32 @@ enum ToolDefinitions {
     )
 
     /// MCP server only
-    static let getProjects = AgentTool(
-        name: .getProjects,
-        description: "List the user's known projects, most recently opened first: each entry's id, name, path, whether it's currently open, and whether it's the active project (the one editing tools act on). Also returns a top-level `active` (name, path) for the current project, which may not appear in the list. Call this to discover what's available before open_project, or to find out which project is active. Takes no arguments.",
-        inputSchema: objectSchema()
-    )
-
-    static let openProject = AgentTool(
-        name: .openProject,
-        description: "Open a project and make it the active one — every editing tool then acts on it. Identify it by `name` (the natural choice when the user names a project), `id` (from get_projects), or `path` to a .palmier package. If it's already open, it's brought to front; the user sees the window change. Returns a snapshot of what you opened: fps, resolution, mediaCount, canGenerate, and the timelines list — enough to orient before get_timeline.",
+    static let manageProject = AgentTool(
+        name: .manageProject,
+        description: "List, open, create, or close Palmier projects for this MCP session. Set `action` to: `list` for known projects plus session-active and visible state; `open` with a name, id from list, or .palmier path; `create` with an optional name and initial fps/aspectRatio/quality; or `close` to save and close the session project, optionally targeting another open project by name/id/path. Opening or creating changes only this session's target. Closing always completes a final save first. This tool never deletes projects or files.",
         inputSchema: objectSchema(
             properties: [
-                "name": ["type": "string", "description": "Project name, matched case-insensitively against known projects. Errors list candidates when ambiguous or unknown."],
-                "id": ["type": "string", "description": "Project id from get_projects."],
-                "path": ["type": "string", "description": "Filesystem path to a .palmier package."],
-            ]
-        )
-    )
-
-    static let newProject = AgentTool(
-        name: .newProject,
-        description: "Create a new empty project in the user's Palmier Pro folder and make it active. Fails if a project with that name already exists — pick another name. Optionally set fps / aspectRatio / quality at creation so the first clips land on the right canvas (same semantics as set_project_settings). Returns the same snapshot as open_project.",
-        inputSchema: objectSchema(
-            properties: [
-                "name": ["type": "string", "description": "Project name (without extension). Defaults to 'Untitled Project'."],
-                "fps": ["type": "integer", "description": "Optional timeline frame rate (1-120)."],
+                "action": ["type": "string", "enum": ["list", "open", "create", "close"], "description": "Project operation."],
+                "name": ["type": "string", "description": "Project name. For open/close, matched case-insensitively; for create, defaults to 'Untitled Project'."],
+                "id": ["type": "string", "description": "Project id returned by action='list'. Used by open or close."],
+                "path": ["type": "string", "description": "Filesystem path to a .palmier package. Used by open or close."],
+                "fps": ["type": "integer", "description": "Create only. Optional timeline frame rate (1-120)."],
                 "aspectRatio": [
                     "type": "string",
                     "enum": ["16:9", "9:16", "1:1", "4:3", "2.4:1", "9:14"],
-                    "description": "Optional canvas aspect ratio.",
+                    "description": "Create only. Optional canvas aspect ratio.",
                 ],
                 "quality": [
                     "type": "string",
                     "enum": ["720p", "1080p", "2K", "4K"],
-                    "description": "Optional resolution preset applied to the aspect ratio.",
+                    "description": "Create only. Optional resolution preset applied to the aspect ratio.",
                 ],
-            ]
+            ],
+            required: ["action"]
         )
     )
 
-    static let closeProject = AgentTool(
-        name: .closeProject,
-        description: "Save and close an open project. Omit all arguments to close the active project; or identify one by name, id (from get_projects), or path. Unsaved changes are saved first. When the active project closes, the next open project becomes active (returned as `active`) — with none left, the Home window shows and editing tools need open_project/new_project again.",
-        inputSchema: objectSchema(
-            properties: [
-                "name": ["type": "string", "description": "Project name, matched case-insensitively. Omit everything to close the active project."],
-                "id": ["type": "string", "description": "Project id from get_projects."],
-                "path": ["type": "string", "description": "Filesystem path to a .palmier package."],
-            ]
-        )
-    )
-
-    static var mcpServer: [AgentTool] { all + [getProjects, openProject, newProject, closeProject] }
+    static var mcpServer: [AgentTool] { all + [manageProject] }
     static var inAppAgent: [AgentTool] { all + [readSkill] }
 
     private static func textBoxTransformProperties() -> [String: [String: Any]] {

@@ -47,6 +47,9 @@ final class VideoProject: NSDocument {
     private nonisolated(unsafe) var snapshotSourceProjectURL: URL?
     private nonisolated(unsafe) var snapshotPreparedForWrite = false
     private var projectCheckpointAutosaveScheduled = false
+    private var savesInProgress = 0
+    private var saveWaiters: [CheckedContinuation<Void, Never>] = []
+    private var isSavingBeforeClose = false
 
     // MARK: - Persistence
 
@@ -133,9 +136,42 @@ final class VideoProject: NSDocument {
             fileModificationDate = date
         }
 
+        savesInProgress += 1
         captureSaveSnapshot()
         snapshotSourceProjectURL = fileURL
-        super.save(to: url, ofType: typeName, for: saveOperation, completionHandler: completionHandler)
+        super.save(to: url, ofType: typeName, for: saveOperation) { [weak self] error in
+            completionHandler(error)
+            guard let self else { return }
+            self.savesInProgress -= 1
+            if self.savesInProgress == 0 {
+                self.saveWaiters.forEach { $0.resume() }
+                self.saveWaiters.removeAll()
+            }
+        }
+    }
+
+    @MainActor
+    func saveBeforeClosing() async throws {
+        isSavingBeforeClose = true
+        defer { isSavingBeforeClose = false }
+        repeat {
+            await waitForSaves()
+            guard let url = fileURL else { throw CocoaError(.fileNoSuchFile) }
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                save(to: url, ofType: Self.typeIdentifier, for: .saveOperation) { error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume()
+                    }
+                }
+            }
+        } while hasUnautosavedChanges
+    }
+
+    private func waitForSaves() async {
+        guard savesInProgress > 0 else { return }
+        await withCheckedContinuation { saveWaiters.append($0) }
     }
 
     override func write(to url: URL, ofType typeName: String) throws {
@@ -292,12 +328,12 @@ final class VideoProject: NSDocument {
     }
 
     private func scheduleProjectCheckpointAutosave() {
-        guard fileURL != nil, !projectCheckpointAutosaveScheduled else { return }
+        guard fileURL != nil, !projectCheckpointAutosaveScheduled, !isSavingBeforeClose else { return }
         projectCheckpointAutosaveScheduled = true
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.projectCheckpointAutosaveScheduled = false
-            guard self.fileURL != nil else { return }
+            guard self.fileURL != nil, !self.isSavingBeforeClose else { return }
             self.autosave(withImplicitCancellability: false) { error in
                 if let error {
                     Log.project.error("project checkpoint autosave failed: \(error.localizedDescription)")
@@ -391,6 +427,11 @@ final class VideoProject: NSDocument {
         window.addTitlebarSwiftUI(TitleBarTrailingView().environment(editorViewModel), side: .trailing, width: AppTheme.Window.projectTitlebarTrailingWidth)
 
         let controller = EditorWindowController(editorViewModel: editorViewModel, window: window)
+        controller.onBecameKey = { [weak self] in
+            guard let self else { return }
+            AppState.shared.activateProject(self)
+        }
+        window.delegate = controller
         controller.installKeyMonitor()
         addWindowController(controller)
 
