@@ -30,7 +30,8 @@ final class VideoBridgeStub: URLProtocol {
         ))
         let (status, body): (Int, Data)
         if request.httpMethod == "POST", path.hasSuffix("/videos") {
-            (status, body) = (200, Data(#"{"id":"vid_123","status":"queued"}"#.utf8))
+            // Real bridge returns 201 with the full public job shape (bridge.py:_public).
+            (status, body) = (201, Data(#"{"id":"vid_123","object":"video","model":"protolabs/ltx2-distilled","status":"queued","progress":0,"created_at":1}"#.utf8))
         } else if path.hasSuffix("/content") {
             (status, body) = (200, Self.videoBytes)
         } else if path.contains("/videos/") {
@@ -88,6 +89,8 @@ struct GatewayVideoTests {
         try? FileManager.default.removeItem(at: url)
         let create = try #require(VideoBridgeStub.calls.first)
         #expect(create.method == "POST" && create.path.hasSuffix("/videos"))
+        // Bridge sends application/json → it reads the full JSON body (size/seconds/
+        // extra_body). A non-JSON content-type would drop those (bridge.py POST handler).
         #expect(create.contentType == "application/json", "no reference → JSON create")
         // create + 4 status GETs (3 scripted + terminal) is the ceiling; content GET last
         #expect(VideoBridgeStub.calls.last?.path.hasSuffix("/content") == true)
