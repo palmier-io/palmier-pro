@@ -44,10 +44,14 @@ enum GatewayImageModels {
 struct GatewayImageAliasesSection: View {
     @State private var values: [String: String] = [:]
 
+    private var aliases: [GatewayImageModels.Alias] {
+        GatewayImageModels.all + [GatewayVideoModels.gen]
+    }
+
     var body: some View {
         DisclosureGroup {
             VStack(spacing: AppTheme.Spacing.xs) {
-                ForEach(GatewayImageModels.all) { alias in
+                ForEach(aliases) { alias in
                     HStack(spacing: AppTheme.Spacing.sm) {
                         Text(alias.label)
                             .font(.system(size: AppTheme.FontSize.sm))
@@ -61,11 +65,11 @@ struct GatewayImageAliasesSection: View {
             }
             .padding(.top, AppTheme.Spacing.xs)
         } label: {
-            Text("Image model aliases")
+            Text("Generation model aliases")
                 .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
         }
         .onAppear {
-            for alias in GatewayImageModels.all {
+            for alias in aliases {
                 let saved = UserDefaults.standard.string(forKey: alias.key) ?? ""
                 values[alias.key] = saved
             }

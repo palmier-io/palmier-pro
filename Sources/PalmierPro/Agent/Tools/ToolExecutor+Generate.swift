@@ -28,7 +28,7 @@ extension ToolExecutor {
         let prompt = try args.requireString("prompt")
         // Image generation routes to the OpenAI-compatible gateway when configured — no
         // hosted account/credits needed. Other types still use the hosted backend.
-        let routesToGateway = type == .image && OpenAICompatGenerationClient.gatewayConfigured
+        let routesToGateway = (type == .image || type == .video) && OpenAICompatGenerationClient.gatewayConfigured
         if !routesToGateway {
             guard AccountService.shared.isSignedIn else {
                 throw ToolError("Generation requires signing in to the hosted backend. Tell the user to sign in.")

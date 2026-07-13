@@ -73,7 +73,7 @@ final class GenerationService {
 
         Task { @MainActor in
             // Gateway path: references stay local files; no Convex upload/job.
-            if OpenAICompatGenerationClient.gatewayConfigured, assetType == .image {
+            if OpenAICompatGenerationClient.gatewayConfigured, assetType == .image || assetType == .video {
                 var storedInput = genInput
                 let localRefs = references.map(\.url.absoluteString)
                 storedInput.imageURLs = localRefs.isEmpty ? nil : localRefs
@@ -318,13 +318,21 @@ final class GenerationService {
             resumedBackendJobIds.insert(backendJobId)
             Task { @MainActor [weak self, weak editor] in
                 guard let self, let editor else { return }
-                await self.monitorBackendJob(
-                    backendJobId: backendJobId,
-                    placeholders: placeholders,
-                    editor: editor,
-                    onComplete: nil,
-                    onFailure: nil
-                )
+                if backendJobId.hasPrefix(Self.gatewayVideoJobPrefix) {
+                    await self.resumeGatewayVideoJob(
+                        id: String(backendJobId.dropFirst(Self.gatewayVideoJobPrefix.count)),
+                        placeholders: placeholders,
+                        editor: editor
+                    )
+                } else {
+                    await self.monitorBackendJob(
+                        backendJobId: backendJobId,
+                        placeholders: placeholders,
+                        editor: editor,
+                        onComplete: nil,
+                        onFailure: nil
+                    )
+                }
                 self.resumedBackendJobIds.remove(backendJobId)
             }
         }
@@ -766,12 +774,115 @@ final class GenerationService {
             job.referenceURLs = refURLs
             await runGatewayImageJob(job, placeholders: placeholders, editor: editor,
                                      onComplete: onComplete, onFailure: onFailure)
+        case .video(let p):
+            if let unmappable = Self.gatewayVideoUnmappable(p) {
+                for placeholder in placeholders {
+                    updateGenerationMetadata(placeholder, editor: editor, status: .failed(unmappable))
+                }
+                onFailure?()
+                return
+            }
+            var job = GatewayVideoJob(
+                model: genInput.model, prompt: p.prompt,
+                seconds: max(1, p.duration)
+            )
+            job.size = GatewayGenerationRunner.videoSize(resolution: p.resolution, aspectRatio: p.aspectRatio)
+            job.inputReferenceURL = p.startFrameURL.flatMap { URL(string: $0) }
+            await runGatewayVideoJob(job, placeholders: placeholders, editor: editor,
+                                     onComplete: onComplete, onFailure: onFailure)
         default:
             for placeholder in placeholders {
                 updateGenerationMetadata(placeholder, editor: editor,
                     status: .failed("This generation type isn't available through the gateway yet"))
             }
             onFailure?()
+        }
+    }
+
+    /// What the hosted video path offers that the gateway can't map — reject
+    /// with a message naming the gap rather than silently dropping inputs.
+    nonisolated static func gatewayVideoUnmappable(_ p: VideoGenerationParams) -> String? {
+        if p.sourceVideoURL != nil {
+            return "Video-edit models aren't available through the gateway; pick a text/image-to-video model"
+        }
+        if p.endFrameURL != nil {
+            return "End-frame conditioning isn't available through the gateway (first frame only)"
+        }
+        if p.hasAnyReferences {
+            return "Reference media isn't available through the gateway video path (first frame only)"
+        }
+        return nil
+    }
+
+    static let gatewayVideoJobPrefix = "gateway-video:"
+
+    private func runGatewayVideoJob(
+        _ job: GatewayVideoJob,
+        placeholders: [MediaAsset],
+        editor: EditorViewModel,
+        onComplete: (@MainActor (MediaAsset) -> Void)?,
+        onFailure: (@MainActor () -> Void)?
+    ) async {
+        guard let client = OpenAICompatGenerationClient.fromGateway() else {
+            for placeholder in placeholders {
+                updateGenerationMetadata(placeholder, editor: editor, status: .failed("Gateway not configured"))
+            }
+            onFailure?()
+            return
+        }
+        do {
+            for placeholder in placeholders {
+                updateGenerationMetadata(placeholder, editor: editor, status: .generating)
+            }
+            let url = try await GatewayGenerationRunner.executeVideo(job, client: client) { [weak self, weak editor] id in
+                guard let self, let editor else { return }
+                for placeholder in placeholders {
+                    self.updateGenerationMetadata(placeholder, editor: editor) { input in
+                        input.backendJobId = Self.gatewayVideoJobPrefix + id
+                    }
+                }
+                editor.onProjectCheckpointRequired?()
+            }
+            await finalizeSuccess(
+                urlStrings: [url.absoluteString],
+                placeholders: placeholders, editor: editor,
+                onComplete: onComplete, onFailure: onFailure
+            )
+        } catch {
+            let message = error.localizedDescription
+            Log.generation.error("gateway video job failed model=\(job.model) error=\(message)")
+            for placeholder in placeholders {
+                updateGenerationMetadata(placeholder, editor: editor, status: .failed(message))
+            }
+            onFailure?()
+        }
+    }
+
+    /// Restart-resume for gateway video jobs: the id is stateless to poll.
+    func resumeGatewayVideoJob(
+        id: String,
+        placeholders: [MediaAsset],
+        editor: EditorViewModel
+    ) async {
+        guard let client = OpenAICompatGenerationClient.fromGateway() else {
+            for placeholder in placeholders {
+                updateGenerationMetadata(placeholder, editor: editor, status: .failed("Gateway not configured"))
+            }
+            return
+        }
+        do {
+            let url = try await GatewayGenerationRunner.pollVideo(id: id, client: client)
+            await finalizeSuccess(
+                urlStrings: [url.absoluteString],
+                placeholders: placeholders, editor: editor,
+                onComplete: nil, onFailure: nil
+            )
+        } catch {
+            let message = error.localizedDescription
+            Log.generation.error("gateway video resume failed id=\(id) error=\(message)")
+            for placeholder in placeholders {
+                updateGenerationMetadata(placeholder, editor: editor, status: .failed(message))
+            }
         }
     }
 }

@@ -31,15 +31,16 @@ struct OpenAICompatGenerationClient: Sendable {
 
     /// ComfyUI queues jobs behind the gateway; renders can take minutes.
     static let requestTimeout: TimeInterval = 300
-    private static let session: URLSession = {
+    // Swapped by tests for a URLProtocol-stubbed session; set once, before use.
+    nonisolated(unsafe) static var session: URLSession = {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = requestTimeout
         return URLSession(configuration: config)
     }()
 
-    private func request(path: String, contentType: String? = nil) -> URLRequest {
+    private func request(path: String, method: String = "POST", contentType: String? = nil) -> URLRequest {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
-        request.httpMethod = "POST"
+        request.httpMethod = method
         if !apiKey.isEmpty {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
@@ -120,6 +121,81 @@ struct OpenAICompatGenerationClient: Sendable {
             throw OpenAICompatGenerationError.api("Compose returned no image: \(text.prefix(200))")
         }
         return try Self.materialize(images: [.base64(bytes)])
+    }
+
+    // MARK: - Video (async job shape — GATEWAY_CONTRACT.md)
+
+    struct VideoJobStatus: Sendable, Equatable {
+        let id: String
+        let status: String        // queued | in_progress | completed | failed
+        let progress: Int?
+        let errorMessage: String?
+
+        var isTerminal: Bool { status == "completed" || status == "failed" }
+    }
+
+    /// POST /videos — returns the job id. JSON without a reference; multipart
+    /// with `input_reference` (first-frame conditioning) when one is given.
+    func createVideo(
+        model: String, prompt: String, seconds: Int, size: String?,
+        inputReference: Data? = nil
+    ) async throws -> String {
+        var req: URLRequest
+        if let inputReference {
+            let boundary = "pd-\(UUID().uuidString)"
+            req = request(path: "videos", contentType: "multipart/form-data; boundary=\(boundary)")
+            var fields = ["model": model, "prompt": prompt, "seconds": String(seconds)]
+            if let size, !size.isEmpty { fields["size"] = size }
+            req.httpBody = Self.multipartBody(
+                boundary: boundary, fields: fields,
+                parts: [.init(name: "input_reference", filename: "reference.png",
+                              contentType: "image/png", data: inputReference)]
+            )
+        } else {
+            req = request(path: "videos", contentType: "application/json")
+            var body: [String: Any] = ["model": model, "prompt": prompt, "seconds": String(seconds)]
+            if let size, !size.isEmpty { body["size"] = size }
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+        guard let job = Self.parseVideoJob(try await send(req)) else {
+            throw OpenAICompatGenerationError.decodeFailed
+        }
+        return job.id
+    }
+
+    /// GET /videos/{id}
+    func videoStatus(id: String) async throws -> VideoJobStatus {
+        let req = request(path: "videos/\(id)", method: "GET")
+        guard let job = Self.parseVideoJob(try await send(req)) else {
+            throw OpenAICompatGenerationError.decodeFailed
+        }
+        return job
+    }
+
+    /// GET /videos/{id}/content — streams the mp4 to a temp file.
+    func videoContent(id: String) async throws -> URL {
+        let req = request(path: "videos/\(id)/content", method: "GET")
+        let (downloaded, response) = try await Self.session.download(for: req)
+        if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
+            let body = (try? String(contentsOf: downloaded, encoding: .utf8)) ?? ""
+            throw OpenAICompatGenerationError.httpError(status: http.statusCode, body: body)
+        }
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent("genvid-\(UUID().uuidString.prefix(8)).mp4")
+        try FileManager.default.moveItem(at: downloaded, to: dest)
+        return dest
+    }
+
+    static func parseVideoJob(_ data: Data) -> VideoJobStatus? {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = obj["id"] as? String else { return nil }
+        let error = obj["error"] as? [String: Any]
+        return VideoJobStatus(
+            id: id,
+            status: (obj["status"] as? String) ?? "queued",
+            progress: obj["progress"] as? Int,
+            errorMessage: (error?["message"] as? String)
+        )
     }
 
     // MARK: - Multipart + chat parsing (pure, testable)

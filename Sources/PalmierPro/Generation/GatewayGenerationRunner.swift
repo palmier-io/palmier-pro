@@ -25,6 +25,17 @@ struct GatewayImageJob: Sendable {
     var negativePrompt: String?
 }
 
+/// One gateway video job (async bridge shape). The optional reference is the
+/// first frame (image-to-video); everything else the hosted path offers
+/// (end frame, multi-ref, source video) is unmappable and rejected upstream.
+struct GatewayVideoJob: Sendable {
+    let model: String
+    let prompt: String
+    let seconds: Int
+    var size: String?
+    var inputReferenceURL: URL?
+}
+
 /// Pure routing: how many references → which op. nil = unmappable.
 enum GatewayImageRouting {
     static func op(forReferenceCount count: Int) -> GatewayImageJob.Op? {
@@ -133,6 +144,65 @@ enum GatewayGenerationRunner {
             throw OpenAICompatGenerationError.api("Could not encode reference image")
         }
         return out as Data
+    }
+
+    // MARK: - Video
+
+    // Overridable so tests poll in milliseconds.
+    nonisolated(unsafe) static var videoPollInterval: Duration = .seconds(10)
+    nonisolated(unsafe) static var videoTimeout: Duration = .seconds(900)
+
+    /// Submit and poll to completion; returns the downloaded mp4 as a temp file.
+    /// onCreated fires with the job id as soon as the bridge assigns it (persisted
+    /// for restart-resume).
+    static func executeVideo(
+        _ job: GatewayVideoJob,
+        client: OpenAICompatGenerationClient,
+        onCreated: @MainActor (String) -> Void
+    ) async throws -> URL {
+        var reference: Data?
+        if let url = job.inputReferenceURL {
+            reference = try preparedImageData(from: url)
+        }
+        let id = try await client.createVideo(
+            model: job.model, prompt: job.prompt, seconds: job.seconds,
+            size: job.size, inputReference: reference
+        )
+        await onCreated(id)
+        return try await pollVideo(id: id, client: client)
+    }
+
+    /// Poll loop — also the restart-resume entry (status GETs are stateless).
+    static func pollVideo(id: String, client: OpenAICompatGenerationClient) async throws -> URL {
+        let deadline = ContinuousClock.now + videoTimeout
+        var lastLoggedProgress = -1
+        while ContinuousClock.now < deadline {
+            let status = try await client.videoStatus(id: id)
+            switch status.status {
+            case "completed":
+                return try await client.videoContent(id: id)
+            case "failed":
+                throw OpenAICompatGenerationError.api(status.errorMessage ?? "Video generation failed")
+            default:
+                if let progress = status.progress, progress != lastLoggedProgress {
+                    lastLoggedProgress = progress
+                    Log.generation.notice("gateway video \(id) \(status.status) \(progress)%")
+                }
+                try await Task.sleep(for: videoPollInterval)
+            }
+        }
+        throw OpenAICompatGenerationError.api("Video generation timed out after \(Int(videoTimeout.components.seconds))s")
+    }
+
+    /// LTX-native buckets per aspect ratio for the video path.
+    static let videoAspectSizes: [String: String] = [
+        "16:9": "1216x704", "9:16": "704x1216", "1:1": "1024x1024",
+    ]
+
+    static func videoSize(resolution: String?, aspectRatio: String?) -> String? {
+        if let explicit = sizeParameter(resolution: resolution) { return explicit }
+        guard let aspectRatio else { return nil }
+        return videoAspectSizes[aspectRatio.trimmingCharacters(in: .whitespaces)]
     }
 
     /// Qwen-Image native buckets per aspect ratio (protoBanana snaps arbitrary

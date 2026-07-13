@@ -123,6 +123,17 @@ struct GatewaySmokeTests {
         #expect(entries.contains { $0.kind == .image }, "live gateway yields no image catalog entries")
         print("gateway-smoke catalog: \(entries.map(\.id).joined(separator: ", "))")
 
+        // Video bridge probe — informational until protoBanana#38 piece 2 ships.
+        do {
+            let id = try await client.createVideo(
+                model: GatewayVideoModels.resolve(GatewayVideoModels.gen),
+                prompt: "a slow pan over a mountain lake at dawn", seconds: 4, size: "1216x704"
+            )
+            print("gateway-smoke VIDEO BRIDGE LIVE: job \(id) created (not polled to completion here)")
+        } catch {
+            print("gateway-smoke video bridge not available (expected until protoBanana#38 ships): \(error.localizedDescription.prefix(160))")
+        }
+
         print("gateway-smoke outputs: \(outDir.path)")
         if !skipped.isEmpty {
             print("gateway-smoke SKIPPED (alias not on gateway): \(skipped.joined(separator: "; "))")
