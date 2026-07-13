@@ -37,22 +37,46 @@ enum VoiceActivity {
         private var model: SileroVADModel?
 
         func analyze(samples: [Float]) async throws -> Analysis {
+            guard !samples.isEmpty else { return Analysis(chunkCount: 0, segments: []) }
+            try MLXRuntime.beginOperation()
+            defer { MLXRuntime.endOperation() }
+
             // .mlx pinned: the CoreML engine soft-fails per chunk on ANE errors, caching empty segments as truth.
             let vad: SileroVADModel
             if let model {
                 vad = model
             } else {
-                try MLXRuntime.requireAvailable()
                 vad = try await SileroVADModel.fromPretrained(engine: .mlx)
                 model = vad
             }
-            guard !samples.isEmpty else { return Analysis(chunkCount: 0, segments: []) }
-            let segments = vad.detectSpeech(audio: samples, sampleRate: SileroVADModel.sampleRate)
             let chunkCount = (samples.count + SileroVADModel.chunkSize - 1) / SileroVADModel.chunkSize
+            let segments = try detectSpeech(vad: vad, samples: samples)
             return Analysis(
                 chunkCount: chunkCount,
-                segments: segments.map { Span(start: Double($0.startTime), end: Double($0.endTime)) }
+                segments: segments
             )
+        }
+
+        private func detectSpeech(vad: SileroVADModel, samples: [Float]) throws -> [Span] {
+            vad.resetState()
+            var probabilities: [Float] = []
+            for offset in stride(from: 0, to: samples.count, by: SileroVADModel.chunkSize) {
+                try Task.checkCancellation()
+                guard !MLXRuntime.shouldStop else { throw CancellationError() }
+                let end = min(offset + SileroVADModel.chunkSize, samples.count)
+                var chunk = Array(samples[offset..<end])
+                chunk.append(contentsOf: repeatElement(0, count: SileroVADModel.chunkSize - chunk.count))
+                probabilities.append(vad.processChunk(chunk))
+            }
+            var config = VADConfig.sileroDefault
+            let chunkDuration = Float(SileroVADModel.chunkSize) / Float(SileroVADModel.sampleRate)
+            config.windowDuration = Float(probabilities.count) * chunkDuration
+            let pipeline = VADPipeline(
+                config: config, sampleRate: SileroVADModel.sampleRate, framesPerChunk: probabilities.count
+            )
+            return pipeline.binarize(probs: probabilities).map {
+                Span(start: Double($0.startTime), end: Double($0.endTime))
+            }
         }
     }
 
