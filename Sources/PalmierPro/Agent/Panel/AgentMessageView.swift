@@ -10,6 +10,25 @@ struct AgentMessageView: View {
         switch message.role {
         case .user:   userBody
         case .assistant: assistantBody
+        case .system: systemBody
+        }
+    }
+
+    @ViewBuilder
+    private var systemBody: some View {
+        let texts = message.blocks.compactMap { block -> String? in
+            if case let .text(s) = block { return s }
+            return nil
+        }
+        if !texts.isEmpty {
+            HStack {
+                Spacer(minLength: 0)
+                Text(texts.joined(separator: "\n"))
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .multilineTextAlignment(.center)
+                Spacer(minLength: 0)
+            }
         }
     }
 

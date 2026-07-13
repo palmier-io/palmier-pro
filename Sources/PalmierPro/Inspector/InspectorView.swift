@@ -5,10 +5,12 @@ struct InspectorView: View {
     @Environment(EditorViewModel.self) var editor
 
     enum ClipTab: String, Hashable {
-        case text = "Text"
+        case text = "Content"
+        case textAnimate = "Animate"
         case video = "Video"
         case effects = "Adjust"
         case audio = "Audio"
+        case multicam = "Multicam"
         case ai = "AI Edit"
     }
 
@@ -39,6 +41,7 @@ struct InspectorView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: editor.selectedClipIds) { _, _ in
+            editor.cancelChromaKeySampling()
             if !editor.isMarqueeSelecting { resolvePreferredTab() }
         }
         .onChange(of: editor.isMarqueeSelecting) { _, selecting in
@@ -76,8 +79,8 @@ struct InspectorView: View {
     private var projectMetadataContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
-                if let url = editor.projectURL {
-                    metadataSection(title: "Project") {
+                metadataSection(title: "Project") {
+                    if let url = editor.projectURL {
                         plainMetadataRow(
                             label: "Name",
                             value: url.deletingPathExtension().lastPathComponent
@@ -88,13 +91,13 @@ struct InspectorView: View {
                             truncate: .middle
                         )
                     }
+                    plainMetadataRow(label: "Duration", value: formatDuration(Double(editor.timeline.totalFrames) / Double(editor.timeline.fps)))
                 }
 
-                metadataSection(title: "Format") {
-                    plainMetadataRow(label: "Resolution", value: "\(editor.timeline.width) × \(editor.timeline.height)")
-                    plainMetadataRow(label: "Frame Rate", value: "\(editor.timeline.fps) fps")
-                    plainMetadataRow(label: "Aspect Ratio", value: formatAspectRatio(width: editor.timeline.width, height: editor.timeline.height))
-                    plainMetadataRow(label: "Duration", value: formatDuration(Double(editor.timeline.totalFrames) / Double(editor.timeline.fps)))
+                metadataSection(title: "Settings") {
+                    menuMetadataRow(label: "Resolution", value: "\(editor.timeline.width) × \(editor.timeline.height)") { qualityMenuItems }
+                    menuMetadataRow(label: "Frame Rate", value: "\(editor.timeline.fps) fps") { fpsMenuItems }
+                    menuMetadataRow(label: "Aspect Ratio", value: formatAspectRatio(width: editor.timeline.width, height: editor.timeline.height)) { aspectMenuItems }
                 }
             }
             .padding(.horizontal, AppTheme.Spacing.lg)
@@ -138,7 +141,9 @@ struct InspectorView: View {
                 .multilineTextAlignment(.trailing)
                 .textSelection(.enabled)
                 .help(valueHelp ?? value)
+                .padding(.horizontal, AppTheme.Spacing.xs)
         }
+        .frame(height: AppTheme.IconSize.md)
     }
 
     private func formatAspectRatio(width: Int, height: Int) -> String {
@@ -146,32 +151,127 @@ struct InspectorView: View {
         return "\(width / gcd):\(height / gcd)"
     }
 
+    private func menuMetadataRow<MenuContent: View>(
+        label: String,
+        value: String,
+        @ViewBuilder menu: @escaping () -> MenuContent
+    ) -> some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Text(label)
+                .font(.system(size: AppTheme.FontSize.xs))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .fixedSize()
+            Spacer()
+            Menu {
+                menu()
+            } label: {
+                HStack(spacing: AppTheme.Spacing.xxs) {
+                    Text(value)
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: AppTheme.FontSize.micro, weight: .semibold))
+                        .foregroundStyle(AppTheme.Text.mutedColor)
+                }
+                .padding(.horizontal, AppTheme.Spacing.xs)
+                .frame(height: AppTheme.IconSize.md)
+                .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        }
+    }
+
+    @ViewBuilder
+    private var aspectMenuItems: some View {
+        ForEach(AspectPreset.allCases, id: \.self) { preset in
+            Button {
+                editor.applyTimelineSettings(fps: editor.timeline.fps, width: preset.width, height: preset.height)
+            } label: {
+                HStack {
+                    Text(preset.label)
+                    Spacer()
+                    if editor.timeline.width == preset.width && editor.timeline.height == preset.height {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var fpsMenuItems: some View {
+        ForEach([24, 25, 30, 50, 60], id: \.self) { fps in
+            Button {
+                editor.applyTimelineSettings(fps: fps, width: editor.timeline.width, height: editor.timeline.height)
+            } label: {
+                HStack {
+                    Text("\(fps) fps")
+                    Spacer()
+                    if editor.timeline.fps == fps {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var qualityMenuItems: some View {
+        ForEach(QualityPreset.allCases, id: \.self) { preset in
+            Button {
+                let (w, h) = preset.resolution(currentWidth: editor.timeline.width, currentHeight: editor.timeline.height)
+                editor.applyTimelineSettings(fps: editor.timeline.fps, width: w, height: h)
+            } label: {
+                HStack {
+                    Text(preset.label)
+                    Spacer()
+                    if preset.matches(width: editor.timeline.width, height: editor.timeline.height) {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Clip Inspector
 
     private var availableTabs: [ClipTab] {
-        let visuals = selectedVisualClips
         let audios = selectedAudioClips
+        let texts = selectedTextClips
         let nonText = nonTextVisualClips
-        let isSingle = visuals.count + audios.count == 1
-        let isSingleText = isSingle && visuals.first?.mediaType == .text
+        let isTextOnly = !texts.isEmpty && nonText.isEmpty && audios.isEmpty
 
         var tabs: [ClipTab] = []
-        if isSingleText { tabs.append(.text) }
+        if isTextOnly { tabs.append(.text); tabs.append(.textAnimate) }
         if !nonText.isEmpty {
             tabs.append(.video)
             tabs.append(.effects)
         }
         if !audios.isEmpty { tabs.append(.audio) }
+        if selectedMulticamGroupId != nil { tabs.append(.multicam) }
         if aiEditEligible && !AccountService.shared.isMisconfigured { tabs.append(.ai) }
         return tabs
     }
 
-    /// True when the selection resolves to a single AI-editable visual clip.
-    /// A linked video+audio pair counts as one
+    /// Group of the first stamped clip in the selection, if it still resolves.
+    var selectedMulticamGroupId: String? {
+        (nonTextVisualClips + selectedAudioClips)
+            .compactMap(\.multicamGroupId)
+            .first { editor.multicamGroup(id: $0) != nil }
+    }
+
+    /// True when the selection resolves to one AI-editable media source.
+    /// A linked video+audio pair counts as one source.
     private var aiEditEligible: Bool {
         let visuals = selectedVisualClips
         let audios = selectedAudioClips
-        guard visuals.count == 1, resolvedClipAsset != nil else { return false }
+        guard resolvedClipAsset != nil else { return false }
+        if visuals.isEmpty { return audios.count == 1 }
+        guard visuals.count == 1 else { return false }
         if audios.isEmpty { return true }
         let partners = Set(editor.linkedPartnerIds(of: visuals[0].id))
         return audios.allSatisfy { partners.contains($0.id) }
@@ -183,14 +283,18 @@ struct InspectorView: View {
         return tabs.contains(preferredTab) ? preferredTab : tabs.first
     }
 
-    /// The visual-or-image MediaAsset backing the currently selected visual clip.
+    /// Media asset backing the selected visual clip, or a standalone audio clip.
     private var resolvedClipAsset: MediaAsset? {
-        guard let clip = selectedVisualClip, clip.mediaType.isVisual else { return nil }
+        guard let clip = selectedVisualClip ?? selectedAudioClip else { return nil }
         return editor.mediaAssets.first { $0.id == clip.mediaRef }
     }
 
     var nonTextVisualClips: [Clip] {
         selectedVisualClips.filter { $0.mediaType != .text }
+    }
+
+    private var selectedTextClips: [Clip] {
+        selectedVisualClips.filter { $0.mediaType == .text }
     }
 
     @ViewBuilder
@@ -202,7 +306,7 @@ struct InspectorView: View {
             }
             Group {
                 if activeTab == .ai, let asset = resolvedClipAsset {
-                    AIEditTab(asset: asset, clipId: selectedVisualClip?.id)
+                    AIEditTab(asset: asset, clipId: selectedVisualClip?.id ?? selectedAudioClip?.id)
                 } else if activeTab == .effects {
                     ScrollView { effectsTabContent() }
                 } else {
@@ -210,11 +314,17 @@ struct InspectorView: View {
                         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
                             switch activeTab {
                             case .text:
-                                if let v = selectedVisualClip, v.mediaType == .text { TextTab(clip: v) }
+                                if !selectedTextClips.isEmpty { TextTab(clips: selectedTextClips) }
+                            case .textAnimate:
+                                if !selectedTextClips.isEmpty { TextAnimateTab(clips: selectedTextClips) }
                             case .video:
                                 videoTabContent()
                             case .audio:
                                 audioTabContent()
+                            case .multicam:
+                                if let groupId = selectedMulticamGroupId {
+                                    MulticamTab(groupId: groupId)
+                                }
                             case .effects, .ai, .none:
                                 EmptyView()
                             }
@@ -243,39 +353,7 @@ struct InspectorView: View {
         raisedBackground: Bool = false,
         onSelect: @escaping (String) -> Void
     ) -> some View {
-        HStack(spacing: AppTheme.Spacing.md) {
-            ForEach(titles, id: \.self) { title in
-                let isActive = selected == title
-                let isAI = title == "AI Edit"
-                let foreground: AnyShapeStyle = isAI
-                    ? AnyShapeStyle(AppTheme.aiGradient.opacity(isActive ? 1 : 0.6))
-                    : AnyShapeStyle(isActive ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
-                Button {
-                    onSelect(title)
-                } label: {
-                    VStack(spacing: AppTheme.Spacing.xs) {
-                        Text(title)
-                            .font(.system(size: AppTheme.FontSize.sm, weight: isActive ? .medium : .regular))
-                            .foregroundStyle(foreground)
-                        Rectangle()
-                            .fill(isActive ? foreground : AnyShapeStyle(Color.clear))
-                            .frame(height: AppTheme.BorderWidth.medium)
-                    }
-                    .padding(.vertical, AppTheme.Spacing.xs)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-            Spacer()
-        }
-        .padding(.horizontal, AppTheme.Spacing.lg)
-        .padding(.top, AppTheme.Spacing.xs)
-        .background(raisedBackground ? AppTheme.Background.raisedColor : Color.clear)
-        .overlay(alignment: .bottom) {
-            if raisedBackground {
-                Rectangle().fill(AppTheme.Border.primaryColor).frame(height: AppTheme.BorderWidth.thin)
-            }
-        }
+        TitleTabBar(titles: titles, selected: selected, raisedBackground: raisedBackground, onSelect: onSelect)
     }
 
     @ViewBuilder
@@ -288,7 +366,7 @@ struct InspectorView: View {
             HStack(alignment: .top, spacing: 0) {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
                     transformSection(clips: clips)
-                    speedSection(clips: clips + selectedAudioClips)
+                    speedSection(clips: (clips + selectedAudioClips).filter(\.supportsRetiming))
                         .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -300,7 +378,7 @@ struct InspectorView: View {
             }
         } else {
             transformSection(clips: clips)
-            speedSection(clips: clips + selectedAudioClips)
+            speedSection(clips: (clips + selectedAudioClips).filter(\.supportsRetiming))
         }
 
         keyframesToggleBar(enabled: single != nil)
@@ -386,6 +464,7 @@ struct InspectorView: View {
                     }
                     cropRow(single: single)
                     flipRow(clips: clips)
+                    blendRow(clips: clips)
                 }
                 .padding(.leading, sectionContentIndent)
             }
@@ -477,7 +556,7 @@ struct InspectorView: View {
             onReset: transformExpanded ? {
                 commitToClips(clips, actionName: "Reset Transform") { c in
                     editor.commitClipProperty(clipId: c.id) {
-                        $0.transform = Transform()
+                        $0.transform = editor.fitTransform(for: c)
                         $0.opacity = 1
                         $0.opacityTrack = nil
                         $0.positionTrack = nil
@@ -616,6 +695,31 @@ struct InspectorView: View {
     }
 
     // MARK: - Flip
+
+    private func blendRow(clips: [Clip]) -> some View {
+        let current = clips.first?.blendMode ?? .normal
+        let mixed = clips.count > 1 && !clips.allSatisfy { ($0.blendMode ?? .normal) == current }
+        return propertyRow(label: "Blend") {
+            Menu {
+                ForEach(BlendMode.allCases, id: \.self) { m in
+                    Button(m.displayName) {
+                        commitToClips(clips, actionName: "Blend Mode") { c in
+                            editor.commitClipProperty(clipId: c.id) { $0.blendMode = (m == .normal ? nil : m) }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: AppTheme.Spacing.xxs) {
+                    Text(mixed ? "—" : current.displayName)
+                    Image(systemName: "chevron.up.chevron.down").font(.system(size: AppTheme.FontSize.xxs))
+                }
+                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+            }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+        }
+        .frame(height: KeyframesMetrics.rowHeight)
+    }
 
     @ViewBuilder
     private func flipRow(clips: [Clip]) -> some View {
@@ -782,7 +886,10 @@ struct InspectorView: View {
                     metadataSection(title: "Generated") {
                         plainMetadataRow(label: "Model", value: ModelRegistry.displayName(for: gen.model))
                         if !gen.aspectRatio.isEmpty {
-                            plainMetadataRow(label: "Aspect Ratio", value: gen.aspectRatio)
+                            plainMetadataRow(
+                                label: "Aspect Ratio",
+                                value: ImageModelConfig.aspectRatioDisplayLabel(gen.aspectRatio)
+                            )
                         }
                         if let resolution = gen.resolution {
                             plainMetadataRow(label: "Resolution", value: resolution)

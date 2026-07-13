@@ -1,12 +1,23 @@
 import Foundation
 
 extension ToolExecutor {
-    static let importDownloadMaxBytes: Int64 = 1024 * 1024 * 1024
-    static let importBytesMaxBase64Length = 15 * 1024 * 1024
-    static let importDownloadTimeout: TimeInterval = 120
+    nonisolated static let remoteImportMaxBytes: Int64 = 5 * 1024 * 1024 * 1024
+    nonisolated static let importBytesMaxBase64Length = 15 * 1024 * 1024
+    nonisolated static let remoteImportRequestTimeout: TimeInterval = 15 * 60
 
-    private static let importMediaAllowedKeys: Set<String> = ["source", "name", "folderId"]
-    private static let importSourceAllowedKeys: Set<String> = ["url", "path", "bytes", "mimeType"]
+    private static let importMediaAllowedKeys: Set<String> = ["source", "name", "folder"]
+    private static let importSourceAllowedKeys: Set<String> = ["url", "path", "bytes", "matte", "mimeType"]
+    private nonisolated static let acceptedMimeTypesMessage = "Accepted: video/mp4, video/quicktime, audio/mpeg, audio/wav, audio/aac, audio/mp4, audio/aiff, audio/flac, image/png, image/jpeg, image/tiff, image/heic."
+
+    private struct ImportPathStatus: Sendable {
+        let exists: Bool
+        let isDirectory: Bool
+    }
+
+    private struct ImportedBytesFile: Sendable {
+        let url: URL
+        let byteCount: Int
+    }
 
     func importMedia(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.importMediaAllowedKeys, path: "import_media")
@@ -18,14 +29,15 @@ extension ToolExecutor {
         let urlStr = source.string("url")
         let pathStr = source.string("path")
         let bytesStr = source.string("bytes")
+        let matte = source["matte"] as? [String: Any]
         let mimeType = source.string("mimeType")
 
-        let setCount = [urlStr, pathStr, bytesStr].compactMap { $0 }.count
+        let setCount = [urlStr, pathStr, bytesStr].compactMap { $0 }.count + (matte == nil ? 0 : 1)
         guard setCount == 1 else {
-            throw ToolError("source must set exactly one of 'url', 'path', or 'bytes' (got \(setCount))")
+            throw ToolError("source must set exactly one of 'url', 'path', 'bytes', or 'matte' (got \(setCount))")
         }
 
-        let folderId = try resolveFolderId(args, editor: editor)
+        let folderId = try resolveFolder(args, editor: editor)
         let providedName = args.string("name")
 
         if let pathStr {
@@ -35,7 +47,10 @@ extension ToolExecutor {
             guard let mimeType else {
                 throw ToolError("source.mimeType is required when source.bytes is set")
             }
-            return try importFromBytes(editor: editor, base64: bytesStr, mimeType: mimeType, name: providedName, folderId: folderId)
+            return try await importFromBytes(editor: editor, base64: bytesStr, mimeType: mimeType, name: providedName, folderId: folderId)
+        }
+        if let matte {
+            return try await importMatte(editor: editor, matte: matte, name: providedName, folderId: folderId)
         }
         if let urlStr {
             return try importFromURL(editor: editor, urlString: urlStr, mimeOverride: mimeType, name: providedName, folderId: folderId)
@@ -45,60 +60,82 @@ extension ToolExecutor {
 
     private func importFromPath(editor: EditorViewModel, path: String, name: String?, folderId: String?) async throws -> ToolResult {
         let fileURL = URL(fileURLWithPath: path)
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: fileURL.path, isDirectory: &isDir) else {
+        let status = await Task.detached(priority: .utility) {
+            Self.importPathStatus(for: fileURL)
+        }.value
+        guard status.exists else {
             throw ToolError("File not found: \(path)")
         }
-        if isDir.boolValue {
+        if status.isDirectory {
             let summary = await editor.importFinderItems([fileURL], into: folderId)
             guard summary.assetCount > 0 else {
                 throw ToolError("No supported media found in folder: \(path)")
             }
-            return .ok("Imported \(summary.assetCount) file(s) into \(summary.folderCount) folder(s) from '\(fileURL.lastPathComponent)', mirroring its structure. Available now in get_media / list_folders.")
+            return .ok(Self.jsonString([
+                "status": "ready",
+                "imported": summary.assetCount,
+                "folders": summary.folderCount,
+                "note": "Imported from '\(fileURL.lastPathComponent)', mirroring its structure. See get_media.",
+            ] as [String: Any]) ?? "{}")
         }
         let ext = fileURL.pathExtension.lowercased()
-        guard ClipType(fileExtension: ext) != nil else {
+        guard let type = ClipType(fileExtension: ext) else {
             throw ToolError("Unsupported file extension '.\(ext)'. Supported: mov/mp4/m4v, mp3/wav/aac/m4a/aiff/aifc/flac, png/jpg/jpeg/tiff/heic, json (Lottie).")
         }
-        guard let asset = editor.addMediaAsset(from: fileURL) else {
-            throw ToolError("Failed to import file: \(path)")
+        if type == .lottie, !LottieVideoGenerator.isLottie(at: fileURL) {
+            throw ToolError("Unsupported Lottie file: \(fileURL.lastPathComponent)")
         }
-        applyImportMetadata(editor: editor, asset: asset, name: name, folderId: folderId)
-        return .ok("Imported '\(asset.name)' (id: \(asset.id), type: \(asset.type.rawValue)) from path. Available now in get_media.")
+        guard let projectURL = editor.projectURL else {
+            throw ToolError("No project is open; cannot import from path")
+        }
+
+        let displayName = name ?? fileURL.deletingPathExtension().lastPathComponent
+        let placeholder = createImportPlaceholder(
+            editor: editor,
+            projectURL: projectURL,
+            type: type,
+            fileExtension: ext,
+            displayName: displayName,
+            folderId: folderId,
+            importInput: MediaImportInput(sourcePath: fileURL.path, createdAt: Date())
+        )
+
+        Task { @MainActor [weak editor] in
+            guard let editor else { return }
+            await Self.copyImportedAsset(asset: placeholder, sourceURL: fileURL, editor: editor)
+        }
+
+        return .ok(Self.jsonString([
+            "mediaRef": placeholder.id,
+            "type": type.rawValue,
+            "status": "downloading",
+            "note": "Copying in the background. Poll get_media with ids:[\"\(placeholder.id)\"] until generationStatus clears.",
+        ]) ?? "{}")
     }
 
-    private func importFromBytes(editor: EditorViewModel, base64: String, mimeType: String, name: String?, folderId: String?) throws -> ToolResult {
+    private func importFromBytes(editor: EditorViewModel, base64: String, mimeType: String, name: String?, folderId: String?) async throws -> ToolResult {
         guard base64.utf8.count <= Self.importBytesMaxBase64Length else {
             throw ToolError("source.bytes is too large (\(base64.utf8.count) chars; max \(Self.importBytesMaxBase64Length)). Use source.url or source.path for larger files.")
-        }
-        guard let fileExt = Self.fileExtension(forMime: mimeType) else {
-            throw ToolError("Unsupported mimeType '\(mimeType)'. Accepted: video/mp4, video/quicktime, audio/mpeg, audio/wav, audio/aac, audio/mp4, audio/aiff, audio/flac, image/png, image/jpeg, image/tiff, image/heic.")
-        }
-        guard let data = Data(base64Encoded: base64, options: [.ignoreUnknownCharacters]), !data.isEmpty else {
-            throw ToolError("source.bytes is not valid non-empty base64")
         }
         guard let projectURL = editor.projectURL else {
             throw ToolError("No project is open; cannot import bytes")
         }
-        let mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-        do {
-            try FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
-        } catch {
-            throw ToolError("Failed to prepare media directory: \(error.localizedDescription)")
-        }
-        let filename = "imported-\(UUID().uuidString.prefix(8)).\(fileExt)"
-        let destURL = mediaDir.appendingPathComponent(filename)
-        do {
-            try data.write(to: destURL)
-        } catch {
-            throw ToolError("Failed to write bytes to disk: \(error.localizedDescription)")
-        }
-        guard let asset = editor.addMediaAsset(from: destURL) else {
-            try? FileManager.default.removeItem(at: destURL)
+        let imported = try await Task.detached(priority: .userInitiated) {
+            try Self.writeImportedBytes(base64: base64, mimeType: mimeType, projectURL: projectURL)
+        }.value
+        guard let asset = editor.addMediaAsset(from: imported.url) else {
+            try? await Task.detached(priority: .utility) {
+                try FileManager.default.removeItem(at: imported.url)
+            }.value
             throw ToolError("Failed to register imported asset")
         }
         applyImportMetadata(editor: editor, asset: asset, name: name, folderId: folderId)
-        return .ok("Imported '\(asset.name)' (id: \(asset.id), type: \(asset.type.rawValue), \(data.count) bytes). Available now in get_media.")
+        return .ok(Self.jsonString([
+            "mediaRef": asset.id,
+            "name": asset.name,
+            "type": asset.type.rawValue,
+            "status": "ready",
+        ]) ?? "{}")
     }
 
     private func importFromURL(editor: EditorViewModel, urlString: String, mimeOverride: String?, name: String?, folderId: String?) throws -> ToolResult {
@@ -118,7 +155,7 @@ extension ToolExecutor {
         let fileExt: String
         if let mimeOverride {
             guard let mapped = Self.fileExtension(forMime: mimeOverride) else {
-                throw ToolError("Unsupported mimeType '\(mimeOverride)'. Accepted: video/mp4, video/quicktime, audio/mpeg, audio/wav, audio/aac, audio/mp4, audio/aiff, audio/flac, image/png, image/jpeg, image/tiff, image/heic.")
+                throw ToolError("Unsupported mimeType '\(mimeOverride)'. \(Self.acceptedMimeTypesMessage)")
             }
             fileExt = mapped
         } else {
@@ -136,15 +173,6 @@ extension ToolExecutor {
         guard let projectURL = editor.projectURL else {
             throw ToolError("No project is open; cannot import from URL")
         }
-        let mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-        do {
-            try FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
-        } catch {
-            throw ToolError("Failed to prepare media directory: \(error.localizedDescription)")
-        }
-
-        let id = UUID().uuidString
-        let destURL = mediaDir.appendingPathComponent("imported-\(id.prefix(8)).\(fileExt)")
 
         let displayName: String
         if let name {
@@ -154,49 +182,116 @@ extension ToolExecutor {
             displayName = stem.isEmpty ? "Imported asset" : stem
         }
 
-        let placeholder = MediaAsset(id: id, url: destURL, type: type, name: displayName)
-        placeholder.generationStatus = .downloading
-        editor.mediaAssets.append(placeholder)
-        if folderId != nil {
-            applyImportMetadata(editor: editor, asset: placeholder, name: nil, folderId: folderId)
-        }
+        let placeholder = createImportPlaceholder(
+            editor: editor,
+            projectURL: projectURL,
+            type: type,
+            fileExtension: fileExt,
+            displayName: displayName,
+            folderId: folderId,
+            importInput: MediaImportInput(sourceURL: url.absoluteString, createdAt: Date())
+        )
 
         Task { @MainActor [weak editor] in
             guard let editor else { return }
             await Self.downloadImportedAsset(asset: placeholder, remoteURL: url, editor: editor)
         }
 
-        return .ok("Import started. Placeholder asset id: \(id) (type: \(type.rawValue)). Status: downloading. Poll get_media — the asset appears once the download completes.")
+        return .ok(Self.jsonString([
+            "mediaRef": placeholder.id,
+            "type": type.rawValue,
+            "status": "downloading",
+            "note": "Downloading in the background. Poll get_media with ids:[\"\(placeholder.id)\"] until generationStatus clears.",
+        ]) ?? "{}")
+    }
+
+    private func createImportPlaceholder(
+        editor: EditorViewModel,
+        projectURL: URL,
+        type: ClipType,
+        fileExtension: String,
+        displayName: String,
+        folderId: String?,
+        importInput: MediaImportInput
+    ) -> MediaAsset {
+        let id = UUID().uuidString
+        let mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
+        let destURL = mediaDir.appendingPathComponent("imported-\(id.prefix(8)).\(fileExtension)")
+        let placeholder = MediaAsset(id: id, url: destURL, type: type, name: displayName)
+        placeholder.folderId = folderId
+        placeholder.importInput = importInput
+        placeholder.generationStatus = .downloading
+        editor.importMediaAsset(placeholder)
+        editor.onProjectCheckpointRequired?()
+        return placeholder
     }
 
     @MainActor
     private static func downloadImportedAsset(asset: MediaAsset, remoteURL: URL, editor: EditorViewModel) async {
         do {
             var request = URLRequest(url: remoteURL)
-            request.timeoutInterval = importDownloadTimeout
-            let delegate = ImportDownloadDelegate(maxBytes: importDownloadMaxBytes)
+            request.timeoutInterval = remoteImportRequestTimeout
+            let delegate = ImportDownloadDelegate(maxBytes: remoteImportMaxBytes)
             let (tempURL, response) = try await URLSession.shared.download(for: request, delegate: delegate)
 
             if let httpResp = response as? HTTPURLResponse, !(200..<300).contains(httpResp.statusCode) {
-                try? FileManager.default.removeItem(at: tempURL)
+                await Task.detached(priority: .utility) {
+                    try? FileManager.default.removeItem(at: tempURL)
+                }.value
                 throw ToolError("server returned HTTP \(httpResp.statusCode)")
             }
-            let downloadedSize = (try? FileManager.default.attributesOfItem(atPath: tempURL.path)[.size] as? NSNumber)?.int64Value ?? 0
-            if downloadedSize > importDownloadMaxBytes {
-                try? FileManager.default.removeItem(at: tempURL)
-                throw ToolError("downloaded file exceeds max size (\(downloadedSize) > \(importDownloadMaxBytes) bytes)")
-            }
 
-            try? FileManager.default.removeItem(at: asset.url)
-            try FileManager.default.moveItem(at: tempURL, to: asset.url)
-            asset.generationStatus = .none
-            editor.importMediaAsset(asset, skipAppend: true)
-            await editor.finalizeImportedAsset(asset)
+            let destinationURL = asset.url
+            _ = try await Task.detached(priority: .userInitiated) {
+                try FileIO.moveReplacingDestination(
+                    from: tempURL,
+                    to: destinationURL,
+                    maxBytes: remoteImportMaxBytes
+                )
+            }.value
+            await finishImportedAsset(asset, editor: editor)
         } catch {
             let message = (error as? ToolError)?.message ?? error.localizedDescription
             Log.project.error("import_media download failed url=\(remoteURL.absoluteString) error=\(message)")
-            asset.generationStatus = .failed(message)
+            failImportedAsset(asset, editor: editor, message: message)
         }
+    }
+
+    @MainActor
+    private static func copyImportedAsset(asset: MediaAsset, sourceURL: URL, editor: EditorViewModel) async {
+        do {
+            let destinationURL = asset.url
+            _ = try await Task.detached(priority: .userInitiated) {
+                try FileIO.copyReplacingDestination(
+                    from: sourceURL,
+                    to: destinationURL
+                )
+            }.value
+            await finishImportedAsset(asset, editor: editor)
+        } catch {
+            let message = (error as? ToolError)?.message ?? error.localizedDescription
+            Log.project.error("import_media copy failed path=\(sourceURL.path) error=\(message)")
+            failImportedAsset(asset, editor: editor, message: message)
+        }
+    }
+
+    @MainActor
+    private static func finishImportedAsset(_ asset: MediaAsset, editor: EditorViewModel) async {
+        let finalized = await editor.finalizeImportedAsset(asset)
+        guard finalized else {
+            editor.onProjectCheckpointRequired?()
+            return
+        }
+        asset.importInput = nil
+        editor.updateManifestMetadata(for: asset)
+        editor.onProjectCheckpointRequired?()
+    }
+
+    @MainActor
+    private static func failImportedAsset(_ asset: MediaAsset, editor: EditorViewModel, message: String) {
+        asset.generationStatus = .failed(message)
+        editor.updateManifestMetadata(for: asset)
+        editor.onProjectCheckpointRequired?()
     }
 
     private func applyImportMetadata(editor: EditorViewModel, asset: MediaAsset, name: String?, folderId: String?) {
@@ -211,7 +306,31 @@ extension ToolExecutor {
         }
     }
 
-    private static func fileExtension(forMime mime: String) -> String? {
+    private nonisolated static func importPathStatus(for url: URL) -> ImportPathStatus {
+        var isDirectory = ObjCBool(false)
+        let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+        return ImportPathStatus(exists: exists, isDirectory: isDirectory.boolValue)
+    }
+
+    private nonisolated static func writeImportedBytes(base64: String, mimeType: String, projectURL: URL) throws -> ImportedBytesFile {
+        guard let fileExt = fileExtension(forMime: mimeType) else {
+            throw ToolError("Unsupported mimeType '\(mimeType)'. \(acceptedMimeTypesMessage)")
+        }
+        guard let data = Data(base64Encoded: base64, options: [.ignoreUnknownCharacters]), !data.isEmpty else {
+            throw ToolError("source.bytes is not valid non-empty base64")
+        }
+        let mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
+        let filename = "imported-\(UUID().uuidString.prefix(8)).\(fileExt)"
+        let destURL = mediaDir.appendingPathComponent(filename)
+        do {
+            try FileIO.writeData(data, to: destURL)
+        } catch {
+            throw ToolError("Failed to write bytes to disk: \(error.localizedDescription)")
+        }
+        return ImportedBytesFile(url: destURL, byteCount: data.count)
+    }
+
+    private nonisolated static func fileExtension(forMime mime: String) -> String? {
         switch mime.lowercased() {
         case "video/mp4", "video/mpeg4": return "mp4"
         case "video/quicktime": return "mov"
@@ -230,10 +349,32 @@ extension ToolExecutor {
         default: return nil
         }
     }
+
+    private func importMatte(
+        editor: EditorViewModel, matte: [String: Any], name: String?, folderId: String?
+    ) async throws -> ToolResult {
+        try validateUnknownKeys(matte, allowed: ["hex", "aspectRatio"], path: "source.matte")
+        guard let hex = matte.string("hex")?.trimmingCharacters(in: .whitespacesAndNewlines), !hex.isEmpty
+        else { throw ToolError("source.matte requires 'hex'.") }
+        let aspect: MatteAspect
+        if let raw = matte.string("aspectRatio") {
+            guard let parsed = MatteAspect.parse(raw) else {
+                throw ToolError("source.matte: unknown aspectRatio '\(raw)'. Use one of \(MatteAspect.allCases.map(\.rawValue).joined(separator: ", ")).")
+            }
+            aspect = parsed
+        } else {
+            aspect = .project
+        }
+        let asset = try await editor.createMatte(hex: hex, aspect: aspect, folderId: folderId, name: name)
+        return .ok(Self.jsonString([
+            "mediaRef": asset.id,
+            "name": asset.name,
+            "type": asset.type.rawValue,
+            "status": "ready",
+        ]) ?? "{}")
+    }
 }
 
-/// Caps the in-flight download size by cancelling the task once the byte threshold is crossed.
-/// `download(for:delegate:)` still finalizes the temp file on success.
 fileprivate final class ImportDownloadDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     let maxBytes: Int64
     init(maxBytes: Int64) { self.maxBytes = maxBytes }

@@ -1,9 +1,12 @@
 import SwiftUI
 
 struct TextTab: View {
-    let clip: Clip
+    let clips: [Clip]
     @Environment(EditorViewModel.self) private var editor
 
+    private var clip: Clip { clips[0] }
+    private var clipIds: [String] { clips.map(\.id) }
+    private var isBatch: Bool { clips.count > 1 }
     private var style: TextStyle { clip.textStyle ?? TextStyle() }
 
     var body: some View {
@@ -11,6 +14,7 @@ struct TextTab: View {
             contentField
             InspectorSection("Typography") {
                 fontRow
+                styleRow
                 sizeSlider
             }
             InspectorSection("Appearance") {
@@ -36,15 +40,19 @@ struct TextTab: View {
                 text: Binding(
                     get: { clip.textContent ?? "" },
                     set: { new in
+                        guard !isBatch else { return }
                         editor.applyClipProperty(clipId: clip.id, rebuild: true) { $0.textContent = new }
                         editor.fitTextClipToContent(clipId: clip.id)
                     }
                 ),
                 onCommit: { new in
+                    guard !isBatch else { return }
                     editor.commitClipProperty(clipId: clip.id) { $0.textContent = new }
                     editor.fitTextClipToContent(clipId: clip.id)
                 }
             )
+            .disabled(isBatch)
+            .opacity(isBatch ? AppTheme.Opacity.medium : AppTheme.Opacity.opaque)
             .frame(minHeight: 80)
             .padding(AppTheme.Spacing.xs)
             .background(
@@ -57,16 +65,30 @@ struct TextTab: View {
     private var fontRow: some View {
         InspectorRow(icon: "character", label: "Font") {
             FontPickerField(
-                current: style.fontName,
+                current: sharedTextStyleValue { $0.fontName },
                 onPreview: { name in
-                    editor.applyTextStyle(clipId: clip.id) { $0.fontName = name }
+                    editor.applyTextStyles(clipIds: clipIds, fitToContent: true) { $0.fontName = name }
                 },
                 onChange: { newName in
-                    editor.commitTextStyle(clipId: clip.id) { $0.fontName = newName }
-                    editor.fitTextClipToContent(clipId: clip.id)
+                    editor.commitTextStyles(clipIds: clipIds, fitToContent: true) { $0.fontName = newName }
                 },
                 onCancel: {
-                    editor.revertClipProperty(clipId: clip.id)
+                    for id in clipIds { editor.revertClipProperty(clipId: id) }
+                }
+            )
+        }
+    }
+
+    private var styleRow: some View {
+        InspectorRow(icon: "textformat", label: "Style") {
+            TextStyleTraitButtons(
+                isBold: sharedTextStyleValue { $0.isBold },
+                isItalic: sharedTextStyleValue { $0.isItalic },
+                onBold: { new in
+                    editor.commitTextStyles(clipIds: clipIds, fitToContent: true) { $0.isBold = new }
+                },
+                onItalic: { new in
+                    editor.commitTextStyles(clipIds: clipIds, fitToContent: true) { $0.isItalic = new }
                 }
             )
         }
@@ -75,18 +97,16 @@ struct TextTab: View {
     private var sizeSlider: some View {
         InspectorRow(icon: "textformat.size", label: "Size") {
             ScrubbableNumberField(
-                value: style.fontSize,
+                value: sharedTextStyleValue { $0.fontSize },
                 range: 12...300,
                 format: "%.0f",
                 valueSuffix: " pt",
                 fieldWidth: 50,
                 onChanged: { newVal in
-                    editor.applyTextStyle(clipId: clip.id) { $0.fontSize = newVal }
-                    editor.fitTextClipToContent(clipId: clip.id)
+                    editor.applyTextStyles(clipIds: clipIds, fitToContent: true) { $0.fontSize = newVal }
                 }
             ) { newVal in
-                editor.commitTextStyle(clipId: clip.id) { $0.fontSize = newVal }
-                editor.fitTextClipToContent(clipId: clip.id)
+                editor.commitTextStyles(clipIds: clipIds, fitToContent: true) { $0.fontSize = newVal }
             }
         }
     }
@@ -94,17 +114,17 @@ struct TextTab: View {
     private var opacitySlider: some View {
         InspectorRow(icon: "circle.lefthalf.filled", label: "Opacity") {
             ScrubbableNumberField(
-                value: clip.opacity,
+                value: sharedClipValue(clips) { $0.opacity },
                 range: 0...1,
                 displayMultiplier: 100,
                 format: "%.0f",
                 valueSuffix: "%",
                 fieldWidth: 50,
                 onChanged: { newVal in
-                    editor.applyClipProperty(clipId: clip.id) { $0.opacity = newVal }
+                    editor.applyClipProperties(clipIds: clipIds) { $0.opacity = newVal }
                 }
             ) { newVal in
-                editor.commitClipProperty(clipId: clip.id) { $0.opacity = newVal }
+                editor.commitClipProperties(clipIds: clipIds) { $0.opacity = newVal }
             }
         }
     }
@@ -114,7 +134,7 @@ struct TextTab: View {
             ColorField(
                 displayColor: style.color.swiftUIColor,
                 onUserChange: { new in
-                    editor.debouncedCommitTextStyle(clipId: clip.id, key: "textColor") {
+                    editor.debouncedCommitTextStyles(clipIds: clipIds, key: "textColor") {
                         $0.color = TextStyle.RGBA(new)
                     }
                 }
@@ -129,7 +149,7 @@ struct TextTab: View {
                 selection: Binding(
                     get: { style.alignment },
                     set: { new in
-                        editor.commitTextStyle(clipId: clip.id) { $0.alignment = new }
+                        editor.commitTextStyles(clipIds: clipIds) { $0.alignment = new }
                     }
                 )
             ) {
@@ -159,7 +179,7 @@ struct TextTab: View {
     private var borderRow: some View {
         toggleColorRow(
             icon: "a.square",
-            label: "Border",
+            label: "Outline",
             enabled: style.border.enabled,
             color: style.border.color.swiftUIColor,
             debounceKey: "borderColor",
@@ -182,7 +202,7 @@ struct TextTab: View {
                 ColorField(
                     displayColor: color,
                     onUserChange: { new in
-                        editor.debouncedCommitTextStyle(clipId: clip.id, key: debounceKey) {
+                        editor.debouncedCommitTextStyles(clipIds: clipIds, key: debounceKey) {
                             setColor(&$0, TextStyle.RGBA(new))
                         }
                     }
@@ -193,7 +213,7 @@ struct TextTab: View {
                     "",
                     isOn: Binding(
                         get: { enabled },
-                        set: { new in editor.commitTextStyle(clipId: clip.id) { setEnabled(&$0, new) } }
+                        set: { new in editor.commitTextStyles(clipIds: clipIds) { setEnabled(&$0, new) } }
                     )
                 )
                 .labelsHidden()
@@ -219,7 +239,60 @@ struct TextTab: View {
     @ViewBuilder
     private var positionSection: some View {
         InspectorRow(icon: "arrow.up.and.down.and.arrow.left.and.right", label: "Position") {
-            InspectorPositionFields(clips: [clip])
+            InspectorPositionFields(clips: clips)
+        }
+    }
+
+    private func sharedTextStyleValue<T: Equatable>(_ extract: (TextStyle) -> T) -> T? {
+        sharedClipValue(clips) { extract($0.textStyle ?? TextStyle()) }
+    }
+}
+
+struct TextAnimateTab: View {
+    let clips: [Clip]
+    @Environment(EditorViewModel.self) private var editor
+
+    private var clip: Clip { clips[0] }
+    private var targetIds: [String] {
+        var seen = Set<String>()
+        return clips.flatMap { editor.captionGroupTextClipIds(for: $0.id) }
+            .filter { seen.insert($0).inserted }
+    }
+
+    var body: some View {
+        let anim = clip.textAnimation ?? TextAnimation()
+        InspectorSection("Animation") {
+            CaptionPresetGallery(
+                selection: Binding(
+                    get: { anim.preset },
+                    set: { new in setAnim { $0.preset = new } }
+                ),
+                highlight: anim.highlight
+            )
+            if anim.preset.usesHighlight { highlightRow(anim) }
+        }
+    }
+
+    private func setAnim(_ modify: (inout TextAnimation) -> Void) {
+        var a = clip.textAnimation ?? TextAnimation()
+        modify(&a)
+        let value: TextAnimation? = a.preset == .none ? nil : a
+        editor.cancelDebouncedCommit(key: "textHighlight")
+        editor.commitClipProperties(clipIds: targetIds) { $0.textAnimation = value }
+    }
+
+    private func highlightRow(_ anim: TextAnimation) -> some View {
+        InspectorRow(icon: "highlighter", label: "Highlight") {
+            ColorField(
+                displayColor: (anim.highlight ?? TextAnimation.defaultHighlight).swiftUIColor,
+                onUserChange: { new in
+                    editor.debouncedCommitClipProperties(clipIds: targetIds, key: "textHighlight") {
+                        guard var a = $0.textAnimation, a.preset.usesHighlight else { return }
+                        a.highlight = TextStyle.RGBA(new)
+                        $0.textAnimation = a
+                    }
+                }
+            )
         }
     }
 }

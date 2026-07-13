@@ -1,7 +1,6 @@
 import AppKit
 import AVFoundation
 import CryptoKit
-import DSWaveformImage
 import ImageIO
 import UniformTypeIdentifiers
 
@@ -14,6 +13,27 @@ final class MediaVisualCache {
     private var waveformInFlight: Set<String> = []
     /// Cap concurrent waveform extractions to avoid starving playback.
     private static let waveformGate = AsyncSemaphore(value: 2)
+
+    // MARK: - Speech masks
+
+    let speech = SpeechMaskStore()
+    /// 32 ms cells, value = global speaker id, -1 = none. Session-scoped, set by identifySpeakers.
+    var speakerMasks: [String: [Int]] = [:]
+
+    nonisolated func speakerMask(for mediaRef: String) -> [Int]? {
+        MainActor.assumeIsolated { speakerMasks[mediaRef] }
+    }
+
+    let beats = BeatStore()
+
+    nonisolated func beatAnalysis(for mediaRef: String) -> BeatAnalysis? {
+        beats.analysis(for: mediaRef)
+    }
+
+    init() {
+        speech.onMaskReady = { [weak self] in self?.timelineView?.needsDisplay = true }
+        beats.onBeatsReady = { [weak self] in self?.timelineView?.needsDisplay = true }
+    }
 
     // MARK: - Video thumbnails (sorted by time)
 
@@ -36,6 +56,10 @@ final class MediaVisualCache {
         MainActor.assumeIsolated { waveformSamples[mediaRef] }
     }
 
+    nonisolated func deadAirMask(for mediaRef: String) -> [Bool]? {
+        speech.deadAirMask(for: mediaRef, samples: samples(for: mediaRef))
+    }
+
     nonisolated func thumbnails(for mediaRef: String) -> [(time: Double, image: CGImage)]? {
         MainActor.assumeIsolated { videoThumbnails[mediaRef] }
     }
@@ -48,6 +72,8 @@ final class MediaVisualCache {
 
     func generateWaveform(for asset: MediaAsset) {
         guard asset.type == .audio || (asset.type == .video && asset.hasAudio) else { return }
+        speech.generate(for: asset)
+        beats.hydrate(for: asset)
         let key = asset.id
         guard waveformSamples[key] == nil, !waveformInFlight.contains(key) else { return }
         waveformInFlight.insert(key)
@@ -64,6 +90,27 @@ final class MediaVisualCache {
                 }
             }
         }
+    }
+
+    /// Drops all in-memory state after a disk-cache clear so everything regenerates.
+    func resetSessionState() {
+        waveformSamples.removeAll()
+        speakerMasks.removeAll()
+        speech.reset()
+        beats.reset()
+        videoThumbnails.removeAll()
+        imageThumbnails.removeAll()
+        timelineView?.needsDisplay = true
+    }
+
+    /// Clears every cached visual for `mediaRef` so relinked media regenerates.
+    func invalidate(_ mediaRef: String) {
+        waveformSamples.removeValue(forKey: mediaRef)
+        speakerMasks.removeValue(forKey: mediaRef)
+        speech.invalidate(mediaRef)
+        beats.invalidate(mediaRef)
+        videoThumbnails.removeValue(forKey: mediaRef)
+        imageThumbnails.removeValue(forKey: mediaRef)
     }
 
     func generateImageThumbnail(for asset: MediaAsset) {
@@ -176,17 +223,9 @@ final class MediaVisualCache {
         let asset = AVURLAsset(url: url)
         guard (try? await asset.loadTracks(withMediaType: .audio).first) != nil else { return nil }
 
-        let duration = (try? await asset.load(.duration).seconds) ?? 0
-        let count = waveformSampleCount(duration: duration)
-        guard let samples = try? await WaveformAnalyzer().samples(fromAudioAt: url, count: count) else { return nil }
+        guard let samples = try? await WaveformExtractor.peakEnvelope(from: url), !samples.isEmpty else { return nil }
         if let cacheKey { saveWaveform(samples, key: cacheKey) }
         return samples
-    }
-
-    private nonisolated static func waveformSampleCount(duration: Double) -> Int {
-        guard duration.isFinite, duration > 0 else { return 4000 }
-        if duration >= Double(20_000) / 150 { return 20_000 }
-        return max(4000, Int(duration * 150))
     }
 
     private nonisolated static func videoThumbnailTimes(duration: Double) -> [CMTime] {
@@ -216,13 +255,13 @@ final class MediaVisualCache {
     }
 
     private nonisolated static func loadWaveform(key: String) -> [Float]? {
-        let url = diskCache.directory.appendingPathComponent(key + ".waveform")
+        let url = diskCache.directory.appendingPathComponent(key + ".waveform2")
         guard let data = try? Data(contentsOf: url), !data.isEmpty, data.count % 4 == 0 else { return nil }
         return data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
     }
 
     private nonisolated static func saveWaveform(_ samples: [Float], key: String) {
-        let url = diskCache.directory.appendingPathComponent(key + ".waveform")
+        let url = diskCache.directory.appendingPathComponent(key + ".waveform2")
         samples.withUnsafeBytes { try? Data($0).write(to: url) }
     }
 

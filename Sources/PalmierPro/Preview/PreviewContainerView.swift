@@ -20,6 +20,7 @@ struct PreviewContainerView: View {
                 let fitSize = fitSize(in: geo.size, aspect: aspect)
                 let scaledWidth = fitSize.width * editor.canvasZoom
                 let scaledHeight = fitSize.height * editor.canvasZoom
+                let timelineState = timelineFrameState
                 ZStack {
                     PreviewView()
                     if isImage {
@@ -30,17 +31,33 @@ struct PreviewContainerView: View {
                     }
                     if let asset = activeMediaAsset, asset.isGenerating {
                         generatingPreview(label: asset.generatingLabel)
+                    } else if case .generating(let label) = timelineState {
+                        generatingPreview(label: label)
                     }
-                    if let overlay = offlineOverlay {
+                    if let overlay = offlineOverlay(timelineState: timelineState) {
                         offlinePreview(assetId: overlay.assetId, path: overlay.path, isUnprocessable: overlay.isUnprocessable)
                     }
-                    if editor.cropEditingActive {
+                    if editor.chromaKeySamplingClipId != nil {
+                        ChromaKeySamplerOverlayView()
+                    } else if editor.cropEditingActive {
                         CropOverlayView()
                     } else {
                         TransformOverlayView()
                     }
                 }
                 .frame(width: scaledWidth, height: scaledHeight)
+                .simultaneousGesture(
+                    SpatialTapGesture(count: 2)
+                        .onEnded { value in
+                            guard isTimeline,
+                                  let id = PreviewHitTester.clipID(
+                                    at: value.location,
+                                    viewSize: CGSize(width: scaledWidth, height: scaledHeight),
+                                    editor: editor
+                                  ) else { return }
+                            editor.selectedClipIds = editor.expandToLinkGroup([id])
+                        }
+                )
                 .overlay(
                     Rectangle()
                         .stroke(Color.white.opacity(editor.canvasZoom < 1.0 ? AppTheme.Opacity.moderate : 0), lineWidth: AppTheme.BorderWidth.thin)
@@ -57,6 +74,9 @@ struct PreviewContainerView: View {
             }
         }
         .background(AppTheme.Background.surfaceColor)
+        .onChange(of: editor.activePreviewTabId) { _, _ in
+            editor.cancelChromaKeySampling()
+        }
     }
 
     // MARK: - Transport bar
@@ -94,7 +114,7 @@ struct PreviewContainerView: View {
             if isTimeline || editor.activePreviewTab.clipType == .video {
                 captureFrameButton
             }
-            projectSettingsGroup
+            settingsMenuButton(label: zoomBadgeLabel, help: "Canvas Zoom") { zoomMenuItems }
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .frame(height: 36)
@@ -128,83 +148,6 @@ struct PreviewContainerView: View {
 
     // MARK: - Project settings
 
-    private var projectSettingsGroup: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: AppTheme.Spacing.md) {
-                settingsMenuButton(label: aspectBadgeLabel, help: "Aspect Ratio") { aspectMenuItems }
-                settingsMenuButton(label: "\(editor.timeline.fps)", help: "Frame Rate") { fpsMenuItems }
-                settingsMenuButton(label: qualityBadgeLabel, help: "Resolution") { qualityMenuItems }
-                settingsMenuButton(label: zoomBadgeLabel, help: "Canvas Zoom") { zoomMenuItems }
-            }
-
-            Menu {
-                Menu("Aspect Ratio") { aspectMenuItems }
-                Menu("Frame Rate") { fpsMenuItems }
-                Menu("Quality") { qualityMenuItems }
-                Menu("Zoom") { zoomMenuItems }
-            } label: {
-                badgeIcon("slider.horizontal.3")
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .hoverHighlight()
-            .help("Project Settings")
-        }
-    }
-
-    @ViewBuilder
-    private var aspectMenuItems: some View {
-        ForEach(AspectPreset.allCases, id: \.self) { preset in
-            Button {
-                editor.applyTimelineSettings(fps: editor.timeline.fps, width: preset.width, height: preset.height)
-            } label: {
-                HStack {
-                    Text(preset.label)
-                    Spacer()
-                    if editor.timeline.width == preset.width && editor.timeline.height == preset.height {
-                        Image(systemName: "checkmark")
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var fpsMenuItems: some View {
-        ForEach([24, 25, 30, 50, 60], id: \.self) { fps in
-            Button {
-                editor.applyTimelineSettings(fps: fps, width: editor.timeline.width, height: editor.timeline.height)
-            } label: {
-                HStack {
-                    Text("\(fps) fps")
-                    Spacer()
-                    if editor.timeline.fps == fps {
-                        Image(systemName: "checkmark")
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var qualityMenuItems: some View {
-        ForEach(QualityPreset.allCases, id: \.self) { preset in
-            Button {
-                let (w, h) = preset.resolution(currentWidth: editor.timeline.width, currentHeight: editor.timeline.height)
-                editor.applyTimelineSettings(fps: editor.timeline.fps, width: w, height: h)
-            } label: {
-                HStack {
-                    Text(preset.label)
-                    Spacer()
-                    if preset.matches(width: editor.timeline.width, height: editor.timeline.height) {
-                        Image(systemName: "checkmark")
-                    }
-                }
-            }
-        }
-    }
-
     @ViewBuilder
     private var zoomMenuItems: some View {
         ForEach(ZoomPreset.allCases, id: \.self) { preset in
@@ -235,21 +178,6 @@ struct PreviewContainerView: View {
         abs(editor.canvasZoom - preset.value) < 0.01
     }
 
-    private var aspectBadgeLabel: String {
-        let w = editor.timeline.width
-        let h = editor.timeline.height
-        let g = gcd(w, h)
-        return "\(w / g):\(h / g)"
-    }
-
-    private var qualityBadgeLabel: String {
-        let h = min(editor.timeline.width, editor.timeline.height)
-        if h <= 720 { return "HD" }
-        if h <= 1080 { return "FHD" }
-        if h <= 1440 { return "2K" }
-        return "4K"
-    }
-
     private func settingsMenuButton<MenuContent: View>(
         label: String,
         help: String,
@@ -273,13 +201,6 @@ struct PreviewContainerView: View {
             .foregroundStyle(AppTheme.Text.secondaryColor)
             .padding(.horizontal, AppTheme.Spacing.sm)
             .frame(height: AppTheme.IconSize.mdLg)
-    }
-
-    private func badgeIcon(_ systemName: String) -> some View {
-        Image(systemName: systemName)
-            .font(.system(size: AppTheme.FontSize.sm))
-            .foregroundStyle(AppTheme.Text.secondaryColor)
-            .frame(width: AppTheme.IconSize.mdLg, height: AppTheme.IconSize.mdLg)
     }
 
     // MARK: - Image preview
@@ -328,33 +249,51 @@ struct PreviewContainerView: View {
         return editor.isMediaOffline(asset.id)
     }
 
-    /// The offline clip blacking out the current timeline frame, or nil when an online clip covers it.
-    private var timelineOfflineClip: Clip? {
-        guard isTimeline else { return nil }
-        guard !editor.offlineMediaRefs.isEmpty || !editor.unprocessableMediaRefs.isEmpty else { return nil }
+    private enum TimelineFrameState {
+        case covered
+        case generating(String)
+        case offline(Clip)
+        case none
+    }
+
+    private var timelineFrameState: TimelineFrameState {
+        guard isTimeline else { return .none }
+        let hasOffline = !editor.offlineMediaRefs.isEmpty
+            || !editor.unprocessableMediaRefs.isEmpty
+            || !editor.missingMediaRefs.isEmpty
+        let hasGenerating = editor.mediaAssets.contains(where: \.isGenerating)
+        guard hasOffline || hasGenerating else { return .none }
         let frame = editor.playheadState.timelineFrame
         var offline: Clip?
+        var generatingLabel: String?
         for track in editor.timeline.tracks where track.type != .audio && !track.hidden {
             for clip in track.clips where clip.mediaType != .text {
-                guard clip.contains(timelineFrame: frame) else { continue }
-                if editor.isMediaOffline(clip.mediaRef) {
+                guard clip.contains(timelineFrame: frame), clip.opacityAt(frame: frame) > 0.01 else { continue }
+                if let asset = generatingAsset(for: clip) {
+                    generatingLabel = generatingLabel ?? asset.generatingLabel
+                } else if editor.isMediaOffline(clip.mediaRef) {
                     offline = offline ?? clip
                 } else {
-                    return nil
+                    return .covered
                 }
             }
         }
-        return offline
+        if let generatingLabel { return .generating(generatingLabel) }
+        if let offline { return .offline(offline) }
+        return .none
+    }
+
+    private func generatingAsset(for clip: Clip) -> MediaAsset? {
+        editor.mediaAssets.first { $0.id == clip.mediaRef && $0.isGenerating }
     }
 
     private struct OfflineOverlay { let assetId: String?; let path: String?; let isUnprocessable: Bool }
 
-    /// Resolved once per render so the timeline scan runs at most once.
-    private var offlineOverlay: OfflineOverlay? {
+    private func offlineOverlay(timelineState: TimelineFrameState) -> OfflineOverlay? {
         if activeMediaMissing, let id = activeMediaAsset?.id {
             return OfflineOverlay(assetId: id, path: activeMediaAsset?.url.path, isUnprocessable: editor.isMediaUnprocessable(id))
         }
-        if let clip = timelineOfflineClip {
+        if case .offline(let clip) = timelineState {
             return OfflineOverlay(
                 assetId: clip.mediaRef,
                 path: editor.mediaResolver.expectedURL(for: clip.mediaRef)?.path,
@@ -537,21 +476,8 @@ struct PreviewContainerView: View {
                 }
             }
 
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: AppTheme.Spacing.md) {
-                        ForEach(editor.previewTabs) { tab in
-                            tabItem(for: tab).id(tab.id)
-                        }
-                    }
-                    .padding(.horizontal, AppTheme.Spacing.sm)
-                }
-                .mouseWheelScrollsHorizontally()
-                .onChange(of: editor.activePreviewTabId) { _, newId in
-                    withAnimation(.easeOut(duration: AppTheme.Anim.transition)) {
-                        proxy.scrollTo(newId, anchor: .center)
-                    }
-                }
+            TabStrip(items: editor.previewTabs, activeId: editor.activePreviewTabId) { tab in
+                tabItem(for: tab)
             }
 
             overflowMenu
@@ -562,13 +488,17 @@ struct PreviewContainerView: View {
         let isActive = tab.id == editor.activePreviewTabId
         let isHovered = hoveredTabId == tab.id
         return HStack(spacing: AppTheme.Spacing.xs) {
-            Text(tab.displayName)
+            Text(tab == .timeline ? editor.timeline.name : tab.displayName)
                 .font(.system(size: AppTheme.FontSize.xs, weight: isActive ? .semibold : .medium))
                 .foregroundStyle(isActive || isHovered ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
                 .lineLimit(1)
 
             if tab.isCloseable {
-                closeButton(tabId: tab.id)
+                TabCloseButton {
+                    withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
+                        editor.closePreviewTab(id: tab.id)
+                    }
+                }
             }
         }
         .padding(.horizontal, AppTheme.Spacing.xs)
@@ -625,21 +555,6 @@ struct PreviewContainerView: View {
         .fixedSize()
         .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
         .help("More")
-    }
-
-    private func closeButton(tabId: String) -> some View {
-        Button {
-            withAnimation(.easeInOut(duration: AppTheme.Anim.transition)) {
-                editor.closePreviewTab(id: tabId)
-            }
-        } label: {
-            Image(systemName: "xmark")
-                .font(.system(size: AppTheme.FontSize.micro, weight: .bold))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: AppTheme.IconSize.xs, height: AppTheme.IconSize.xs)
-                .hoverHighlight(cornerRadius: 7)
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Scrub bar
@@ -771,78 +686,6 @@ struct PreviewContainerView: View {
 }
 
 // MARK: - Settings Presets
-
-private enum AspectPreset: CaseIterable {
-    case sixteenNine, nineByFourteen, nineSixteen, oneOne, fourThree, twoPointFourOne
-
-    var label: String {
-        switch self {
-        case .sixteenNine: "16:9"
-        case .nineByFourteen: "9:14"
-        case .nineSixteen: "9:16"
-        case .oneOne: "1:1"
-        case .fourThree: "4:3"
-        case .twoPointFourOne: "2.4:1"
-        }
-    }
-
-    var width: Int {
-        switch self {
-        case .sixteenNine: 1920
-        case .nineByFourteen: 1080
-        case .nineSixteen: 1080
-        case .oneOne: 1080
-        case .fourThree: 1440
-        case .twoPointFourOne: 2560
-        }
-    }
-
-    var height: Int {
-        switch self {
-        case .sixteenNine: 1080
-        case .nineByFourteen: 1680
-        case .nineSixteen: 1920
-        case .oneOne: 1080
-        case .fourThree: 1080
-        case .twoPointFourOne: 1080
-        }
-    }
-}
-
-private enum QualityPreset: CaseIterable {
-    case hd720, fullHD, twoK, fourK
-
-    var label: String {
-        switch self {
-        case .hd720: "720p"
-        case .fullHD: "1080p"
-        case .twoK: "2K"
-        case .fourK: "4K"
-        }
-    }
-
-    /// Scale resolution while preserving the current aspect ratio.
-    func resolution(currentWidth: Int, currentHeight: Int) -> (width: Int, height: Int) {
-        let target = shortEdge
-        if currentWidth <= currentHeight {
-            return (target, Int(Double(target) * Double(currentHeight) / Double(currentWidth)))
-        }
-        return (Int(Double(target) * Double(currentWidth) / Double(currentHeight)), target)
-    }
-
-    func matches(width: Int, height: Int) -> Bool {
-        min(width, height) == shortEdge
-    }
-
-    private var shortEdge: Int {
-        switch self {
-        case .hd720: 720
-        case .fullHD: 1080
-        case .twoK: 1440
-        case .fourK: 2160
-        }
-    }
-}
 
 private enum ZoomPreset: CaseIterable {
     case twentyFivePercent, fiftyPercent, seventyFivePercent, fit, oneTwentyFivePercent, oneFiftyPercent, twoHundredPercent

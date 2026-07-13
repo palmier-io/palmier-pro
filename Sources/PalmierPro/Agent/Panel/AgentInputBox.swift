@@ -282,9 +282,11 @@ struct AgentInputBox<LeadingTools: View>: View {
             return
         }
         for (type, ext) in [(NSPasteboard.PasteboardType.png, "png"), (.tiff, "tiff")] {
-            if let data = pb.data(forType: type),
-               let asset = editor.importPastedImageData(data, fileExtension: ext) {
-                editor.agentService.attachMention(for: asset)
+            if let data = pb.data(forType: type) {
+                Task { @MainActor in
+                    guard let asset = await editor.importPastedImageData(data, fileExtension: ext) else { return }
+                    editor.agentService.attachMention(for: asset)
+                }
                 return
             }
         }

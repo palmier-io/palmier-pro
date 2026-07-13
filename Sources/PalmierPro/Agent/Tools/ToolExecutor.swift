@@ -7,27 +7,67 @@ struct ToolError: Error { let message: String; init(_ m: String) { self.message 
 @MainActor
 final class ToolExecutor {
     private let editorProvider: () -> EditorViewModel?
+    let exportQueue: ExportQueue
     var editor: EditorViewModel? { editorProvider() }
 
-    init(editor: EditorViewModel) {
+    init(editor: EditorViewModel, exportQueue: ExportQueue = .shared) {
         self.editorProvider = { [weak editor] in editor }
+        self.exportQueue = exportQueue
     }
 
-    init(editorProvider: @escaping () -> EditorViewModel?) {
+    init(editorProvider: @escaping () -> EditorViewModel?, exportQueue: ExportQueue = .shared) {
         self.editorProvider = editorProvider
+        self.exportQueue = exportQueue
     }
 
     private var agentUndoStack: [String] = []
     var feedbackState = FeedbackState()
+    var lastTranscriptContext: TranscriptionToolContext?
 
-    func execute(name: String, args: [String: Any]) async -> ToolResult {
+    func execute(name: String, args: [String: Any], source: String = "agent") async -> ToolResult {
+        let started = ContinuousClock.now
         guard let tool = ToolName(rawValue: name) else {
+            captureToolAnalytics(
+                toolName: name,
+                source: source,
+                projectId: editor?.projectId,
+                status: "failed",
+                started: started,
+                failureReason: "unknown_tool"
+            )
             return .error("Unknown tool: \(name)")
         }
-        guard let editor else { return .error("Editor not available") }
-        let before = editor.timeline
+
+        // project tools act on AppState before editor is available
+        switch tool {
+        case .getProjects, .openProject, .newProject, .closeProject:
+            let result = await runProjectTool(tool, args)
+            captureToolAnalytics(
+                toolName: tool.rawValue,
+                source: source,
+                projectId: editor?.projectId,
+                status: result.isError ? "failed" : "finished",
+                started: started
+            )
+            return result
+        default:
+            break
+        }
+
+        guard let editor else {
+            captureToolAnalytics(
+                toolName: tool.rawValue,
+                source: source,
+                projectId: nil,
+                status: "failed",
+                started: started,
+                failureReason: "editor_unavailable"
+            )
+            return .error("Editor not available")
+        }
+        let before = editor.timelines
+        let idsBefore = currentIdUniverse(editor)
         let result: ToolResult
-        let started = ContinuousClock.now
         Log.agent.notice(
             "tool start name=\(tool.rawValue)",
             telemetry: "Agent tool started",
@@ -36,8 +76,7 @@ final class ToolExecutor {
         do {
             let resolved = try expandingIdPrefixes(in: args, editor: editor)
             result = try await run(tool, editor, resolved)
-            // Record any edit that actually changed the timeline so `undo` can revert it.
-            if tool != .undo, !result.isError, editor.timeline != before,
+            if tool != .undo, tool != .setActiveTimeline, !result.isError, editor.timelines != before,
                let actionName = editor.undoManager?.undoActionName {
                 agentUndoStack.append(actionName)
             }
@@ -52,7 +91,7 @@ final class ToolExecutor {
         let payload: Telemetry.Payload = [
             "tool": tool.rawValue,
             "durationSeconds": elapsed,
-            "timelineChanged": editor.timeline != before
+            "timelineChanged": editor.timelines != before
         ]
         if result.isError {
             Log.agent.warning(
@@ -67,50 +106,110 @@ final class ToolExecutor {
                 data: payload
             )
         }
-        // Shorten on the post-run state so newly created ids in summaries are shortened too.
-        return shorteningIds(in: result, editor: editor)
+        captureToolAnalytics(
+            toolName: tool.rawValue,
+            source: source,
+            projectId: editor.projectId,
+            status: result.isError ? "failed" : "finished",
+            started: started,
+            timelineChanged: editor.timelines != before
+        )
+        // Shorten on pre ∪ post ids: new ids and just-removed ids both stay short.
+        return await shorteningIds(in: result, editor: editor, alsoKnown: idsBefore)
+    }
+
+    private func captureToolAnalytics(
+        toolName: String,
+        source: String,
+        projectId: String?,
+        status: String,
+        started: ContinuousClock.Instant? = nil,
+        timelineChanged: Bool? = nil,
+        failureReason: String? = nil
+    ) {
+        var payload: [String: Any] = [
+            "tool_name": toolName,
+            "source": source,
+            "project_id": projectId ?? "unknown",
+            "status": status,
+        ]
+        if let started {
+            payload["tool_duration_seconds"] = durationSeconds(since: started)
+        }
+        if let timelineChanged {
+            payload["timeline_changed"] = timelineChanged
+        }
+        if let failureReason {
+            payload["failure_reason"] = failureReason
+        }
+        Analytics.capture(.agentToolCalled, properties: payload)
+    }
+
+    private func durationSeconds(since started: ContinuousClock.Instant) -> Double {
+        let duration = started.duration(to: .now)
+        return Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
     }
 
     private func run(_ tool: ToolName, _ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         switch tool {
         case .getTimeline:   return try getTimeline(editor, args)
-        case .getMedia:      return try getMedia(editor)
+        case .getMedia:      return try getMedia(editor, args)
         case .inspectMedia:  return try await inspectMedia(editor, args)
         case .getTranscript: return try await getTranscript(editor, args)
+        case .detectBeats:   return try await detectBeats(editor, args)
         case .inspectTimeline: return try await inspectTimeline(editor, args)
         case .searchMedia:   return try await searchMedia(editor, args)
         case .applyColor:    return try applyColor(editor, args)
         case .applyEffect:   return try applyEffect(editor, args)
+        case .denoiseAudio:  return try denoiseAudio(editor, args)
         case .inspectColor:  return try await inspectColor(editor, args)
         case .addClips:         return try addClips(editor, args)
         case .insertClips:      return try insertClips(editor, args)
         case .removeClips:      return try removeClips(editor, args)
-        case .removeTracks:     return try removeTracks(editor, args)
+        case .manageTracks:     return try manageTracks(editor, args)
         case .moveClips:        return try moveClips(editor, args)
+        case .applyLayout:      return try applyLayout(editor, args)
         case .setClipProperties: return try setClipProperties(editor, args)
         case .setKeyframes:     return try setKeyframes(editor, args)
-        case .splitClip:        return try splitClip(editor, args)
+        case .splitClips:       return try splitClips(editor, args)
         case .rippleDeleteRanges: return try rippleDeleteRanges(editor, args)
         case .removeWords:   return try await removeWords(editor, args)
-        case .syncAudio:     return try await syncAudio(editor, args)
+        case .removeSilence: return try removeSilence(editor, args)
+        case .syncClips:     return try await syncClips(editor, args)
+        case .manageMulticam: return try await manageMulticam(editor, args)
+        case .changeCam:     return try changeCam(editor, args)
+        case .getMulticam:   return try getMulticam(editor, args)
         case .undo:          return try undo(editor)
         case .addTexts:      return try addTexts(editor, args)
+        case .updateText:    return try updateText(editor, args)
         case .addCaptions:   return try await addCaptions(editor, args)
+        case .exportProject: return try await exportProject(editor, args)
+        case .manageExports: return try manageExports(editor, args)
         case .generateVideo: return try generate(editor, args, type: .video)
         case .generateImage: return try generate(editor, args, type: .image)
         case .generateAudio: return try await generateAudio(editor, args)
         case .upscaleMedia:  return try upscaleMedia(editor, args)
         case .importMedia:   return try await importMedia(editor, args)
         case .listModels:    return await listModels(args)
-        case .listFolders:   return listFolders(editor)
-        case .createFolder:  return try createFolder(editor, args)
-        case .moveToFolder:  return try moveToFolder(editor, args)
-        case .renameMedia:   return try renameMedia(editor, args)
-        case .renameFolder:  return try renameFolder(editor, args)
-        case .deleteMedia:   return try deleteMedia(editor, args)
-        case .deleteFolder:  return try deleteFolder(editor, args)
+        case .organizeMedia: return try organizeMedia(editor, args)
         case .sendFeedback:  return try await sendFeedback(editor, args)
+        case .setProjectSettings: return try setProjectSettings(editor, args)
+        case .createTimeline:     return try createTimeline(editor, args)
+        case .setActiveTimeline:  return try setActiveTimeline(editor, args)
+        case .readSkill:     return readSkill(args)
+        case .getProjects, .openProject, .newProject, .closeProject:
+            return await runProjectTool(tool, args)
         }
+    }
+
+    func readSkill(_ args: [String: Any]) -> ToolResult {
+        guard let id = args.string("id") else {
+            return .error("read_skill requires an 'id'.")
+        }
+        guard let body = SkillStore.shared.body(for: id) else {
+            return .error("Unknown skill: \(id)")
+        }
+        return .ok(body)
     }
 
     /// Reverts the assistant's most recent timeline edit. Refuses to undo the user's own edits.
@@ -139,20 +238,30 @@ final class ToolExecutor {
         return asset
     }
 
-    func resolveFolderId(
-        _ args: [String: Any], editor: EditorViewModel, fallbackReferences: [MediaAsset] = []
-    ) throws -> String? {
-        if let id = args.string("folderId") {
-            guard editor.folder(id: id) != nil else {
-                throw ToolError("folderId not found: \(id)")
-            }
-            return id
+    /// Media asset, or a synthetic stand-in when `id` names a timeline (nest insertion).
+    func clipSource(_ id: String, editor: EditorViewModel, path: String) throws -> MediaAsset {
+        if let existing = editor.mediaAssets.first(where: { $0.id == id }) { return existing }
+        guard let child = editor.timeline(for: id) else {
+            throw ToolError("\(path): media asset or timeline not found: \(id)")
         }
-        return fallbackReferences.last?.folderId
+        if let reason = editor.nestBlockReason(childId: id) {
+            throw ToolError("\(path): \(reason)")
+        }
+        let stand = MediaAsset(
+            id: child.id,
+            url: URL(fileURLWithPath: "/dev/null"),
+            type: .sequence,
+            name: child.name,
+            duration: Double(child.totalFrames) / Double(editor.timeline.fps)
+        )
+        stand.sourceWidth = child.width
+        stand.sourceHeight = child.height
+        stand.hasAudio = child.hasAudioClips
+        return stand
     }
 
     nonisolated static func jsonString(_ obj: Any) -> String? {
-        guard let data = try? JSONSerialization.data(withJSONObject: obj) else { return nil }
+        guard let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]) else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
@@ -252,6 +361,16 @@ func parseAlignment(_ raw: String?, path: String) throws -> TextStyle.Alignment?
     return a
 }
 
+// Untrusted Double→Int: nil on NaN/Inf/overflow instead of trapping.
+func safeInt(_ d: Double) -> Int? { Int(exactly: d.rounded(.towardZero)) }
+
+// Clamp before converting so the Int(...) can't overflow.
+func clampInt(_ d: Double, min lo: Int, max hi: Int) -> Int {
+    if d.isNaN || d <= Double(lo) { return lo }
+    if d >= Double(hi) { return hi }
+    return Int(d.rounded())
+}
+
 extension Dictionary where Key == String, Value == Any {
     func string(_ key: String) -> String? {
         if let v = self[key] as? String, !v.isEmpty { return v }
@@ -259,7 +378,7 @@ extension Dictionary where Key == String, Value == Any {
     }
     func int(_ key: String) -> Int? {
         if let v = self[key] as? Int { return v }
-        if let v = self[key] as? Double { return Int(v) }
+        if let v = self[key] as? Double { return safeInt(v) }
         if let v = self[key] as? NSNumber { return v.intValue }
         if let v = self[key] as? String { return Int(v) }
         return nil

@@ -330,7 +330,7 @@ enum EffectRegistry {
             params: [
                 EffectParamSpec(key: "keyHue", label: "Key Hue", range: 0...1, defaultValue: 0.333, unit: ""),
                 EffectParamSpec(key: "tolerance", label: "Tolerance", range: 0...1, defaultValue: 0, unit: ""),
-                EffectParamSpec(key: "softness", label: "Softness", range: 0...1, defaultValue: 0.5, unit: ""),
+                EffectParamSpec(key: "softness", label: "Softness", range: 0...1, defaultValue: 0.1, unit: ""),
                 EffectParamSpec(key: "spill", label: "Spill", range: 0...1, defaultValue: 0.5, unit: ""),
             ],
             apply: { image, p, _ in

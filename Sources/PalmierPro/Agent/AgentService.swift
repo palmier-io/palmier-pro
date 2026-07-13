@@ -90,7 +90,7 @@ final class AgentService {
 
     var availableModels: [AnthropicModel] {
         if hasApiKey { return AnthropicModel.allCases }
-        return AccountService.shared.isPaid ? [.sonnet46] : [.haiku45]
+        return [.sonnet5]
     }
 
     private func selectClient() -> (any AgentClient)? {
@@ -113,7 +113,7 @@ final class AgentService {
     var effectiveModel: AnthropicModel {
         let available = availableModels
         if available.contains(model) { return model }
-        return available.first ?? .sonnet46
+        return available.first ?? .sonnet5
     }
 
     var model: AnthropicModel = {
@@ -121,7 +121,7 @@ final class AgentService {
            let m = AnthropicModel(rawValue: raw) {
             return m
         }
-        return .sonnet46
+        return .sonnet5
     }() {
         didSet { UserDefaults.standard.set(model.rawValue, forKey: "agentModel") }
     }
@@ -359,6 +359,14 @@ final class AgentService {
         let contextHint = referencedMentions.isEmpty
             ? nil
             : AgentMentionContext.hint(referencedMentions, editor: editor)
+        let beginsSession = !messages.contains { $0.role == .user }
+        let analyticsPayload: [String: Any] = [
+            "project_id": editor?.projectId ?? "unknown",
+            "model": effectiveModel.rawValue,
+        ]
+        if beginsSession {
+            Analytics.capture(.agentSessionStarted, properties: analyticsPayload)
+        }
 
         resolveOrphanToolUses()
         messages.append(AgentMessage(
@@ -367,6 +375,12 @@ final class AgentService {
         ))
         streamError = nil
         kickOffStream()
+    }
+
+    func postSystemNotice(_ text: String) {
+        messages.append(AgentMessage(role: .system, blocks: [.text(text)]))
+        syncMessagesIntoCurrentSession()
+        onSessionsChanged?()
     }
 
     func cancel() {
@@ -393,7 +407,8 @@ final class AgentService {
             streamError = .upstream("No backend available.")
             return
         }
-        let tools = ToolDefinitions.all.map {
+        await SkillStore.shared.reloadInBackground()
+        let tools = ToolDefinitions.inAppAgent.map {
             AnthropicToolSchema(name: $0.name.rawValue, description: $0.description, inputSchema: $0.inputSchema)
         }
 
@@ -406,7 +421,7 @@ final class AgentService {
 
             do {
                 let stream = client.stream(
-                    system: AgentInstructions.serverInstructions,
+                    system: AgentInstructions.serverInstructions + AgentInstructions.skillsSection(SkillStore.shared.skillIndex),
                     tools: tools,
                     messages: apiMsgs
                 )
@@ -496,8 +511,14 @@ final class AgentService {
         }
     }
 
+    private func nextNonSystemIndex(after index: Int) -> Int {
+        var next = index + 1
+        while next < messages.count, messages[next].role == .system { next += 1 }
+        return next
+    }
+
     private func resolvedToolUseIds(afterAssistantAt index: Int) -> Set<String> {
-        let next = index + 1
+        let next = nextNonSystemIndex(after: index)
         guard next < messages.count, messages[next].role == .user else { return [] }
         return Set(messages[next].blocks.compactMap {
             if case let .toolResult(id, _, _) = $0 { return id }
@@ -516,7 +537,7 @@ final class AgentService {
             }
             guard !toolUseIds.isEmpty else { continue }
 
-            let next = i + 1
+            let next = nextNonSystemIndex(after: i)
             let nextIsToolResult = next < messages.count
                 && messages[next].role == .user
                 && messages[next].blocks.contains(where: {
@@ -564,6 +585,7 @@ final class AgentService {
     private func apiMessages() async -> [AnthropicMessage] {
         var result: [AnthropicMessage] = []
         for msg in messages {
+            if msg.role == .system { continue }
             var content = msg.blocks.compactMap(Self.contentBlockJSON)
             if msg.role == .user, !msg.mentions.isEmpty {
                 let inlined = await inlineImageBlocks(for: msg.mentions)
@@ -653,7 +675,7 @@ final class AgentService {
 }
 
 struct AgentMessage: Identifiable, Codable {
-    enum Role: String, Codable { case user, assistant }
+    enum Role: String, Codable { case user, assistant, system }
     let id: UUID
     let role: Role
     var blocks: [AgentContentBlock]

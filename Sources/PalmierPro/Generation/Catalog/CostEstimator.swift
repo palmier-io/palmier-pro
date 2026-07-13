@@ -61,6 +61,11 @@ enum CostEstimator {
         return ceilCredits(model.creditsPerSecond * Double(d))
     }
 
+    static func estimatedTranscriptionCost(durationSeconds: Double) -> Int? {
+        guard durationSeconds > 0 else { return nil }
+        return ceilCredits(25.0 * durationSeconds / 3600.0)
+    }
+
     /// Recompute cost from a stored `GenerationInput`. Used on rerun.
     @MainActor
     static func cost(for genInput: GenerationInput) -> Int? {
@@ -80,7 +85,7 @@ enum CostEstimator {
                 numImages: genInput.numImages ?? 1
             )
         case .audio(let m):
-            let duration = (m.durations != nil || m.inputs.contains(.video)) ? genInput.duration : nil
+            let duration = (m.durations != nil || m.acceptsSourceMedia) ? genInput.duration : nil
             return audioCost(model: m, prompt: genInput.prompt, durationSeconds: duration)
         case .upscale(let m):
             return upscaleCost(model: m, durationSeconds: genInput.duration)

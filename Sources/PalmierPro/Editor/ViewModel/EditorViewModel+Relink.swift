@@ -33,6 +33,10 @@ extension EditorViewModel {
     private func applyRelink(id: String, to newURL: URL) {
         guard let i = mediaAssets.firstIndex(where: { $0.id == id }) else { return }
         mediaAssets[i].url = newURL
+        denoiseFailed.remove(id)
+        denoiseBaked.remove(id)
+        mediaVisualCache.invalidate(id)
+        speakerAssignments.removeValue(forKey: id)
         if let j = mediaManifest.entries.firstIndex(where: { $0.id == id }) {
             mediaManifest.entries[j].source = mediaAssets[i].toManifestEntry(projectURL: projectURL).source
         }

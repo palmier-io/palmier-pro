@@ -9,7 +9,7 @@ import Testing
 /// didn't match the file and DaVinci refused to relink. `timecodeTags` must follow the track.
 @Suite("XMLExporter timecode")
 struct XMLExporterTimecodeTests {
-    typealias Source = XMLExporter.SourceTimecode
+    typealias Source = SourceTimecode
 
     // MARK: - timecodeTags follows the track, not the video rate
 

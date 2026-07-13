@@ -104,6 +104,17 @@ struct SplitClipTests {
         #expect(e.timeline.tracks[0].clips.count == 1)
     }
 
+    @Test func splitClipDoesNotCutAnotherClipOnSameTrack() {
+        // c1 = 0..30, c2 = 30..60. Splitting c1 at frame 45 (inside c2, outside c1) must
+        // do nothing — not resolve to c2 and cut it.
+        let e = editor([Fixtures.videoTrack(clips: [
+            Fixtures.clip(id: "c1", start: 0, duration: 30),
+            Fixtures.clip(id: "c2", start: 30, duration: 30),
+        ])])
+        #expect(e.splitClip(clipId: "c1", atFrame: 45).isEmpty)
+        #expect(e.timeline.tracks[0].clips.count == 2)
+    }
+
     @Test func splitWithLinkedPartnerSplitsBothAndRegroupsRightHalves() {
         // video + audio sharing g1. After split at 30, the right halves should share a
         // *new* group id (not the original g1).
@@ -129,6 +140,36 @@ struct SplitClipTests {
         let leftIds: Set<String> = ["v", "a"]
         let leftGroups = Set(allClips.filter { leftIds.contains($0.id) }.compactMap(\.linkGroupId))
         #expect(leftGroups == ["g1"])
+    }
+
+    @Test func splitClipsAtMultiplePointsCutsEachAndSkipsBoundaries() {
+        let clip = Fixtures.clip(id: "c1", start: 0, duration: 90)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        // Two real cuts plus a repeat of the first: the repeat lands on a boundary and is a no-op.
+        let rightIds = e.splitClips(at: [(0, 30), (0, 60), (0, 30)])
+        let clips = e.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(clips.map(\.startFrame) == [0, 30, 60])
+        #expect(clips.map(\.durationFrames) == [30, 30, 30])
+        #expect(rightIds.count == 2)
+    }
+
+    @Test func splitClipKeepsSegmentInterpolationOnRightHalf() {
+        // hold opacity (0→1.0) and linear rotation (0°→20°). Splitting mid-segment must not
+        // turn the right half's opening keyframe smooth: hold stays flat, linear stays straight.
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        clip.opacityTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 1.0, interpolationOut: .hold),
+            Keyframe(frame: 30, value: 0.5),
+        ])
+        clip.rotationTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 0.0, interpolationOut: .linear),
+            Keyframe(frame: 20, value: 20.0),
+        ])
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let rightId = e.splitClip(clipId: "c1", atFrame: 10)[0]
+        let right = e.timeline.tracks[0].clips.first { $0.id == rightId }!
+        #expect(right.opacityTrack?.sample(at: 5, fallback: 0.0) == 1.0)   // hold: still flat
+        #expect(right.rotationTrack?.sample(at: 5, fallback: 0.0) == 15.0) // linear: 10°→20° at halfway
     }
 
     @Test func splitClipZerosOpacityFadesAcrossCut() {
@@ -330,6 +371,85 @@ struct WritePositionTests {
         // Bug: without the else-guard, centerX/Y become 0.6 (0.4 + width/2).
         #expect(updated.transform.centerX == 0.5)
         #expect(updated.transform.centerY == 0.5)
+    }
+
+    @Test func batchPositionUpdatesAllClips() {
+        var a = Fixtures.clip(id: "a", start: 0, duration: 60)
+        var b = Fixtures.clip(id: "b", start: 10, duration: 60)
+        a.transform.width = 0.2
+        a.transform.height = 0.2
+        b.transform.width = 0.4
+        b.transform.height = 0.4
+
+        let e = editor([Fixtures.videoTrack(clips: [a, b])])
+        e.currentFrame = 0
+
+        e.commitPositions(clipIds: ["a", "b"], setX: 0.3, setY: 0.4)
+
+        let updated = e.timeline.tracks[0].clips
+        #expect(abs(updated[0].topLeftAt(frame: 0).x - 0.3) < 0.000001)
+        #expect(abs(updated[0].topLeftAt(frame: 0).y - 0.4) < 0.000001)
+        #expect(abs(updated[1].topLeftAt(frame: 0).x - 0.3) < 0.000001)
+        #expect(abs(updated[1].topLeftAt(frame: 0).y - 0.4) < 0.000001)
+    }
+}
+
+@Suite("EditorViewModel — clip property commits")
+@MainActor
+struct ClipPropertyCommitTests {
+
+    @Test func sampledChromaKeyUndoes() throws {
+        let clip = Fixtures.clip(id: "clip", start: 0, duration: 30)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let undoManager = UndoManager()
+        e.undoManager = undoManager
+
+        e.toggleChromaKeySampling(clipId: clip.id)
+        e.commitChromaKeySample(hue: 1.0 / 3.0, clipId: clip.id)
+
+        let effect = try #require(e.clipFor(id: clip.id)?.effects?.first)
+        #expect(effect.params["tolerance"]?.value == 0.15)
+        #expect(effect.params["softness"]?.value == 0.1)
+        undoManager.undo()
+        #expect(e.clipFor(id: clip.id)?.effects == nil)
+    }
+
+    @Test func commitClipPropertiesGroupsMultipleClipUndo() {
+        var a = Fixtures.clip(id: "a", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        var b = Fixtures.clip(id: "b", mediaRef: "text", mediaType: .text, start: 30, duration: 30)
+        a.textContent = "one"
+        b.textContent = "two"
+        let e = editor([Fixtures.videoTrack(clips: [a, b])])
+        let undoManager = UndoManager()
+        e.undoManager = undoManager
+
+        e.commitClipProperties(clipIds: ["a", "b"]) {
+            $0.textAnimation = TextAnimation(preset: .wordPop)
+        }
+
+        #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation?.preset == .wordPop })
+        undoManager.undo()
+        #expect(e.timeline.tracks[0].clips.allSatisfy { $0.textAnimation == nil })
+        #expect(undoManager.canUndo == false)
+    }
+
+    @Test func cancelDebouncedCommitPreventsPendingHighlightWrite() async throws {
+        var clip = Fixtures.clip(id: "caption", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        clip.textAnimation = TextAnimation(preset: .highlightPop, highlight: .init(r: 1, g: 0, b: 0, a: 1))
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+
+        e.debouncedCommitClipProperties(clipIds: ["caption"], key: "textHighlight", debounce: .milliseconds(5)) {
+            var animation = $0.textAnimation ?? TextAnimation()
+            animation.highlight = .init(r: 0, g: 0, b: 1, a: 1)
+            $0.textAnimation = animation
+        }
+        e.cancelDebouncedCommit(key: "textHighlight")
+        e.commitClipProperties(clipIds: ["caption"]) {
+            $0.textAnimation = nil
+        }
+
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(e.timeline.tracks[0].clips[0].textAnimation == nil)
     }
 }
 

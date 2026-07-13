@@ -154,8 +154,17 @@ extension EditorViewModel {
         applyClipProperty(clipId: clipId) { self.writePosition(into: &$0, setX: setX, setY: setY) }
     }
 
+    func applyPositions(clipIds: [String], setX: Double?, setY: Double?) {
+        applyClipProperties(clipIds: clipIds) { self.writePosition(into: &$0, setX: setX, setY: setY) }
+    }
+
     func commitPosition(clipId: String, setX: Double?, setY: Double?) {
         commitClipProperty(clipId: clipId) { self.writePosition(into: &$0, setX: setX, setY: setY) }
+        undoManager?.setActionName("Change Position")
+    }
+
+    func commitPositions(clipIds: [String], setX: Double?, setY: Double?) {
+        commitClipProperties(clipIds: clipIds) { self.writePosition(into: &$0, setX: setX, setY: setY) }
         undoManager?.setActionName("Change Position")
     }
 

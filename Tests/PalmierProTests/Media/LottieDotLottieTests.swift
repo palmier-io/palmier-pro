@@ -46,7 +46,7 @@ struct LottieDotLottieTests {
         let gen = AVAssetImageGenerator(asset: asset)
         gen.requestedTimeToleranceBefore = .zero
         gen.requestedTimeToleranceAfter = .zero
-        let cg = try gen.copyCGImage(at: .zero, actualTime: nil)
+        let cg = try await gen.image(at: .zero).image
         let rep = NSBitmapImageRep(cgImage: cg)
         let left = try #require(rep.colorAt(x: cg.width / 4, y: cg.height / 2))
         let right = try #require(rep.colorAt(x: cg.width * 3 / 4, y: cg.height / 2))

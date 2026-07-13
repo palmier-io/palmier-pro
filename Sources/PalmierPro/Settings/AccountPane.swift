@@ -19,7 +19,7 @@ struct AccountPane: View {
             if let error = account.lastError {
                 Text(error)
                     .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(AppTheme.Status.errorColor)
             }
         }
     }
@@ -41,7 +41,7 @@ struct AccountPane: View {
 
     @ViewBuilder
     private var unpaidSection: some View {
-        section(title: "Subscription") {
+        SettingsSection(title: "Subscription") {
             Text("Subscribe to use AI generation.")
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
@@ -135,7 +135,7 @@ struct AccountPane: View {
 
     @ViewBuilder
     private var subscriptionSection: some View {
-        section(title: "Subscription") {
+        SettingsSection(title: "Subscription") {
             Text(account.tier.planLabel)
                 .font(.system(size: AppTheme.FontSize.md, weight: .medium))
                 .foregroundStyle(AppTheme.Text.primaryColor)
@@ -156,7 +156,7 @@ struct AccountPane: View {
 
     @ViewBuilder
     private var creditsSection: some View {
-        section(title: "Credits") {
+        SettingsSection(title: "Credits") {
             HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
                 remainingCard
                 buyCard
@@ -221,21 +221,6 @@ struct AccountPane: View {
         )
     }
 
-    @ViewBuilder
-    private func section<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content,
-    ) -> some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            Text(title)
-                .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .textCase(.uppercase)
-                .tracking(AppTheme.Tracking.wide)
-            content()
-        }
-    }
-
     private var formattedPeriodEnd: String? {
         guard let endMs = account.account?.user.currentPeriodEnd else { return nil }
         let end = Date(timeIntervalSince1970: endMs / 1000)
@@ -249,10 +234,11 @@ struct AccountPane: View {
             .foregroundStyle(AppTheme.Text.tertiaryColor)
             .fixedSize(horizontal: false, vertical: true)
 
-        Button("Sign in with Google") {
+        Button(account.isSigningIn ? "Opening Google…" : "Sign in with Google") {
             Task { await account.signInWithGoogle() }
         }
         .buttonStyle(.capsule(.secondary, size: .regular))
+        .disabled(account.isSigningIn)
         .padding(.top, AppTheme.Spacing.xs)
     }
 }

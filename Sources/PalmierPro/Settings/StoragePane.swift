@@ -14,7 +14,7 @@ struct StoragePane: View {
                     Text("Cache")
                         .font(.system(size: AppTheme.FontSize.md))
                         .foregroundStyle(AppTheme.Text.primaryColor)
-                    Text("Saved playback previews, waveforms, and filmstrip thumbnails. Safe to clear; they'll rebuild as needed.")
+                    Text("Saved playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; they'll rebuild as needed.")
                         .font(.system(size: AppTheme.FontSize.sm))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .fixedSize(horizontal: false, vertical: true)
@@ -99,7 +99,7 @@ struct StoragePane: View {
         }
     }
 
-    private nonisolated static let caches = [ImageVideoGenerator.cache, MediaVisualCache.diskCache]
+    private nonisolated static let caches = [ImageVideoGenerator.cache, MediaVisualCache.diskCache, DiskCache(directory: TranscriptCache.directory), AudioEnhancer.cache, VoiceActivity.cache, SpeakerIdentity.cache]
 
     private var displayPath: String {
         DiskCache.rootDirectory.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
@@ -114,7 +114,13 @@ struct StoragePane: View {
         isClearing = true
         Task.detached {
             for cache in Self.caches { cache.clear() }
-            await MainActor.run { isClearing = false }
+            await TranscriptCache.shared.clearMemory()
+            await MainActor.run {
+                isClearing = false
+                for document in NSDocumentController.shared.documents {
+                    (document as? VideoProject)?.editorViewModel.resetAnalysisSessionState()
+                }
+            }
             await refresh()
         }
     }

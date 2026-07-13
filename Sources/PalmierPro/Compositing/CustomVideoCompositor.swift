@@ -7,7 +7,7 @@ final class CustomVideoCompositor: NSObject, AVVideoCompositing, @unchecked Send
 
     struct RenderError: Error {}
 
-    // Shared across all instances. Color management off so CI keeps source pixels raw.
+    // Shared across all instances. Color management stays at explicit render boundaries.
     static let ciContext: CIContext = {
         let options: [CIContextOption: Any] = [
             .workingColorSpace: NSNull(),

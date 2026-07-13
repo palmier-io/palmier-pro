@@ -33,18 +33,24 @@ final class MCPService {
     }
 
     func start() {
-        let httpServer = MCPHTTPServer(port: Self.port) { [weak self] in
+        let toolExecutor = self.toolExecutor
+        let httpServer = MCPHTTPServer(
+            port: Self.port,
+            onSessionStarted: {
+                Analytics.capture(.mcpSessionStarted, properties: ["source": "mcp"])
+            }
+        ) {
             let server = Server(
                 name: "palmier-pro",
                 version: "1.0.0",
-                instructions: AgentInstructions.serverInstructions,
+                instructions: AgentInstructions.serverInstructions + AgentInstructions.projectNavigation,
                 capabilities: .init(
                     resources: .init(subscribe: false, listChanged: false),
                     tools: .init(listChanged: false)
                 )
             )
-            await self?.registerTools(on: server)
-            await self?.registerResources(on: server)
+            await Self.registerTools(on: server, executor: toolExecutor)
+            await Self.registerResources(on: server)
             return server
         }
         self.httpServer = httpServer
@@ -69,8 +75,8 @@ final class MCPService {
         Log.mcp.notice("http server stopped")
     }
 
-    private func registerTools(on server: Server) async {
-        let tools: [Tool] = ToolDefinitions.all.map { def in
+    private nonisolated static func registerTools(on server: Server, executor: ToolExecutor) async {
+        let tools: [Tool] = ToolDefinitions.mcpServer.map { def in
             Tool(name: def.name.rawValue, description: def.description, inputSchema: def.mcpSchemaValue)
         }
 
@@ -78,22 +84,19 @@ final class MCPService {
             .init(tools: tools)
         }
 
-        await server.withMethodHandler(CallTool.self) { [weak self] params in
-            guard let self else {
-                return ToolResult.error("Editor not available").toMCPResult()
-            }
-            return await self.dispatchCall(params)
+        await server.withMethodHandler(CallTool.self) { params in
+            await dispatchCall(params, executor: executor)
         }
     }
 
-    // Convert args inside the actor so the non-Sendable dict never crosses the hop.
-    private func dispatchCall(_ params: CallTool.Parameters) async -> CallTool.Result {
+    // Convert args on the main actor so the non-Sendable dict never crosses the hop.
+    private static func dispatchCall(_ params: CallTool.Parameters, executor: ToolExecutor) async -> CallTool.Result {
         let args = ToolArgsBridge.argsFromMCP(params.arguments ?? [:])
-        let result = await toolExecutor.execute(name: params.name, args: args)
+        let result = await executor.execute(name: params.name, args: args, source: "mcp")
         return result.toMCPResult()
     }
 
-    private func registerResources(on server: Server) async {
+    private nonisolated static func registerResources(on server: Server) async {
         let resources = [
             Resource(
                 name: "Video Models",

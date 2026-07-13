@@ -42,7 +42,7 @@ struct PalmierProjectExportTests {
         defer { try? fm.removeItem(at: root) }
 
         let report = try PalmierProjectExporter.export(
-            timeline: Fixtures.timeline(),
+            projectFile: ProjectFile(timelines: [Fixtures.timeline()], activeTimelineId: nil, openTimelineIds: nil),
             manifest: manifest(externalPath: root.appendingPathComponent("external-clip.mov").path),
             generationLog: GenerationLog(),
             sourceProjectURL: source,
@@ -81,7 +81,7 @@ struct PalmierProjectExportTests {
         defer { try? fm.removeItem(at: root) }
 
         try PalmierProjectExporter.export(
-            timeline: Fixtures.timeline(),
+            projectFile: ProjectFile(timelines: [Fixtures.timeline()], activeTimelineId: nil, openTimelineIds: nil),
             manifest: manifest(externalPath: root.appendingPathComponent("external-clip.mov").path),
             generationLog: GenerationLog(),
             sourceProjectURL: source,
@@ -109,7 +109,7 @@ struct PalmierProjectExportTests {
         ]
 
         let report = try PalmierProjectExporter.export(
-            timeline: Fixtures.timeline(), manifest: m, generationLog: GenerationLog(),
+            projectFile: ProjectFile(timelines: [Fixtures.timeline()], activeTimelineId: nil, openTimelineIds: nil), manifest: m, generationLog: GenerationLog(),
             sourceProjectURL: source, to: dest
         )
 
@@ -117,5 +117,53 @@ struct PalmierProjectExportTests {
         // Only one physical file copied into media/.
         let mediaFiles = try fm.contentsOfDirectory(atPath: dest.appendingPathComponent(Project.mediaDirectoryName).path)
         #expect(mediaFiles.count == 1)
+    }
+
+    @Test func cancellationPreservesExistingDestination() async throws {
+        let (root, source, dest, _) = try makeFixture()
+        defer { try? fm.removeItem(at: root) }
+        try fm.createDirectory(at: dest, withIntermediateDirectories: true)
+        let marker = dest.appendingPathComponent("existing.txt")
+        try Data("existing".utf8).write(to: marker)
+        let exportManifest = manifest(externalPath: root.appendingPathComponent("external-clip.mov").path)
+        let projectFile = ProjectFile(timelines: [Fixtures.timeline()], activeTimelineId: nil, openTimelineIds: nil)
+
+        let worker = Task.detached {
+            try PalmierProjectExporter.export(
+                projectFile: projectFile,
+                manifest: exportManifest,
+                generationLog: GenerationLog(),
+                sourceProjectURL: source,
+                to: dest
+            )
+        }
+        worker.cancel()
+
+        do {
+            _ = try await worker.value
+            Issue.record("Expected cancellation")
+        } catch is CancellationError {
+        }
+        #expect(fm.fileExists(atPath: marker.path))
+        #expect(try String(contentsOf: marker, encoding: .utf8) == "existing")
+    }
+
+    @Test func successfulExportReplacesExistingDestination() throws {
+        let (root, source, dest, _) = try makeFixture()
+        defer { try? fm.removeItem(at: root) }
+        try fm.createDirectory(at: dest, withIntermediateDirectories: true)
+        let marker = dest.appendingPathComponent("existing.txt")
+        try Data("existing".utf8).write(to: marker)
+
+        try PalmierProjectExporter.export(
+            projectFile: ProjectFile(timelines: [Fixtures.timeline()], activeTimelineId: nil, openTimelineIds: nil),
+            manifest: manifest(externalPath: root.appendingPathComponent("external-clip.mov").path),
+            generationLog: GenerationLog(),
+            sourceProjectURL: source,
+            to: dest
+        )
+
+        #expect(!fm.fileExists(atPath: marker.path))
+        #expect(fm.fileExists(atPath: dest.appendingPathComponent(Project.timelineFilename).path))
     }
 }

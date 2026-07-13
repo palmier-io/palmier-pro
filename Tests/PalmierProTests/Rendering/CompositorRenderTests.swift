@@ -34,13 +34,15 @@ struct CompositorRenderTests {
 
     static func render(
         _ timeline: Timeline, frame: Int,
-        renderSize: CGSize = size, imageURLs: [String: URL] = [:]
+        renderSize: CGSize = size, imageURLs: [String: URL] = [:],
+        timelines: [Timeline] = []
     ) async throws -> Frame {
         var urls = imageURLs
         if urls["pattern"] == nil { urls["pattern"] = try await CompositorFixtures.patternVideoURL() }
-        nonisolated(unsafe) let resolved = urls
+        let resolved = urls
+        let byId = Dictionary(uniqueKeysWithValues: timelines.map { ($0.id, $0) })
         let result = try await CompositionBuilder.build(
-            timeline: timeline, resolveURL: { resolved[$0] }, renderSize: renderSize
+            timeline: timeline, resolveURL: { resolved[$0] }, resolveTimeline: { byId[$0] }, renderSize: renderSize
         )
         let gen = AVAssetImageGenerator(asset: result.composition)
         gen.videoComposition = result.videoComposition
@@ -55,11 +57,11 @@ struct CompositorRenderTests {
 
 // MARK: - Color classification
 
-private func isRed(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.r > 140 && p.g < 100 && p.b < 100 }
-private func isGreen(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.g > 140 && p.r < 110 && p.b < 110 }
-private func isBlue(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.b > 140 && p.r < 100 && p.g < 100 }
-private func isWhite(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.r > 170 && p.g > 170 && p.b > 170 }
-private func isBlack(_ p: (r: Int, g: Int, b: Int)) -> Bool { p.r < 45 && p.g < 45 && p.b < 45 }
+private let isRed = CompositorFixtures.isRed
+private let isGreen = CompositorFixtures.isGreen
+private let isBlue = CompositorFixtures.isBlue
+private let isWhite = CompositorFixtures.isWhite
+private let isBlack = CompositorFixtures.isBlack
 
 // MARK: - Tests
 
@@ -216,7 +218,7 @@ extension CompositorRenderTests {
 
     @Test func topLayerWinsInStack() async throws {
         // Opaque full-frame top over a flipped bg → top wins everywhere.
-        var top = CompositorFixtures.patternClip(id: "top")
+        let top = CompositorFixtures.patternClip(id: "top")
         var bg = CompositorFixtures.patternClip(id: "bg")
         bg.transform = Transform(flipHorizontal: true)
         let f = try await Self.render(Self.timelineWith(
@@ -251,6 +253,25 @@ extension CompositorRenderTests {
         #expect(isWhite(f.br), "transparent overlay region shows bg through: \(f.br)")
     }
 
+    @Test func chromaKeyRevealsBackground() async throws {
+        var keyed = CompositorFixtures.patternClip(id: "keyed")
+        keyed.effects = [Effect.make("key.chroma", [
+            "keyHue": 0.333,
+            "tolerance": 0.5,
+            "softness": 0.3,
+            "spill": 0,
+        ])]
+        var background = CompositorFixtures.patternClip(id: "background")
+        background.transform = Transform(flipHorizontal: true)
+
+        let f = try await Self.render(Self.timelineWith(
+            Fixtures.videoTrack(clips: [keyed]),
+            Fixtures.videoTrack(clips: [background])
+        ), frame: 15)
+
+        #expect(isRed(f.tr), "keyed green should reveal the red background: \(f.tr)")
+    }
+
     @Test func adjacentClipsBothRender() async throws {
         var second = CompositorFixtures.patternClip(id: "c2", start: 30, duration: 30)
         second.transform = Transform(flipHorizontal: true)
@@ -267,10 +288,5 @@ extension CompositorRenderTests {
 // MARK: - Fixture helper
 
 extension CompositorRenderTests {
-    static func timelineWith(_ tracks: Track...) -> Timeline {
-        var t = Fixtures.timeline(tracks: tracks)
-        t.width = Int(size.width)
-        t.height = Int(size.height)
-        return t
-    }
+    static func timelineWith(_ tracks: Track...) -> Timeline { CompositorFixtures.timeline(tracks) }
 }

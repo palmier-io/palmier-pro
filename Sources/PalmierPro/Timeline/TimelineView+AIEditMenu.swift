@@ -4,32 +4,35 @@ import AppKit
 extension TimelineView {
     func aiEditSubmenu(for clipId: String) -> NSMenu? {
         let actions = editor.aiEditActions(clipId: clipId)
-        guard !actions.isEmpty else { return nil }
+        let audioTransforms = editor.aiAudioTransformKinds(clipId: clipId)
+        guard !actions.isEmpty || !audioTransforms.isEmpty else { return nil }
         let submenu = NSMenu()
         submenu.autoenablesItems = false
         let aiAllowed = editor.aiEditAllowed
+        let isPaid = AccountService.shared.isPaid
         for action in actions {
             switch action {
             case .upscale:
                 let models = editor.aiEditUpscaleModels(clipId: clipId)
                 guard !models.isEmpty else { continue }
-                let upscaleItem = NSMenuItem(title: "Upscale", action: nil, keyEquivalent: "")
+                let upscaleItem = NSMenuItem(title: isPaid ? "Upscale" : "Upscale (Paid)", action: nil, keyEquivalent: "")
+                upscaleItem.isEnabled = aiAllowed && isPaid
                 let modelsMenu = NSMenu()
                 modelsMenu.autoenablesItems = false
                 for model in models {
                     let item = NSMenuItem(title: model.displayName, action: #selector(performAIEditUpscale(_:)), keyEquivalent: "")
                     item.target = self
                     item.representedObject = ["clipId": clipId, "modelId": model.id]
-                    item.isEnabled = aiAllowed
+                    item.isEnabled = aiAllowed && isPaid
                     modelsMenu.addItem(item)
                 }
                 upscaleItem.submenu = modelsMenu
                 submenu.addItem(upscaleItem)
             case .edit:
-                let item = NSMenuItem(title: "Edit…", action: #selector(performAIEditEdit(_:)), keyEquivalent: "")
+                let item = NSMenuItem(title: isPaid ? "Edit…" : "Edit… (Paid)", action: #selector(performAIEditEdit(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = clipId
-                item.isEnabled = aiAllowed
+                item.isEnabled = aiAllowed && isPaid
                 submenu.addItem(item)
             case .generateMusic, .generateSFX:
                 let kind: VideoToAudioEditKind = action == .generateMusic ? .music : .sfx
@@ -61,6 +64,25 @@ extension TimelineView {
                 submenu.addItem(createItem)
             }
         }
+        if !audioTransforms.isEmpty {
+            if !submenu.items.isEmpty { submenu.addItem(.separator()) }
+            for kind in audioTransforms {
+                let paidBlocked = kind.model?.paidOnly == true && !isPaid
+                let title = paidBlocked ? "\(kind.menuTitle) (Paid)" : kind.menuTitle
+                let item = NSMenuItem(
+                    title: title,
+                    action: #selector(performAIEditAudioTransform(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.representedObject = [
+                    "clipId": clipId,
+                    "kind": kind == .cleanup ? "cleanup" : "dubbing",
+                ]
+                item.isEnabled = aiAllowed && !paidBlocked
+                submenu.addItem(item)
+            }
+        }
         return submenu.items.isEmpty ? nil : submenu
     }
 
@@ -87,6 +109,16 @@ extension TimelineView {
               let clipId = info["clipId"] as? String,
               let kind = info["kind"] as? String else { return }
         editor.beginAIVideoAudio(clipId: clipId, kind: kind == "music" ? .music : .sfx)
+    }
+
+    @objc private func performAIEditAudioTransform(_ sender: Any?) {
+        guard let info = (sender as? NSMenuItem)?.representedObject as? [String: Any],
+              let clipId = info["clipId"] as? String,
+              let kind = info["kind"] as? String else { return }
+        editor.beginAIAudioTransform(
+            clipId: clipId,
+            kind: kind == "cleanup" ? .cleanup : .dubbing
+        )
     }
 
     @objc private func performAIEditCreateVideo(_ sender: Any?) {

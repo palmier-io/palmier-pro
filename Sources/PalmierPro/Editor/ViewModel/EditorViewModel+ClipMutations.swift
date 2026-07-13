@@ -56,6 +56,11 @@ extension EditorViewModel {
         }
         guard !clipInfos.isEmpty else { return }
 
+        if let reason = multicamMoveViolation(moves: clipInfos.map { ($0.clip.id, $0.toTrack, $0.toFrame) }) {
+            refuseWithToast(reason)
+            return
+        }
+
         let actionName = moves.count == 1 ? "Move Clip" : "Move Clips"
         withTimelineSwap(actionName: actionName) {
             // Pull moved clips off their source tracks first, so clearRegion on
@@ -94,24 +99,35 @@ extension EditorViewModel {
     func splitClip(clipId: String, atFrame: Int) -> [String] {
         guard let loc = findClip(id: clipId) else { return [] }
         let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        let groupIds: Set<String> = clip.linkGroupId != nil
-            ? Set([clipId] + linkedPartnerIds(of: clipId))
-            : [clipId]
+        guard atFrame > clip.startFrame && atFrame < clip.endFrame else { return [] }
+        return splitClips(at: [(loc.trackIndex, atFrame)])
+    }
 
+    /// Splits at one or more project frames in a single undoable action
+    func splitClips(at points: [(trackIndex: Int, atFrame: Int)]) -> [String] {
         undoManager?.beginUndoGrouping()
+        defer {
+            undoManager?.endUndoGrouping()
+            undoManager?.setActionName(points.count > 1 ? "Split Clips" : "Split Clip")
+        }
         var rightIds: [String] = []
-        for id in groupIds {
-            if let rightId = splitSingleClip(clipId: id, atFrame: atFrame) {
-                rightIds.append(rightId)
+        for p in points {
+            guard p.trackIndex >= 0, p.trackIndex < timeline.tracks.count,
+                  let clip = timeline.tracks[p.trackIndex].clips.first(where: {
+                      p.atFrame > $0.startFrame && p.atFrame < $0.endFrame
+                  })
+            else { continue }
+            let groupIds: Set<String> = clip.linkGroupId != nil
+                ? Set([clip.id] + linkedPartnerIds(of: clip.id))
+                : [clip.id]
+            let rights = groupIds.compactMap { splitSingleClip(clipId: $0, atFrame: p.atFrame) }
+            // Regroup the right halves so each side is its own linked pair.
+            if groupIds.count > 1 && !rights.isEmpty {
+                let newGroup = UUID().uuidString
+                mutateClips(ids: Set(rights), actionName: "Split Clip") { $0.linkGroupId = newGroup }
             }
+            rightIds.append(contentsOf: rights)
         }
-        // Regroup the right halves so each side is its own linked pair.
-        if groupIds.count > 1 && !rightIds.isEmpty {
-            let newGroup = UUID().uuidString
-            mutateClips(ids: Set(rightIds), actionName: "Split Clip") { $0.linkGroupId = newGroup }
-        }
-        undoManager?.endUndoGrouping()
-        undoManager?.setActionName(groupIds.count > 1 ? "Split Clips" : "Split Clip")
         return rightIds
     }
 
@@ -119,41 +135,13 @@ extension EditorViewModel {
     private func splitSingleClip(clipId: String, atFrame: Int) -> String? {
         guard let loc = findClip(id: clipId) else { return nil }
         let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        guard atFrame > clip.startFrame && atFrame < clip.endFrame else { return nil }
-
-        let splitOffset = atFrame - clip.startFrame
-        let leftSource = Int((Double(splitOffset) * clip.speed).rounded())
-        let rightSource = Int((Double(clip.durationFrames - splitOffset) * clip.speed).rounded())
-
-        var left = clip
-        left.durationFrames = splitOffset
-        left.trimEndFrame = clip.trimEndFrame + rightSource
-        left.fadeOutFrames = 0
-        left.clampFadesToDuration()
-
-        var right = clip
-        right.id = UUID().uuidString
-        right.startFrame = atFrame
-        right.durationFrames = clip.durationFrames - splitOffset
-        right.trimStartFrame = clip.trimStartFrame + leftSource
-        right.fadeInFrames = 0
-        right.clampFadesToDuration()
-
-        // Split every animatable track at the cut, inserting a boundary keyframe so each
-        // curve stays continuous across the split (rather than copying the whole track to
-        // both halves, which leaves out-of-range/unrebased keyframes on each side).
-        (left.opacityTrack,  right.opacityTrack)  = splitKeyframeTrack(clip.opacityTrack,  at: splitOffset, fallback: clip.opacity)
-        (left.volumeTrack,   right.volumeTrack)   = splitKeyframeTrack(clip.volumeTrack,   at: splitOffset, fallback: clip.volume)
-        (left.positionTrack, right.positionTrack) = splitKeyframeTrack(clip.positionTrack, at: splitOffset, fallback: AnimPair(a: 0, b: 0))
-        (left.scaleTrack,    right.scaleTrack)    = splitKeyframeTrack(clip.scaleTrack,    at: splitOffset, fallback: AnimPair(a: 1, b: 1))
-        (left.rotationTrack, right.rotationTrack) = splitKeyframeTrack(clip.rotationTrack, at: splitOffset, fallback: 0)
-        (left.cropTrack,     right.cropTrack)     = splitKeyframeTrack(clip.cropTrack,     at: splitOffset, fallback: clip.crop)
+        guard let (left, right) = Self.splitValues(of: clip, atFrame: atFrame) else { return nil }
 
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = left
         timeline.tracks[loc.trackIndex].clips.append(right)
         sortClips(trackIndex: loc.trackIndex)
 
-        undoManager?.registerUndo(withTarget: self) { vm in
+        registerTimelineUndo { vm in
             vm.removeClipInternal(id: right.id)
             if let newLoc = vm.findClip(id: left.id) {
                 vm.timeline.tracks[newLoc.trackIndex].clips[newLoc.clipIndex] = clip
@@ -163,8 +151,37 @@ extension EditorViewModel {
         return right.id
     }
 
+    nonisolated static func splitValues(of clip: Clip, atFrame: Int) -> (left: Clip, right: Clip)? {
+        guard atFrame > clip.startFrame && atFrame < clip.endFrame else { return nil }
+        let splitOffset = atFrame - clip.startFrame
+        let leftSource = Int((Double(splitOffset) * clip.speed).rounded())
+        let rightSource = Int((Double(clip.durationFrames - splitOffset) * clip.speed).rounded())
+
+        var left = clip
+        left.durationFrames = splitOffset
+        left.trimEndFrame = clip.trimEndFrame + rightSource
+        left.fadeOutFrames = 0
+
+        var right = clip
+        right.id = UUID().uuidString
+        right.startFrame = atFrame
+        right.durationFrames = clip.durationFrames - splitOffset
+        right.trimStartFrame = clip.trimStartFrame + leftSource
+        right.fadeInFrames = 0
+
+        (left.opacityTrack,  right.opacityTrack)  = splitKeyframeTrack(clip.opacityTrack,  at: splitOffset, fallback: clip.opacity)
+        (left.volumeTrack,   right.volumeTrack)   = splitKeyframeTrack(clip.volumeTrack,   at: splitOffset, fallback: clip.volume)
+        (left.positionTrack, right.positionTrack) = splitKeyframeTrack(clip.positionTrack, at: splitOffset, fallback: AnimPair(a: 0, b: 0))
+        (left.scaleTrack,    right.scaleTrack)    = splitKeyframeTrack(clip.scaleTrack,    at: splitOffset, fallback: AnimPair(a: 1, b: 1))
+        (left.rotationTrack, right.rotationTrack) = splitKeyframeTrack(clip.rotationTrack, at: splitOffset, fallback: 0)
+        (left.cropTrack,     right.cropTrack)     = splitKeyframeTrack(clip.cropTrack,     at: splitOffset, fallback: clip.crop)
+        left.clampFadesToDuration()
+        right.clampFadesToDuration()
+        return (left, right)
+    }
+
     /// Splits a keyframe track at splitOffset, keeping both sides continuous. Returns (track, track) if empty.
-    private func splitKeyframeTrack<Value: KeyframeInterpolatable & Codable & Sendable & Equatable>(
+    nonisolated static func splitKeyframeTrack<Value: KeyframeInterpolatable & Codable & Sendable & Equatable>(
         _ track: KeyframeTrack<Value>?, at splitOffset: Int, fallback: Value
     ) -> (left: KeyframeTrack<Value>?, right: KeyframeTrack<Value>?) {
         guard let track, track.isActive else { return (track, track) }
@@ -174,15 +191,9 @@ extension EditorViewModel {
         if leftKfs.last?.frame != splitOffset {
             leftKfs.append(Keyframe(frame: splitOffset, value: boundary))
         }
-        var rightKfs = track.keyframes
-            .filter { $0.frame >= splitOffset }
-            .map { Keyframe(frame: $0.frame - splitOffset, value: $0.value, interpolationOut: $0.interpolationOut) }
-        if rightKfs.first?.frame != 0 {
-            rightKfs.insert(Keyframe(frame: 0, value: boundary), at: 0)
-        }
         return (
             leftKfs.isEmpty ? nil : KeyframeTrack(keyframes: leftKfs),
-            rightKfs.isEmpty ? nil : KeyframeTrack(keyframes: rightKfs)
+            track.rebased(by: splitOffset, fallback: fallback)
         )
     }
 
@@ -201,8 +212,18 @@ extension EditorViewModel {
 
     // MARK: - Speed
 
+    func refusesMulticamRetime(clipIds: [String], quiet: Bool = false) -> Bool {
+        guard clipIds.contains(where: { clipFor(id: $0)?.multicamGroupId != nil }) else { return false }
+        if !quiet {
+            refuseWithToast("Can't change speed on a multicam clip — it would slip out of sync with the group.")
+        }
+        return true
+    }
+
     func applyClipSpeed(clipId: String, newSpeed: Double) {
+        guard !refusesMulticamRetime(clipIds: [clipId], quiet: true) else { return }
         guard let loc = findClip(id: clipId) else { return }
+        guard timeline.tracks[loc.trackIndex].clips[loc.clipIndex].supportsRetiming else { return }
         if preDragTimeline == nil {
             preDragTimeline = timeline
         }
@@ -213,9 +234,11 @@ extension EditorViewModel {
     }
 
     func commitClipSpeed(ids: [String], newSpeed: Double) {
+        guard !refusesMulticamRetime(clipIds: ids) else { return }
         let before: Timeline = preDragTimeline ?? timeline
         for id in ids {
             guard let loc = findClip(id: id) else { continue }
+            guard timeline.tracks[loc.trackIndex].clips[loc.clipIndex].supportsRetiming else { continue }
             if timeline.tracks[loc.trackIndex].clips[loc.clipIndex].speed != newSpeed {
                 setClipSpeed(at: loc, newSpeed: newSpeed)
             }
@@ -228,7 +251,7 @@ extension EditorViewModel {
     }
 
     func registerTimelineSwap(undoState: Timeline, redoState: Timeline, actionName: String) {
-        undoManager?.registerUndo(withTarget: self) { vm in
+        registerTimelineUndo { vm in
             vm.timeline = undoState
             vm.notifyTimelineChanged()
             vm.registerTimelineSwap(undoState: redoState, redoState: undoState, actionName: actionName)
@@ -237,7 +260,7 @@ extension EditorViewModel {
     }
 
     /// Run `work` as a single atomic mutation, registering one timeline-swap undo
-    func withTimelineSwap(actionName: String, _ work: () -> Void) {
+    func withTimelineSwap(actionName: String, refreshVisuals: Bool = true, _ work: () -> Void) {
         let before = timeline
         undoManager?.disableUndoRegistration()
         work()
@@ -248,7 +271,7 @@ extension EditorViewModel {
         // registrations and will capture our diff in its own swap.
         guard undoManager?.isUndoRegistrationEnabled ?? true else { return }
         registerTimelineSwap(undoState: before, redoState: after, actionName: actionName)
-        notifyTimelineChanged()
+        notifyTimelineChanged(refreshVisuals: refreshVisuals)
     }
 
     fileprivate func setClipSpeed(at loc: ClipLocation, newSpeed: Double) {
@@ -263,6 +286,7 @@ extension EditorViewModel {
         timeline.tracks[ti].clips[loc.clipIndex].speed = newSpeed
         timeline.tracks[ti].clips[loc.clipIndex].durationFrames = newDuration
         // Keyframe offsets are clip-relative, so retime them before the clamp drops them.
+        timeline.tracks[ti].clips[loc.clipIndex].rescaleWordTimings(from: oldDuration)
         timeline.tracks[ti].clips[loc.clipIndex].rescaleKeyframes(by: Double(newDuration) / Double(oldDuration))
         timeline.tracks[ti].clips[loc.clipIndex].clampKeyframesToDuration()
         timeline.tracks[ti].clips[loc.clipIndex].clampFadesToDuration()
@@ -308,7 +332,7 @@ extension EditorViewModel {
         redoTarget: [(id: String, clip: Clip)],
         actionName: String
     ) {
-        undoManager?.registerUndo(withTarget: self) { vm in
+        registerTimelineUndo { vm in
             for entry in undoTarget {
                 if let loc = vm.findClip(id: entry.id) {
                     vm.timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = entry.clip
@@ -328,9 +352,8 @@ extension EditorViewModel {
         }
         modify(&clip)
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
-        // Text renders via CATextLayer overlay — skip the composition path.
         if clip.mediaType == .text {
-            videoEngine?.syncTextLayers()
+            videoEngine?.refreshVisuals()
             return
         }
         if rebuild {
@@ -357,7 +380,7 @@ extension EditorViewModel {
                 touchedVisual = true
             }
         }
-        if touchedText { videoEngine?.syncTextLayers() }
+        if touchedText { videoEngine?.refreshVisuals() }
         if touchedVisual {
             if rebuild {
                 notifyTimelineChangedDebounced()
@@ -372,7 +395,7 @@ extension EditorViewModel {
               let loc = findClip(id: clipId) else { return }
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = original
         if original.mediaType == .text {
-            videoEngine?.syncTextLayers()
+            videoEngine?.refreshVisuals()
         } else {
             notifyTimelineChanged()
         }
@@ -397,21 +420,78 @@ extension EditorViewModel {
         }
     }
 
+    func debouncedCommitClipProperties(
+        clipIds: [String],
+        key: String,
+        debounce: Duration = .milliseconds(400),
+        _ modify: @escaping (inout Clip) -> Void
+    ) {
+        applyClipProperties(clipIds: clipIds, rebuild: true, modify)
+        pendingDebouncedCommits[key]?.cancel()
+        pendingDebouncedCommits[key] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: debounce)
+            guard !Task.isCancelled, let self else { return }
+            self.commitClipProperties(clipIds: clipIds, modify)
+            self.pendingDebouncedCommits.removeValue(forKey: key)
+        }
+    }
+
+    func cancelDebouncedCommit(key: String) {
+        pendingDebouncedCommits[key]?.cancel()
+        pendingDebouncedCommits.removeValue(forKey: key)
+    }
+
     // MARK: - Text-style mutation helpers
 
-    func applyTextStyle(clipId: String, _ modify: @escaping (inout TextStyle) -> Void) {
+    func applyTextStyle(clipId: String, fitToContent: Bool = false, _ modify: @escaping (inout TextStyle) -> Void) {
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
         applyClipProperty(clipId: clipId, rebuild: true) { clip in
             var style = clip.textStyle ?? TextStyle()
             modify(&style)
             clip.textStyle = style
+            if fitToContent {
+                _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
+            }
         }
     }
 
-    func commitTextStyle(clipId: String, _ modify: @escaping (inout TextStyle) -> Void) {
+    func applyTextStyles(clipIds: [String], fitToContent: Bool = false, _ modify: @escaping (inout TextStyle) -> Void) {
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
+        applyClipProperties(clipIds: clipIds, rebuild: true) { clip in
+            var style = clip.textStyle ?? TextStyle()
+            modify(&style)
+            clip.textStyle = style
+            if fitToContent {
+                _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
+            }
+        }
+    }
+
+    func commitTextStyle(clipId: String, fitToContent: Bool = false, _ modify: @escaping (inout TextStyle) -> Void) {
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
         commitClipProperty(clipId: clipId) { clip in
             var style = clip.textStyle ?? TextStyle()
             modify(&style)
             clip.textStyle = style
+            if fitToContent {
+                _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
+            }
+        }
+    }
+
+    func commitTextStyles(clipIds: [String], fitToContent: Bool = false, _ modify: @escaping (inout TextStyle) -> Void) {
+        let canvasW = Double(timeline.width)
+        let canvasH = Double(timeline.height)
+        commitClipProperties(clipIds: clipIds) { clip in
+            var style = clip.textStyle ?? TextStyle()
+            modify(&style)
+            clip.textStyle = style
+            if fitToContent {
+                _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
+            }
         }
     }
 
@@ -427,15 +507,31 @@ extension EditorViewModel {
         }
     }
 
+    func debouncedCommitTextStyles(
+        clipIds: [String],
+        key: String,
+        _ modify: @escaping (inout TextStyle) -> Void
+    ) {
+        debouncedCommitClipProperties(clipIds: clipIds, key: key) { clip in
+            var style = clip.textStyle ?? TextStyle()
+            modify(&style)
+            clip.textStyle = style
+        }
+    }
+
     func commitClipProperty(clipId: String, _ modify: (inout Clip) -> Void) {
         guard let loc = findClip(id: clipId) else { return }
-        var clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-        let before = dragBefore.removeValue(forKey: clipId) ?? clip
+        let current = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        var clip = current
+        let before = dragBefore.removeValue(forKey: clipId) ?? current
         modify(&clip)
+        guard current != clip || before != clip else { return }
         timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
-        registerClipPropertySwap(clipId: clipId, undoTarget: before, redoTarget: clip)
+        if before != clip {
+            registerClipPropertySwap(clipId: clipId, undoTarget: before, redoTarget: clip)
+        }
         if clip.mediaType == .text {
-            videoEngine?.syncTextLayers()
+            videoEngine?.refreshVisuals()
         } else {
             notifyTimelineChanged()
         }
@@ -444,32 +540,42 @@ extension EditorViewModel {
     func commitClipProperties(clipIds: [String], _ modify: (inout Clip) -> Void) {
         var touchedText = false
         var touchedVisual = false
+        var before: [(id: String, clip: Clip)] = []
+        var after: [(id: String, clip: Clip)] = []
         for clipId in clipIds {
             guard let loc = findClip(id: clipId) else { continue }
-            var clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-            let before = dragBefore.removeValue(forKey: clipId) ?? clip
+            let current = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            var clip = current
+            let undoTarget = dragBefore.removeValue(forKey: clipId) ?? current
             modify(&clip)
+            guard current != clip || undoTarget != clip else { continue }
             timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
-            registerClipPropertySwap(clipId: clipId, undoTarget: before, redoTarget: clip)
+            if undoTarget != clip {
+                before.append((clipId, undoTarget))
+                after.append((clipId, clip))
+            }
             if clip.mediaType == .text {
                 touchedText = true
             } else {
                 touchedVisual = true
             }
         }
-        if touchedText { videoEngine?.syncTextLayers() }
+        if !before.isEmpty {
+            registerClipStateSwap(undoTarget: before, redoTarget: after, actionName: "Change Clip Property")
+        }
+        if touchedText { videoEngine?.refreshVisuals() }
         if touchedVisual { notifyTimelineChanged() }
     }
 
     /// Bidirectional undo/redo for a single clip's property change.
     fileprivate func registerClipPropertySwap(clipId: String, undoTarget: Clip, redoTarget: Clip) {
-        undoManager?.registerUndo(withTarget: self) { vm in
+        registerTimelineUndo { vm in
             if let loc = vm.findClip(id: clipId) {
                 vm.timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = undoTarget
             }
             vm.registerClipPropertySwap(clipId: clipId, undoTarget: redoTarget, redoTarget: undoTarget)
             if undoTarget.mediaType == .text {
-                vm.videoEngine?.syncTextLayers()
+                vm.videoEngine?.refreshVisuals()
             } else {
                 vm.notifyTimelineChanged()
             }
@@ -529,7 +635,7 @@ extension EditorViewModel {
             }
         }
 
-        undoManager?.registerUndo(withTarget: self) { vm in
+        registerTimelineUndo { vm in
             for id in targetIds {
                 if let l = vm.findClip(id: id) {
                     vm.timeline.tracks[l.trackIndex].clips[l.clipIndex].mediaRef = oldMediaRef
@@ -588,17 +694,7 @@ extension EditorViewModel {
         guard mediaAssets.contains(where: { ids.contains($0.id) }) else { return }
 
         let before = mediaLibraryUndoSnapshot()
-        let clipIdsToRemove = Set(timeline.tracks
-            .flatMap(\.clips)
-            .filter { ids.contains($0.mediaRef) }
-            .map(\.id))
-        if !clipIdsToRemove.isEmpty {
-            selectedClipIds.subtract(clipIdsToRemove)
-            for i in timeline.tracks.indices {
-                timeline.tracks[i].clips.removeAll { clipIdsToRemove.contains($0.id) }
-            }
-            pruneEmptyTracks()
-        }
+        let clipIdsToRemove = removeClipsReferencingAssets(ids)
 
         mediaAssets.removeAll { ids.contains($0.id) }
         mediaManifest.entries.removeAll { ids.contains($0.id) }
@@ -606,7 +702,7 @@ extension EditorViewModel {
         for id in ids { closePreviewTab(id: PreviewTab.mediaAssetTabId(for: id)) }
         selectedMediaAssetIds.removeAll()
 
-        undoManager?.registerUndo(withTarget: self) { vm in
+        registerTimelineUndo { vm in
             vm.restoreMediaLibraryUndoSnapshot(before, actionName: "Delete Media")
             vm.selectedMediaAssetIds.removeAll()
         }
@@ -619,10 +715,10 @@ extension EditorViewModel {
     // MARK: - Overwrite region
 
     /// Clear a region on a track by removing, trimming, or splitting the clips that overlap it.
-    func clearRegion(trackIndex: Int, start: Int, end: Int, prune: Bool = true) {
+    func clearRegion(trackIndex: Int, start: Int, end: Int, prune: Bool = true, excluding: Set<String> = []) {
         guard timeline.tracks.indices.contains(trackIndex) else { return }
         let actions = OverwriteEngine.computeOverwrite(
-            clips: timeline.tracks[trackIndex].clips,
+            clips: timeline.tracks[trackIndex].clips.filter { !excluding.contains($0.id) },
             regionStart: start,
             regionEnd: end
         )

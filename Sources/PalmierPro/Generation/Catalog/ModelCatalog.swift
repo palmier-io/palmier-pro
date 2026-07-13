@@ -41,13 +41,18 @@ final class ModelCatalog {
 
     @ObservationIgnored private var subscription: AnyCancellable?
     @ObservationIgnored private var didConfigure = false
+    @ObservationIgnored private var retryTask: Task<Void, Never>?
+    @ObservationIgnored private var failureCount = 0
 
     private init() {}
 
     func configure() {
         guard !didConfigure else { return }
         didConfigure = true
+        startSubscription()
+    }
 
+    private func startSubscription() {
         guard let client = AccountService.shared.convex else { return }
 
         subscription = client
@@ -56,14 +61,32 @@ final class ModelCatalog {
             .sink(
                 receiveCompletion: { [weak self] completion in
                     if case .failure(let err) = completion {
-                        Log.generation.error("ModelCatalog subscription failed: \(err.localizedDescription)")
-                        self?.lastError = err.localizedDescription
+                        self?.handleFailure(err)
                     }
                 },
                 receiveValue: { [weak self] entries in
+                    self?.failureCount = 0
                     self?.apply(entries)
                 }
             )
+    }
+
+    private func handleFailure(_ err: ClientError) {
+        failureCount += 1
+        lastError = err.localizedDescription
+        // First failure goes to Sentry; retries only log locally.
+        if failureCount == 1 {
+            Log.generation.error("ModelCatalog subscription failed: \(err.localizedDescription)")
+        } else {
+            Log.generation.warning("ModelCatalog subscription failed (attempt \(self.failureCount)): \(err.localizedDescription)")
+        }
+        let delay = min(pow(2.0, Double(failureCount - 1)), 60)
+        retryTask?.cancel()
+        retryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            self?.startSubscription()
+        }
     }
 
     private func apply(_ entries: [CatalogEntry]) {
@@ -122,6 +145,7 @@ struct CatalogEntry: Decodable, Sendable {
     let qualities: [String]?
     let audioPricing: AudioPricing?
     let creditsPerSecondUpscale: Double?
+    let paidOnly: Bool
 
     enum Kind: String, Decodable, Sendable { case video, image, audio, upscale }
     enum ResponseShape: String, Decodable, Sendable {
@@ -163,7 +187,7 @@ struct CatalogEntry: Decodable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, kind, displayName, allowedEndpoints, responseShape, uiCapabilities
         case creditsPerSecond, audioDiscountRate, creditsPerImage, qualities
-        case audioPricing, creditsPerSecondUpscale
+        case audioPricing, creditsPerSecondUpscale, paidOnly
     }
 
     init(from decoder: Decoder) throws {
@@ -179,6 +203,7 @@ struct CatalogEntry: Decodable, Sendable {
         self.qualities = try c.decodeIfPresent([String].self, forKey: .qualities)
         self.audioPricing = try c.decodeIfPresent(AudioPricing.self, forKey: .audioPricing)
         self.creditsPerSecondUpscale = try c.decodeIfPresent(Double.self, forKey: .creditsPerSecondUpscale)
+        self.paidOnly = try c.decodeIfPresent(Bool.self, forKey: .paidOnly) ?? false
         switch self.kind {
         case .video:
             self.uiCapabilities = .video(try c.decode(VideoCaps.self, forKey: .uiCapabilities))
@@ -219,7 +244,7 @@ struct ImageCaps: Decodable, Sendable {
 }
 
 struct AudioCaps: Decodable, Sendable {
-    let category: String   // "tts" | "music" | "sfx"
+    let category: String
     let voices: [String]?
     let defaultVoice: String?
     let supportsLyrics: Bool
@@ -227,10 +252,12 @@ struct AudioCaps: Decodable, Sendable {
     let supportsStyleInstructions: Bool
     let durations: [Int]?
     let minPromptLength: Int
-    let inputs: [String]? // "text" | "video"
+    let inputs: [String]?
     let promptLabel: String?
     let minSeconds: Int?
     let maxSeconds: Int?
+    let targetLanguages: [String]?
+    let defaultTargetLanguage: String?
 }
 
 struct UpscaleCaps: Decodable, Sendable {

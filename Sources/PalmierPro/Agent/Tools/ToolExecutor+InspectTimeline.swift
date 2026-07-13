@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreText
 import Foundation
 
 extension ToolExecutor {
@@ -38,10 +39,12 @@ extension ToolExecutor {
 
         let canvas = CGSize(width: timeline.width, height: timeline.height)
         let renderSize = Self.fit(canvas, longestEdge: Self.inspectTimelineMaxDimension)
-        let resolver = editor.mediaResolver
+        let mediaURLs = editor.mediaResolver.expectedURLMap()
         let composition = try await CompositionBuilder.build(
             timeline: timeline,
-            resolveURL: { resolver.resolveURL(for: $0) },
+            resolveURL: { mediaURLs[$0] },
+            resolveTimeline: editor.timelineResolver(),
+            missingMediaRefs: editor.missingMediaRefs,
             renderSize: canvas
         )
 
@@ -61,10 +64,9 @@ extension ToolExecutor {
         for frame in sampledFrames {
             let time = CMTime(value: CMTimeValue(frame), timescale: timescale)
             guard let videoCG = try? await generator.image(at: time).image else { continue }
-            let frameCanvas = CGSize(width: videoCG.width, height: videoCG.height)
-            let textRoot = TextLayerController.buildSnapshot(timeline: timeline, canvasSize: frameCanvas, atFrame: frame)
-            guard let composited = EditorViewModel.compositeCapture(video: videoCG, textRoot: textRoot, canvas: frameCanvas),
-                  let jpeg = ImageEncoder.encodeJPEG(composited, quality: Self.inspectTimelineJPEGQuality) else { continue }
+            // videoComposition already composites text via CustomVideoCompositor.
+            let labeled = Self.burnLabel("f\(frame)", into: videoCG) ?? videoCG
+            guard let jpeg = ImageEncoder.encodeJPEG(labeled, quality: Self.inspectTimelineJPEGQuality) else { continue }
             imageBlocks.append(.image(base64: jpeg.base64EncodedString(), mediaType: "image/jpeg"))
             renderedFrames.append(frame)
         }
@@ -75,10 +77,53 @@ extension ToolExecutor {
             "width": Int(renderSize.width),
             "height": Int(renderSize.height),
             "totalFrames": totalFrames,
-            "frameNumbers": renderedFrames,
+            "frames": renderedFrames.map { frame -> [String: Any] in
+                ["frame": frame, "clips": Self.visibleClips(at: frame, in: timeline)]
+            },
         ]
         guard let metaJSON = Self.jsonString(meta) else { throw ToolError("Failed to encode metadata") }
         return ToolResult(content: imageBlocks + [.text(metaJSON)], isError: false)
+    }
+
+    /// Ids of visual clips on screen at `frame`, top track first; caption clips report their group id once.
+    static func visibleClips(at frame: Int, in timeline: Timeline) -> [String] {
+        var ids: [String] = []
+        var seenGroups = Set<String>()
+        for track in timeline.tracks where track.type == .video && !track.hidden {
+            for clip in track.clips where clip.startFrame <= frame && frame < clip.startFrame + clip.durationFrames {
+                if let gid = clip.captionGroupId {
+                    if seenGroups.insert(gid).inserted { ids.append(gid) }
+                } else {
+                    ids.append(clip.id)
+                }
+            }
+        }
+        return ids
+    }
+
+    /// Draws a small frame-number chip in the top-left so each image self-identifies.
+    private static func burnLabel(_ text: String, into image: CGImage) -> CGImage? {
+        guard let ctx = CGContext(
+            data: nil, width: image.width, height: image.height,
+            bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+
+        let attrs: [NSAttributedString.Key: Any] = [
+            kCTFontAttributeName as NSAttributedString.Key: CTFontCreateWithName("Helvetica-Bold" as CFString, 12, nil),
+            kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(gray: 1, alpha: 1),
+        ]
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attrs))
+        let textWidth = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+        let chipHeight: CGFloat = 16
+        let chipTop = CGFloat(image.height)
+        ctx.setFillColor(CGColor(gray: 0, alpha: 0.65))
+        ctx.fill(CGRect(x: 0, y: chipTop - chipHeight, width: textWidth + 10, height: chipHeight))
+        ctx.textPosition = CGPoint(x: 5, y: chipTop - chipHeight + 4)
+        CTLineDraw(line, ctx)
+        return ctx.makeImage()
     }
 
     /// Aspect-preserving size whose longest edge is at most `longestEdge`.
