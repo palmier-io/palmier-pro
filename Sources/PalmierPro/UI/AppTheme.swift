@@ -155,6 +155,10 @@ enum AppTheme {
         static let success = NSColor(red: 0x4F/255.0, green: 0xB8/255.0, blue: 0x5F/255.0, alpha: 1)
 
         static var successColor: Color { Color(success) }
+
+        static let warning = NSColor.systemOrange
+
+        static var warningColor: Color { Color(warning) }
     }
 
     // MARK: - Text
@@ -218,6 +222,7 @@ enum AppTheme {
     // MARK: - Spacing
 
     enum Spacing {
+        static let zero: CGFloat = 0
         static let xxs: CGFloat = 2
         static let xs: CGFloat = 4
         static let sm: CGFloat = 6
@@ -333,8 +338,14 @@ enum AppTheme {
     }
 
     enum Export {
-        static let sheetWidth: CGFloat = 560
-        static let sheetHeight: CGFloat = 520
+        static let sheetWidth: CGFloat = 600
+        static let sheetHeight: CGFloat = 600
+        static let logPaneWidth: CGFloat = 420
+        static let queueTimestampWidth: CGFloat = 56
+        static let activityDotSize: CGFloat = 6
+        static let queueProgressBarWidth: CGFloat = 96
+        static let queueProgressWidth: CGFloat = 32
+        static let sheetWidthWithLog: CGFloat = sheetWidth + logPaneWidth + BorderWidth.hairline
     }
 
     enum Matte {
@@ -362,6 +373,7 @@ enum AppTheme {
     enum Anim {
         static let hover: Double = 0.15
         static let transition: Double = 0.2
+        static let pulse: Double = 0.8
     }
 }
 

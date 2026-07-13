@@ -11,6 +11,7 @@ final class ToolExecutor {
     private weak var selectedProjectDocument: VideoProject?
     private var hasProjectSelection = false
     private var selectedProjectName: String?
+    let exportQueue: ExportQueue
 
     var editor: EditorViewModel? {
         projectProvider == nil ? editorProvider() : selectedProject?.editorViewModel
@@ -28,14 +29,16 @@ final class ToolExecutor {
 
     var visibleProject: VideoProject? { projectProvider?() }
 
-    init(editor: EditorViewModel) {
+    init(editor: EditorViewModel, exportQueue: ExportQueue = .shared) {
         self.editorProvider = { [weak editor] in editor }
         self.projectProvider = nil
+        self.exportQueue = exportQueue
     }
 
-    init(projectProvider: @escaping () -> VideoProject?) {
+    init(projectProvider: @escaping () -> VideoProject?, exportQueue: ExportQueue = .shared) {
         self.editorProvider = { nil }
         self.projectProvider = projectProvider
+        self.exportQueue = exportQueue
     }
 
     func selectProject(_ project: VideoProject?) {
@@ -233,6 +236,7 @@ final class ToolExecutor {
         case .updateText:    return try updateText(editor, args)
         case .addCaptions:   return try await addCaptions(editor, args)
         case .exportProject: return try await exportProject(editor, args)
+        case .manageExports: return try manageExports(editor, args)
         case .generateVideo: return try generate(editor, args, type: .video)
         case .generateImage: return try generate(editor, args, type: .image)
         case .generateAudio: return try await generateAudio(editor, args)

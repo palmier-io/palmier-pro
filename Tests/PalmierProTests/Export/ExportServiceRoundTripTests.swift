@@ -104,4 +104,34 @@ struct ExportServiceRoundTripTests {
         #expect(svc.error == nil, "export reported error: \(svc.error ?? "")")
         #expect(FileManager.default.fileExists(atPath: outURL.path))
     }
+
+    @Test func cancellationPreservesExistingOutput() async throws {
+        let outURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("export-cancel-\(UUID().uuidString).xml")
+        defer { try? FileManager.default.removeItem(at: outURL) }
+        let existing = Data("existing-output".utf8)
+        try existing.write(to: outURL)
+
+        func run(_ service: ExportService) async {
+            await service.export(
+                timeline: Fixtures.timeline(),
+                resolver: MediaResolver(manifest: { MediaManifest() }, projectURL: { nil }),
+                format: .xml,
+                resolution: .matchTimeline,
+                outputURL: outURL
+            )
+        }
+
+        let preCanceled = ExportService()
+        preCanceled.cancel()
+        await run(preCanceled)
+        #expect(preCanceled.wasCancelled)
+        #expect(try Data(contentsOf: outURL) == existing)
+
+        let active = ExportService()
+        active.onPhaseChange = { if $0 == .exporting { active.cancel() } }
+        await run(active)
+        #expect(active.wasCancelled)
+        #expect(try Data(contentsOf: outURL) == existing)
+    }
 }
