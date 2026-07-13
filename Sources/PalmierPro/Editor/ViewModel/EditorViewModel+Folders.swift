@@ -180,7 +180,8 @@ extension EditorViewModel {
     }
 
     func mediaLibraryUndoSnapshot() -> MediaLibraryUndoSnapshot {
-        MediaLibraryUndoSnapshot(
+        flushPendingManifestMetadataUpdates()
+        return MediaLibraryUndoSnapshot(
             timelines: timelines,
             activeTimelineId: activeTimelineId,
             openTimelineIds: openTimelineIds,

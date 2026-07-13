@@ -132,7 +132,7 @@ extension EditorViewModel {
         if !skipAppend, !mediaAssets.contains(where: { $0.id == asset.id }) {
             mediaAssets.append(asset)
         }
-        updateManifestMetadata(for: asset)
+        updateManifestMetadata(for: [asset])
         Log.project.notice(
             "media imported asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)",
             telemetry: "Media asset imported",
@@ -282,7 +282,7 @@ extension EditorViewModel {
         }
         undoManager?.setActionName("Import Media")
         for asset in importedAssets {
-            Task { await finalizeImportedAsset(asset) }
+            Task { await finalizeImportedAsset(asset, batchManifestUpdate: true) }
         }
         return summary
     }
@@ -500,13 +500,47 @@ extension EditorViewModel {
         undoManager?.setActionName("Rename Asset")
     }
 
-    func updateManifestMetadata(for asset: MediaAsset) {
-        let entry = asset.toManifestEntry(projectURL: projectURL)
-        if let idx = mediaManifest.entries.firstIndex(where: { $0.id == asset.id }) {
-            mediaManifest.entries[idx] = entry
-        } else {
-            mediaManifest.entries.append(entry)
+    func updateManifestMetadata(for assets: [MediaAsset]) {
+        guard !assets.isEmpty else { return }
+        var manifest = mediaManifest
+        var indices: [String: Int] = [:]
+        for index in manifest.entries.indices {
+            indices[manifest.entries[index].id] = index
         }
+        for asset in assets {
+            let entry = asset.toManifestEntry(projectURL: projectURL)
+            if let index = indices[asset.id] {
+                manifest.entries[index] = entry
+            } else {
+                indices[asset.id] = manifest.entries.count
+                manifest.entries.append(entry)
+            }
+        }
+        mediaManifest = manifest
+    }
+
+    func queueManifestMetadataUpdate(for asset: MediaAsset) {
+        pendingManifestMetadataUpdates[asset.id] = asset
+        if pendingManifestMetadataUpdates.count >= 64 {
+            flushPendingManifestMetadataUpdates()
+        } else if pendingManifestMetadataFlushTask == nil {
+            pendingManifestMetadataFlushTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(20))
+                guard !Task.isCancelled, let self else { return }
+                pendingManifestMetadataFlushTask = nil
+                flushPendingManifestMetadataUpdates()
+            }
+        }
+    }
+
+    func flushPendingManifestMetadataUpdates() {
+        pendingManifestMetadataFlushTask?.cancel()
+        pendingManifestMetadataFlushTask = nil
+        let assets = pendingManifestMetadataUpdates.values.filter {
+            mediaAssetsById[$0.id] === $0
+        }
+        pendingManifestMetadataUpdates.removeAll(keepingCapacity: true)
+        updateManifestMetadata(for: assets)
     }
 
     /// Text is composited via `CALayer.render` — `AVAssetImageGenerator`
@@ -584,7 +618,10 @@ extension EditorViewModel {
     }
 
     @discardableResult
-    func finalizeImportedAsset(_ asset: MediaAsset) async -> Bool {
+    func finalizeImportedAsset(
+        _ asset: MediaAsset,
+        batchManifestUpdate: Bool = false
+    ) async -> Bool {
         Log.project.notice(
             "media finalize start asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)",
             telemetry: "Media asset finalize started",
@@ -600,7 +637,7 @@ extension EditorViewModel {
             if asset.isGenerating || asset.isGenerated || asset.importInput != nil {
                 asset.generationStatus = .failed("Could not read media file.")
             }
-            updateManifestMetadata(for: asset)
+            recordManifestMetadata(for: asset, batching: batchManifestUpdate)
             Log.project.warning(
                 "media finalize unreadable asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)",
                 telemetry: "Media asset finalize unreadable",
@@ -613,7 +650,7 @@ extension EditorViewModel {
         if asset.isGenerating {
             asset.generationStatus = .none
         }
-        updateManifestMetadata(for: asset)
+        recordManifestMetadata(for: asset, batching: batchManifestUpdate)
         if FileManager.default.fileExists(atPath: asset.url.path) {
             missingMediaRefs.remove(asset.id)
             offlineMediaRefs.remove(asset.id)
@@ -647,6 +684,14 @@ extension EditorViewModel {
             ]
         )
         return true
+    }
+
+    private func recordManifestMetadata(for asset: MediaAsset, batching: Bool) {
+        if batching {
+            queueManifestMetadataUpdate(for: asset)
+        } else {
+            updateManifestMetadata(for: [asset])
+        }
     }
 
     private func refreshPreviewForFinalizedAsset(_ asset: MediaAsset) {
