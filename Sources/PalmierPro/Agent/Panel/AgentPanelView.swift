@@ -337,12 +337,6 @@ struct AgentPanelView: View {
             }
             .buttonStyle(.capsule(.prominent, size: .regular))
 
-            if !account.isSignedIn {
-                Text("First-time sign-ups only")
-                    .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(AppTheme.Text.mutedColor)
-            }
-
             Button(action: { SettingsWindowController.shared.show(tab: .agent) }) {
                 Text("or use your own Anthropic key")
                     .underline()
@@ -357,20 +351,20 @@ struct AgentPanelView: View {
     }
 
     private func missingKeyPrimaryLabel(account: AccountService) -> LocalizedStringKey {
-        if !account.isSignedIn { return "Log in for 250 free credits" }
+        if !account.isSignedIn { return "Set up a custom endpoint" }
         if !account.isPaid { return "Subscribe" }
         return "Open Settings"
     }
 
     private func missingKeyPrimaryIcon(account: AccountService) -> String {
-        if !account.isSignedIn { return "gift.fill" }
+        if !account.isSignedIn { return "network" }
         if !account.isPaid { return "sparkles" }
         return "gearshape"
     }
 
     private func missingKeyPrimaryAction(account: AccountService) {
         if !account.isSignedIn {
-            Task { await account.signInWithGoogle() }
+            SettingsWindowController.shared.show(tab: .agent)
         } else {
             SettingsWindowController.shared.show(tab: .account)
         }

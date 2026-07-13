@@ -17,9 +17,9 @@ struct AgentPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
-            apiKeySection
-            Divider().overlay(AppTheme.Border.subtleColor)
             gatewaySection
+            Divider().overlay(AppTheme.Border.subtleColor)
+            apiKeySection
             Divider().overlay(AppTheme.Border.subtleColor)
             mcpSection
         }
