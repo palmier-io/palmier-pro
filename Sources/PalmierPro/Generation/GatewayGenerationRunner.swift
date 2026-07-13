@@ -37,9 +37,12 @@ struct GatewayVideoJob: Sendable {
     var lastFrameURL: URL?        // image; with an image input_reference → first-last-frame
 }
 
-/// ACE-Step music generation (GATEWAY_CONTRACT.md audio section). Sync b64 — no
-/// polling. Edit ops (extend/repaint/edit) land on the same shape via a follow-up.
+/// ACE-Step audio (GATEWAY_CONTRACT.md audio section). Sync b64 — no polling.
+/// `.generate` posts /audio/generations; the edit ops post /audio/edits with the
+/// source clip and op-specific `fields` (start_s/end_s/variance/direction/edit_strength).
 struct GatewayAudioJob: Sendable {
+    enum Op: String, Sendable { case generate, extend, repaint, edit }
+    var op: Op = .generate
     let model: String
     let prompt: String
     var lyrics: String?
@@ -49,6 +52,8 @@ struct GatewayAudioJob: Sendable {
     var seed: Int?
     var negativePrompt: String?
     var format: String = "mp3"
+    var sourceAudioURL: URL?
+    var fields: [String: String] = [:]
 }
 
 /// Pure routing: how many references → which op. nil = unmappable.
@@ -200,13 +205,38 @@ enum GatewayGenerationRunner {
         return try await pollVideo(id: id, client: client)
     }
 
-    /// ACE-Step music generation — sync bytes back, no job/poll (unlike video).
+    /// ACE-Step audio — sync bytes back, no job/poll (unlike video). `.generate`
+    /// hits /audio/generations; edit ops upload the source clip to /audio/edits.
     static func executeAudio(_ job: GatewayAudioJob, client: OpenAICompatGenerationClient) async throws -> [URL] {
-        try await client.generateMusic(
-            model: job.model, prompt: job.prompt, lyrics: job.lyrics,
-            instrumental: job.instrumental, seconds: job.seconds, n: job.n,
-            seed: job.seed, negativePrompt: job.negativePrompt, format: job.format
+        if job.op == .generate {
+            return try await client.generateMusic(
+                model: job.model, prompt: job.prompt, lyrics: job.lyrics,
+                instrumental: job.instrumental, seconds: job.seconds, n: job.n,
+                seed: job.seed, negativePrompt: job.negativePrompt, format: job.format
+            )
+        }
+        guard let src = job.sourceAudioURL else {
+            throw OpenAICompatGenerationError.api("\(job.op.rawValue) needs a source audio clip")
+        }
+        var fields = job.fields
+        if !job.prompt.isEmpty { fields["prompt"] = job.prompt }
+        if let lyrics = job.lyrics, !lyrics.isEmpty { fields["lyrics"] = lyrics }
+        if let seconds = job.seconds { fields["seconds"] = String(seconds) }
+        if let seed = job.seed { fields["seed"] = String(seed) }
+        fields["format"] = job.format
+        return try await client.editAudio(
+            model: job.model, audio: try Data(contentsOf: src),
+            filename: src.lastPathComponent, contentType: audioContentType(src), fields: fields
         )
+    }
+
+    static let audioContentTypes: [String: String] = [
+        "mp3": "audio/mpeg", "wav": "audio/wav", "flac": "audio/flac",
+        "ogg": "audio/ogg", "opus": "audio/opus", "m4a": "audio/mp4", "aac": "audio/aac",
+    ]
+
+    static func audioContentType(_ url: URL) -> String {
+        audioContentTypes[url.pathExtension.lowercased()] ?? "audio/mpeg"
     }
 
     /// Container extensions the bridge treats as an extend guide rather than a still.

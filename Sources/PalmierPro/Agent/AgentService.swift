@@ -286,7 +286,6 @@ final class AgentService {
         draft = ""
         mentions.removeAll()
         streamError = nil
-        toolExecutor?.resetFeedbackState()
     }
 
     func newChat() {
@@ -302,7 +301,6 @@ final class AgentService {
         currentSessionId = session.id
         messages = []
         streamError = nil
-        toolExecutor?.resetFeedbackState()
         onSessionsChanged?()
     }
 

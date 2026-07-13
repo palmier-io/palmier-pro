@@ -94,4 +94,55 @@ struct GatewayAudioTests {
             _ = try OpenAICompatGenerationClient.materializeAudio(from: json, format: "mp3")
         }
     }
+
+    @Test func editAudioPostsMultipartWithOpModelAndFields() async throws {
+        AudioAdapterStub.reset()
+        let src = FileManager.default.temporaryDirectory.appendingPathComponent("src-\(UUID().uuidString).mp3")
+        try Data("ID3\u{04}source-clip".utf8).write(to: src)
+        defer { try? FileManager.default.removeItem(at: src) }
+        let urls = try await Self.stubClient.editAudio(
+            model: "ace-step-repaint", audio: try Data(contentsOf: src),
+            filename: src.lastPathComponent, contentType: "audio/mpeg",
+            fields: ["start_s": "2", "end_s": "4", "variance": "0.6", "format": "mp3"])
+        let url = try #require(urls.first)
+        defer { try? FileManager.default.removeItem(at: url) }
+        #expect(url.pathExtension == "mp3")
+        let call = try #require(AudioAdapterStub.calls.first)
+        #expect(call.method == "POST" && call.path.hasSuffix("/audio/edits"))
+        #expect(call.contentType?.hasPrefix("multipart/form-data") == true)
+        #expect(call.body.contains("ace-step-repaint"))
+        #expect(call.body.contains(#"name="audio""#), "source clip must be a multipart part")
+        #expect(call.body.contains("start_s"))
+    }
+
+    @Test func executeAudioRoutesEditOpsToEditsEndpoint() async throws {
+        AudioAdapterStub.reset()
+        let src = FileManager.default.temporaryDirectory.appendingPathComponent("src-\(UUID().uuidString).mp3")
+        try Data("ID3\u{04}source-clip".utf8).write(to: src)
+        defer { try? FileManager.default.removeItem(at: src) }
+        var job = GatewayAudioJob(op: .extend, model: "ace-step-extend", prompt: "continue the groove")
+        job.sourceAudioURL = src
+        job.seconds = 12
+        job.fields = ["direction": "append"]
+        _ = try await GatewayGenerationRunner.executeAudio(job, client: Self.stubClient)
+        let call = try #require(AudioAdapterStub.calls.first)
+        #expect(call.path.hasSuffix("/audio/edits"))
+        #expect(call.body.contains("ace-step-extend"))
+        #expect(call.body.contains("direction"))
+        #expect(call.body.contains("continue the groove"), "prompt rides the edit fields")
+    }
+
+    @Test func editOpWithoutSourceThrows() async {
+        let job = GatewayAudioJob(op: .repaint, model: "ace-step-repaint", prompt: "x")
+        await #expect(throws: OpenAICompatGenerationError.self) {
+            _ = try await GatewayGenerationRunner.executeAudio(job, client: Self.stubClient)
+        }
+    }
+
+    @Test func audioContentTypeByExtension() {
+        #expect(GatewayGenerationRunner.audioContentType(URL(fileURLWithPath: "/a/x.mp3")) == "audio/mpeg")
+        #expect(GatewayGenerationRunner.audioContentType(URL(fileURLWithPath: "/a/x.FLAC")) == "audio/flac")
+        #expect(GatewayGenerationRunner.audioContentType(URL(fileURLWithPath: "/a/x.wav")) == "audio/wav")
+        #expect(GatewayGenerationRunner.audioContentType(URL(fileURLWithPath: "/a/x.xyz")) == "audio/mpeg")
+    }
 }

@@ -244,8 +244,26 @@ struct OpenAICompatGenerationClient: Sendable {
         return try Self.materializeAudio(from: try await send(req), format: format)
     }
 
+    /// POST /audio/edits (multipart) — extend / repaint / lyric-edit on a source
+    /// clip. The op rides `model` (ace-step-extend/-repaint/-edit); op-specific
+    /// knobs (start_s, end_s, variance, direction, edit_strength) ride `fields`.
+    func editAudio(
+        model: String, audio: Data, filename: String, contentType: String,
+        fields: [String: String]
+    ) async throws -> [URL] {
+        let boundary = "pd-\(UUID().uuidString)"
+        var req = request(path: "audio/edits", contentType: "multipart/form-data; boundary=\(boundary)")
+        var allFields = fields
+        allFields["model"] = model
+        allFields["response_format"] = "b64_json"
+        let format = fields["format"] ?? "mp3"
+        let parts = [MultipartPart(name: "audio", filename: filename, contentType: contentType, data: audio)]
+        req.httpBody = Self.multipartBody(boundary: boundary, fields: allFields, parts: parts)
+        return try Self.materializeAudio(from: try await send(req), format: format)
+    }
+
     /// Decode the `{data: [{b64_json, seed, duration_s}], format}` envelope into
-    /// temp audio files. Shared by generation and (later) the edit ops.
+    /// temp audio files. Shared by generation and the edit ops.
     static func materializeAudio(from data: Data, format: String) throws -> [URL] {
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw OpenAICompatGenerationError.decodeFailed

@@ -97,6 +97,35 @@ struct GatewaySmokeTests {
         print("gateway-smoke MUSIC: \(bytes.count) bytes → \(dest.path)")
     }
 
+    /// Live audio extend: generate a short clip, then extend it — both edit and
+    /// generation paths through the runner against the real ACE-Step adapter.
+    @Test func liveAudioExtend() async throws {
+        let base = Self.env["GATEWAY_SMOKE_AUDIO_URL"] ?? "http://protolabs:8110/v1"
+        let client = OpenAICompatGenerationClient(
+            baseURL: URL(string: base)!, apiKey: Self.env["GATEWAY_SMOKE_KEY"] ?? "")
+        var gen = GatewayAudioJob(
+            model: GatewayAudioModels.resolve(GatewayAudioModels.gen),
+            prompt: "upbeat synthwave, driving bass [\(UUID().uuidString.prefix(8))]")
+        gen.instrumental = true; gen.seconds = 6
+        let srcURL = try #require(try await GatewayGenerationRunner.executeAudio(gen, client: client).first)
+        defer { try? FileManager.default.removeItem(at: srcURL) }
+
+        var extend = GatewayAudioJob(op: .extend, model: GatewayAudioModels.extendModel, prompt: "keep the groove going")
+        extend.sourceAudioURL = srcURL
+        extend.seconds = 10
+        extend.fields = ["direction": "append"]
+        let outURL = try #require(try await GatewayGenerationRunner.executeAudio(extend, client: client).first)
+        let bytes = try Data(contentsOf: outURL)
+        #expect(bytes.count > 5_000, "suspiciously small clip: \(bytes.count) bytes")
+        let head = [UInt8](bytes.prefix(3))
+        #expect(head == [0x49, 0x44, 0x33] || (head.first == 0xFF && head.count > 1 && (head[1] & 0xE0) == 0xE0),
+                "extend output is not an mp3")
+        let dest = outDir.appendingPathComponent("extend-\(outURL.lastPathComponent)")
+        try? FileManager.default.removeItem(at: dest)
+        try FileManager.default.copyItem(at: outURL, to: dest)
+        print("gateway-smoke EXTEND: \(bytes.count) bytes → \(dest.path)")
+    }
+
     @Test func fullImageSuite() async throws {
         let client = client
         let available = Set(try await client.listModels().map(\.id))

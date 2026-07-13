@@ -94,6 +94,10 @@ enum GatewayAudioModels {
     static let gen = GatewayImageModels.Alias(
         key: "gatewayAudioGenModel", label: "Music generation", fallback: "protolabs/ace-step"
     )
+    // Edit ops select the task via bare op-named models on /audio/edits (verified live).
+    static let extendModel = "ace-step-extend"
+    static let repaintModel = "ace-step-repaint"
+    static let editModel = "ace-step-edit"
 
     static func resolve(_ alias: GatewayImageModels.Alias) -> String {
         let saved = UserDefaults.standard.string(forKey: alias.key) ?? ""

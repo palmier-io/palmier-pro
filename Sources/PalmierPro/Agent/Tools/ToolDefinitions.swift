@@ -75,9 +75,9 @@ enum ToolName: String, CaseIterable, Sendable {
     case identityEdit = "identity_edit"
     case composeImages = "compose_images"
     case typographyImage = "typography_image"
+    case editAudio = "edit_audio"
 
     // Meta
-    case sendFeedback = "send_feedback"
     case readSkill = "read_skill"
 }
 
@@ -1103,16 +1103,25 @@ enum ToolDefinitions {
             )
         ),
         AgentTool(
-            name: .sendFeedback,
-            description: "Report an agent limitation or bug to the protoDirector team so they can improve the product. Use when you can't do what the user asked because a capability or tool is missing or behaves wrong, the result is clearly off, or the user is plainly hitting a rough edge. This sends directly — there is no user confirmation step — so write the report in English and PARAPHRASE in your own words: translate non-English user text to English, and never include verbatim user messages, prompts, file paths, media, transcript text, or any project content. App/OS version and your recent tool names are attached automatically. Use sparingly: at most once per distinct issue.",
+            name: .editAudio,
+            description: "Transforms an existing audio clip with ACE-Step (gateway audio tool; works when get_timeline reports canGenerate and an OpenAI-compatible gateway is configured). operation selects the task: 'extend' continues the clip to a longer TOTAL length; 'repaint' regenerates a time window in place, leaving the rest untouched; 'edit' re-covers the whole clip in a new style/lyrics. Music only — not speech/TTS. Returns a placeholder asset ID immediately; the result appears in get_media once ready. Not undoable.",
             inputSchema: objectSchema(
                 properties: [
-                    "category": ["type": "string", "enum": ["missing_capability", "wrong_result", "confusing_ux", "failure", "suggestion"], "description": "What kind of problem this is."],
-                    "summary": ["type": "string", "description": "One-line paraphrased summary of the issue. Becomes the report's subject."],
-                    "details": ["type": "string", "description": "Optional. Paraphrased explanation of what the user was trying to do and what went wrong or was missing. No verbatim content."],
-                    "severity": ["type": "string", "enum": ["low", "medium", "high"], "description": "Optional. How much this blocked the user."],
+                    "audioMediaRef": ["type": "string", "description": "ID of the source audio asset to transform."],
+                    "operation": ["type": "string", "enum": ["extend", "repaint", "edit"], "description": "extend = continue to a longer clip; repaint = regenerate a [startSeconds, endSeconds] window; edit = re-cover the whole clip in a new style/lyrics."],
+                    "prompt": ["type": "string", "description": "Style/mood/genre guidance for the new audio. Required for edit; optional for extend/repaint."],
+                    "lyrics": ["type": "string", "description": "Optional. Lyrics with [Verse]/[Chorus] tags — mainly for 'edit'."],
+                    "duration": ["type": "integer", "description": "extend only. Target TOTAL length in seconds (must exceed the source length)."],
+                    "direction": ["type": "string", "enum": ["append", "prepend"], "description": "extend only. Which end to grow. Default append."],
+                    "startSeconds": ["type": "number", "description": "repaint only. Start (seconds) of the window to regenerate."],
+                    "endSeconds": ["type": "number", "description": "repaint only. End (seconds) of the window; must exceed startSeconds."],
+                    "variance": ["type": "number", "description": "repaint only, 0–1. How much the window may change."],
+                    "editStrength": ["type": "number", "description": "edit only, 0–1. How far to move from the original."],
+                    "seed": ["type": "integer", "description": "Optional fixed seed."],
+                    "name": ["type": "string", "description": "Optional display name for the result asset."],
+                    "folder": ["type": "string", "description": "Optional media folder path for the result."],
                 ],
-                required: ["category", "summary"]
+                required: ["audioMediaRef", "operation"]
             )
         ),
     ]

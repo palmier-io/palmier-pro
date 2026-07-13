@@ -277,6 +277,72 @@ extension ToolExecutor {
         return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(job.model), \(dur)\(kind). Poll get_media with this id; the result lands as an audio asset.")
     }
 
+    /// edit_audio: ACE-Step extend / repaint / lyric-edit on a source clip.
+    func editAudioTool(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        guard OpenAICompatGenerationClient.gatewayConfigured else {
+            throw ToolError("Audio tools need an OpenAI-compatible gateway. Tell the user to configure one in Settings → Agent.")
+        }
+        guard let op = GatewayAudioJob.Op(rawValue: (args.string("operation") ?? "").lowercased()), op != .generate else {
+            throw ToolError("operation must be one of: extend, repaint, edit.")
+        }
+        let source = try audioAsset(try args.requireString("audioMediaRef"), editor: editor, label: "Source audio")
+        let prompt = (args.string("prompt") ?? "").trimmingCharacters(in: .whitespaces)
+
+        let model: String
+        var fields: [String: String] = [:]
+        switch op {
+        case .extend:
+            model = GatewayAudioModels.extendModel
+            if let direction = args.string("direction") { fields["direction"] = direction }
+        case .repaint:
+            model = GatewayAudioModels.repaintModel
+            guard let start = args.double("startSeconds"), let end = args.double("endSeconds"), end > start else {
+                throw ToolError("repaint needs startSeconds and endSeconds (endSeconds > startSeconds).")
+            }
+            fields["start_s"] = Self.secondsField(start)
+            fields["end_s"] = Self.secondsField(end)
+            if let variance = args.double("variance") { fields["variance"] = Self.secondsField(variance) }
+        case .edit:
+            model = GatewayAudioModels.editModel
+            guard !prompt.isEmpty || args.string("lyrics") != nil else {
+                throw ToolError("edit needs a prompt or lyrics describing the new version.")
+            }
+            if let strength = args.double("editStrength") { fields["edit_strength"] = Self.secondsField(strength) }
+        case .generate:
+            throw ToolError("Use generate_audio for generation.")
+        }
+
+        var job = GatewayAudioJob(op: op, model: model, prompt: prompt)
+        job.sourceAudioURL = source.url
+        job.lyrics = args.string("lyrics")
+        job.seconds = args.int("duration")
+        job.seed = args.int("seed")
+        if let format = args.string("format") { job.format = format }
+        job.fields = fields
+
+        let folderId = try resolveFolder(args, editor: editor, fallbackReferences: [source])
+        let placeholderId = editor.generationService.generateViaGateway(
+            audioJob: job, name: args.string("name"),
+            folderId: folderId, projectURL: editor.projectURL, editor: editor
+        )
+        return .ok("\(op.rawValue.capitalized) started. Placeholder asset ID: \(placeholderId). Model: \(model), source: \(source.name). Poll get_media with this id; the result lands as an audio asset.")
+    }
+
+    private static func secondsField(_ v: Double) -> String {
+        v == v.rounded() ? String(Int(v)) : String(v)
+    }
+
+    private func audioAsset(_ id: String, editor: EditorViewModel, label: String) throws -> MediaAsset {
+        let a = try asset(id, editor: editor, label: label)
+        guard a.type == .audio else {
+            throw ToolError("\(label) '\(id)' must be an audio asset (got \(a.type.rawValue)).")
+        }
+        guard FileManager.default.fileExists(atPath: a.url.path) else {
+            throw ToolError("\(label) '\(id)' has no file on disk yet — it may still be generating. Poll get_media first.")
+        }
+        return a
+    }
+
     private func imageAsset(_ id: String, editor: EditorViewModel, label: String) throws -> MediaAsset {
         let a = try asset(id, editor: editor, label: label)
         guard a.type == .image else {

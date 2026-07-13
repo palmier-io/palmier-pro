@@ -21,7 +21,6 @@ final class ToolExecutor {
     }
 
     private var agentUndoStack: [String] = []
-    var feedbackState = FeedbackState()
     var lastTranscriptContext: TranscriptionToolContext?
 
     func execute(name: String, args: [String: Any], source: String = "agent") async -> ToolResult {
@@ -85,7 +84,6 @@ final class ToolExecutor {
         } catch {
             result = .error(error.localizedDescription)
         }
-        feedbackState.record(result, for: tool)
         let elapsed = started.duration(to: .now).seconds
         let telemetry = result.isError ? "Agent tool failed" : "Agent tool finished"
         let payload: Telemetry.Payload = [
@@ -198,8 +196,8 @@ final class ToolExecutor {
         case .identityEdit:  return try identityEdit(editor, args)
         case .composeImages: return try composeImages(editor, args)
         case .typographyImage: return try typographyImage(editor, args)
+        case .editAudio:     return try editAudioTool(editor, args)
         case .organizeMedia: return try organizeMedia(editor, args)
-        case .sendFeedback:  return try await sendFeedback(editor, args)
         case .setProjectSettings: return try setProjectSettings(editor, args)
         case .createTimeline:     return try createTimeline(editor, args)
         case .setActiveTimeline:  return try setActiveTimeline(editor, args)
