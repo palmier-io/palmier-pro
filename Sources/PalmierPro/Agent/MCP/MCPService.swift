@@ -24,22 +24,22 @@ final class MCPService {
     private(set) var isRunning: Bool = false
 
     @ObservationIgnored
-    private let toolExecutor: ToolExecutor
+    private let projectProvider: () -> VideoProject?
     @ObservationIgnored
     private var httpServer: MCPHTTPServer?
 
-    init(editorProvider: @escaping () -> EditorViewModel?) {
-        self.toolExecutor = ToolExecutor(editorProvider: editorProvider)
+    init(projectProvider: @escaping () -> VideoProject?) {
+        self.projectProvider = projectProvider
     }
 
     func start() {
-        let toolExecutor = self.toolExecutor
         let httpServer = MCPHTTPServer(
             port: Self.port,
             onSessionStarted: {
                 Analytics.capture(.mcpSessionStarted, properties: ["source": "mcp"])
             }
-        ) {
+        ) { [self] in
+            let toolExecutor = await makeSessionToolExecutor()
             let server = Server(
                 name: "palmier-pro",
                 version: "1.0.0",
@@ -64,6 +64,10 @@ final class MCPService {
                 self?.isRunning = false
             }
         }
+    }
+
+    func makeSessionToolExecutor() -> ToolExecutor {
+        ToolExecutor(projectProvider: projectProvider)
     }
 
     func stop() {
@@ -92,7 +96,7 @@ final class MCPService {
     // Convert args on the main actor so the non-Sendable dict never crosses the hop.
     private static func dispatchCall(_ params: CallTool.Parameters, executor: ToolExecutor) async -> CallTool.Result {
         let args = ToolArgsBridge.argsFromMCP(params.arguments ?? [:])
-        let result = await executor.execute(name: params.name, args: args)
+        let result = await executor.execute(name: params.name, args: args, source: "mcp")
         return result.toMCPResult()
     }
 

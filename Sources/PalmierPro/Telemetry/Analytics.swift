@@ -13,6 +13,7 @@ enum Analytics {
         case exportFinished = "export finished"
         case exportFailed = "export failed"
         case agentSessionStarted = "agent session started"
+        case agentToolCalled = "agent tool called"
         case mcpSessionStarted = "mcp session started"
     }
 
@@ -113,6 +114,7 @@ enum Analytics {
             Event.exportFinished.rawValue,
             Event.exportFailed.rawValue,
             Event.agentSessionStarted.rawValue,
+            Event.agentToolCalled.rawValue,
             Event.mcpSessionStarted.rawValue,
             "$identify",
         ])
@@ -169,12 +171,17 @@ enum Analytics {
         Set([
             "active_day",
             "export_duration_seconds",
+            "failure_reason",
             "format",
             "mode",
             "model",
             "project_id",
             "resolution",
             "source",
+            "status",
+            "timeline_changed",
+            "tool_name",
+            "tool_duration_seconds",
         ])
     }
 

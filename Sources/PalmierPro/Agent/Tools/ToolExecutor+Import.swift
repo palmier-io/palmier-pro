@@ -357,14 +357,14 @@ extension ToolExecutor {
         // And adopt its real aspect/fps if it's the sole video on the timeline (the placeholder had
         // no dimensions at drop time, so the project defaulted to 16:9).
         editor.adoptSettingsFromCompletedImport(asset)
-        editor.updateManifestMetadata(for: asset)
+        editor.updateManifestMetadata(for: [asset])
         editor.onProjectCheckpointRequired?()
     }
 
     @MainActor
     private static func failImportedAsset(_ asset: MediaAsset, editor: EditorViewModel, message: String) {
         asset.generationStatus = .failed(message)
-        editor.updateManifestMetadata(for: asset)
+        editor.updateManifestMetadata(for: [asset])
         editor.onProjectCheckpointRequired?()
     }
 

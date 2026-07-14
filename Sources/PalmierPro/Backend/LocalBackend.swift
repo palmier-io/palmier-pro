@@ -130,10 +130,10 @@ enum LocalBackend {
 
     private static func assertOK(_ response: URLResponse, _ data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
-            throw GenerationBackendError.transport("Non-HTTP response from gateway")
+            throw BackendError.transport("Non-HTTP response from gateway")
         }
         if (200..<300).contains(http.statusCode) { return }
         let detail = String(data: data, encoding: .utf8) ?? ""
-        throw GenerationBackendError.transport("gateway HTTP \(http.statusCode): \(detail)")
+        throw BackendError.transport("gateway HTTP \(http.statusCode): \(detail)")
     }
 }

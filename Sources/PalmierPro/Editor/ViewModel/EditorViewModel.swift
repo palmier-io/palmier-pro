@@ -170,6 +170,10 @@ final class EditorViewModel {
         }
     }
     private(set) var projectId: String?
+    private let editorSessionID = UUID().uuidString
+    var exportQueueProjectID: String {
+        projectId ?? projectURL?.standardizedFileURL.path ?? editorSessionID
+    }
     // Placeholder replaced in init() — @Observable doesn't support lazy var
     private(set) var mediaResolver: MediaResolver = MediaResolver(
         manifest: { MediaManifest() }, projectURL: { nil }
@@ -242,6 +246,8 @@ final class EditorViewModel {
     var mediaPanelToast: MediaPanelToast?
     @ObservationIgnored var mediaImportTail: Task<MediaImportSummary, Never>?
     @ObservationIgnored var mediaImportSequence: Int = 0
+    @ObservationIgnored var pendingManifestMetadataUpdates: [String: MediaAsset] = [:]
+    @ObservationIgnored var pendingManifestMetadataFlushTask: Task<Void, Never>?
 
     func showMediaPanelMediaTab() {
         mediaPanelShowMediaTabTick += 1

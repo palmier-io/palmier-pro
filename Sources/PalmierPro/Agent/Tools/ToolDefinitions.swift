@@ -3,10 +3,7 @@ import MCP
 
 enum ToolName: String, CaseIterable, Sendable {
     // Projects
-    case getProjects = "get_projects"
-    case openProject = "open_project"
-    case newProject = "new_project"
-    case closeProject = "close_project"
+    case manageProject = "manage_project"
 
     // Timelines
     case getTimeline = "get_timeline"
@@ -15,6 +12,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case setActiveTimeline = "set_active_timeline"
     case setProjectSettings = "set_project_settings"
     case exportProject = "export_project"
+    case manageExports = "manage_exports"
 
     // Media library
     case getMedia = "get_media"
@@ -86,7 +84,7 @@ enum ToolDefinitions {
     static let all: [AgentTool] = [
         AgentTool(
             name: .getTimeline,
-            description: "Always call at the start of a session. Returns project settings (fps, resolution, totalFrames, durationSeconds), tracks with their index (what every trackIndex parameter takes), type, and clips, plus canGenerate (if false, generation/upscale tools will fail — tell the user to sign in to Palmier and subscribe before attempting them). The clipId values here are what every other tool accepts.\n\nEvery clip occupies frames: [start, end) — timeline frames, end exclusive, duration = end − start. gaps on a track lists its empty [start, end) spans; no gaps key means contiguous. A video clip's linked audio partner is folded into it as audio: {id, track, …} carrying only what deviates (volume, effects, differing trims); the partner is not repeated on its own track, which instead reports linkedClips (its folded count). Address the audio side by its nested id.\n\nFields equal to their defaults are omitted: mediaType 'video', sourceClipType = mediaType, speed 1, volume 1, opacity 1, trims/fades 0, identity transform/crop, default textStyle, track muted/hidden false. Text clips never report trims. Keyframe tracks that animate nothing are shown as what they are: identity tracks are dropped, constant ones appear as the static field (e.g. crop: {left: 0.31}). A graded clip carries `color` — its grade in apply_color's own vocabulary, pasteable to other clips via apply_color's color parameter. Other effects appear as effects: [{type, params}], the exact shape apply_effect accepts.\n\nCaption clips (sharing a captionGroupId) come back per track as captionGroups summaries: clipCount, frameRange, shared style, and a textPreview — individual caption clips and their ids are NOT listed. That summary is all you need to restyle (update_text with captionGroupId) or judge coverage; the spoken words live in get_transcript. Only when you must touch individual caption clips (retime one, delete one, fix one word's style), re-read with captionDetail:true — ideally windowed — to get [clipId, startFrame, endFrame, text] rows, capped at 200 per group. Caption clips whose properties deviate from the group always appear individually in clips.",
+            description: "Always call at the start of a session. Returns project settings (fps, resolution, totalFrames, durationSeconds), tracks with a stable trackId, their current index (what every trackIndex parameter takes), type, and clips, plus canGenerate (if false, generation/upscale tools will fail — tell the user to sign in to Palmier and subscribe before attempting them). Clip ids are accepted by clip mutation tools; trackId is accepted by manage_tracks.\n\nEvery clip occupies frames: [start, end) — timeline frames, end exclusive, duration = end − start. gaps on a track lists its empty [start, end) spans; no gaps key means contiguous. A video clip's linked audio partner is folded into it as audio: {id, track, …} carrying only what deviates (volume, effects, differing trims); the partner is not repeated on its own track, which instead reports linkedClips (its folded count). Address the audio side by its nested id.\n\nFields equal to their defaults are omitted: mediaType 'video', sourceClipType = mediaType, speed 1, volume 1, opacity 1, trims/fades 0, identity transform/crop, default textStyle, track muted/hidden false. Text clips never report trims. Keyframe tracks that animate nothing are shown as what they are: identity tracks are dropped, constant ones appear as the static field (e.g. crop: {left: 0.31}). A graded clip carries `color` — its grade in apply_color's own vocabulary, pasteable to other clips via apply_color's color parameter. Other effects appear as effects: [{type, params}], the exact shape apply_effect accepts.\n\nCaption clips (sharing a captionGroupId) come back per track as captionGroups summaries: clipCount, frameRange, shared style, and a textPreview — individual caption clips and their ids are NOT listed. That summary is all you need to restyle (update_text with captionGroupId) or judge coverage; the spoken words live in get_transcript. Only when you must touch individual caption clips (retime one, delete one, fix one word's style), re-read with captionDetail:true — ideally windowed — to get [clipId, startFrame, endFrame, text] rows, capped at 200 per group. Caption clips whose properties deviate from the group always appear individually in clips.",
             inputSchema: objectSchema(
                 properties: [
                     "startFrame": ["type": "integer", "description": "Optional. Window start (inclusive); only clips intersecting [startFrame, endFrame) are returned. Tracks report totalClips when the window hides some."],
@@ -141,7 +139,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .exportProject,
-            description: "Exports from the current project using the same modes as the Export dialog. mode defaults to video. video renders H.264, H.265, or ProRes; xml writes XMEML timeline XML; fcpxml writes FCPXML; palmier writes a self-contained .palmier project package. For timeline interchange, pick the format by the target editor: Premiere Pro -> xml; DaVinci Resolve or Final Cut Pro -> fcpxml (fcpxml also carries text, transforms, crop, opacity, and keyframes that xml cannot). Omit outputPath to write a unique file to ~/Downloads. Existing direct outputPath files are overwritten by default to match the UI save flow; pass overwrite=false to refuse. video renders in the background and returns status=started with the destination path; the app posts a system notification on completion or failure, so do not expect a final result inline. xml, fcpxml, and palmier finish before returning and report their result inline.",
+            description: "Queues an export from the current project using the same modes as the Export dialog. mode defaults to video. video renders H.264, H.265, or ProRes; xml writes XMEML timeline XML; fcpxml writes FCPXML; palmier writes a self-contained .palmier project package. For timeline interchange, pick the format by the target editor: Premiere Pro -> xml; DaVinci Resolve or Final Cut Pro -> fcpxml (fcpxml also carries text, transforms, crop, opacity, and keyframes that xml cannot). Omit outputPath to write a unique file to ~/Downloads. Existing direct outputPath files are overwritten by default to match the UI save flow; pass overwrite=false to refuse. Every mode returns status=started or status=queued with a jobId and destination path. Use manage_exports to check progress, warnings/results, or cancel by jobId; agent exports post a system notification on completion or failure.",
             inputSchema: objectSchema(
                 properties: [
                     "mode": ["type": "string", "enum": ["video", "xml", "fcpxml", "palmier"], "description": "Optional. Default video. Use xml for Premiere Pro, fcpxml for DaVinci Resolve or Final Cut Pro."],
@@ -152,6 +150,17 @@ enum ToolDefinitions {
                     "fcpxmlTarget": ["type": "string", "enum": ["resolve", "fcp"], "description": "fcpxml mode only. Optional, default resolve. Davinci Resolve and Final Cut interpret crop and position values differently; pick the app the file will be imported into."],
                     "timelineId": ["type": "string", "description": "Optional. Timeline to export (from get_timeline's timelines list). Defaults to the active timeline. Not valid for palmier mode, which packages every timeline."],
                 ]
+            )
+        ),
+        AgentTool(
+            name: .manageExports,
+            description: "Lists or cancels exports for the current project. action=list returns newest first with jobId, filename, path, status, progress percent, and any warnings/result. action=cancel requires the exact jobId returned by export_project or list; a waiting job is removed from the queue and an active job begins canceling. Cancel only when the user asks, or to undo an export just queued with incorrect settings. Never infer that an export is stuck from elapsed time alone.",
+            inputSchema: objectSchema(
+                properties: [
+                    "action": ["type": "string", "enum": ["list", "cancel"]],
+                    "jobId": ["type": "string", "description": "Required for cancel. Exact jobId from export_project or manage_exports list."],
+                ],
+                required: ["action"]
             )
         ),
         AgentTool(
@@ -364,7 +373,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .manageTracks,
-            description: "Track-level operations in one undoable action: reorder (stacking order — index 0 renders on top; a video track can only move within the video zone, audio within audio), set flags (muted silences an audio track; hidden excludes a video track from the render; syncLocked controls whether ripple edits shift it), and remove (deletes tracks with every clip on them; linked partners on OTHER tracks stay). Arrays run reorder → set → remove; every index refers to the track order at call time (resolved up front). Returns the resulting track order — remaining indexes shift after reorder/remove. Tracks holding multicam clips can't be removed or sync-unlocked (mute/hide stay free).",
+            description: "Reorders, configures, or removes tracks in one undoable action. Prefer stable trackId selectors; numeric indexes use the order at call time. Index 0 renders on top, and reorder destinations must stay within the track's video/audio zone. Arrays run reorder → set → remove. Returns receipts and the resulting track order. Tracks holding multicam clips can't be removed or sync-unlocked.",
             inputSchema: objectSchema(
                 properties: [
                     "reorder": [
@@ -373,10 +382,11 @@ enum ToolDefinitions {
                         "items": [
                             "type": "object",
                             "properties": [
+                                "trackId": ["type": "string", "description": "Stable track ID from get_timeline."],
                                 "index": ["type": "integer", "description": "Track to move (0-based, current order)."],
-                                "to": ["type": "integer", "description": "Destination index; clamped to the track's type zone."],
+                                "to": ["type": "integer", "description": "Exact destination index in the same type zone."],
                             ],
-                            "required": ["index", "to"],
+                            "required": ["to"],
                         ],
                     ],
                     "set": [
@@ -384,18 +394,18 @@ enum ToolDefinitions {
                         "items": [
                             "type": "object",
                             "properties": [
+                                "trackId": ["type": "string", "description": "Stable track ID from get_timeline."],
                                 "index": ["type": "integer", "description": "Track to change (0-based, current order)."],
                                 "muted": ["type": "boolean", "description": "Silence/unsilence the track's audio."],
                                 "hidden": ["type": "boolean", "description": "Exclude/include a video track in the render."],
                                 "syncLocked": ["type": "boolean", "description": "Whether ripple edits shift this track along."],
                             ],
-                            "required": ["index"],
                         ],
                     ],
                     "remove": [
                         "type": "array",
-                        "items": ["type": "integer"],
-                        "description": "Track indexes to remove, with all their clips.",
+                        "description": "Tracks to remove with all their clips. Prefer {trackId}; bare integers are legacy current indexes.",
+                        "items": ["type": ["integer", "object"], "properties": ["trackId": ["type": "string"]]],
                     ],
                 ]
             )
@@ -1025,54 +1035,28 @@ enum ToolDefinitions {
     )
 
     /// MCP server only
-    static let getProjects = AgentTool(
-        name: .getProjects,
-        description: "List the user's known projects, most recently opened first: each entry's id, name, path, whether it's currently open, and whether it's the active project (the one editing tools act on). Also returns a top-level `active` (name, path) for the current project, which may not appear in the list. Call this to discover what's available before open_project, or to find out which project is active. Takes no arguments.",
-        inputSchema: objectSchema()
-    )
-
-    static let openProject = AgentTool(
-        name: .openProject,
-        description: "Open a project and make it the active one — every editing tool then acts on it. Identify it by `name` (the natural choice when the user names a project), `id` (from get_projects), or `path` to a .palmier package. If it's already open, it's brought to front; the user sees the window change. Returns a snapshot of what you opened: fps, resolution, mediaCount, canGenerate, and the timelines list — enough to orient before get_timeline.",
+    static let manageProject = AgentTool(
+        name: .manageProject,
+        description: "List, open, create, or close Palmier projects for this MCP session. Set `action` to: `list` for known projects plus session-active and visible state; `open` with a name, id from list, or .palmier path; `create` with an optional name and initial fps/aspectRatio/quality; or `close` to save and close the session project, optionally targeting another open project by name/id/path. Opening or creating changes only this session's target. Closing always completes a final save first. This tool never deletes projects or files.",
         inputSchema: objectSchema(
             properties: [
-                "name": ["type": "string", "description": "Project name, matched case-insensitively against known projects. Errors list candidates when ambiguous or unknown."],
-                "id": ["type": "string", "description": "Project id from get_projects."],
-                "path": ["type": "string", "description": "Filesystem path to a .palmier package."],
-            ]
-        )
-    )
-
-    static let newProject = AgentTool(
-        name: .newProject,
-        description: "Create a new empty project in the user's Palmier Pro folder and make it active. Fails if a project with that name already exists — pick another name. Optionally set fps / aspectRatio / quality at creation so the first clips land on the right canvas (same semantics as set_project_settings). Returns the same snapshot as open_project.",
-        inputSchema: objectSchema(
-            properties: [
-                "name": ["type": "string", "description": "Project name (without extension). Defaults to 'Untitled Project'."],
-                "fps": ["type": "integer", "description": "Optional timeline frame rate (1-120)."],
+                "action": ["type": "string", "enum": ["list", "open", "create", "close"], "description": "Project operation."],
+                "name": ["type": "string", "description": "Project name. For open/close, matched case-insensitively; for create, defaults to 'Untitled Project'."],
+                "id": ["type": "string", "description": "Project id returned by action='list'. Used by open or close."],
+                "path": ["type": "string", "description": "Filesystem path to a .palmier package. Used by open or close."],
+                "fps": ["type": "integer", "description": "Create only. Optional timeline frame rate (1-120)."],
                 "aspectRatio": [
                     "type": "string",
                     "enum": ["16:9", "9:16", "1:1", "4:3", "2.4:1", "9:14"],
-                    "description": "Optional canvas aspect ratio.",
+                    "description": "Create only. Optional canvas aspect ratio.",
                 ],
                 "quality": [
                     "type": "string",
                     "enum": ["720p", "1080p", "2K", "4K"],
-                    "description": "Optional resolution preset applied to the aspect ratio.",
+                    "description": "Create only. Optional resolution preset applied to the aspect ratio.",
                 ],
-            ]
-        )
-    )
-
-    static let closeProject = AgentTool(
-        name: .closeProject,
-        description: "Save and close an open project. Omit all arguments to close the active project; or identify one by name, id (from get_projects), or path. Unsaved changes are saved first. When the active project closes, the next open project becomes active (returned as `active`) — with none left, the Home window shows and editing tools need open_project/new_project again.",
-        inputSchema: objectSchema(
-            properties: [
-                "name": ["type": "string", "description": "Project name, matched case-insensitively. Omit everything to close the active project."],
-                "id": ["type": "string", "description": "Project id from get_projects."],
-                "path": ["type": "string", "description": "Filesystem path to a .palmier package."],
-            ]
+            ],
+            required: ["action"]
         )
     )
 
@@ -1113,7 +1097,7 @@ enum ToolDefinitions {
     )
 
     static var mcpServer: [AgentTool] {
-        all + [getProjects, openProject, newProject, closeProject, listSources, listSourceAssets, importSourceAsset]
+        all + [manageProject, listSources, listSourceAssets, importSourceAsset]
     }
     static var inAppAgent: [AgentTool] { all + [readSkill] }
 

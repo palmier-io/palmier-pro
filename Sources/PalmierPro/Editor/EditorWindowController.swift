@@ -2,8 +2,9 @@ import AppKit
 
 /// Window controller that handles keyboard shortcuts via the responder chain.
 /// Forwards actions to the EditorViewModel owned by VideoProject.
-final class EditorWindowController: NSWindowController {
+final class EditorWindowController: NSWindowController, NSWindowDelegate {
     let editorViewModel: EditorViewModel
+    var onBecameKey: (() -> Void)?
     private nonisolated(unsafe) var keyMonitor: Any?
     private nonisolated(unsafe) var mouseMonitor: Any?
     private nonisolated(unsafe) var endEditingObserver: Any?
@@ -15,6 +16,10 @@ final class EditorWindowController: NSWindowController {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        onBecameKey?()
+    }
 
     deinit {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }

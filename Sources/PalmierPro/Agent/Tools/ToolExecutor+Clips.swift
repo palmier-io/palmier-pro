@@ -858,6 +858,11 @@ extension ToolExecutor {
 
     // MARK: manage_tracks
 
+    private static func exactTrackIndex(_ raw: Any?) -> Int? {
+        guard let value = (raw as? NSNumber)?.doubleValue, !(raw is Bool), value.rounded() == value else { return nil }
+        return Int(exactly: value)
+    }
+
     func manageTracks(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         try validateUnknownKeys(args, allowed: ["reorder", "set", "remove"], path: "manage_tracks")
         let tracks = editor.timeline.tracks
@@ -869,36 +874,61 @@ extension ToolExecutor {
             return tracks[index].id
         }
 
+        func trackId(_ entry: [String: Any], _ path: String) throws -> String {
+            if let id = entry["trackId"] as? String {
+                guard entry["index"] == nil, tracks.contains(where: { $0.id == id }) else {
+                    throw ToolError("\(path): pass one current trackId or index")
+                }
+                return id
+            }
+            guard entry["trackId"] == nil, let index = Self.exactTrackIndex(entry["index"]) else {
+                throw ToolError("\(path): pass one current trackId or index")
+            }
+            return try trackId(index, path)
+        }
+
         var reorders: [(id: String, to: Int)] = []
         for (i, raw) in (args["reorder"] as? [Any] ?? []).enumerated() {
             guard let entry = raw as? [String: Any] else { throw ToolError("reorder[\(i)] must be an object") }
-            try validateUnknownKeys(entry, allowed: ["index", "to"], path: "reorder[\(i)]")
-            guard let index = entry.int("index"), let to = entry.int("to") else {
-                throw ToolError("reorder[\(i)]: 'index' and 'to' are required")
+            let path = "reorder[\(i)]"
+            try validateUnknownKeys(entry, allowed: ["trackId", "index", "to"], path: path)
+            guard let to = Self.exactTrackIndex(entry["to"]) else {
+                throw ToolError("\(path): 'to' is required and must be an integer")
             }
-            reorders.append((try trackId(index, "reorder[\(i)]"), to))
+            let id = try trackId(entry, path)
+            guard let from = tracks.firstIndex(where: { $0.id == id }),
+                  tracks.indices.contains(to), tracks[from].type == tracks[to].type else {
+                throw ToolError("\(path): destination index \(to) is outside the track's type zone")
+            }
+            reorders.append((id, to))
         }
 
         var flagSets: [(id: String, muted: Bool?, hidden: Bool?, syncLocked: Bool?)] = []
         for (i, raw) in (args["set"] as? [Any] ?? []).enumerated() {
             guard let entry = raw as? [String: Any] else { throw ToolError("set[\(i)] must be an object") }
-            try validateUnknownKeys(entry, allowed: ["index", "muted", "hidden", "syncLocked"], path: "set[\(i)]")
-            guard let index = entry.int("index") else { throw ToolError("set[\(i)]: 'index' is required") }
+            let path = "set[\(i)]"
+            try validateUnknownKeys(entry, allowed: ["trackId", "index", "muted", "hidden", "syncLocked"], path: path)
             let muted = entry["muted"] as? Bool
             let hidden = entry["hidden"] as? Bool
             let syncLocked = entry["syncLocked"] as? Bool
             guard muted != nil || hidden != nil || syncLocked != nil else {
-                throw ToolError("set[\(i)]: pass at least one of muted, hidden, syncLocked")
+                throw ToolError("\(path): pass at least one of muted, hidden, syncLocked")
             }
-            flagSets.append((try trackId(index, "set[\(i)]"), muted, hidden, syncLocked))
+            flagSets.append((try trackId(entry, path), muted, hidden, syncLocked))
         }
 
         var removeIds: [String] = []
         for (i, raw) in (args["remove"] as? [Any] ?? []).enumerated() {
-            guard let index = (raw as? Int) ?? (raw as? NSNumber)?.intValue else {
-                throw ToolError("remove[\(i)] must be a track index")
+            let path = "remove[\(i)]"
+            if let entry = raw as? [String: Any] {
+                try validateUnknownKeys(entry, allowed: ["trackId", "index"], path: path)
+                removeIds.append(try trackId(entry, path))
+                continue
             }
-            removeIds.append(try trackId(index, "remove[\(i)]"))
+            guard let index = Self.exactTrackIndex(raw) else {
+                throw ToolError("\(path) must be an integer index or track selector object")
+            }
+            removeIds.append(try trackId(index, path))
         }
 
         guard !reorders.isEmpty || !flagSets.isEmpty || !removeIds.isEmpty else {
@@ -916,10 +946,22 @@ extension ToolExecutor {
         }
 
         let snapshot = timelineSnapshot(editor)
+        let removeIdSet = Set(removeIds)
+        let removedTracks = tracks.indices.compactMap { i -> [String: Any]? in
+            let track = tracks[i]
+            guard removeIdSet.contains(track.id) else { return nil }
+            return ["trackId": track.id, "index": i, "label": editor.timelineTrackDisplayLabel(at: i), "type": track.type.rawValue]
+        }
+        var reorderResults: [(trackId: String, from: Int, to: Int)] = []
         withUndoGroup(editor, actionName: "Manage Tracks (Agent)") {
             if !reorders.isEmpty {
                 let before = editor.timeline
-                for r in reorders { editor.reorderTrackLive(id: r.id, to: r.to) }
+                for r in reorders {
+                    guard let from = editor.timeline.tracks.firstIndex(where: { $0.id == r.id }) else { continue }
+                    editor.reorderTrackLive(id: r.id, to: r.to)
+                    let destination = editor.timeline.tracks.firstIndex(where: { $0.id == r.id }) ?? from
+                    reorderResults.append((r.id, from, destination))
+                }
                 editor.commitTrackReorder(before: before)
             }
             for f in flagSets {
@@ -933,17 +975,18 @@ extension ToolExecutor {
         }
 
         let order = editor.timeline.tracks.indices.map { i -> [String: Any] in
-            let t = editor.timeline.tracks[i]
-            var entry: [String: Any] = ["index": i, "label": editor.timelineTrackDisplayLabel(at: i), "type": t.type.rawValue]
-            if t.muted { entry["muted"] = true }
-            if t.hidden { entry["hidden"] = true }
-            if !t.syncLocked { entry["syncLocked"] = false }
+            let track = editor.timeline.tracks[i]
+            var entry: [String: Any] = ["trackId": track.id, "index": i, "label": editor.timelineTrackDisplayLabel(at: i), "type": track.type.rawValue]
+            if track.muted { entry["muted"] = true }
+            if track.hidden { entry["hidden"] = true }
+            if !track.syncLocked { entry["syncLocked"] = false }
             return entry
         }
-        var notes: [String] = []
-        if !reorders.isEmpty || !removeIds.isEmpty {
-            notes.append("Track indices changed — 'tracks' is the new order; index 0 renders on top.")
+        var extra: [String: Any] = ["tracks": order]
+        if !reorderResults.isEmpty {
+            extra["reordered"] = reorderResults.map { ["trackId": $0.trackId, "from": $0.from, "to": $0.to, "changed": $0.from != $0.to] }
         }
-        return mutationResult(editor, since: snapshot, extra: ["tracks": order], notes: notes)
+        if !removedTracks.isEmpty { extra["removedTracks"] = removedTracks }
+        return mutationResult(editor, since: snapshot, extra: extra)
     }
 }

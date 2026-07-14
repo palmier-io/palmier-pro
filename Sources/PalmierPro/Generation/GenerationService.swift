@@ -330,7 +330,7 @@ final class GenerationService {
             mutateInput(&input)
             asset.generationInput = input
         }
-        editor.updateManifestMetadata(for: asset)
+        editor.updateManifestMetadata(for: [asset])
     }
 
     /// Uploads each reference and returns the hosted URLs.
