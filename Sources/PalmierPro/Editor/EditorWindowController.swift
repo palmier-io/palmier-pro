@@ -195,6 +195,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                 editorViewModel.maximizedPanel = nil
                 return true
             }
+            editorViewModel.slipPreview = nil
             editorViewModel.selectedClipIds.removeAll()
             editorViewModel.clearTimelineRange()
             editorViewModel.toolMode = .pointer

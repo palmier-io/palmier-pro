@@ -321,7 +321,7 @@ final class TimelineView: NSView {
         }()
         let slipPartnerIds: Set<String> = {
             guard let drag = slipDrag, drag.propagateToLinked else { return [] }
-            return Set(editor.linkedPartnerIds(of: drag.clipId))
+            return Set(editor.slipPropagationPartnerIds(of: drag.clipId))
         }()
 
         // Live ripple-trim layout: downstream clips shift while the edge is dragged.

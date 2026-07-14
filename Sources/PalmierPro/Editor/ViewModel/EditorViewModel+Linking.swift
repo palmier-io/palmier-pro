@@ -195,18 +195,27 @@ extension EditorViewModel {
 
     /// Slip: shift which source range plays without moving the clip on the timeline.
     /// Positive delta (drag right) reveals earlier material: trimStart -= d, trimEnd += d.
+    /// A clip's trim can be slipped only if it has bounded source material and isn't part of a multicam group.
+    func isSlipEligible(_ clip: Clip) -> Bool {
+        clip.mediaType != .image && clip.mediaType != .text && clip.multicamGroupId == nil
+    }
+
+    /// Linked partners of `clipId` whose trim should slip along with it — the same
+    /// eligibility filter `commitSlip` applies, so live preview and commit agree.
+    func slipPropagationPartnerIds(of clipId: String) -> [String] {
+        linkedPartnerIds(of: clipId).filter { clipFor(id: $0).map(isSlipEligible) ?? false }
+    }
+
     func commitSlip(clipId: String, deltaFrames: Int, propagateToLinked: Bool) {
         guard let loc = findClip(id: clipId) else { return }
         let lead = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
         var targets = [lead]
         if propagateToLinked {
-            targets += linkedPartnerIds(of: clipId).compactMap { pid in
+            targets += slipPropagationPartnerIds(of: clipId).compactMap { pid in
                 findClip(id: pid).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex] }
             }
         }
-        targets = targets.filter {
-            $0.mediaType != .image && $0.mediaType != .text && $0.multicamGroupId == nil
-        }
+        targets = targets.filter(isSlipEligible)
         guard !targets.isEmpty else { return }
 
         // Clamp the shared timeline delta to the tightest headroom in the group.
