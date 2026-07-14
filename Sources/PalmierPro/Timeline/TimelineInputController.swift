@@ -67,7 +67,7 @@ final class TimelineInputController {
         }
         var right = Int.max
         var left = Int.max
-        for c in clips where c.mediaType != .image && c.mediaType != .text {
+        for c in clips where editor.isSlipEligible(c) {
             let speed = max(c.speed, 0.001)
             right = min(right, Int((Double(c.trimStartFrame) / speed).rounded(.down)))
             left = min(left, Int((Double(editor.effectiveTrimEnd(for: c)) / speed).rounded(.down)))

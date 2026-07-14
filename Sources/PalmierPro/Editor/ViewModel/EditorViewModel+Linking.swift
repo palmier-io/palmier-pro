@@ -227,11 +227,18 @@ extension EditorViewModel {
         }
         guard delta != 0 else { return }
 
+        // Per-clip source shift, clamped to each clip's live trim headroom (nested
+        // tail room, not stale trimEndFrame) so rounding through speed never drives a
+        // trim negative. Slow-motion clips can round a non-zero delta to zero here.
+        func appliedSourceDelta(for c: Clip) -> Int {
+            let sourceDelta = Int((Double(delta) * c.speed).rounded())
+            return max(-effectiveTrimEnd(for: c), min(c.trimStartFrame, sourceDelta))
+        }
+        guard targets.contains(where: { appliedSourceDelta(for: $0) != 0 }) else { return }
+
         mutateClips(ids: Set(targets.map(\.id)),
                     actionName: targets.count == 1 ? "Slip Clip" : "Slip Clips") { c in
-            let sourceDelta = Int((Double(delta) * c.speed).rounded())
-            // Lockstep clamp so rounding through speed never drives a trim negative.
-            let applied = max(-c.trimEndFrame, min(c.trimStartFrame, sourceDelta))
+            let applied = appliedSourceDelta(for: c)
             c.trimStartFrame -= applied
             c.trimEndFrame += applied
         }
