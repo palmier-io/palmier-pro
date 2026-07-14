@@ -12,6 +12,7 @@ final class ToolExecutor {
     private let frontmostProjectProvider: (() -> VideoProject?)?
     // External MCP stays on this project until manage_project rebinds it.
     private weak var boundProject: VideoProject?
+    private(set) var mcpSessionActivation = Analytics.SessionActivation()
     let exportQueue: ExportQueue
 
     var editor: EditorViewModel? {
@@ -63,6 +64,7 @@ final class ToolExecutor {
             )
             return .error("Unknown tool: \(name)")
         }
+        activateMCPSessionIfNeeded(source: source, toolName: tool.rawValue)
 
         // project tools act on AppState before editor is available
         switch tool {
@@ -146,6 +148,14 @@ final class ToolExecutor {
         )
         // Shorten on pre ∪ post ids: new ids and just-removed ids both stay short.
         return await shorteningIds(in: result, editor: editor, alsoKnown: idsBefore)
+    }
+
+    private func activateMCPSessionIfNeeded(source: String, toolName: String) {
+        guard source == "mcp", mcpSessionActivation.activate() else { return }
+        Analytics.capture(.mcpSessionActivated, properties: [
+            "source": "mcp",
+            "tool_name": toolName,
+        ])
     }
 
     private func projectFocusError() -> String? {

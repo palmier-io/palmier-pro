@@ -75,4 +75,16 @@ struct ManageProjectToolTests {
         #expect((await firstSession.execute(name: "create_timeline", args: ["name": "Blocked"])).isError)
         #expect(!(await ToolExecutor(editor: first.editorViewModel).execute(name: "create_timeline", args: ["name": "In-App"])).isError)
     }
+
+    @Test func mcpSessionActivatesOnFirstRecognizedToolCall() async {
+        let executor = ToolExecutor(projectProvider: { nil })
+
+        _ = await executor.execute(name: "get_timeline", args: [:], source: "agent")
+        _ = await executor.execute(name: "not_a_palmier_tool", args: [:], source: "mcp")
+        #expect(!executor.mcpSessionActivation.isActivated)
+
+        _ = await executor.execute(name: "get_timeline", args: [:], source: "mcp")
+        _ = await executor.execute(name: "get_media", args: [:], source: "mcp")
+        #expect(executor.mcpSessionActivation.isActivated)
+    }
 }

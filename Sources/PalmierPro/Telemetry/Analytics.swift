@@ -6,6 +6,20 @@ import PostHog
 enum Analytics {
     typealias Payload = [String: Any]
 
+    struct SessionActivation {
+        private(set) var isActivated: Bool
+
+        init(isActivated: Bool = false) {
+            self.isActivated = isActivated
+        }
+
+        mutating func activate() -> Bool {
+            guard !isActivated else { return false }
+            isActivated = true
+            return true
+        }
+    }
+
     enum Event: String {
         case appOpened = "app opened"
         case projectCreated = "project created"
@@ -16,7 +30,7 @@ enum Analytics {
         case exportFailed = "export failed"
         case agentSessionStarted = "agent session started"
         case agentToolCalled = "agent tool called"
-        case mcpSessionStarted = "mcp session started"
+        case mcpSessionActivated = "mcp session activated"
     }
 
     #if PRODUCTION_TELEMETRY
@@ -131,7 +145,7 @@ enum Analytics {
             Event.exportFailed.rawValue,
             Event.agentSessionStarted.rawValue,
             Event.agentToolCalled.rawValue,
-            Event.mcpSessionStarted.rawValue,
+            Event.mcpSessionActivated.rawValue,
             "$identify",
         ])
     }

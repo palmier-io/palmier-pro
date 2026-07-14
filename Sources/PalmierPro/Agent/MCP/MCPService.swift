@@ -33,12 +33,7 @@ final class MCPService {
     }
 
     func start() {
-        let httpServer = MCPHTTPServer(
-            port: Self.port,
-            onSessionStarted: {
-                Analytics.capture(.mcpSessionStarted, properties: ["source": "mcp"])
-            }
-        ) { [self] in
+        let httpServer = MCPHTTPServer(port: Self.port) { [self] in
             let toolExecutor = await makeSessionToolExecutor()
             let server = Server(
                 name: "palmier-pro",

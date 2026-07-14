@@ -307,12 +307,14 @@ final class AgentService {
         let contextHint = referencedMentions.isEmpty
             ? nil
             : AgentMentionContext.hint(referencedMentions, editor: editor)
-        let beginsSession = !messages.contains { $0.role == .user }
+        var sessionActivation = Analytics.SessionActivation(
+            isActivated: messages.contains { $0.role == .user }
+        )
         let analyticsPayload: [String: Any] = [
             "project_id": editor?.projectId ?? "unknown",
             "model": effectiveModel.rawValue,
         ]
-        if beginsSession {
+        if sessionActivation.activate() {
             Analytics.capture(.agentSessionStarted, properties: analyticsPayload)
         }
 
