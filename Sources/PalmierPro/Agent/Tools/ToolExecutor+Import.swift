@@ -283,14 +283,14 @@ extension ToolExecutor {
             return
         }
         asset.importInput = nil
-        editor.updateManifestMetadata(for: asset)
+        editor.updateManifestMetadata(for: [asset])
         editor.onProjectCheckpointRequired?()
     }
 
     @MainActor
     private static func failImportedAsset(_ asset: MediaAsset, editor: EditorViewModel, message: String) {
         asset.generationStatus = .failed(message)
-        editor.updateManifestMetadata(for: asset)
+        editor.updateManifestMetadata(for: [asset])
         editor.onProjectCheckpointRequired?()
     }
 

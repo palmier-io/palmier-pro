@@ -4,7 +4,7 @@ import CoreGraphics
 import Foundation
 
 final class VisualEmbedder: @unchecked Sendable {
-    struct Spec: Codable, Sendable {
+    struct Spec: Codable, Equatable, Sendable {
         let model: String
         let version: Int
         let embeddingDim: Int
