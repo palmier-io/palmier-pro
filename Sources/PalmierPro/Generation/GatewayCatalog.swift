@@ -94,6 +94,10 @@ enum GatewayAudioModels {
     static let gen = GatewayImageModels.Alias(
         key: "gatewayAudioGenModel", label: "Music generation", fallback: "protolabs/ace-step"
     )
+    // TTS is a different backend (Fish S2-Pro), served natively via /audio/speech.
+    static let tts = GatewayImageModels.Alias(
+        key: "gatewayTTSModel", label: "Text-to-speech", fallback: "fish-s2-pro"
+    )
     // Edit ops select the task via bare op-named models on /audio/edits (verified live).
     static let extendModel = "ace-step-extend"
     static let repaintModel = "ace-step-repaint"

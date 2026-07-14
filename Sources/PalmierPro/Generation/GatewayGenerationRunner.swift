@@ -41,7 +41,7 @@ struct GatewayVideoJob: Sendable {
 /// `.generate` posts /audio/generations; the edit ops post /audio/edits with the
 /// source clip and op-specific `fields` (start_s/end_s/variance/direction/edit_strength).
 struct GatewayAudioJob: Sendable {
-    enum Op: String, Sendable { case generate, extend, repaint, edit }
+    enum Op: String, Sendable { case generate, extend, repaint, edit, speech }
     var op: Op = .generate
     let model: String
     let prompt: String
@@ -214,6 +214,11 @@ enum GatewayGenerationRunner {
                 instrumental: job.instrumental, seconds: job.seconds, n: job.n,
                 seed: job.seed, negativePrompt: job.negativePrompt, format: job.format
             )
+        }
+        if job.op == .speech {
+            return [try await client.synthesizeSpeech(
+                model: job.model, input: job.prompt, voice: job.fields["voice"], format: job.format
+            )]
         }
         guard let src = job.sourceAudioURL else {
             throw OpenAICompatGenerationError.api("\(job.op.rawValue) needs a source audio clip")

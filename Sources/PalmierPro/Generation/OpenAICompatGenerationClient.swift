@@ -244,6 +244,22 @@ struct OpenAICompatGenerationClient: Sendable {
         return try Self.materializeAudio(from: try await send(req), format: format)
     }
 
+    /// POST /audio/speech — TTS (OpenAI-native; LiteLLM routes to the Fish stack).
+    /// Returns raw audio bytes, written to a temp file with the format extension.
+    func synthesizeSpeech(
+        model: String, input: String, voice: String?, format: String = "mp3"
+    ) async throws -> URL {
+        var req = request(path: "audio/speech", contentType: "application/json")
+        var body: [String: Any] = ["model": model, "input": input, "response_format": format]
+        if let voice, !voice.isEmpty { body["voice"] = voice }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let bytes = try await send(req)   // /audio/speech returns audio bytes, not JSON
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("gentts-\(UUID().uuidString.prefix(8)).\(format.isEmpty ? "mp3" : format)")
+        try bytes.write(to: tmp)
+        return tmp
+    }
+
     /// POST /audio/edits (multipart) — extend / repaint / lyric-edit on a source
     /// clip. The op rides `model` (ace-step-extend/-repaint/-edit); op-specific
     /// knobs (start_s, end_s, variance, direction, edit_strength) ride `fields`.

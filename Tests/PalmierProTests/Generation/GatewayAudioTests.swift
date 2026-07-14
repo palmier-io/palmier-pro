@@ -30,10 +30,20 @@ final class AudioAdapterStub: URLProtocol {
             contentType: request.value(forHTTPHeaderField: "content-type"),
             body: Self.bodyString(request)))
         Self.lock.unlock()
-        let b64 = Self.clipBytes.base64EncodedString()
-        let body = Data(#"{"data":[{"b64_json":"\#(b64)","seed":871727746,"duration_s":6.0}],"format":"mp3"}"#.utf8)
+        // /audio/speech is OpenAI-native: it returns raw audio bytes, not a JSON envelope.
+        let isSpeech = request.url?.path.hasSuffix("/audio/speech") == true
+        let body: Data
+        let contentType: String
+        if isSpeech {
+            body = Self.clipBytes
+            contentType = "audio/mpeg"
+        } else {
+            let b64 = Self.clipBytes.base64EncodedString()
+            body = Data(#"{"data":[{"b64_json":"\#(b64)","seed":871727746,"duration_s":6.0}],"format":"mp3"}"#.utf8)
+            contentType = "application/json"
+        }
         let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
-                                       headerFields: ["Content-Type": "application/json"])!
+                                       headerFields: ["Content-Type": contentType])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: body)
         client?.urlProtocolDidFinishLoading(self)
@@ -78,6 +88,34 @@ struct GatewayAudioTests {
         let url = try #require(urls.first)
         defer { try? FileManager.default.removeItem(at: url) }
         #expect(try Data(contentsOf: url) == AudioAdapterStub.clipBytes)
+    }
+
+    @Test func synthesizeSpeechPostsJSONAndWritesRawBytes() async throws {
+        AudioAdapterStub.reset()
+        let url = try await Self.stubClient.synthesizeSpeech(
+            model: "fish-s2-pro", input: "Roll sound.", voice: "narrator", format: "mp3")
+        defer { try? FileManager.default.removeItem(at: url) }
+        #expect(url.pathExtension == "mp3")
+        #expect(try Data(contentsOf: url) == AudioAdapterStub.clipBytes, "speech returns raw bytes, not a b64 envelope")
+        let call = try #require(AudioAdapterStub.calls.first)
+        #expect(call.method == "POST" && call.path.hasSuffix("/audio/speech"))
+        #expect(call.contentType == "application/json")
+        #expect(call.body.contains(#""voice":"narrator""#))
+        #expect(call.body.contains("fish-s2-pro"))
+        #expect(call.body.contains("Roll sound."))
+    }
+
+    @Test func executeAudioRoutesSpeechToSpeechEndpoint() async throws {
+        AudioAdapterStub.reset()
+        var job = GatewayAudioJob(op: .speech, model: "fish-s2-pro", prompt: "Take one.")
+        job.fields = ["voice": "calm"]
+        let urls = try await GatewayGenerationRunner.executeAudio(job, client: Self.stubClient)
+        let url = try #require(urls.first)
+        defer { try? FileManager.default.removeItem(at: url) }
+        #expect(try Data(contentsOf: url) == AudioAdapterStub.clipBytes)
+        let call = try #require(AudioAdapterStub.calls.first)
+        #expect(call.path.hasSuffix("/audio/speech"))
+        #expect(call.body.contains(#""voice":"calm""#))
     }
 
     @Test func materializeAudioUsesFormatExtension() throws {

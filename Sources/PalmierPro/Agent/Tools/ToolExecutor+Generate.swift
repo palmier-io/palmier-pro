@@ -243,15 +243,17 @@ extension ToolExecutor {
     /// (Fish stack), so they're rejected by name here rather than silently
     /// falling through to the hosted sign-in guard.
     private func gatewayGenerateAudio(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        if args.string("sourceMediaRef") != nil || args.string("videoSourceMediaRef") != nil || args.string("targetLanguage") != nil {
+            throw ToolError("Dubbing and source-media audio aren't on the gateway path — use generate_audio for music (prompt) or speech (voice), edit_audio for clip transforms.")
+        }
         let prompt = (args.string("prompt") ?? "").trimmingCharacters(in: .whitespaces)
+        // `voice` is the OpenAI-standard TTS signal (Fish stack), distinct from
+        // ACE-Step music; the TTS alias also forces the speech path.
+        if args.string("voice") != nil || args.string("model") == GatewayAudioModels.resolve(GatewayAudioModels.tts) {
+            return try gatewayGenerateSpeech(editor, args, text: prompt, voice: args.string("voice") ?? "")
+        }
         guard !prompt.isEmpty else {
             throw ToolError("The gateway audio model generates music from a prompt — describe the style, mood, or genre.")
-        }
-        if args.string("voice") != nil {
-            throw ToolError("The gateway audio model is ACE-Step music generation, not TTS — omit `voice`. Speech routes to a separate backend.")
-        }
-        if args.string("sourceMediaRef") != nil || args.string("videoSourceMediaRef") != nil || args.string("targetLanguage") != nil {
-            throw ToolError("Dubbing and source-media audio aren't on the gateway path yet — ACE-Step generates music from a text prompt.")
         }
         var job = GatewayAudioJob(
             model: args.string("model") ?? GatewayAudioModels.resolve(GatewayAudioModels.gen),
@@ -277,12 +279,35 @@ extension ToolExecutor {
         return .ok("Generation started. Placeholder asset ID: \(placeholderId). Model: \(job.model), \(dur)\(kind). Poll get_media with this id; the result lands as an audio asset.")
     }
 
+    /// generate_audio with `voice`: Fish TTS via the native /audio/speech route.
+    private func gatewayGenerateSpeech(_ editor: EditorViewModel, _ args: [String: Any], text: String, voice: String) throws -> ToolResult {
+        guard !text.isEmpty else {
+            throw ToolError("Text-to-speech needs the words to speak in `prompt`.")
+        }
+        var job = GatewayAudioJob(
+            op: .speech,
+            model: args.string("model") ?? GatewayAudioModels.resolve(GatewayAudioModels.tts),
+            prompt: text
+        )
+        if !voice.isEmpty { job.fields["voice"] = voice }
+        if let format = args.string("format") { job.format = format }
+
+        let folderId = try resolveFolder(args, editor: editor, fallbackReferences: [])
+        let placeholderId = editor.generationService.generateViaGateway(
+            audioJob: job, name: args.string("name"),
+            folderId: folderId, projectURL: editor.projectURL, editor: editor
+        )
+        let voiceNote = voice.isEmpty ? "" : ", voice: \(voice)"
+        return .ok("Speech started. Placeholder asset ID: \(placeholderId). Model: \(job.model)\(voiceNote). Poll get_media with this id; the result lands as an audio asset.")
+    }
+
     /// edit_audio: ACE-Step extend / repaint / lyric-edit on a source clip.
     func editAudioTool(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         guard OpenAICompatGenerationClient.gatewayConfigured else {
             throw ToolError("Audio tools need an OpenAI-compatible gateway. Tell the user to configure one in Settings → Agent.")
         }
-        guard let op = GatewayAudioJob.Op(rawValue: (args.string("operation") ?? "").lowercased()), op != .generate else {
+        guard let op = GatewayAudioJob.Op(rawValue: (args.string("operation") ?? "").lowercased()),
+              op != .generate, op != .speech else {
             throw ToolError("operation must be one of: extend, repaint, edit.")
         }
         let source = try audioAsset(try args.requireString("audioMediaRef"), editor: editor, label: "Source audio")
@@ -308,8 +333,8 @@ extension ToolExecutor {
                 throw ToolError("edit needs a prompt or lyrics describing the new version.")
             }
             if let strength = args.double("editStrength") { fields["edit_strength"] = Self.secondsField(strength) }
-        case .generate:
-            throw ToolError("Use generate_audio for generation.")
+        case .generate, .speech:
+            throw ToolError("Use generate_audio for generation and speech.")
         }
 
         var job = GatewayAudioJob(op: op, model: model, prompt: prompt)
@@ -691,6 +716,12 @@ extension ToolExecutor {
             let audioId = GatewayAudioModels.resolve(GatewayAudioModels.gen)
             if !out.contains(where: { ($0["id"] as? String) == audioId }) {
                 out.append(["id": audioId, "type": "audio", "mode": "music_generation"])
+            }
+            // Fish TTS is served natively via /audio/speech; it may be absent from
+            // /v1/models. Inject it so the agent knows the speech path exists.
+            let ttsId = GatewayAudioModels.resolve(GatewayAudioModels.tts)
+            if !out.contains(where: { ($0["id"] as? String) == ttsId }) {
+                out.append(["id": ttsId, "type": "audio", "mode": "audio_speech"])
             }
         }
         let body: [String: Any] = ["models": out, "loaded": true, "source": "gateway"]
