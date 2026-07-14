@@ -6,6 +6,7 @@ struct TopOffField<Trailing: View>: View {
     var fillWidth: Bool = true
     var fieldFill: Color = AppTheme.Background.surfaceColor
     var buttonFill: AnyShapeStyle? = nil
+    var showsExternalLinkIcon: Bool = false
     var onBuy: () -> Void
     @ViewBuilder var trailing: () -> Trailing
 
@@ -45,7 +46,17 @@ struct TopOffField<Trailing: View>: View {
 
             HStack(spacing: AppTheme.Spacing.sm) {
                 Button(action: onBuy) {
-                    Text(buttonLabel)
+                    HStack(spacing: AppTheme.Spacing.xs) {
+                        Text(buttonLabel)
+                        if showsExternalLinkIcon {
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(
+                                    size: AppTheme.FontSize.xs,
+                                    weight: AppTheme.FontWeight.semibold
+                                ))
+                                .accessibilityHidden(true)
+                        }
+                    }
                         .frame(maxWidth: fillWidth ? .infinity : nil)
                 }
                 .buttonStyle(.capsule(.secondary, size: capsuleSize, fill: buttonFill))
@@ -78,6 +89,7 @@ extension TopOffField where Trailing == EmptyView {
         fillWidth: Bool = true,
         fieldFill: Color = AppTheme.Background.surfaceColor,
         buttonFill: AnyShapeStyle? = nil,
+        showsExternalLinkIcon: Bool = false,
         onBuy: @escaping () -> Void
     ) {
         self.init(
@@ -86,6 +98,7 @@ extension TopOffField where Trailing == EmptyView {
             fillWidth: fillWidth,
             fieldFill: fieldFill,
             buttonFill: buttonFill,
+            showsExternalLinkIcon: showsExternalLinkIcon,
             onBuy: onBuy,
             trailing: { EmptyView() }
         )

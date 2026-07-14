@@ -39,7 +39,7 @@ struct SkillsPane: View {
             }
             .scrollEdgeEffectStyle(.soft, for: .top)
         }
-        .frame(maxWidth: AppTheme.Settings.skillsContentMaxWidth, alignment: .leading)
+        .frame(maxWidth: AppTheme.Settings.contentMaxWidth, alignment: .leading)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.horizontal, AppTheme.Spacing.xxl)
         .padding(.bottom, AppTheme.Spacing.xxl)

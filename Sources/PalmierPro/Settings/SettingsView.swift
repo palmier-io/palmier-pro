@@ -113,9 +113,7 @@ private struct SettingsDetail: View {
                 .font(.system(size: AppTheme.FontSize.title1, weight: AppTheme.FontWeight.regular))
                 .foregroundStyle(AppTheme.Text.primaryColor)
                 .frame(
-                    maxWidth: tab == .skills
-                        ? AppTheme.Settings.skillsContentMaxWidth
-                        : AppTheme.Settings.contentMaxWidth,
+                    maxWidth: AppTheme.Settings.contentMaxWidth,
                     alignment: .leading
                 )
                 .frame(maxWidth: .infinity)

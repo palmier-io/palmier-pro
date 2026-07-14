@@ -150,8 +150,18 @@ struct AccountPane: View {
 
                     Spacer(minLength: AppTheme.Spacing.lg)
 
-                    Button("Manage subscription") {
+                    Button {
                         Task { await account.manageSubscription() }
+                    } label: {
+                        HStack(spacing: AppTheme.Spacing.xs) {
+                            Text("Manage subscription")
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(
+                                    size: AppTheme.FontSize.xs,
+                                    weight: AppTheme.FontWeight.semibold
+                                ))
+                                .accessibilityHidden(true)
+                        }
                     }
                     .buttonStyle(accountSecondaryButtonStyle)
                     .pointingHandCursor()
@@ -196,7 +206,8 @@ struct AccountPane: View {
             TopOffField(
                 dollars: $topOffDollars,
                 fieldFill: AppTheme.Background.raisedColor,
-                buttonFill: accountSecondaryFill
+                buttonFill: accountSecondaryFill,
+                showsExternalLinkIcon: true
             ) {
                 account.buyCredits(dollars: topOffDollars)
             }
