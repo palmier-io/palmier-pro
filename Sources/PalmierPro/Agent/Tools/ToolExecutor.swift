@@ -326,10 +326,17 @@ final class ToolExecutor {
     }
 
     func withUndoGroup<T>(_ editor: EditorViewModel, actionName: String, _ work: () throws -> T) rethrows -> T {
-        editor.undoManager?.beginUndoGrouping()
+        guard let undoManager = editor.undoManager else { return try work() }
+        let restoresEventGrouping = undoManager.groupsByEvent && undoManager.groupingLevel <= 1
+        if restoresEventGrouping {
+            undoManager.groupsByEvent = false
+            if undoManager.groupingLevel == 1 { undoManager.endUndoGrouping() }
+        }
+        undoManager.beginUndoGrouping()
         defer {
-            editor.undoManager?.endUndoGrouping()
-            editor.undoManager?.setActionName(actionName)
+            undoManager.setActionName(actionName)
+            undoManager.endUndoGrouping()
+            if restoresEventGrouping { undoManager.groupsByEvent = true }
         }
         return try work()
     }

@@ -41,6 +41,29 @@ struct UndoToolTests {
         #expect(h.editor.timeline.tracks[0].clips.map(\.durationFrames) == [30, 70])
     }
 
+    @Test func undoKeepsNewTimelineWhenAutomaticEventGroupStaysOpen() async throws {
+        let (h, um) = harness()
+        um.runLoopModes = [RunLoop.Mode("AgentUndoBoundaryTests")]
+        um.registerUndo(withTarget: h.editor) { _ in }
+        um.setActionName("Earlier Tool")
+        let sourceTimelineId = h.editor.activeTimelineId
+
+        _ = await h.runRaw("create_timeline", args: ["from": sourceTimelineId])
+        let createdTimelineId = h.editor.activeTimelineId
+        let createdClipId = h.editor.timeline.tracks[0].clips[0].id
+        _ = await h.runRaw("set_clip_properties", args: [
+            "clipIds": [createdClipId],
+            "volume": 0.25,
+        ])
+
+        let result = await h.runRaw("undo")
+
+        #expect(result.isError == false)
+        #expect(h.editor.timelines.count == 2)
+        #expect(h.editor.activeTimelineId == createdTimelineId)
+        #expect(h.editor.timeline.tracks[0].clips[0].volume == 1.0)
+    }
+
     @Test func refusesWhenAssistantHasNotEdited() async throws {
         let (h, um) = harness()
         _ = um
