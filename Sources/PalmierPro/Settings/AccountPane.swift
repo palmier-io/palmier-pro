@@ -24,52 +24,48 @@ struct AccountPane: View {
         }
     }
 
-    @ViewBuilder
     private var signedInBody: some View {
-        if account.isPaid {
-            subscriptionSection
-            creditsSection
-        } else {
-            unpaidSection
-        }
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxl) {
+            if account.isPaid {
+                subscriptionSection
+                creditsSection
+            } else {
+                unpaidSection
+            }
 
-        Button("Sign out") {
-            Task { await account.signOut() }
+            Button("Sign out") {
+                Task { await account.signOut() }
+            }
+            .buttonStyle(.capsule(.secondary, size: .regular))
         }
-        .buttonStyle(.capsule(.secondary, size: .regular))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
     private var unpaidSection: some View {
-        SettingsSection(title: "Subscription") {
-            Text("Subscribe to use AI generation.")
-                .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
-                .fixedSize(horizontal: false, vertical: true)
-
+        SettingsGroup(title: "Subscription") {
             if account.availablePlans.isEmpty {
                 HStack(spacing: AppTheme.Spacing.sm) {
                     Button("Upgrade to Pro") {
                         Task { await account.subscribe(tier: .pro) }
                     }
                     .buttonStyle(.capsule(.prominent, size: .regular))
+                    .pointerStyle(.link)
 
                     Button("Upgrade to Max") {
                         Task { await account.subscribe(tier: .max) }
                     }
-                    .buttonStyle(.capsule(.secondary, size: .regular))
+                    .buttonStyle(accountSecondaryButtonStyle)
+                    .pointerStyle(.link)
                 }
             } else {
                 HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
                     if let pro = account.availablePlan(for: .pro) {
                         planCard(plan: pro, isPrimary: true)
-                            .frame(maxWidth: 180)
                     }
                     if let max = account.availablePlan(for: .max) {
                         planCard(plan: max, isPrimary: false)
-                            .frame(maxWidth: 180)
                     }
-                    Spacer(minLength: 0)
                 }
 
                 Text("Credits cover AI generation and chat.")
@@ -80,14 +76,13 @@ struct AccountPane: View {
         }
     }
 
-    @ViewBuilder
     private func planCard(plan: AvailablePlan, isPrimary: Bool) -> some View {
         card {
             cardCaption(plan.tier.planLabel)
 
             HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.xs) {
                 Text("$\(plan.effectiveMonthlyPriceUsd)")
-                    .font(.system(size: AppTheme.FontSize.xl, weight: .semibold))
+                    .font(.system(size: AppTheme.FontSize.xl, weight: AppTheme.FontWeight.semibold))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                 if plan.hasDiscount {
                     Text("$\(plan.monthlyPriceUsd)")
@@ -113,50 +108,62 @@ struct AccountPane: View {
         }
     }
 
-    @ViewBuilder
     private func upgradeButton(for plan: AvailablePlan, isPrimary: Bool) -> some View {
         let label = "Upgrade to \(plan.tier.upgradeLabel)"
-        if isPrimary {
-            Button {
-                Task { await account.subscribe(tier: plan.tier) }
-            } label: {
-                Text(label).frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.capsule(.prominent, size: .regular))
-        } else {
-            Button {
-                Task { await account.subscribe(tier: plan.tier) }
-            } label: {
-                Text(label).frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.capsule(.secondary, size: .regular))
+        return Button {
+            Task { await account.subscribe(tier: plan.tier) }
+        } label: {
+            Text(label).frame(maxWidth: .infinity)
         }
+        .buttonStyle(.capsule(
+            isPrimary ? .prominent : .secondary,
+            size: .regular,
+            fill: isPrimary ? nil : AnyShapeStyle(AppTheme.Background.raisedColor)
+        ))
+        .pointerStyle(.link)
     }
 
-    @ViewBuilder
     private var subscriptionSection: some View {
-        SettingsSection(title: "Subscription") {
-            Text(account.tier.planLabel)
-                .font(.system(size: AppTheme.FontSize.md, weight: .medium))
-                .foregroundStyle(AppTheme.Text.primaryColor)
+        SettingsGroup(title: "Subscription") {
+            card {
+                HStack(alignment: .center, spacing: AppTheme.Spacing.md) {
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                        Text(account.tier.planLabel)
+                            .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
+                            .foregroundStyle(AppTheme.Text.primaryColor)
 
-            if account.account?.user.cancelAtPeriodEnd == true,
-               let date = formattedPeriodEnd {
-                Text("Cancels \(date)")
-                    .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(.orange)
-            }
+                        if account.account?.user.cancelAtPeriodEnd == true,
+                           let date = formattedPeriodEnd {
+                            Text("Cancels \(date)")
+                                .font(.system(size: AppTheme.FontSize.sm))
+                                .foregroundStyle(AppTheme.Status.warningColor)
+                        }
+                    }
 
-            Button("Manage subscription") {
-                Task { await account.manageSubscription() }
+                    Spacer(minLength: AppTheme.Spacing.lg)
+
+                    Button {
+                        Task { await account.manageSubscription() }
+                    } label: {
+                        HStack(spacing: AppTheme.Spacing.xs) {
+                            Text("Manage subscription")
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(
+                                    size: AppTheme.FontSize.xs,
+                                    weight: AppTheme.FontWeight.semibold
+                                ))
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .buttonStyle(accountSecondaryButtonStyle)
+                    .pointerStyle(.link)
+                }
             }
-            .buttonStyle(.capsule(.secondary, size: .regular))
         }
     }
 
-    @ViewBuilder
     private var creditsSection: some View {
-        SettingsSection(title: "Credits") {
+        SettingsGroup(title: "Credits") {
             HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
                 remainingCard
                 buyCard
@@ -164,10 +171,11 @@ struct AccountPane: View {
         }
     }
 
-    @ViewBuilder
     private var remainingCard: some View {
         card {
             cardCaption("Remaining")
+
+            Spacer(minLength: AppTheme.Spacing.sm)
 
             CreditSummaryView(style: .full)
 
@@ -181,27 +189,38 @@ struct AccountPane: View {
         }
     }
 
-    @ViewBuilder
     private var buyCard: some View {
         card {
             cardCaption("Buy more")
 
-            TopOffField(dollars: $topOffDollars) {
+            TopOffField(
+                dollars: $topOffDollars,
+                fieldFill: AppTheme.Background.raisedColor,
+                buttonFill: AnyShapeStyle(AppTheme.Background.raisedColor),
+                showsExternalLinkIcon: true
+            ) {
                 account.buyCredits(dollars: topOffDollars)
             }
 
-            Text("$\(TopOffLimits.minDollars)–$\(TopOffLimits.maxDollars) · Unused credits expire at your next billing date.")
+            Text("$\(TopOffLimits.minDollars)–$\(TopOffLimits.maxDollars) · Credits expire at renewal.")
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    @ViewBuilder
     private func cardCaption(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
+            .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.regular))
             .foregroundStyle(AppTheme.Text.tertiaryColor)
+    }
+
+    private var accountSecondaryButtonStyle: CapsuleButtonStyle {
+        .init(
+            variant: .secondary,
+            size: .regular,
+            fill: AnyShapeStyle(AppTheme.Background.raisedColor)
+        )
     }
 
     @ViewBuilder
@@ -210,15 +229,9 @@ struct AccountPane: View {
             content()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(AppTheme.Spacing.md)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                .fill(Color.white.opacity(AppTheme.Opacity.subtle))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                .stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
-        )
+        .padding(.horizontal, AppTheme.Spacing.lgXl)
+        .padding(.vertical, AppTheme.Spacing.mdLg)
+        .themedSurface(AppTheme.Background.prominentColor, cornerRadius: AppTheme.Radius.mdLg)
     }
 
     private var formattedPeriodEnd: String? {

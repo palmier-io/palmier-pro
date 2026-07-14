@@ -2,8 +2,9 @@ import AppKit
 import SwiftUI
 
 struct MCPInstructionsPane: View {
-    private var serverURL: String { "http://127.0.0.1:\(MCPService.port)" }
-    private var mcpEndpoint: String { "\(serverURL)/mcp" }
+    @State private var claudeInstallError: String?
+
+    private var mcpEndpoint: String { "http://127.0.0.1:\(MCPService.port)/mcp" }
 
     private var claudeCodeCommand: String {
         "claude mcp add --transport http palmier-pro \(mcpEndpoint)"
@@ -57,196 +58,233 @@ struct MCPInstructionsPane: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.xlXxl) {
-                overviewSection
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xxl) {
+                Text("Connect an external agent to inspect and edit the open Palmier Pro project.")
+                    .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.regular))
+                    .foregroundStyle(AppTheme.Text.secondaryColor)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                urlSection
+                SettingsGroup(title: "Server URL") {
+                    endpointRow
+                }
 
-                cursorSection
-
-                claudeDesktopSection
-
-                claudeCodeSection
-
-                codexSection
+                SettingsGroup(title: "Connect an agent") {
+                    agentList
+                }
             }
-            .padding(.horizontal, AppTheme.Spacing.xlXxl)
-            .padding(.vertical, AppTheme.Spacing.xl)
+            .frame(maxWidth: AppTheme.Settings.contentMaxWidth, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(.horizontal, AppTheme.Spacing.xlXxl)
+            .padding(.bottom, AppTheme.Spacing.xxl)
+        }
+        .scrollEdgeEffectStyle(.soft, for: .top)
+        .alert(
+            "Unable to open Claude Desktop",
+            isPresented: Binding(
+                get: { claudeInstallError != nil },
+                set: { if !$0 { claudeInstallError = nil } }
+            )
+        ) {
+            Button("Dismiss") { claudeInstallError = nil }
+        } message: {
+            Text(claudeInstallError ?? "Use manual setup instead.")
         }
     }
 
-    // MARK: - Sections
-
-    private var overviewSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            sectionHeading("Overview")
-            Text("Palmier Pro exposes your open project as an MCP server. Connect any MCP clients to let it be your AI assistant.")
-                .font(.system(size: AppTheme.FontSize.smMd))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+    private var endpointRow: some View {
+        CodeBlockView(
+            content: mcpEndpoint,
+            fontSize: AppTheme.FontSize.sm,
+            foreground: AppTheme.Text.primaryColor,
+            verticalPadding: AppTheme.Spacing.smMd
+        )
     }
 
-    private var urlSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
-            sectionHeading("Server URL")
-            HStack(spacing: AppTheme.Spacing.smMd) {
-                Text(mcpEndpoint)
-                    .font(.system(.callout, design: .monospaced))
-                    .foregroundStyle(AppTheme.Text.primaryColor)
-                    .padding(.horizontal, AppTheme.Spacing.mdLg)
-                    .padding(.vertical, AppTheme.Spacing.smMd)
-                    .background(
-                        RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                            .stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
-                    )
-
-                CopyButton(value: mcpEndpoint)
-                Spacer()
-            }
+    private var agentList: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
+            claudeDesktopSection
+            agentDivider
+            claudeCodeSection
+            agentDivider
+            codexSection
+            agentDivider
+            cursorSection
         }
     }
 
     private var cursorSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            sectionHeading("Connect from Cursor", prominent: true)
-            installButton(label: "Install in Cursor", systemImage: "arrow.down.circle") {
-                if let url = cursorDeepLink {
-                    NSWorkspace.shared.open(url, configuration: .init(), completionHandler: nil)
-                }
-            }
-            manualFallback(
-                intro: "Add this to ~/.cursor/mcp.json in your project:",
+        agentSection(
+            .cursor,
+            name: "Cursor",
+            description: "Install the Palmier Pro MCP server in Cursor.",
+            action: ("Install in Cursor", openCursor)
+        ) {
+            ManualFallback(
+                intro: "Add this configuration to ~/.cursor/mcp.json.",
                 code: cursorJSONConfig
             )
         }
     }
 
     private var claudeDesktopSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            sectionHeading("Connect from Claude Desktop", prominent: true)
-            installButton(label: "Install in Claude Desktop", systemImage: "arrow.down.circle") {
-                openClaudeDesktopBundle()
-            }
-            manualFallback(
-                intro: "Open Claude Desktop → Settings → Developer → Edit Config, then merge this into mcpServers:",
+        agentSection(
+            .claude,
+            name: "Claude Desktop",
+            description: "Install the bundled Palmier Pro connector.",
+            action: ("Install in Claude Desktop", openClaudeDesktopBundle)
+        ) {
+            ManualFallback(
+                intro: "In Claude Desktop, open Settings › Developer › Edit Config, then add this configuration to mcpServers.",
                 code: claudeDesktopJSONConfig
             )
         }
     }
 
-    private func openClaudeDesktopBundle() {
-        guard let resourceURL = Bundle.main.resourceURL else { return }
-        let url = resourceURL.appendingPathComponent("palmier-pro.mcpb")
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
-        NSWorkspace.shared.open(url, configuration: .init(), completionHandler: nil)
-    }
-
     private var claudeCodeSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
-            sectionHeading("Connect from Claude Code", prominent: true)
-            Text("Run this once in your terminal:")
-                .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
+        agentSection(
+            .claude,
+            name: "Claude Code",
+            description: "Run this command once in Terminal."
+        ) {
             CodeBlockView(content: claudeCodeCommand)
         }
     }
 
     private var codexSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
-            sectionHeading("Connect from Codex", prominent: true)
-            Text("Run this once in your terminal:")
-                .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
+        agentSection(
+            .codex,
+            name: "Codex",
+            description: "Run this command once in Terminal."
+        ) {
             CodeBlockView(content: codexCommand)
         }
     }
 
-    // MARK: - Helpers
-
-    private func sectionHeading(_ text: String, prominent: Bool = false) -> some View {
-        Text(text)
-            .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
-            .foregroundStyle(prominent ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
-            .textCase(.uppercase)
-            .tracking(0.3)
+    private var agentDivider: some View {
+        Divider().overlay(AppTheme.Border.subtleColor)
     }
 
-    private func installButton(label: String, systemImage: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: AppTheme.Spacing.sm) {
-                Image(systemName: systemImage)
-                    .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
-                Text(label)
-                    .font(.system(size: AppTheme.FontSize.smMd, weight: .medium))
+    private func agentSection<Details: View>(
+        _ agent: SkillExternalAgent,
+        name: String,
+        description: String,
+        action: (label: String, perform: () -> Void)? = nil,
+        @ViewBuilder details: () -> Details
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            HStack(alignment: .center, spacing: AppTheme.Spacing.md) {
+                agentIdentity(agent: agent, name: name, description: description)
+                if let action {
+                    Spacer(minLength: AppTheme.Spacing.md)
+                    externalAction(action.label, action: action.perform)
+                }
             }
-            .foregroundStyle(AppTheme.Text.primaryColor)
-            .padding(.horizontal, AppTheme.Spacing.mdLg)
-            .padding(.vertical, AppTheme.Spacing.smMd)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                    .fill(AppTheme.Accent.primary.opacity(AppTheme.Opacity.muted))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                    .stroke(AppTheme.Accent.primary.opacity(AppTheme.Opacity.medium), lineWidth: AppTheme.BorderWidth.thin)
-            )
+            details()
+        }
+        .padding(.vertical, AppTheme.Spacing.mdLg)
+    }
+
+    private func agentIdentity(agent: SkillExternalAgent, name: String, description: String) -> some View {
+        HStack(spacing: AppTheme.Spacing.md) {
+            ExternalAgentLogo(agent: agent, size: AppTheme.IconSize.lgXl)
+
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                Text(name)
+                    .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                Text(description)
+                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func externalAction(_ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: AppTheme.Spacing.xxs) {
+                Text(label)
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.regular))
+            }
+            .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
+            .foregroundStyle(AppTheme.Accent.link)
         }
         .buttonStyle(.plain)
+        .fixedSize()
+        .pointerStyle(.link)
     }
 
-    private func manualFallback(intro: String, code: String) -> some View {
-        ManualFallback(intro: intro, code: code)
+    private func openCursor() {
+        guard let cursorDeepLink else { return }
+        NSWorkspace.shared.open(cursorDeepLink, configuration: .init(), completionHandler: nil)
+    }
+
+    private func openClaudeDesktopBundle() {
+        guard let bundleURL = claudeDesktopBundleURL else {
+            claudeInstallError = "The Palmier Pro connector could not be found. Use manual setup instead."
+            return
+        }
+        guard let claudeURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.anthropic.claudefordesktop") else {
+            claudeInstallError = "Install Claude Desktop, then try again."
+            return
+        }
+
+        NSWorkspace.shared.open(
+            [bundleURL],
+            withApplicationAt: claudeURL,
+            configuration: .init()
+        ) { _, error in
+            guard error != nil else { return }
+            Task { @MainActor in
+                claudeInstallError = "Claude Desktop could not open the Palmier Pro connector. Use manual setup instead."
+            }
+        }
+    }
+
+    private var claudeDesktopBundleURL: URL? {
+        BundledResource.url("palmier-pro.mcpb")
     }
 }
 
 private struct CodeBlockView: View {
     let content: String
+    var fontSize = AppTheme.FontSize.xs
+    var foreground = AppTheme.Text.secondaryColor
+    var verticalPadding = AppTheme.Spacing.md
 
     var body: some View {
         HStack(alignment: .top, spacing: AppTheme.Spacing.smMd) {
             Text(content)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(AppTheme.Text.primaryColor)
+                .font(.system(size: fontSize, weight: AppTheme.FontWeight.regular, design: .monospaced))
+                .foregroundStyle(foreground)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             CopyButton(value: content)
         }
         .padding(.horizontal, AppTheme.Spacing.mdLg)
-        .padding(.vertical, AppTheme.Spacing.md)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                .fill(.ultraThinMaterial)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                .stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
-        )
+        .padding(.vertical, verticalPadding)
+        .themedSurface(AppTheme.Background.raisedColor, cornerRadius: AppTheme.Radius.sm)
     }
 }
 
 private struct ManualFallback: View {
     let intro: String
     let code: String
-    @State private var expanded: Bool = false
+    @State private var expanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
             Button(action: toggle) {
                 HStack(spacing: AppTheme.Spacing.sm) {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: AppTheme.FontSize.xxs, weight: .semibold))
+                        .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.regular))
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                     Text("Manual setup")
-                        .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                        .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
                 }
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .foregroundStyle(AppTheme.Text.secondaryColor)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -254,14 +292,13 @@ private struct ManualFallback: View {
             if expanded {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
                     Text(intro)
-                        .font(.system(size: AppTheme.FontSize.sm))
+                        .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .fixedSize(horizontal: false, vertical: true)
                     CodeBlockView(content: code)
                 }
             }
         }
-        .padding(.top, AppTheme.Spacing.xxs)
     }
 
     private func toggle() {
@@ -272,13 +309,15 @@ private struct ManualFallback: View {
 }
 
 private struct CopyButton: View {
+    private static let feedbackDuration: Duration = .seconds(1.4)
+
     let value: String
     @State private var copied = false
 
     var body: some View {
         Button(action: copy) {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
                 .foregroundStyle(copied ? AppTheme.Text.primaryColor : AppTheme.Text.secondaryColor)
                 .frame(width: AppTheme.IconSize.lg, height: AppTheme.IconSize.lg)
                 .hoverHighlight()
@@ -288,12 +327,12 @@ private struct CopyButton: View {
     }
 
     private func copy() {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(value, forType: .string)
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(value, forType: .string)
         copied = true
         Task {
-            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            try? await Task.sleep(for: Self.feedbackDuration)
             copied = false
         }
     }
@@ -301,6 +340,6 @@ private struct CopyButton: View {
 
 #Preview {
     MCPInstructionsPane()
-        .frame(width: 680, height: 560)
+        .frame(width: AppTheme.Settings.contentMaxWidth, height: AppTheme.Settings.skillDetailMinHeight)
         .background(AppTheme.Background.surfaceColor)
 }

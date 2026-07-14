@@ -11,10 +11,13 @@ struct AgentPane: View {
     private let consoleURL = URL(string: "https://console.anthropic.com/settings/keys")!
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
-            apiKeySection
-            Divider().overlay(AppTheme.Border.subtleColor)
-            mcpSection
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxl) {
+            SettingsSection(title: "AI Chat") {
+                apiKeySection
+            }
+            SettingsSection(title: "Integrations") {
+                mcpSection
+            }
         }
         .onAppear(perform: refresh)
     }
@@ -29,26 +32,27 @@ struct AgentPane: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             Text("Anthropic API Key")
-                .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+                .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
             HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-                Text("Used your own API key for the AI chat. Stored in your macOS Keychain.")
+                Text("Use your own API key for AI chat. Stored in the macOS Keychain.")
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Button(action: { NSWorkspace.shared.open(consoleURL, configuration: .init(), completionHandler: nil) }) {
-                    HStack(spacing: 2) {
+                    HStack(spacing: AppTheme.Spacing.xxs) {
                         Text("Get Anthropic API key")
                         Image(systemName: "arrow.up.right")
-                            .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
+                            .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.semibold))
                     }
                     .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(AppTheme.Accent.primary)
+                    .foregroundStyle(AppTheme.Accent.link)
                 }
                 .buttonStyle(.plain)
                 .fixedSize()
+                .pointerStyle(.link)
             }
         }
     }
@@ -84,7 +88,7 @@ struct AgentPane: View {
     }
 
     private var placeholder: String {
-        hasKey ? maskedKey : "sk-ant-..."
+        hasKey ? maskedKey : "sk-ant-…"
     }
 
     @ViewBuilder
@@ -165,7 +169,7 @@ struct AgentPane: View {
     private var mcpHeader: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             Text("MCP Server")
-                .font(.system(size: AppTheme.FontSize.md, weight: .medium))
+                .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
             HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
@@ -175,16 +179,17 @@ struct AgentPane: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 Button(action: openInstructions) {
-                    HStack(spacing: 2) {
+                    HStack(spacing: AppTheme.Spacing.xxs) {
                         Text("Setup instructions")
                         Image(systemName: "arrow.up.right")
-                            .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
+                            .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.semibold))
                     }
                     .font(.system(size: AppTheme.FontSize.sm))
-                    .foregroundStyle(AppTheme.Accent.primary)
+                    .foregroundStyle(AppTheme.Accent.link)
                 }
                 .buttonStyle(.plain)
                 .fixedSize()
+                .pointerStyle(.link)
             }
         }
     }
@@ -193,12 +198,12 @@ struct AgentPane: View {
         HStack(spacing: AppTheme.Spacing.sm) {
             HStack(spacing: AppTheme.Spacing.sm) {
                 Circle()
-                    .fill((appState.mcpService?.isRunning ?? false) ? Color.green : AppTheme.Text.mutedColor)
-                    .frame(width: 8, height: 8)
+                    .fill((appState.mcpService?.isRunning ?? false) ? AppTheme.Status.successColor : AppTheme.Text.mutedColor)
+                    .frame(width: AppTheme.Spacing.smMd, height: AppTheme.Spacing.smMd)
 
                 if appState.mcpService?.isRunning ?? false {
-                    HStack(alignment: .firstTextBaseline, spacing: 0) {
-                        Text("Running on ")
+                    HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.xxs) {
+                        Text("Running on")
                             .foregroundStyle(AppTheme.Text.secondaryColor)
                         Text("127.0.0.1:\(String(MCPService.port))")
                             .font(.system(size: AppTheme.FontSize.sm, design: .monospaced))
@@ -222,18 +227,10 @@ struct AgentPane: View {
             )
             .labelsHidden()
             .toggleStyle(.switch)
-            .controlSize(.small)
+            .controlSize(.mini)
+            .accessibilityLabel("MCP Server")
         }
-        .padding(.horizontal, AppTheme.Spacing.md)
-        .padding(.vertical, AppTheme.Spacing.smMd)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .fill(Color.black.opacity(AppTheme.Opacity.muted))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
-        )
+        .padding(.top, AppTheme.Spacing.xs)
     }
 
     private func openInstructions() {

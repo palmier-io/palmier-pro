@@ -35,6 +35,14 @@ enum SkillFrontmatter {
         return (fields, body)
     }
 
+    static func requiredFields(_ text: String) -> (name: String, description: String, body: String)? {
+        let parsed = parse(text)
+        guard let name = parsed.fields["name"], !name.trimmingCharacters(in: .whitespaces).isEmpty,
+              let description = parsed.fields["description"],
+              !description.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return (name, description, parsed.body)
+    }
+
     static func replacingName(_ text: String, name: String) -> String {
         let lines = text.components(separatedBy: "\n")
         guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else {

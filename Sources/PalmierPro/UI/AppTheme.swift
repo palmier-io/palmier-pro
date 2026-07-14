@@ -53,6 +53,8 @@ enum AppTheme {
         /// Warm off-white
         static let primary = Color(red: 0.961, green: 0.937, blue: 0.894)
 
+        static let link = Color(nsColor: .linkColor)
+
         /// Vibrant highlight used by the onboarding tour spotlight.
         static let spotlight = Color(red: 1.0, green: 0.27, blue: 0.27)
         static let spotlightGradient = LinearGradient(
@@ -302,12 +304,27 @@ enum AppTheme {
         static let updateOverlayWidth: CGFloat = 640
     }
 
+    enum Settings {
+        static let sidebarWidth: CGFloat = 220
+        static let contentMaxWidth: CGFloat = 640
+        static let creditInputWidth: CGFloat = 56
+        static let skillsSearchWidth: CGFloat = 260
+        static let skillRowIconFrame: CGFloat = 42
+        static let skillStatusWidth: CGFloat = 124
+        static let skillActionWidth: CGFloat = 72
+        static let skillDetailWidth: CGFloat = 720
+        static let skillDetailMinHeight: CGFloat = 600
+        static let skillToastWidth: CGFloat = 380
+        static let skillMenuWidth: CGFloat = 168
+        static let skillToastDuration: Duration = .seconds(5)
+    }
+
     enum Window {
-        static let homeDefault = NSSize(width: 1200, height: 880)
+        static let homeDefault = NSSize(width: 1200, height: 800)
         static let homeMin = NSSize(width: 760, height: 480)
         static let projectMin = NSSize(width: 960, height: 600)
         static let projectTitlebarTrailingWidth: CGFloat = 280
-        static let settingsDefault = NSSize(width: 1200, height: 900)
+        static let settingsDefault = NSSize(width: 1200, height: 800)
         static let settingsMin = NSSize(width: 860, height: 640)
     }
 

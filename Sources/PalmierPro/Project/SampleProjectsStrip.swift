@@ -21,13 +21,14 @@ struct SampleProjectsStrip: View {
             } label: {
                 HStack(spacing: AppTheme.Spacing.xs) {
                     Text("Sample Project")
-                        .font(.system(size: AppTheme.FontSize.md, weight: .semibold))
+                        .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
+                        .foregroundStyle(AppTheme.Text.primaryColor)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
+                        .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.regular))
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                     Spacer()
                 }
-                .foregroundStyle(AppTheme.Text.secondaryColor)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -173,4 +174,3 @@ private struct SampleCard: View {
         }
     }
 }
-

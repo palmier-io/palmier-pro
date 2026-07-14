@@ -8,55 +8,59 @@ struct StoragePane: View {
     @State private var searchEnabled = SearchIndexConfig.enabled
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                    Text("Cache")
-                        .font(.system(size: AppTheme.FontSize.md))
-                        .foregroundStyle(AppTheme.Text.primaryColor)
-                    Text("Saved playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; they'll rebuild as needed.")
-                        .font(.system(size: AppTheme.FontSize.sm))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: AppTheme.Spacing.sm) {
-                        Text(displayPath)
-                            .font(.system(size: AppTheme.FontSize.xs).monospaced())
-                            .foregroundStyle(AppTheme.Text.tertiaryColor)
-                            .textSelection(.enabled)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Text(formattedSize)
-                            .font(.system(size: AppTheme.FontSize.xs).monospacedDigit())
-                            .foregroundStyle(AppTheme.Text.secondaryColor)
-                    }
-                    .padding(.top, AppTheme.Spacing.xs)
-                }
-
-                Spacer(minLength: AppTheme.Spacing.lg)
-
-                Button("Clear cache") {
-                    clear()
-                }
-                .controlSize(.small)
-                .disabled(isClearing || cacheBytes == 0)
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxl) {
+            SettingsSection(title: "Cache") {
+                cacheRow
             }
-
-            Divider()
-                .overlay(AppTheme.Border.subtleColor)
-
-            searchIndexSection
+            SettingsSection(title: "Search") {
+                searchIndexSection
+            }
         }
         .task { await refresh() }
+    }
+
+    private var cacheRow: some View {
+        HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                Text("Temporary files")
+                    .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                Text("Playback previews, waveforms, filmstrip thumbnails, and transcripts. Safe to clear; files rebuild as needed.")
+                    .font(.system(size: AppTheme.FontSize.sm))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: AppTheme.Spacing.sm) {
+                    Text(displayPath)
+                        .font(.system(size: AppTheme.FontSize.xs).monospaced())
+                        .foregroundStyle(AppTheme.Text.tertiaryColor)
+                        .textSelection(.enabled)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text(formattedSize)
+                        .font(.system(size: AppTheme.FontSize.xs).monospacedDigit())
+                        .foregroundStyle(AppTheme.Text.secondaryColor)
+                }
+                .padding(.top, AppTheme.Spacing.xs)
+            }
+
+            Spacer(minLength: AppTheme.Spacing.lg)
+
+            Button("Clear cache") {
+                clear()
+            }
+            .buttonStyle(actionButtonStyle)
+            .disabled(isClearing || cacheBytes == 0)
+        }
     }
 
     private var searchIndexSection: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
             HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                    Text("Media search")
-                        .font(.system(size: AppTheme.FontSize.md))
+                    Text("Media indexing")
+                        .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
                         .foregroundStyle(AppTheme.Text.primaryColor)
-                    Text("Indexes media on import so you can search it. Runs on-device.")
+                    Text("Indexes imported media for on-device search.")
                         .font(.system(size: AppTheme.FontSize.sm))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .fixedSize(horizontal: false, vertical: true)
@@ -64,8 +68,9 @@ struct StoragePane: View {
                 Spacer(minLength: AppTheme.Spacing.lg)
                 Toggle("", isOn: $searchEnabled)
                     .toggleStyle(.switch)
-                    .controlSize(.small)
+                    .controlSize(.mini)
                     .labelsHidden()
+                    .accessibilityLabel("Media search")
                     .onChange(of: searchEnabled) { _, newValue in
                         VisualModelLoader.shared.setEnabled(newValue)
                     }
@@ -78,8 +83,9 @@ struct StoragePane: View {
                 Text(ByteCountFormatter.string(fromByteCount: indexBytes, countStyle: .file))
                     .font(.system(size: AppTheme.FontSize.xs).monospacedDigit())
                     .foregroundStyle(AppTheme.Text.secondaryColor)
+                Spacer(minLength: AppTheme.Spacing.md)
                 Button("Clear index") { clearIndex() }
-                    .controlSize(.small)
+                    .buttonStyle(actionButtonStyle)
                     .disabled(indexBytes == 0)
             }
             .padding(.top, AppTheme.Spacing.xs)
@@ -92,11 +98,20 @@ struct StoragePane: View {
                     Text("\(SearchIndexConfig.manifest.model) · \(ByteCountFormatter.string(fromByteCount: modelBytes, countStyle: .file))")
                         .font(.system(size: AppTheme.FontSize.xs).monospacedDigit())
                         .foregroundStyle(AppTheme.Text.secondaryColor)
+                    Spacer(minLength: AppTheme.Spacing.md)
                     Button("Remove model") { removeModel() }
-                        .controlSize(.small)
+                        .buttonStyle(actionButtonStyle)
                 }
             }
         }
+    }
+
+    private var actionButtonStyle: CapsuleButtonStyle {
+        .init(
+            variant: .secondary,
+            size: .small,
+            fill: AnyShapeStyle(AppTheme.Background.raisedColor)
+        )
     }
 
     private nonisolated static let caches = [ImageVideoGenerator.cache, MediaVisualCache.diskCache, DiskCache(directory: TranscriptCache.directory), AudioEnhancer.cache, VoiceActivity.cache, SpeakerIdentity.cache]
