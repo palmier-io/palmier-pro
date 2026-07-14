@@ -246,8 +246,8 @@ extension EditorViewModel {
         if !moves.isEmpty {
             undoManager?.beginUndoGrouping()
             moveClips(moves)
-            undoManager?.endUndoGrouping()
             undoManager?.setActionName("Synchronize")
+            undoManager?.endUndoGrouping()
         }
         return report
     }

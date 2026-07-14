@@ -97,6 +97,7 @@ final class ToolExecutor {
             )
             return .error("Editor not available")
         }
+        await settlePendingUndoGrouping(editor.undoManager)
         let before = editor.timelines
         let idsBefore = currentIdUniverse(editor)
         let result: ToolResult
@@ -211,6 +212,28 @@ final class ToolExecutor {
     }
 
     private func run(_ tool: ToolName, _ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
+        guard Self.wrapsToolInUndoGroup(tool), let undoManager = editor.undoManager else {
+            return try await dispatch(tool, editor, args)
+        }
+        undoManager.beginUndoGrouping()
+        defer { undoManager.endUndoGrouping() }
+        return try await dispatch(tool, editor, args)
+    }
+
+    private static func wrapsToolInUndoGroup(_ tool: ToolName) -> Bool {
+        switch tool {
+        case .applyColor, .applyEffect, .denoiseAudio, .addClips, .insertClips, .removeClips,
+             .manageTracks, .moveClips, .applyLayout, .setClipProperties, .setKeyframes,
+             .splitClips, .rippleDeleteRanges, .removeSilence, .changeCam, .addTexts,
+             .updateText, .organizeMedia, .setProjectSettings, .createTimeline,
+             .generateVideo, .generateImage, .upscaleMedia:
+            true
+        default:
+            false
+        }
+    }
+
+    private func dispatch(_ tool: ToolName, _ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         switch tool {
         case .getTimeline:   return try getTimeline(editor, args)
         case .getMedia:      return try getMedia(editor, args)
@@ -281,6 +304,9 @@ final class ToolExecutor {
             agentUndoStack.removeAll()
             throw ToolError("Nothing to undo.")
         }
+        guard undoManager.groupingLevel == 0 else {
+            throw ToolError("An undo group is still open (an edit is in progress) — try again.")
+        }
         guard undoManager.undoActionName == expected else {
             throw ToolError("The most recent change ('\(undoManager.undoActionName)') wasn't made by the assistant — not undoing it.")
         }
@@ -327,18 +353,23 @@ final class ToolExecutor {
 
     func withUndoGroup<T>(_ editor: EditorViewModel, actionName: String, _ work: () throws -> T) rethrows -> T {
         guard let undoManager = editor.undoManager else { return try work() }
-        let restoresEventGrouping = undoManager.groupsByEvent && undoManager.groupingLevel <= 1
-        if restoresEventGrouping {
-            undoManager.groupsByEvent = false
-            if undoManager.groupingLevel == 1 { undoManager.endUndoGrouping() }
-        }
         undoManager.beginUndoGrouping()
         defer {
             undoManager.setActionName(actionName)
             undoManager.endUndoGrouping()
-            if restoresEventGrouping { undoManager.groupsByEvent = true }
         }
         return try work()
+    }
+
+    func settlePendingUndoGrouping(_ undoManager: UndoManager?) async {
+        guard let undoManager else { return }
+        var turns = 0
+        while undoManager.groupsByEvent, undoManager.groupingLevel > 0, turns < 3 {
+            turns += 1
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                DispatchQueue.main.async { cont.resume() }
+            }
+        }
     }
 }
 

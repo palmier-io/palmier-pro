@@ -173,10 +173,12 @@ extension EditorViewModel {
             inverse.append((change.id, get(self, change.id)))
             set(self, change.id, change.newValue)
         }
+        undoManager?.beginUndoGrouping()
         undoManager?.registerUndo(withTarget: self) { vm in
             vm.applyParentChanges(inverse, actionName: actionName, get: get, set: set)
         }
         undoManager?.setActionName(actionName)
+        undoManager?.endUndoGrouping()
     }
 
     func mediaLibraryUndoSnapshot() -> MediaLibraryUndoSnapshot {

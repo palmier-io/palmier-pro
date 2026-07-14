@@ -104,8 +104,8 @@ extension ToolExecutor {
         let snapshot = timelineSnapshot(editor)
         editor.undoManager?.beginUndoGrouping()
         let outcome = editor.rippleDeleteRangesOnTrack(trackIndex: primaryTrack, ranges: primaryRanges)
-        editor.undoManager?.endUndoGrouping()
         editor.undoManager?.setActionName("Remove Words (Agent)")
+        editor.undoManager?.endUndoGrouping()
         guard case .ok(let report) = outcome else {
             if case .refused(let reason) = outcome { throw ToolError("Ripple delete refused: \(reason)") }
             throw ToolError("Ripple delete refused.")

@@ -41,7 +41,7 @@ struct UndoToolTests {
         #expect(h.editor.timeline.tracks[0].clips.map(\.durationFrames) == [30, 70])
     }
 
-    @Test func undoKeepsNewTimelineWhenAutomaticEventGroupStaysOpen() async throws {
+    @Test func toolsNestSafelyWhenAutomaticEventGroupStaysOpen() async throws {
         let (h, um) = harness()
         um.runLoopModes = [RunLoop.Mode("AgentUndoBoundaryTests")]
         um.registerUndo(withTarget: h.editor) { _ in }
@@ -51,17 +51,32 @@ struct UndoToolTests {
         _ = await h.runRaw("create_timeline", args: ["from": sourceTimelineId])
         let createdTimelineId = h.editor.activeTimelineId
         let createdClipId = h.editor.timeline.tracks[0].clips[0].id
-        _ = await h.runRaw("set_clip_properties", args: [
+        let edit = await h.runRaw("set_clip_properties", args: [
             "clipIds": [createdClipId],
             "volume": 0.25,
         ])
+        #expect(edit.isError == false)
+        #expect(um.groupsByEvent == true)
+        #expect(um.groupingLevel == 1)
 
         let result = await h.runRaw("undo")
 
-        #expect(result.isError == false)
+        #expect(result.isError == true)
         #expect(h.editor.timelines.count == 2)
         #expect(h.editor.activeTimelineId == createdTimelineId)
-        #expect(h.editor.timeline.tracks[0].clips[0].volume == 1.0)
+        #expect(h.editor.timeline.tracks[0].clips[0].volume == 0.25)
+    }
+
+    @Test func eachToolClosesItsOwnNamedUndoGroup() async throws {
+        let (h, um) = harness()
+        _ = await h.runRaw("split_clips", args: ["trackIndex": 0, "frames": [30]])
+        #expect(um.groupingLevel == 0)
+        #expect(um.undoActionName == "Split Clip")
+
+        let clipId = h.editor.timeline.tracks[0].clips[0].id
+        _ = await h.runRaw("set_clip_properties", args: ["clipIds": [clipId], "volume": 0.5])
+        #expect(um.groupingLevel == 0)
+        #expect(um.undoActionName == "Set Clip Property (Agent)")
     }
 
     @Test func refusesWhenAssistantHasNotEdited() async throws {

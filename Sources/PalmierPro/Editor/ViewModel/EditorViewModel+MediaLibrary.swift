@@ -277,10 +277,12 @@ extension EditorViewModel {
             folderCount: mediaManifest.folders.count - before.mediaManifest.folders.count
         )
         guard summary.assetCount != 0 || summary.folderCount != 0 else { return summary }
+        undoManager?.beginUndoGrouping()
         undoManager?.registerUndo(withTarget: self) { vm in
             vm.restoreMediaLibraryUndoSnapshot(before, actionName: "Import Media")
         }
         undoManager?.setActionName("Import Media")
+        undoManager?.endUndoGrouping()
         for asset in importedAssets {
             Task { await finalizeImportedAsset(asset, batchManifestUpdate: true) }
         }
