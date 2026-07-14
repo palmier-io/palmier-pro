@@ -1,5 +1,7 @@
 import Foundation
+#if PRODUCTION_TELEMETRY
 import PostHog
+#endif
 
 enum Analytics {
     typealias Payload = [String: Any]
@@ -17,8 +19,10 @@ enum Analytics {
         case mcpSessionStarted = "mcp session started"
     }
 
+    #if PRODUCTION_TELEMETRY
     private static let projectToken = Bundle.main.object(forInfoDictionaryKey: "PostHogProjectToken") as? String ?? ""
     private static let host = Bundle.main.object(forInfoDictionaryKey: "PostHogHost") as? String ?? PostHogConfig.defaultHost
+    #endif
     private static let enabledKey = "io.palmier.pro.analytics.enabled"
 
     static var isEnabled: Bool {
@@ -29,12 +33,14 @@ enum Analytics {
         }
         set {
             UserDefaults.standard.set(newValue, forKey: enabledKey)
+            #if PRODUCTION_TELEMETRY
             guard didStart else { return }
             if newValue {
                 PostHogSDK.shared.optIn()
             } else {
                 PostHogSDK.shared.optOut()
             }
+            #endif
         }
     }
 
@@ -45,6 +51,7 @@ enum Analytics {
     private static let lock = NSLock()
 
     static func start() {
+        #if PRODUCTION_TELEMETRY
         guard !didStart else { return }
         guard !projectToken.isEmpty else { return }
 
@@ -66,25 +73,34 @@ enum Analytics {
 
         PostHogSDK.shared.setup(config)
         didStart = true
+        #endif
     }
 
     static func identifyUser(id: String?, properties: Payload = [:]) {
+        #if PRODUCTION_TELEMETRY
         guard didStart, isEnabled else { return }
         guard let id, !id.isEmpty else { return }
         let userProperties = cleanedCustomPayload(properties)
         PostHogSDK.shared.identify(id, userProperties: userProperties.isEmpty ? nil : userProperties)
+        #endif
     }
 
     static func resetUser() {
+        #if PRODUCTION_TELEMETRY
         guard didStart else { return }
         PostHogSDK.shared.reset()
+        #endif
     }
 
     @discardableResult
     static func capture(_ event: Event, properties: Payload = [:]) -> Bool {
+        #if PRODUCTION_TELEMETRY
         guard didStart, isEnabled else { return false }
         PostHogSDK.shared.capture(event.rawValue, properties: cleanedPayload(properties))
         return true
+        #else
+        return false
+        #endif
     }
 
     static func captureProjectActive(projectId: String?, properties: Payload = [:]) {

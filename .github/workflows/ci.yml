@@ -28,8 +28,5 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
-      - name: Build
-        run: swift build
-
       - name: Test
         run: swift test
