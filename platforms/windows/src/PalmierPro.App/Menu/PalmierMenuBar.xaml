@@ -1,0 +1,210 @@
+<UserControl
+    x:Class="PalmierPro.App.Menu.PalmierMenuBar"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:PalmierPro.App.ViewModels"
+    mc:Ignorable="d">
+
+    <!--
+        Mirrors App/MainMenu.swift's MainMenuBuilder 1:1: same App/File/Edit/View/Help structure,
+        same item order, same separators. Cmd -> Ctrl, Cmd+Opt -> Ctrl+Alt (VirtualKeyModifiers.Menu
+        is Alt). A few Mac key equivalents have no direct WinUI VirtualKey (OEM comma/backtick/"?")
+        and are simply not bound to an accelerator here — those items (Settings, Maximize Focused
+        Panel, Keyboard Shortcuts) are also permanently disabled in M1, so nothing is lost yet.
+
+        Functional now (bound to Shell, the ShellViewModel): New, Open, Save, Save As, Undo, Redo,
+        Quit. Everything else is DisabledMenuCommands — present, permanently CanExecute=false,
+        until the feature it targets exists (editor UI in Stage C/D, Settings/Help/About windows
+        in a later stage).
+    -->
+    <MenuBar Background="Transparent">
+
+        <!-- App menu — Mac's application menu has no Windows OS equivalent; kept in-window. -->
+        <MenuBarItem Title="Palmier Pro">
+            <MenuFlyoutItem Text="About Palmier Pro" Command="{x:Bind vm:DisabledMenuCommands.About}"/>
+            <MenuFlyoutSeparator/>
+            <MenuFlyoutItem Text="Check for Updates…" Command="{x:Bind vm:DisabledMenuCommands.CheckForUpdates}"/>
+            <MenuFlyoutSeparator/>
+            <!-- Mac: Cmd+, — no direct WinUI VirtualKey for comma; item is disabled anyway. -->
+            <MenuFlyoutItem Text="Settings…" Command="{x:Bind vm:DisabledMenuCommands.Settings}"/>
+            <MenuFlyoutSeparator/>
+            <MenuFlyoutItem Text="Quit Palmier Pro" Command="{x:Bind Shell.QuitCommand, Mode=OneWay}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="Q" Modifiers="Control"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+        </MenuBarItem>
+
+        <!-- File menu -->
+        <MenuBarItem Title="File">
+            <MenuFlyoutItem Text="New" Command="{x:Bind Shell.NewCommand, Mode=OneWay}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="N" Modifiers="Control"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutItem Text="Open…" Command="{x:Bind Shell.OpenCommand, Mode=OneWay}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="O" Modifiers="Control"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutSeparator/>
+            <MenuFlyoutItem Text="Save" Command="{x:Bind Shell.SaveCommand, Mode=OneWay}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="S" Modifiers="Control"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutItem Text="Save As…" Command="{x:Bind Shell.SaveAsCommand, Mode=OneWay}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="S" Modifiers="Control,Shift"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutSeparator/>
+            <MenuFlyoutItem Text="Import Media…" Command="{x:Bind vm:DisabledMenuCommands.ImportMedia}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="I" Modifiers="Control"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutSeparator/>
+            <MenuFlyoutItem Text="Export…" Command="{x:Bind vm:DisabledMenuCommands.Export}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="E" Modifiers="Control"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+        </MenuBarItem>
+
+        <!-- Edit menu -->
+        <MenuBarItem Title="Edit">
+            <MenuFlyoutItem Text="{x:Bind Shell.UndoMenuText, Mode=OneWay}" Command="{x:Bind Shell.UndoCommand, Mode=OneWay}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="Z" Modifiers="Control"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutItem Text="{x:Bind Shell.RedoMenuText, Mode=OneWay}" Command="{x:Bind Shell.RedoCommand, Mode=OneWay}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="Z" Modifiers="Control,Shift"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutSeparator/>
+            <MenuFlyoutItem Text="Cut" Command="{x:Bind vm:DisabledMenuCommands.Cut}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="X" Modifiers="Control"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutItem Text="Copy" Command="{x:Bind vm:DisabledMenuCommands.Copy}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="C" Modifiers="Control"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutItem Text="Paste" Command="{x:Bind vm:DisabledMenuCommands.Paste}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="V" Modifiers="Control"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutItem Text="Select All" Command="{x:Bind vm:DisabledMenuCommands.SelectAll}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="A" Modifiers="Control"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutSeparator/>
+            <MenuFlyoutItem Text="Select Forward on Track" Command="{x:Bind vm:DisabledMenuCommands.SelectForwardOnTrack}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="A" Invoked="RawKeyAccelerator_Invoked"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutItem Text="Select Forward on All Tracks" Command="{x:Bind vm:DisabledMenuCommands.SelectForwardOnAllTracks}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="A" Modifiers="Shift" Invoked="RawKeyAccelerator_Invoked"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutSeparator/>
+            <MenuFlyoutItem Text="Split at Playhead" Command="{x:Bind vm:DisabledMenuCommands.SplitAtPlayhead}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="K" Modifiers="Control"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutItem Text="Trim Start to Playhead" Command="{x:Bind vm:DisabledMenuCommands.TrimStartToPlayhead}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="Q" Invoked="RawKeyAccelerator_Invoked"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutItem Text="Trim End to Playhead" Command="{x:Bind vm:DisabledMenuCommands.TrimEndToPlayhead}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="W" Invoked="RawKeyAccelerator_Invoked"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutSeparator/>
+            <MenuFlyoutItem Text="Delete" Command="{x:Bind vm:DisabledMenuCommands.DeleteSelectedClips}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="Back" Invoked="RawKeyAccelerator_Invoked"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutItem Text="Ripple Delete" Command="{x:Bind vm:DisabledMenuCommands.RippleDelete}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="Back" Modifiers="Shift" Invoked="RawKeyAccelerator_Invoked"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+        </MenuBarItem>
+
+        <!-- View menu -->
+        <MenuBarItem Title="View">
+            <MenuFlyoutItem Text="Media Panel" Command="{x:Bind vm:DisabledMenuCommands.ToggleMediaPanel}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="Number0" Modifiers="Control"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutItem Text="Inspector" Command="{x:Bind vm:DisabledMenuCommands.ToggleInspector}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="Number0" Modifiers="Control,Menu"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <!-- Phase 2 feature (see AGENTS.md / port plan) — present in the menu, never enabled yet. -->
+            <MenuFlyoutItem Text="Agent Panel" Command="{x:Bind vm:DisabledMenuCommands.ToggleAgentPanel}">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="A" Modifiers="Control,Menu"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutSeparator/>
+            <!-- Mac: backtick, no modifier — no direct WinUI VirtualKey for backtick/grave. -->
+            <MenuFlyoutItem Text="Maximize Focused Panel" Command="{x:Bind vm:DisabledMenuCommands.ToggleMaximizePanel}"/>
+            <MenuFlyoutSeparator/>
+            <MenuFlyoutSubItem Text="Layout">
+                <MenuFlyoutItem Text="Default" Command="{x:Bind vm:DisabledMenuCommands.SetLayoutDefault}">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="Number1" Modifiers="Control"/>
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem Text="Media" Command="{x:Bind vm:DisabledMenuCommands.SetLayoutMedia}">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="Number2" Modifiers="Control"/>
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem Text="Vertical" Command="{x:Bind vm:DisabledMenuCommands.SetLayoutVertical}">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="Number3" Modifiers="Control"/>
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+            </MenuFlyoutSubItem>
+            <MenuFlyoutSeparator/>
+            <!-- Mac: Cmd+F. F11 is the Windows fullscreen convention (no modifier) — deliberate deviation. -->
+            <MenuFlyoutItem Text="Enter Full Screen" Click="EnterFullScreen_Click">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="F11"/>
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+        </MenuBarItem>
+
+        <!-- Help menu -->
+        <MenuBarItem Title="Help">
+            <MenuFlyoutItem Text="Tutorial" Command="{x:Bind vm:DisabledMenuCommands.Tutorial}"/>
+            <MenuFlyoutSeparator/>
+            <!-- Mac: Cmd+? — no direct WinUI VirtualKey for "?"; item is disabled anyway. -->
+            <MenuFlyoutItem Text="Keyboard Shortcuts" Command="{x:Bind vm:DisabledMenuCommands.KeyboardShortcuts}"/>
+            <MenuFlyoutItem Text="MCP Instructions" Command="{x:Bind vm:DisabledMenuCommands.MCPInstructions}"/>
+            <MenuFlyoutSeparator/>
+            <MenuFlyoutItem Text="Send Feedback…" Command="{x:Bind vm:DisabledMenuCommands.SendFeedback}"/>
+        </MenuBarItem>
+
+    </MenuBar>
+</UserControl>

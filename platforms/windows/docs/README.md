@@ -61,4 +61,20 @@ Visual Studio.
 
 `src/PalmierPro.DevHarness/` is a minimal WinUI3 window (`SwapChainPanel` named
 `EngineSurface`) used to manually verify native engine milestones E1–E3 (decode,
-composition, effect kernels) before the real Preview UI exists (Stage D).
+composition, effect kernels) before the real Preview UI exists (Stage D). Open a
+file, drag the time slider, and click **Show Frame** to decode + present that
+frame to the swap chain; resizing the window resizes the swap chain (quiesce ->
+`ResizeBuffers` -> re-`SetSwapChain`, per the threading contract documented in
+`native/include/palmier_engine.h`).
+
+Headless mode (no window, CI-facing):
+
+```powershell
+PalmierPro.DevHarness.exe --dump-frame <mediaPath> <seconds> <outPngPath>
+```
+
+Decodes the frame at `<seconds>` and writes it straight to `<outPngPath>` via
+`PE_RenderFrameToFile` — no D3D device, swap chain, or display session touched,
+so this runs on any CI runner. Exit code 0 on success. Implemented via a
+hand-written `Main` (`DISABLE_XAML_GENERATED_MAIN`) so this path never calls
+`Application.Start`.

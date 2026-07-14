@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:menu="using:PalmierPro.App.Menu"
     mc:Ignorable="d">
 
     <!-- Grid (a Panel) has no FontFamily of its own — WinUI's font-property inheritance flows down
@@ -13,6 +14,33 @@
         HorizontalContentAlignment="Stretch"
         VerticalContentAlignment="Stretch"
         IsTabStop="False">
-        <Grid Background="{StaticResource AppBackgroundBaseBrush}" />
+        <Grid Background="{StaticResource AppBackgroundBaseBrush}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Grid x:Name="TitleBarRoot" Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <menu:PalmierMenuBar x:Name="MenuBarHost" Grid.Column="0" VerticalAlignment="Center"/>
+
+                <!-- Passed to Window.SetTitleBar in code-behind: the draggable region. The title
+                     TextBlock lives inside it (non-interactive content doesn't block dragging). -->
+                <Grid x:Name="DragRegion" Grid.Column="1" Background="Transparent">
+                    <TextBlock x:Name="TitleText"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Foreground="{StaticResource AppTextSecondaryBrush}"
+                               FontSize="{StaticResource AppFontSizeSm}"/>
+                </Grid>
+            </Grid>
+
+            <ContentControl x:Name="ContentHost" Grid.Row="1"
+                             HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                             IsTabStop="False"/>
+        </Grid>
     </ContentControl>
 </Window>

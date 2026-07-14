@@ -52,6 +52,8 @@
     <TargetName>PalmierEngine</TargetName>
     <OutDir>$(MSBuildThisFileDirectory)..\..\..\artifacts\native\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(MSBuildThisFileDirectory)..\..\..\artifacts\native\obj\$(Platform)\$(Configuration)\PalmierEngine\</IntDir>
+    <!-- Restored by scripts/ci-restore-ffmpeg.ps1 (see ../../../ffmpeg.lock.json); not checked in. -->
+    <FFmpegDir>$(MSBuildThisFileDirectory)..\..\..\third_party\ffmpeg\</FFmpegDir>
   </PropertyGroup>
 
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
@@ -62,10 +64,13 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <SDLCheck>true</SDLCheck>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <AdditionalIncludeDirectories>$(FFmpegDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(FFmpegDir)lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>avformat.lib;avcodec.lib;avutil.lib;swscale.lib;swresample.lib;d3d11.lib;dxgi.lib;d3dcompiler.lib;windowscodecs.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
 
@@ -79,21 +84,33 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <SDLCheck>true</SDLCheck>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <AdditionalIncludeDirectories>$(FFmpegDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(FFmpegDir)lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>avformat.lib;avcodec.lib;avutil.lib;swscale.lib;swresample.lib;d3d11.lib;dxgi.lib;d3dcompiler.lib;windowscodecs.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
 
   <ItemGroup>
     <ClCompile Include="PalmierEngine.cpp" />
+    <ClCompile Include="EngineSession.cpp" />
+    <ClCompile Include="MediaSource.cpp" />
+    <ClCompile Include="D3D11Presenter.cpp" />
+    <ClCompile Include="WicPngWriter.cpp" />
   </ItemGroup>
 
   <ItemGroup>
     <ClInclude Include="include\palmier_engine.h" />
+    <ClInclude Include="EngineSession.h" />
+    <ClInclude Include="MediaSource.h" />
+    <ClInclude Include="D3D11Presenter.h" />
+    <ClInclude Include="WinUISwapChainInterop.h" />
+    <ClInclude Include="WicPngWriter.h" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -1,0 +1,62 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.HomeView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:views="using:PalmierPro.App.Views"
+    xmlns:project="using:PalmierPro.Services.Project"
+    mc:Ignorable="d">
+
+    <Border x:Name="RootBorder" Background="{StaticResource AppBackgroundBaseBrush}">
+    <Grid x:Name="RootGrid" RowSpacing="{StaticResource AppSpacingLg}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="WelcomeText" Grid.Row="0"
+                   Text="Welcome to Palmier Pro"
+                   Foreground="{StaticResource AppTextPrimaryBrush}"
+                   FontSize="{StaticResource AppFontSizeTitle2}"
+                   FontWeight="Light"/>
+
+        <StackPanel x:Name="ActionsPanel" Grid.Row="1" Orientation="Horizontal" Spacing="{StaticResource AppSpacingMd}">
+            <Button x:Name="NewProjectButton" Content="New Project" Click="NewProjectButton_Click"/>
+            <Button x:Name="OpenProjectButton" Content="Open Project" Click="OpenProjectButton_Click"/>
+        </StackPanel>
+
+        <TextBlock x:Name="SectionText" Grid.Row="2"
+                   Text="My Projects"
+                   Foreground="{StaticResource AppTextSecondaryBrush}"
+                   FontSize="{StaticResource AppFontSizeMd}"
+                   FontWeight="SemiBold"/>
+
+        <Grid Grid.Row="3">
+            <views:NewProjectCard x:Name="NewProjectTile"
+                       HorizontalAlignment="Left" VerticalAlignment="Top"
+                       Visibility="{x:Bind EmptyStateVisibility(ViewModel.RecentProjects.Count), Mode=OneWay}"
+                       CreateRequested="NewProjectCard_CreateRequested"/>
+
+            <GridView x:Name="ProjectsGridView"
+                      ItemsSource="{x:Bind ViewModel.RecentProjects, Mode=OneWay}"
+                      SelectionMode="None"
+                      IsItemClickEnabled="False"
+                      Visibility="{x:Bind GridVisibility(ViewModel.RecentProjects.Count), Mode=OneWay}">
+                <GridView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <ItemsWrapGrid Orientation="Horizontal"/>
+                    </ItemsPanelTemplate>
+                </GridView.ItemsPanel>
+                <GridView.ItemTemplate>
+                    <DataTemplate x:DataType="project:ProjectEntry">
+                        <views:ProjectCard OpenRequested="ProjectCard_OpenRequested" RemoveRequested="ProjectCard_RemoveRequested"/>
+                    </DataTemplate>
+                </GridView.ItemTemplate>
+            </GridView>
+        </Grid>
+    </Grid>
+    </Border>
+</UserControl>

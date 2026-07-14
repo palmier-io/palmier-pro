@@ -1,0 +1,31 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.EditorPlaceholderView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Empty themed panel skeleton only — media/preview/inspector/timeline regions, no content
+         or interaction. The real editor (panels, timeline, preview) lands in Stage C/D. -->
+    <Grid x:Name="RootGrid" Background="{StaticResource AppBackgroundBaseBrush}"
+          RowSpacing="{StaticResource AppSpacingSm}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="3*"/>
+            <RowDefinition Height="1*"/>
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="TopRow" Grid.Row="0" ColumnSpacing="{StaticResource AppSpacingSm}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1*"/>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="1*"/>
+            </Grid.ColumnDefinitions>
+            <Border x:Name="MediaPanel" Grid.Column="0" Background="{StaticResource AppBackgroundRaisedBrush}"/>
+            <Border x:Name="PreviewPanel" Grid.Column="1" Background="{StaticResource AppBackgroundPreviewCanvasBrush}"/>
+            <Border x:Name="InspectorPanel" Grid.Column="2" Background="{StaticResource AppBackgroundRaisedBrush}"/>
+        </Grid>
+
+        <Border x:Name="TimelinePanel" Grid.Row="1" Background="{StaticResource AppBackgroundRaisedBrush}"/>
+    </Grid>
+</UserControl>

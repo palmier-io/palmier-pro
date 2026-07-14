@@ -7,13 +7,29 @@ each dependency lands.
 
 ## FFmpeg (GPL build)
 
-**Status: added when the dependency lands (milestone E1).**
+**Status: landed (milestone E1).**
 
 Demux/decode/mux/encode. GPL build (`--enable-gpl`, x264/x265/nvcodec) —
-license-compatible with this GPLv3 repo. Dynamic DLLs, not statically linked.
-Local/release builds via vcpkg (`ffmpeg[gpl,x264,x265,nvcodec]:x64-windows`); CI
-consumes a pinned, hash-verified prebuilt GPL shared build (BtbN), restored by
-`scripts/ci-restore-ffmpeg.ps1` against `ffmpeg.lock.json`.
+license-compatible with this GPLv3 repo. Dynamic DLLs, not statically linked;
+`avformat`/`avcodec`/`avutil`/`swscale`/`swresample` DLLs ship next to
+`PalmierPro.App.exe` (see `PalmierPro.Rendering.csproj`).
+
+Pinned build: **FFmpeg n8.1.2** (BtbN/FFmpeg-Builds, release-branch autobuild
+`autobuild-2026-07-10-13-44`, revision `g94138f6973`, `win64-gpl-shared`
+variant — a versioned release-branch build rather than the rolling
+`master-latest` tag, so the pin is reproducible). Restored by
+`scripts/ci-restore-ffmpeg.ps1` against `ffmpeg.lock.json` (URL + sha256,
+hard-fails on hash mismatch) to `third_party/ffmpeg/{bin,include,lib}`, gitignored.
+`scripts/dev.ps1` runs the restore automatically if `third_party/ffmpeg` is
+missing. Local/release builds may instead use vcpkg
+(`ffmpeg[gpl,x264,x265,nvcodec]:x64-windows`) if a from-source build is needed.
+
+FFmpeg source for this build is available from the upstream FFmpeg project
+(https://ffmpeg.org, git tag `n8.1.2`) and from BtbN/FFmpeg-Builds' build
+scripts (https://github.com/BtbN/FFmpeg-Builds), per GPLv3 §6's source-
+availability requirement. `third_party/ffmpeg/LICENSE.txt` (restored alongside
+the binaries, not checked in) carries the full GPLv3 text and per-component
+license notices for the enabled third-party codecs (x264, x265, etc.).
 
 ## ThorVG
 
@@ -38,6 +54,22 @@ each edit generation.
 Realtime WSOLA-style pitch-preserving time stretch for retimed audio during
 preview (export uses FFmpeg `atempo` instead). Choice between the two candidates
 finalized when the audio engine milestone starts; both are GPL-compatible.
+
+## Windows App SDK / WinUI3 native interop (MIT)
+
+**Status: landed (Stage A / D3D11 presentation).**
+
+`native/WinUISwapChainInterop.h` hand-declares the `ISwapChainPanelNative` COM
+interface (GUID `63aad0b8-7c24-40ff-85a8-640d944cc325`) that WinUI3's
+`Microsoft.UI.Xaml.Controls.SwapChainPanel` implements, matching the vtable
+Microsoft ships in the `Microsoft.WindowsAppSDK.WinUI` NuGet package's
+`include/microsoft.ui.xaml.media.dxinterop.h` (MIT-licensed). Declared by hand
+rather than vendoring that generated header because it isn't available at
+native-engine build time (native builds via `msbuild` before `dotnet restore`
+pulls NuGet packages — see `docs/README.md`). Do not confuse with the
+similarly-named but differently-GUID'd `ISwapChainPanelNative` in the Windows
+SDK's `<windows.ui.xaml.media.dxinterop.h>`, which targets the OS-shipped UWP
+`Windows.UI.Xaml.Controls.SwapChainPanel`, not WinUI3's.
 
 ## Bundled fonts (OFL / Apache)
 

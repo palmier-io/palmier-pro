@@ -1,4 +1,11 @@
 {
-  "url": "TBD",
-  "sha256": "TBD"
+  "version": "n8.1.2",
+  "gitRevision": "g94138f6973",
+  "buildTag": "autobuild-2026-07-10-13-44",
+  "variant": "win64-gpl-shared",
+  "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-07-10-13-44/ffmpeg-n8.1.2-22-g94138f6973-win64-gpl-shared-8.1.zip",
+  "sha256": "f5a7056f9e7e09de12fa743ed9a1802f84f644b483ca9edcc4f1d2c0fb7252ea",
+  "sizeBytes": 79687258,
+  "archiveRootDir": "ffmpeg-n8.1.2-22-g94138f6973-win64-gpl-shared-8.1",
+  "comment": "Pinned to the FFmpeg 8.1.2 release-branch build from BtbN/FFmpeg-Builds (not the rolling master-latest tag) so the pin is stable and reproducible. GPL shared build (avformat/avcodec/avutil/swscale/swresample DLLs + import libs). Re-pin by picking a newer autobuild-YYYY-MM-DD-HH-MM release tag from https://github.com/BtbN/FFmpeg-Builds/releases and updating url/sha256 here."
 }

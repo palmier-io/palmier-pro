@@ -83,6 +83,17 @@ Install Visual Studio 2022 (or Build Tools for Visual Studio 2022) with the
 
 Write-Host "  Using: $MsBuildPath"
 
+# --- Restore FFmpeg if missing ------------------------------------------------
+
+$FfmpegMarker = Join-Path $RepoRoot 'third_party\ffmpeg\bin\ffmpeg.exe'
+if (-not (Test-Path $FfmpegMarker)) {
+    Step 'Restoring FFmpeg (third_party/ffmpeg missing)'
+    & (Join-Path $RepoRoot 'scripts\ci-restore-ffmpeg.ps1')
+    if ($LASTEXITCODE -ne 0) {
+        Fail "FFmpeg restore failed (exit $LASTEXITCODE). See output above."
+    }
+}
+
 # --- Build native engine (x64 Debug) ----------------------------------------
 
 Step 'Building PalmierEngine.vcxproj (Debug|x64)'

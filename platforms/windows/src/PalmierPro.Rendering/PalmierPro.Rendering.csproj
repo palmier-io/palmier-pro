@@ -20,6 +20,20 @@
       <Link>PalmierEngine.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+
+    <!-- FFmpeg runtime DLLs PalmierEngine.dll links against (restored by
+         scripts/ci-restore-ffmpeg.ps1 into third_party/ffmpeg/bin, gitignored). Only the
+         five libraries actually linked (see native/PalmierEngine.vcxproj) — not
+         avdevice/avfilter/ffmpeg.exe, which nothing in the engine calls into. -->
+    <FFmpegRuntimeDll Include="..\..\third_party\ffmpeg\bin\avformat-*.dll" />
+    <FFmpegRuntimeDll Include="..\..\third_party\ffmpeg\bin\avcodec-*.dll" />
+    <FFmpegRuntimeDll Include="..\..\third_party\ffmpeg\bin\avutil-*.dll" />
+    <FFmpegRuntimeDll Include="..\..\third_party\ffmpeg\bin\swscale-*.dll" />
+    <FFmpegRuntimeDll Include="..\..\third_party\ffmpeg\bin\swresample-*.dll" />
+    <Content Include="@(FFmpegRuntimeDll)">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

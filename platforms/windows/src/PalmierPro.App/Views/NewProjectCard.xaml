@@ -1,0 +1,38 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.NewProjectCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Empty-grid primary create affordance — see HomeView.swift's private NewProjectCard.
+         Same card footprint as ProjectCard, no entry/thumbnail/accessibility state since it isn't
+         backed by a ProjectEntry. -->
+    <Grid x:Name="RootGrid"
+          Width="{StaticResource AppComponentSizeProjectCardWidth}"
+          Height="{StaticResource AppComponentSizeProjectCardHeight}"
+          Background="{StaticResource AppBackgroundPlaceholderBrush}"
+          Tapped="RootGrid_Tapped">
+
+        <FontIcon Glyph="&#xE710;"
+                  FontSize="{StaticResource AppFontSizeTitle2}"
+                  Foreground="{StaticResource AppTextMutedBrush}"
+                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+        <Border x:Name="GradientOverlay" VerticalAlignment="Bottom" IsHitTestVisible="False">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
+                    <GradientStop Color="Transparent" Offset="0"/>
+                    <GradientStop Color="#B3000000" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <TextBlock x:Name="NameText" Text="Untitled"
+                   Foreground="White"
+                   FontSize="{StaticResource AppFontSizeSmMd}"
+                   VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                   TextTrimming="CharacterEllipsis"/>
+    </Grid>
+</UserControl>

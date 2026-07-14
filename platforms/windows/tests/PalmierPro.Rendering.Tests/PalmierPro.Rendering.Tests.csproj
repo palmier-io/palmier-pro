@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <RootNamespace>PalmierPro.Rendering.Tests</RootNamespace>
+    <AssemblyName>PalmierPro.Rendering.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
+    <PackageReference Include="xunit" Version="2.9.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.9.*" />
+    <PackageReference Include="Shouldly" Version="4.*" />
+    <!-- SwapChainPresentTests (Category=GPU) needs a real SwapChainPanel to attach to.
+         Deliberately no UseWinUI (that broke plain `dotnet test`'s testhost load — see
+         git history) — just the WinUI3 control types, referenced like any other package. -->
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.*" />
+    <!-- PNG decode for RenderFrameToFileTests' "not all-black" pixel sampling — Windows-only
+         TFM already, so GDI+'s platform restriction is a non-issue here. -->
+    <PackageReference Include="System.Drawing.Common" Version="9.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Pulls PalmierEngine.dll + FFmpeg runtime DLLs into the test output too, via the
+         same Content-item propagation PalmierPro.App relies on (see PalmierPro.Rendering.csproj). -->
+    <ProjectReference Include="..\..\src\PalmierPro.Rendering\PalmierPro.Rendering.csproj" />
+  </ItemGroup>
+
+</Project>

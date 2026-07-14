@@ -100,6 +100,14 @@ public sealed class UndoService
 
     public bool CanUndo => _undoStack.Count > 0;
     public bool CanRedo => _redoStack.Count > 0;
+
+    /// Depth of the undo stack — rises by one on every genuinely new committed action and falls
+    /// by one on each Undo() (Redo() pushes back onto the undo stack, so it rises again too). A
+    /// caller that remembers the depth at save time and compares against it later gets
+    /// NSDocument-style change-count dirty tracking: undoing back to that depth means clean again,
+    /// even without a save. See ProjectDocument's dirty tracking for the actual use.
+    public int UndoStackDepth => _undoStack.Count;
+
     public string? UndoActionName => _undoStack.Count > 0 ? _undoStack.Peek().ActionName : null;
     public string? RedoActionName => _redoStack.Count > 0 ? _redoStack.Peek().ActionName : null;
 

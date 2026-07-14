@@ -1,0 +1,68 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.ProjectCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- DataContext is a PalmierPro.Services.Project.ProjectEntry, set per-item by the GridView
+         hosting this template — classic {Binding}, not x:Bind, since a UserControl used as an
+         ItemTemplate has no compile-time x:DataType root without extra ceremony. -->
+    <Grid x:Name="RootGrid"
+          Width="{StaticResource AppComponentSizeProjectCardWidth}"
+          Height="{StaticResource AppComponentSizeProjectCardHeight}"
+          Background="{StaticResource AppBackgroundPlaceholderBrush}"
+          PointerEntered="RootGrid_PointerEntered"
+          PointerExited="RootGrid_PointerExited"
+          Tapped="RootGrid_Tapped">
+
+        <FontIcon x:Name="PlaceholderGlyph" Glyph="&#xE714;"
+                  FontSize="{StaticResource AppFontSizeTitle1}"
+                  Foreground="{StaticResource AppTextMutedBrush}"
+                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+        <!-- Driven off Entry.IsAccessible in code-behind — a card whose package was moved/deleted
+             mirrors ProjectCard.swift's dim + "File missing" affordance instead of looking healthy
+             and silently no-opping on click. -->
+        <Border x:Name="InaccessibleOverlay"
+                Background="#99000000"
+                Visibility="Collapsed"
+                IsHitTestVisible="False">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{StaticResource AppSpacingXs}">
+                <FontIcon Glyph="&#xE7BA;" FontSize="{StaticResource AppFontSizeTitle1}"
+                          Foreground="{StaticResource AppTextTertiaryBrush}" HorizontalAlignment="Center"/>
+                <TextBlock Text="File missing" FontWeight="Medium"
+                           FontSize="{StaticResource AppFontSizeXs}"
+                           Foreground="{StaticResource AppTextTertiaryBrush}" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <Border x:Name="GradientOverlay" VerticalAlignment="Bottom" IsHitTestVisible="False">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
+                    <GradientStop Color="Transparent" Offset="0"/>
+                    <GradientStop Color="#B3000000" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <StackPanel x:Name="LabelStack" VerticalAlignment="Bottom" HorizontalAlignment="Left" Spacing="{StaticResource AppSpacingXxs}">
+            <TextBlock x:Name="NameText" Text="{Binding Name}"
+                       Foreground="White"
+                       FontSize="{StaticResource AppFontSizeSmMd}"
+                       TextTrimming="CharacterEllipsis"/>
+            <TextBlock x:Name="DateText" Text="{Binding CreatedDate, Converter={StaticResource RelativeDateConverter}}"
+                       Foreground="{StaticResource AppTextSecondaryBrush}"
+                       FontSize="{StaticResource AppFontSizeXs}"/>
+        </StackPanel>
+
+        <Button x:Name="RemoveButton"
+                HorizontalAlignment="Right" VerticalAlignment="Top"
+                Visibility="Collapsed"
+                Background="Transparent" BorderThickness="0"
+                Click="RemoveButton_Click">
+            <FontIcon Glyph="&#xE74D;" FontSize="{StaticResource AppFontSizeSm}" Foreground="{StaticResource AppStatusErrorBrush}"/>
+        </Button>
+    </Grid>
+</UserControl>

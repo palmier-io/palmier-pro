@@ -17,8 +17,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\PalmierPro.Core\PalmierPro.Core.csproj" />
-    <!-- PalmierPro.App reference deferred until ViewModels land; App now has a singular
-         win-x64 RuntimeIdentifier and App.Tests must stay RID-agnostic for plain `dotnet test`. -->
+    <ProjectReference Include="..\..\src\PalmierPro.Services\PalmierPro.Services.csproj" />
+    <!-- ViewModels landed — App.Tests now needs PalmierPro.App's types (ShellViewModel,
+         HomeViewModel, DisabledMenuCommands), but never instantiates a WinUI type itself. -->
+    <ProjectReference Include="..\..\src\PalmierPro.App\PalmierPro.App.csproj" />
   </ItemGroup>
 
 </Project>
