@@ -27,4 +27,85 @@
     <ProjectReference Include="..\PalmierPro.Rendering\PalmierPro.Rendering.csproj" />
   </ItemGroup>
 
+  <!--
+    Bundled caption/title fonts (mirrors Utilities/BundledFonts.swift), linked — not copied — from
+    the Mac resources so there's one on-disk copy of each font. Variable-font files whose names
+    contain '[' ']' (their wght/opsz axis tags) are renamed via Link to "-Variable.ttf": brackets
+    are legal on disk but break ms-appx:/// URIs, which XAML/DirectWrite use to load them.
+  -->
+  <ItemGroup>
+    <Content Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\Anton\Anton-Regular.ttf">
+      <Link>Assets\Fonts\Anton\Anton-Regular.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\BasementGrotesque\BasementGrotesque-Black.ttf">
+      <Link>Assets\Fonts\BasementGrotesque\BasementGrotesque-Black.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\BebasNeue\BebasNeue-Regular.ttf">
+      <Link>Assets\Fonts\BebasNeue\BebasNeue-Regular.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\Caveat\Caveat[wght].ttf">
+      <Link>Assets\Fonts\Caveat\Caveat-Variable.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\DMSans\DMSans[opsz,wght].ttf">
+      <Link>Assets\Fonts\DMSans\DMSans-Variable.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\Geist\Geist[wght].ttf">
+      <Link>Assets\Fonts\Geist\Geist-Variable.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\Geist\Geist-Italic[wght].ttf">
+      <Link>Assets\Fonts\Geist\Geist-Italic-Variable.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\GeistMono\GeistMono[wght].ttf">
+      <Link>Assets\Fonts\GeistMono\GeistMono-Variable.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\GeistMono\GeistMono-Italic[wght].ttf">
+      <Link>Assets\Fonts\GeistMono\GeistMono-Italic-Variable.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\Inter\Inter[opsz,wght].ttf">
+      <Link>Assets\Fonts\Inter\Inter-Variable.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\PermanentMarker\PermanentMarker-Regular.ttf">
+      <Link>Assets\Fonts\PermanentMarker\PermanentMarker-Regular.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\PlayfairDisplay\PlayfairDisplay[wght].ttf">
+      <Link>Assets\Fonts\PlayfairDisplay\PlayfairDisplay-Variable.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\Poppins\Poppins-Bold.ttf">
+      <Link>Assets\Fonts\Poppins\Poppins-Bold.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\Poppins\Poppins-BoldItalic.ttf">
+      <Link>Assets\Fonts\Poppins\Poppins-BoldItalic.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\Poppins\Poppins-Italic.ttf">
+      <Link>Assets\Fonts\Poppins\Poppins-Italic.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\Poppins\Poppins-Regular.ttf">
+      <Link>Assets\Fonts\Poppins\Poppins-Regular.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\Shrikhand\Shrikhand-Regular.ttf">
+      <Link>Assets\Fonts\Shrikhand\Shrikhand-Regular.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\SpaceGrotesk\SpaceGrotesk[wght].ttf">
+      <Link>Assets\Fonts\SpaceGrotesk\SpaceGrotesk-Variable.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

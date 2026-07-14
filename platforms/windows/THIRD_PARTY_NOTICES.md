@@ -41,10 +41,16 @@ finalized when the audio engine milestone starts; both are GPL-compatible.
 
 ## Bundled fonts (OFL / Apache)
 
-**Status: added when the dependency lands (Stage 0b).**
+**Status: landed (Stage 0b).** `PalmierPro.App.csproj` links (does not copy) all
+font files from `Sources/PalmierPro/Resources/Fonts/**` into `Assets/Fonts/` —
+one on-disk copy, shared with the Mac target. Variable-font files whose names
+contain `[wght]`/`[opsz,wght]` axis tags are relinked as `*-Variable.ttf`
+(brackets break `ms-appx:///` URIs).
 
 Inter (OFL) is the Windows UI chrome font (sanctioned parity exception — SF Pro's
-license prohibits use off Apple platforms). The 13 open-license caption/title
+license prohibits use off Apple platforms) — see `AppThemeTokens.FontFamily` and
+`Theme.xaml`'s `AppFontFamily` resource. The other 12 open-license caption/title
 families mirrored from `Utilities/BundledFonts.swift` on the Mac side (OFL and
 Apache-licensed) are bundled for text-clip compositing and the caption/title
-font picker.
+font picker: Anton, Basement Grotesque, Bebas Neue, Caveat, DM Sans, Geist,
+Geist Mono, Permanent Marker, Playfair Display, Poppins, Shrikhand, Space Grotesk.

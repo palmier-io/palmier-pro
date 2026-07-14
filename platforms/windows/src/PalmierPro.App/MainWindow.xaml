@@ -6,7 +6,13 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <!-- #0A0A0A matches Sources/PalmierPro/UI/AppTheme.swift's base background.
-         No token system yet — ported verbatim once Stage 0b lands Theme.xaml. -->
-    <Grid Background="#0A0A0A" />
+    <!-- Grid (a Panel) has no FontFamily of its own — WinUI's font-property inheritance flows down
+         from a Control ancestor, so the default lives on this wrapping ContentControl. -->
+    <ContentControl
+        FontFamily="{StaticResource AppFontFamily}"
+        HorizontalContentAlignment="Stretch"
+        VerticalContentAlignment="Stretch"
+        IsTabStop="False">
+        <Grid Background="{StaticResource AppBackgroundBaseBrush}" />
+    </ContentControl>
 </Window>

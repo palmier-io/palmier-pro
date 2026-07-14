@@ -1,0 +1,341 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        Design tokens ported verbatim from Sources/PalmierPro/UI/AppTheme.swift.
+        Naming scheme: App{Category}{Token} is the raw Color / x:Double / x:Int32 value;
+        App{Category}{Token}Brush is the derived Brush. Values are checked against
+        PalmierPro.Core.Theme.AppThemeTokens by tests/PalmierPro.Core.Tests/Theme/ThemeParityTests.cs
+        (parsed as XML, never loaded via XamlReader) — edit both together.
+    -->
+
+    <!-- Background -->
+    <Color x:Key="AppBackgroundBase">#FF0A0A0A</Color>
+    <SolidColorBrush x:Key="AppBackgroundBaseBrush" Color="{StaticResource AppBackgroundBase}" />
+    <Color x:Key="AppBackgroundSurface">#FF161616</Color>
+    <SolidColorBrush x:Key="AppBackgroundSurfaceBrush" Color="{StaticResource AppBackgroundSurface}" />
+    <Color x:Key="AppBackgroundRaised">#FF1E1E1E</Color>
+    <SolidColorBrush x:Key="AppBackgroundRaisedBrush" Color="{StaticResource AppBackgroundRaised}" />
+    <Color x:Key="AppBackgroundProminent">#FF2C2C2C</Color>
+    <SolidColorBrush x:Key="AppBackgroundProminentBrush" Color="{StaticResource AppBackgroundProminent}" />
+    <!-- Alias — empty media slot is a raised plate. -->
+    <Color x:Key="AppBackgroundPlaceholder">#FF1E1E1E</Color>
+    <SolidColorBrush x:Key="AppBackgroundPlaceholderBrush" Color="{StaticResource AppBackgroundPlaceholder}" />
+    <Color x:Key="AppBackgroundPreviewCanvas">#FF000000</Color>
+    <SolidColorBrush x:Key="AppBackgroundPreviewCanvasBrush" Color="{StaticResource AppBackgroundPreviewCanvas}" />
+    <Color x:Key="AppBackgroundClear">#00000000</Color>
+    <SolidColorBrush x:Key="AppBackgroundClearBrush" Color="{StaticResource AppBackgroundClear}" />
+
+    <!-- Border -->
+    <Color x:Key="AppBorderPrimary">#29FFFFFF</Color>
+    <SolidColorBrush x:Key="AppBorderPrimaryBrush" Color="{StaticResource AppBorderPrimary}" />
+    <Color x:Key="AppBorderSubtle">#1FFFFFFF</Color>
+    <SolidColorBrush x:Key="AppBorderSubtleBrush" Color="{StaticResource AppBorderSubtle}" />
+    <Color x:Key="AppBorderDivider">#70FFFFFF</Color>
+    <SolidColorBrush x:Key="AppBorderDividerBrush" Color="{StaticResource AppBorderDivider}" />
+    <Color x:Key="AppBorderTimelineClip">#FF000000</Color>
+    <SolidColorBrush x:Key="AppBorderTimelineClipBrush" Color="{StaticResource AppBorderTimelineClip}" />
+
+    <!-- BorderWidth -->
+    <x:Double x:Key="AppBorderWidthHairline">0.5</x:Double>
+    <x:Double x:Key="AppBorderWidthThin">1</x:Double>
+    <x:Double x:Key="AppBorderWidthMedium">1.5</x:Double>
+    <x:Double x:Key="AppBorderWidthThick">2</x:Double>
+
+    <!-- Accent -->
+    <Color x:Key="AppAccentTimecode">#FFF29933</Color>
+    <SolidColorBrush x:Key="AppAccentTimecodeBrush" Color="{StaticResource AppAccentTimecode}" />
+    <!-- Warm off-white -->
+    <Color x:Key="AppAccentPrimary">#FFF5EFE4</Color>
+    <SolidColorBrush x:Key="AppAccentPrimaryBrush" Color="{StaticResource AppAccentPrimary}" />
+    <!-- Vibrant highlight used by the onboarding tour spotlight. -->
+    <Color x:Key="AppAccentSpotlight">#FFFF4545</Color>
+    <SolidColorBrush x:Key="AppAccentSpotlightBrush" Color="{StaticResource AppAccentSpotlight}" />
+    <LinearGradientBrush x:Key="AppAccentSpotlightGradientBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#FFFF574D" Offset="0.0" />
+        <GradientStop Color="#FFF22647" Offset="0.5" />
+        <GradientStop Color="#FFFF7A38" Offset="1.0" />
+    </LinearGradientBrush>
+
+    <!-- Update -->
+    <Color x:Key="AppUpdateAccent">#FFF29933</Color>
+    <SolidColorBrush x:Key="AppUpdateAccentBrush" Color="{StaticResource AppUpdateAccent}" />
+
+    <!-- Slider -->
+    <x:Double x:Key="AppSliderTrackHeight">4</x:Double>
+    <x:Double x:Key="AppSliderThumbSize">10</x:Double>
+    <x:Double x:Key="AppSliderLabelColumn">106</x:Double>
+    <!-- Temperature track: cool blue (low) → warm amber (high). -->
+    <LinearGradientBrush x:Key="AppSliderTempGradientBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+        <GradientStop Color="#FF528CEB" Offset="0.0" />
+        <GradientStop Color="#FFF2B852" Offset="1.0" />
+    </LinearGradientBrush>
+    <!-- Tint track: green (low) → magenta (high). -->
+    <LinearGradientBrush x:Key="AppSliderTintGradientBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+        <GradientStop Color="#FF6BC773" Offset="0.0" />
+        <GradientStop Color="#FFD161B8" Offset="1.0" />
+    </LinearGradientBrush>
+    <!-- Master luma track: near-black → near-white. -->
+    <LinearGradientBrush x:Key="AppSliderLumaGradientBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+        <GradientStop Color="#FF0D0D0D" Offset="0.0" />
+        <GradientStop Color="#FFF2F2F2" Offset="1.0" />
+    </LinearGradientBrush>
+
+    <!-- AudioMeter -->
+    <x:Double x:Key="AppAudioMeterPanelWidth">32</x:Double>
+    <x:Double x:Key="AppAudioMeterBarWidth">8</x:Double>
+    <x:Double x:Key="AppAudioMeterRefreshInterval">0.0333333333333333</x:Double>
+    <x:Double x:Key="AppAudioMeterRulerStepDb">6</x:Double>
+    <x:Double x:Key="AppAudioMeterRulerMajorStepDb">12</x:Double>
+    <x:Double x:Key="AppAudioMeterYellowThresholdDb">-20</x:Double>
+    <x:Double x:Key="AppAudioMeterRedThresholdDb">-6</x:Double>
+    <Color x:Key="AppAudioMeterGreenSegment">#FF14C738</Color>
+    <SolidColorBrush x:Key="AppAudioMeterGreenSegmentBrush" Color="{StaticResource AppAudioMeterGreenSegment}" />
+    <Color x:Key="AppAudioMeterYellowSegment">#FFFAD61A</Color>
+    <SolidColorBrush x:Key="AppAudioMeterYellowSegmentBrush" Color="{StaticResource AppAudioMeterYellowSegment}" />
+    <Color x:Key="AppAudioMeterRedSegment">#FFE63D33</Color>
+    <SolidColorBrush x:Key="AppAudioMeterRedSegmentBrush" Color="{StaticResource AppAudioMeterRedSegment}" />
+
+    <!-- Wheels -->
+    <x:Double x:Key="AppWheelsPadSize">96</x:Double>
+    <x:Double x:Key="AppWheelsPuckSize">10</x:Double>
+    <x:Double x:Key="AppWheelsRingWidth">1</x:Double>
+    <Color x:Key="AppWheelsCrosshairColor">#14FFFFFF</Color>
+    <SolidColorBrush x:Key="AppWheelsCrosshairColorBrush" Color="{StaticResource AppWheelsCrosshairColor}" />
+
+    <!-- Curve -->
+    <x:Double x:Key="AppCurveEditorHeight">180</x:Double>
+    <x:Double x:Key="AppCurvePointDiameter">9</x:Double>
+    <!-- Invisible grab target around each point — much larger than the dot so it's easy to hit. -->
+    <x:Double x:Key="AppCurvePointHitDiameter">30</x:Double>
+    <Color x:Key="AppCurveLumaColor">#FFFFFFFF</Color>
+    <SolidColorBrush x:Key="AppCurveLumaColorBrush" Color="{StaticResource AppCurveLumaColor}" />
+    <Color x:Key="AppCurveRedColor">#FFFF382E</Color>
+    <SolidColorBrush x:Key="AppCurveRedColorBrush" Color="{StaticResource AppCurveRedColor}" />
+    <Color x:Key="AppCurveGreenColor">#FF52D15C</Color>
+    <SolidColorBrush x:Key="AppCurveGreenColorBrush" Color="{StaticResource AppCurveGreenColor}" />
+    <Color x:Key="AppCurveBlueColor">#FF528FFF</Color>
+    <SolidColorBrush x:Key="AppCurveBlueColorBrush" Color="{StaticResource AppCurveBlueColor}" />
+
+    <!-- Top-level gradients (not nested in a category in Swift either) -->
+    <!-- Monochrome silver shimmer -->
+    <LinearGradientBrush x:Key="AppAiGradientBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#FFFFFFFF" Offset="0.00" />
+        <GradientStop Color="#FFC7C7C7" Offset="0.45" />
+        <GradientStop Color="#FF999999" Offset="0.55" />
+        <GradientStop Color="#FFFFFFFF" Offset="1.00" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="AppAiGradientDarkBrush" StartPoint="0.5,0" EndPoint="0.5,1">
+        <GradientStop Color="#FF1C1C1C" Offset="0.00" />
+        <GradientStop Color="#FF0F0F0F" Offset="1.00" />
+    </LinearGradientBrush>
+
+    <!-- Glass -->
+    <Color x:Key="AppGlassPrimaryTint">#0DF5EFE4</Color>
+    <SolidColorBrush x:Key="AppGlassPrimaryTintBrush" Color="{StaticResource AppGlassPrimaryTint}" />
+
+    <!-- Status -->
+    <Color x:Key="AppStatusError">#FFE54F4F</Color>
+    <SolidColorBrush x:Key="AppStatusErrorBrush" Color="{StaticResource AppStatusError}" />
+    <Color x:Key="AppStatusSuccess">#FF4FB85F</Color>
+    <SolidColorBrush x:Key="AppStatusSuccessBrush" Color="{StaticResource AppStatusSuccess}" />
+    <!-- NSColor.systemOrange, Dark Aqua sRGB value — every Mac window forces .darkAqua appearance. -->
+    <Color x:Key="AppStatusWarning">#FFFF9F0A</Color>
+    <SolidColorBrush x:Key="AppStatusWarningBrush" Color="{StaticResource AppStatusWarning}" />
+
+    <!-- Text -->
+    <Color x:Key="AppTextPrimary">#FFFFFFFF</Color>
+    <SolidColorBrush x:Key="AppTextPrimaryBrush" Color="{StaticResource AppTextPrimary}" />
+    <Color x:Key="AppTextSecondary">#CCFFFFFF</Color>
+    <SolidColorBrush x:Key="AppTextSecondaryBrush" Color="{StaticResource AppTextSecondary}" />
+    <Color x:Key="AppTextTertiary">#9EFFFFFF</Color>
+    <SolidColorBrush x:Key="AppTextTertiaryBrush" Color="{StaticResource AppTextTertiary}" />
+    <Color x:Key="AppTextMuted">#57FFFFFF</Color>
+    <SolidColorBrush x:Key="AppTextMutedBrush" Color="{StaticResource AppTextMuted}" />
+
+    <!-- Opacity -->
+    <x:Double x:Key="AppOpacityOpaque">1</x:Double>
+    <x:Double x:Key="AppOpacitySubtle">0.04</x:Double>
+    <x:Double x:Key="AppOpacityHint">0.06</x:Double>
+    <x:Double x:Key="AppOpacityFaint">0.08</x:Double>
+    <x:Double x:Key="AppOpacitySoft">0.10</x:Double>
+    <x:Double x:Key="AppOpacityMuted">0.15</x:Double>
+    <x:Double x:Key="AppOpacityModerate">0.25</x:Double>
+    <x:Double x:Key="AppOpacityMedium">0.35</x:Double>
+    <x:Double x:Key="AppOpacityStrong">0.55</x:Double>
+    <x:Double x:Key="AppOpacityHigh">0.70</x:Double>
+    <x:Double x:Key="AppOpacityProminent">0.80</x:Double>
+
+    <!-- TrackColor -->
+    <Color x:Key="AppTrackColorVideo">#FF1D5878</Color>
+    <SolidColorBrush x:Key="AppTrackColorVideoBrush" Color="{StaticResource AppTrackColorVideo}" />
+    <Color x:Key="AppTrackColorAudio">#FF2E7765</Color>
+    <SolidColorBrush x:Key="AppTrackColorAudioBrush" Color="{StaticResource AppTrackColorAudio}" />
+    <Color x:Key="AppTrackColorImage">#FF715486</Color>
+    <SolidColorBrush x:Key="AppTrackColorImageBrush" Color="{StaticResource AppTrackColorImage}" />
+    <Color x:Key="AppTrackColorText">#FF715486</Color>
+    <SolidColorBrush x:Key="AppTrackColorTextBrush" Color="{StaticResource AppTrackColorText}" />
+    <Color x:Key="AppTrackColorLottie">#FFA07822</Color>
+    <SolidColorBrush x:Key="AppTrackColorLottieBrush" Color="{StaticResource AppTrackColorLottie}" />
+    <Color x:Key="AppTrackColorSequence">#FFB9B29A</Color>
+    <SolidColorBrush x:Key="AppTrackColorSequenceBrush" Color="{StaticResource AppTrackColorSequence}" />
+    <!-- NSColor.systemRed, Dark Aqua sRGB value — every Mac window forces .darkAqua appearance. -->
+    <Color x:Key="AppTrackColorMulticam">#FFFF453A</Color>
+    <SolidColorBrush x:Key="AppTrackColorMulticamBrush" Color="{StaticResource AppTrackColorMulticam}" />
+
+    <!-- Radius (Radius.concentric has no fixed value — it's a function, ported as AppTheme.UniformCornerRadius(Radius.Concentric(...)) in code) -->
+    <x:Double x:Key="AppRadiusXs">3</x:Double>
+    <x:Double x:Key="AppRadiusXsSm">4</x:Double>
+    <x:Double x:Key="AppRadiusSm">6</x:Double>
+    <x:Double x:Key="AppRadiusMd">10</x:Double>
+    <x:Double x:Key="AppRadiusMdLg">12</x:Double>
+    <x:Double x:Key="AppRadiusLg">14</x:Double>
+    <x:Double x:Key="AppRadiusXl">20</x:Double>
+
+    <!-- Spacing -->
+    <x:Double x:Key="AppSpacingZero">0</x:Double>
+    <x:Double x:Key="AppSpacingXxs">2</x:Double>
+    <x:Double x:Key="AppSpacingXs">4</x:Double>
+    <x:Double x:Key="AppSpacingSm">6</x:Double>
+    <x:Double x:Key="AppSpacingSmMd">8</x:Double>
+    <x:Double x:Key="AppSpacingMd">10</x:Double>
+    <x:Double x:Key="AppSpacingMdLg">12</x:Double>
+    <x:Double x:Key="AppSpacingLg">14</x:Double>
+    <x:Double x:Key="AppSpacingLgXl">16</x:Double>
+    <x:Double x:Key="AppSpacingXl">20</x:Double>
+    <x:Double x:Key="AppSpacingXlXxl">24</x:Double>
+    <x:Double x:Key="AppSpacingXxl">28</x:Double>
+
+    <!-- FontSize -->
+    <x:Double x:Key="AppFontSizeMicro">8</x:Double>
+    <x:Double x:Key="AppFontSizeXxs">9</x:Double>
+    <x:Double x:Key="AppFontSizeXs">10</x:Double>
+    <x:Double x:Key="AppFontSizeSm">11</x:Double>
+    <x:Double x:Key="AppFontSizeSmMd">12</x:Double>
+    <x:Double x:Key="AppFontSizeMd">13</x:Double>
+    <x:Double x:Key="AppFontSizeMdLg">14</x:Double>
+    <x:Double x:Key="AppFontSizeLg">15</x:Double>
+    <x:Double x:Key="AppFontSizeXl">18</x:Double>
+    <x:Double x:Key="AppFontSizeTitle1">22</x:Double>
+    <x:Double x:Key="AppFontSizeTitle2">28</x:Double>
+    <x:Double x:Key="AppFontSizeDisplay">36</x:Double>
+
+    <!-- FontWeight (OpenType numeric weights — see AppThemeTokens.FontWeight) -->
+    <x:Int32 x:Key="AppFontWeightLight">300</x:Int32>
+    <x:Int32 x:Key="AppFontWeightRegular">400</x:Int32>
+    <x:Int32 x:Key="AppFontWeightMedium">500</x:Int32>
+    <x:Int32 x:Key="AppFontWeightSemibold">600</x:Int32>
+    <x:Int32 x:Key="AppFontWeightBold">700</x:Int32>
+
+    <!-- Tracking (letter-spacing) -->
+    <x:Double x:Key="AppTrackingTight">-0.5</x:Double>
+    <x:Double x:Key="AppTrackingNormal">0</x:Double>
+    <x:Double x:Key="AppTrackingWide">1.5</x:Double>
+
+    <!-- IconSize (square frame dimensions) -->
+    <x:Double x:Key="AppIconSizeXxs">12</x:Double>
+    <x:Double x:Key="AppIconSizeXs">14</x:Double>
+    <x:Double x:Key="AppIconSizeSm">18</x:Double>
+    <x:Double x:Key="AppIconSizeSmMd">20</x:Double>
+    <x:Double x:Key="AppIconSizeMd">22</x:Double>
+    <x:Double x:Key="AppIconSizeMdLg">24</x:Double>
+    <x:Double x:Key="AppIconSizeLg">26</x:Double>
+    <x:Double x:Key="AppIconSizeLgXl">28</x:Double>
+    <x:Double x:Key="AppIconSizeXl">30</x:Double>
+
+    <!-- ComponentSize -->
+    <x:Double x:Key="AppComponentSizeCaptionPreviewMaxHeight">150</x:Double>
+    <x:Double x:Key="AppComponentSizeCaptionPreviewMaxTextWidthRatio">0.9</x:Double>
+    <x:Double x:Key="AppComponentSizeToolImagePreviewMaxHeight">50</x:Double>
+    <x:Double x:Key="AppComponentSizeProjectCardWidth">150</x:Double>
+    <x:Double x:Key="AppComponentSizeProjectCardHeight">120</x:Double>
+    <x:Double x:Key="AppComponentSizeTimelineClipBorderMinWidth">8</x:Double>
+    <x:Double x:Key="AppComponentSizeTimelineClipDetailMinWidth">32</x:Double>
+    <x:Double x:Key="AppComponentSizeTimelineTabRenameWidth">120</x:Double>
+    <x:Double x:Key="AppComponentSizeTimelineClipLabelMinWidth">56</x:Double>
+    <x:Double x:Key="AppComponentSizeTimelineBadgePadH">4</x:Double>
+    <x:Double x:Key="AppComponentSizeTimelineBadgePadV">1</x:Double>
+    <x:Double x:Key="AppComponentSizeTimelineBadgeMinWidth">16</x:Double>
+    <x:Double x:Key="AppComponentSizeTimelineDotSize">5</x:Double>
+    <x:Double x:Key="AppComponentSizeUpdateOverlayWidth">640</x:Double>
+
+    <!-- Window (NSSize pairs flattened to Width/Height) -->
+    <x:Double x:Key="AppWindowHomeDefaultWidth">1200</x:Double>
+    <x:Double x:Key="AppWindowHomeDefaultHeight">880</x:Double>
+    <x:Double x:Key="AppWindowHomeMinWidth">760</x:Double>
+    <x:Double x:Key="AppWindowHomeMinHeight">480</x:Double>
+    <x:Double x:Key="AppWindowProjectMinWidth">960</x:Double>
+    <x:Double x:Key="AppWindowProjectMinHeight">600</x:Double>
+    <x:Double x:Key="AppWindowProjectTitlebarTrailingWidth">280</x:Double>
+    <x:Double x:Key="AppWindowSettingsDefaultWidth">1200</x:Double>
+    <x:Double x:Key="AppWindowSettingsDefaultHeight">900</x:Double>
+    <x:Double x:Key="AppWindowSettingsMinWidth">860</x:Double>
+    <x:Double x:Key="AppWindowSettingsMinHeight">640</x:Double>
+
+    <!-- Caption -->
+    <x:Double x:Key="AppCaptionDefaultFontSize">48</x:Double>
+    <x:Double x:Key="AppCaptionMinFontSize">12</x:Double>
+    <x:Double x:Key="AppCaptionMaxFontSize">300</x:Double>
+    <x:Double x:Key="AppCaptionMinPosition">0</x:Double>
+    <x:Double x:Key="AppCaptionMaxPosition">1</x:Double>
+    <x:Double x:Key="AppCaptionCenterSnapValue">0.5</x:Double>
+    <x:Double x:Key="AppCaptionCenterSnapThreshold">0.02</x:Double>
+    <x:Double x:Key="AppCaptionDefaultCenterY">0.9</x:Double>
+    <!-- CGPoint(x: centerSnapValue, y: defaultCenterY) flattened to X/Y -->
+    <x:Double x:Key="AppCaptionDefaultCenterX">0.5</x:Double>
+    <x:Double x:Key="AppCaptionMinDisplayDuration">0.7</x:Double>
+
+    <!-- GenerationPanel -->
+    <x:Double x:Key="AppGenerationPanelMediaAreaMinHeight">120</x:Double>
+    <x:Double x:Key="AppGenerationPanelLoadingHeight">180</x:Double>
+    <x:Double x:Key="AppGenerationPanelPromptMinHeight">40</x:Double>
+    <x:Double x:Key="AppGenerationPanelReferenceTileWidth">80</x:Double>
+    <x:Double x:Key="AppGenerationPanelReferenceTileHeight">56</x:Double>
+
+    <!-- MediaPanel -->
+    <x:Double x:Key="AppMediaPanelTabRailWidth">38</x:Double>
+    <x:Double x:Key="AppMediaPanelContextRowHeight">22</x:Double>
+
+    <!-- Export -->
+    <x:Double x:Key="AppExportSheetWidth">600</x:Double>
+    <x:Double x:Key="AppExportSheetHeight">600</x:Double>
+    <x:Double x:Key="AppExportLogPaneWidth">420</x:Double>
+    <x:Double x:Key="AppExportQueueTimestampWidth">56</x:Double>
+    <x:Double x:Key="AppExportActivityDotSize">6</x:Double>
+    <x:Double x:Key="AppExportQueueProgressBarWidth">96</x:Double>
+    <x:Double x:Key="AppExportQueueProgressWidth">32</x:Double>
+    <x:Double x:Key="AppExportSheetWidthWithLog">1020.5</x:Double>
+
+    <!-- Matte -->
+    <x:Double x:Key="AppMatteSheetWidth">280</x:Double>
+    <x:Double x:Key="AppMatteControlWidth">116</x:Double>
+
+    <!-- Shadow (AppTheme.ShadowStyle flattened to Color/Radius/X/Y) -->
+    <Color x:Key="AppShadowSmColor">#4D000000</Color>
+    <x:Double x:Key="AppShadowSmRadius">1</x:Double>
+    <x:Double x:Key="AppShadowSmX">0</x:Double>
+    <x:Double x:Key="AppShadowSmY">0.5</x:Double>
+    <Color x:Key="AppShadowMdColor">#4D000000</Color>
+    <x:Double x:Key="AppShadowMdRadius">4</x:Double>
+    <x:Double x:Key="AppShadowMdX">0</x:Double>
+    <x:Double x:Key="AppShadowMdY">2</x:Double>
+    <Color x:Key="AppShadowLgColor">#40000000</Color>
+    <x:Double x:Key="AppShadowLgRadius">24</x:Double>
+    <x:Double x:Key="AppShadowLgX">0</x:Double>
+    <x:Double x:Key="AppShadowLgY">8</x:Double>
+
+    <!-- Anim (animation durations, seconds) -->
+    <x:Double x:Key="AppAnimHover">0.15</x:Double>
+    <x:Double x:Key="AppAnimTransition">0.2</x:Double>
+    <x:Double x:Key="AppAnimPulse">0.8</x:Double>
+
+    <!--
+        FontFamily — NEW, the Mac has no family token (chrome renders in SF Pro, license-prohibited
+        off Apple platforms). Windows chrome uses Inter (OFL), linked from Sources/PalmierPro/Resources/
+        Fonts/Inter/ into Assets/Fonts/Inter/ by PalmierPro.App.csproj. Documented divergence — see
+        ThemeParityTests.
+    -->
+    <FontFamily x:Key="AppFontFamily">ms-appx:///Assets/Fonts/Inter/Inter-Variable.ttf#Inter</FontFamily>
+
+</ResourceDictionary>

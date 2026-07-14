@@ -23,12 +23,15 @@ steps run in `scripts/dev.ps1`.
 
 ## Design System
 
-Once Stage 0b lands `Theme.xaml` + the ported `AppTheme.cs` token set, **all UI
+`PalmierPro.Core.Theme.AppThemeTokens` (primitives) + `PalmierPro.App.Theme.AppTheme`
+(WinUI adapters) + `Theme.xaml` (XAML `StaticResource`s) are ported verbatim from
+`Sources/PalmierPro/UI/AppTheme.swift`, one C# member per Swift token. **All UI
 styling must use those tokens** — mirrors the Mac's `AppTheme.swift` rule verbatim.
 Never hardcode spacing, font size/weight, corner radius, border width, opacity,
-icon size, shadow, or color; add the token first if one doesn't exist. Until then
-(Stage 0), the only hardcoded value that's expected is the base background
-(`#0A0A0A`) in `MainWindow.xaml`, which the token system will absorb.
+icon size, shadow, or color; add the token first if one doesn't exist.
+`ThemeParityTests` (`tests/PalmierPro.Core.Tests/Theme/`) checks `Theme.xaml` against
+`AppThemeTokens` — update both together. `FontFamily` is the one token the Mac has
+no equivalent of (see Fonts below) and is the documented exception in that test.
 
 ## Drag and drop
 
