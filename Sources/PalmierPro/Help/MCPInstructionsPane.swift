@@ -4,8 +4,7 @@ import SwiftUI
 struct MCPInstructionsPane: View {
     @State private var claudeInstallError: String?
 
-    private var serverURL: String { "http://127.0.0.1:\(MCPService.port)" }
-    private var mcpEndpoint: String { "\(serverURL)/mcp" }
+    private var mcpEndpoint: String { "http://127.0.0.1:\(MCPService.port)/mcp" }
 
     private var claudeCodeCommand: String {
         "claude mcp add --transport http palmier-pro \(mcpEndpoint)"
@@ -127,78 +126,75 @@ struct MCPInstructionsPane: View {
     }
 
     private var cursorSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            HStack(alignment: .center, spacing: AppTheme.Spacing.md) {
-                agentIdentity(
-                    agent: .cursor,
-                    name: "Cursor",
-                    description: "Install the Palmier Pro MCP server in Cursor."
-                )
-                Spacer(minLength: AppTheme.Spacing.md)
-                externalAction("Install in Cursor") {
-                    guard let cursorDeepLink else { return }
-                    NSWorkspace.shared.open(cursorDeepLink, configuration: .init(), completionHandler: nil)
-                }
-            }
-
+        agentSection(
+            .cursor,
+            name: "Cursor",
+            description: "Install the Palmier Pro MCP server in Cursor.",
+            action: ("Install in Cursor", openCursor)
+        ) {
             ManualFallback(
                 intro: "Add this configuration to ~/.cursor/mcp.json.",
                 code: cursorJSONConfig
             )
         }
-        .padding(.vertical, AppTheme.Spacing.mdLg)
     }
 
     private var claudeDesktopSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            HStack(alignment: .center, spacing: AppTheme.Spacing.md) {
-                agentIdentity(
-                    agent: .claude,
-                    name: "Claude Desktop",
-                    description: "Install the bundled Palmier Pro connector."
-                )
-                Spacer(minLength: AppTheme.Spacing.md)
-                externalAction("Install in Claude Desktop") {
-                    openClaudeDesktopBundle()
-                }
-            }
-
+        agentSection(
+            .claude,
+            name: "Claude Desktop",
+            description: "Install the bundled Palmier Pro connector.",
+            action: ("Install in Claude Desktop", openClaudeDesktopBundle)
+        ) {
             ManualFallback(
                 intro: "In Claude Desktop, open Settings › Developer › Edit Config, then add this configuration to mcpServers.",
                 code: claudeDesktopJSONConfig
             )
         }
-        .padding(.vertical, AppTheme.Spacing.mdLg)
     }
 
     private var claudeCodeSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            agentIdentity(
-                agent: .claude,
-                name: "Claude Code",
-                description: "Run this command once in Terminal."
-            )
+        agentSection(
+            .claude,
+            name: "Claude Code",
+            description: "Run this command once in Terminal."
+        ) {
             CodeBlockView(content: claudeCodeCommand)
         }
-        .padding(.vertical, AppTheme.Spacing.mdLg)
     }
 
     private var codexSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            agentIdentity(
-                agent: .codex,
-                name: "Codex",
-                description: "Run this command once in Terminal."
-            )
+        agentSection(
+            .codex,
+            name: "Codex",
+            description: "Run this command once in Terminal."
+        ) {
             CodeBlockView(content: codexCommand)
         }
-        .padding(.vertical, AppTheme.Spacing.mdLg)
     }
 
     private var agentDivider: some View {
-        Rectangle()
-            .fill(AppTheme.Border.subtleColor)
-            .frame(height: AppTheme.BorderWidth.hairline)
+        Divider().overlay(AppTheme.Border.subtleColor)
+    }
+
+    private func agentSection<Details: View>(
+        _ agent: SkillExternalAgent,
+        name: String,
+        description: String,
+        action: (label: String, perform: () -> Void)? = nil,
+        @ViewBuilder details: () -> Details
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            HStack(alignment: .center, spacing: AppTheme.Spacing.md) {
+                agentIdentity(agent: agent, name: name, description: description)
+                if let action {
+                    Spacer(minLength: AppTheme.Spacing.md)
+                    externalAction(action.label, action: action.perform)
+                }
+            }
+            details()
+        }
+        .padding(.vertical, AppTheme.Spacing.mdLg)
     }
 
     private func agentIdentity(agent: SkillExternalAgent, name: String, description: String) -> some View {
@@ -232,6 +228,11 @@ struct MCPInstructionsPane: View {
         .pointingHandCursor()
     }
 
+    private func openCursor() {
+        guard let cursorDeepLink else { return }
+        NSWorkspace.shared.open(cursorDeepLink, configuration: .init(), completionHandler: nil)
+    }
+
     private func openClaudeDesktopBundle() {
         guard let bundleURL = claudeDesktopBundleURL else {
             claudeInstallError = "The Palmier Pro connector could not be found. Use manual setup instead."
@@ -255,15 +256,7 @@ struct MCPInstructionsPane: View {
     }
 
     private var claudeDesktopBundleURL: URL? {
-        if let url = Bundle.module.url(forResource: "palmier-pro", withExtension: "mcpb") {
-            return url
-        }
-        guard let root = Bundle.main.resourceURL else { return nil }
-        let candidates = [
-            root.appendingPathComponent("palmier-pro.mcpb"),
-            root.appendingPathComponent("PalmierPro_PalmierPro.bundle/palmier-pro.mcpb"),
-        ]
-        return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
+        BundledResource.url("palmier-pro.mcpb")
     }
 }
 

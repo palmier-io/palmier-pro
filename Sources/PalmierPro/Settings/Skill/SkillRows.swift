@@ -79,22 +79,7 @@ struct InstalledSkillRow: View {
     var body: some View {
         HStack(spacing: AppTheme.Spacing.md) {
             Button(action: openAction) {
-                HStack(spacing: AppTheme.Spacing.md) {
-                    SkillRowIcon()
-
-                    VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-                        Text(skill.name)
-                            .font(.system(size: AppTheme.FontSize.mdLg, weight: AppTheme.FontWeight.regular))
-                            .foregroundStyle(AppTheme.Text.primaryColor)
-                            .lineLimit(1)
-                        Text(skill.description)
-                            .font(.system(size: AppTheme.FontSize.smMd))
-                            .foregroundStyle(AppTheme.Text.tertiaryColor)
-                            .lineLimit(1)
-                    }
-
-                    Spacer(minLength: AppTheme.Spacing.md)
-                }
+                SkillRowSummary(name: skill.name, description: skill.description)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -112,11 +97,8 @@ struct InstalledSkillRow: View {
                     ProgressView()
                         .controlSize(.small)
                         .accessibilityLabel("Updating \(skill.name)")
-                } else if let updateAction {
-                    Button("Update", action: updateAction)
-                        .buttonStyle(.capsule(.secondary, fill: AnyShapeStyle(AppTheme.Background.raisedColor)))
                 } else {
-                    Button("Open", action: openAction)
+                    Button(updateAction == nil ? "Open" : "Update", action: updateAction ?? openAction)
                         .buttonStyle(.capsule(.secondary, fill: AnyShapeStyle(AppTheme.Background.raisedColor)))
                 }
             }
@@ -138,20 +120,7 @@ struct CommunitySkillRow: View {
 
     var body: some View {
         HStack(spacing: AppTheme.Spacing.md) {
-            SkillRowIcon()
-
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-                Text(entry.name)
-                    .font(.system(size: AppTheme.FontSize.mdLg, weight: AppTheme.FontWeight.regular))
-                    .foregroundStyle(AppTheme.Text.primaryColor)
-                    .lineLimit(1)
-                Text(entry.description)
-                    .font(.system(size: AppTheme.FontSize.smMd))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: AppTheme.Spacing.md)
+            SkillRowSummary(name: entry.name, description: entry.description)
 
             Text(status)
                 .font(.system(size: AppTheme.FontSize.smMd))
@@ -177,6 +146,28 @@ struct CommunitySkillRow: View {
         .padding(.horizontal, AppTheme.Spacing.smMd)
         .padding(.vertical, AppTheme.Spacing.smMd)
         .hoverHighlight(cornerRadius: AppTheme.Radius.md)
+    }
+}
+
+private struct SkillRowSummary: View {
+    let name: String
+    let description: String
+
+    var body: some View {
+        HStack(spacing: AppTheme.Spacing.md) {
+            SkillRowIcon()
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+                Text(name)
+                    .font(.system(size: AppTheme.FontSize.mdLg, weight: AppTheme.FontWeight.regular))
+                    .foregroundStyle(AppTheme.Text.primaryColor)
+                    .lineLimit(1)
+                Text(description)
+                    .font(.system(size: AppTheme.FontSize.smMd))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: AppTheme.Spacing.md)
+        }
     }
 }
 

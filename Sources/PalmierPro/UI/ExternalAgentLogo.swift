@@ -36,15 +36,6 @@ private enum ExternalAgentAssets {
     private static let cursor = load("cursor")
 
     private static func load(_ name: String) -> NSImage? {
-        guard let root = Bundle.main.resourceURL else { return nil }
-        let path = "Images/Agents/\(name).png"
-        let candidates = [
-            root.appendingPathComponent(path),
-            root.appendingPathComponent("PalmierPro_PalmierPro.bundle/\(path)"),
-        ]
-        for url in candidates where FileManager.default.fileExists(atPath: url.path) {
-            return NSImage(contentsOf: url)
-        }
-        return nil
+        BundledResource.url("Images/Agents/\(name).png").flatMap(NSImage.init(contentsOf:))
     }
 }
