@@ -629,6 +629,18 @@ final class TimelineInputController {
         view.needsDisplay = true
     }
 
+    /// Escape during an in-progress slip drag: drop the preview and the pending
+    /// drag so the eventual mouse-up commits nothing. Only slip is cancellable;
+    /// other drags have no uncommitted live mutation to unwind here.
+    func cancelActiveDrag() {
+        guard case .slip = dragState else { return }
+        editor.slipPreview = nil
+        dragState = .idle
+        snapIndicatorX = nil
+        stopPlayheadAutoScroll()
+        view.needsDisplay = true
+    }
+
     // MARK: - Mouse moved (cursor updates)
 
     func mouseMoved(with event: NSEvent, geometry: TimelineGeometry) {

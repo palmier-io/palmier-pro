@@ -22,6 +22,7 @@ final class TimelineView: NSView {
         super.init(frame: .zero)
         self.inputController = TimelineInputController(editor: editor, view: self)
         editor.mediaVisualCache.timelineView = self
+        editor.onCancelTimelineDrag = { [weak self] in self?.inputController.cancelActiveDrag() }
         wantsLayer = true
         layer?.backgroundColor = AppTheme.Background.surface.cgColor
         canvas.wantsLayer = true
