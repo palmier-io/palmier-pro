@@ -244,7 +244,7 @@ final class EditorViewModel {
     var mediaPanelPasteRequestTick: Int = 0
     var mediaPanelShowMediaTabTick: Int = 0
     var mediaPanelToast: MediaPanelToast?
-    @ObservationIgnored var mediaImportTail: Task<MediaImportSummary, Never>?
+    @ObservationIgnored var mediaImportTail: Task<MediaImportSummary, Error>?
     @ObservationIgnored var mediaImportSequence: Int = 0
     @ObservationIgnored var pendingManifestMetadataUpdates: [String: MediaAsset] = [:]
     @ObservationIgnored var pendingManifestMetadataFlushTask: Task<Void, Never>?

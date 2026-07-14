@@ -83,7 +83,7 @@ extension ToolExecutor {
             }
             note = "Duplicated \"\(source.name)\" and switched to the copy. Its clip and track ids are new — re-read get_timeline before editing."
         } else {
-            id = withUndoGroup(editor, actionName: "Create Timeline (Agent)") {
+            id = try withUndoGroup(editor, actionName: "Create Timeline (Agent)") {
                 editor.createTimeline(name: args.string("name"))
             }
             note = "Empty and now active; all edit tools target it."

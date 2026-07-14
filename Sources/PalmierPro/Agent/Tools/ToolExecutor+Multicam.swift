@@ -41,7 +41,7 @@ extension ToolExecutor {
             searchWindowSeconds: args.double("searchWindowSeconds") ?? EditorViewModel.SyncDefaults.memberSearchWindowSeconds
         )
 
-        let (groupId, clipIds) = try withUndoGroup(editor, actionName: "Create Multicam (Agent)") {
+        let (groupId, clipIds) = try await withUndoBoundary(editor, actionName: "Create Multicam (Agent)") {
             try editor.createMulticamGroup(
                 specs: specs, syncMaps: sync.maps, masterRef: masterRef,
                 name: args.string("name"), startFrame: args.int("startFrame")
@@ -64,7 +64,7 @@ extension ToolExecutor {
     private func ungroupSection(_ editor: EditorViewModel, _ args: [String: Any]) throws -> String {
         try validateUnknownKeys(args, allowed: ["groupId"], path: "manage_multicam.ungroup")
         let groupId = try requireGroup(editor, args.string("groupId"))
-        withUndoGroup(editor, actionName: "Ungroup Multicam (Agent)") {
+        try withUndoGroup(editor, actionName: "Ungroup Multicam (Agent)") {
             editor.ungroupMulticam(groupId: groupId)
         }
         return groupId

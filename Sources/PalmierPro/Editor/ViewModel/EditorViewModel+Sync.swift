@@ -39,8 +39,9 @@ extension EditorViewModel {
         targetClipIds: [String],
         mode: SyncMode = .auto,
         searchWindowSeconds: Double = SyncDefaults.searchWindowSeconds,
-        minConfidence: Double = SyncDefaults.minConfidence
-    ) async -> SyncBatchReport {
+        minConfidence: Double = SyncDefaults.minConfidence,
+        applying mutation: (@MainActor (@MainActor () -> Void) async throws -> Void)? = nil
+    ) async throws -> SyncBatchReport {
         let fps = Double(timeline.fps)
         let targets = targetClipIds.filter { $0 != referenceClipId }
         var report = SyncBatchReport()
@@ -244,10 +245,14 @@ extension EditorViewModel {
             return (move.clipId, move.toTrack, move.toFrame + shift)
         }
         if !moves.isEmpty {
-            undoManager?.beginUndoGrouping()
-            moveClips(moves)
-            undoManager?.endUndoGrouping()
-            undoManager?.setActionName("Synchronize")
+            if let mutation {
+                try await mutation { self.moveClips(moves) }
+            } else {
+                undoManager?.beginUndoGrouping()
+                moveClips(moves)
+                undoManager?.endUndoGrouping()
+                undoManager?.setActionName("Synchronize")
+            }
         }
         return report
     }

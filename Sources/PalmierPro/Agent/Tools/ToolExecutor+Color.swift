@@ -139,7 +139,7 @@ extension ToolExecutor {
         let reset = input.reset ?? false
         let snapshot = timelineSnapshot(editor)
         let actionName = input.clipIds.count == 1 ? "Color Grade (Agent)" : "Color Grade ×\(input.clipIds.count) (Agent)"
-        withUndoGroup(editor, actionName: actionName) {
+        try withUndoGroup(editor, actionName: actionName) {
             editor.mutateClips(ids: Set(input.clipIds), actionName: actionName) { clip in
                 let nonColor = (clip.effects ?? []).filter { !$0.type.hasPrefix("color.") }
                 if let pastedStack {

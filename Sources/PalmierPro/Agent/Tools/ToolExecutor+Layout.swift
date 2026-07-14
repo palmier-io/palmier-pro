@@ -43,6 +43,12 @@ extension ToolExecutor {
     }
 
     func applyLayout(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        try withUndoGroup(editor, actionName: "Apply Layout (Agent)") {
+            try applyLayoutMutation(editor, args)
+        }
+    }
+
+    private func applyLayoutMutation(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let input: ApplyLayoutInput = try decodeToolArgs(args, path: "apply_layout")
         for (i, raw) in (args["slots"] as? [Any] ?? []).enumerated() {
             if let d = raw as? [String: Any] {

@@ -61,7 +61,9 @@ extension ToolExecutor {
         try await Self.validateCloudTranscriptionAccess(for: request, in: editor)
 
         let snapshot = timelineSnapshot(editor)
-        let ids = try await editor.generateCaptions(for: request)
+        let ids = try await editor.generateCaptions(for: request, applying: { mutation in
+            try await self.withUndoBoundary(editor, actionName: "Generate Captions (Agent)", mutation)
+        })
         guard !ids.isEmpty else { throw ToolError("No speech detected to caption.") }
         return mutationResult(editor, since: snapshot)
     }

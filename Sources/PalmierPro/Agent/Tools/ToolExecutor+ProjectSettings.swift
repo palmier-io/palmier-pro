@@ -60,7 +60,9 @@ extension ToolExecutor {
 
     func setProjectSettings(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let settings = try validateProjectSettings(args)
-        return try setProjectSettings(editor, settings)
+        return try withUndoGroup(editor, actionName: "Set Project Settings (Agent)") {
+            try setProjectSettings(editor, settings)
+        }
     }
 
     func setProjectSettings(_ editor: EditorViewModel, _ settings: ValidatedProjectSettings) throws -> ToolResult {

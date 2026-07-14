@@ -297,7 +297,7 @@ extension ToolExecutor {
         let shouldFitToContent = transform == nil && (hasContent || textStylePatch.affectsLayout)
         let canvasW = Double(editor.timeline.width)
         let canvasH = Double(editor.timeline.height)
-        withUndoGroup(editor, actionName: actionName) {
+        try withUndoGroup(editor, actionName: actionName) {
             editor.commitClipProperties(clipIds: clipIds) { clip in
                 if let content {
                     if clip.textContent != content {

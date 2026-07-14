@@ -340,18 +340,21 @@ extension ToolExecutor {
 
         if let startFrame = placementStartFrame, let sourceSpan = spanSeconds {
             let outputSpan = requestedDurationSeconds.map(Double.init) ?? sourceSpan
-            let placeholderId = submission.submit(
-                service: editor.generationService,
-                projectURL: editor.projectURL,
-                editor: editor,
-                onComplete: { asset in
-                    editor.finalizeGeneratingClip(placeholderId: asset.id, asset: asset)
-                }
-            )
-            editor.placeGeneratingAudioClip(
-                placeholderId: placeholderId, startFrame: startFrame,
-                spanSeconds: outputSpan, actionName: "Add \(model.category.label)"
-            )
+            let placeholderId = try await withUndoBoundary(editor, actionName: "Add \(model.category.label) (Agent)") {
+                let placeholderId = submission.submit(
+                    service: editor.generationService,
+                    projectURL: editor.projectURL,
+                    editor: editor,
+                    onComplete: { asset in
+                        editor.finalizeGeneratingClip(placeholderId: asset.id, asset: asset)
+                    }
+                )
+                editor.placeGeneratingAudioClip(
+                    placeholderId: placeholderId, startFrame: startFrame,
+                    spanSeconds: outputSpan, actionName: "Add \(model.category.label)"
+                )
+                return placeholderId
+            }
             return .ok("Generation started and placed on the timeline at frame \(startFrame). Placeholder asset ID: \(placeholderId). Model: \(model.displayName), \(model.category.label) (scored from video).")
         }
 
