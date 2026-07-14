@@ -636,7 +636,7 @@ final class AgentService {
                 if !trimmed.isEmpty { return String(trimmed.prefix(40)) }
             }
         }
-        return "New chat"
+        return L10n.string("New chat")
     }
 }
 

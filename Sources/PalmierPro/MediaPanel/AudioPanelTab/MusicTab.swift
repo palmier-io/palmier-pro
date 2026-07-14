@@ -9,7 +9,7 @@ struct MusicTab: View {
     @State private var prompt: String = ""
     @State private var textDuration: Double = 90
     @State private var isGenerating = false
-    @State private var generatingLabel = "Generating..."
+    @State private var generatingLabel = "Generating…"
     @State private var note: String?
 
     private var models: [AudioModelConfig] {
@@ -71,9 +71,9 @@ struct MusicTab: View {
     }
 
     private var validationNote: String? {
-        guard let model else { return "No music models available." }
+        guard let model else { return L10n.string("No music models available.") }
         if isTextMode {
-            if trimmedPrompt.isEmpty { return "Describe the music to generate." }
+            if trimmedPrompt.isEmpty { return L10n.string("Describe the music to generate.") }
             let params = AudioGenerationParams(
                 prompt: trimmedPrompt,
                 voice: nil,
@@ -85,13 +85,17 @@ struct MusicTab: View {
             if let issue = model.validate(params: params) { return issue }
         } else {
             guard source != nil else {
-                return "Add video to the timeline, then mark a range to score only part of it."
+                return L10n.string("Add video to the timeline, then mark a range to score only part of it.")
             }
             if let issue = model.validate(spanSeconds: spanSeconds) { return issue }
         }
         if let cost = estimatedCost, cost > AccountService.shared.remainingCredits,
            AccountService.shared.budgetCredits != nil {
-            return "\(cost) credits needed. Only \(AccountService.shared.remainingCredits.formatted()) remaining."
+            return L10n.format(
+                "%d credits needed. Only %@ remaining.",
+                cost,
+                AccountService.shared.remainingCredits.formatted()
+            )
         }
         return nil
     }
@@ -101,13 +105,15 @@ struct MusicTab: View {
     }
 
     private var generateLabel: String {
-        if let cost = estimatedCost, cost > 0 { return "Generate · \(CostEstimator.format(cost))" }
-        return "Generate"
+        if let cost = estimatedCost, cost > 0 {
+            return L10n.format("Generate · %@", CostEstimator.format(cost))
+        }
+        return L10n.string("Generate")
     }
 
     private var sourceSummary: String {
-        guard let source else { return "No video" }
-        let scope = editor.validSelectedTimelineRange != nil ? "" : "Whole timeline · "
+        guard let source else { return L10n.string("No video") }
+        let scope = editor.validSelectedTimelineRange != nil ? "" : L10n.string("Whole timeline · ")
         return "\(scope)\(clock(source.startFrame)) – \(clock(source.startFrame + source.frameCount)) · \(String(format: "%.1fs", spanSeconds))"
     }
 
@@ -176,8 +182,8 @@ struct MusicTab: View {
 
     private func modeLabel(_ m: MusicGenerationSubmission.Mode) -> String {
         switch m {
-        case .videoToMusic: "Video to Music"
-        case .textToMusic: "Text to Music"
+        case .videoToMusic: L10n.string("Video to Music")
+        case .textToMusic: L10n.string("Text to Music")
         }
     }
 

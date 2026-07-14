@@ -56,8 +56,8 @@ struct TitleBarTrailingView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(
                 activeCount == 0 && waitingCount == 0
-                    ? "Export"
-                    : "Export, \(activeCount) active, \(waitingCount) waiting"
+                    ? L10n.string("Export")
+                    : L10n.format("Export, %d active, %d waiting", activeCount, waitingCount)
             )
 
             UserAvatarButton()

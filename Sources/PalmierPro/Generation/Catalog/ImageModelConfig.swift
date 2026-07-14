@@ -58,10 +58,17 @@ struct ImageModelConfig: Identifiable, Sendable {
             return unsupportedValue(model: displayName, field: "quality", value: q, allowed: allowed)
         }
         if imageRefCount > 0, !supportsImageReference {
-            return "\(displayName) does not accept reference images."
+            return L10n.format("%@ does not accept reference images.", displayName)
         }
         if numImages < 1 || numImages > maxImages {
-            return "\(displayName) supports 1…\(maxImages) image\(maxImages == 1 ? "" : "s") per request (got \(numImages))."
+            return maxImages == 1
+                ? L10n.format("%@ supports 1 image per request (got %d).", displayName, numImages)
+                : L10n.format(
+                    "%@ supports 1…%d images per request (got %d).",
+                    displayName,
+                    maxImages,
+                    numImages
+                )
         }
         return nil
     }
@@ -76,8 +83,8 @@ struct ImageModelConfig: Identifiable, Sendable {
     /// Human-readable label for a resolution ID.
     static func resolutionDisplayLabel(_ id: String) -> String {
         guard let (w, h) = parseWxH(id) else { return id }
-        if w == h { return "Square" }
-        let orientation = w > h ? "Landscape" : "Portrait"
+        if w == h { return L10n.string("Square") }
+        let orientation = w > h ? L10n.string("Landscape") : L10n.string("Portrait")
         let longEdge = max(w, h)
         let tier: String
         switch longEdge {

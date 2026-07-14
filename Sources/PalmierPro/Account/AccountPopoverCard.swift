@@ -61,13 +61,13 @@ struct AccountPopoverCard: View {
     private var planBlock: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             HStack {
-                Text(account.tier.planLabel)
+                L10n.text(account.tier.planLabel)
                     .font(.system(size: AppTheme.FontSize.md, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                 Spacer(minLength: 0)
                 if account.account?.user.cancelAtPeriodEnd == true,
                    let date = formattedPeriodEnd {
-                    Text("Cancels \(date)")
+                    Text(verbatim: L10n.format("Cancels %@", date))
                         .font(.system(size: AppTheme.FontSize.xxs))
                         .foregroundStyle(.orange)
                 }
@@ -96,11 +96,11 @@ struct AccountPopoverCard: View {
     @ViewBuilder
     private func planRow(plan: AvailablePlan, isPrimary: Bool) -> some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            Text(plan.tier.upgradeLabel)
+            L10n.text(plan.tier.upgradeLabel)
                 .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
                 .foregroundStyle(AppTheme.Text.primaryColor)
 
-            Text("$\(plan.effectiveMonthlyPriceUsd)/mo")
+            Text(verbatim: L10n.format("$%d/mo", plan.effectiveMonthlyPriceUsd))
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .monospacedDigit()
@@ -149,9 +149,9 @@ struct AccountPopoverCard: View {
 
     private func creditsShortLabel(_ credits: Int) -> String {
         if credits >= 1000, credits % 1000 == 0 {
-            return "\(credits / 1000)k credits"
+            return L10n.format("%dk credits", credits / 1000)
         }
-        return "\(credits.formatted()) credits"
+        return L10n.format("%@ credits", credits.formatted())
     }
 
     @ViewBuilder
@@ -164,13 +164,17 @@ struct AccountPopoverCard: View {
                     .progressViewStyle(.linear)
                     .tint(barColor(remaining))
                 HStack(spacing: AppTheme.Spacing.xs) {
-                    Text("\(left.formatted()) / \(budget.formatted()) credits")
+                    Text(verbatim: L10n.format(
+                        "%@ / %@ credits",
+                        left.formatted(),
+                        budget.formatted()
+                    ))
                         .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                         .monospacedDigit()
                         .foregroundStyle(AppTheme.Text.secondaryColor)
                     Spacer(minLength: 0)
                     if let date = formattedPeriodEnd {
-                        Text("Resets \(date)")
+                        Text(verbatim: L10n.format("Resets %@", date))
                             .font(.system(size: AppTheme.FontSize.xs))
                             .foregroundStyle(AppTheme.Text.tertiaryColor)
                     }
@@ -219,7 +223,7 @@ struct AccountPopoverCard: View {
             HStack(spacing: AppTheme.Spacing.xs) {
                 Image(systemName: systemImage)
                     .font(.system(size: AppTheme.FontSize.smMd))
-                Text(label)
+                L10n.text(label)
                     .font(.system(size: AppTheme.FontSize.sm))
                 Spacer(minLength: 0)
             }

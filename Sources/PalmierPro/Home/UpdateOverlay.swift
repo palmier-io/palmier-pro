@@ -22,7 +22,7 @@ struct UpdateOverlay: View {
 
     private var card: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
-            Text("What's New in v\(entry.version)")
+            Text(verbatim: L10n.format("What's New in v%@", entry.version))
                 .font(.system(size: AppTheme.FontSize.title2, weight: .light))
                 .tracking(AppTheme.Tracking.tight)
                 .foregroundStyle(AppTheme.Text.primaryColor)
@@ -75,7 +75,7 @@ struct UpdateOverlay: View {
     private func section(_ section: ChangelogSection) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             if let heading = section.heading, !heading.isEmpty {
-                Text(heading)
+                L10n.text(heading)
                     .font(.system(size: AppTheme.FontSize.xl, weight: .light))
                     .tracking(AppTheme.Tracking.tight)
                     .foregroundStyle(AppTheme.Text.primaryColor)
@@ -84,7 +84,7 @@ struct UpdateOverlay: View {
                 HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
                     Text("•")
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    Text(item)
+                    L10n.text(item)
                         .font(.system(size: AppTheme.FontSize.smMd))
                         .foregroundStyle(AppTheme.Text.secondaryColor)
                         .fixedSize(horizontal: false, vertical: true)

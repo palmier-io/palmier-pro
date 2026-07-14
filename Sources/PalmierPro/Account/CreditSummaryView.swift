@@ -66,7 +66,11 @@ struct CreditSummaryView: View {
             Capsule().stroke(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)
         )
         .fixedSize(horizontal: true, vertical: false)
-        .help("\(left.formatted()) of \(budget.formatted()) credits remaining this period")
+        .help(L10n.format(
+            "%@ of %@ credits remaining this period",
+            left.formatted(),
+            budget.formatted()
+        ))
     }
 
     /// Tint by remaining ratio — full bar is healthy, drained bar is alarming.
@@ -138,7 +142,7 @@ private struct CreditActionsPopover: View {
 
     @ViewBuilder
     private func sectionCaption(_ text: String) -> some View {
-        Text(text)
+        L10n.text(text)
             .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
             .foregroundStyle(AppTheme.Text.tertiaryColor)
     }

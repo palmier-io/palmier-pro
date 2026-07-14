@@ -300,7 +300,7 @@ private struct CopyButton: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help(copied ? "Copied" : "Copy")
+        .help(copied ? L10n.string("Copied") : L10n.string("Copy"))
     }
 
     private func copy() {

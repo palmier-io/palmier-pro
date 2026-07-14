@@ -198,7 +198,7 @@ struct PreviewContainerView: View {
                 editor.canvasZoom = preset.value
             } label: {
                 HStack {
-                    Text(preset.label)
+                    L10n.text(preset.label)
                     Spacer()
                     if isZoomPresetActive(preset) {
                         Image(systemName: "checkmark")
@@ -210,7 +210,7 @@ struct PreviewContainerView: View {
 
     private var zoomBadgeLabel: String {
         if isZoomPresetActive(.fit) {
-            return "Fit"
+            return L10n.string("Fit")
         }
         let percent = Int(editor.canvasZoom * 100)
         return "\(percent)%"
@@ -235,8 +235,8 @@ struct PreviewContainerView: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .hoverHighlight()
-        .help(help)
-        .accessibilityLabel(help)
+        .help(L10n.string(help))
+        .accessibilityLabel(L10n.string(help))
         .accessibilityValue(label)
     }
 
@@ -378,7 +378,7 @@ struct PreviewContainerView: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.message = "Choose the source file for this clip"
+        panel.message = L10n.string("Choose the source file for this clip")
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             editor.relinkAsset(id: assetId, to: url)
@@ -390,11 +390,15 @@ struct PreviewContainerView: View {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.message = "Choose the folder that holds your media"
+        panel.message = L10n.string("Choose the folder that holds your media")
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             let result = editor.relinkOfflineAssets(fromFolder: url)
-            editor.mediaPanelToast = "Relinked \(result.relinked) of \(result.total) offline clips."
+            editor.mediaPanelToast = L10n.format(
+                "Relinked %d of %d offline clips.",
+                result.relinked,
+                result.total
+            )
         }
     }
 
@@ -443,7 +447,7 @@ struct PreviewContainerView: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: AppTheme.FontSize.display))
                     .foregroundStyle(AppTheme.Status.errorColor)
-                Text(isUnprocessable ? "Couldn't Prepare Media" : "Media Offline")
+                L10n.text(isUnprocessable ? "Couldn't Prepare Media" : "Media Offline")
                     .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                 Text(isUnprocessable
@@ -603,7 +607,7 @@ struct PreviewContainerView: View {
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
-        .help(help)
+        .help(L10n.string(help))
     }
 
     private var overflowMenu: some View {
@@ -765,7 +769,7 @@ private enum ZoomPreset: CaseIterable {
         case .twentyFivePercent: "25%"
         case .fiftyPercent: "50%"
         case .seventyFivePercent: "75%"
-        case .fit: "Fit"
+        case .fit: L10n.string("Fit")
         case .oneTwentyFivePercent: "125%"
         case .oneFiftyPercent: "150%"
         case .twoHundredPercent: "200%"

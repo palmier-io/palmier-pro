@@ -12,7 +12,7 @@ enum HDRVideoExporter {
 
     struct HDRExportError: LocalizedError {
         let reason: String
-        var errorDescription: String? { "HDR export failed: \(reason)" }
+        var errorDescription: String? { L10n.format("HDR export failed: %@", reason) }
     }
 
     // MARK: - Encode settings
@@ -65,7 +65,7 @@ enum HDRVideoExporter {
         let videoComposition = inputs.videoComposition
         let audioMix = inputs.audioMix
         let videoTracks = try await composition.loadTracks(withMediaType: .video)
-        guard !videoTracks.isEmpty else { throw HDRExportError(reason: "no video tracks") }
+        guard !videoTracks.isEmpty else { throw HDRExportError(reason: L10n.string("No video tracks")) }
         let totalSeconds = try await composition.load(.duration).seconds
 
         // Convert 709 → HLG per frame in CoreImage; relabeling the composition as HLG would tag
@@ -76,7 +76,7 @@ enum HDRVideoExporter {
         )
         videoOutput.videoComposition = videoComposition
         videoOutput.alwaysCopiesSampleData = false
-        guard reader.canAdd(videoOutput) else { throw HDRExportError(reason: "cannot add video output") }
+        guard reader.canAdd(videoOutput) else { throw HDRExportError(reason: L10n.string("Cannot add video output")) }
         reader.add(videoOutput)
 
         let audioTracks = try await composition.loadTracks(withMediaType: .audio)
@@ -88,7 +88,7 @@ enum HDRVideoExporter {
             mediaType: .video, outputSettings: videoWriterSettings(size: renderSize, transfer: transfer)
         )
         videoInput.expectsMediaDataInRealTime = false
-        guard writer.canAdd(videoInput) else { throw HDRExportError(reason: "cannot add video input") }
+        guard writer.canAdd(videoInput) else { throw HDRExportError(reason: L10n.string("Cannot add video input")) }
         writer.add(videoInput)
 
         // Add the audio reader output and writer input atomically — an output nobody drains stalls
@@ -136,10 +136,10 @@ enum HDRVideoExporter {
         )
 
         guard reader.startReading() else {
-            throw HDRExportError(reason: "reader start: \(reader.error?.localizedDescription ?? "?")")
+            throw HDRExportError(reason: L10n.format("Reader start failed: %@", reader.error?.localizedDescription ?? "?"))
         }
         guard writer.startWriting() else {
-            throw HDRExportError(reason: "writer start: \(writer.error?.localizedDescription ?? "?")")
+            throw HDRExportError(reason: L10n.format("Writer start failed: %@", writer.error?.localizedDescription ?? "?"))
         }
         writer.startSession(atSourceTime: .zero)
 

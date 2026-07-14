@@ -12,12 +12,12 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .account: return "Account"
-        case .general: return "General"
-        case .models: return "Models"
-        case .agent: return "Agent"
-        case .skills: return "Skills"
-        case .storage: return "Storage"
+        case .account: return L10n.string("Account")
+        case .general: return L10n.string("General")
+        case .models: return L10n.string("Models")
+        case .agent: return L10n.string("Agent")
+        case .skills: return L10n.string("Skills")
+        case .storage: return L10n.string("Storage")
         }
     }
 
@@ -207,7 +207,7 @@ struct SettingsToggleRow: View {
                 Text(title)
                     .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
                     .foregroundStyle(AppTheme.Text.primaryColor)
-                Text(subtitle)
+                L10n.text(subtitle)
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .fixedSize(horizontal: false, vertical: true)

@@ -37,8 +37,10 @@ struct SpeechTab: View {
                 .labelsHidden()
                 .accessibilityLabel("Mark Speakers")
             }
-            Button(editor.projectSpeakers.isEmpty ? "Identify Speakers" : "Refresh") {
-                editor.identifySpeakers(transcribeMissing: true)
+            Button { editor.identifySpeakers(transcribeMissing: true) } label: {
+                Text(verbatim: editor.projectSpeakers.isEmpty
+                    ? L10n.string("Identify Speakers")
+                    : L10n.string("Refresh"))
             }
             .buttonStyle(.capsule(.secondary))
             .disabled(editor.speakerIdentifyInFlight)
@@ -104,9 +106,9 @@ struct SpeechTab: View {
                 HStack(spacing: AppTheme.Spacing.xs) {
                     ProgressView()
                         .controlSize(.small)
-                    Text(editor.speechAnalyzingCount == 1
-                        ? "Detecting speech…"
-                        : "Detecting speech in \(editor.speechAnalyzingCount) files…")
+                    Text(verbatim: editor.speechAnalyzingCount == 1
+                        ? L10n.string("Detecting speech…")
+                        : L10n.format("Detecting speech in %d files…", editor.speechAnalyzingCount))
                         .font(.system(size: AppTheme.FontSize.xs))
                         .foregroundStyle(AppTheme.Text.mutedColor)
                 }
@@ -182,7 +184,9 @@ struct SpeechTab: View {
                 .disabled(count == 0)
                 .help("Ripple-deletes every silent section; downstream clips close the gaps.")
             if count > 0 {
-                Text(count == 1 ? "1 section" : "\(count) sections")
+                Text(verbatim: count == 1
+                    ? L10n.string("1 section")
+                    : L10n.format("%d sections", count))
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.mutedColor)
             }

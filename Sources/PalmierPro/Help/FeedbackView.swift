@@ -133,7 +133,7 @@ struct FeedbackView: View {
         }
         .toggleStyle(.checkbox)
         .disabled(!hasReplyEmail)
-        .help(hasReplyEmail ? "" : "Add an email above to enable a reply")
+        .help(hasReplyEmail ? "" : L10n.string("Add an email above to enable a reply"))
     }
 
     private var screenshotRow: some View {
@@ -176,11 +176,11 @@ struct FeedbackView: View {
     }
 
     private var contextNoteText: String {
-        if account.isSignedIn {
-            return "App version \(Self.appVersion) and macOS \(Self.osVersion) are included."
-        } else {
-            return "App version \(Self.appVersion) and macOS \(Self.osVersion) are included."
-        }
+        L10n.format(
+            "App version %@ and macOS %@ are included.",
+            Self.appVersion,
+            Self.osVersion
+        )
     }
 
     private var footer: some View {
@@ -198,7 +198,7 @@ struct FeedbackView: View {
                             .controlSize(.small)
                             .tint(AppTheme.Text.primaryColor)
                     }
-                    Text(isSending ? "Sending…" : "Send")
+                    L10n.text(isSending ? "Sending…" : "Send")
                 }
             }
             .buttonStyle(.capsule(.prominent, size: .regular))
@@ -237,18 +237,18 @@ struct FeedbackView: View {
         let replyAddr = account.account?.user.email
             ?? (trimmedEmail.isEmpty ? nil : trimmedEmail)
         if let replyAddr, mayContact {
-            return "We read every message and may reach out at \(replyAddr)."
+            return L10n.format("We read every message and may reach out at %@.", replyAddr)
         }
         if replyAddr != nil {
-            return "We read every message. We won't email you, as requested."
+            return L10n.string("We read every message. We won't email you, as requested.")
         }
-        return "We read every message. Add an email next time if you'd like a reply."
+        return L10n.string("We read every message. Add an email next time if you'd like a reply.")
     }
 
     // MARK: - Helpers
 
     private func fieldLabel(_ text: String) -> some View {
-        Text(text)
+        L10n.text(text)
             .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
             .foregroundStyle(AppTheme.Text.secondaryColor)
     }

@@ -49,10 +49,10 @@ enum EditAction {
         switch self {
         case .upscale:
             guard asset.type == .video || asset.type == .image else {
-                return .disabled(reason: "Upscale only works on video or images")
+                return .disabled(reason: L10n.string("Upscale only works on video or images"))
             }
             if asset.isGenerating {
-                return .disabled(reason: "Generation in progress")
+                return .disabled(reason: L10n.string("Generation in progress"))
             }
             return .available
 
@@ -96,24 +96,28 @@ enum EditAction {
                 }
                 let duration = effectiveDurationOverride ?? asset.resolvedDuration
                 guard duration > 0 else {
-                    return .disabled(reason: "Loading video metadata…")
+                    return .disabled(reason: L10n.string("Loading video metadata…"))
                 }
                 guard duration <= EditAction.editMaxDurationSeconds else {
-                    return .disabled(reason: "Edit supports up to \(Int(EditAction.editMaxDurationSeconds))s (this is \(Int(duration.rounded()))s)")
+                    return .disabled(reason: L10n.format(
+                        "Edit supports up to %ds (this is %ds)",
+                        Int(EditAction.editMaxDurationSeconds),
+                        Int(duration.rounded())
+                    ))
                 }
             case .image:
                 break // images have no duration constraint
             case .audio:
-                return .disabled(reason: "Edit doesn't support audio")
+                return .disabled(reason: L10n.string("Edit doesn't support audio"))
             case .text:
-                return .disabled(reason: "Edit doesn't support text")
+                return .disabled(reason: L10n.string("Edit doesn't support text"))
             case .lottie:
-                return .disabled(reason: "Edit doesn't support Lottie")
+                return .disabled(reason: L10n.string("Edit doesn't support Lottie"))
             case .sequence:
-                return .disabled(reason: "Edit doesn't support sequences")
+                return .disabled(reason: L10n.string("Edit doesn't support sequences"))
             }
             if asset.isGenerating {
-                return .disabled(reason: "Generation in progress")
+                return .disabled(reason: L10n.string("Generation in progress"))
             }
             return .available
 
@@ -133,22 +137,22 @@ enum EditAction {
 
         case .createVideo:
             guard asset.type == .image else {
-                return .disabled(reason: "Create Video only works on images")
+                return .disabled(reason: L10n.string("Create Video only works on images"))
             }
             if asset.isGenerating {
-                return .disabled(reason: "Generation in progress")
+                return .disabled(reason: L10n.string("Generation in progress"))
             }
             return .available
 
         case .rerun:
             guard asset.isGenerated else {
-                return .disabled(reason: "Only available for AI-generated media")
+                return .disabled(reason: L10n.string("Only available for AI-generated media"))
             }
             if asset.isGenerating {
-                return .disabled(reason: "Generation in progress")
+                return .disabled(reason: L10n.string("Generation in progress"))
             }
             guard let modelId = asset.generationInput?.model, ModelRegistry.exists(id: modelId) else {
-                return .disabled(reason: "Model no longer available")
+                return .disabled(reason: L10n.string("Model no longer available"))
             }
             return .available
         }
@@ -161,17 +165,17 @@ enum EditAction {
         effectiveDurationOverride: Double?
     ) -> EditActionAvailability {
         guard asset.type == .video else {
-            return .disabled(reason: "\(kind.title) only works on video")
+            return .disabled(reason: L10n.format("%@ only works on video", kind.title))
         }
         if asset.isGenerating {
-            return .disabled(reason: "Generation in progress")
+            return .disabled(reason: L10n.string("Generation in progress"))
         }
         let duration = effectiveDurationOverride ?? asset.resolvedDuration
         guard duration > 0 else {
-            return .disabled(reason: "Loading video metadata…")
+            return .disabled(reason: L10n.string("Loading video metadata…"))
         }
         guard let model = kind.model else {
-            return .disabled(reason: "\(kind.providerName) model not available")
+            return .disabled(reason: L10n.format("%@ model not available", kind.providerName))
         }
         if let err = model.validate(spanSeconds: duration) {
             return .disabled(reason: err)

@@ -29,7 +29,7 @@ struct ProjectActivityView: View {
                     .foregroundStyle(AppTheme.Text.primaryColor)
                 Spacer()
                 if !entries.isEmpty {
-                    Text("\(CostEstimator.format(total)) used")
+                    Text(verbatim: L10n.format("%@ used", CostEstimator.format(total)))
                         .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                         .monospacedDigit()
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -174,7 +174,8 @@ struct ProjectActivityButton: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help("Project Activity")
+        .accessibilityLabel(L10n.string("Project Activity"))
+        .help(L10n.string("Project Activity"))
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             ProjectActivityView(projectId: projectId)
         }
