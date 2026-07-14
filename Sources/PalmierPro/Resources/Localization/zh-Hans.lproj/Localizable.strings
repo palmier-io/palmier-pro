@@ -101,6 +101,7 @@
 "Create a letterbox opening" = "创建宽银幕开场";
 "Create a voiceover" = "创建旁白";
 "Create Matte" = "创建遮罩";
+"Creating…" = "正在创建…";
 "Create Nested Timeline" = "创建嵌套时间线";
 "Create Video" = "创建视频";
 "Credits" = "积分";
@@ -133,6 +134,7 @@
 "Duration" = "时长";
 "Edit" = "编辑";
 "Edit…" = "编辑…";
+"Edit… (Paid)" = "编辑…（付费）";
 "Edited" = "已编辑";
 "Editing" = "编辑";
 "Effects" = "效果";
@@ -157,6 +159,8 @@
 "First Frame" = "首帧";
 "Fix names & jargon" = "修正名称和术语";
 "Flip" = "翻转";
+"Flip horizontally" = "水平翻转";
+"Flip vertically" = "垂直翻转";
 "Font" = "字体";
 "For" = "用于";
 "FPS" = "FPS";
@@ -224,6 +228,8 @@
 "Manage subscription" = "管理订阅";
 "Manual setup" = "手动设置";
 "Mark Beats" = "标记节拍";
+"Detect Beats" = "检测节拍";
+"Redetect Beats" = "重新检测节拍";
 "Mark Silence" = "标记静音";
 "Mark Speakers" = "标记说话人";
 "Master — defines the group's clock and transcript." = "主机位——定义分组的时钟和转录。";
@@ -234,6 +240,7 @@
 "MCP Instructions" = "MCP 使用说明";
 "MCP Server" = "MCP 服务器";
 "Media Offline" = "媒体离线";
+"Couldn't Prepare Media" = "无法准备媒体";
 "Media panel" = "媒体面板";
 "Media Panel" = "媒体面板";
 "Media search" = "媒体搜索";
@@ -303,7 +310,9 @@
 "Remove filler words" = "移除语气词";
 "Remove from Recents" = "从最近项目中移除";
 "Remove model" = "移除模型";
+"Remove horizontal flip" = "取消水平翻转";
 "Remove Silence" = "移除静音";
+"Remove vertical flip" = "取消垂直翻转";
 "Removes background noise from this audio using an on-device model." = "使用本机模型移除此音频中的背景噪声。";
 "Removes this label and tint. Identify recreates it if the voice is still present." = "移除此标签和颜色。如果该人声仍存在，再次识别时会重新创建。";
 "Removing background noise…" = "正在移除背景噪声…";
@@ -352,6 +361,8 @@
 "Send crash and error reports" = "发送崩溃和错误报告";
 "Send feedback" = "发送反馈";
 "Send Feedback…" = "发送反馈…";
+"Send" = "发送";
+"Sending…" = "正在发送…";
 "Set as first frame" = "设为首帧";
 "Set as reference" = "设为参考素材";
 "Settings" = "设置";
@@ -365,6 +376,7 @@
 "Show notifications" = "显示通知";
 "Sign in" = "登录";
 "Sign in to subscribe and use AI generation." = "登录后即可订阅并使用 AI 生成功能。";
+"Sign in with Google" = "使用 Google 登录";
 "Sign out" = "退出登录";
 "Silence Detection" = "静音检测";
 "Size" = "大小";
@@ -425,6 +437,7 @@
 "Upgrade to Max" = "升级到 Max";
 "Upgrade to Pro" = "升级到 Pro";
 "Upscale" = "提升分辨率";
+"Upscale (Paid)" = "提升分辨率（付费）";
 "Use trimmed portion only" = "仅使用修剪后的部分";
 "Used your own API key for the AI chat. Stored in your macOS Keychain." = "AI 聊天使用你自己的 API 密钥。密钥存储在 macOS 钥匙串中。";
 "using API key" = "使用 API 密钥";

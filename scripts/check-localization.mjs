@@ -132,6 +132,28 @@ function collectCandidates() {
         }
         const lines = source.split("\n");
         for (const [index, line] of lines.entries()) {
+            const conditionalUIPatterns = [
+                new RegExp(
+                    `\\bL10n\\.(?:string|text|format)\\s*\\(\\s*[^)?\\n]{0,200}\\?\\s*"${literalBody}"\\s*:\\s*"${literalBody}"`,
+                    "g"
+                ),
+                new RegExp(
+                    `\\b(?:title|label|subtitle|message|placeholder|emptyMessage|intro|instruction|help):\\s*[^?\\n]{0,200}\\?\\s*"${literalBody}"\\s*:\\s*"${literalBody}"`,
+                    "g"
+                ),
+            ];
+            for (const pattern of conditionalUIPatterns) {
+                for (const match of line.matchAll(pattern)) {
+                    addCandidate(
+                        decodeEscapes(match[1]),
+                        `${path.relative(repoRoot, filePath)}:${index + 1}`
+                    );
+                    addCandidate(
+                        decodeEscapes(match[2]),
+                        `${path.relative(repoRoot, filePath)}:${index + 1}`
+                    );
+                }
+            }
             if (/\b(?:editor\.)?mediaPanelToast\s*=\s*L10n\.(?:string|format)\s*\(/.test(line)) {
                 typedAssignmentRisks.push(
                     `${path.relative(repoRoot, filePath)}:${index + 1} ${JSON.stringify(line.trim())}`
