@@ -330,9 +330,7 @@ extension ToolExecutor {
         }
 
         let snapshot = timelineSnapshot(editor)
-        let ids = try withUndoGroup(editor, actionName: specs.count == 1 ? "Insert Clip (Agent)" : "Insert Clips (Agent)") {
-            editor.rippleInsertClips(specs: specs, trackIndex: input.trackIndex, atFrame: input.atFrame)
-        }
+        let ids = editor.rippleInsertClips(specs: specs, trackIndex: input.trackIndex, atFrame: input.atFrame)
         guard !ids.isEmpty else {
             throw ToolError("Insert failed on track \(input.trackIndex) at frame \(input.atFrame)")
         }
@@ -350,9 +348,7 @@ extension ToolExecutor {
         }
         let expanded = editor.expandToLinkGroup(Set(clipIds))
         let snapshot = timelineSnapshot(editor)
-        try withUndoGroup(editor, actionName: clipIds.count == 1 ? "Remove Clip (Agent)" : "Remove Clips (Agent)") {
-            editor.removeClips(ids: expanded)
-        }
+        editor.removeClips(ids: expanded)
         return mutationResult(editor, since: snapshot)
     }
 
@@ -696,9 +692,7 @@ extension ToolExecutor {
 
         guard !points.isEmpty else { throw ToolError("No valid split points") }
         let snapshot = timelineSnapshot(editor)
-        try withUndoGroup(editor, actionName: points.count == 1 ? "Split Clip (Agent)" : "Split Clips (Agent)") {
-            _ = editor.splitClips(at: points)
-        }
+        _ = editor.splitClips(at: points)
         return mutationResult(editor, since: snapshot)
     }
 
@@ -768,10 +762,7 @@ extension ToolExecutor {
 
         let ignoreSyncLocked = Set(input.ignoreSyncLockedTracks ?? [])
         let snapshot = timelineSnapshot(editor)
-        let outcome = try withUndoGroup(editor, actionName: "Ripple Delete (Agent)") {
-            editor.rippleDeleteRangesOnTrack(trackIndex: resolvedTrackIndex, ranges: frameRanges, ignoreSyncLockTrackIndices: ignoreSyncLocked)
-        }
-        switch outcome {
+        switch editor.rippleDeleteRangesOnTrack(trackIndex: resolvedTrackIndex, ranges: frameRanges, ignoreSyncLockTrackIndices: ignoreSyncLocked) {
         case .refused(let reason):
             throw ToolError(reason)
         case .ok(let report):

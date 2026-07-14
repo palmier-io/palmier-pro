@@ -4,37 +4,29 @@ import Foundation
 private final class UndoBoundaryWaiter: NSObject {
     private var continuation: CheckedContinuation<Void, Never>?
 
-    init(_ continuation: CheckedContinuation<Void, Never>) {
-        self.continuation = continuation
-    }
+    init(_ continuation: CheckedContinuation<Void, Never>) { self.continuation = continuation }
 
-    @objc func resume() {
-        continuation?.resume()
-        continuation = nil
-    }
+    @objc func resume() { continuation?.resume(); continuation = nil }
 }
 
 extension UndoManager {
     private static let agentSessionKey = UserInfoKey(rawValue: "io.palmier.agent.session")
 
-    /// True once Foundation's automatic per-event group is closed; bounded, never blocks past ~0.5s.
+    /// True once Foundation's automatic per-event group is closed; bounded to one run-loop pass.
     @MainActor
     func awaitTopLevelUndoBoundary() async -> Bool {
-        var attempts = 0
-        while groupingLevel > 0, attempts < 3 {
-            attempts += 1
-            await withCheckedContinuation { continuation in
-                let waiter = UndoBoundaryWaiter(continuation)
-                // Runs after Foundation's NSUndoCloseGroupingRunLoopOrdering observer.
-                RunLoop.main.perform(
-                    #selector(UndoBoundaryWaiter.resume),
-                    target: waiter,
-                    argument: nil,
-                    order: NSUndoCloseGroupingRunLoopOrdering + 1,
-                    modes: runLoopModes
-                )
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { waiter.resume() }
-            }
+        guard groupingLevel > 0 else { return true }
+        await withCheckedContinuation { continuation in
+            let waiter = UndoBoundaryWaiter(continuation)
+            // Runs after Foundation's NSUndoCloseGroupingRunLoopOrdering observer.
+            RunLoop.main.perform(
+                #selector(UndoBoundaryWaiter.resume),
+                target: waiter,
+                argument: nil,
+                order: NSUndoCloseGroupingRunLoopOrdering + 1,
+                modes: runLoopModes
+            )
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { waiter.resume() }
         }
         return groupingLevel == 0
     }
