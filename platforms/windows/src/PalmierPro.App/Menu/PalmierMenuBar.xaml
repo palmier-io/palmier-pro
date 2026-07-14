@@ -61,7 +61,7 @@
                 </MenuFlyoutItem.KeyboardAccelerators>
             </MenuFlyoutItem>
             <MenuFlyoutSeparator/>
-            <MenuFlyoutItem Text="Import Media…" Command="{x:Bind vm:DisabledMenuCommands.ImportMedia}">
+            <MenuFlyoutItem Text="Import Media…" Command="{x:Bind Shell.ImportMediaCommand, Mode=OneWay}">
                 <MenuFlyoutItem.KeyboardAccelerators>
                     <KeyboardAccelerator Key="I" Modifiers="Control"/>
                 </MenuFlyoutItem.KeyboardAccelerators>

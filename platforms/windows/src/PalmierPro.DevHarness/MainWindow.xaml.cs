@@ -21,6 +21,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         Title = "PalmierPro DevHarness";
         ApplyTheme();
+        TimelineHarness.Initialize(this);
 
         Closed += MainWindow_Closed;
     }
@@ -158,5 +159,6 @@ public sealed partial class MainWindow : Window
         }
         _media?.Dispose();
         _session.Dispose();
+        TimelineHarness.Cleanup();
     }
 }

@@ -111,4 +111,39 @@ internal static partial class NativeMethods
 
     [LibraryImport(EngineLibrary, StringMarshalling = StringMarshalling.Utf8)]
     internal static partial int PE_RenderFrameToFile(nint session, nint media, double timelineSeconds, string utf8PngPath);
+
+    // --- Timeline ABI (Stage B / E2) -------------------------------------------------
+
+    [LibraryImport(EngineLibrary, StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial int PE_OpenTimeline(nint session, string utf8SnapshotJson, out nint outTimeline);
+
+    [LibraryImport(EngineLibrary, StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial int PE_UpdateTimeline(nint timeline, string utf8SnapshotJson);
+
+    [LibraryImport(EngineLibrary)]
+    internal static partial int PE_CloseTimeline(nint session, nint timeline);
+
+    [LibraryImport(EngineLibrary)]
+    internal static partial int PE_TimelineSeek(nint timeline, long frame, int mode);
+
+    [LibraryImport(EngineLibrary)]
+    internal static partial int PE_TimelineAttachSwapChain(nint timeline, nint swapChainPanelUnknown, int width, int height);
+
+    [LibraryImport(EngineLibrary)]
+    internal static partial int PE_TimelineResizeSwapChain(nint timeline, int width, int height);
+
+    [LibraryImport(EngineLibrary)]
+    internal static partial int PE_TimelineDetachSwapChain(nint timeline);
+
+    [LibraryImport(EngineLibrary, StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial int PE_TimelineRenderFrameToFile(nint timeline, long frame, string utf8PngPath);
+
+    [LibraryImport(EngineLibrary)]
+    internal static unsafe partial int PE_TimelineSetPlayheadCallback(
+        nint timeline, delegate* unmanaged[Cdecl]<nint, long, void> callback, nint userCtx);
+
+    // Owned by the timeline; do not free. Valid until the next call that could
+    // invalidate it — copy out immediately (mirrors PE_GetLastErrorMessage's contract).
+    [LibraryImport(EngineLibrary)]
+    internal static partial nint PE_TimelineGetUnprocessableMediaRefsJson(nint timeline);
 }

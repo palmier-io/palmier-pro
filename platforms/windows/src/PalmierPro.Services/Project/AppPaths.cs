@@ -10,5 +10,12 @@ public static class AppPaths
 
     public static string RegistryFilePath => Path.Combine(AppDataDirectory, ProjectPackage.RegistryFilename);
 
+    /// Windows analogue of Mac's `DiskCache.rootDirectory` (`~/Library/Caches/PalmierPro`) —
+    /// regenerable derived data (filmstrip/waveform sprites, etc.), separate from the app-state
+    /// `AppDataDirectory` above so a "clear cache" action can safely wipe just this subtree.
+    public static string CacheDirectory => Path.Combine(AppDataDirectory, "Cache");
+
     public static void EnsureAppDataDirectory() => Directory.CreateDirectory(AppDataDirectory);
+
+    public static void EnsureCacheDirectory() => Directory.CreateDirectory(CacheDirectory);
 }

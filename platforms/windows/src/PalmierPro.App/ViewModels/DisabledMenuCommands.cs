@@ -14,7 +14,6 @@ public static class DisabledMenuCommands
     public static IRelayCommand About { get; } = NoOp();
     public static IRelayCommand CheckForUpdates { get; } = NoOp();
     public static IRelayCommand Settings { get; } = NoOp();
-    public static IRelayCommand ImportMedia { get; } = NoOp();
     public static IRelayCommand Export { get; } = NoOp();
     public static IRelayCommand Cut { get; } = NoOp();
     public static IRelayCommand Copy { get; } = NoOp();

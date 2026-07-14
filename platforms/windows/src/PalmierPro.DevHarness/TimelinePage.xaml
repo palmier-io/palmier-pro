@@ -1,0 +1,46 @@
+<UserControl
+    x:Class="PalmierPro.DevHarness.TimelinePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- E2 (native timeline ABI: PE_OpenTimeline/PE_TimelineSeek/PE_TimelineRenderFrameToFile)
+         verified interactively against this surface — Stage B done bar. Submission goes through
+         TimelineSnapshotBuilder -> IVideoEngine (see TimelinePage.xaml.cs); a second raw
+         TimelineSession mirrors every seek purely for swap-chain presentation, since
+         IVideoEngine.AttachSwapChain isn't timeline-scoped until Stage D's Preview UI lands.
+         Visual styling applied from code-behind via HarnessTheme/AppThemeTokens, not here. -->
+    <Grid x:Name="RootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel x:Name="Toolbar" Grid.Row="0" Orientation="Horizontal">
+            <Button x:Name="OpenProjectButton" Content="Open Project…" Click="OpenProjectButton_Click" />
+            <Button x:Name="BuildDemoButton" Content="Build Demo Timeline…" Click="BuildDemoButton_Click" />
+            <ToggleButton x:Name="SpeedToggle" Content="1x" Click="SpeedToggle_Click" IsEnabled="False" />
+            <TextBlock x:Name="StatusText" Text="No timeline open" VerticalAlignment="Center" />
+        </StackPanel>
+
+        <TextBlock x:Name="MediaStatusText" Grid.Row="1" Text="" VerticalAlignment="Center" />
+
+        <Grid x:Name="PreviewHost" Grid.Row="2">
+            <SwapChainPanel x:Name="EngineSurface" SizeChanged="EngineSurface_SizeChanged" />
+        </Grid>
+
+        <StackPanel x:Name="ScrubBar" Grid.Row="3" Orientation="Horizontal">
+            <Slider x:Name="ScrubSlider" Minimum="0" Maximum="0" StepFrequency="1" IsEnabled="False"
+                    ValueChanged="ScrubSlider_ValueChanged"
+                    PointerPressed="ScrubSlider_PointerPressed"
+                    PointerReleased="ScrubSlider_PointerReleased"
+                    PointerCaptureLost="ScrubSlider_PointerCaptureLost" />
+            <TextBlock x:Name="PlayheadReadoutText" Text="frame —" VerticalAlignment="Center" />
+            <TextBlock x:Name="LatencyReadoutText" Text="" VerticalAlignment="Center" />
+        </StackPanel>
+    </Grid>
+</UserControl>

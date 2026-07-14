@@ -374,6 +374,21 @@ public static class AppThemeTokens
     {
         public const double TabRailWidth = IconSize.Lg + Spacing.Sm * 2;
         public const double ContextRowHeight = IconSize.Md;
+
+        /// Default asset/folder grid tile width — matches Mac's ThumbnailPreset.medium.
+        public const double ThumbnailTileWidth = 110;
+
+        /// Locked 16:9 thumbnail-box height for <see cref="ThumbnailTileWidth"/> — mirrors
+        /// MediaTileScaffold.swift's `.aspectRatio(16.0/9.0, contentMode: .fit)` on the artwork
+        /// ZStack (the Mac derives height from whatever width the grid gives the tile; Windows'
+        /// tile width is fixed, so this bakes the same ratio in at that fixed width instead).
+        public const double ThumbnailTileHeight = ThumbnailTileWidth * 9.0 / 16.0;
+
+        /// MediaTabView's toolbar search field width. No Mac equivalent: MediaTab.swift's
+        /// `searchField` TextField has no fixed width at all — it just flows inside its toolbar
+        /// HStack. This Windows-only fixed width is a port-time addition (WinUI's `Grid`/toolbar
+        /// layout here needs an explicit size), kept as a token instead of a bare XAML literal.
+        public const double SearchFieldWidth = 180;
     }
 
     public static class Export

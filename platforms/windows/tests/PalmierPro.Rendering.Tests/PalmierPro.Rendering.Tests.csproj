@@ -28,4 +28,13 @@
     <ProjectReference Include="..\..\src\PalmierPro.Rendering\PalmierPro.Rendering.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Checked-in golden timeline-snapshot JSON (docs/timeline-snapshot-v1.md), templated with
+         {{FIXTURE_DIR}} the same way as PalmierPro.Services.Tests' Engine/Fixtures — see
+         TimelineCompositorTests' LoadTimelineSnapshotJson helper for the substitution. -->
+    <Content Include="Fixtures\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

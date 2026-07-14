@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "outputWidth": 1920,
+  "outputHeight": 1080,
+  "tracks": [
+    {
+      "id": "TRACK-AUDIO",
+      "type": "audio",
+      "muted": false,
+      "clips": [
+        {
+          "id": "CLIP-AUDIO-1",
+          "type": "audio",
+          "startFrame": 0,
+          "durationFrames": 90,
+          "trimStartFrame": 0,
+          "speed": 1,
+          "mediaPath": "{{FIXTURE_DIR}}\\audio-a.wav",
+          "hasAlphaHint": null,
+          "blendMode": null,
+          "opacity": {
+            "value": 1,
+            "keyframes": null
+          },
+          "transform": {
+            "value": {
+              "centerX": 0.5,
+              "centerY": 0.5,
+              "width": 1,
+              "height": 1,
+              "rotation": 0,
+              "flipHorizontal": false,
+              "flipVertical": false
+            },
+            "keyframes": null
+          },
+          "crop": {
+            "value": {
+              "left": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0
+            },
+            "keyframes": null
+          },
+          "volume": {
+            "gain": 0.8,
+            "fadeInFrames": 15,
+            "fadeOutFrames": 15,
+            "fadeInInterpolation": "smooth",
+            "fadeOutInterpolation": "linear",
+            "keyframes": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "TRACK-VIDEO",
+      "type": "video",
+      "muted": false,
+      "clips": [
+        {
+          "id": "CLIP-VIDEO-1",
+          "type": "video",
+          "startFrame": 0,
+          "durationFrames": 90,
+          "trimStartFrame": 0,
+          "speed": 1,
+          "mediaPath": "{{FIXTURE_DIR}}\\clip-a.mp4",
+          "hasAlphaHint": null,
+          "blendMode": null,
+          "opacity": {
+            "value": 1,
+            "keyframes": null
+          },
+          "transform": {
+            "value": {
+              "centerX": 0.5,
+              "centerY": 0.5,
+              "width": 1,
+              "height": 1,
+              "rotation": 0,
+              "flipHorizontal": false,
+              "flipVertical": false
+            },
+            "keyframes": null
+          },
+          "crop": {
+            "value": {
+              "left": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0
+            },
+            "keyframes": null
+          },
+          "volume": {
+            "gain": 1,
+            "fadeInFrames": 0,
+            "fadeOutFrames": 0,
+            "fadeInInterpolation": "linear",
+            "fadeOutInterpolation": "linear",
+            "keyframes": null
+          }
+        }
+      ]
+    }
+  ]
+}

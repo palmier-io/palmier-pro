@@ -1,0 +1,38 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.MediaPanel.MediaPanelView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:mediaPanel="using:PalmierPro.App.Views.MediaPanel"
+    mc:Ignorable="d">
+
+    <!-- Rail + MediaTab content, mirroring MediaPanelView.swift's HStack layout. Only the Media
+         tab is functional in Phase 1 (Captions/Audio land later per the port plan) — their rail
+         buttons are present, disabled, so the rail's structure already matches the Mac's. -->
+    <Grid x:Name="RootGrid" Background="{StaticResource AppBackgroundRaisedBrush}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <StackPanel x:Name="TabRail" Grid.Column="0"
+                    Width="{StaticResource AppMediaPanelTabRailWidth}"
+                    Spacing="{StaticResource AppSpacingXs}">
+            <Button x:Name="MediaTabButton" IsEnabled="False" HorizontalAlignment="Stretch" ToolTipService.ToolTip="Media">
+                <TextBlock Text="Media" FontSize="{StaticResource AppFontSizeXxs}" Foreground="{StaticResource AppTextPrimaryBrush}"/>
+            </Button>
+            <Button x:Name="CaptionsTabButton" IsEnabled="False" HorizontalAlignment="Stretch" ToolTipService.ToolTip="Captions">
+                <TextBlock Text="CC" FontSize="{StaticResource AppFontSizeXxs}" Foreground="{StaticResource AppTextTertiaryBrush}"/>
+            </Button>
+            <Button x:Name="AudioTabButton" IsEnabled="False" HorizontalAlignment="Stretch" ToolTipService.ToolTip="Audio">
+                <TextBlock Text="Audio" FontSize="{StaticResource AppFontSizeXxs}" Foreground="{StaticResource AppTextTertiaryBrush}"/>
+            </Button>
+        </StackPanel>
+        <Rectangle x:Name="RailDivider" Grid.Column="0" HorizontalAlignment="Right"
+                   Width="{StaticResource AppBorderWidthHairline}"
+                   Fill="{StaticResource AppBorderPrimaryBrush}"/>
+
+        <mediaPanel:MediaTabView x:Name="MediaTabContent" Grid.Column="1"/>
+    </Grid>
+</UserControl>

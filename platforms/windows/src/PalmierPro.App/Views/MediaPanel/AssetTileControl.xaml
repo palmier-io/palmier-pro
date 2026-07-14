@@ -1,0 +1,61 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.MediaPanel.AssetTileControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- DataContext is a MediaAssetItemViewModel, set per-item by the GridView hosting this
+         template (see ProjectCard.xaml's precedent for classic {Binding} here). Thumbnail pixels
+         are code-behind's job (AssetTileControl.xaml.cs) — the ViewModel stays WinUI-free. -->
+    <Grid x:Name="RootGrid" RowSpacing="{StaticResource AppSpacingXs}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Locked 16:9 box, same as every other tile — mirrors MediaTileScaffold.swift's
+             `.aspectRatio(16.0/9.0, contentMode: .fit)` on the artwork ZStack. The tile grid's
+             width is already fixed (MediaTileContainerStyle), so a fixed Height derived from that
+             width at 16:9 reproduces the same ratio Mac gets by deriving height from a flexible
+             width. Content (Image Stretch="Uniform") letterboxes inside this box instead of
+             stretching a non-16:9 source or blowing out the row for a portrait/square photo. -->
+        <Grid x:Name="ThumbArea" Grid.Row="0" Height="{StaticResource AppMediaPanelThumbnailTileHeight}" Background="Black">
+            <Image x:Name="ThumbImage" Stretch="Uniform" Visibility="Collapsed"/>
+            <TextBlock x:Name="FallbackGlyph"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       FontSize="{StaticResource AppFontSizeXl}"
+                       Foreground="{StaticResource AppTextTertiaryBrush}"/>
+
+            <Border x:Name="MissingOverlay" Visibility="Collapsed" Background="#CC000000">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{StaticResource AppSpacingXxs}">
+                    <TextBlock Text="&#x26A0;" FontSize="{StaticResource AppFontSizeMdLg}"
+                               Foreground="{StaticResource AppStatusErrorBrush}" HorizontalAlignment="Center"/>
+                    <TextBlock Text="Media Offline" FontSize="{StaticResource AppFontSizeXs}" FontWeight="SemiBold"
+                               Foreground="{StaticResource AppTextSecondaryBrush}" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <Border x:Name="DurationBadge" VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                    Background="#B3000000" Visibility="Collapsed">
+                <TextBlock x:Name="DurationText" FontSize="{StaticResource AppFontSizeXxs}" Foreground="White"/>
+            </Border>
+        </Grid>
+
+        <!-- Accepted divergence from AssetThumbnailView.swift's `.truncationMode(.middle)`
+             (a long name's distinguishing tail/extension, e.g. "IMG_...4821.mov", gets eaten by
+             a trailing ellipsis here instead). WinUI's TextTrimming enum has no middle option
+             (None/CharacterEllipsis/WordEllipsis/Clip only) and there's no lightweight built-in
+             equivalent — the toolkit packages already referenced by this project
+             (CommunityToolkit.Mvvm) don't include a middle-trim text control either. Reproducing
+             it exactly would mean hand-rolling live-TextBlock measurement (binary-search the
+             longest head+tail that fits, re-run on every resize) for a cosmetic-only difference;
+             not worth the added surface for a minor finding. Revisit if a suitable control becomes
+             available or this becomes a recurring UX complaint. -->
+        <TextBlock x:Name="NameText" Grid.Row="1"
+                   FontSize="{StaticResource AppFontSizeXs}"
+                   Foreground="{StaticResource AppTextSecondaryBrush}"
+                   TextTrimming="CharacterEllipsis"/>
+    </Grid>
+</UserControl>

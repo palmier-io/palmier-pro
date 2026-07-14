@@ -64,7 +64,7 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <SDLCheck>true</SDLCheck>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(FFmpegDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(FFmpegDir)include;third_party\simdjson;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -84,7 +84,7 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <SDLCheck>true</SDLCheck>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(FFmpegDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(FFmpegDir)include;third_party\simdjson;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -102,6 +102,17 @@
     <ClCompile Include="MediaSource.cpp" />
     <ClCompile Include="D3D11Presenter.cpp" />
     <ClCompile Include="WicPngWriter.cpp" />
+    <ClCompile Include="WicImageReader.cpp" />
+    <ClCompile Include="TimelineSnapshotParser.cpp" />
+    <ClCompile Include="Compositor.cpp" />
+    <ClCompile Include="MediaCache.cpp" />
+    <ClCompile Include="TimelineRegistry.cpp" />
+    <ClCompile Include="TimelineSession.cpp" />
+    <!-- Vendored amalgamated single-source build (native/third_party/simdjson/) — reduced
+         warning level, this translation unit is upstream code, not ours to fix warnings in. -->
+    <ClCompile Include="third_party\simdjson\simdjson.cpp">
+      <WarningLevel>Level1</WarningLevel>
+    </ClCompile>
   </ItemGroup>
 
   <ItemGroup>
@@ -111,6 +122,16 @@
     <ClInclude Include="D3D11Presenter.h" />
     <ClInclude Include="WinUISwapChainInterop.h" />
     <ClInclude Include="WicPngWriter.h" />
+    <ClInclude Include="WicImageReader.h" />
+    <ClInclude Include="Half.h" />
+    <ClInclude Include="Affine2D.h" />
+    <ClInclude Include="TimelineSnapshot.h" />
+    <ClInclude Include="TimelineSnapshotParser.h" />
+    <ClInclude Include="Compositor.h" />
+    <ClInclude Include="MediaCache.h" />
+    <ClInclude Include="TimelineRegistry.h" />
+    <ClInclude Include="TimelineSession.h" />
+    <ClInclude Include="third_party\simdjson\simdjson.h" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

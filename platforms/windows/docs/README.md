@@ -59,22 +59,47 @@ Visual Studio.
 
 ## DevHarness
 
-`src/PalmierPro.DevHarness/` is a minimal WinUI3 window (`SwapChainPanel` named
-`EngineSurface`) used to manually verify native engine milestones E1–E3 (decode,
-composition, effect kernels) before the real Preview UI exists (Stage D). Open a
-file, drag the time slider, and click **Show Frame** to decode + present that
-frame to the swap chain; resizing the window resizes the swap chain (quiesce ->
-`ResizeBuffers` -> re-`SetSwapChain`, per the threading contract documented in
-`native/include/palmier_engine.h`).
+`src/PalmierPro.DevHarness/` is a minimal WinUI3 window used to manually verify
+native engine milestones E1–E3 (decode, composition, effect kernels) before the
+real Preview UI exists (Stage D). It has two tabs:
+
+- **Media** (`SwapChainPanel` named `EngineSurface`, E1) — open a file, drag the
+  time slider, and click **Show Frame** to decode + present that frame to the
+  swap chain; resizing the window resizes the swap chain (quiesce ->
+  `ResizeBuffers` -> re-`SetSwapChain`, per the threading contract documented in
+  `native/include/palmier_engine.h`).
+- **Timeline** (`TimelinePage.xaml`, E2) — **Open Project…** picks a `.palmier`
+  package directory; **Build Demo Timeline…** picks two media files and builds a
+  synthetic 2-track timeline in code (top track covers the left half of the
+  canvas, so z-order is visible at a glance). Either path goes through
+  `TimelineSnapshotBuilder` → `IVideoEngine` (`VideoEngine.OpenTimelineSessionAsync`/
+  `UpdateTimelineAsync`), which is the actual Stage B "IVideoEngine v1" contract
+  under test — not a shortcut around it. The scrub slider issues
+  `PreviewSeekMode.InteractiveScrub` seeks while dragging and one `Exact` seek on
+  release; the playhead readout and the seek→present latency readout both come
+  from `IVideoEngine.PlayheadChanged`. **1x/2x** rebuilds the snapshot with the
+  top clip's `Clip.Speed` doubled (`UpdateTimelineAsync`), exercising retiming
+  live. A second, raw `PalmierPro.Rendering.TimelineSession` mirrors every seek
+  purely so the `SwapChainPanel` has something to present — `IVideoEngine`'s
+  swap-chain methods aren't timeline-scoped until Stage D's Preview UI lands (see
+  `TimelinePage.xaml.cs`'s class remarks). Latency is logged via Serilog to
+  `%LOCALAPPDATA%\PalmierPro\logs\devharness-*.log`.
 
 Headless mode (no window, CI-facing):
 
 ```powershell
 PalmierPro.DevHarness.exe --dump-frame <mediaPath> <seconds> <outPngPath>
+PalmierPro.DevHarness.exe --dump-timeline-frame <projectOrSnapshotPath> <frame> <outPngPath>
 ```
 
-Decodes the frame at `<seconds>` and writes it straight to `<outPngPath>` via
-`PE_RenderFrameToFile` — no D3D device, swap chain, or display session touched,
-so this runs on any CI runner. Exit code 0 on success. Implemented via a
-hand-written `Main` (`DISABLE_XAML_GENERATED_MAIN`) so this path never calls
-`Application.Start`.
+`--dump-frame` decodes the frame at `<seconds>` and writes it straight to
+`<outPngPath>` via `PE_RenderFrameToFile`. `--dump-timeline-frame` does the
+timeline-ABI equivalent via `PE_TimelineRenderFrameToFile`: `<projectOrSnapshotPath>`
+is either a `.palmier` package directory (built into a snapshot via
+`TimelineSnapshotBuilder`, using `ActiveTimelineId` or the first timeline) or a
+raw timeline-snapshot-v1 JSON file — pointing it straight at one of the checked-in
+fixtures under `tests/*/Fixtures/` works too, since a literal `{{FIXTURE_DIR}}`
+token in the JSON is substituted with the snapshot file's own directory. Neither
+command touches a D3D device, swap chain, or display session, so both run on any
+CI runner; exit code 0 on success. Implemented via a hand-written `Main`
+(`DISABLE_XAML_GENERATED_MAIN`) so this path never calls `Application.Start`.

@@ -46,6 +46,23 @@ public:
 
     bool DecodeFrameAt(double timelineSeconds, PE_FrameBuffer& outFrame, std::string& outError);
 
+    // approximate=true is the interactive-scrub "tolerance seek" fast path: seeks
+    // backward to the nearest keyframe and returns that keyframe's decoded frame
+    // immediately, without decoding forward toward timelineSeconds — cheap, used while
+    // actively scrubbing. approximate=false is the existing exact-decode behavior
+    // DecodeFrameAt delegates to. cancelFlag (may be null) is polled between packets in
+    // the forward-decode loop (exact mode only — approximate mode never enters it); once
+    // it reads non-zero the call returns false with outError == "cancelled".
+    //
+    // Unlike the Mac's load-adaptive tolerance (SeekCoordinator.InteractiveTolerance:
+    // min(0.75s, 0.15s × active layers)), `approximate` is a plain boolean — there is no
+    // notion of "decode forward until within N seconds of target." A single-layer scrub
+    // therefore always snaps a full GOP back to the keyframe here, where the Mac would
+    // hold much closer to the requested time. Accepted v1 simplification — see
+    // VideoEngine.cs's Seek() remarks.
+    bool DecodeFrameAtEx(double timelineSeconds, bool approximate, const std::atomic<int32_t>* cancelFlag,
+        PE_FrameBuffer& outFrame, std::string& outError);
+
     bool ExtractThumbnails(
         const double* times,
         int32_t count,
@@ -94,10 +111,16 @@ private:
     bool OpenVideoDecoderSoftware(const AVCodec* decoder, AVCodecParameters* params, std::string& outError);
     static AVPixelFormat GetHwFormat(AVCodecContext* ctx, const AVPixelFormat* pixFmts);
 
-    // Seeks to the nearest keyframe at/before targetPts and decodes forward until a
-    // frame at/after targetPts is produced (or EOF, returning the last decoded frame).
-    // The returned frame may be a hw (D3D11) frame — see MaterializeSystemMemoryFrame.
-    bool SeekAndDecodeVideo(int64_t targetPts, AVFrame* outFrame, std::string& outError);
+    // Seeks to the nearest keyframe at/before targetPts. approximate=false (the original
+    // behavior) decodes forward until a frame at/after targetPts is produced (or EOF,
+    // returning the last decoded frame), polling cancelFlag between packets.
+    // approximate=true returns as soon as the first frame past the backward seek is
+    // decoded — that frame is the keyframe itself, i.e. the "nearest preceding keyframe"
+    // tolerance-seek result — and never consults cancelFlag (there is no forward-decode
+    // loop to cancel). The returned frame may be a hw (D3D11) frame — see
+    // MaterializeSystemMemoryFrame.
+    bool SeekAndDecodeVideo(int64_t targetPts, bool approximate, const std::atomic<int32_t>* cancelFlag,
+        AVFrame* outFrame, std::string& outError);
 
     // If decoded is a hw frame, transfers it into transferScratch (system memory) and
     // returns that; otherwise returns decoded unchanged. transferScratch is reused

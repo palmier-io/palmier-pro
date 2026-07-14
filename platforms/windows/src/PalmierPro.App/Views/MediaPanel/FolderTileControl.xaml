@@ -1,0 +1,34 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.MediaPanel.FolderTileControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- DataContext is a MediaFolderItemViewModel, set per-item by the GridView hosting this
+         template — classic {Binding}, see AssetTileControl.xaml's matching note. -->
+    <Grid x:Name="RootGrid" RowSpacing="{StaticResource AppSpacingXs}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Locked 16:9 box, matching AssetTileControl.xaml's — see its comment. Keeps folder and
+             asset tiles in the same uniform wrap-grid row height. -->
+        <Grid x:Name="ArtworkArea" Grid.Row="0" Height="{StaticResource AppMediaPanelThumbnailTileHeight}"
+              Background="{StaticResource AppBackgroundPlaceholderBrush}">
+            <TextBlock Text="&#x1F4C1;" HorizontalAlignment="Center" VerticalAlignment="Center"
+                       FontSize="{StaticResource AppFontSizeTitle1}"/>
+            <Border x:Name="CountBadge" VerticalAlignment="Top" HorizontalAlignment="Right"
+                    Background="#B3000000" Visibility="Collapsed">
+                <TextBlock x:Name="CountText" FontSize="{StaticResource AppFontSizeXxs}" FontWeight="SemiBold" Foreground="White"/>
+            </Border>
+        </Grid>
+
+        <TextBlock x:Name="NameText" Grid.Row="1"
+                   FontSize="{StaticResource AppFontSizeXs}" FontWeight="Medium"
+                   Foreground="{StaticResource AppTextPrimaryBrush}"
+                   TextTrimming="CharacterEllipsis"/>
+    </Grid>
+</UserControl>

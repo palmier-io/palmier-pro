@@ -320,7 +320,8 @@ void MediaSource::FillInfo()
     }
 }
 
-bool MediaSource::SeekAndDecodeVideo(int64_t targetPts, AVFrame* outFrame, std::string& outError)
+bool MediaSource::SeekAndDecodeVideo(int64_t targetPts, bool approximate, const std::atomic<int32_t>* cancelFlag,
+    AVFrame* outFrame, std::string& outError)
 {
     int ret = av_seek_frame(formatCtx_, videoStreamIndex_, targetPts, AVSEEK_FLAG_BACKWARD);
     if (ret < 0)
@@ -335,6 +336,13 @@ bool MediaSource::SeekAndDecodeVideo(int64_t targetPts, AVFrame* outFrame, std::
 
     while (av_read_frame(formatCtx_, pkt) >= 0)
     {
+        if (cancelFlag && cancelFlag->load(std::memory_order_relaxed) != 0)
+        {
+            av_packet_unref(pkt);
+            av_packet_free(&pkt);
+            outError = "cancelled";
+            return false;
+        }
         if (pkt->stream_index != videoStreamIndex_)
         {
             av_packet_unref(pkt);
@@ -348,8 +356,15 @@ bool MediaSource::SeekAndDecodeVideo(int64_t targetPts, AVFrame* outFrame, std::
         }
         while (avcodec_receive_frame(videoCodecCtx_, outFrame) == 0)
         {
-            int64_t pts = outFrame->best_effort_timestamp != AV_NOPTS_VALUE ? outFrame->best_effort_timestamp : outFrame->pts;
             gotFrame = true;
+            if (approximate)
+            {
+                // First frame past the backward seek is the GOP's keyframe itself —
+                // the "nearest preceding keyframe" tolerance-seek result.
+                av_packet_free(&pkt);
+                return true;
+            }
+            int64_t pts = outFrame->best_effort_timestamp != AV_NOPTS_VALUE ? outFrame->best_effort_timestamp : outFrame->pts;
             if (pts == AV_NOPTS_VALUE || pts >= targetPts)
             {
                 av_packet_free(&pkt);
@@ -409,6 +424,12 @@ bool MediaSource::ConvertFrameToBgra(AVFrame* frame, int dstWidth, int dstHeight
 
 bool MediaSource::DecodeFrameAt(double timelineSeconds, PE_FrameBuffer& outFrame, std::string& outError)
 {
+    return DecodeFrameAtEx(timelineSeconds, /*approximate*/ false, /*cancelFlag*/ nullptr, outFrame, outError);
+}
+
+bool MediaSource::DecodeFrameAtEx(double timelineSeconds, bool approximate, const std::atomic<int32_t>* cancelFlag,
+    PE_FrameBuffer& outFrame, std::string& outError)
+{
     std::lock_guard<std::mutex> lock(mutex_);
 
     if (videoStreamIndex_ < 0)
@@ -427,7 +448,7 @@ bool MediaSource::DecodeFrameAt(double timelineSeconds, PE_FrameBuffer& outFrame
 
     AVFrame* frame = av_frame_alloc();
     AVFrame* transfer = av_frame_alloc();
-    bool decoded = SeekAndDecodeVideo(targetPts, frame, outError);
+    bool decoded = SeekAndDecodeVideo(targetPts, approximate, cancelFlag, frame, outError);
     if (!decoded)
     {
         av_frame_free(&frame);
@@ -514,7 +535,7 @@ bool MediaSource::ExtractThumbnails(
 
         std::string frameError;
         av_frame_unref(frame);
-        if (!SeekAndDecodeVideo(targetPts, frame, frameError))
+        if (!SeekAndDecodeVideo(targetPts, /*approximate*/ false, cancel, frame, frameError))
         {
             // Skip an individual unreachable timestamp rather than failing the whole batch.
             continue;

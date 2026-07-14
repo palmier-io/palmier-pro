@@ -8,6 +8,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PalmierPro.Core\PalmierPro.Core.csproj" />
+    <!-- VideoEngine (Engine/IVideoEngine.cs) delegates to EngineSession/MediaSource for the ABI
+         surface E1 already covers (asset-preview open/present, swap-chain attach/resize/detach). -->
+    <ProjectReference Include="..\PalmierPro.Rendering\PalmierPro.Rendering.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,7 +1,10 @@
 #include "EngineSession.h"
+#include "TimelineSession.h"
 #include "WicPngWriter.h"
 
 #include <cstdlib>
+
+EngineSession::~EngineSession() = default;
 
 namespace
 {
@@ -185,6 +188,49 @@ int32_t EngineSession::PresentFrameAt(PE_MediaHandle media, double timelineSecon
         SetLastError(error);
         return PE_ERROR_UNKNOWN;
     }
+    ClearLastError();
+    return PE_OK;
+}
+
+int32_t EngineSession::OpenTimeline(const std::string& utf8SnapshotJson, PE_TimelineHandle* outHandle)
+{
+    auto session = std::make_unique<TimelineSession>(this);
+    std::string error;
+    if (!session->Open(utf8SnapshotJson, error))
+    {
+        SetLastError(error);
+        return PE_ERROR_INVALID_ARGUMENT;
+    }
+
+    TimelineSession* raw = session.get();
+    auto handle = reinterpret_cast<PE_TimelineHandle>(raw);
+    {
+        std::lock_guard<std::mutex> lock(timelinesMutex_);
+        timelines_.emplace(handle, std::move(session));
+        timelineLru_.push_front(handle);
+        while (timelines_.size() > kMaxOpenTimelines)
+        {
+            PE_TimelineHandle evict = timelineLru_.back();
+            timelineLru_.pop_back();
+            timelines_.erase(evict); // destroys the TimelineSession (joins its render thread)
+        }
+    }
+    *outHandle = handle;
+    ClearLastError();
+    return PE_OK;
+}
+
+int32_t EngineSession::CloseTimeline(PE_TimelineHandle handle)
+{
+    std::lock_guard<std::mutex> lock(timelinesMutex_);
+    auto it = timelines_.find(handle);
+    if (it == timelines_.end())
+    {
+        SetLastError("invalid timeline handle");
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    timelineLru_.remove(handle);
+    timelines_.erase(it);
     ClearLastError();
     return PE_OK;
 }

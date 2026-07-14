@@ -328,6 +328,9 @@ public class ThemeParityTests
 
             ("AppMediaPanelTabRailWidth", AppThemeTokens.MediaPanel.TabRailWidth),
             ("AppMediaPanelContextRowHeight", AppThemeTokens.MediaPanel.ContextRowHeight),
+            ("AppMediaPanelThumbnailTileWidth", AppThemeTokens.MediaPanel.ThumbnailTileWidth),
+            ("AppMediaPanelThumbnailTileHeight", AppThemeTokens.MediaPanel.ThumbnailTileHeight),
+            ("AppMediaPanelSearchFieldWidth", AppThemeTokens.MediaPanel.SearchFieldWidth),
 
             ("AppExportSheetWidth", AppThemeTokens.Export.SheetWidth),
             ("AppExportSheetHeight", AppThemeTokens.Export.SheetHeight),

@@ -296,6 +296,12 @@
     <!-- MediaPanel -->
     <x:Double x:Key="AppMediaPanelTabRailWidth">38</x:Double>
     <x:Double x:Key="AppMediaPanelContextRowHeight">22</x:Double>
+    <!-- Default asset/folder grid tile width — matches Mac's ThumbnailPreset.medium. -->
+    <x:Double x:Key="AppMediaPanelThumbnailTileWidth">110</x:Double>
+    <!-- Locked 16:9 thumbnail-box height for the tile width above. -->
+    <x:Double x:Key="AppMediaPanelThumbnailTileHeight">61.875</x:Double>
+    <!-- Toolbar search field width — Windows-only, no Mac equivalent. -->
+    <x:Double x:Key="AppMediaPanelSearchFieldWidth">180</x:Double>
 
     <!-- Export -->
     <x:Double x:Key="AppExportSheetWidth">600</x:Double>

@@ -1,0 +1,101 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.MediaPanel.MediaTabView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:mediaPanel="using:PalmierPro.App.Views.MediaPanel"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <DataTemplate x:Key="AssetItemTemplate">
+            <Grid RightTapped="AssetTile_RightTapped">
+                <mediaPanel:AssetTileControl/>
+            </Grid>
+        </DataTemplate>
+        <DataTemplate x:Key="FolderItemTemplate">
+            <Grid DoubleTapped="FolderTile_DoubleTapped" RightTapped="FolderTile_RightTapped">
+                <mediaPanel:FolderTileControl/>
+            </Grid>
+        </DataTemplate>
+        <mediaPanel:MediaItemTemplateSelector x:Key="MediaItemTemplateSelector"
+            FolderTemplate="{StaticResource FolderItemTemplate}"
+            AssetTemplate="{StaticResource AssetItemTemplate}"/>
+        <!-- Margin isn't set here — {StaticResource} feeding Thickness doesn't coerce in WinUI
+             XAML the way literal strings do, so MediaGridView_ContainerContentChanging sets it. -->
+        <Style x:Key="MediaTileContainerStyle" TargetType="GridViewItem">
+            <Setter Property="Width" Value="{StaticResource AppMediaPanelThumbnailTileWidth}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid x:Name="RootGrid" Background="{StaticResource AppBackgroundSurfaceBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel x:Name="Toolbar" Grid.Row="0" Orientation="Horizontal" Spacing="{StaticResource AppSpacingXs}">
+            <Button x:Name="ImportButton" Content="Import" Command="{Binding ImportCommand}"/>
+            <Button x:Name="NewFolderButton" Content="New Folder" Click="NewFolderButton_Click"/>
+            <TextBox x:Name="SearchBox" PlaceholderText="Search" Width="{StaticResource AppMediaPanelSearchFieldWidth}"
+                     Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled"
+                      HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Auto">
+            <ItemsControl x:Name="BreadcrumbList" ItemsSource="{Binding Breadcrumbs}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="{StaticResource AppSpacingXxs}"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="{StaticResource AppSpacingXxs}">
+                            <TextBlock Text="&#x203A;" Foreground="{StaticResource AppTextMutedBrush}"/>
+                            <HyperlinkButton Content="{Binding Name}" Tag="{Binding FolderId}" Click="BreadcrumbItem_Click"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <Grid Grid.Row="2">
+            <TextBlock x:Name="EmptyStateText"
+                       Text="Drop files here or import from disk"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       FontSize="{StaticResource AppFontSizeSm}"
+                       Foreground="{StaticResource AppTextTertiaryBrush}"
+                       Visibility="Collapsed"/>
+
+            <GridView x:Name="MediaGridView"
+                      ItemsSource="{Binding Items}"
+                      ItemTemplateSelector="{StaticResource MediaItemTemplateSelector}"
+                      ItemContainerStyle="{StaticResource MediaTileContainerStyle}"
+                      SelectionMode="Extended"
+                      CanDragItems="True"
+                      CanReorderItems="False"
+                      AllowDrop="True"
+                      DragItemsStarting="MediaGridView_DragItemsStarting"
+                      DragOver="MediaGridView_DragOver"
+                      DragLeave="MediaGridView_DragLeave"
+                      Drop="MediaGridView_Drop"
+                      KeyDown="MediaGridView_KeyDown"
+                      ContainerContentChanging="MediaGridView_ContainerContentChanging">
+                <GridView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <ItemsWrapGrid Orientation="Horizontal"/>
+                    </ItemsPanelTemplate>
+                </GridView.ItemsPanel>
+            </GridView>
+
+            <Border x:Name="DropHighlight" Visibility="Collapsed" IsHitTestVisible="False"
+                    Background="{StaticResource AppGlassPrimaryTintBrush}"
+                    BorderBrush="{StaticResource AppAccentPrimaryBrush}"/>
+
+            <InfoBar x:Name="ErrorBar" Severity="Warning" VerticalAlignment="Bottom" Closed="ErrorBar_Closed"/>
+        </Grid>
+    </Grid>
+</UserControl>

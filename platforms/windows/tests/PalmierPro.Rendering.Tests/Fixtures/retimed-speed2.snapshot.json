@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "fps": { "numerator": 30, "denominator": 1 },
+  "outputWidth": 640,
+  "outputHeight": 360,
+  "tracks": [
+    {
+      "id": "TRACK-VIDEO",
+      "type": "video",
+      "muted": false,
+      "clips": [
+        {
+          "id": "CLIP-RETIMED",
+          "type": "video",
+          "startFrame": 0,
+          "durationFrames": 30,
+          "trimStartFrame": 0,
+          "speed": 2.0,
+          "mediaPath": "{{FIXTURE_DIR}}\\video_640x360_30fps_2s.mp4",
+          "hasAlphaHint": null,
+          "blendMode": null,
+          "opacity": { "value": 1.0, "keyframes": null },
+          "transform": {
+            "value": { "centerX": 0.5, "centerY": 0.5, "width": 1.0, "height": 1.0, "rotation": 0.0, "flipHorizontal": false, "flipVertical": false },
+            "keyframes": null
+          },
+          "crop": { "value": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 }, "keyframes": null },
+          "volume": { "gain": 1.0, "fadeInFrames": 0, "fadeOutFrames": 0, "fadeInInterpolation": "linear", "fadeOutInterpolation": "linear", "keyframes": null }
+        }
+      ]
+    }
+  ]
+}

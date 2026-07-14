@@ -22,6 +22,7 @@ public sealed partial class ShellViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(SaveAsCommand))]
     [NotifyCanExecuteChangedFor(nameof(UndoCommand))]
     [NotifyCanExecuteChangedFor(nameof(RedoCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ImportMediaCommand))]
     public partial ProjectDocument? ActiveDocument { get; set; }
 
     public bool IsEditorOpen => ActiveDocument is not null;
@@ -35,6 +36,12 @@ public sealed partial class ShellViewModel : ObservableObject
     /// MainWindow maps this to Application.Current.Exit() — kept out of this class so it stays
     /// WinUI-free.
     public event EventHandler? RequestQuit;
+
+    /// MainWindow forwards this to the open document's MediaTabViewModel — the menu bar/Ctrl+I
+    /// accelerator has no direct route to that ViewModel (it's owned deeper, by
+    /// EditorPlaceholderView), so ImportMediaCommand just raises this and lets MainWindow bridge
+    /// it, keeping ShellViewModel WinUI-free.
+    public event EventHandler? ImportMediaRequested;
 
     public ShellViewModel(ProjectRegistry registry, IProjectDialogService dialogs)
     {
@@ -168,4 +175,9 @@ public sealed partial class ShellViewModel : ObservableObject
 
     [RelayCommand]
     private void Quit() => RequestQuit?.Invoke(this, EventArgs.Empty);
+
+    private bool CanImportMedia() => ActiveDocument is not null;
+
+    [RelayCommand(CanExecute = nameof(CanImportMedia))]
+    private void ImportMedia() => ImportMediaRequested?.Invoke(this, EventArgs.Empty);
 }

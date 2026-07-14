@@ -20,4 +20,13 @@
     <ProjectReference Include="..\..\src\PalmierPro.Services\PalmierPro.Services.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Checked-in golden snapshot JSON (docs/timeline-snapshot-v1.md §10) — the native agent
+         parses copies of these once the timeline ABI lands; TimelineSnapshotBuilderTests asserts
+         the builder's live output still matches them byte-for-byte (modulo {{FIXTURE_DIR}}). -->
+    <Content Include="Engine\Fixtures\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

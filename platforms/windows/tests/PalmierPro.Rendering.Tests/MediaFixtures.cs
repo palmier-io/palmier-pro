@@ -10,22 +10,31 @@ public sealed class MediaFixtures
 {
     public string VideoWithAudioPath { get; }
     public string AudioOnlyPath { get; }
+    public string RedClipPath { get; }
+    public string BlueClipPath { get; }
 
     public const int VideoWidth = 640;
     public const int VideoHeight = 360;
     public const int VideoFps = 30;
     public const double VideoDurationSeconds = 2.0;
 
+    public string FixturesDir { get; }
+
     public MediaFixtures()
     {
         string fixturesDir = Path.Combine(AppContext.BaseDirectory, "fixtures");
         Directory.CreateDirectory(fixturesDir);
+        FixturesDir = fixturesDir;
 
         VideoWithAudioPath = Path.Combine(fixturesDir, "video_640x360_30fps_2s.mp4");
         AudioOnlyPath = Path.Combine(fixturesDir, "audio_sine_1khz_2s.wav");
+        RedClipPath = Path.Combine(fixturesDir, "solid_red_640x360_30fps_2s.mp4");
+        BlueClipPath = Path.Combine(fixturesDir, "solid_blue_640x360_30fps_2s.mp4");
 
         EnsureVideoFixture(VideoWithAudioPath);
         EnsureAudioFixture(AudioOnlyPath);
+        EnsureSolidColorFixture(RedClipPath, "red");
+        EnsureSolidColorFixture(BlueClipPath, "blue");
     }
 
     private static string ResolveFfmpegExe()
@@ -66,6 +75,22 @@ public sealed class MediaFixtures
             return;
         }
         Run($"-y -f lavfi -i \"sine=frequency=1000:duration={VideoDurationSeconds}\" \"{path}\"");
+    }
+
+    // Flat, fully-saturated solid-color clips — used by the compositor tests (top-vs-bottom
+    // layer sampling, opacity blend math) where the exact expected pixel value matters and a
+    // gradient/testsrc pattern would need per-pixel-position math to verify.
+    private static void EnsureSolidColorFixture(string path, string ffmpegColorName)
+    {
+        if (IsNonEmpty(path))
+        {
+            return;
+        }
+        Run(
+            "-y " +
+            $"-f lavfi -i \"color=c={ffmpegColorName}:size={VideoWidth}x{VideoHeight}:rate={VideoFps}:duration={VideoDurationSeconds}\" " +
+            "-c:v libx264 -pix_fmt yuv420p " +
+            $"\"{path}\"");
     }
 
     private static bool IsNonEmpty(string path) => File.Exists(path) && new FileInfo(path).Length > 0;

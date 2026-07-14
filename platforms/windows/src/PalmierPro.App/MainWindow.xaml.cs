@@ -22,7 +22,7 @@ public sealed partial class MainWindow : Window
     public ShellViewModel Shell { get; }
 
     private readonly HomeView _homeView = new();
-    private readonly EditorPlaceholderView _editorView = new();
+    private readonly EditorPlaceholderView _editorView;
     private readonly AppWindow _appWindow;
     private readonly nint _hwnd;
     private OverlappedPresenter _presenter;
@@ -38,9 +38,12 @@ public sealed partial class MainWindow : Window
 
         ProjectPackage.EnsureDefaultProjectsDirectory();
         var registry = ProjectRegistry.CreateDefault();
+        _editorView = new EditorPlaceholderView(this);
+
         Shell = new ShellViewModel(registry, new ProjectDialogService(this));
         Shell.PropertyChanged += Shell_PropertyChanged;
         Shell.RequestQuit += (_, _) => Application.Current.Exit();
+        Shell.ImportMediaRequested += (_, _) => _ = _editorView.RequestImportMediaAsync();
 
         _homeView.Initialize(new HomeViewModel(Shell));
         MenuBarHost.Initialize(Shell);
@@ -87,6 +90,10 @@ public sealed partial class MainWindow : Window
 
     private void Shell_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is null or nameof(ShellViewModel.ActiveDocument))
+        {
+            _editorView.SetDocument(Shell.ActiveDocument);
+        }
         if (e.PropertyName is null or nameof(ShellViewModel.IsEditorOpen))
         {
             if (Shell.IsEditorOpen) ShowEditor(); else ShowHome();

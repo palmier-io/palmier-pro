@@ -42,10 +42,19 @@ deterministic frame readback).
 
 ## simdjson
 
-**Status: added when the dependency lands (Stage A / timeline snapshot contract).**
+**Status: landed (Stage B / E2 — timeline ABI).**
 
 Native-side parser for the UTF-8 JSON timeline snapshot passed across the C ABI
-each edit generation.
+each edit generation (`PE_OpenTimeline`/`PE_UpdateTimeline`; see
+`TimelineSnapshotParser.cpp`). Apache-2.0 licensed.
+
+Pinned build: **simdjson v3.10.1**, vendored as the official amalgamated
+single-header/single-source pair (`singleheader/simdjson.h` +
+`singleheader/simdjson.cpp` from the `v3.10.1` tag,
+https://github.com/simdjson/simdjson), checked in unmodified under
+`native/third_party/simdjson/` alongside its upstream `LICENSE` file. No build
+step or package manager involved — `PalmierEngine.vcxproj` compiles
+`simdjson.cpp` directly as a translation unit.
 
 ## Time-stretch library (signalsmith-stretch or SoundTouch)
 

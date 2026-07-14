@@ -33,6 +33,22 @@ icon size, shadow, or color; add the token first if one doesn't exist.
 `AppThemeTokens` — update both together. `FontFamily` is the one token the Mac has
 no equivalent of (see Fonts below) and is the documented exception in that test.
 
+**`{StaticResource}` into a `Thickness`/`CornerRadius` property throws at runtime.**
+`Padding="{StaticResource AppSpacingSm}"`, `Margin=`, `BorderThickness=`, and
+`CornerRadius=` all fail with `XamlParseException` ("cannot be assigned to the
+type Microsoft.UI.Xaml.Thickness") the moment that XAML loads — a `{StaticResource}`
+resource resolves to a boxed `double` object, and unlike a literal string attribute
+value, WinUI's XAML runtime does not run it through `ThicknessConverter`/
+`CornerRadiusConverter`. `Width`/`Height`/`FontSize`/`RowSpacing`/`Spacing` (plain
+`double`-typed properties) are unaffected — only struct properties with a type
+converter break. Set these from code-behind instead, using
+`AppTheme.UniformThickness`/`AppTheme.ThicknessOf`/`AppTheme.UniformCornerRadius`
+(see `AssetTileControl.xaml.cs`, `MediaTabView.xaml.cs`) — this is what
+`EditorPlaceholderView.xaml.cs` already did for its panel borders. For a `Style`
+`Setter` on a property generated per-item (e.g. a `GridViewItem` margin), there's no
+single code-behind constructor to hook — use `ContainerContentChanging` instead (see
+`MediaTabView.xaml.cs`'s `MediaGridView_ContainerContentChanging`).
+
 ## Drag and drop
 
 The Mac's `MediaPanelDropArea` AppKit workaround exists because SwiftUI's

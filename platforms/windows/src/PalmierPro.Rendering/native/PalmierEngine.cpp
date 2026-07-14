@@ -1,6 +1,8 @@
 #include "include/palmier_engine.h"
 #include "EngineSession.h"
 #include "MediaSource.h"
+#include "TimelineRegistry.h"
+#include "TimelineSession.h"
 
 #include <new>
 
@@ -8,6 +10,13 @@ namespace
 {
     EngineSession* AsSession(PE_SessionHandle h) { return reinterpret_cast<EngineSession*>(h); }
     MediaSource* AsMedia(PE_MediaHandle h) { return reinterpret_cast<MediaSource*>(h); }
+
+    // Handle-only timeline ABI entry points have no session parameter to validate
+    // through, so they resolve via TimelineRegistry instead — see its header comment.
+    TimelineSession* ResolveTimeline(PE_TimelineHandle h)
+    {
+        return TimelineRegistry::Resolve(reinterpret_cast<TimelineSession*>(h));
+    }
 }
 
 unsigned int PalmierEngine_GetVersion(void)
@@ -299,4 +308,192 @@ int32_t PE_RenderFrameToFile(PE_SessionHandle session, PE_MediaHandle media, dou
         s->SetLastError(ex.what());
         return PE_ERROR_UNKNOWN;
     }
+}
+
+int32_t PE_OpenTimeline(PE_SessionHandle session, const char* utf8SnapshotJson, PE_TimelineHandle* outTimeline)
+{
+    if (!session || !utf8SnapshotJson || !outTimeline)
+    {
+        return PE_ERROR_INVALID_ARGUMENT;
+    }
+    EngineSession* s = AsSession(session);
+    try
+    {
+        return s->OpenTimeline(utf8SnapshotJson, outTimeline);
+    }
+    catch (const std::exception& ex)
+    {
+        s->SetLastError(ex.what());
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
+int32_t PE_UpdateTimeline(PE_TimelineHandle timeline, const char* utf8SnapshotJson)
+{
+    if (!utf8SnapshotJson)
+    {
+        return PE_ERROR_INVALID_ARGUMENT;
+    }
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    try
+    {
+        std::string error;
+        if (!t->Update(utf8SnapshotJson, error))
+        {
+            return PE_ERROR_INVALID_ARGUMENT;
+        }
+        return PE_OK;
+    }
+    catch (const std::exception&)
+    {
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
+int32_t PE_CloseTimeline(PE_SessionHandle session, PE_TimelineHandle timeline)
+{
+    if (!session || !timeline)
+    {
+        return PE_ERROR_INVALID_ARGUMENT;
+    }
+    EngineSession* s = AsSession(session);
+    try
+    {
+        return s->CloseTimeline(timeline);
+    }
+    catch (const std::exception& ex)
+    {
+        s->SetLastError(ex.what());
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
+int32_t PE_TimelineSeek(PE_TimelineHandle timeline, int64_t frame, int32_t mode)
+{
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    try
+    {
+        return t->Seek(frame, mode);
+    }
+    catch (const std::exception&)
+    {
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
+int32_t PE_TimelineAttachSwapChain(PE_TimelineHandle timeline, void* swapChainPanelUnknown, int32_t width, int32_t height)
+{
+    if (!swapChainPanelUnknown || width <= 0 || height <= 0)
+    {
+        return PE_ERROR_INVALID_ARGUMENT;
+    }
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    try
+    {
+        std::string error;
+        return t->AttachSwapChain(swapChainPanelUnknown, width, height, error);
+    }
+    catch (const std::exception&)
+    {
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
+int32_t PE_TimelineResizeSwapChain(PE_TimelineHandle timeline, int32_t width, int32_t height)
+{
+    if (width <= 0 || height <= 0)
+    {
+        return PE_ERROR_INVALID_ARGUMENT;
+    }
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    try
+    {
+        std::string error;
+        return t->ResizeSwapChain(width, height, error);
+    }
+    catch (const std::exception&)
+    {
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
+int32_t PE_TimelineDetachSwapChain(PE_TimelineHandle timeline)
+{
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    try
+    {
+        std::string error;
+        return t->DetachSwapChain(error);
+    }
+    catch (const std::exception&)
+    {
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
+int32_t PE_TimelineRenderFrameToFile(PE_TimelineHandle timeline, int64_t frame, const char* utf8PngPath)
+{
+    if (!utf8PngPath)
+    {
+        return PE_ERROR_INVALID_ARGUMENT;
+    }
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    try
+    {
+        std::string error;
+        if (!t->RenderFrameToFile(frame, utf8PngPath, error))
+        {
+            return PE_ERROR_ENCODE_FAILED;
+        }
+        return PE_OK;
+    }
+    catch (const std::exception&)
+    {
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
+int32_t PE_TimelineSetPlayheadCallback(PE_TimelineHandle timeline, PE_PlayheadCallback callback, void* userCtx)
+{
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    t->SetPlayheadCallback(callback, userCtx);
+    return PE_OK;
+}
+
+const char* PE_TimelineGetUnprocessableMediaRefsJson(PE_TimelineHandle timeline)
+{
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return "[]";
+    }
+    return t->UnprocessableMediaRefsJson();
 }

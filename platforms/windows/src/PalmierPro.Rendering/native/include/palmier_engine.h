@@ -24,6 +24,7 @@
 
 typedef struct PE_Session* PE_SessionHandle;
 typedef struct PE_Media* PE_MediaHandle;
+typedef struct PE_Timeline* PE_TimelineHandle;
 
 enum PE_Status : int32_t
 {
@@ -38,6 +39,15 @@ enum PE_Status : int32_t
     PE_ERROR_BUFFER_TOO_SMALL = -8,
     PE_ERROR_CANCELLED = -9,
     PE_ERROR_ENCODE_FAILED = -10,
+};
+
+// Mirrors PalmierPro.Services.Engine.PreviewSeekMode's Exact/InteractiveScrub split (the
+// two AudibleStep* cases are treated identically to Exact on the native side — see
+// IVideoEngine.cs's remarks; audio scrub feedback lands with E4.5).
+enum PE_SeekMode : int32_t
+{
+    PE_SEEK_EXACT = 0,
+    PE_SEEK_INTERACTIVE_SCRUB = 1,
 };
 
 enum PE_PixelFormatClass : int32_t
@@ -167,3 +177,66 @@ PALMIER_API int32_t PE_PresentFrameAt(PE_SessionHandle session, PE_MediaHandle m
 // it straight to a PNG file via WIC from the CPU decode buffer — no D3D device or
 // swap chain involved, so this always works regardless of GPU/WARP availability.
 PALMIER_API int32_t PE_RenderFrameToFile(PE_SessionHandle session, PE_MediaHandle media, double timelineSeconds, const char* utf8PngPath);
+
+// --- Timeline ABI (Stage B / E2) -----------------------------------------------------
+//
+// Consumes the timeline-snapshot-v1 JSON contract (platforms/windows/docs/timeline-
+// snapshot-v1.md), parsed with simdjson (native/third_party/simdjson/, native/
+// TimelineSnapshotParser.*). One session can hold multiple open timeline handles
+// (per-timeline decoder cache, LRU-capped and evicted independently — see
+// EngineSession.h); a timeline handle is only ever valid on the session that opened it.
+//
+// Everything except PE_OpenTimeline/PE_CloseTimeline takes *only* a PE_TimelineHandle,
+// no session — the engine validates the handle itself (TimelineRegistry) rather than
+// requiring the caller to also thread the session through every call, matching the
+// literal ABI shape the plan calls for. PE_UpdateTimeline/PE_TimelineSeek/
+// PE_TimelineAttachSwapChain etc. never block on a render in progress.
+//
+// Threading: each open timeline owns a dedicated render worker thread implementing the
+// scrub machinery described in the plan's "Scrub strategy" — PE_TimelineSeek enqueues
+// (PE_SEEK_INTERACTIVE_SCRUB, latest-wins, coalesced to ~30 Hz) or dispatches
+// (PE_SEEK_EXACT, immediate, cancels any in-flight interactive compose) and returns
+// without waiting for the render to happen. PE_TimelineRenderFrameToFile is the
+// exception: fully synchronous, bypassing the render thread/mailbox entirely, for
+// deterministic golden-fixture tests.
+
+// Parses snapshotJsonUtf8 and opens a new timeline session under `session`. Multiple
+// timelines may be open on one session simultaneously (subject to an LRU eviction cap —
+// see EngineSession.h); *outTimeline is valid until PE_CloseTimeline or eviction.
+PALMIER_API int32_t PE_OpenTimeline(PE_SessionHandle session, const char* utf8SnapshotJson, PE_TimelineHandle* outTimeline);
+
+// Structural or param change: re-parses snapshotJsonUtf8 and atomically swaps it in.
+// Any render already in flight for this timeline keeps using the OLD snapshot to
+// completion — this call never blocks on that render, and never interrupts it.
+PALMIER_API int32_t PE_UpdateTimeline(PE_TimelineHandle timeline, const char* utf8SnapshotJson);
+
+PALMIER_API int32_t PE_CloseTimeline(PE_SessionHandle session, PE_TimelineHandle timeline);
+
+PALMIER_API int32_t PE_TimelineSeek(PE_TimelineHandle timeline, int64_t frame, int32_t mode);
+
+// Same threading contract as PE_AttachSwapChain/PE_ResizeSwapChain/PE_DetachSwapChain
+// (see above) — UI-thread calls; the timeline's own render thread presents
+// asynchronously in response to PE_TimelineSeek, serialized against these through the
+// owning session's shared D3D11 immediate-context mutex.
+PALMIER_API int32_t PE_TimelineAttachSwapChain(PE_TimelineHandle timeline, void* swapChainPanelUnknown, int32_t width, int32_t height);
+PALMIER_API int32_t PE_TimelineResizeSwapChain(PE_TimelineHandle timeline, int32_t width, int32_t height);
+PALMIER_API int32_t PE_TimelineDetachSwapChain(PE_TimelineHandle timeline);
+
+// Headless golden hook: synchronously composes `frame` and PNG-encodes it, bypassing the
+// render thread/mailbox/scrub-tolerance machinery entirely — deterministic, unaffected
+// by any concurrent PE_TimelineSeek calls on the same handle.
+PALMIER_API int32_t PE_TimelineRenderFrameToFile(PE_TimelineHandle timeline, int64_t frame, const char* utf8PngPath);
+
+// Fired from the timeline's render thread each time it actually composes (and, if a
+// swap chain is attached, presents) a frame in response to PE_TimelineSeek — not fired
+// by PE_TimelineRenderFrameToFile (that path is synchronous; the caller already knows
+// when it completes). May be invoked from a background thread — marshal to the UI
+// thread on the C# side. Pass callback == nullptr to unregister.
+typedef void (*PE_PlayheadCallback)(void* userCtx, int64_t frame);
+PALMIER_API int32_t PE_TimelineSetPlayheadCallback(PE_TimelineHandle timeline, PE_PlayheadCallback callback, void* userCtx);
+
+// UTF-8 JSON array of media paths the engine itself failed to decode while composing
+// (distinct from the builder-side OfflineMediaRefs — see docs/timeline-snapshot-v1.md
+// §8). Owned by the timeline; valid until the next call that could invalidate it. Never
+// null (points at "[]" when there are none).
+PALMIER_API const char* PE_TimelineGetUnprocessableMediaRefsJson(PE_TimelineHandle timeline);

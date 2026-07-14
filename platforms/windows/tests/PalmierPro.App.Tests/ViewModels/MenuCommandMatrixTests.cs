@@ -25,6 +25,24 @@ public class MenuCommandMatrixTests
         shell.SaveAsCommand.CanExecute(null).ShouldBe(expectedSave);
         shell.UndoCommand.CanExecute(null).ShouldBe(expectedUndo);
         shell.RedoCommand.CanExecute(null).ShouldBe(expectedUndo);
+        shell.ImportMediaCommand.CanExecute(null).ShouldBe(expectedSave);
+    }
+
+    [Fact]
+    public async Task ImportMediaCommand_raises_ImportMediaRequested_only_when_a_document_is_open()
+    {
+        using var temp = new TempDirectory();
+        var (shell, _, _) = TestFactory.MakeShell(temp.Path);
+        var raised = 0;
+        shell.ImportMediaRequested += (_, _) => raised++;
+
+        shell.ImportMediaCommand.CanExecute(null).ShouldBeFalse();
+
+        await shell.CreateProjectAsync(temp.Path, "Import Wiring");
+        shell.ImportMediaCommand.CanExecute(null).ShouldBeTrue();
+        shell.ImportMediaCommand.Execute(null);
+
+        raised.ShouldBe(1);
     }
 
     [Fact]
@@ -43,7 +61,6 @@ public class MenuCommandMatrixTests
         yield return [DisabledMenuCommands.About];
         yield return [DisabledMenuCommands.CheckForUpdates];
         yield return [DisabledMenuCommands.Settings];
-        yield return [DisabledMenuCommands.ImportMedia];
         yield return [DisabledMenuCommands.Export];
         yield return [DisabledMenuCommands.Cut];
         yield return [DisabledMenuCommands.Copy];

@@ -4,29 +4,38 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:local="using:PalmierPro.DevHarness"
     mc:Ignorable="d">
 
     <!-- E1-E3 (native decode/composition/kernels) are verified against this surface
          before the real Preview UI lands in Stage D. Visual styling (padding, fonts,
          colors) is applied from code-behind via HarnessTheme/AppThemeTokens, not here —
-         see MainWindow.xaml.cs. -->
-    <Grid x:Name="RootGrid">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
+         see MainWindow.xaml.cs. "Media" is the E1 single-asset harness; "Timeline" is
+         the E2 timeline-ABI harness (TimelinePage.xaml.cs). -->
+    <Pivot x:Name="RootPivot">
+        <PivotItem Header="Media">
+            <Grid x:Name="RootGrid">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
 
-        <StackPanel x:Name="Toolbar" Grid.Row="0" Orientation="Horizontal">
-            <Button x:Name="OpenButton" Content="Open" Click="OpenButton_Click" />
-            <TextBlock x:Name="MediaStatusText" Text="No media open" VerticalAlignment="Center" />
-            <Slider x:Name="TimeSlider" Minimum="0" Maximum="0" StepFrequency="0.01" IsEnabled="False"
-                    ValueChanged="TimeSlider_ValueChanged" />
-            <TextBlock x:Name="TimeReadoutText" Text="0.00s" VerticalAlignment="Center" />
-            <Button x:Name="ShowFrameButton" Content="Show Frame" Click="ShowFrameButton_Click" IsEnabled="False" />
-        </StackPanel>
+                <StackPanel x:Name="Toolbar" Grid.Row="0" Orientation="Horizontal">
+                    <Button x:Name="OpenButton" Content="Open" Click="OpenButton_Click" />
+                    <TextBlock x:Name="MediaStatusText" Text="No media open" VerticalAlignment="Center" />
+                    <Slider x:Name="TimeSlider" Minimum="0" Maximum="0" StepFrequency="0.01" IsEnabled="False"
+                            ValueChanged="TimeSlider_ValueChanged" />
+                    <TextBlock x:Name="TimeReadoutText" Text="0.00s" VerticalAlignment="Center" />
+                    <Button x:Name="ShowFrameButton" Content="Show Frame" Click="ShowFrameButton_Click" IsEnabled="False" />
+                </StackPanel>
 
-        <Grid x:Name="PreviewHost" Grid.Row="1">
-            <SwapChainPanel x:Name="EngineSurface" SizeChanged="EngineSurface_SizeChanged" />
-        </Grid>
-    </Grid>
+                <Grid x:Name="PreviewHost" Grid.Row="1">
+                    <SwapChainPanel x:Name="EngineSurface" SizeChanged="EngineSurface_SizeChanged" />
+                </Grid>
+            </Grid>
+        </PivotItem>
+        <PivotItem Header="Timeline">
+            <local:TimelinePage x:Name="TimelineHarness" />
+        </PivotItem>
+    </Pivot>
 </Window>
