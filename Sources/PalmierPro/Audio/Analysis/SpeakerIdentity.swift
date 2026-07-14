@@ -1,5 +1,7 @@
 import AVFoundation
+#if BUNDLED_SPEECH
 import SpeechVAD
+#endif
 
 /// Identifies voices across files so the same speaker gets the same label everywhere.
 enum SpeakerIdentity {
@@ -32,6 +34,7 @@ enum SpeakerIdentity {
     private static let turnEdgeTrim = 0.25
     private static let minEmbeddingSamples = 8000  // 0.5 s @ 16 kHz, the model's reliability floor
 
+    #if BUNDLED_SPEECH
     private static let modelBox = ModelBox()
 
     private actor ModelBox {
@@ -45,6 +48,7 @@ enum SpeakerIdentity {
             return model!.embed(audio: samples, sampleRate: 16000)
         }
     }
+    #endif
 
     struct Assignments {
         var byFileLocal: [String: [String: Int]] = [:]
@@ -94,6 +98,7 @@ enum SpeakerIdentity {
            let cached = try? JSONDecoder().decode([String: [Float]].self, from: data) {
             return cached
         }
+        #if BUNDLED_SPEECH
         var bySpeaker: [String: [Turn]] = [:]
         for turn in turns where turn.end - turn.start >= 1.0 {
             bySpeaker[turn.speaker, default: []].append(turn)
@@ -120,6 +125,9 @@ enum SpeakerIdentity {
             try? data.write(to: cacheURL, options: .atomic)
         }
         return prints
+        #else
+        return [:]
+        #endif
     }
 
     static func speechConfirmed(_ turns: [Turn], url: URL, mediaRef: String) async -> [Turn] {

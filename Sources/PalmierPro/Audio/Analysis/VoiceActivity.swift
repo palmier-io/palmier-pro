@@ -1,10 +1,14 @@
 import AVFoundation
+#if BUNDLED_SPEECH
 import SpeechVAD
+#endif
 
 /// Silero VAD speech detection; results cache as JSON sidecars keyed to the source file (AudioEnhancer's scheme).
 enum VoiceActivity {
     static let cache = DiskCache(named: "AudioAnalysis")
-    static let chunkDuration = Double(SileroVADModel.chunkSize) / Double(SileroVADModel.sampleRate)
+    static let chunkDuration = Double(chunkSize) / Double(sampleRate)
+    private static let sampleRate = 16_000
+    private static let chunkSize = 512
 
     struct Span: Codable {
         let start: Double
@@ -30,6 +34,25 @@ enum VoiceActivity {
         }
     }
 
+    static func analysis(for sourceURL: URL, mediaRef: String) async throws -> Analysis {
+        if let cached = cachedAnalysis(for: sourceURL, mediaRef: mediaRef) { return cached }
+        #if BUNDLED_SPEECH
+        try await pipelineGate.wait()
+        defer { Task { await pipelineGate.signal() } }
+        let samples = try await AudioTrackReader.readMonoFloats(from: sourceURL, sampleRate: Double(sampleRate))
+        let analysis = try await modelBox.analyze(samples: samples)
+        let outputURL = analysisURL(for: sourceURL, mediaRef: mediaRef)
+        removeStaleCaches(for: mediaRef, keeping: outputURL)
+        if let data = try? JSONEncoder().encode(analysis) {
+            try? data.write(to: outputURL)
+        }
+        return analysis
+        #else
+        throw MLXRuntime.Unavailable()
+        #endif
+    }
+
+    #if BUNDLED_SPEECH
     private static let modelBox = ModelBox()
 
     /// Silero is not thread-safe; the actor serializes model use.
@@ -83,20 +106,7 @@ enum VoiceActivity {
     /// Two in flight: one file decodes while the previous one runs inference in the
     /// (serial) model actor, with memory bounded to two decoded files.
     private static let pipelineGate = AsyncSemaphore(value: 2)
-
-    static func analysis(for sourceURL: URL, mediaRef: String) async throws -> Analysis {
-        if let cached = cachedAnalysis(for: sourceURL, mediaRef: mediaRef) { return cached }
-        try await pipelineGate.wait()
-        defer { Task { await pipelineGate.signal() } }
-        let samples = try await AudioTrackReader.readMonoFloats(from: sourceURL, sampleRate: Double(SileroVADModel.sampleRate))
-        let analysis = try await modelBox.analyze(samples: samples)
-        let outputURL = analysisURL(for: sourceURL, mediaRef: mediaRef)
-        removeStaleCaches(for: mediaRef, keeping: outputURL)
-        if let data = try? JSONEncoder().encode(analysis) {
-            try? data.write(to: outputURL)
-        }
-        return analysis
-    }
+    #endif
 
     static func cachedAnalysis(for sourceURL: URL, mediaRef: String) -> Analysis? {
         guard let data = try? Data(contentsOf: analysisURL(for: sourceURL, mediaRef: mediaRef)) else { return nil }

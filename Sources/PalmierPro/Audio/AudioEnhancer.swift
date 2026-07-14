@@ -1,5 +1,7 @@
 import AVFoundation
+#if BUNDLED_SPEECH
 import SpeechEnhancement
+#endif
 
 enum AudioEnhancer {
     static let cache = DiskCache(named: "EnhancedAudio")
@@ -16,6 +18,35 @@ enum AudioEnhancer {
         }
     }
 
+    static func denoisedAudio(for sourceURL: URL, mediaRef: String) async throws -> URL {
+        let outputURL = denoisedURL(for: sourceURL, mediaRef: mediaRef)
+        if FileManager.default.fileExists(atPath: outputURL.path) { return outputURL }
+        #if BUNDLED_SPEECH
+        var dry = try await readChannels(from: sourceURL)
+        guard dry.contains(where: { !$0.isEmpty }) else { throw EnhanceError.noAudioTrack }
+        var wet: [[Float]] = []
+        for ch in dry.indices {
+            wet.append(try await modelBox.enhance(audio: dry[ch], sampleRate: SpeechEnhancer.sampleRate))
+            dry[ch] = []
+        }
+        removeStaleCaches(for: mediaRef, keeping: outputURL)
+        try write(channels: wet, to: outputURL)
+        return outputURL
+        #else
+        throw MLXRuntime.Unavailable()
+        #endif
+    }
+
+    static func cachedDenoisedURL(for sourceURL: URL, mediaRef: String) -> URL? {
+        let url = denoisedURL(for: sourceURL, mediaRef: mediaRef)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    private static func denoisedURL(for sourceURL: URL, mediaRef: String) -> URL {
+        cache.directory.appendingPathComponent("\(mediaRef)_\(DiskCache.sizeMtimeTag(for: sourceURL))_wet.caf")
+    }
+
+    #if BUNDLED_SPEECH
     private static let modelBox = ModelBox()
 
     private actor ModelBox {
@@ -28,30 +59,6 @@ enum AudioEnhancer {
     }
 
     private static var sampleRate: Double { Double(SpeechEnhancer.sampleRate) }
-
-    static func denoisedAudio(for sourceURL: URL, mediaRef: String) async throws -> URL {
-        let outputURL = denoisedURL(for: sourceURL, mediaRef: mediaRef)
-        if FileManager.default.fileExists(atPath: outputURL.path) { return outputURL }
-        var dry = try await readChannels(from: sourceURL)
-        guard dry.contains(where: { !$0.isEmpty }) else { throw EnhanceError.noAudioTrack }
-        var wet: [[Float]] = []
-        for ch in dry.indices {
-            wet.append(try await modelBox.enhance(audio: dry[ch], sampleRate: SpeechEnhancer.sampleRate))
-            dry[ch] = []
-        }
-        removeStaleCaches(for: mediaRef, keeping: outputURL)
-        try write(channels: wet, to: outputURL)
-        return outputURL
-    }
-
-    static func cachedDenoisedURL(for sourceURL: URL, mediaRef: String) -> URL? {
-        let url = denoisedURL(for: sourceURL, mediaRef: mediaRef)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
-    }
-
-    private static func denoisedURL(for sourceURL: URL, mediaRef: String) -> URL {
-        cache.directory.appendingPathComponent("\(mediaRef)_\(DiskCache.sizeMtimeTag(for: sourceURL))_wet.caf")
-    }
 
     private static func removeStaleCaches(for mediaRef: String, keeping keep: URL) {
         let fm = FileManager.default
@@ -110,4 +117,5 @@ enum AudioEnhancer {
         try file.write(from: outBuffer)
         try FileIO.moveReplacingDestination(from: tempURL, to: outputURL)
     }
+    #endif
 }
