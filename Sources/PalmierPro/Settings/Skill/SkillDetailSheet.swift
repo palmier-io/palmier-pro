@@ -15,7 +15,12 @@ struct SkillDetailSheet: View {
     @State private var draftTitle = ""
     @State private var copyToast: CopyToast?
     @State private var showingSaveError = false
+    @State private var failedExit: ExitAction?
     @FocusState private var titleFocused: Bool
+
+    private enum ExitAction {
+        case close, preview
+    }
 
     private struct CopyToast: Equatable {
         let agentLabel: String
@@ -61,7 +66,10 @@ struct SkillDetailSheet: View {
             }
         }
         .alert("Unable to save skill", isPresented: $showingSaveError) {
-            Button("OK", role: .cancel) {}
+            Button("Keep Editing", role: .cancel) { failedExit = nil }
+            if failedExit != nil {
+                Button("Discard Changes", role: .destructive) { discardChanges() }
+            }
         } message: {
             Text("Add nonempty name and description fields to the skill frontmatter.")
         }
@@ -114,9 +122,7 @@ struct SkillDetailSheet: View {
     }
 
     private func header(_ skill: Skill) -> some View {
-        let state = store.installed[skill.id].map { _ in
-            SkillCommunityState.resolve(skill, store: store, catalog: catalog)
-        }
+        let state = SkillCommunityState.resolve(skill, store: store, catalog: catalog)
         let dirty = editing && draft != originalDraft
 
         return VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
@@ -147,6 +153,7 @@ struct SkillDetailSheet: View {
                 SkillExternalAgentMenu(skill: skill, store: store) { agent, url in
                     copyToast = CopyToast(agentLabel: agent.label, url: url)
                 }
+                .disabled(editing)
 
                 if dirty {
                     Button("Save Changes") {
@@ -215,6 +222,7 @@ struct SkillDetailSheet: View {
                 editingTitle = true
                 titleFocused = true
             }
+            .disabled(editing)
             Button("Show in Finder", systemImage: "folder") {
                 store.reveal(skill.path)
             }
@@ -238,13 +246,12 @@ struct SkillDetailSheet: View {
     }
 
     private func toggleEditing(_ skill: Skill) {
-        commitTitle()
         if editing {
-            guard commitDraftIfDirty() else { return }
-            editing = false
+            finish(.preview)
             return
         }
 
+        commitTitle()
         draft = (try? String(contentsOf: skill.path, encoding: .utf8)) ?? ""
         originalDraft = draft
         editing = true
@@ -260,12 +267,14 @@ struct SkillDetailSheet: View {
     }
 
     @discardableResult
-    private func commitDraftIfDirty() -> Bool {
+    private func commitDraftIfDirty(onFailure exit: ExitAction? = nil) -> Bool {
         guard draft != originalDraft else { return true }
         guard let skill, store.save(skill, raw: draft) else {
+            failedExit = exit
             showingSaveError = true
             return false
         }
+        failedExit = nil
         originalDraft = draft
         return true
     }
@@ -282,9 +291,30 @@ struct SkillDetailSheet: View {
     }
 
     private func close() {
-        guard commitDraftIfDirty() else { return }
+        finish(.close)
+    }
+
+    private func finish(_ action: ExitAction) {
+        guard skill != nil else {
+            dismiss()
+            return
+        }
+        guard commitDraftIfDirty(onFailure: action) else { return }
         commitTitle()
-        dismiss()
+        switch action {
+        case .close: dismiss()
+        case .preview: editing = false
+        }
+    }
+
+    private func discardChanges() {
+        guard let action = failedExit else { return }
+        failedExit = nil
+        draft = originalDraft
+        switch action {
+        case .close: dismiss()
+        case .preview: editing = false
+        }
     }
 
     private func displayPath(_ skill: Skill) -> String {

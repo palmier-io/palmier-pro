@@ -179,9 +179,7 @@ struct SkillsPane: View {
                 noMatchesState
             } else {
                 ForEach(installedSkills) { skill in
-                    let state = store.installed[skill.id] == nil
-                        ? nil
-                        : SkillCommunityState.resolve(skill, store: store, catalog: catalog)
+                    let state = SkillCommunityState.resolve(skill, store: store, catalog: catalog)
                     SkillRow(
                         name: skill.name,
                         description: skill.description,
@@ -250,27 +248,20 @@ struct SkillsPane: View {
 
     private func communityRow(_ entry: SkillCatalogEntry) -> some View {
         let skill = store.skills.first { $0.id == entry.id }
-        let isCommunityInstall = store.installed[entry.id] != nil
-        let state = isCommunityInstall ? skill.map {
-            SkillCommunityState.resolve($0, store: store, catalog: catalog)
-        } : nil
+        let state = skill.flatMap { SkillCommunityState.resolve($0, store: store, catalog: catalog) }
         return SkillRow(
             name: entry.name,
             description: entry.description,
-            status: isCommunityInstall ? state?.label ?? "Available" : skill == nil ? "Available" : "Local",
+            status: state?.label ?? (skill == nil ? "Available" : "Local"),
             statusColor: state?.color ?? AppTheme.Text.tertiaryColor,
-            actionTitle: skill == nil ? "Install" : isCommunityInstall && state == .update ? "Update" : "Open",
+            actionTitle: skill == nil ? "Install" : state == .update ? "Update" : "Open",
             working: working.contains(entry.id),
             summaryAction: skill.map { installedSkill in
                 { present(installedSkill.id) }
             },
             action: {
                 if let skill {
-                    if isCommunityInstall, state == .update {
-                        update(skill)
-                    } else {
-                        present(skill.id)
-                    }
+                    state == .update ? update(skill) : present(skill.id)
                 } else {
                     install(entry)
                 }

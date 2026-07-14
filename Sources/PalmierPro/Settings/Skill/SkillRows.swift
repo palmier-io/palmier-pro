@@ -26,8 +26,8 @@ enum SkillCommunityState: Equatable {
         _ skill: Skill,
         store: SkillStore,
         catalog: SkillCatalog
-    ) -> SkillCommunityState {
-        let installedSHA = store.installed[skill.id]
+    ) -> SkillCommunityState? {
+        guard let installedSHA = store.installed[skill.id] else { return nil }
         if store.localSha(skill) != installedSHA { return .modified }
         if let entry = catalog.entry(id: skill.id), entry.sha != installedSHA { return .update }
         return .upToDate
