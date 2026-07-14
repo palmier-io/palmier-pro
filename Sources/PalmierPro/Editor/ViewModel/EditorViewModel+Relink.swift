@@ -7,11 +7,13 @@ extension EditorViewModel {
     func relinkAsset(id: String, to newURL: URL) {
         guard let asset = mediaAssets.first(where: { $0.id == id }) else { return }
         if let newType = ClipType(fileExtension: newURL.pathExtension.lowercased()), newType != asset.type {
-            mediaPanelToast = L10n.format(
-                "Can't relink — “%@” is %@, not %@.",
-                newURL.lastPathComponent,
-                L10n.string(newType.trackLabel).lowercased(),
-                L10n.string(asset.type.trackLabel).lowercased()
+            mediaPanelToast = MediaPanelToast(
+                message: L10n.format(
+                    "Can't relink — “%@” is %@, not %@.",
+                    newURL.lastPathComponent,
+                    L10n.string(newType.trackLabel).lowercased(),
+                    L10n.string(asset.type.trackLabel).lowercased()
+                )
             )
             return
         }

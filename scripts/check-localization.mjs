@@ -96,6 +96,7 @@ function looksLikeFixedEnglishUI(value) {
 function collectCandidates() {
     const candidates = new Map();
     const dynamicRisks = [];
+    const typedAssignmentRisks = [];
     const addCandidate = (value, location) => {
         if (!looksLikeFixedEnglishUI(value)) return;
         const locations = candidates.get(value) ?? [];
@@ -131,6 +132,11 @@ function collectCandidates() {
         }
         const lines = source.split("\n");
         for (const [index, line] of lines.entries()) {
+            if (/\b(?:editor\.)?mediaPanelToast\s*=\s*L10n\.(?:string|format)\s*\(/.test(line)) {
+                typedAssignmentRisks.push(
+                    `${path.relative(repoRoot, filePath)}:${index + 1} ${JSON.stringify(line.trim())}`
+                );
+            }
             if (/\b(?:Text|Button|Label|Toggle|Picker|Menu)\s*\([^\n]{0,200}\?\s*"[^"\n]+"\s*:\s*"[^"\n]+"/.test(line)) {
                 dynamicRisks.push(`${path.relative(repoRoot, filePath)}:${index + 1} ${JSON.stringify(line.trim())}`);
             }
@@ -158,7 +164,7 @@ function collectCandidates() {
             }
         }
     }
-    return { candidates, dynamicRisks };
+    return { candidates, dynamicRisks, typedAssignmentRisks };
 }
 
 function placeholders(value) {
@@ -182,7 +188,7 @@ const english = parseStrings(englishPath);
 const chinese = parseStrings(chinesePath);
 const englishInfo = parseStrings(englishInfoPath);
 const chineseInfo = parseStrings(chineseInfoPath);
-const { candidates, dynamicRisks } = collectCandidates();
+const { candidates, dynamicRisks, typedAssignmentRisks } = collectCandidates();
 
 if (syncEnglish) {
     const keys = new Set([...english.keys(), ...candidates.keys()]);
@@ -209,6 +215,9 @@ if (listOnly) {
 const errors = [];
 for (const risk of dynamicRisks) {
     errors.push(`动态 UI 未经过 L10n.format：${risk}`);
+}
+for (const risk of typedAssignmentRisks) {
+    errors.push(`MediaPanelToast 必须显式包装本地化字符串：${risk}`);
 }
 for (const [key, locations] of candidates) {
     if (!english.has(key)) errors.push(`英文词典缺少：${JSON.stringify(key)} (${locations[0]})`);
