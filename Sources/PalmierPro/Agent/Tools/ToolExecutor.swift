@@ -47,7 +47,7 @@ final class ToolExecutor {
         boundProject = project
     }
 
-    private var agentUndoStack: [String] = []
+    private let undoSessionID = UUID().uuidString
     var feedbackState = FeedbackState()
     var lastTranscriptContext: TranscriptionToolContext?
 
@@ -97,6 +97,10 @@ final class ToolExecutor {
             )
             return .error("Editor not available")
         }
+        if Self.isMutating(tool), let undoManager = editor.undoManager,
+           await !undoManager.awaitTopLevelUndoBoundary() {
+            return .error("An editor action is in progress. Try again.")
+        }
         let before = editor.timelines
         let idsBefore = currentIdUniverse(editor)
         let result: ToolResult
@@ -108,10 +112,6 @@ final class ToolExecutor {
         do {
             let resolved = try expandingIdPrefixes(in: args, editor: editor)
             result = try await run(tool, editor, resolved)
-            if tool != .undo, tool != .setActiveTimeline, !result.isError, editor.timelines != before,
-               let actionName = editor.undoManager?.undoActionName {
-                agentUndoStack.append(actionName)
-            }
         } catch let err as ToolError {
             result = .error(err.message)
         } catch {
@@ -166,6 +166,18 @@ final class ToolExecutor {
         let sessionName = session?.displayName ?? boundProject?.displayName ?? "no project"
         let frontmostName = frontmost?.displayName ?? "no project"
         return "This session is on '\(sessionName)', but '\(frontmostName)' is active in Palmier Pro. Activate '\(sessionName)' or call manage_project with action='open' before making changes."
+    }
+
+    private static func isMutating(_ tool: ToolName) -> Bool {
+        switch tool {
+        case .manageProject, .getTimeline, .inspectTimeline, .setActiveTimeline,
+             .exportProject, .manageExports, .getMedia, .inspectMedia, .searchMedia,
+             .getMulticam, .getTranscript, .detectBeats, .inspectColor, .listModels,
+             .sendFeedback, .readSkill:
+            false
+        default:
+            true
+        }
     }
 
     private static func canReadInactiveProject(_ tool: ToolName) -> Bool {
@@ -228,7 +240,8 @@ final class ToolExecutor {
         case .removeClips:      return try removeClips(editor, args)
         case .manageTracks:     return try manageTracks(editor, args)
         case .moveClips:        return try moveClips(editor, args)
-        case .applyLayout:      return try applyLayout(editor, args)
+        case .applyLayout:
+            return try withUndoGroup(editor, actionName: "Apply Layout (Agent)") { try applyLayout(editor, args) }
         case .setClipProperties: return try setClipProperties(editor, args)
         case .setKeyframes:     return try setKeyframes(editor, args)
         case .splitClips:       return try splitClips(editor, args)
@@ -253,7 +266,8 @@ final class ToolExecutor {
         case .listModels:    return listModels(args)
         case .organizeMedia: return try organizeMedia(editor, args)
         case .sendFeedback:  return try await sendFeedback(editor, args)
-        case .setProjectSettings: return try setProjectSettings(editor, args)
+        case .setProjectSettings:
+            return try withUndoGroup(editor, actionName: "Set Project Settings (Agent)") { try setProjectSettings(editor, args) }
         case .createTimeline:     return try createTimeline(editor, args)
         case .setActiveTimeline:  return try setActiveTimeline(editor, args)
         case .readSkill:     return readSkill(args)
@@ -274,19 +288,15 @@ final class ToolExecutor {
 
     /// Reverts the assistant's most recent timeline edit. Refuses to undo the user's own edits.
     func undo(_ editor: EditorViewModel) throws -> ToolResult {
-        guard let expected = agentUndoStack.last else {
-            throw ToolError("No assistant edit to undo this session. The user's own edits are theirs to undo.")
-        }
         guard let undoManager = editor.undoManager, undoManager.canUndo else {
-            agentUndoStack.removeAll()
             throw ToolError("Nothing to undo.")
         }
-        guard undoManager.undoActionName == expected else {
-            throw ToolError("The most recent change ('\(undoManager.undoActionName)') wasn't made by the assistant — not undoing it.")
+        guard undoManager.topAgentSessionID == undoSessionID else {
+            throw ToolError("The most recent change ('\(undoManager.undoActionName)') wasn't made by this assistant session — not undoing it.")
         }
+        let actionName = undoManager.undoActionName
         undoManager.undo()
-        agentUndoStack.removeLast()
-        return .ok("Undid: \(expected). The timeline is restored to its state before that edit; re-read with get_timeline or get_transcript before editing again.")
+        return .ok("Undid: \(actionName). The timeline is restored to its state before that edit; re-read with get_timeline or get_transcript before editing again.")
     }
 
     // Shared helpers used by tool extensions in other files.
@@ -325,20 +335,18 @@ final class ToolExecutor {
         return String(data: data, encoding: .utf8)
     }
 
-    func withUndoGroup<T>(_ editor: EditorViewModel, actionName: String, _ work: () throws -> T) rethrows -> T {
+    func withUndoGroup<T>(_ editor: EditorViewModel, actionName: String, _ work: () throws -> T) throws -> T {
         guard let undoManager = editor.undoManager else { return try work() }
-        let restoresEventGrouping = undoManager.groupsByEvent && undoManager.groupingLevel <= 1
-        if restoresEventGrouping {
-            undoManager.groupsByEvent = false
-            if undoManager.groupingLevel == 1 { undoManager.endUndoGrouping() }
+        return try undoManager.withTopLevelGroup(actionName: actionName, sessionID: undoSessionID, work)
+    }
+
+    /// Ensures undo boundary is closed before mutating after async work.
+    func withUndoBoundary<T>(_ editor: EditorViewModel, actionName: String, _ work: () throws -> T) async throws -> T {
+        guard let undoManager = editor.undoManager else { return try work() }
+        guard await undoManager.awaitTopLevelUndoBoundary() else {
+            throw ToolError("An editor action is in progress. Try again.")
         }
-        undoManager.beginUndoGrouping()
-        defer {
-            undoManager.setActionName(actionName)
-            undoManager.endUndoGrouping()
-            if restoresEventGrouping { undoManager.groupsByEvent = true }
-        }
-        return try work()
+        return try undoManager.withTopLevelGroup(actionName: actionName, sessionID: undoSessionID, work)
     }
 }
 

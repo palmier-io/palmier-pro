@@ -67,7 +67,9 @@ extension ToolExecutor {
             throw ToolError("File not found: \(path)")
         }
         if status.isDirectory {
-            let summary = await editor.importFinderItems([fileURL], into: folderId)
+            let summary = try await editor.importFinderItems([fileURL], into: folderId, applying: { mutation in
+                try await self.withUndoBoundary(editor, actionName: "Import Media (Agent)", mutation)
+            })
             guard summary.assetCount > 0 else {
                 throw ToolError("No supported media found in folder: \(path)")
             }
@@ -123,13 +125,21 @@ extension ToolExecutor {
         let imported = try await Task.detached(priority: .userInitiated) {
             try Self.writeImportedBytes(base64: base64, mimeType: mimeType, projectURL: projectURL)
         }.value
-        guard let asset = editor.addMediaAsset(from: imported.url) else {
+        let asset: MediaAsset
+        do {
+            asset = try await withUndoBoundary(editor, actionName: "Import Media (Agent)") {
+                guard let asset = editor.addMediaAsset(from: imported.url) else {
+                    throw ToolError("Failed to register imported asset")
+                }
+                applyImportMetadata(editor: editor, asset: asset, name: name, folderId: folderId)
+                return asset
+            }
+        } catch {
             try? await Task.detached(priority: .utility) {
                 try FileManager.default.removeItem(at: imported.url)
             }.value
-            throw ToolError("Failed to register imported asset")
+            throw error
         }
-        applyImportMetadata(editor: editor, asset: asset, name: name, folderId: folderId)
         return .ok(Self.jsonString([
             "mediaRef": asset.id,
             "name": asset.name,

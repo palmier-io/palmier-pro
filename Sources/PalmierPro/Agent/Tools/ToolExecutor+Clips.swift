@@ -330,7 +330,9 @@ extension ToolExecutor {
         }
 
         let snapshot = timelineSnapshot(editor)
-        let ids = editor.rippleInsertClips(specs: specs, trackIndex: input.trackIndex, atFrame: input.atFrame)
+        let ids = try withUndoGroup(editor, actionName: specs.count == 1 ? "Insert Clip (Agent)" : "Insert Clips (Agent)") {
+            editor.rippleInsertClips(specs: specs, trackIndex: input.trackIndex, atFrame: input.atFrame)
+        }
         guard !ids.isEmpty else {
             throw ToolError("Insert failed on track \(input.trackIndex) at frame \(input.atFrame)")
         }
@@ -348,7 +350,9 @@ extension ToolExecutor {
         }
         let expanded = editor.expandToLinkGroup(Set(clipIds))
         let snapshot = timelineSnapshot(editor)
-        editor.removeClips(ids: expanded)
+        try withUndoGroup(editor, actionName: clipIds.count == 1 ? "Remove Clip (Agent)" : "Remove Clips (Agent)") {
+            editor.removeClips(ids: expanded)
+        }
         return mutationResult(editor, since: snapshot)
     }
 
@@ -424,7 +428,7 @@ extension ToolExecutor {
 
         let snapshot = timelineSnapshot(editor)
         let moveActionName = parsed.count == 1 ? "Move Clip (Agent)" : "Move Clips (Agent)"
-        withUndoGroup(editor, actionName: moveActionName) {
+        try withUndoGroup(editor, actionName: moveActionName) {
             if !moves.isEmpty { editor.moveClips(moves) }
         }
 
@@ -508,7 +512,7 @@ extension ToolExecutor {
 
         let snapshot = timelineSnapshot(editor)
         let setActionName = clipIds.count == 1 ? "Set Clip Property (Agent)" : "Set Clip Properties (Agent)"
-        withUndoGroup(editor, actionName: setActionName) {
+        try withUndoGroup(editor, actionName: setActionName) {
             for id in clipIds {
                 let changed = Self.applyPropertyChanges(
                     durationFrames: input.durationFrames,
@@ -692,7 +696,9 @@ extension ToolExecutor {
 
         guard !points.isEmpty else { throw ToolError("No valid split points") }
         let snapshot = timelineSnapshot(editor)
-        _ = editor.splitClips(at: points)
+        try withUndoGroup(editor, actionName: points.count == 1 ? "Split Clip (Agent)" : "Split Clips (Agent)") {
+            _ = editor.splitClips(at: points)
+        }
         return mutationResult(editor, since: snapshot)
     }
 
@@ -762,7 +768,10 @@ extension ToolExecutor {
 
         let ignoreSyncLocked = Set(input.ignoreSyncLockedTracks ?? [])
         let snapshot = timelineSnapshot(editor)
-        switch editor.rippleDeleteRangesOnTrack(trackIndex: resolvedTrackIndex, ranges: frameRanges, ignoreSyncLockTrackIndices: ignoreSyncLocked) {
+        let outcome = try withUndoGroup(editor, actionName: "Ripple Delete (Agent)") {
+            editor.rippleDeleteRangesOnTrack(trackIndex: resolvedTrackIndex, ranges: frameRanges, ignoreSyncLockTrackIndices: ignoreSyncLocked)
+        }
+        switch outcome {
         case .refused(let reason):
             throw ToolError(reason)
         case .ok(let report):
@@ -953,7 +962,7 @@ extension ToolExecutor {
             return ["trackId": track.id, "index": i, "label": editor.timelineTrackDisplayLabel(at: i), "type": track.type.rawValue]
         }
         var reorderResults: [(trackId: String, from: Int, to: Int)] = []
-        withUndoGroup(editor, actionName: "Manage Tracks (Agent)") {
+        try withUndoGroup(editor, actionName: "Manage Tracks (Agent)") {
             if !reorders.isEmpty {
                 let before = editor.timeline
                 for r in reorders {

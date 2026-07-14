@@ -8,11 +8,15 @@ extension TimelineView {
         let mode = (info["mode"] as? String).flatMap(EditorViewModel.SyncMode.init) ?? .auto
         Task { @MainActor [weak self] in
             guard let self else { return }
-            let report = await editor.syncClips(referenceClipId: referenceClipId, targetClipIds: targetClipIds, mode: mode)
-            editor.mediaPanelToast = MediaPanelToast(
-                message: Self.synchronizeSummary(report),
-                kind: report.synced.isEmpty ? .warning : .success
-            )
+            do {
+                let report = try await editor.syncClips(referenceClipId: referenceClipId, targetClipIds: targetClipIds, mode: mode)
+                editor.mediaPanelToast = MediaPanelToast(
+                    message: Self.synchronizeSummary(report),
+                    kind: report.synced.isEmpty ? .warning : .success
+                )
+            } catch {
+                editor.mediaPanelToast = MediaPanelToast(message: error.localizedDescription, kind: .warning)
+            }
             needsDisplay = true
         }
     }

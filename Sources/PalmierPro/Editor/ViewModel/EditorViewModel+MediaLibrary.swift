@@ -206,31 +206,41 @@ extension EditorViewModel {
 
     /// Import files and folders from the open panel or a Finder drop as one undo step
     @discardableResult
-    func importFinderItems(_ urls: [URL], into folderId: String?) async -> MediaImportSummary {
+    func importFinderItems(
+        _ urls: [URL],
+        into folderId: String?,
+        applying mutation: (@MainActor (@MainActor () -> MediaImportSummary) async throws -> MediaImportSummary)? = nil
+    ) async throws -> MediaImportSummary {
         let previous = mediaImportTail
         mediaImportSequence &+= 1
         let sequence = mediaImportSequence
         let task = Task { @MainActor in
-            _ = await previous?.value
-            return await performFinderImport(urls, into: folderId)
+            _ = try? await previous?.value
+            return try await performFinderImport(urls, into: folderId, applying: mutation)
         }
         mediaImportTail = task
 
-        let summary = await task.value
-        if mediaImportSequence == sequence {
-            mediaImportTail = nil
+        defer {
+            if mediaImportSequence == sequence { mediaImportTail = nil }
         }
-        return summary
+        return try await task.value
     }
 
     @discardableResult
-    private func performFinderImport(_ urls: [URL], into folderId: String?) async -> MediaImportSummary {
+    private func performFinderImport(
+        _ urls: [URL],
+        into folderId: String?,
+        applying mutation: (@MainActor (@MainActor () -> MediaImportSummary) async throws -> MediaImportSummary)?
+    ) async throws -> MediaImportSummary {
         let before = mediaLibraryUndoSnapshot()
         let roots = urls.map { MediaImportScanner.Root(url: $0, parentFolderId: folderId) }
 
         let plan = await Task.detached(priority: .userInitiated) {
             MediaImportScanner.scan(roots: roots)
         }.value
+        if let mutation {
+            return try await mutation { self.applyMediaImportPlan(plan, restoringFrom: before) }
+        }
         return applyMediaImportPlan(plan, restoringFrom: before)
     }
 

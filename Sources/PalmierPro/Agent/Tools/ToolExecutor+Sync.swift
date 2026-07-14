@@ -27,12 +27,15 @@ extension ToolExecutor {
         guard searchWindow > 0 else { throw ToolError("sync_clips: searchWindowSeconds must be > 0.") }
 
         let snapshot = timelineSnapshot(editor)
-        let report = await editor.syncClips(
+        let report = try await editor.syncClips(
             referenceClipId: referenceClipId,
             targetClipIds: targets,
             mode: mode,
             searchWindowSeconds: searchWindow,
-            minConfidence: args.double("minConfidence") ?? EditorViewModel.SyncDefaults.minConfidence
+            minConfidence: args.double("minConfidence") ?? EditorViewModel.SyncDefaults.minConfidence,
+            applying: { mutation in
+                try await self.withUndoBoundary(editor, actionName: "Synchronize Clips (Agent)", mutation)
+            }
         )
         guard !report.synced.isEmpty else {
             throw ToolError("sync_clips: \(report.failures.first?.message ?? "no clips aligned")")

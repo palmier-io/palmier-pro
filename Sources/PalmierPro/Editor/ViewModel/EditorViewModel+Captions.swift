@@ -116,7 +116,10 @@ extension EditorViewModel {
     }
 
     @discardableResult
-    func generateCaptions(for request: CaptionRequest) async throws -> [String] {
+    func generateCaptions(
+        for request: CaptionRequest,
+        applying mutation: (@MainActor (@MainActor () -> [String]) async throws -> [String])? = nil
+    ) async throws -> [String] {
         let owningTimelineId = activeTimelineId
         var targets = resolvedCaptionTargets(for: request)
         guard !targets.isEmpty else { throw CaptionError.noSource }
@@ -132,6 +135,9 @@ extension EditorViewModel {
 
         let specs = captionSpecs(targets, results: results, request: request)
         guard !specs.isEmpty else { return [] }
+        if let mutation {
+            return try await mutation { self.placeCaptionTrack(specs) }
+        }
         return placeCaptionTrack(specs)
     }
 
