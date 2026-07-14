@@ -217,6 +217,7 @@ final class VideoProject: NSDocument {
     }
 
     private func captureSaveSnapshot() {
+        editorViewModel.flushPendingManifestMetadataUpdates()
         snapshotProjectFile = editorViewModel.projectFileSnapshot()
         snapshotManifest = Self.manifestSnapshot(manifest: editorViewModel.mediaManifest, loadFailed: manifestLoadFailed)
         snapshotGenerationLog = editorViewModel.generationLog
@@ -588,6 +589,7 @@ final class VideoProject: NSDocument {
         var restored = 0
         var missing = initialMissingCount
         var missingRefs = initialMissingRefs
+        var manifestUpdates: [MediaAsset] = []
 
         for candidate in candidates {
             guard let asset = assetsByID[candidate.id] else { continue }
@@ -598,13 +600,13 @@ final class VideoProject: NSDocument {
                         break
                     default:
                         asset.generationStatus = .failed("Import interrupted")
-                        editorViewModel.updateManifestMetadata(for: asset)
+                        manifestUpdates.append(asset)
                     }
                     continue
                 }
                 if asset.isRecoveringGeneration {
                     asset.generationStatus = .generating
-                    editorViewModel.updateManifestMetadata(for: asset)
+                    manifestUpdates.append(asset)
                     continue
                 }
                 Log.project.warning("restore: media file missing id=\(candidate.id) name=\(candidate.name) path=\(candidate.url.path)")
@@ -618,11 +620,11 @@ final class VideoProject: NSDocument {
                 }
                 asset.importInput = nil
                 asset.generationStatus = .none
-                editorViewModel.updateManifestMetadata(for: asset)
+                manifestUpdates.append(asset)
             }
             if asset.generationStatus != .none, !asset.canResumeGeneration {
                 asset.generationStatus = .none
-                editorViewModel.updateManifestMetadata(for: asset)
+                manifestUpdates.append(asset)
             }
             restored += 1
             if asset.type == .audio || asset.type == .video {
@@ -637,6 +639,7 @@ final class VideoProject: NSDocument {
             Task { await asset.loadMetadata() }
         }
 
+        editorViewModel.updateManifestMetadata(for: manifestUpdates)
         editorViewModel.missingMediaRefs = missingRefs
         editorViewModel.generationService.resumePendingGenerations(editor: editorViewModel)
         Log.project.notice(

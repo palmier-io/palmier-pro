@@ -246,6 +246,8 @@ final class EditorViewModel {
     var mediaPanelToast: MediaPanelToast?
     @ObservationIgnored var mediaImportTail: Task<MediaImportSummary, Never>?
     @ObservationIgnored var mediaImportSequence: Int = 0
+    @ObservationIgnored var pendingManifestMetadataUpdates: [String: MediaAsset] = [:]
+    @ObservationIgnored var pendingManifestMetadataFlushTask: Task<Void, Never>?
 
     func showMediaPanelMediaTab() {
         mediaPanelShowMediaTabTick += 1
