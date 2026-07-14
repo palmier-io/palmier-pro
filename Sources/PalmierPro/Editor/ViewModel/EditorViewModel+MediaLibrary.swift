@@ -622,11 +622,7 @@ extension EditorViewModel {
         _ asset: MediaAsset,
         batchManifestUpdate: Bool = false
     ) async -> Bool {
-        Log.project.notice(
-            "media finalize start asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)",
-            telemetry: "Media asset finalize started",
-            data: ["assetId": Telemetry.shortId(asset.id), "type": asset.type.rawValue]
-        )
+        Log.project.debug("media finalize start asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)")
         let metadataLoaded = await asset.loadMetadata()
         guard metadataLoaded else {
             if FileManager.default.fileExists(atPath: asset.url.path) {
@@ -670,18 +666,8 @@ extension EditorViewModel {
             break
         }
         refreshPreviewForFinalizedAsset(asset)
-        Log.project.notice(
-            "media finalize ok asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)",
-            telemetry: "Media asset finalize finished",
-            data: [
-                "assetId": Telemetry.shortId(asset.id),
-                "type": asset.type.rawValue,
-                "duration": asset.duration,
-                "width": asset.sourceWidth ?? 0,
-                "height": asset.sourceHeight ?? 0,
-                "fps": asset.sourceFPS ?? 0,
-                "hasAudio": asset.hasAudio
-            ]
+        Log.project.debug(
+            "media finalize ok asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue) duration=\(asset.duration)"
         )
         return true
     }

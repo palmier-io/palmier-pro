@@ -279,12 +279,12 @@ final class SearchIndexCoordinator {
             currentAssetFraction = visualShare
             try await transcriptDone
             let totalSeconds = start.duration(to: .now).seconds
-            Log.search.notice("""
+            Log.search.debug("""
                 indexed \(asset.id.prefix(8)) visual=\(String(format: "%.1f", visualSeconds))s \
                 total=\(String(format: "%.1f", totalSeconds))s transcribed=\(transcribe)
                 """)
         } catch is CancellationError {
-            Log.search.notice("index cancelled asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)")
+            Log.search.debug("index cancelled asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)")
         } catch {
             failedIds.insert(asset.id)
             Log.search.warning("index failed asset=\(asset.id.prefix(8)): \(error.localizedDescription)")
