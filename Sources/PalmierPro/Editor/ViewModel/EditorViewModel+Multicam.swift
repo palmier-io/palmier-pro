@@ -546,7 +546,7 @@ extension EditorViewModel {
     private func switchOrToast(groupId: String, request: AngleSwitchRequest) {
         do { _ = try switchMulticamAngles(groupId: groupId, requests: [request]) }
         catch let error as ToolError { mediaPanelToast = MediaPanelToast(stringLiteral: error.message) }
-        catch { mediaPanelToast = L10n.string("Couldn't switch angle.") }
+        catch { mediaPanelToast = MediaPanelToast(message: L10n.string("Couldn't switch angle.")) }
     }
 
     func switchMulticamRange(groupId: String, range: Range<Int>, angle: String) {

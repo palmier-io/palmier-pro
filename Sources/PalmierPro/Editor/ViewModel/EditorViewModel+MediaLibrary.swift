@@ -237,11 +237,15 @@ extension EditorViewModel {
     @discardableResult
     func addMediaAsset(from url: URL, folderId: String? = nil, finalize: Bool = true) -> MediaAsset? {
         guard let type = ClipType(fileExtension: url.pathExtension.lowercased()) else {
-            mediaPanelToast = L10n.format("Can't import “%@” — unsupported file type.", url.lastPathComponent)
+            mediaPanelToast = MediaPanelToast(
+                message: L10n.format("Can't import “%@” — unsupported file type.", url.lastPathComponent)
+            )
             return nil
         }
         if type == .lottie, !LottieVideoGenerator.isLottie(at: url) {
-            mediaPanelToast = L10n.format("Can't import “%@” — not a Lottie animation.", url.lastPathComponent)
+            mediaPanelToast = MediaPanelToast(
+                message: L10n.format("Can't import “%@” — not a Lottie animation.", url.lastPathComponent)
+            )
             return nil
         }
         return addMediaAsset(from: url, type: type, folderId: folderId, finalize: finalize)
@@ -344,9 +348,13 @@ extension EditorViewModel {
         }
 
         if let name = plan.rejectedUnsupportedNames.last {
-            mediaPanelToast = L10n.format("Can't import “%@” — unsupported file type.", name)
+            mediaPanelToast = MediaPanelToast(
+                message: L10n.format("Can't import “%@” — unsupported file type.", name)
+            )
         } else if let name = plan.rejectedLottieNames.last {
-            mediaPanelToast = L10n.format("Can't import “%@” — not a Lottie animation.", name)
+            mediaPanelToast = MediaPanelToast(
+                message: L10n.format("Can't import “%@” — not a Lottie animation.", name)
+            )
         }
 
         let summary = MediaImportSummary(
