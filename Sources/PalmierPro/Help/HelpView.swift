@@ -6,6 +6,13 @@ enum HelpTab: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    var title: String {
+        switch self {
+        case .shortcuts: L10n.string("Shortcuts")
+        case .mcp: L10n.string("MCP")
+        }
+    }
+
     var icon: String {
         switch self {
         case .shortcuts: "keyboard"
@@ -54,7 +61,7 @@ struct HelpView: View {
                 Image(systemName: tab.icon)
                     .font(.system(size: AppTheme.FontSize.smMd, weight: .medium))
                     .frame(width: 16)
-                Text(tab.rawValue)
+                Text(verbatim: tab.title)
                     .font(.system(size: AppTheme.FontSize.md, weight: isActive ? .medium : .regular))
                 Spacer()
             }
@@ -71,7 +78,7 @@ struct HelpView: View {
     private var detail: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(selectedTab.rawValue)
+                Text(verbatim: selectedTab.title)
                     .font(.system(size: AppTheme.FontSize.title2, weight: .light))
                     .tracking(AppTheme.Tracking.tight)
                     .foregroundStyle(AppTheme.Text.primaryColor)
@@ -101,7 +108,7 @@ final class HelpWindowController: NSWindowController {
         let window = NSWindow(contentViewController: hosting)
         window.setContentSize(NSSize(width: 900, height: 560))
         window.minSize = NSSize(width: 820, height: 520)
-        window.title = "Help"
+        window.title = L10n.string("Help")
         window.setFrameAutosaveName("PalmierProHelp-v1")
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = AppTheme.Background.base.withAlphaComponent(0.4)

@@ -1,7 +1,22 @@
 import Foundation
 
 func unsupportedValue(model displayName: String, field: String, value: String, allowed: [String]) -> String {
-    "\(displayName) does not support \(field) '\(value)'. Valid: \(allowed.joined(separator: ", "))."
+    let localizedField = switch field {
+    case "duration": L10n.string("duration")
+    case "aspect ratio": L10n.string("aspect ratio")
+    case "resolution": L10n.string("resolution")
+    case "quality": L10n.string("quality")
+    case "voice": L10n.string("voice")
+    case "target language": L10n.string("target language")
+    default: field
+    }
+    return L10n.format(
+        "%@ does not support %@ '%@'. Valid: %@.",
+        displayName,
+        localizedField,
+        value,
+        allowed.joined(separator: ", ")
+    )
 }
 
 struct VideoModelConfig: Identifiable, Sendable {

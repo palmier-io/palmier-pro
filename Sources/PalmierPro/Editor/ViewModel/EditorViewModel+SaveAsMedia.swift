@@ -133,7 +133,8 @@ extension EditorViewModel {
         let asset = AVURLAsset(url: sourceURL)
         let primaryType: AVMediaType = mediaType == .audio ? .audio : .video
         guard let primarySource = try await asset.loadTracks(withMediaType: primaryType).first else {
-            throw ExportError(reason: "no \(primaryType.rawValue) track in source")
+            let typeName = L10n.string(mediaType == .audio ? "Audio" : "Video")
+            throw ExportError(reason: L10n.format("No %@ track in source", typeName))
         }
 
         let composition = AVMutableComposition()
@@ -141,7 +142,7 @@ extension EditorViewModel {
             withMediaType: primaryType,
             preferredTrackID: kCMPersistentTrackID_Invalid
         ) else {
-            throw ExportError(reason: "could not create composition track")
+            throw ExportError(reason: L10n.string("Could not create composition track"))
         }
 
         let timescale = CMTimeScale(max(1, fps))
@@ -184,7 +185,7 @@ extension EditorViewModel {
             ? AVAssetExportPresetAppleM4A
             : AVAssetExportPresetHighestQuality
         guard let session = AVAssetExportSession(asset: composition, presetName: presetName) else {
-            throw ExportError(reason: "export preset unsupported")
+            throw ExportError(reason: L10n.string("Export preset unsupported"))
         }
         let outType: AVFileType = mediaType == .audio ? .m4a : .mp4
         try await session.export(to: destURL, as: outType)

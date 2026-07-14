@@ -4,8 +4,8 @@ enum LUTStoreError: LocalizedError {
     case noFile(String), invalid(String)
     var errorDescription: String? {
         switch self {
-        case .noFile(let path): "No file at path: \(path)"
-        case .invalid(let name): "Not a valid .cube 3D LUT: \(name)"
+        case .noFile(let path): L10n.format("No file at path: %@", path)
+        case .invalid(let name): L10n.format("Not a valid .cube 3D LUT: %@", name)
         }
     }
 }

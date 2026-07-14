@@ -90,7 +90,7 @@ struct FontPickerField: View {
     }
 
     private var displayName: String {
-        guard let current else { return "Mixed" }
+        guard let current else { return L10n.string("Mixed") }
         return NSFont(name: current, size: 12)?.familyName ?? current
     }
 }

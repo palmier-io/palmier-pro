@@ -7,6 +7,13 @@ struct MediaPanelView: View {
 
     enum PanelTab: String, CaseIterable {
         case media = "Media", captions = "Captions", audio = "Audio"
+        var title: String {
+            switch self {
+            case .media: L10n.string("Media")
+            case .captions: L10n.string("Captions")
+            case .audio: L10n.string("Audio")
+            }
+        }
         var icon: String {
             switch self {
             case .media: "folder"
@@ -40,7 +47,7 @@ struct MediaPanelView: View {
         }
         .overlay(alignment: .topLeading) {
             if let hoveredTab {
-                hoverLabel(hoveredTab.rawValue)
+                hoverLabel(hoveredTab.title)
                     .id(hoveredTab)
                     .offset(
                         x: AppTheme.MediaPanel.tabRailWidth + AppTheme.Spacing.xs,
@@ -103,12 +110,12 @@ struct MediaPanelView: View {
                 hoveredTab = hovering ? tab : (hoveredTab == tab ? nil : hoveredTab)
             }
         }
-        .accessibilityLabel(tab.rawValue)
+        .accessibilityLabel(tab.title)
         .zIndex(hovered ? 1 : 0)
     }
 
     private func hoverLabel(_ text: String) -> some View {
-        Text(text)
+        Text(verbatim: text)
             .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
             .foregroundStyle(AppTheme.Text.primaryColor)
             .lineLimit(1)

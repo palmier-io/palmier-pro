@@ -1204,9 +1204,9 @@ final class TimelineInputController {
 
     private func newTrackActionName(count: Int, isDuplicate: Bool) -> String {
         switch (isDuplicate, count) {
-        case (true, 1): return "Duplicate Clip to New Track"
-        case (true, _): return "Duplicate Clips to New Track"
-        default:        return "Move Clip to New Track"
+        case (true, 1): return L10n.string("Duplicate Clip to New Track")
+        case (true, _): return L10n.string("Duplicate Clips to New Track")
+        default:        return L10n.string("Move Clip to New Track")
         }
     }
 

@@ -32,7 +32,7 @@ enum CompositionBuilder {
 
     struct InvalidTimelineError: LocalizedError {
         let reason: String
-        var errorDescription: String? { "Invalid timeline: \(reason)" }
+        var errorDescription: String? { L10n.format("Invalid timeline: %@", reason) }
     }
 
     static func build(

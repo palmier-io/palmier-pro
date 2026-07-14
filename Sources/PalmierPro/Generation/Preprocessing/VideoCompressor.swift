@@ -6,7 +6,7 @@ import Foundation
 enum VideoCompressor {
     struct CompressionError: LocalizedError {
         let reason: String
-        var errorDescription: String? { "Video compression failed: \(reason)" }
+        var errorDescription: String? { L10n.format("Video compression failed: %@", reason) }
     }
 
     /// Returns a temp URL with a downscaled copy when the source exceeds `maxLongSide`, else `nil`.
@@ -24,7 +24,7 @@ enum VideoCompressor {
         // 960x540 preset keeps long side at 960, safely under Seedance's ~1112 cap and
         // cuts file size. Scales down only; smaller sources (ruled out above) pass through.
         guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPreset960x540) else {
-            throw CompressionError(reason: "export preset unsupported")
+            throw CompressionError(reason: L10n.string("Export preset unsupported"))
         }
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("ref-compressed-\(UUID().uuidString).mp4")

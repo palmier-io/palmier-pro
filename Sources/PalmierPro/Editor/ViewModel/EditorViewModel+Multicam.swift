@@ -82,12 +82,17 @@ extension EditorViewModel {
                 && findClip(id: info.0.id)?.trackIndex != info.1
         }
         guard horizontal || laneChange else { return nil }
-        if laneChange { return "Can't move a multicam camera clip to another track — the group's program track stays fixed." }
+        if laneChange {
+            return L10n.string("Can't move a multicam camera clip to another track — the group's program track stays fixed.")
+        }
         for gid in Set(infos.compactMap { $0.0.multicamGroupId }) {
             let leftBehind = Set(multicamClips(of: gid).map { $0.clip.id }).subtracting(movedIds)
             if !leftBehind.isEmpty {
                 let name = multicamGroup(id: gid)?.name ?? "Multicam"
-                return "Can't move part of multicam group \"\(name)\" — its clips stay in sync and move together."
+                return L10n.format(
+                    "Can't move part of multicam group “%@” — its clips stay in sync and move together.",
+                    name
+                )
             }
         }
         return nil
@@ -541,7 +546,7 @@ extension EditorViewModel {
     private func switchOrToast(groupId: String, request: AngleSwitchRequest) {
         do { _ = try switchMulticamAngles(groupId: groupId, requests: [request]) }
         catch let error as ToolError { mediaPanelToast = MediaPanelToast(stringLiteral: error.message) }
-        catch { mediaPanelToast = "Couldn't switch angle." }
+        catch { mediaPanelToast = L10n.string("Couldn't switch angle.") }
     }
 
     func switchMulticamRange(groupId: String, range: Range<Int>, angle: String) {

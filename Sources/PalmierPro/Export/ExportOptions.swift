@@ -34,6 +34,16 @@ enum ExportResolution: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    var localizedName: String {
+        switch self {
+        case .r720p: "720p"
+        case .r1080p: "1080p"
+        case .r1440p: "2K"
+        case .r4k: "4K"
+        case .matchTimeline: L10n.string("Match Timeline")
+        }
+    }
+
     var shortSidePixels: Int? {
         switch self {
         case .r720p: 720
@@ -69,8 +79,8 @@ enum VideoCodec: String, CaseIterable, Identifiable {
 
     var containerLabel: String {
         switch self {
-        case .h264, .h265: "MPEG-4 (.mp4)"
-        case .prores, .hdr: "QuickTime (.mov)"
+        case .h264, .h265: L10n.string("MPEG-4 (.mp4)")
+        case .prores, .hdr: L10n.string("QuickTime (.mov)")
         }
     }
 

@@ -35,7 +35,7 @@ struct MatteSheet: View {
                     .foregroundStyle(AppTheme.Status.errorColor)
             }
             Button(action: create) {
-                Text(isCreating ? "Creating…" : "Create Matte")
+                L10n.text(isCreating ? "Creating…" : "Create Matte")
                     .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.semibold))
                     .foregroundStyle(AppTheme.Background.baseColor)
                     .frame(maxWidth: .infinity)
@@ -56,7 +56,7 @@ struct MatteSheet: View {
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .frame(width: AppTheme.IconSize.sm)
-            Text(label)
+            L10n.text(label)
                 .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
                 .foregroundStyle(AppTheme.Text.primaryColor)
             Spacer(minLength: AppTheme.Spacing.md)

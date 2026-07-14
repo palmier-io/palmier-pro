@@ -84,7 +84,7 @@ struct UserAvatarButton: View {
             .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help(account.isSignedIn ? "Account" : "Sign in")
+        .help(account.isSignedIn ? L10n.string("Account") : L10n.string("Sign in"))
         .popover(isPresented: $isPopoverPresented, arrowEdge: .bottom) {
             AccountPopoverCard()
         }

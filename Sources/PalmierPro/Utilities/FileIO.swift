@@ -6,7 +6,7 @@ enum FileIOError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .fileTooLarge(let size, let maxBytes):
-            "file exceeds max size (\(size) > \(maxBytes) bytes)"
+            L10n.format("File exceeds maximum size (%lld > %lld bytes).", size, maxBytes)
         }
     }
 }

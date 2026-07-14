@@ -149,11 +149,11 @@ enum AlphaVideoNormalizer {
         case readerSetupFailed, writerSetupFailed, readFailed, appendFailed, writeFailed
         var errorDescription: String? {
             switch self {
-            case .readerSetupFailed: "could not set up reader"
-            case .writerSetupFailed: "could not set up writer"
-            case .readFailed: "could not read source frames"
-            case .appendFailed: "could not append frame"
-            case .writeFailed: "could not finish writing"
+            case .readerSetupFailed: L10n.string("Could not set up reader")
+            case .writerSetupFailed: L10n.string("Could not set up writer")
+            case .readFailed: L10n.string("Could not read source frames")
+            case .appendFailed: L10n.string("Could not append frame")
+            case .writeFailed: L10n.string("Could not finish writing")
             }
         }
     }

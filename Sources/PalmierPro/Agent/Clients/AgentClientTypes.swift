@@ -58,9 +58,10 @@ enum AnthropicClientError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .missingAPIKey: "No Anthropic API key is set."
-        case .httpError(let status, let body): "Anthropic API error (\(status)): \(body.prefix(500))"
-        case .streamError(let msg): "Stream error: \(msg)"
+        case .missingAPIKey: L10n.string("No Anthropic API key is set.")
+        case .httpError(let status, let body):
+            L10n.format("Anthropic API error (%d): %@", status, String(body.prefix(500)))
+        case .streamError(let msg): L10n.format("Stream error: %@", msg)
         }
     }
 }

@@ -96,6 +96,13 @@ struct GenerationView: View {
     enum FramesRefsMode: String, CaseIterable {
         case firstLast = "First/Last"
         case reference = "Reference"
+
+        var title: String {
+            switch self {
+            case .firstLast: L10n.string("First/Last")
+            case .reference: L10n.string("Reference")
+            }
+        }
     }
 
     struct RefTag: Hashable, Identifiable {
@@ -367,7 +374,7 @@ struct GenerationView: View {
                 .disabled(!isPromptEnabled)
 
             if prompt.isEmpty {
-                Text(promptPlaceholder)
+                L10n.text(promptPlaceholder)
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .padding(.horizontal, AppTheme.Spacing.md)
@@ -402,7 +409,7 @@ struct GenerationView: View {
                 .padding(.vertical, AppTheme.Spacing.xs)
 
             if text.wrappedValue.isEmpty {
-                Text(placeholder)
+                L10n.text(placeholder)
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .padding(.horizontal, AppTheme.Spacing.md)

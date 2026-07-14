@@ -18,10 +18,10 @@ extension EditorViewModel {
     func nestBlockReason(childId: String) -> String? {
         guard let child = timeline(for: childId) else { return nil }
         if child.totalFrames == 0 {
-            return "\"\(child.name)\" is empty. Add clips before nesting it."
+            return L10n.format("“%@” is empty. Add clips before nesting it.", child.name)
         }
         if wouldCreateNestCycle(nesting: childId, into: activeTimelineId) {
-            return "Can't nest \"\(child.name)\" — it would contain itself."
+            return L10n.format("Can't nest “%@” — it would contain itself.", child.name)
         }
         return nil
     }
@@ -165,7 +165,7 @@ extension EditorViewModel {
 
         if videoCarrier.map({ carrierHasGroupLook($0, child: child) }) == true
             || audioCarrier.map({ $0.fadeInFrames > 0 || $0.fadeOutFrames > 0 || $0.volumeTrack != nil }) == true {
-            mediaPanelToast = "Nest settings discarded. Undo to restore."
+            mediaPanelToast = L10n.string("Nest settings discarded. Undo to restore.")
         }
     }
 

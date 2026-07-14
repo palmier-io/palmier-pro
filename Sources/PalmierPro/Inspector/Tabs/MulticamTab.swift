@@ -37,11 +37,17 @@ struct MulticamTab: View {
             Spacer(minLength: AppTheme.Spacing.sm)
 
             if member.usable {
+                let offset = String(format: "%.2f", member.sync.offsetSeconds)
+                let confidence = String(format: "%.0f", member.sync.confidence * 100)
                 Text(String(format: "%+.2fs · %.0f%%", member.sync.offsetSeconds, member.sync.confidence * 100))
                     .font(.system(size: AppTheme.FontSize.xxs))
                     .monospacedDigit()
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .help("Starts \(String(format: "%.2f", member.sync.offsetSeconds))s into the group's clock; matched the master with \(String(format: "%.0f", member.sync.confidence * 100))% confidence.")
+                    .help(L10n.format(
+                        "Starts %@s into the group's clock; matched the master with %@%% confidence.",
+                        offset,
+                        confidence
+                    ))
             } else {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: AppTheme.FontSize.xxs))

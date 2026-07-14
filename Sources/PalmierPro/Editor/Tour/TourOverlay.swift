@@ -71,13 +71,13 @@ struct TourOverlay: View {
     private func callout(_ step: TourStep) -> some View {
         let index = tour.stepIndex ?? 0
         return VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            Text("Step \(index) of \(tour.spotlightCount)")
+            Text(verbatim: L10n.format("Step %d of %d", index, tour.spotlightCount))
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
-            Text(step.title)
+            L10n.text(step.title)
                 .font(.system(size: AppTheme.FontSize.md, weight: .semibold))
                 .foregroundStyle(AppTheme.Text.primaryColor)
-            Text(step.instruction)
+            L10n.text(step.instruction)
                 .font(.system(size: AppTheme.FontSize.smMd))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .fixedSize(horizontal: false, vertical: true)
@@ -104,11 +104,11 @@ struct TourOverlay: View {
     private func introCard(_ step: TourStep) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-                Text(step.title)
+                L10n.text(step.title)
                     .font(.system(size: AppTheme.FontSize.title2, weight: .light))
                     .tracking(AppTheme.Tracking.tight)
                     .foregroundStyle(AppTheme.Text.primaryColor)
-                Text(step.instruction)
+                L10n.text(step.instruction)
                     .font(.system(size: AppTheme.FontSize.smMd))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .fixedSize(horizontal: false, vertical: true)
@@ -146,10 +146,10 @@ struct TourOverlay: View {
     private func outroCard(_ step: TourStep) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-                Text(step.title)
+                L10n.text(step.title)
                     .font(.system(size: AppTheme.FontSize.title1, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.primaryColor)
-                Text(step.instruction)
+                L10n.text(step.instruction)
                     .font(.system(size: AppTheme.FontSize.smMd))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .fixedSize(horizontal: false, vertical: true)
@@ -179,7 +179,7 @@ struct TourOverlay: View {
                     .font(.system(size: AppTheme.FontSize.smMd))
                     .foregroundStyle(AppTheme.Accent.primary)
                     .frame(width: AppTheme.IconSize.sm)
-                Text(title)
+                L10n.text(title)
                     .font(.system(size: AppTheme.FontSize.smMd))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                 Spacer()

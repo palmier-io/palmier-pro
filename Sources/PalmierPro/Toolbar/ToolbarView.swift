@@ -80,7 +80,7 @@ struct ToolbarView: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help(help)
+        .help(L10n.string(help))
     }
 
     private func zoomButton(
@@ -98,7 +98,7 @@ struct ToolbarView: View {
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
-        .help(help)
+        .help(L10n.string(help))
     }
 
     private func zoomOut() {
@@ -131,7 +131,7 @@ struct ToolbarView: View {
                 .hoverHighlight(isActive: isActive)
         }
         .buttonStyle(.plain)
-        .help(help)
+        .help(L10n.string(help))
     }
 
     private func textGlyphButton(_ glyph: String, help: String, action: @escaping () -> Void) -> some View {
@@ -143,7 +143,7 @@ struct ToolbarView: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help(help)
+        .help(L10n.string(help))
     }
 
     private func bracketButton(_ bracket: String, help: String, action: @escaping () -> Void) -> some View {
@@ -155,6 +155,6 @@ struct ToolbarView: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
-        .help(help)
+        .help(L10n.string(help))
     }
 }

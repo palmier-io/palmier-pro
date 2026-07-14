@@ -94,12 +94,12 @@ enum AnimatableProperty: String, CaseIterable, Sendable {
 
     var displayName: String {
         switch self {
-        case .opacity:  "Opacity"
-        case .position: "Position"
-        case .scale:    "Scale"
-        case .rotation: "Rotation"
-        case .crop:     "Crop"
-        case .volume:   "Volume"
+        case .opacity:  L10n.string("Opacity")
+        case .position: L10n.string("Position")
+        case .scale:    L10n.string("Scale")
+        case .rotation: L10n.string("Rotation")
+        case .crop:     L10n.string("Crop")
+        case .volume:   L10n.string("Volume")
         }
     }
 }

@@ -173,19 +173,23 @@ struct VideoGenerationSubmission {
         @MainActor
         private func validateEditReferences(for model: VideoModelConfig) -> String? {
             guard let sourceVideo else {
-                return "Model '\(model.id)' requires a source video."
+                return L10n.format("Model '%@' requires a source video.", model.id)
             }
             guard sourceVideo.type == .video else {
-                return "sourceVideoMediaRef must reference a video asset"
+                return L10n.string("sourceVideoMediaRef must reference a video asset")
             }
             if !frames.isEmpty || !videoRefs.isEmpty || !audioRefs.isEmpty {
-                return "\(model.displayName) only accepts a source video and image references"
+                return L10n.format("%@ only accepts a source video and image references", model.displayName)
             }
             if !model.supportsReferences, !imageRefs.isEmpty {
-                return "\(model.displayName) does not accept image references"
+                return L10n.format("%@ does not accept image references", model.displayName)
             }
             if imageRefs.count > model.maxReferenceImages {
-                return "\(model.displayName) accepts at most \(model.maxReferenceImages) image reference(s)"
+                return L10n.format(
+                    "%@ accepts at most %d image reference(s)",
+                    model.displayName,
+                    model.maxReferenceImages
+                )
             }
             return validateTypes([
                 (imageRefs, .image, "referenceImageMediaRefs")
@@ -195,39 +199,51 @@ struct VideoGenerationSubmission {
         @MainActor
         private func validateTextToVideoReferences(for model: VideoModelConfig) -> String? {
             if sourceVideo != nil {
-                return "\(model.displayName) does not accept a source video"
+                return L10n.format("%@ does not accept a source video", model.displayName)
             }
             if frames.count > 2 {
-                return "\(model.displayName) accepts at most 2 frame references"
+                return L10n.format("%@ accepts at most 2 frame references", model.displayName)
             }
             if !frames.isEmpty, !model.supportsFirstFrame {
-                return "\(model.displayName) does not accept frame references"
+                return L10n.format("%@ does not accept frame references", model.displayName)
             }
             if frames.count > 1, !model.supportsLastFrame {
-                return "\(model.displayName) does not accept a last frame"
+                return L10n.format("%@ does not accept a last frame", model.displayName)
             }
             if model.framesAndReferencesExclusive, !frames.isEmpty, !allRefs.isEmpty {
-                return "\(model.displayName) uses frames OR references, not both. Clear one side."
+                return L10n.format("%@ uses frames OR references, not both. Clear one side.", model.displayName)
             }
             if imageRefs.count > model.maxReferenceImages {
-                return "\(model.displayName) accepts at most \(model.maxReferenceImages) image references"
+                return L10n.format(
+                    "%@ accepts at most %d image references",
+                    model.displayName,
+                    model.maxReferenceImages
+                )
             }
             if videoRefs.count > model.maxReferenceVideos {
-                return "\(model.displayName) accepts at most \(model.maxReferenceVideos) video references"
+                return L10n.format(
+                    "%@ accepts at most %d video references",
+                    model.displayName,
+                    model.maxReferenceVideos
+                )
             }
             if audioRefs.count > model.maxReferenceAudios {
-                return "\(model.displayName) accepts at most \(model.maxReferenceAudios) audio references"
+                return L10n.format(
+                    "%@ accepts at most %d audio references",
+                    model.displayName,
+                    model.maxReferenceAudios
+                )
             }
             if let totalCap = model.maxTotalReferences, totalRefCount > totalCap {
-                return "\(model.displayName) accepts at most \(totalCap) references total"
+                return L10n.format("%@ accepts at most %d references total", model.displayName, totalCap)
             }
             if let cap = model.maxCombinedVideoRefSeconds,
                videoRefs.reduce(0, { $0 + $1.duration }) > cap {
-                return "Combined video reference duration exceeds \(Int(cap))s"
+                return L10n.format("Combined video reference duration exceeds %ds", Int(cap))
             }
             if let cap = model.maxCombinedAudioRefSeconds,
                audioRefs.reduce(0, { $0 + $1.duration }) > cap {
-                return "Combined audio reference duration exceeds \(Int(cap))s"
+                return L10n.format("Combined audio reference duration exceeds %ds", Int(cap))
             }
             return validateTypes([
                 (frames, .image, "frame references"),
@@ -241,7 +257,12 @@ struct VideoGenerationSubmission {
         private func validateTypes(_ groups: [([MediaAsset], ClipType, String)]) -> String? {
             for (assets, expected, label) in groups {
                 for asset in assets where asset.type != expected {
-                    return "\(label) entry '\(asset.id)' must be a \(expected.rawValue) asset"
+                    return L10n.format(
+                        "%@ entry '%@' must be a %@ asset",
+                        label,
+                        asset.id,
+                        expected.rawValue
+                    )
                 }
             }
             return nil

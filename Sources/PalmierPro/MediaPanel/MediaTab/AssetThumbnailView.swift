@@ -111,7 +111,7 @@ struct AssetThumbnailView: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.message = "Choose the source file for \"\(asset.name)\""
+        panel.message = L10n.format("Choose the source file for “%@”", asset.name)
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             editor.relinkAsset(id: asset.id, to: url)

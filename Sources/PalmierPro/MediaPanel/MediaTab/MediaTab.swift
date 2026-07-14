@@ -40,9 +40,9 @@ struct MediaTab: View {
 
         var title: String {
             switch self {
-            case .folder: "Folders"
-            case .flat: "Flat"
-            case .grouped: "Grouped"
+            case .folder: L10n.string("Folders")
+            case .flat: L10n.string("Flat")
+            case .grouped: L10n.string("Grouped")
             }
         }
 
@@ -64,10 +64,10 @@ struct MediaTab: View {
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .small: "Small"
-            case .medium: "Medium"
-            case .large: "Large"
-            case .xlarge: "Extra Large"
+            case .small: L10n.string("Small")
+            case .medium: L10n.string("Medium")
+            case .large: L10n.string("Large")
+            case .xlarge: L10n.string("Extra Large")
             }
         }
         var size: Double {
@@ -165,7 +165,10 @@ struct MediaTab: View {
             Image(systemName: "arrow.left.arrow.right")
                 .font(.system(size: AppTheme.FontSize.smMd, weight: .semibold))
                 .foregroundStyle(tint)
-            Text("Pick a replacement for \"\(editor.pendingSwapClipName ?? "clip")\"")
+            Text(verbatim: L10n.format(
+                "Pick a replacement for “%@”",
+                editor.pendingSwapClipName ?? L10n.string("clip")
+            ))
                 .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                 .foregroundStyle(AppTheme.Text.primaryColor)
                 .lineLimit(1)
@@ -313,7 +316,7 @@ struct MediaTab: View {
     // MARK: - Context bar (breadcrumb + count)
 
     var breadcrumbItems: [BreadcrumbItem] {
-        var items: [BreadcrumbItem] = [BreadcrumbItem(folderId: nil, name: "Library")]
+        var items: [BreadcrumbItem] = [BreadcrumbItem(folderId: nil, name: L10n.string("Library"))]
         for f in editor.folderPath(for: currentFolderId) {
             items.append(BreadcrumbItem(folderId: f.id, name: f.name))
         }
@@ -343,7 +346,7 @@ struct MediaTab: View {
         if viewMode == .folder {
             breadcrumbBar
         } else {
-            Text(viewMode.title)
+            L10n.text(viewMode.title)
                 .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.semibold))
                 .foregroundStyle(AppTheme.Text.primaryColor)
                 .lineLimit(1)
@@ -408,7 +411,7 @@ struct MediaTab: View {
         ) {
             ForEach(Self.filterableTypes, id: \.self) { type in
                 Button { toggleFilter(type) } label: {
-                    Label(type.trackLabel, systemImage: filterTypes.contains(type) ? "checkmark" : "")
+                    Label(L10n.string(type.trackLabel), systemImage: filterTypes.contains(type) ? "checkmark" : "")
                 }
             }
             Divider()
@@ -458,10 +461,10 @@ struct MediaTab: View {
 
         var title: String {
             switch self {
-            case .name: "Name"
-            case .dateAdded: "Date Added"
-            case .duration: "Duration"
-            case .type: "Type"
+            case .name: L10n.string("Name")
+            case .dateAdded: L10n.string("Date Added")
+            case .duration: L10n.string("Duration")
+            case .type: L10n.string("Type")
             }
         }
     }
@@ -533,7 +536,9 @@ struct MediaTab: View {
     // MARK: - Toolbar helpers
 
     private var itemCountText: some View {
-        Text(currentFolderItemCount == 1 ? "1 item" : "\(currentFolderItemCount) items")
+        Text(verbatim: currentFolderItemCount == 1
+            ? L10n.string("1 item")
+            : L10n.format("%d items", currentFolderItemCount))
             .font(.system(size: AppTheme.FontSize.xs))
             .foregroundStyle(AppTheme.Text.mutedColor)
             .monospacedDigit()
@@ -585,12 +590,12 @@ struct MediaTab: View {
         Button(action: action) {
             HStack(spacing: AppTheme.Spacing.xs) {
                 Image(systemName: systemImage)
-                Text(title)
+                L10n.text(title)
             }
         }
         .buttonStyle(.capsule(filled ? .prominent : .secondary, fill: accentStyle))
         .focusable(false)
-        .help(title)
+        .help(L10n.string(title))
     }
 
     private var mediaAreaCollapsed: Bool {
@@ -790,7 +795,7 @@ struct MediaTab: View {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = true
-        panel.message = "Select media files or folders to import"
+        panel.message = L10n.string("Select media files or folders to import")
         var types: [UTType] = [.movie, .image, .audio, .json]
         if let lottie = UTType(filenameExtension: "lottie") { types.append(lottie) }
         panel.allowedContentTypes = types

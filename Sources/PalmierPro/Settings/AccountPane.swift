@@ -96,7 +96,7 @@ struct AccountPane: View {
             }
 
             if let credits = plan.monthlyBudgetCredits {
-                Text("\(credits.formatted()) credits / month")
+                Text(verbatim: L10n.format("%@ credits / month", credits.formatted()))
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .monospacedDigit()
@@ -182,7 +182,7 @@ struct AccountPane: View {
             Spacer(minLength: AppTheme.Spacing.sm)
 
             if let date = formattedPeriodEnd {
-                Text("Resets \(date)")
+                Text(verbatim: L10n.format("Resets %@", date))
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
@@ -247,8 +247,10 @@ struct AccountPane: View {
             .foregroundStyle(AppTheme.Text.tertiaryColor)
             .fixedSize(horizontal: false, vertical: true)
 
-        Button(account.isSigningIn ? "Opening Google…" : "Sign in with Google") {
+        Button {
             Task { await account.signInWithGoogle() }
+        } label: {
+            L10n.text(account.isSigningIn ? "Opening Google…" : "Sign in with Google")
         }
         .buttonStyle(.capsule(.secondary, size: .regular))
         .disabled(account.isSigningIn)

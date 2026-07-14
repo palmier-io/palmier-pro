@@ -14,7 +14,7 @@ struct UpdateSidebarCard: View {
                         Text("Click to install update")
                             .font(.system(size: AppTheme.FontSize.smMd, weight: .medium))
                             .foregroundStyle(AppTheme.Text.primaryColor)
-                        Text(updater.updateVersion.map { "Version \($0)" } ?? "New version available")
+                        Text(verbatim: updateSubtitle)
                             .font(.system(size: AppTheme.FontSize.xs))
                             .foregroundStyle(AppTheme.Text.tertiaryColor)
                     }
@@ -39,6 +39,11 @@ struct UpdateSidebarCard: View {
             .animation(.easeOut(duration: AppTheme.Anim.hover), value: isHovering)
             .transition(.opacity.combined(with: .move(edge: .bottom)))
         }
+    }
+
+    private var updateSubtitle: String {
+        updater.updateVersion.map { L10n.format("Version %@", $0) }
+            ?? L10n.string("New version available")
     }
 }
 
@@ -70,8 +75,8 @@ struct UpdateProjectBadge: View {
 
     private var helpText: String {
         if let version = updater.updateVersion {
-            return "Install update v\(version)"
+            return L10n.format("Install update v%@", version)
         }
-        return "Install update"
+        return L10n.string("Install update")
     }
 }

@@ -26,9 +26,9 @@ final class SampleProjectService {
 
         var errorDescription: String? {
             switch self {
-            case .notConfigured: "Backend not configured."
-            case .http(let code): "Server returned HTTP \(code)."
-            case .malformed: "The sample response was malformed."
+            case .notConfigured: L10n.string("Backend not configured.")
+            case .http(let code): L10n.format("Server returned HTTP %d.", code)
+            case .malformed: L10n.string("The sample response was malformed.")
             }
         }
     }

@@ -10,11 +10,11 @@ extension EditSubmitter {
 
         var errorDescription: String? {
             switch self {
-            case .notGenerated: "This asset was not AI-generated"
-            case .unknownModel(let id): "Model no longer available: \(id)"
-            case .missingSource: "Cannot rerun: source not recorded"
+            case .notGenerated: L10n.string("This asset was not AI-generated")
+            case .unknownModel(let id): L10n.format("Model no longer available: %@", id)
+            case .missingSource: L10n.string("Cannot rerun: source not recorded")
             case .invalid(let msg): msg
-            case .unauthorized: "Subscribe to Palmier to rerun generations"
+            case .unauthorized: L10n.string("Subscribe to Palmier to rerun generations")
             }
         }
     }

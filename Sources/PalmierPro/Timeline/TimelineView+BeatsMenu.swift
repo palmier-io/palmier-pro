@@ -19,7 +19,10 @@ extension TimelineView {
                 } else {
                     let count = max(analysis.beats.count, analysis.downbeats.count)
                     let bpm = analysis.bpm > 0 ? "\(Int(analysis.bpm.rounded())) BPM, " : ""
-                    editor.mediaPanelToast = MediaPanelToast(message: "Detected \(bpm)\(count) beats.", kind: .success)
+                    editor.mediaPanelToast = MediaPanelToast(
+                        message: L10n.format("Detected %@%d beats.", bpm, count),
+                        kind: .success
+                    )
                 }
             } else {
                 editor.mediaPanelToast = MediaPanelToast(

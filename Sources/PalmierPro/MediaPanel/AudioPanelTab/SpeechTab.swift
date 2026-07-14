@@ -37,7 +37,11 @@ struct SpeechTab: View {
                 .accessibilityLabel("Mark Speakers")
             }
             HStack(spacing: AppTheme.Spacing.sm) {
-                Button(editor.projectSpeakers.isEmpty ? "Identify Speakers" : "Refresh") { editor.identifySpeakers(transcribeMissing: true) }
+                Button { editor.identifySpeakers(transcribeMissing: true) } label: {
+                    Text(verbatim: editor.projectSpeakers.isEmpty
+                        ? L10n.string("Identify Speakers")
+                        : L10n.string("Refresh"))
+                }
                     .controlSize(.small)
                     .disabled(editor.speakerIdentifyInFlight)
                     .help("Matches voices across clips, transcribing untranscribed timeline clips first (uses credits). Transcripts and voice fingerprints are cached, so re-runs are fast.")
@@ -102,9 +106,9 @@ struct SpeechTab: View {
                 HStack(spacing: AppTheme.Spacing.xs) {
                     ProgressView()
                         .controlSize(.small)
-                    Text(editor.speechAnalyzingCount == 1
-                        ? "Detecting speech…"
-                        : "Detecting speech in \(editor.speechAnalyzingCount) files…")
+                    Text(verbatim: editor.speechAnalyzingCount == 1
+                        ? L10n.string("Detecting speech…")
+                        : L10n.format("Detecting speech in %d files…", editor.speechAnalyzingCount))
                         .font(.system(size: AppTheme.FontSize.xs))
                         .foregroundStyle(AppTheme.Text.mutedColor)
                 }
@@ -121,7 +125,9 @@ struct SpeechTab: View {
                 .disabled(count == 0)
                 .help("Ripple-deletes every silent section; downstream clips close the gaps.")
             if count > 0 {
-                Text(count == 1 ? "1 section" : "\(count) sections")
+                Text(verbatim: count == 1
+                    ? L10n.string("1 section")
+                    : L10n.format("%d sections", count))
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.mutedColor)
             }

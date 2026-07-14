@@ -113,7 +113,11 @@ final class GenerationService {
                 let message = error.localizedDescription
                 Log.generation.error("upload failed model=\(genInput.model) error=\(message)")
                 for placeholder in placeholders {
-                    updateGenerationMetadata(placeholder, editor: editor, status: .failed("Upload failed: \(message)"))
+                    updateGenerationMetadata(
+                        placeholder,
+                        editor: editor,
+                        status: .failed(L10n.format("Upload failed: %@", message))
+                    )
                 }
                 onFailure?()
             }

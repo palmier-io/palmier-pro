@@ -275,7 +275,7 @@ extension MediaTab {
                 }
                 .buttonStyle(.plain)
                 .focusable(false)
-                .help(isCollapsed ? "Expand" : "Collapse")
+                .help(isCollapsed ? L10n.string("Expand") : L10n.string("Collapse"))
 
                 if let folderId {
                     Button {
@@ -293,7 +293,7 @@ extension MediaTab {
                     }
                     .buttonStyle(.plain)
                     .focusable(false)
-                    .help("Open \(title)")
+                    .help(L10n.format("Open %@", title))
                     .contextMenu {
                         Button("Open") {
                             openFolder(id: folderId)

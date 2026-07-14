@@ -263,7 +263,7 @@ struct AgentPanelView: View {
                     .multilineTextAlignment(.leading)
                 if let cta = errorCTA(for: err) {
                     Button(action: cta.action) {
-                        Text(cta.title)
+                        L10n.text(cta.title)
                             .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     }
                     .buttonStyle(.capsule(.secondary))
@@ -434,7 +434,7 @@ private struct AgentStarterPromptButton: View {
                     .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .frame(width: AppTheme.IconSize.smMd, height: AppTheme.IconSize.smMd)
-                Text(starterPrompt.title)
+                L10n.text(starterPrompt.title)
                     .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                     .multilineTextAlignment(.leading)

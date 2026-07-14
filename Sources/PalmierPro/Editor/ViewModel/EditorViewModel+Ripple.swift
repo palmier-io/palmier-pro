@@ -542,13 +542,16 @@ extension EditorViewModel {
         for clip in track.clips {
             let start = shiftMap[clip.id] ?? clip.startFrame
             if start < 0 {
-                return "Sync-locked track \"\(label)\" would move past the timeline start."
+                return L10n.format(
+                    "Sync-locked track “%@” would move past the timeline start.",
+                    label
+                )
             }
             intervals.append(FrameRange(start: start, end: start + clip.durationFrames))
         }
         intervals.sort { $0.start < $1.start }
         for i in 1..<intervals.count where intervals[i].start < intervals[i-1].end {
-            return "Sync-locked track \"\(label)\" doesn't have room to ripple."
+            return L10n.format("Sync-locked track “%@” doesn't have room to ripple.", label)
         }
         return nil
     }
@@ -574,7 +577,10 @@ extension EditorViewModel {
             if let clip = track.clips.first(where: {
                 $0.multicamGroupId != nil && $0.startFrame < frame && $0.endFrame > frame
             }), let group = multicamGroup(of: clip) {
-                return "Can't ripple through multicam group \"\(group.name)\" — split its clips at the edit point, or remove silence/words to cut time."
+                return L10n.format(
+                    "Can't ripple through multicam group “%@” — split its clips at the edit point, or remove silence/words to cut time.",
+                    group.name
+                )
             }
         }
         return nil
@@ -594,7 +600,11 @@ extension EditorViewModel {
             let stranded = timeline.tracks.indices
                 .filter { !shiftingTrackIds.contains(timeline.tracks[$0].id) && trackIds.contains(timeline.tracks[$0].id) }
                 .map { timelineTrackDisplayLabel(at: $0) }
-            return "Can't shift part of multicam group \"\(name)\" — \(stranded.joined(separator: ", ")) would stay behind and desync."
+            return L10n.format(
+                "Can't shift part of multicam group “%@” — %@ would stay behind and desync.",
+                name,
+                stranded.joined(separator: ", ")
+            )
         }
         return nil
     }

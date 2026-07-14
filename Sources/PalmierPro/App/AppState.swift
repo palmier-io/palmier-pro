@@ -15,15 +15,24 @@ enum ProjectError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .nameTaken(let url):
-            "A project named “\(url.deletingPathExtension().lastPathComponent)” already exists in that folder. Pick another name."
+            L10n.format(
+                "A project named “%@” already exists in that folder. Pick another name.",
+                url.deletingPathExtension().lastPathComponent
+            )
         case .invalidName(let name):
-            "“\(name)” isn't a valid project name. Use a plain name without slashes or path components."
+            L10n.format(
+                "“%@” isn't a valid project name. Use a plain name without slashes or path components.",
+                name
+            )
         case .openProjects(let names):
-            "Close \(names.formatted()) before deleting."
+            L10n.format("Close %@ before deleting.", names.formatted())
         case .projectsOpening(let names):
-            "Wait for \(names.formatted()) to finish opening before deleting."
+            L10n.format("Wait for %@ to finish opening before deleting.", names.formatted())
         case .deletionInProgress(let url):
-            "“\(url.deletingPathExtension().lastPathComponent)” is being moved to the Trash."
+            L10n.format(
+                "“%@” is being moved to the Trash.",
+                url.deletingPathExtension().lastPathComponent
+            )
         }
     }
 }
@@ -223,7 +232,7 @@ final class AppState {
         panel.allowedContentTypes = [Self.projectContentType]
         panel.nameFieldStringValue = Project.defaultProjectName
         panel.directoryURL = Project.storageDirectory
-        panel.title = "New Project"
+        panel.title = L10n.string("New Project")
         panel.begin { [self] response in
             guard response == .OK, let url = panel.url else { return }
             let doc = instantiateProject(at: url)
@@ -353,7 +362,7 @@ final class AppState {
         panel.canChooseDirectories = false
         panel.treatsFilePackagesAsDirectories = false
         panel.allowsMultipleSelection = false
-        panel.title = "Open Project"
+        panel.title = L10n.string("Open Project")
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             AppState.shared.openProject(at: url)

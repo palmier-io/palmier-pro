@@ -34,17 +34,17 @@ struct TextAnimation: Codable, Sendable, Equatable {
 
         var displayName: String {
             switch self {
-            case .none: "Off"
-            case .fadeIn: "Fade In"
-            case .popIn: "Pop In"
-            case .slideUp: "Slide Up"
-            case .typewriter: "Typewriter"
-            case .wordReveal: "Word Reveal"
-            case .wordSlide: "Word Slide"
-            case .wordPop: "Word Pop"
-            case .wordCycle: "Word Cycle"
-            case .highlightPop: "Highlight"
-            case .highlightBlock: "Highlight Block"
+            case .none: L10n.string("Off")
+            case .fadeIn: L10n.string("Fade In")
+            case .popIn: L10n.string("Pop In")
+            case .slideUp: L10n.string("Slide Up")
+            case .typewriter: L10n.string("Typewriter")
+            case .wordReveal: L10n.string("Word Reveal")
+            case .wordSlide: L10n.string("Word Slide")
+            case .wordPop: L10n.string("Word Pop")
+            case .wordCycle: L10n.string("Word Cycle")
+            case .highlightPop: L10n.string("Highlight")
+            case .highlightBlock: L10n.string("Highlight Block")
             }
         }
 

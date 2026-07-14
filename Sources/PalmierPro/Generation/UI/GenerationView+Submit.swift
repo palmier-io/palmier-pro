@@ -76,15 +76,19 @@ extension GenerationView {
 
     private var costHelpText: String {
         guard let cost = estimatedCost else {
-            return "Estimated cost. Actual billing may differ slightly."
+            return L10n.string("Estimated cost. Actual billing may differ slightly.")
         }
         guard let left = remainingCredits else {
-            return "\(cost) credits estimated. Actual billing may differ."
+            return L10n.format("%d credits estimated. Actual billing may differ.", cost)
         }
         if cost > left {
-            return "\(cost) credits needed. Only \(left.formatted()) remaining."
+            return L10n.format("%d credits needed. Only %@ remaining.", cost, left.formatted())
         }
-        return "\(cost) credits. \((left - cost).formatted()) credits remaining after this generation."
+        return L10n.format(
+            "%d credits. %@ credits remaining after this generation.",
+            cost,
+            (left - cost).formatted()
+        )
     }
 
     var costEstimateLabel: some View {
@@ -115,7 +119,11 @@ extension GenerationView {
         .tint(AppTheme.Accent.primary)
         .disabled(aiAllowed ? !canSubmit : account.isMisconfigured || account.isSigningIn)
         .opacity((aiAllowed ? canSubmit : !account.isMisconfigured && !account.isSigningIn) ? AppTheme.Opacity.opaque : AppTheme.Opacity.strong)
-        .help(aiAllowed ? "" : (account.isMisconfigured ? "AI is unavailable" : account.isSigningIn ? "Opening Google" : "Sign in to generate"))
+        .help(aiAllowed ? "" : (
+            account.isMisconfigured ? L10n.string("AI is unavailable")
+                : account.isSigningIn ? L10n.string("Opening Google")
+                : L10n.string("Sign in to generate")
+        ))
     }
 
     // MARK: - Actions
@@ -169,7 +177,7 @@ extension GenerationView {
             )
         case .audio:
             if audioUsesSource {
-                guard audioSource != nil else { return "Add source media." }
+                guard audioSource != nil else { return L10n.string("Add source media.") }
                 return audioModel.validate(spanSeconds: effectiveAudioSourceSpanSeconds)
                     ?? audioModel.validate(params: audioParams(audioDuration: audioDuration))
             }

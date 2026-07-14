@@ -30,7 +30,7 @@ extension MediaTab {
                     resultsGrid { ForEach(nameMatches) { fileCard($0) } }
                 }
                 if visualHits.isEmpty, spokenHits.isEmpty, nameMatches.isEmpty {
-                    Text("No matches for “\(trimmedSearchQuery)”")
+                    Text(verbatim: L10n.format("No matches for “%@”", trimmedSearchQuery))
                         .font(.system(size: AppTheme.FontSize.sm))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                         .frame(maxWidth: .infinity)
@@ -70,7 +70,7 @@ extension MediaTab {
                 }
                 Image(systemName: icon)
                     .font(.system(size: AppTheme.FontSize.xs))
-                Text(title)
+                L10n.text(title)
                     .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
                 Text("\(count)")
                     .font(.system(size: AppTheme.FontSize.xs).monospacedDigit())
@@ -152,7 +152,7 @@ extension MediaTab {
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                     .lineLimit(3)
-                Text("\(asset?.name ?? "") · \(timecode(hit.start))")
+                Text(verbatim: "\(asset?.name ?? "") · \(timecode(hit.start))")
                     .font(.system(size: AppTheme.FontSize.xxs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .lineLimit(1)

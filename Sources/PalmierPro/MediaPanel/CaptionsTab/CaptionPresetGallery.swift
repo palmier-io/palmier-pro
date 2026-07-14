@@ -18,7 +18,7 @@ struct CaptionPresetGallery: View {
     @ViewBuilder
     private func section(_ title: String, _ presets: [TextAnimation.Preset]) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            Text(title)
+            L10n.text(title)
                 .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
             LazyVGrid(columns: columns, alignment: .leading, spacing: AppTheme.Spacing.sm) {
@@ -60,7 +60,7 @@ private struct CaptionPresetCell: View {
                         selected ? AppTheme.Accent.timecodeColor : AppTheme.Border.subtleColor,
                         lineWidth: selected ? AppTheme.BorderWidth.medium : AppTheme.BorderWidth.hairline)
             )
-            Text(preset.displayName)
+            L10n.text(preset.displayName)
                 .font(.system(size: AppTheme.FontSize.xxs, weight: selected ? .semibold : .regular))
                 .foregroundStyle(selected ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
                 .lineLimit(1)

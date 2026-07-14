@@ -237,11 +237,11 @@ extension EditorViewModel {
     @discardableResult
     func addMediaAsset(from url: URL, folderId: String? = nil, finalize: Bool = true) -> MediaAsset? {
         guard let type = ClipType(fileExtension: url.pathExtension.lowercased()) else {
-            mediaPanelToast = "Can't import \"\(url.lastPathComponent)\" — unsupported file type."
+            mediaPanelToast = L10n.format("Can't import “%@” — unsupported file type.", url.lastPathComponent)
             return nil
         }
         if type == .lottie, !LottieVideoGenerator.isLottie(at: url) {
-            mediaPanelToast = "Can't import \"\(url.lastPathComponent)\" — not a Lottie animation."
+            mediaPanelToast = L10n.format("Can't import “%@” — not a Lottie animation.", url.lastPathComponent)
             return nil
         }
         return addMediaAsset(from: url, type: type, folderId: folderId, finalize: finalize)
@@ -344,9 +344,9 @@ extension EditorViewModel {
         }
 
         if let name = plan.rejectedUnsupportedNames.last {
-            mediaPanelToast = "Can't import \"\(name)\" — unsupported file type."
+            mediaPanelToast = L10n.format("Can't import “%@” — unsupported file type.", name)
         } else if let name = plan.rejectedLottieNames.last {
-            mediaPanelToast = "Can't import \"\(name)\" — not a Lottie animation."
+            mediaPanelToast = L10n.format("Can't import “%@” — not a Lottie animation.", name)
         }
 
         let summary = MediaImportSummary(
@@ -479,7 +479,7 @@ extension EditorViewModel {
     func clipDisplayLabel(for clip: Clip) -> String {
         if clip.mediaType == .text {
             let content = clip.textContent ?? ""
-            if content.isEmpty { return "Text" }
+            if content.isEmpty { return L10n.string("Text") }
             // Timeline label bar is single-line.
             return content
                 .replacingOccurrences(of: "\n", with: " ")

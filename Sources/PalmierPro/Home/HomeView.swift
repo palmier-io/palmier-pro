@@ -60,7 +60,7 @@ private struct WelcomeTitle: View {
     @Bindable private var account = AccountService.shared
 
     var body: some View {
-        Text(title)
+        Text(verbatim: title)
             .font(.system(size: AppTheme.FontSize.title2, weight: .light))
             .tracking(AppTheme.Tracking.tight)
             .foregroundStyle(AppTheme.Text.primaryColor)
@@ -68,9 +68,9 @@ private struct WelcomeTitle: View {
 
     private var title: String {
         if let first = account.account?.user.firstName {
-            return "Welcome to Palmier Pro, \(first)"
+            return String(format: L10n.string("Welcome to Palmier Pro, %@"), first)
         }
-        return "Welcome to Palmier Pro"
+        return L10n.string("Welcome to Palmier Pro")
     }
 }
 

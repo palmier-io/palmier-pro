@@ -216,8 +216,10 @@ extension InspectorView {
                     }
                     .buttonStyle(.plain)
                     .disabled(editor.activePreviewTab != .timeline)
-                    .help(sampling ? "Cancel key color sampling" : "Sample key color")
-                    .accessibilityLabel(sampling ? "Cancel Key Color Sampling" : "Sample Key Color")
+                    .help(sampling ? L10n.string("Cancel key color sampling") : L10n.string("Sample key color"))
+                    .accessibilityLabel(sampling
+                        ? L10n.string("Cancel Key Color Sampling")
+                        : L10n.string("Sample Key Color"))
                 }
             }
             .contentShape(Rectangle())
@@ -365,7 +367,11 @@ extension InspectorView {
             upsertControl(&effects, control: yc, value: y)
         }
         if commit {
-            commitEffects(clips, actionName: "Adjust \(prefix.capitalized)", mutate)
+            commitEffects(
+                clips,
+                actionName: L10n.format("Adjust %@", L10n.string(prefix.capitalized)),
+                mutate
+            )
         } else {
             applyEffects(clips, mutate)
         }
@@ -393,7 +399,8 @@ extension InspectorView {
                     Image(systemName: "square.stack.3d.up")
                         .font(.system(size: AppTheme.FontSize.xs))
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    Text(path.map { ($0 as NSString).lastPathComponent } ?? "Choose…")
+                    Text(verbatim: path.map { ($0 as NSString).lastPathComponent }
+                        ?? L10n.string("Choose…"))
                         .font(.system(size: AppTheme.FontSize.sm))
                         .foregroundStyle(path == nil ? AppTheme.Text.tertiaryColor : AppTheme.Text.primaryColor)
                         .lineLimit(1)
@@ -409,7 +416,7 @@ extension InspectorView {
                 )
             }
             .buttonStyle(.plain)
-            .help(path ?? "Choose a .cube LUT file")
+            .help(path ?? L10n.string("Choose a .cube LUT file"))
         }
         .frame(height: KeyframesMetrics.rowHeight)
     }
@@ -452,7 +459,7 @@ extension InspectorView {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.message = "Choose a .cube LUT file"
+        panel.message = L10n.string("Choose a .cube LUT file")
         if let cube = UTType(filenameExtension: "cube") { panel.allowedContentTypes = [cube] }
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
@@ -494,7 +501,7 @@ extension InspectorView {
            let spec = descriptor.params.first(where: { $0.key == control.paramKey }) {
             let label = control.label ?? spec.label
             HStack(spacing: AppTheme.Spacing.sm) {
-                Text(label)
+                L10n.text(label)
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .lineLimit(1)
@@ -533,7 +540,7 @@ extension InspectorView {
             upsertControl(&effects, control: control, value: value)
         }
         if commit {
-            commitEffects(clips, actionName: "Change \(label)", mutate)
+            commitEffects(clips, actionName: L10n.format("Change %@", L10n.string(label)), mutate)
         } else {
             applyEffects(clips, mutate)
         }

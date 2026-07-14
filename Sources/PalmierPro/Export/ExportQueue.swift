@@ -29,6 +29,18 @@ enum ExportJobStatus: String, Sendable {
     }
 
     var isPending: Bool { self == .waiting || isRunning }
+
+    var localizedName: String {
+        switch self {
+        case .waiting: L10n.string("Waiting")
+        case .preparing: L10n.string("Preparing")
+        case .exporting: L10n.string("Exporting")
+        case .canceling: L10n.string("Canceling")
+        case .completed: L10n.string("Completed")
+        case .failed: L10n.string("Failed")
+        case .canceled: L10n.string("Canceled")
+        }
+    }
 }
 
 struct ExportJob: Identifiable, Sendable {
@@ -57,7 +69,7 @@ enum ExportQueueError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .destinationInUse(let filename):
-            "An export to \(filename) is already waiting or in progress."
+            L10n.format("An export to %@ is already waiting or in progress.", filename)
         }
     }
 }
@@ -253,7 +265,7 @@ final class ExportQueue {
         } else if service.error != nil {
             status = .failed
         } else {
-            service.error = "Export produced no output."
+            service.error = L10n.string("Export produced no output.")
             status = .failed
         }
         let source = job(id)?.source

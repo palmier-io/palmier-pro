@@ -70,7 +70,7 @@ struct TextStyleTraitButtons: View {
                 )
         }
         .buttonStyle(.plain)
-        .help(label)
+        .help(L10n.string(label))
         .accessibilityLabel(label)
     }
 }
