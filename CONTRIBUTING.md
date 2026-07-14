@@ -28,6 +28,32 @@ For a bundled debug build that launches the `.app` and streams OSLog:
 ./scripts/dev.sh
 ```
 
+### Windows (in development)
+
+The Windows port lives under `platforms/windows/` — see `platforms/windows/docs/README.md`
+and `platforms/windows/AGENTS.md` for details.
+
+**Prerequisites:**
+- Visual Studio 2022 with the **Desktop development with C++** workload (native
+  engine build) and the Windows App SDK / WinUI component
+- .NET 10 SDK
+
+**Develop:**
+```powershell
+cd platforms/windows
+
+# Native engine (msbuild — the dotnet CLI can't build vcxproj)
+msbuild src\PalmierPro.Rendering\native\PalmierEngine.vcxproj -p:Configuration=Debug -p:Platform=x64
+
+# Managed solution
+dotnet build PalmierPro.sln -c Debug -p:Platform=x64
+
+# Run
+dotnet run --project src\PalmierPro.App\PalmierPro.App.csproj -c Debug
+```
+
+Or `.\scripts\dev.ps1` to run all three in order.
+
 ## Test
 
 ```bash

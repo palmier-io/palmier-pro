@@ -42,3 +42,5 @@ Palmier Pro speaks like a quietly capable native Mac app for filmmakers: direct,
 confident. Prefer Apple HIG-style terseness over warmth. Never chatty or cute. Never marketing. When the
 product needs to ask for action, lead with the action verb; when it reports state, name the thing.
 
+This file covers the Mac app only. The Windows port under `platforms/windows/` is governed by `platforms/windows/AGENTS.md`.
+

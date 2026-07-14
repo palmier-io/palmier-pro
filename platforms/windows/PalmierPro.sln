@@ -1,0 +1,74 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PalmierPro.Core", "src\PalmierPro.Core\PalmierPro.Core.csproj", "{2B644805-EE61-4937-BD6B-EAC0E2D3FD6A}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PalmierPro.Services", "src\PalmierPro.Services\PalmierPro.Services.csproj", "{5D63862F-1562-4427-A9B7-309995FC3979}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PalmierPro.Rendering", "src\PalmierPro.Rendering\PalmierPro.Rendering.csproj", "{72C2A101-0BE7-4C8D-9F85-12C3C10EA424}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PalmierPro.App", "src\PalmierPro.App\PalmierPro.App.csproj", "{97B97E05-5C48-4441-9031-D19B87BEDDD9}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PalmierPro.DevHarness", "src\PalmierPro.DevHarness\PalmierPro.DevHarness.csproj", "{D9D10F45-8203-436D-AC86-07B6066A900A}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PalmierPro.Core.Tests", "tests\PalmierPro.Core.Tests\PalmierPro.Core.Tests.csproj", "{B0457D42-96A3-4B7F-8D43-E4CF477E2DCC}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PalmierPro.App.Tests", "tests\PalmierPro.App.Tests\PalmierPro.App.Tests.csproj", "{BD887152-CBC3-49D1-8D51-CA860D6058FE}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{E0B21FF6-6BFE-4B33-BAD1-473EFAA58770}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{CE23FF01-E674-4AA4-B2B4-189305C6EF4C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2B644805-EE61-4937-BD6B-EAC0E2D3FD6A}.Debug|x64.ActiveCfg = Debug|x64
+		{2B644805-EE61-4937-BD6B-EAC0E2D3FD6A}.Debug|x64.Build.0 = Debug|x64
+		{2B644805-EE61-4937-BD6B-EAC0E2D3FD6A}.Release|x64.ActiveCfg = Release|x64
+		{2B644805-EE61-4937-BD6B-EAC0E2D3FD6A}.Release|x64.Build.0 = Release|x64
+		{5D63862F-1562-4427-A9B7-309995FC3979}.Debug|x64.ActiveCfg = Debug|x64
+		{5D63862F-1562-4427-A9B7-309995FC3979}.Debug|x64.Build.0 = Debug|x64
+		{5D63862F-1562-4427-A9B7-309995FC3979}.Release|x64.ActiveCfg = Release|x64
+		{5D63862F-1562-4427-A9B7-309995FC3979}.Release|x64.Build.0 = Release|x64
+		{72C2A101-0BE7-4C8D-9F85-12C3C10EA424}.Debug|x64.ActiveCfg = Debug|x64
+		{72C2A101-0BE7-4C8D-9F85-12C3C10EA424}.Debug|x64.Build.0 = Debug|x64
+		{72C2A101-0BE7-4C8D-9F85-12C3C10EA424}.Release|x64.ActiveCfg = Release|x64
+		{72C2A101-0BE7-4C8D-9F85-12C3C10EA424}.Release|x64.Build.0 = Release|x64
+		{97B97E05-5C48-4441-9031-D19B87BEDDD9}.Debug|x64.ActiveCfg = Debug|x64
+		{97B97E05-5C48-4441-9031-D19B87BEDDD9}.Debug|x64.Build.0 = Debug|x64
+		{97B97E05-5C48-4441-9031-D19B87BEDDD9}.Release|x64.ActiveCfg = Release|x64
+		{97B97E05-5C48-4441-9031-D19B87BEDDD9}.Release|x64.Build.0 = Release|x64
+		{D9D10F45-8203-436D-AC86-07B6066A900A}.Debug|x64.ActiveCfg = Debug|x64
+		{D9D10F45-8203-436D-AC86-07B6066A900A}.Debug|x64.Build.0 = Debug|x64
+		{D9D10F45-8203-436D-AC86-07B6066A900A}.Release|x64.ActiveCfg = Release|x64
+		{D9D10F45-8203-436D-AC86-07B6066A900A}.Release|x64.Build.0 = Release|x64
+		{B0457D42-96A3-4B7F-8D43-E4CF477E2DCC}.Debug|x64.ActiveCfg = Debug|x64
+		{B0457D42-96A3-4B7F-8D43-E4CF477E2DCC}.Debug|x64.Build.0 = Debug|x64
+		{B0457D42-96A3-4B7F-8D43-E4CF477E2DCC}.Release|x64.ActiveCfg = Release|x64
+		{B0457D42-96A3-4B7F-8D43-E4CF477E2DCC}.Release|x64.Build.0 = Release|x64
+		{BD887152-CBC3-49D1-8D51-CA860D6058FE}.Debug|x64.ActiveCfg = Debug|x64
+		{BD887152-CBC3-49D1-8D51-CA860D6058FE}.Debug|x64.Build.0 = Debug|x64
+		{BD887152-CBC3-49D1-8D51-CA860D6058FE}.Release|x64.ActiveCfg = Release|x64
+		{BD887152-CBC3-49D1-8D51-CA860D6058FE}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{2B644805-EE61-4937-BD6B-EAC0E2D3FD6A} = {E0B21FF6-6BFE-4B33-BAD1-473EFAA58770}
+		{5D63862F-1562-4427-A9B7-309995FC3979} = {E0B21FF6-6BFE-4B33-BAD1-473EFAA58770}
+		{72C2A101-0BE7-4C8D-9F85-12C3C10EA424} = {E0B21FF6-6BFE-4B33-BAD1-473EFAA58770}
+		{97B97E05-5C48-4441-9031-D19B87BEDDD9} = {E0B21FF6-6BFE-4B33-BAD1-473EFAA58770}
+		{D9D10F45-8203-436D-AC86-07B6066A900A} = {E0B21FF6-6BFE-4B33-BAD1-473EFAA58770}
+		{B0457D42-96A3-4B7F-8D43-E4CF477E2DCC} = {CE23FF01-E674-4AA4-B2B4-189305C6EF4C}
+		{BD887152-CBC3-49D1-8D51-CA860D6058FE} = {CE23FF01-E674-4AA4-B2B4-189305C6EF4C}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {6F1E9F6A-2C1B-4C6E-9C2C-5E8B7B7F2E11}
+	EndGlobalSection
+EndGlobal

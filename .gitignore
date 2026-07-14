@@ -36,3 +36,11 @@ models/*/checkpoint*
 models/*/convert*.log
 
 AUDIO_SUITE_*
+
+# Windows port
+platforms/windows/**/bin/
+platforms/windows/**/obj/
+platforms/windows/**/*.user
+platforms/windows/.vs/
+platforms/windows/artifacts/
+platforms/windows/third_party/

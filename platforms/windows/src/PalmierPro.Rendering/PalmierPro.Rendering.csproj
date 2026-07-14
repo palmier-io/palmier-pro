@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <RootNamespace>PalmierPro.Rendering</RootNamespace>
+    <AssemblyName>PalmierPro.Rendering</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PalmierPro.Core\PalmierPro.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Stages PalmierEngine.dll (built by native/PalmierEngine.vcxproj into artifacts/native/)
+         next to the managed output so P/Invoke can find it. Condition avoids a build break
+         when the native project hasn't been built yet. -->
+    <Content Include="..\..\artifacts\native\x64\$(Configuration)\PalmierEngine.dll"
+             Condition="Exists('..\..\artifacts\native\x64\$(Configuration)\PalmierEngine.dll')">
+      <Link>PalmierEngine.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

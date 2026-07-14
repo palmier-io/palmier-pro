@@ -30,3 +30,23 @@ jobs:
 
       - name: Test
         run: swift test
+
+  windows-build-test:
+    name: Windows Build & Test
+    runs-on: windows-2025        # pinned; newest image, matching the macos-26 pinning discipline
+    timeout-minutes: 40
+    defaults: { run: { working-directory: platforms/windows } }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '10.0.x' }
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore pinned FFmpeg (BtbN GPL shared build, sha256-verified)
+        run: ./scripts/ci-restore-ffmpeg.ps1      # cached via actions/cache
+      - uses: actions/cache@v4
+        with: { path: ~/.nuget/packages, key: nuget-${{ runner.os }}-${{ hashFiles('platforms/windows/**/*.csproj') }} }
+      - name: Build native engine
+        run: msbuild src/PalmierPro.Rendering/native/PalmierEngine.vcxproj -p:Configuration=Release -p:Platform=x64
+      - run: dotnet restore PalmierPro.sln
+      - run: dotnet build PalmierPro.sln -c Release --no-restore -p:Platform=x64
+      - run: dotnet test PalmierPro.sln -c Release --no-build --logger trx --filter "Category!=GPU"

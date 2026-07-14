@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <RootNamespace>PalmierPro.App.Tests</RootNamespace>
+    <AssemblyName>PalmierPro.App.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
+    <PackageReference Include="xunit" Version="2.9.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.9.*" />
+    <PackageReference Include="Shouldly" Version="4.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PalmierPro.Core\PalmierPro.Core.csproj" />
+    <!-- PalmierPro.App reference deferred until ViewModels land; App now has a singular
+         win-x64 RuntimeIdentifier and App.Tests must stay RID-agnostic for plain `dotnet test`. -->
+  </ItemGroup>
+
+</Project>
