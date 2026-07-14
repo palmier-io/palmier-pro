@@ -77,12 +77,8 @@ struct SkillDetailSheet: View {
                         .padding(AppTheme.Spacing.xlXxl)
                 }
                 .scrollEdgeEffectStyle(.soft, for: .top)
-                .background(AppTheme.Background.raisedColor)
+                .themedSurface(AppTheme.Background.raisedColor, cornerRadius: AppTheme.Radius.md)
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
-                        .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
-                )
                 .padding(.horizontal, AppTheme.Spacing.xlXxl)
                 .padding(.top, AppTheme.Spacing.mdLg)
                 .padding(.bottom, AppTheme.Spacing.xlXxl)
@@ -195,16 +191,10 @@ struct SkillDetailSheet: View {
                 .focused($titleFocused)
                 .padding(.horizontal, AppTheme.Spacing.sm)
                 .padding(.vertical, AppTheme.Spacing.xs)
-                .background(
-                    RoundedRectangle(cornerRadius: AppTheme.Radius.xs)
-                        .fill(AppTheme.Background.raisedColor)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.Radius.xs)
-                        .strokeBorder(
-                            AppTheme.Accent.link.opacity(AppTheme.Opacity.medium),
-                            lineWidth: AppTheme.BorderWidth.thin
-                        )
+                .themedSurface(
+                    AppTheme.Background.raisedColor,
+                    cornerRadius: AppTheme.Radius.xs,
+                    border: AppTheme.Accent.link.opacity(AppTheme.Opacity.medium)
                 )
                 .onSubmit { commitTitle() }
                 .onChange(of: titleFocused) { if !titleFocused { commitTitle() } }
@@ -366,13 +356,11 @@ struct SkillDetailSheet: View {
         .padding(.horizontal, AppTheme.Spacing.mdLg)
         .padding(.vertical, AppTheme.Spacing.smMd)
         .frame(maxWidth: AppTheme.Settings.skillToastWidth)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                .fill(AppTheme.Background.prominentColor)
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                        .strokeBorder(AppTheme.Border.primaryColor, lineWidth: AppTheme.BorderWidth.hairline)
-                )
+        .themedSurface(
+            AppTheme.Background.prominentColor,
+            cornerRadius: AppTheme.Radius.md,
+            border: AppTheme.Border.primaryColor,
+            borderWidth: AppTheme.BorderWidth.hairline
         )
         .shadow(AppTheme.Shadow.lg)
         .padding(.top, AppTheme.Spacing.lgXl)

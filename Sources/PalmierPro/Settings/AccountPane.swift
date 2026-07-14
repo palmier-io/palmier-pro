@@ -43,20 +43,20 @@ struct AccountPane: View {
 
     @ViewBuilder
     private var unpaidSection: some View {
-        accountSection(title: "Subscription") {
+        SettingsGroup(title: "Subscription") {
             if account.availablePlans.isEmpty {
                 HStack(spacing: AppTheme.Spacing.sm) {
                     Button("Upgrade to Pro") {
                         Task { await account.subscribe(tier: .pro) }
                     }
                     .buttonStyle(.capsule(.prominent, size: .regular))
-                    .pointingHandCursor()
+                    .pointerStyle(.link)
 
                     Button("Upgrade to Max") {
                         Task { await account.subscribe(tier: .max) }
                     }
                     .buttonStyle(accountSecondaryButtonStyle)
-                    .pointingHandCursor()
+                    .pointerStyle(.link)
                 }
             } else {
                 HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
@@ -76,7 +76,6 @@ struct AccountPane: View {
         }
     }
 
-    @ViewBuilder
     private func planCard(plan: AvailablePlan, isPrimary: Bool) -> some View {
         card {
             cardCaption(plan.tier.planLabel)
@@ -109,30 +108,23 @@ struct AccountPane: View {
         }
     }
 
-    @ViewBuilder
     private func upgradeButton(for plan: AvailablePlan, isPrimary: Bool) -> some View {
         let label = "Upgrade to \(plan.tier.upgradeLabel)"
-        if isPrimary {
-            Button {
-                Task { await account.subscribe(tier: plan.tier) }
-            } label: {
-                Text(label).frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.capsule(.prominent, size: .regular))
-            .pointingHandCursor()
-        } else {
-            Button {
-                Task { await account.subscribe(tier: plan.tier) }
-            } label: {
-                Text(label).frame(maxWidth: .infinity)
-            }
-            .buttonStyle(accountSecondaryButtonStyle)
-            .pointingHandCursor()
+        return Button {
+            Task { await account.subscribe(tier: plan.tier) }
+        } label: {
+            Text(label).frame(maxWidth: .infinity)
         }
+        .buttonStyle(.capsule(
+            isPrimary ? .prominent : .secondary,
+            size: .regular,
+            fill: isPrimary ? nil : AnyShapeStyle(AppTheme.Background.raisedColor)
+        ))
+        .pointerStyle(.link)
     }
 
     private var subscriptionSection: some View {
-        accountSection(title: "Subscription") {
+        SettingsGroup(title: "Subscription") {
             card {
                 HStack(alignment: .center, spacing: AppTheme.Spacing.md) {
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
@@ -164,14 +156,14 @@ struct AccountPane: View {
                         }
                     }
                     .buttonStyle(accountSecondaryButtonStyle)
-                    .pointingHandCursor()
+                    .pointerStyle(.link)
                 }
             }
         }
     }
 
     private var creditsSection: some View {
-        accountSection(title: "Credits") {
+        SettingsGroup(title: "Credits") {
             HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
                 remainingCard
                 buyCard
@@ -179,7 +171,6 @@ struct AccountPane: View {
         }
     }
 
-    @ViewBuilder
     private var remainingCard: some View {
         card {
             cardCaption("Remaining")
@@ -198,7 +189,6 @@ struct AccountPane: View {
         }
     }
 
-    @ViewBuilder
     private var buyCard: some View {
         card {
             cardCaption("Buy more")
@@ -206,7 +196,7 @@ struct AccountPane: View {
             TopOffField(
                 dollars: $topOffDollars,
                 fieldFill: AppTheme.Background.raisedColor,
-                buttonFill: accountSecondaryFill,
+                buttonFill: AnyShapeStyle(AppTheme.Background.raisedColor),
                 showsExternalLinkIcon: true
             ) {
                 account.buyCredits(dollars: topOffDollars)
@@ -219,31 +209,18 @@ struct AccountPane: View {
         }
     }
 
-    @ViewBuilder
     private func cardCaption(_ text: String) -> some View {
         Text(text)
             .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.regular))
             .foregroundStyle(AppTheme.Text.tertiaryColor)
     }
 
-    private func accountSection<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
-            Text(title)
-                .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.regular))
-                .foregroundStyle(AppTheme.Text.primaryColor)
-            content()
-        }
-    }
-
-    private var accountSecondaryFill: AnyShapeStyle {
-        AnyShapeStyle(AppTheme.Background.raisedColor)
-    }
-
     private var accountSecondaryButtonStyle: CapsuleButtonStyle {
-        .init(variant: .secondary, size: .regular, fill: accountSecondaryFill)
+        .init(
+            variant: .secondary,
+            size: .regular,
+            fill: AnyShapeStyle(AppTheme.Background.raisedColor)
+        )
     }
 
     @ViewBuilder
@@ -254,14 +231,7 @@ struct AccountPane: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, AppTheme.Spacing.lgXl)
         .padding(.vertical, AppTheme.Spacing.mdLg)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.mdLg, style: .continuous)
-                .fill(AppTheme.Background.prominentColor)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.mdLg, style: .continuous)
-                .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
-        )
+        .themedSurface(AppTheme.Background.prominentColor, cornerRadius: AppTheme.Radius.mdLg)
     }
 
     private var formattedPeriodEnd: String? {

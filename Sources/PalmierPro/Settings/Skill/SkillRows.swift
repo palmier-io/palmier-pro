@@ -39,7 +39,6 @@ struct SkillCollectionButton: View {
     let count: Int
     let isSelected: Bool
     let action: () -> Void
-    @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
@@ -52,75 +51,32 @@ struct SkillCollectionButton: View {
             .foregroundStyle(isSelected ? AppTheme.Text.primaryColor : AppTheme.Text.tertiaryColor)
             .padding(.horizontal, AppTheme.Spacing.mdLg)
             .padding(.vertical, AppTheme.Spacing.sm)
-            .background(Capsule(style: .continuous).fill(fill))
+            .hoverHighlight(
+                cornerRadius: AppTheme.Radius.xl,
+                isActive: isSelected,
+                activeFill: AppTheme.Background.raisedColor
+            )
             .contentShape(Capsule(style: .continuous))
-            .onHover { isHovered = $0 }
-            .animation(.easeOut(duration: AppTheme.Anim.hover), value: isHovered)
-            .animation(.easeOut(duration: AppTheme.Anim.hover), value: isSelected)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(title), \(count.formatted()) skills")
     }
-
-    private var fill: Color {
-        if isSelected { return AppTheme.Background.raisedColor }
-        return isHovered ? Color.white.opacity(AppTheme.Opacity.faint) : .clear
-    }
 }
 
-struct InstalledSkillRow: View {
-    let skill: Skill
-    let status: String
-    let statusColor: Color
-    let updating: Bool
-    let updateAction: (() -> Void)?
-    let openAction: () -> Void
-
-    var body: some View {
-        HStack(spacing: AppTheme.Spacing.md) {
-            Button(action: openAction) {
-                SkillRowSummary(name: skill.name, description: skill.description)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .frame(maxWidth: .infinity)
-            .accessibilityLabel("Open \(skill.name)")
-
-            Text(status)
-                .font(.system(size: AppTheme.FontSize.smMd))
-                .foregroundStyle(statusColor)
-                .lineLimit(1)
-                .frame(width: AppTheme.Settings.skillStatusWidth, alignment: .trailing)
-
-            Group {
-                if updating {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel("Updating \(skill.name)")
-                } else {
-                    Button(updateAction == nil ? "Open" : "Update", action: updateAction ?? openAction)
-                        .buttonStyle(.capsule(.secondary, fill: AnyShapeStyle(AppTheme.Background.raisedColor)))
-                }
-            }
-            .frame(width: AppTheme.Settings.skillActionWidth, alignment: .trailing)
-        }
-        .padding(.horizontal, AppTheme.Spacing.smMd)
-        .padding(.vertical, AppTheme.Spacing.smMd)
-        .hoverHighlight(cornerRadius: AppTheme.Radius.md)
-    }
-}
-
-struct CommunitySkillRow: View {
-    let entry: SkillCatalogEntry
+struct SkillRow: View {
+    let name: String
+    let description: String
     let status: String
     let statusColor: Color
     let actionTitle: String
     let working: Bool
+    var summaryAction: (() -> Void)? = nil
     let action: () -> Void
 
     var body: some View {
         HStack(spacing: AppTheme.Spacing.md) {
-            SkillRowSummary(name: entry.name, description: entry.description)
+            summary
+                .frame(maxWidth: .infinity)
 
             Text(status)
                 .font(.system(size: AppTheme.FontSize.smMd))
@@ -132,7 +88,7 @@ struct CommunitySkillRow: View {
                 if working {
                     ProgressView()
                         .controlSize(.small)
-                        .accessibilityLabel("Working on \(entry.name)")
+                        .accessibilityLabel("Working on \(name)")
                 } else {
                     Button(actionTitle, action: action)
                         .buttonStyle(.capsule(
@@ -146,6 +102,20 @@ struct CommunitySkillRow: View {
         .padding(.horizontal, AppTheme.Spacing.smMd)
         .padding(.vertical, AppTheme.Spacing.smMd)
         .hoverHighlight(cornerRadius: AppTheme.Radius.md)
+    }
+
+    @ViewBuilder
+    private var summary: some View {
+        if let summaryAction {
+            Button(action: summaryAction) {
+                SkillRowSummary(name: name, description: description)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open \(name)")
+        } else {
+            SkillRowSummary(name: name, description: description)
+        }
     }
 }
 

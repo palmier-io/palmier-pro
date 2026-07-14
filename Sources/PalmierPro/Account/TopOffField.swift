@@ -23,14 +23,7 @@ struct TopOffField<Trailing: View>: View {
                     .padding(.horizontal, AppTheme.Spacing.smMd)
                     .padding(.vertical, AppTheme.Spacing.xs)
                     .frame(width: AppTheme.Settings.creditInputWidth)
-                    .background(
-                        RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                            .fill(fieldFill)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                            .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
-                    )
+                    .themedSurface(fieldFill, cornerRadius: AppTheme.Radius.sm)
                     .disabled(account.isBuyingCredits)
                 Text(credits == 1 ? "= 1 credit" : "= \(credits.formatted()) credits")
                     .font(.system(size: AppTheme.FontSize.sm))

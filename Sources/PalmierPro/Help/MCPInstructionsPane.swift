@@ -64,11 +64,11 @@ struct MCPInstructionsPane: View {
                     .foregroundStyle(AppTheme.Text.secondaryColor)
                     .fixedSize(horizontal: false, vertical: true)
 
-                MCPHelpSection(title: "Server URL") {
+                SettingsGroup(title: "Server URL") {
                     endpointRow
                 }
 
-                MCPHelpSection(title: "Connect an agent") {
+                SettingsGroup(title: "Connect an agent") {
                     agentList
                 }
             }
@@ -92,24 +92,11 @@ struct MCPInstructionsPane: View {
     }
 
     private var endpointRow: some View {
-        HStack(spacing: AppTheme.Spacing.smMd) {
-            Text(mcpEndpoint)
-                .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular, design: .monospaced))
-                .foregroundStyle(AppTheme.Text.primaryColor)
-                .textSelection(.enabled)
-
-            Spacer(minLength: AppTheme.Spacing.md)
-            CopyButton(value: mcpEndpoint)
-        }
-        .padding(.horizontal, AppTheme.Spacing.mdLg)
-        .padding(.vertical, AppTheme.Spacing.smMd)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                .fill(AppTheme.Background.raisedColor)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
+        CodeBlockView(
+            content: mcpEndpoint,
+            fontSize: AppTheme.FontSize.sm,
+            foreground: AppTheme.Text.primaryColor,
+            verticalPadding: AppTheme.Spacing.smMd
         )
     }
 
@@ -225,7 +212,7 @@ struct MCPInstructionsPane: View {
         }
         .buttonStyle(.plain)
         .fixedSize()
-        .pointingHandCursor()
+        .pointerStyle(.link)
     }
 
     private func openCursor() {
@@ -260,44 +247,25 @@ struct MCPInstructionsPane: View {
     }
 }
 
-private struct MCPHelpSection<Content: View>: View {
-    let title: String
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
-            Text(title)
-                .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.regular))
-                .foregroundStyle(AppTheme.Text.primaryColor)
-
-            content()
-        }
-    }
-}
-
 private struct CodeBlockView: View {
     let content: String
+    var fontSize = AppTheme.FontSize.xs
+    var foreground = AppTheme.Text.secondaryColor
+    var verticalPadding = AppTheme.Spacing.md
 
     var body: some View {
         HStack(alignment: .top, spacing: AppTheme.Spacing.smMd) {
             Text(content)
-                .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.regular, design: .monospaced))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
+                .font(.system(size: fontSize, weight: AppTheme.FontWeight.regular, design: .monospaced))
+                .foregroundStyle(foreground)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             CopyButton(value: content)
         }
         .padding(.horizontal, AppTheme.Spacing.mdLg)
-        .padding(.vertical, AppTheme.Spacing.md)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                .fill(AppTheme.Background.raisedColor)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
-        )
+        .padding(.vertical, verticalPadding)
+        .themedSurface(AppTheme.Background.raisedColor, cornerRadius: AppTheme.Radius.sm)
     }
 }
 

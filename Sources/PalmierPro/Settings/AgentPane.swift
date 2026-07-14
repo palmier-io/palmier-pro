@@ -52,7 +52,7 @@ struct AgentPane: View {
                 }
                 .buttonStyle(.plain)
                 .fixedSize()
-                .pointingHandCursor()
+                .pointerStyle(.link)
             }
         }
     }
@@ -189,7 +189,7 @@ struct AgentPane: View {
                 }
                 .buttonStyle(.plain)
                 .fixedSize()
-                .pointingHandCursor()
+                .pointerStyle(.link)
             }
         }
     }

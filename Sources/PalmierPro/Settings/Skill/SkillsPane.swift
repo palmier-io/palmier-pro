@@ -6,8 +6,7 @@ struct SkillsPane: View {
     @State private var collection: SkillCollection = .installed
     @State private var query = ""
     @State private var presentedSkill: PresentedSkill?
-    @State private var installing: Set<String> = []
-    @State private var updating: Set<String> = []
+    @State private var working: Set<String> = []
 
     private enum SkillCollection: String {
         case installed = "Installed"
@@ -62,7 +61,7 @@ struct SkillsPane: View {
                 Link("Browse Community Skills ↗", destination: url)
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Accent.link)
-                    .pointingHandCursor()
+                    .pointerStyle(.link)
             }
         }
     }
@@ -151,52 +150,47 @@ struct SkillsPane: View {
         }
         .padding(.horizontal, AppTheme.Spacing.md)
         .padding(.vertical, AppTheme.Spacing.smMd)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                .fill(AppTheme.Background.raisedColor)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
-        )
+        .themedSurface(AppTheme.Background.raisedColor, cornerRadius: AppTheme.Radius.sm)
     }
 
-    @ViewBuilder
     private var skillList: some View {
-        switch collection {
-        case .installed:
-            installedList
-        case .community:
-            communityList
+        VStack(spacing: AppTheme.Spacing.sm) {
+            switch collection {
+            case .installed:
+                installedList
+            case .community:
+                communityList
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var installedList: some View {
-        listContainer {
-            if installedSkills.isEmpty {
-                if query.isEmpty {
-                    SkillEmptyState(
-                        systemName: "book.closed",
-                        title: "No Installed Skills",
-                        message: "Create a skill or browse the Community collection.",
-                        actionTitle: "New Skill",
-                        action: createSkill
-                    )
-                } else {
-                    noMatchesState
-                }
+        Group {
+            if installedSkills.isEmpty, query.isEmpty {
+                SkillEmptyState(
+                    systemName: "book.closed",
+                    title: "No Installed Skills",
+                    message: "Create a skill or browse the Community collection.",
+                    actionTitle: "New Skill",
+                    action: createSkill
+                )
+            } else if installedSkills.isEmpty {
+                noMatchesState
             } else {
                 ForEach(installedSkills) { skill in
                     let state = store.installed[skill.id] == nil
                         ? nil
                         : SkillCommunityState.resolve(skill, store: store, catalog: catalog)
-                    InstalledSkillRow(
-                        skill: skill,
+                    SkillRow(
+                        name: skill.name,
+                        description: skill.description,
                         status: state?.label ?? "Local",
                         statusColor: state?.color ?? AppTheme.Text.tertiaryColor,
-                        updating: updating.contains(skill.id),
-                        updateAction: state == .update ? { update(skill) } : nil,
-                        openAction: { present(skill.id) }
+                        actionTitle: state == .update ? "Update" : "Open",
+                        working: working.contains(skill.id),
+                        summaryAction: { present(skill.id) },
+                        action: { state == .update ? update(skill) : present(skill.id) }
                     )
                 }
             }
@@ -204,7 +198,7 @@ struct SkillsPane: View {
     }
 
     private var communityList: some View {
-        listContainer {
+        Group {
             if catalog.isLoading, catalog.entries.isEmpty {
                 HStack(spacing: AppTheme.Spacing.smMd) {
                     ProgressView().controlSize(.small)
@@ -254,28 +248,19 @@ struct SkillsPane: View {
         )
     }
 
-    private func listContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        VStack(spacing: AppTheme.Spacing.sm) {
-            content()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    @ViewBuilder
     private func communityRow(_ entry: SkillCatalogEntry) -> some View {
         let skill = store.skills.first { $0.id == entry.id }
         let isCommunityInstall = store.installed[entry.id] != nil
         let state = isCommunityInstall ? skill.map {
             SkillCommunityState.resolve($0, store: store, catalog: catalog)
         } : nil
-        let isWorking = installing.contains(entry.id) || updating.contains(entry.id)
-
-        CommunitySkillRow(
-            entry: entry,
+        return SkillRow(
+            name: entry.name,
+            description: entry.description,
             status: isCommunityInstall ? state?.label ?? "Available" : skill == nil ? "Available" : "Local",
             statusColor: state?.color ?? AppTheme.Text.tertiaryColor,
             actionTitle: skill == nil ? "Install" : isCommunityInstall && state == .update ? "Update" : "Open",
-            working: isWorking,
+            working: working.contains(entry.id),
             action: {
                 if let skill {
                     if isCommunityInstall, state == .update {
@@ -305,10 +290,10 @@ struct SkillsPane: View {
     }
 
     private func install(_ entry: SkillCatalogEntry) {
-        installing.insert(entry.id)
+        working.insert(entry.id)
         Task {
             let installed = await store.install(entry)
-            installing.remove(entry.id)
+            working.remove(entry.id)
             if installed {
                 collection = .installed
                 query = ""
@@ -319,10 +304,10 @@ struct SkillsPane: View {
 
     private func update(_ skill: Skill) {
         guard let entry = catalog.entry(id: skill.id) else { return }
-        updating.insert(skill.id)
+        working.insert(skill.id)
         Task {
             _ = await store.install(entry)
-            updating.remove(skill.id)
+            working.remove(skill.id)
         }
     }
 

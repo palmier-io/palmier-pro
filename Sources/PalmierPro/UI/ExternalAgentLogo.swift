@@ -5,9 +5,17 @@ struct ExternalAgentLogo: View {
     let agent: SkillExternalAgent
     var size: CGFloat = AppTheme.IconSize.sm
 
+    private static let images: [SkillExternalAgent: NSImage] = Dictionary(
+        uniqueKeysWithValues: SkillExternalAgent.allCases.compactMap { agent in
+            guard let url = BundledResource.url("Images/Agents/\(agent.rawValue).png"),
+                  let image = NSImage(contentsOf: url) else { return nil }
+            return (agent, image)
+        }
+    )
+
     var body: some View {
         Group {
-            if let image = ExternalAgentAssets.image(for: agent) {
+            if let image = Self.images[agent] {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
@@ -19,23 +27,5 @@ struct ExternalAgentLogo: View {
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.xs, style: .continuous))
         .accessibilityHidden(true)
-    }
-}
-
-private enum ExternalAgentAssets {
-    static func image(for agent: SkillExternalAgent) -> NSImage? {
-        switch agent {
-        case .claude: claude
-        case .codex: codex
-        case .cursor: cursor
-        }
-    }
-
-    private static let claude = load("claude")
-    private static let codex = load("codex")
-    private static let cursor = load("cursor")
-
-    private static func load(_ name: String) -> NSImage? {
-        BundledResource.url("Images/Agents/\(name).png").flatMap(NSImage.init(contentsOf:))
     }
 }

@@ -177,14 +177,21 @@ struct SettingsSection<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, AppTheme.Spacing.lgXl)
             .padding(.vertical, AppTheme.Spacing.mdLg)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.mdLg, style: .continuous)
-                    .fill(AppTheme.Background.prominentColor)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.mdLg, style: .continuous)
-                    .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.thin)
-            )
+            .themedSurface(AppTheme.Background.prominentColor, cornerRadius: AppTheme.Radius.mdLg)
+        }
+    }
+}
+
+struct SettingsGroup<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
+            Text(title)
+                .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.regular))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+            content()
         }
     }
 }
