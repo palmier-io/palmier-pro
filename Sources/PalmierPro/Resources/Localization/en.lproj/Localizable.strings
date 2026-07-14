@@ -287,6 +287,7 @@
 "Could not write Lottie video" = "Could not write Lottie video";
 "Could not write still video" = "Could not write still video";
 "Couldn't encode the timeline as XML" = "Couldn't encode the timeline as XML";
+"Couldn't Prepare Media" = "Couldn't Prepare Media";
 "Couldn't render matte image." = "Couldn't render matte image.";
 "Couldn't switch angle." = "Couldn't switch angle.";
 "Create a letterbox opening" = "Create a letterbox opening";
@@ -299,6 +300,7 @@
 "Create Timeline (Agent)" = "Create Timeline (Agent)";
 "Create Video" = "Create Video";
 "Create Video only works on images" = "Create Video only works on images";
+"Creating…" = "Creating…";
 "Credits" = "Credits";
 "Credits cover AI generation and chat." = "Credits cover AI generation and chat.";
 "Crop" = "Crop";
@@ -336,6 +338,7 @@
 "Destination" = "Destination";
 "Detail" = "Detail";
 "Details" = "Details";
+"Detect Beats" = "Detect Beats";
 "Detected %@%d beats." = "Detected %@%d beats.";
 "Detecting speech in %d files…" = "Detecting speech in %d files…";
 "Detecting speech…" = "Detecting speech…";
@@ -373,6 +376,7 @@
 "Edit doesn't support text" = "Edit doesn't support text";
 "Edit supports up to %ds (this is %ds)" = "Edit supports up to %ds (this is %ds)";
 "Edit…" = "Edit…";
+"Edit… (Paid)" = "Edit… (Paid)";
 "Edited" = "Edited";
 "Editing" = "Editing";
 "Effects" = "Effects";
@@ -423,7 +427,9 @@
 "Flat" = "Flat";
 "Flip" = "Flip";
 "Flip Horizontal" = "Flip Horizontal";
+"Flip horizontally" = "Flip horizontally";
 "Flip Vertical" = "Flip Vertical";
+"Flip vertically" = "Flip vertically";
 "Folders" = "Folders";
 "Font" = "Font";
 "For" = "For";
@@ -705,6 +711,7 @@
 "Razor Tool" = "Razor Tool";
 "Reader could not start" = "Reader could not start";
 "Reader start failed: %@" = "Reader start failed: %@";
+"Redetect Beats" = "Redetect Beats";
 "Redo" = "Redo";
 "Redo (⇧⌘Z)" = "Redo (⇧⌘Z)";
 "Reference" = "Reference";
@@ -727,12 +734,14 @@
 "Remove filler words" = "Remove filler words";
 "Remove from Queue" = "Remove from Queue";
 "Remove from Recents" = "Remove from Recents";
+"Remove horizontal flip" = "Remove horizontal flip";
 "Remove keyframe at playhead" = "Remove keyframe at playhead";
 "Remove model" = "Remove model";
 "Remove Silence" = "Remove Silence";
 "Remove Silence (Agent)" = "Remove Silence (Agent)";
 "Remove Track" = "Remove Track";
 "Remove Tracks" = "Remove Tracks";
+"Remove vertical flip" = "Remove vertical flip";
 "Remove Words (Agent)" = "Remove Words (Agent)";
 "Removes background noise from this audio using an on-device model." = "Removes background noise from this audio using an on-device model.";
 "Removes this label and tint. Identify recreates it if the voice is still present." = "Removes this label and tint. Identify recreates it if the voice is still present.";
@@ -800,10 +809,12 @@
 "Select Range" = "Select Range";
 "Selected Clips · %d" = "Selected Clips · %d";
 "Selection Tool" = "Selection Tool";
+"Send" = "Send";
 "Send crash and error reports" = "Send crash and error reports";
 "Send feedback" = "Send feedback";
 "Send Feedback…" = "Send Feedback…";
 "Send only the visible clip range to the model, not the full source." = "Send only the visible clip range to the model, not the full source.";
+"Sending…" = "Sending…";
 "Server returned HTTP %d." = "Server returned HTTP %d.";
 "Set as first frame" = "Set as first frame";
 "Set as reference" = "Set as reference";
@@ -833,6 +844,7 @@
 "Sign in to use Cloud transcription." = "Sign in to use Cloud transcription.";
 "Sign in to use Cloud." = "Sign in to use Cloud.";
 "Sign in to use the AI agent." = "Sign in to use the AI agent.";
+"Sign in with Google" = "Sign in with Google";
 "Sign out" = "Sign out";
 "Sign-in is already in progress." = "Sign-in is already in progress.";
 "Signed in" = "Signed in";
@@ -957,6 +969,7 @@
 "Upload failed: %@" = "Upload failed: %@";
 "UPPERCASE" = "UPPERCASE";
 "Upscale" = "Upscale";
+"Upscale (Paid)" = "Upscale (Paid)";
 "Upscale only works on video or images" = "Upscale only works on video or images";
 "Use trimmed portion only" = "Use trimmed portion only";
 "Used your own API key for the AI chat. Stored in your macOS Keychain." = "Used your own API key for the AI chat. Stored in your macOS Keychain.";
