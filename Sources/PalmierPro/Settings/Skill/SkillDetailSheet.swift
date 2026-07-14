@@ -44,6 +44,11 @@ struct SkillDetailSheet: View {
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .frame(width: AppTheme.Settings.skillDetailWidth)
                     .frame(minHeight: AppTheme.Settings.skillDetailMinHeight)
+                    .overlay(alignment: .topTrailing) {
+                        closeButton
+                            .padding(.horizontal, AppTheme.Spacing.xlXxl)
+                            .padding(.vertical, AppTheme.Spacing.mdLg)
+                    }
             }
         }
         .onDisappear {
@@ -112,22 +117,7 @@ struct SkillDetailSheet: View {
             HStack(spacing: AppTheme.Spacing.md) {
                 titleView(skill)
                 Spacer(minLength: AppTheme.Spacing.md)
-                Button {
-                    commitDraftIfDirty()
-                    commitTitle()
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
-                        .foregroundStyle(AppTheme.Text.tertiaryColor)
-                        .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
-                        .padding(AppTheme.Spacing.xs)
-                        .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.cancelAction)
-                .accessibilityLabel("Close")
-                .help("Close")
+                closeButton
             }
 
             HStack(spacing: AppTheme.Spacing.smMd) {
@@ -171,6 +161,25 @@ struct SkillDetailSheet: View {
         }
         .padding(.horizontal, AppTheme.Spacing.xlXxl)
         .padding(.vertical, AppTheme.Spacing.mdLg)
+    }
+
+    private var closeButton: some View {
+        Button {
+            commitDraftIfDirty()
+            commitTitle()
+            dismiss()
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
+                .padding(AppTheme.Spacing.xs)
+                .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(.cancelAction)
+        .accessibilityLabel("Close")
+        .help("Close")
     }
 
     @ViewBuilder

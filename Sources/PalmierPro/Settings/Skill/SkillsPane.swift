@@ -263,24 +263,25 @@ struct SkillsPane: View {
 
     @ViewBuilder
     private func communityRow(_ entry: SkillCatalogEntry) -> some View {
-        let installed = store.skills.first { $0.id == entry.id }
-        let state = installed.map {
+        let skill = store.skills.first { $0.id == entry.id }
+        let isCommunityInstall = store.installed[entry.id] != nil
+        let state = isCommunityInstall ? skill.map {
             SkillCommunityState.resolve($0, store: store, catalog: catalog)
-        }
+        } : nil
         let isWorking = installing.contains(entry.id) || updating.contains(entry.id)
 
         CommunitySkillRow(
             entry: entry,
-            status: state?.label ?? "Available",
+            status: isCommunityInstall ? state?.label ?? "Available" : skill == nil ? "Available" : "Local",
             statusColor: state?.color ?? AppTheme.Text.tertiaryColor,
-            actionTitle: installed == nil ? "Install" : state == .update ? "Update" : "Open",
+            actionTitle: skill == nil ? "Install" : isCommunityInstall && state == .update ? "Update" : "Open",
             working: isWorking,
             action: {
-                if let installed {
-                    if state == .update {
-                        update(installed)
+                if let skill {
+                    if isCommunityInstall, state == .update {
+                        update(skill)
                     } else {
-                        present(installed.id)
+                        present(skill.id)
                     }
                 } else {
                     install(entry)
