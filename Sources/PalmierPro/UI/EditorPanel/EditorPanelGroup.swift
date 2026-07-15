@@ -67,16 +67,7 @@ struct EditorPanelGroup<Content: View, HeaderAccessory: View>: View {
                 headerAccessory()
 
                 if let onReset {
-                    Button(action: onReset) {
-                        Image(systemName: "arrow.counterclockwise")
-                            .font(.system(size: AppTheme.FontSize.sm))
-                            .foregroundStyle(AppTheme.Text.tertiaryColor)
-                            .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
-                            .hoverHighlight()
-                    }
-                    .buttonStyle(.plain)
-                    .help("Reset \(title.lowercased())")
-                    .accessibilityLabel("Reset \(title)")
+                    EditorResetButton(title: title, action: onReset)
                 }
             }
             .padding(.horizontal, AppTheme.Spacing.smMd)

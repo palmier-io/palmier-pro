@@ -1248,7 +1248,7 @@ struct ToolExecutorClipTests {
         let (h, asset) = await setupWithVideoTrack()
         let clipId = await addedClip(in: h, asset: asset)
         let result = await h.runRaw("update_text", args: [
-            "clipIds": [clipId], "fontSize": 48,
+            "clipIds": [clipId], "style": ["fontSize": 48],
         ])
         #expect(result.isError)
         #expect(ToolHarness.textOf(result).contains("only applies to text"))
@@ -1726,7 +1726,7 @@ struct ToolExecutorTextFolderTests {
                 "startFrame": 30,
                 "endFrame": 90,
                 "content": "Caption",
-                "fontSize": 48,
+                "style": ["fontSize": 48],
             ]]
         ])
         #expect(result.isError == false)
@@ -1738,35 +1738,64 @@ struct ToolExecutorTextFolderTests {
     @Test func addTextsAppliesRichTextStyleFields() async throws {
         let h = ToolHarness()
         _ = h.editor.insertTrack(at: 0, type: .video)
-        let result = await h.runRaw("add_texts", args: [
+        let rawArgs: [String: Any] = [
             "entries": [[
                 "trackIndex": 0,
                 "startFrame": 0,
                 "endFrame": 60,
                 "content": "Styled",
-                "fontName": "Georgia",
-                "fontSize": 54,
-                "isBold": false,
-                "isItalic": true,
-                "color": "#F0E0D0",
-                "alignment": "right",
-                "borderColor": "#102030",
-                "backgroundColor": "#01020380",
+                "style": [
+                    "fontSize": 54,
+                    "tracking": 5,
+                    "lineSpacing": 12,
+                    "fontCase": "uppercase",
+                    "outline": ["enabled": true, "width": 3],
+                    "shadow": [
+                        "opacity": 0.4,
+                        "offset": ["x": 0, "y": -3],
+                    ],
+                    "background": [
+                        "enabled": true,
+                        "padding": ["x": 20, "y": 10],
+                        "cornerRadius": 9,
+                    ],
+                ],
             ]]
-        ])
+        ]
+        let data = try JSONSerialization.data(withJSONObject: rawArgs)
+        let args = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let result = await h.runRaw("add_texts", args: args)
 
         #expect(result.isError == false, "\(ToolHarness.textOf(result))")
         let style = h.editor.timeline.tracks[0].clips[0].textStyle
-        #expect(style?.fontName == "Georgia")
         #expect(style?.fontSize == 54)
-        #expect(style?.isBold == false)
-        #expect(style?.isItalic == true)
-        #expect(style?.color == TextStyle.RGBA(hex: "#F0E0D0"))
-        #expect(style?.alignment == .right)
+        #expect(style?.tracking == 5)
+        #expect(style?.lineSpacing == 12)
+        #expect(style?.fontCase == .uppercase)
         #expect(style?.border.enabled == true)
-        #expect(style?.border.color == TextStyle.RGBA(hex: "#102030"))
+        #expect(style?.border.width == 3)
+        #expect(style?.shadow.color.a == 0.4)
+        #expect(style?.shadow.offsetX == 0)
+        #expect(style?.shadow.offsetY == -3)
         #expect(style?.background.enabled == true)
-        #expect(style?.background.color == TextStyle.RGBA(hex: "#01020380"))
+        #expect(style?.background.paddingX == 20)
+        #expect(style?.background.paddingY == 10)
+        #expect(style?.background.cornerRadius == 9)
+    }
+
+    @Test func addTextsRejectsLegacyStyleField() async {
+        let h = ToolHarness()
+        _ = h.editor.insertTrack(at: 0, type: .video)
+        let result = await h.runRaw("add_texts", args: [
+            "entries": [[
+                "trackIndex": 0,
+                "startFrame": 0,
+                "endFrame": 60,
+                "content": "Invalid",
+                "fontSize": 48,
+            ]]
+        ])
+        #expect(result.isError)
     }
 
     @Test func addTextsRejectsAudioTargetTrack() async throws {
@@ -2090,7 +2119,10 @@ struct SetClipPropertiesTests {
         }
         let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: clips)]))
 
-        let result = await h.runRaw("update_text", args: ["captionGroupId": "g1", "color": "#FF0000"])
+        let result = await h.runRaw("update_text", args: [
+            "captionGroupId": "g1",
+            "style": ["color": "#FF0000"],
+        ])
         #expect(result.isError == false, "\(ToolHarness.textOf(result))")
         let json = (try? JSONSerialization.jsonObject(with: Data(ToolHarness.textOf(result).utf8))) as? [String: Any]
         // ≥3 caption members collapse to the group summary, not an enumeration.
@@ -2114,9 +2146,11 @@ struct SetClipPropertiesTests {
 
         let result = await h.runRaw("update_text", args: [
             "captionGroupId": "captions",
-            "alignment": "left",
-            "borderColor": "#FFFFFF",
-            "backgroundColor": "#00000080",
+            "style": [
+                "alignment": "left",
+                "outline": ["enabled": true, "color": "#FFFFFF"],
+                "background": ["enabled": true, "color": "#00000080"],
+            ],
         ])
 
         #expect(result.isError == false, "\(ToolHarness.textOf(result))")
@@ -2130,6 +2164,22 @@ struct SetClipPropertiesTests {
             #expect(clip.textStyle?.background.enabled == true)
             #expect(clip.textStyle?.background.color == TextStyle.RGBA(hex: "#00000080"))
         }
+    }
+
+    @Test func updateTextNestedColorPreservesSeparateOpacity() async {
+        var clip = Fixtures.clip(id: "title", mediaRef: "text", mediaType: .text, start: 0, duration: 60)
+        var style = TextStyle()
+        style.shadow.color = TextStyle.RGBA(r: 0, g: 0, b: 0, a: 0.25)
+        clip.textStyle = style
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])]))
+
+        let result = await h.runRaw("update_text", args: [
+            "clipIds": ["title"],
+            "style": ["shadow": ["color": "#FF0000"]],
+        ])
+
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        #expect(h.editor.timeline.tracks[0].clips[0].textStyle?.shadow.color == .init(r: 1, g: 0, b: 0, a: 0.25))
     }
 
     @Test func updateTextAnimationPreservesExistingHighlight() async {

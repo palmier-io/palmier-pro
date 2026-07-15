@@ -24,7 +24,8 @@ struct SpeechTab: View {
         EditorPanelGroup("Speakers") {
             InspectorRow(
                 label: "Mark Speakers",
-                labelHelp: "Tints waveforms by speaker. Voices are matched across clips using cloud transcripts."
+                labelHelp: "Tints waveforms by speaker. Voices are matched across clips using cloud transcripts.",
+                onReset: { editor.markSpeakers = false }
             ) {
                 Toggle("", isOn: Binding(
                     get: { editor.markSpeakers },
@@ -85,7 +86,8 @@ struct SpeechTab: View {
         EditorPanelGroup("Silence Detection") {
             InspectorRow(
                 label: "Mark Silence",
-                labelHelp: "Speech is detected on-device in the background. Dims quiet, speech-free spans on timeline waveforms."
+                labelHelp: "Speech is detected on-device in the background. Dims quiet, speech-free spans on timeline waveforms.",
+                onReset: { editor.markDeadAir = false }
             ) {
                 Toggle("", isOn: Binding(
                     get: { editor.markDeadAir },

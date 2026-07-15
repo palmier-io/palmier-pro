@@ -802,15 +802,19 @@ struct FCPXMLExporterTests {
         var text = Fixtures.clip(id: "title", mediaRef: "text", mediaType: .text, start: 0, duration: 60)
         text.textContent = "HOOK"
         var style = TextStyle(fontSize: 96)
-        style.border = TextStyle.Fill(enabled: true, color: TextStyle.RGBA(r: 0, g: 0, b: 0, a: 1))
+        style.border = TextStyle.Outline(
+            enabled: true,
+            color: TextStyle.RGBA(r: 0, g: 0, b: 0, a: 1),
+            width: 7
+        )
+        style.fontScale = 2
         text.textStyle = style
         let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [text])])
 
         let xml = try await export(timeline, resolver: resolver, tmpDir: tmpDir)
 
-        // 4% of the 96pt font (NSAttributedString's stroke convention) = 3.84pt.
         #expect(xml.contains("strokeColor=\"0 0 0 1\""))
-        #expect(xml.contains("strokeWidth=\"3.84\""))
+        #expect(xml.contains("strokeWidth=\"7\""))
     }
 
     @Test func disabledBorderOmitsStroke() async throws {

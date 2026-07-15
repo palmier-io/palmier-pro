@@ -33,9 +33,7 @@ extension InspectorView {
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
                         volumeRow(audios: audios)
                         fadeRow(label: "Fade In", clips: audios, edge: .left)
-                            .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
                         fadeRow(label: "Fade Out", clips: audios, edge: .right)
-                            .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
                     }
                 }
             } else {
@@ -51,7 +49,17 @@ extension InspectorView {
     @ViewBuilder
     private func volumeRow(audios: [Clip]) -> some View {
         let single = audios.count == 1 ? audios.first : nil
-        animatableRow(label: "Volume", clipId: single?.id, property: .volume) {
+        animatableRow(
+            label: "Volume",
+            clipId: single?.id,
+            property: .volume,
+            onReset: {
+                commitPropertiesToClips(audios, actionName: "Reset Volume") { clip in
+                    clip.volume = 1
+                    clip.volumeTrack = nil
+                }
+            }
+        ) {
             ScrubbableNumberField(
                 value: sharedClipValue(audios) { clip in
                     clip.liveVolumeKfDb(at: editor.activeFrame) ?? VolumeScale.dbFromLinear(clip.volume)
@@ -82,7 +90,16 @@ extension InspectorView {
                 editor.denoiseFailed.contains($0.mediaRef)
             }
             VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
-                propertyRow(label: "Denoise") {
+                propertyRow(
+                    label: "Denoise",
+                    onReset: {
+                        editor.setDenoise(
+                            clipIds: Set(audios.map(\.id)),
+                            enabled: false,
+                            actionName: "Reset Denoise"
+                        )
+                    }
+                ) {
                     HStack(spacing: AppTheme.Spacing.sm) {
                         if allOn {
                             ScrubbableNumberField(
@@ -143,7 +160,15 @@ extension InspectorView {
         let single = clips.count == 1 ? clips.first : nil
         let maxSeconds = single.map { Double($0.durationFrames) / fps } ?? 60.0
         let actionName = edge == .left ? "Change Fade In" : "Change Fade Out"
-        propertyRow(label: label) {
+        propertyRow(
+            label: label,
+            onReset: {
+                commitToClips(clips, actionName: "Reset \(label)") { clip in
+                    editor.commitFade(clipId: clip.id, edge: edge, frames: 0)
+                }
+            },
+            reservesKeyframeControls: true
+        ) {
             ScrubbableNumberField(
                 value: sharedClipValue(clips) { clip in
                     Double(clip.fadeFrames(edge)) / fps

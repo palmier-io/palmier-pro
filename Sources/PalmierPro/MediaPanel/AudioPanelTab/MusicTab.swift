@@ -119,7 +119,7 @@ struct MusicTab: View {
     @ViewBuilder
     private var sourceControls: some View {
         if model.map(supportsTextMode) == true {
-            InspectorRow(label: "Input") {
+            InspectorRow(label: "Input", onReset: { mode = .videoToMusic }) {
                 Menu {
                     Button("Video to Music") { mode = .videoToMusic }
                     Button("Text to Music") { mode = .textToMusic }
@@ -131,7 +131,8 @@ struct MusicTab: View {
         if isTextMode {
             InspectorRow(
                 label: "Duration",
-                labelHelp: "Length of the generated music. It's placed at the playhead, or at the marked range start."
+                labelHelp: "Length of the generated music. It's placed at the playhead, or at the marked range start.",
+                onReset: { textDuration = 90 }
             ) {
                 ScrubbableNumberField(
                     value: textDuration,
@@ -157,7 +158,7 @@ struct MusicTab: View {
     }
 
     private var modelControl: some View {
-        InspectorRow(label: "Model") {
+        InspectorRow(label: "Model", onReset: { selectedModelId = nil }) {
             Menu {
                 ForEach(models, id: \.id) { m in
                     Button(m.displayName) { selectedModelId = m.id }

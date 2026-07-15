@@ -703,7 +703,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addTexts,
-            description: "Adds text clips as timeline layers. Omit trackIndex on every entry to create one new top video track; otherwise set trackIndex on every entry. Transform is normalized text-box center/size; center-only auto-fits, all four fields override the box. Use add_captions for spoken audio captions. Unknown fields are rejected.",
+            description: "Adds text clips as timeline layers. Omit trackIndex on every entry to create one new top video track; otherwise set trackIndex on every entry. Transform is normalized text-box center/size; center-only auto-fits, all four fields override the box. Use the nested style object for typography, outline, shadow, and background. Use add_captions for spoken audio captions. Unknown fields are rejected.",
             inputSchema: objectSchema(
                 properties: [
                     "entries": [
@@ -721,7 +721,7 @@ enum ToolDefinitions {
                                     "description": "Text box. Omit for centered auto-fit; center only auto-fits size; all four override.",
                                     "properties": textBoxTransformProperties(),
                                 ],
-                            ], textStyleProperties(), [
+                            ], textStyleProperties(detailed: false), [
                                 "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Animation preset; off clears."],
                                 "highlightColor": ["type": "string", "description": "Active-word hex."],
                             ]),
@@ -734,7 +734,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .updateText,
-            description: "Updates text clips or a captionGroupId. Use for content, typography, color, outline color, background color, animation, or text-box transform. Content/typography changes auto-fit the box unless transform is passed. Unknown fields are rejected.",
+            description: "Updates text clips or a captionGroupId. The nested style object is a partial patch: omitted values stay unchanged. Use it for typography, color, outline, shadow, and background. Content and layout-affecting style changes auto-fit the box unless transform is passed. Unknown fields are rejected.",
             inputSchema: objectSchema(
                 properties: mergedProperties([
                     "clipIds": [
@@ -749,7 +749,7 @@ enum ToolDefinitions {
                         "description": "Partial text-box transform; omitted fields keep current values.",
                         "properties": textBoxTransformProperties(),
                     ],
-                ], textStyleProperties(), [
+                ], textStyleProperties(detailed: true), [
                     "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Animation preset; off clears."],
                     "highlightColor": ["type": "string", "description": "Active-word hex."],
                 ]),
@@ -770,10 +770,9 @@ enum ToolDefinitions {
                             "centerY": ["type": "number", "description": "0-1 vertical center."],
                         ],
                     ],
-                    "textCase": ["type": "string", "enum": ["auto", "upper", "lower"], "description": "Letter case."],
                     "censorProfanity": ["type": "boolean", "description": "Mask profanity."],
                     "maxWords": ["type": "integer", "description": "Max words per caption."],
-                ], textStyleProperties(), [
+                ], textStyleProperties(detailed: false), [
                     "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Caption animation preset."],
                     "highlightColor": ["type": "string", "description": "Active-word hex."],
                 ])
@@ -1067,17 +1066,98 @@ enum ToolDefinitions {
         ]
     }
 
-    private static func textStyleProperties() -> [String: [String: Any]] {
-        [
-            "fontName": ["type": "string", "description": "Font name."],
-            "fontSize": ["type": "number", "description": "Canvas points."],
-            "isBold": ["type": "boolean", "description": "Bold."],
-            "isItalic": ["type": "boolean", "description": "Italic."],
-            "color": ["type": "string", "description": "Text color hex."],
-            "alignment": ["type": "string", "enum": ["left", "center", "right"], "description": "Text alignment."],
-            "borderColor": ["type": "string", "description": "Text outline hex; enables outline."],
-            "backgroundColor": ["type": "string", "description": "Text box fill hex; enables fill."],
+    private static func textStyleProperties(detailed: Bool) -> [String: [String: Any]] {
+        let properties: [String: [String: Any]] = [
+            "style": [
+                "type": "object",
+                "description": "Partial text-style patch. Omit properties to keep defaults or existing values.",
+                "properties": [
+                    "fontName": ["type": "string", "description": "Font PostScript name."],
+                    "fontSize": ["type": "number", "minimum": 12, "maximum": 300, "description": "Font size in canvas points."],
+                    "bold": ["type": "boolean", "description": "Bold font trait."],
+                    "italic": ["type": "boolean", "description": "Italic font trait."],
+                    "tracking": ["type": "number", "minimum": -20, "maximum": 100, "description": "Spacing between characters in canvas points."],
+                    "lineSpacing": ["type": "number", "minimum": -100, "maximum": 300, "description": "Additional spacing between lines in canvas points."],
+                    "fontCase": ["type": "string", "enum": ["mixed", "uppercase", "lowercase"], "description": "Non-destructive display casing."],
+                    "alignment": ["type": "string", "enum": ["left", "center", "right"], "description": "Text alignment."],
+                    "color": ["type": "string", "description": "Text color as #RGB, #RRGGBB, or #RRGGBBAA."],
+                    "outline": [
+                        "type": "object",
+                        "properties": [
+                            "enabled": ["type": "boolean"],
+                            "color": ["type": "string", "description": "Outline color hex."],
+                            "width": ["type": "number", "minimum": 0, "maximum": 40, "description": "Width in canvas points."],
+                        ],
+                    ],
+                    "shadow": [
+                        "type": "object",
+                        "properties": [
+                            "enabled": ["type": "boolean"],
+                            "color": ["type": "string", "description": "Shadow color hex. Six-digit colors preserve the current opacity."],
+                            "opacity": ["type": "number", "minimum": 0, "maximum": 1],
+                            "offset": [
+                                "type": "object",
+                                "properties": [
+                                    "x": ["type": "number", "minimum": -200, "maximum": 200],
+                                    "y": ["type": "number", "minimum": -200, "maximum": 200],
+                                ],
+                            ],
+                            "blur": ["type": "number", "minimum": 0, "maximum": 100, "description": "Blur radius in canvas points."],
+                        ],
+                    ],
+                    "background": [
+                        "type": "object",
+                        "properties": [
+                            "enabled": ["type": "boolean"],
+                            "color": ["type": "string", "description": "Background color hex. Six-digit colors preserve the current opacity."],
+                            "opacity": ["type": "number", "minimum": 0, "maximum": 1],
+                            "padding": [
+                                "type": "object",
+                                "properties": [
+                                    "x": ["type": "number", "minimum": 0, "maximum": 300],
+                                    "y": ["type": "number", "minimum": 0, "maximum": 300],
+                                ],
+                            ],
+                            "center": [
+                                "type": "object",
+                                "properties": [
+                                    "x": ["type": "number", "minimum": -500, "maximum": 500],
+                                    "y": ["type": "number", "minimum": -500, "maximum": 500],
+                                ],
+                            ],
+                            "cornerRadius": ["type": "number", "minimum": 0, "maximum": 300, "description": "Corner radius in canvas points."],
+                            "outline": [
+                                "type": "object",
+                                "properties": [
+                                    "color": ["type": "string", "description": "Background outline color hex."],
+                                    "width": ["type": "number", "minimum": 0, "maximum": 40, "description": "Background outline width in canvas points."],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
         ]
+        guard !detailed, var style = properties["style"] else { return properties }
+        style = schemaWithoutDescriptions(style)
+        style["description"] = "Same partial style patch as update_text."
+        return ["style": style]
+    }
+
+    private static func schemaWithoutDescriptions(_ schema: [String: Any]) -> [String: Any] {
+        schema.reduce(into: [:]) { result, entry in
+            guard entry.key != "description" else { return }
+            if let nested = entry.value as? [String: Any] {
+                result[entry.key] = schemaWithoutDescriptions(nested)
+            } else if let items = entry.value as? [Any] {
+                result[entry.key] = items.map { item in
+                    guard let nested = item as? [String: Any] else { return item }
+                    return schemaWithoutDescriptions(nested)
+                }
+            } else {
+                result[entry.key] = entry.value
+            }
+        }
     }
 
     private static func mergedProperties(_ chunks: [String: [String: Any]]...) -> [String: [String: Any]] {

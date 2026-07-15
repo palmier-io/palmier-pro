@@ -1,3 +1,4 @@
+import CoreFoundation
 import Foundation
 
 struct ToolError: Error { let message: String; init(_ m: String) { self.message = m } }
@@ -422,7 +423,7 @@ private func formatDecodingError(_ error: DecodingError, path: String) -> String
 func parseColorHex(_ hex: String?, path: String) throws -> TextStyle.RGBA? {
     guard let hex else { return nil }
     guard let c = TextStyle.RGBA(hex: hex) else {
-        throw ToolError("\(path): invalid color '\(hex)'. Expected '#RRGGBB' or '#RRGGBBAA'.")
+        throw ToolError("\(path): invalid color '\(hex)'. Expected '#RGB', '#RRGGBB', or '#RRGGBBAA'.")
     }
     return c
 }
@@ -433,6 +434,11 @@ func parseAlignment(_ raw: String?, path: String) throws -> TextStyle.Alignment?
         throw ToolError("\(path): invalid alignment '\(raw)'. Expected 'left', 'center', or 'right'.")
     }
     return a
+}
+
+func isJSONBoolean(_ value: Any) -> Bool {
+    guard let number = value as? NSNumber else { return value is Bool }
+    return CFGetTypeID(number) == CFBooleanGetTypeID()
 }
 
 // Untrusted Double→Int: nil on NaN/Inf/overflow instead of trapping.
@@ -451,17 +457,19 @@ extension Dictionary where Key == String, Value == Any {
         return nil
     }
     func int(_ key: String) -> Int? {
-        if let v = self[key] as? Int { return v }
-        if let v = self[key] as? Double { return safeInt(v) }
-        if let v = self[key] as? NSNumber { return v.intValue }
-        if let v = self[key] as? String { return Int(v) }
+        guard let raw = self[key], !isJSONBoolean(raw) else { return nil }
+        if let v = raw as? Int { return v }
+        if let v = raw as? Double { return safeInt(v) }
+        if let v = raw as? NSNumber { return safeInt(v.doubleValue) }
+        if let v = raw as? String { return Int(v) }
         return nil
     }
     func double(_ key: String) -> Double? {
-        if let v = self[key] as? Double { return v }
-        if let v = self[key] as? Int { return Double(v) }
-        if let v = self[key] as? NSNumber { return v.doubleValue }
-        if let v = self[key] as? String { return Double(v) }
+        guard let raw = self[key], !isJSONBoolean(raw) else { return nil }
+        if let v = raw as? Double { return v }
+        if let v = raw as? Int { return Double(v) }
+        if let v = raw as? NSNumber { return v.doubleValue }
+        if let v = raw as? String { return Double(v) }
         return nil
     }
     func bool(_ key: String) -> Bool? {

@@ -126,4 +126,87 @@ struct TextFrameRendererTests {
         #expect(totalRed > 10, "expected visible red glyph outline")
         #expect(edgeRed < 50, "border should not render a rectangular clip box")
     }
+
+    @Test func backgroundRendersRoundedFillAndIndependentOutline() {
+        let size = CGSize(width: 640, height: 360)
+        var style = TextStyle()
+        style.color = .init(r: 1, g: 1, b: 1, a: 0)
+        style.shadow.enabled = false
+        style.background = .init(
+            enabled: true,
+            color: .init(r: 1, g: 0, b: 0, a: 1),
+            paddingX: 24,
+            paddingY: 12,
+            cornerRadius: 48,
+            offsetX: 8,
+            offsetY: -6,
+            outlineColor: .init(r: 0, g: 0, b: 1, a: 1),
+            outlineWidth: 8
+        )
+        let clip = textClip(
+            content: " ",
+            style: style,
+            transform: Transform(topLeft: (0.2, 0.3), width: 0.6, height: 0.35)
+        )
+
+        let image = TextFrameRenderer.image(clip: clip, frame: 0, renderSize: size)
+        #expect(image != nil)
+        let pixels = rawPixels(image!, size: size)
+        var redPixels = 0
+        var bluePixels = 0
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            if pixels[i] > 160, pixels[i + 1] < 80, pixels[i + 2] < 80 { redPixels += 1 }
+            if pixels[i] < 80, pixels[i + 1] < 80, pixels[i + 2] > 160 { bluePixels += 1 }
+        }
+
+        #expect(redPixels > 1_000, "expected visible background fill")
+        #expect(bluePixels > 100, "expected visible background outline")
+    }
+
+    @Test func trackingIncreasesMeasuredTextWidth() {
+        var compact = TextStyle()
+        compact.shadow.enabled = false
+        compact.tracking = 0
+        var spaced = compact
+        spaced.tracking = 12
+
+        let compactSize = TextLayout.naturalSize(
+            content: "TRACKING",
+            style: compact,
+            maxWidth: .greatestFiniteMagnitude,
+            canvasHeight: 1080
+        )
+        let spacedSize = TextLayout.naturalSize(
+            content: "TRACKING",
+            style: spaced,
+            maxWidth: .greatestFiniteMagnitude,
+            canvasHeight: 1080
+        )
+
+        #expect(spacedSize.width > compactSize.width + 50)
+    }
+
+    @Test func verticalShadowOffsetExpandsMeasuredHeight() {
+        var centered = TextStyle()
+        centered.shadow.offsetX = 0
+        centered.shadow.offsetY = 0
+        var shifted = centered
+        shifted.shadow.offsetY = 60
+
+        let centeredSize = TextLayout.naturalSize(
+            content: "SHADOW",
+            style: centered,
+            maxWidth: .greatestFiniteMagnitude,
+            canvasHeight: 1080
+        )
+        let shiftedSize = TextLayout.naturalSize(
+            content: "SHADOW",
+            style: shifted,
+            maxWidth: .greatestFiniteMagnitude,
+            canvasHeight: 1080
+        )
+
+        #expect(shiftedSize.height > centeredSize.height + 80)
+        #expect(shiftedSize.width == centeredSize.width)
+    }
 }

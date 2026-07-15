@@ -844,6 +844,7 @@ extension ToolExecutor {
     }
 
     private static func kfInt(_ raw: Any, at path: String) throws -> Int {
+        guard !isJSONBoolean(raw) else { throw ToolError("\(path): expected integer") }
         if let v = raw as? Int { return v }
         if let v = raw as? Double, let i = safeInt(v) { return i }
         if let v = raw as? NSNumber, let i = safeInt(v.doubleValue) { return i }
@@ -851,6 +852,7 @@ extension ToolExecutor {
     }
 
     private static func kfDouble(_ raw: Any, at path: String) throws -> Double {
+        guard !isJSONBoolean(raw) else { throw ToolError("\(path): expected number") }
         let v: Double
         if let d = raw as? Double { v = d }
         else if let i = raw as? Int { v = Double(i) }
@@ -873,7 +875,8 @@ extension ToolExecutor {
     // MARK: manage_tracks
 
     private static func exactTrackIndex(_ raw: Any?) -> Int? {
-        guard let value = (raw as? NSNumber)?.doubleValue, !(raw is Bool), value.rounded() == value else { return nil }
+        guard let raw, !isJSONBoolean(raw),
+              let value = (raw as? NSNumber)?.doubleValue, value.rounded() == value else { return nil }
         return Int(exactly: value)
     }
 

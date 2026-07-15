@@ -193,6 +193,65 @@ struct ProjectRoundTripTests {
         """
         let style = try JSONDecoder().decode(TextStyle.self, from: Data(json.utf8))
         #expect(style.fontScale == 1.0)
+        #expect(style.tracking == 0)
+        #expect(style.lineSpacing == 0)
+        #expect(style.fontCase == .mixed)
+    }
+
+    @Test func textStyleLegacyDecorationsPickUpAdjustableDefaults() throws {
+        let json = """
+        {
+          "border": {
+            "enabled": true,
+            "color": {"r": 0, "g": 0, "b": 0, "a": 1}
+          },
+          "background": {
+            "enabled": true,
+            "color": {"r": 0.1, "g": 0.2, "b": 0.3, "a": 0.5}
+          }
+        }
+        """
+
+        let style = try JSONDecoder().decode(TextStyle.self, from: Data(json.utf8))
+
+        #expect(style.border.enabled)
+        #expect(style.border.width == 4)
+        #expect(style.background.enabled)
+        #expect(style.background.paddingX == 0)
+        #expect(style.background.paddingY == 0)
+        #expect(style.background.cornerRadius == 0)
+        #expect(style.background.outlineWidth == 0)
+    }
+
+    @Test func textStyleDecorationAdjustmentsRoundTrip() throws {
+        var style = TextStyle()
+        style.tracking = 8
+        style.lineSpacing = 18
+        style.fontCase = .uppercase
+        style.border = .init(enabled: true, color: .init(r: 1, g: 0, b: 0, a: 1), width: 9)
+        style.shadow = .init(
+            enabled: true,
+            color: .init(r: 0, g: 0, b: 0, a: 0.35),
+            offsetX: 12,
+            offsetY: 18,
+            blur: 24
+        )
+        style.background = .init(
+            enabled: true,
+            color: .init(r: 0, g: 0, b: 1, a: 0.7),
+            paddingX: 32,
+            paddingY: 16,
+            cornerRadius: 20,
+            offsetX: 4,
+            offsetY: -6,
+            outlineColor: .init(r: 1, g: 1, b: 1, a: 1),
+            outlineWidth: 3
+        )
+
+        let data = try JSONEncoder().encode(style)
+        let decoded = try JSONDecoder().decode(TextStyle.self, from: data)
+
+        #expect(decoded == style)
     }
 
     // MARK: - MediaManifest

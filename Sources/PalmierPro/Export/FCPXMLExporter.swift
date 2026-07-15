@@ -475,7 +475,7 @@ enum FCPXMLExporter {
 
             var textNodes: [FCPXMLNode] = [
                 FCPXMLNode(name: "text", children: [
-                    FCPXMLNode(name: "text-style", attributes: [("ref", styleId)], text: content),
+                    FCPXMLNode(name: "text-style", attributes: [("ref", styleId)], text: style.displayText(content)),
                 ]),
                 FCPXMLNode(name: "text-style-def", attributes: [("id", styleId)], children: [
                     FCPXMLNode(name: "text-style", attributes: textStyleAttributes(for: style)),
@@ -900,9 +900,8 @@ enum FCPXMLExporter {
                 ("alignment", style.alignment.rawValue),
             ]
             if style.border.enabled {
-                // glyphBorderStrokeWidth is NSAttributedString's percent-of-font-size convention.
                 attrs.append(("strokeColor", colorString(style.border.color)))
-                attrs.append(("strokeWidth", formatNumber(abs(TextStyle.glyphBorderStrokeWidth) / 100 * fontSize)))
+                attrs.append(("strokeWidth", formatNumber(max(0, style.border.width))))
             }
             return attrs
         }

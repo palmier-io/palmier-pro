@@ -388,7 +388,10 @@ struct InspectorView: View {
     func speedSection(clips: [Clip]) -> some View {
         if !clips.isEmpty {
             EditorPanelGroup("Playback", contentSpacing: AppTheme.Spacing.smMd) {
-                propertyRow(label: "Speed") {
+                propertyRow(
+                    label: "Speed",
+                    onReset: { editor.commitClipSpeed(ids: clips.map(\.id), newSpeed: 1) }
+                ) {
                     ScrubbableNumberField(
                         value: sharedClipValue(clips) { $0.speed },
                         range: 0.25...4.0,
@@ -414,6 +417,15 @@ struct InspectorView: View {
         editor.undoManager?.setActionName(actionName)
     }
 
+    func commitPropertiesToClips(
+        _ clips: [Clip],
+        actionName: String,
+        _ modify: (inout Clip) -> Void
+    ) {
+        editor.commitClipProperties(clipIds: clips.map(\.id), modify)
+        editor.undoManager?.setActionName(actionName)
+    }
+
     // MARK: - Transform Section
 
     @ViewBuilder
@@ -423,19 +435,17 @@ struct InspectorView: View {
             "Transform",
             isExpanded: $transformExpanded,
             onReset: {
-                commitToClips(clips, actionName: "Reset Transform") { c in
-                    editor.commitClipProperty(clipId: c.id) {
-                        $0.transform = editor.fitTransform(for: c)
-                        $0.opacity = 1
-                        $0.opacityTrack = nil
-                        $0.positionTrack = nil
-                        $0.scaleTrack = nil
-                        $0.rotationTrack = nil
-                        $0.fadeInFrames = 0
-                        $0.fadeOutFrames = 0
-                        $0.fadeInInterpolation = .linear
-                        $0.fadeOutInterpolation = .linear
-                    }
+                commitPropertiesToClips(clips, actionName: "Reset Transform") { clip in
+                    clip.transform = editor.fitTransform(for: clip)
+                    clip.opacity = 1
+                    clip.opacityTrack = nil
+                    clip.positionTrack = nil
+                    clip.scaleTrack = nil
+                    clip.rotationTrack = nil
+                    clip.fadeInFrames = 0
+                    clip.fadeOutFrames = 0
+                    clip.fadeInInterpolation = .linear
+                    clip.fadeOutInterpolation = .linear
                 }
             },
             headerAccessory: {
@@ -457,16 +467,59 @@ struct InspectorView: View {
     private func transformRows(clips: [Clip], spacing: CGFloat) -> some View {
         let single = clips.count == 1 ? clips.first : nil
         return VStack(alignment: .leading, spacing: spacing) {
-            animatableRow(label: "Position", clipId: single?.id, property: .position) {
+            animatableRow(
+                label: "Position",
+                clipId: single?.id,
+                property: .position,
+                onReset: {
+                    commitPropertiesToClips(clips, actionName: "Reset Position") { clip in
+                        clip.transform.centerX = Transform().centerX
+                        clip.transform.centerY = Transform().centerY
+                        clip.positionTrack = nil
+                    }
+                }
+            ) {
                 InspectorPositionFields(clips: clips)
             }
-            animatableRow(label: "Scale", clipId: single?.id, property: .scale) {
+            animatableRow(
+                label: "Scale",
+                clipId: single?.id,
+                property: .scale,
+                onReset: {
+                    commitPropertiesToClips(clips, actionName: "Reset Scale") { clip in
+                        let fitted = editor.fitTransform(for: clip)
+                        clip.transform.width = fitted.width
+                        clip.transform.height = fitted.height
+                        clip.scaleTrack = nil
+                    }
+                }
+            ) {
                 scaleScrubField(clips: clips)
             }
-            animatableRow(label: "Rotation", clipId: single?.id, property: .rotation) {
+            animatableRow(
+                label: "Rotation",
+                clipId: single?.id,
+                property: .rotation,
+                onReset: {
+                    commitPropertiesToClips(clips, actionName: "Reset Rotation") { clip in
+                        clip.transform.rotation = Transform().rotation
+                        clip.rotationTrack = nil
+                    }
+                }
+            ) {
                 rotationScrubField(clips: clips)
             }
-            animatableRow(label: "Opacity", clipId: single?.id, property: .opacity) {
+            animatableRow(
+                label: "Opacity",
+                clipId: single?.id,
+                property: .opacity,
+                onReset: {
+                    commitPropertiesToClips(clips, actionName: "Reset Opacity") { clip in
+                        clip.opacity = 1
+                        clip.opacityTrack = nil
+                    }
+                }
+            ) {
                 opacityScrubField(clips: clips)
             }
             cropRow(single: single)
@@ -481,13 +534,16 @@ struct InspectorView: View {
         label: String,
         clipId: String?,
         property: AnimatableProperty,
+        onReset: @escaping () -> Void,
         @ViewBuilder fields: @escaping () -> Fields
     ) -> some View {
-        propertyRow(label: label) {
+        propertyRow(label: label, onReset: onReset) {
             HStack(spacing: AppTheme.Spacing.sm) {
                 fields()
                 if let clipId {
                     keyframeControls(clipId: clipId, property: property)
+                } else {
+                    keyframeControlsPlaceholder
                 }
             }
         }
@@ -527,6 +583,10 @@ struct InspectorView: View {
                 if let f = next { editor.seekToFrame(f) }
             }
         }
+    }
+
+    private var keyframeControlsPlaceholder: some View {
+        Color.clear.frame(width: KeyframesMetrics.controlsColumnWidth)
     }
 
     private func keyframeNavButton(
@@ -617,24 +677,21 @@ struct InspectorView: View {
             .fixedSize()
     }
 
-    func resetButton(onReset: @escaping () -> Void, help: String?) -> some View {
-        Button(action: onReset) {
-            Image(systemName: "arrow.counterclockwise")
-                .font(.system(size: AppTheme.FontSize.sm))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-                .frame(width: AppTheme.IconSize.md, height: AppTheme.IconSize.md)
-                .hoverHighlight()
-        }
-        .buttonStyle(.plain)
-        .help(help ?? "Reset")
-    }
-
     func propertyRow<Trailing: View>(
         label: String,
+        onReset: (() -> Void)? = nil,
+        reservesKeyframeControls: Bool = false,
         @ViewBuilder trailing: @escaping () -> Trailing
     ) -> some View {
-        InspectorRow(label: label) {
-            trailing()
+        InspectorRow(label: label, onReset: onReset) {
+            if reservesKeyframeControls {
+                HStack(spacing: AppTheme.Spacing.sm) {
+                    trailing()
+                    keyframeControlsPlaceholder
+                }
+            } else {
+                trailing()
+            }
         }
     }
 
@@ -643,12 +700,20 @@ struct InspectorView: View {
     private func blendRow(clips: [Clip]) -> some View {
         let current = clips.first?.blendMode ?? .normal
         let mixed = clips.count > 1 && !clips.allSatisfy { ($0.blendMode ?? .normal) == current }
-        return propertyRow(label: "Blend") {
+        return propertyRow(
+            label: "Blend",
+            onReset: {
+                commitPropertiesToClips(clips, actionName: "Reset Blend Mode") {
+                    $0.blendMode = nil
+                }
+            },
+            reservesKeyframeControls: true
+        ) {
             Menu {
                 ForEach(BlendMode.allCases, id: \.self) { m in
                     Button(m.displayName) {
-                        commitToClips(clips, actionName: "Blend Mode") { c in
-                            editor.commitClipProperty(clipId: c.id) { $0.blendMode = (m == .normal ? nil : m) }
+                        commitPropertiesToClips(clips, actionName: "Blend Mode") {
+                            $0.blendMode = (m == .normal ? nil : m)
                         }
                     }
                 }
@@ -664,7 +729,16 @@ struct InspectorView: View {
     private func flipRow(clips: [Clip]) -> some View {
         let activeH = clips.first?.transform.flipHorizontal ?? false
         let activeV = clips.first?.transform.flipVertical ?? false
-        propertyRow(label: "Flip") {
+        propertyRow(
+            label: "Flip",
+            onReset: {
+                commitPropertiesToClips(clips, actionName: "Reset Flip") { clip in
+                    clip.transform.flipHorizontal = false
+                    clip.transform.flipVertical = false
+                }
+            },
+            reservesKeyframeControls: true
+        ) {
             HStack(spacing: AppTheme.Spacing.xs) {
                 iconToggleButton(
                     systemName: "arrow.left.and.right",
@@ -672,8 +746,8 @@ struct InspectorView: View {
                     help: activeH ? "Remove horizontal flip" : "Flip horizontally"
                 ) {
                     let newValue = !activeH
-                    commitToClips(clips, actionName: "Flip Horizontal") { c in
-                        editor.commitClipProperty(clipId: c.id) { $0.transform.flipHorizontal = newValue }
+                    commitPropertiesToClips(clips, actionName: "Flip Horizontal") {
+                        $0.transform.flipHorizontal = newValue
                     }
                 }
                 iconToggleButton(
@@ -682,8 +756,8 @@ struct InspectorView: View {
                     help: activeV ? "Remove vertical flip" : "Flip vertically"
                 ) {
                     let newValue = !activeV
-                    commitToClips(clips, actionName: "Flip Vertical") { c in
-                        editor.commitClipProperty(clipId: c.id) { $0.transform.flipVertical = newValue }
+                    commitPropertiesToClips(clips, actionName: "Flip Vertical") {
+                        $0.transform.flipVertical = newValue
                     }
                 }
             }
@@ -718,7 +792,17 @@ struct InspectorView: View {
     private func cropRow(single: Clip?) -> some View {
         let editing = editor.cropEditingActive && single != nil
         let disabled = single == nil
-        propertyRow(label: "Crop") {
+        propertyRow(
+            label: "Crop",
+            onReset: {
+                guard let single else { return }
+                editor.cropAspectLock = .free
+                editor.commitClipProperty(clipId: single.id) {
+                    $0.crop = Crop()
+                    $0.cropTrack = nil
+                }
+            }
+        ) {
             HStack(spacing: AppTheme.Spacing.sm) {
                 iconToggleButton(
                     systemName: "crop",
@@ -733,6 +817,8 @@ struct InspectorView: View {
                 cropMenu(single: single)
                 if let cid = single?.id {
                     keyframeControls(clipId: cid, property: .crop)
+                } else {
+                    keyframeControlsPlaceholder
                 }
             }
         }

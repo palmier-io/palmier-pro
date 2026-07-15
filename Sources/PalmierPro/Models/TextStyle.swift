@@ -3,23 +3,46 @@ import CoreText
 import SwiftUI
 
 struct TextStyle: Codable, Sendable, Equatable, Hashable {
-    static let glyphBorderStrokeWidth: Double = -4
-
     var fontName: String = "Helvetica-Bold"
     var fontSize: Double = 96
     var fontScale: Double = 1.0
+    var tracking: Double = 0
+    var lineSpacing: Double = 0
+    var fontCase: FontCase = .mixed
     var isBold: Bool = true
     var isItalic: Bool = false
     var color: RGBA = RGBA()
     var alignment: Alignment = .center
     var shadow: Shadow = Shadow()
-    var background: Fill = Fill(enabled: false, color: RGBA(r: 0, g: 0, b: 0, a: 0.6))
-    var border: Fill = Fill(enabled: false, color: RGBA(r: 0, g: 0, b: 0, a: 1))
+    var background: Background = Background()
+    var border: Outline = Outline()
 
     enum Alignment: String, Codable, Sendable, CaseIterable, Hashable {
         case left
         case center
         case right
+    }
+
+    enum FontCase: String, Codable, Sendable, CaseIterable, Hashable {
+        case mixed
+        case uppercase
+        case lowercase
+
+        var label: String {
+            switch self {
+            case .mixed: "Mixed"
+            case .uppercase: "UPPERCASE"
+            case .lowercase: "lowercase"
+            }
+        }
+
+        func apply(to text: String) -> String {
+            switch self {
+            case .mixed: text
+            case .uppercase: text.uppercased()
+            case .lowercase: text.lowercased()
+            }
+        }
     }
 
     struct RGBA: Codable, Sendable, Equatable, Hashable {
@@ -39,14 +62,86 @@ struct TextStyle: Codable, Sendable, Equatable, Hashable {
         var blur: Double = 6
     }
 
-    /// Toggleable solid color for text box fill and glyph outline.
-    struct Fill: Codable, Sendable, Equatable, Hashable {
+    struct Outline: Codable, Sendable, Equatable, Hashable {
         var enabled: Bool = false
-        var color: RGBA = RGBA()
+        var color: RGBA = RGBA(r: 0, g: 0, b: 0, a: 1)
+        /// Width in reference-canvas points.
+        var width: Double = 4
+
+        init(enabled: Bool = false, color: RGBA = RGBA(r: 0, g: 0, b: 0, a: 1), width: Double = 4) {
+            self.enabled = enabled
+            self.color = color
+            self.width = width
+        }
+
+        private enum CodingKeys: String, CodingKey { case enabled, color, width }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.init(
+                enabled: (try? c.decode(Bool.self, forKey: .enabled)) ?? false,
+                color: (try? c.decode(RGBA.self, forKey: .color)) ?? RGBA(r: 0, g: 0, b: 0, a: 1),
+                width: (try? c.decode(Double.self, forKey: .width)) ?? 4
+            )
+        }
+    }
+
+    struct Background: Codable, Sendable, Equatable, Hashable {
+        var enabled: Bool = false
+        var color: RGBA = RGBA(r: 0, g: 0, b: 0, a: 0.6)
+        var paddingX: Double = 0
+        var paddingY: Double = 0
+        var cornerRadius: Double = 0
+        var offsetX: Double = 0
+        var offsetY: Double = 0
+        var outlineColor: RGBA = RGBA(r: 0, g: 0, b: 0, a: 1)
+        var outlineWidth: Double = 0
+
+        init(
+            enabled: Bool = false,
+            color: RGBA = RGBA(r: 0, g: 0, b: 0, a: 0.6),
+            paddingX: Double = 0,
+            paddingY: Double = 0,
+            cornerRadius: Double = 0,
+            offsetX: Double = 0,
+            offsetY: Double = 0,
+            outlineColor: RGBA = RGBA(r: 0, g: 0, b: 0, a: 1),
+            outlineWidth: Double = 0
+        ) {
+            self.enabled = enabled
+            self.color = color
+            self.paddingX = paddingX
+            self.paddingY = paddingY
+            self.cornerRadius = cornerRadius
+            self.offsetX = offsetX
+            self.offsetY = offsetY
+            self.outlineColor = outlineColor
+            self.outlineWidth = outlineWidth
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case enabled, color, paddingX, paddingY, cornerRadius, offsetX, offsetY, outlineColor, outlineWidth
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.init(
+                enabled: (try? c.decode(Bool.self, forKey: .enabled)) ?? false,
+                color: (try? c.decode(RGBA.self, forKey: .color)) ?? RGBA(r: 0, g: 0, b: 0, a: 0.6),
+                paddingX: (try? c.decode(Double.self, forKey: .paddingX)) ?? 0,
+                paddingY: (try? c.decode(Double.self, forKey: .paddingY)) ?? 0,
+                cornerRadius: (try? c.decode(Double.self, forKey: .cornerRadius)) ?? 0,
+                offsetX: (try? c.decode(Double.self, forKey: .offsetX)) ?? 0,
+                offsetY: (try? c.decode(Double.self, forKey: .offsetY)) ?? 0,
+                outlineColor: (try? c.decode(RGBA.self, forKey: .outlineColor)) ?? RGBA(r: 0, g: 0, b: 0, a: 1),
+                outlineWidth: (try? c.decode(Double.self, forKey: .outlineWidth)) ?? 0
+            )
+        }
     }
 
     private enum CodingKeys: String, CodingKey {
-        case fontName, fontSize, fontScale, isBold, isItalic, color, alignment, shadow, background, border
+        case fontName, fontSize, fontScale, tracking, lineSpacing, fontCase
+        case isBold, isItalic, color, alignment, shadow, background, border
     }
 }
 
@@ -61,13 +156,16 @@ extension TextStyle {
             fontName: fontName,
             fontSize: fontSize,
             fontScale: (try? c.decode(Double.self, forKey: .fontScale)) ?? 1.0,
+            tracking: (try? c.decode(Double.self, forKey: .tracking)) ?? 0,
+            lineSpacing: (try? c.decode(Double.self, forKey: .lineSpacing)) ?? 0,
+            fontCase: (try? c.decode(FontCase.self, forKey: .fontCase)) ?? .mixed,
             isBold: (try? c.decode(Bool.self, forKey: .isBold)) ?? inferredTraits.contains(.traitBold),
             isItalic: (try? c.decode(Bool.self, forKey: .isItalic)) ?? inferredTraits.contains(.traitItalic),
             color: (try? c.decode(RGBA.self, forKey: .color)) ?? RGBA(),
             alignment: (try? c.decode(Alignment.self, forKey: .alignment)) ?? .center,
             shadow: (try? c.decode(Shadow.self, forKey: .shadow)) ?? Shadow(),
-            background: (try? c.decode(Fill.self, forKey: .background)) ?? Fill(enabled: false, color: RGBA(r: 0, g: 0, b: 0, a: 0.6)),
-            border: (try? c.decode(Fill.self, forKey: .border)) ?? Fill(enabled: false, color: RGBA(r: 0, g: 0, b: 0, a: 1))
+            background: (try? c.decode(Background.self, forKey: .background)) ?? Background(),
+            border: (try? c.decode(Outline.self, forKey: .border)) ?? Outline()
         )
     }
 }
@@ -75,6 +173,12 @@ extension TextStyle {
 // MARK: - Rendering helpers
 
 extension TextStyle.RGBA {
+    mutating func setRGB(from color: Self) {
+        r = color.r
+        g = color.g
+        b = color.b
+    }
+
     var nsColor: NSColor {
         NSColor(
             srgbRed: CGFloat(r),
@@ -134,33 +238,49 @@ extension TextStyle {
 
     var nsColor: NSColor { color.nsColor }
 
-    var paragraphStyle: NSParagraphStyle {
+    func paragraphStyle(size: CGFloat, alignment override: NSTextAlignment? = nil) -> NSParagraphStyle {
         let p = NSMutableParagraphStyle()
-        switch alignment {
-        case .left: p.alignment = .left
-        case .center: p.alignment = .center
-        case .right: p.alignment = .right
+        if let override {
+            p.alignment = override
+        } else {
+            switch alignment {
+            case .left: p.alignment = .left
+            case .center: p.alignment = .center
+            case .right: p.alignment = .right
+            }
         }
         p.lineBreakMode = .byWordWrapping
+        let scaledSpacing = lineSpacing * Double(size) / max(1, fontSize * fontScale)
+        p.lineSpacing = CGFloat(scaledSpacing.isFinite ? scaledSpacing : 0)
         return p
+    }
+
+    func displayText(_ text: String) -> String {
+        fontCase.apply(to: text)
     }
 
     /// `includeColor: false` for bounding measurement (color doesn't affect size).
     func attributes(size: CGFloat, includeColor: Bool = true) -> [NSAttributedString.Key: Any] {
         var attrs: [NSAttributedString.Key: Any] = [
             .font: resolvedFont(size: size),
-            .paragraphStyle: paragraphStyle,
+            .paragraphStyle: paragraphStyle(size: size),
+            .kern: tracking * Double(size) / max(1, fontSize * fontScale),
         ]
         if includeColor { attrs[.foregroundColor] = nsColor }
         if border.enabled {
-            attrs[.strokeWidth] = NSNumber(value: Self.glyphBorderStrokeWidth)
+            attrs[.strokeWidth] = NSNumber(value: glyphBorderStrokePercentage)
             if includeColor { attrs[.strokeColor] = border.color.nsColor }
         }
         return attrs
     }
 
-    static func glyphBorderPadding(fontSize: CGFloat) -> CGFloat {
-        ceil(fontSize * CGFloat(abs(glyphBorderStrokeWidth)) / 100)
+    func glyphBorderPadding(fontSize: CGFloat) -> CGFloat {
+        ceil(fontSize * CGFloat(abs(glyphBorderStrokePercentage)) / 100)
+    }
+
+    private var glyphBorderStrokePercentage: Double {
+        let unscaledFontSize = max(1, fontSize * fontScale)
+        return -100 * max(0, border.width) / unscaledFontSize
     }
 
     private static func font(_ font: NSFont, size: CGFloat, bold: Bool, italic: Bool) -> NSFont {

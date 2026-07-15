@@ -20,18 +20,18 @@ extension EditorViewModel {
         case auto, upper, lower
 
         var label: String {
-            switch self {
-            case .auto: "Auto"
-            case .upper: "UPPERCASE"
-            case .lower: "lowercase"
-            }
+            self == .auto ? "Auto" : fontCase.label
         }
 
         func apply(_ s: String) -> String {
+            fontCase.apply(to: s)
+        }
+
+        private var fontCase: TextStyle.FontCase {
             switch self {
-            case .auto: s
-            case .upper: s.uppercased()
-            case .lower: s.lowercased()
+            case .auto: .mixed
+            case .upper: .uppercase
+            case .lower: .lowercase
             }
         }
     }

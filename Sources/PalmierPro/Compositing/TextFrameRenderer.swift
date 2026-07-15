@@ -9,20 +9,21 @@ enum TextFrameRenderer {
 
     static func image(clip: Clip, frame: Int, renderSize: CGSize) -> CIImage? {
         guard renderSize.width >= 1, renderSize.height >= 1 else { return nil }
-        let content = clip.textContent ?? ""
-        guard !content.isEmpty else { return nil }
         let style = clip.textStyle ?? TextStyle()
+        let content = style.displayText(clip.textContent ?? "")
+        guard !content.isEmpty else { return nil }
         let box = boxRect(clip.transform, renderSize)
+        let boxes = layoutBoxes(style: style, box: box, renderSize: renderSize)
         let fontSize = CGFloat(style.fontSize * style.fontScale) * (renderSize.height / TextLayout.referenceCanvasHeight)
         let anim = clip.textAnimation
 
         if let anim, anim.isActive {
             switch anim.preset.renderMode {
             case .perWord:
-                return renderPerWord(clip: clip, content: content, style: style, box: box,
+                return renderPerWord(clip: clip, content: content, style: style, boxes: boxes,
                                      fontSize: fontSize, anim: anim, frame: frame, renderSize: renderSize)
             case .typewriter:
-                return renderTypewriter(clip: clip, content: content, style: style, box: box,
+                return renderTypewriter(clip: clip, content: content, style: style, boxes: boxes,
                                         fontSize: fontSize, frame: frame, renderSize: renderSize)
             case .entrance:
                 break
@@ -31,7 +32,8 @@ enum TextFrameRenderer {
 
         // Static base is frame-independent → cache it. Entrance reuses it under a transform.
         guard let base = cachedStatic(content: content, style: style, transform: clip.transform,
-                                      box: box, fontSize: fontSize, renderSize: renderSize) else { return nil }
+                                      boxes: boxes,
+                                      fontSize: fontSize, renderSize: renderSize) else { return nil }
         guard let anim, anim.isActive else { return base }
         return applyEntrance(base, TextAnimator.clipEntry(anim, rel: frame - clip.startFrame),
                              box: box, renderSize: renderSize)
@@ -47,8 +49,25 @@ enum TextFrameRenderer {
                       width: max(1, t.width * size.width), height: h)
     }
 
+    private struct LayoutBoxes {
+        let text: CGRect
+        let background: CGRect
+    }
+
+    private static func layoutBoxes(style: TextStyle, box: CGRect, renderSize: CGSize) -> LayoutBoxes {
+        guard style.background.enabled else { return LayoutBoxes(text: box, background: box) }
+        let scale = renderSize.height / TextLayout.referenceCanvasHeight
+        let dx = max(0, CGFloat(style.background.paddingX) * scale)
+        let dy = max(0, CGFloat(style.background.paddingY) * scale)
+        let inset = box.insetBy(dx: dx, dy: dy)
+        let text = inset.width >= 1 && inset.height >= 1
+            ? inset
+            : CGRect(x: box.midX - 0.5, y: box.midY - 0.5, width: 1, height: 1)
+        return LayoutBoxes(text: text, background: box)
+    }
+
     /// A render-sized context with the box fill and shadow already applied.
-    private static func beginContext(style: TextStyle, box: CGRect, renderSize: CGSize) -> CGContext? {
+    private static func beginContext(style: TextStyle, backgroundBox: CGRect, renderSize: CGSize) -> CGContext? {
         guard let ctx = CGContext(
             data: nil, width: Int(renderSize.width.rounded()), height: Int(renderSize.height.rounded()),
             bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
@@ -60,7 +79,7 @@ enum TextFrameRenderer {
         ctx.setShouldSmoothFonts(true)
         ctx.setAllowsFontSubpixelPositioning(true)
         ctx.setShouldSubpixelPositionFonts(true)
-        drawBox(ctx, style: style, box: box)
+        drawBox(ctx, style: style, box: backgroundBox, renderSize: renderSize)
         applyShadow(ctx, style: style, renderSize: renderSize)
         return ctx
     }
@@ -82,11 +101,12 @@ enum TextFrameRenderer {
     // MARK: - Static
 
     private static func cachedStatic(content: String, style: TextStyle, transform: Transform,
-                                     box: CGRect, fontSize: CGFloat, renderSize: CGSize) -> CIImage? {
+                                     boxes: LayoutBoxes,
+                                     fontSize: CGFloat, renderSize: CGSize) -> CIImage? {
         let key = signature(content, style, transform, renderSize)
         if let cached = cache.object(forKey: key) { return cached }
-        guard let ctx = beginContext(style: style, box: box, renderSize: renderSize) else { return nil }
-        CTFrameDraw(layoutFrame(NSAttributedString(string: content, attributes: style.attributes(size: fontSize)), box: box), ctx)
+        guard let ctx = beginContext(style: style, backgroundBox: boxes.background, renderSize: renderSize) else { return nil }
+        CTFrameDraw(layoutFrame(NSAttributedString(string: content, attributes: style.attributes(size: fontSize)), box: boxes.text), ctx)
         guard let image = finish(ctx) else { return nil }
         cache.setObject(image, forKey: key)
         return image
@@ -119,12 +139,12 @@ enum TextFrameRenderer {
 
     // MARK: - Per-word
 
-    private static func renderPerWord(clip: Clip, content: String, style: TextStyle, box: CGRect,
+    private static func renderPerWord(clip: Clip, content: String, style: TextStyle, boxes: LayoutBoxes,
                                       fontSize: CGFloat, anim: TextAnimation, frame: Int, renderSize: CGSize) -> CIImage? {
-        guard let ctx = beginContext(style: style, box: box, renderSize: renderSize) else { return nil }
+        guard let ctx = beginContext(style: style, backgroundBox: boxes.background, renderSize: renderSize) else { return nil }
 
         let attr = NSAttributedString(string: content, attributes: style.attributes(size: fontSize))
-        let ctFrame = layoutFrame(attr, box: box)
+        let ctFrame = layoutFrame(attr, box: boxes.text)
         let lines = CTFrameGetLines(ctFrame) as? [CTLine] ?? []
         var origins = [CGPoint](repeating: .zero, count: lines.count)
         CTFrameGetLineOrigins(ctFrame, CFRange(location: 0, length: 0), &origins)
@@ -145,7 +165,7 @@ enum TextFrameRenderer {
 
                 let startOff = CTLineGetOffsetForStringIndex(line, tok.range.location, nil)
                 let endOff = CTLineGetOffsetForStringIndex(line, tok.range.location + tok.range.length, nil)
-                let penX = box.minX + origins[li].x + startOff
+                let penX = boxes.text.minX + origins[li].x + startOff
                 let penY = origins[li].y
                 let wWidth = endOff - startOff
 
@@ -190,9 +210,9 @@ enum TextFrameRenderer {
 
     // MARK: - Typewriter (whole-clip character reveal)
 
-    private static func renderTypewriter(clip: Clip, content: String, style: TextStyle, box: CGRect,
+    private static func renderTypewriter(clip: Clip, content: String, style: TextStyle, boxes: LayoutBoxes,
                                          fontSize: CGFloat, frame: Int, renderSize: CGSize) -> CIImage? {
-        guard let ctx = beginContext(style: style, box: box, renderSize: renderSize) else { return nil }
+        guard let ctx = beginContext(style: style, backgroundBox: boxes.background, renderSize: renderSize) else { return nil }
         let rel = frame - clip.startFrame
         let ns = content as NSString
 
@@ -218,11 +238,8 @@ enum TextFrameRenderer {
         guard !visible.isEmpty else { return finish(ctx) }
         // Left-anchor so the text reveals rightward in place rather than re-centering as it grows.
         var attrs = style.attributes(size: fontSize)
-        let para = NSMutableParagraphStyle()
-        para.alignment = .left
-        para.lineBreakMode = .byWordWrapping
-        attrs[.paragraphStyle] = para
-        CTFrameDraw(layoutFrame(NSAttributedString(string: visible, attributes: attrs), box: box), ctx)
+        attrs[.paragraphStyle] = style.paragraphStyle(size: fontSize, alignment: .left)
+        CTFrameDraw(layoutFrame(NSAttributedString(string: visible, attributes: attrs), box: boxes.text), ctx)
         return finish(ctx)
     }
 
@@ -402,10 +419,35 @@ enum TextFrameRenderer {
 
     // MARK: - Shared drawing
 
-    private static func drawBox(_ ctx: CGContext, style: TextStyle, box: CGRect) {
-        if style.background.enabled {
-            ctx.setFillColor(cgColor(style.background.color))
-            ctx.fill(box)
+    private static func drawBox(_ ctx: CGContext, style: TextStyle, box: CGRect, renderSize: CGSize) {
+        guard style.background.enabled else { return }
+        let scale = renderSize.height / TextLayout.referenceCanvasHeight
+        let background = style.background
+        let rect = box.offsetBy(
+            dx: CGFloat(background.offsetX) * scale,
+            dy: -CGFloat(background.offsetY) * scale
+        )
+        let radius = min(
+            max(0, CGFloat(background.cornerRadius) * scale),
+            min(rect.width, rect.height) / 2
+        )
+        let path = CGPath(
+            roundedRect: rect,
+            cornerWidth: radius,
+            cornerHeight: radius,
+            transform: nil
+        )
+
+        if background.color.a > 0 {
+            ctx.addPath(path)
+            ctx.setFillColor(cgColor(background.color))
+            ctx.fillPath()
+        }
+        if background.outlineWidth > 0, background.outlineColor.a > 0 {
+            ctx.addPath(path)
+            ctx.setStrokeColor(cgColor(background.outlineColor))
+            ctx.setLineWidth(CGFloat(background.outlineWidth) * scale)
+            ctx.strokePath()
         }
     }
 

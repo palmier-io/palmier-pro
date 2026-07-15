@@ -156,9 +156,9 @@ extension InspectorView {
                 sectionTitleLabel(title: title)
                 Spacer(minLength: AppTheme.Spacing.sm)
                 if hasEffects {
-                    resetButton(
-                        onReset: { resetEffects(effectIds, clips: clips, actionName: "Reset \(title)") },
-                        help: "Reset \(title.lowercased())"
+                    EditorResetButton(
+                        title: title,
+                        action: { resetEffects(effectIds, clips: clips, actionName: "Reset \(title)") }
                     )
                 }
                 Toggle("", isOn: Binding(
