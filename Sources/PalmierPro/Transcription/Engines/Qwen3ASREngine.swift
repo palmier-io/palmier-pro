@@ -126,13 +126,39 @@ actor Qwen3ASREngine {
                 guard let start = word.start, let end = word.end else { return false }
                 return end > chunk.start - 1.0 && start < chunk.end + 1.0
             }
-            let chunkWords = Self.alignWords(
+            var aligned = Self.alignWords(
                 pieces: pieces, anchors: anchors, chunkStart: chunk.start, chunkEnd: chunk.end)
-            words.append(contentsOf: chunkWords)
+
+            // Rescue pass: on code-switched audio Whisper's auto-language pass translates
+            // CJK speech into English, leaving those runs with no anchors (uniform,
+            // fabricated word times). Re-run Whisper on just this chunk with the language
+            // forced to suppress translation, and keep whichever alignment anchors more.
+            if let language = Self.rescueLanguage(pieces: pieces, alignment: aligned) {
+                let sampleStart = max(0, Int(chunk.start * Double(EngineAudio.sampleRate)))
+                let sampleEnd = min(samples.count, Int(chunk.end * Double(EngineAudio.sampleRate)))
+                if sampleStart < sampleEnd,
+                   let rescue = try? await WhisperKitEngine.shared.transcribe(
+                       samples: Array(samples[sampleStart..<sampleEnd]), language: language) {
+                    let rescueAnchors = Self.expandCJKAnchors(rescue.words).map { word in
+                        TranscriptionWord(
+                            text: word.text,
+                            start: word.start.map { $0 + chunk.start },
+                            end: word.end.map { $0 + chunk.start })
+                    }
+                    let rescued = Self.alignWords(
+                        pieces: pieces, anchors: rescueAnchors,
+                        chunkStart: chunk.start, chunkEnd: chunk.end)
+                    if rescued.anchoredCount > aligned.anchoredCount {
+                        aligned = rescued
+                    }
+                }
+            }
+
+            words.append(contentsOf: aligned.words)
             segments.append(TranscriptionSegment(
                 text: chunk.text,
-                start: chunkWords.first?.start ?? chunk.start,
-                end: chunkWords.last?.end ?? chunk.end
+                start: aligned.words.first?.start ?? chunk.start,
+                end: aligned.words.last?.end ?? chunk.end
             ))
         }
 
@@ -221,7 +247,10 @@ actor Qwen3ASREngine {
     private static func expandCJKAnchors(_ words: [TranscriptionWord]) -> [TranscriptionWord] {
         var expanded: [TranscriptionWord] = []
         for word in words {
-            let cjkScalars = word.text.unicodeScalars.filter { (0x2E80...0x9FFF).contains(Int($0.value)) }
+            let cjkScalars = word.text.unicodeScalars.filter {
+                let value = Int($0.value)
+                return (0x2E80...0x9FFF).contains(value) && !(0x3000...0x303F).contains(value)
+            }
             guard cjkScalars.count > 1, let start = word.start, let end = word.end else {
                 expanded.append(word)
                 continue
@@ -239,18 +268,58 @@ actor Qwen3ASREngine {
     }
 
     /// Lowercased, punctuation-free comparison key ("" for punctuation-only pieces).
+    /// CJK characters normalize to toneless pinyin so homophone disagreements between
+    /// Qwen3 and Whisper (的/得, 那/哪) still anchor.
     private static func matchKey(_ piece: String) -> String {
-        String(piece.lowercased().unicodeScalars.filter {
-            CharacterSet.alphanumerics.contains($0) || (0x2E80...0x9FFF).contains(Int($0.value))
+        let filtered = String(piece.lowercased().unicodeScalars.filter {
+            let value = Int($0.value)
+            if (0x3000...0x303F).contains(value) { return false }  // CJK punctuation (。、「」…)
+            return CharacterSet.alphanumerics.contains($0) || (0x2E80...0x9FFF).contains(value)
         })
+        let isCJK = filtered.unicodeScalars.contains { (0x2E80...0x9FFF).contains(Int($0.value)) }
+        guard isCJK else { return filtered }
+        let latin = filtered.applyingTransform(.toLatin, reverse: false) ?? filtered
+        return (latin.applyingTransform(.stripDiacritics, reverse: false) ?? latin)
+            .replacingOccurrences(of: " ", with: "")
+            .lowercased()
+    }
+
+    /// A chunk qualifies for a forced-language Whisper rescue when its CJK pieces
+    /// specifically are poorly anchored (English anchors in a mixed chunk don't help
+    /// a translated-away Mandarin run). Returns the Whisper language code by script.
+    private static func rescueLanguage(
+        pieces: [String], alignment: (words: [TranscriptionWord], anchoredCount: Int, anchoredPieces: Set<Int>)
+    ) -> String? {
+        var han = 0, kana = 0, hangul = 0
+        var cjkPieceIndices: [Int] = []
+        for (index, piece) in pieces.enumerated() {
+            var isCJKPiece = false
+            for scalar in piece.unicodeScalars {
+                switch Int(scalar.value) {
+                case 0x4E00...0x9FFF, 0xF900...0xFAFF: han += 1; isCJKPiece = true
+                case 0x3040...0x30FF: kana += 1; isCJKPiece = true
+                case 0xAC00...0xD7AF: hangul += 1; isCJKPiece = true
+                default: break
+                }
+            }
+            if isCJKPiece { cjkPieceIndices.append(index) }
+        }
+        guard cjkPieceIndices.count >= 5 else { return nil }
+        let anchoredCJK = cjkPieceIndices.filter { alignment.anchoredPieces.contains($0) }.count
+        let coverage = Double(anchoredCJK) / Double(cjkPieceIndices.count)
+        guard coverage < 0.5 else { return nil }
+        if kana > han { return "ja" }
+        if hangul > han { return "ko" }
+        return "zh"
     }
 
     /// Pin Qwen3 pieces to Whisper's real timestamps where the transcripts agree
     /// (longest-common-subsequence on normalized text), interpolating between anchors.
+    /// Punctuation-only pieces get zero duration (a real aligner cannot time silence).
     private static func alignWords(
         pieces: [String], anchors: [TranscriptionWord], chunkStart: Double, chunkEnd: Double
-    ) -> [TranscriptionWord] {
-        guard !pieces.isEmpty else { return [] }
+    ) -> (words: [TranscriptionWord], anchoredCount: Int, anchoredPieces: Set<Int>) {
+        guard !pieces.isEmpty else { return ([], 0, []) }
         let pieceKeys = pieces.map(matchKey)
         let anchorKeys = anchors.map { matchKey($0.text) }
 
@@ -300,13 +369,16 @@ actor Qwen3ASREngine {
                 index += 1
                 continue
             }
-            // Unanchored run: interpolate between the previous anchor end and the next anchor start.
+            // Unanchored run: interpolate between the previous anchor end and the next anchor
+            // start. Punctuation (empty match key) is silent — zero duration, zero weight.
             var runEnd = index
             while runEnd < pieces.count && starts[runEnd] == nil { runEnd += 1 }
             let windowEnd = runEnd < pieces.count ? (starts[runEnd] ?? chunkEnd) : chunkEnd
             let window = max(0.1, windowEnd - lastEnd)
-            let runWeights = (index..<runEnd).map { Double(max(1, pieces[$0].count)) }
-            let totalWeight = runWeights.reduce(0, +)
+            let runWeights = (index..<runEnd).map { i in
+                pieceKeys[i].isEmpty ? 0.0 : Double(max(1, pieces[i].count))
+            }
+            let totalWeight = max(runWeights.reduce(0, +), 0.001)
             var cursor = lastEnd
             for (offset, weight) in runWeights.enumerated() {
                 let duration = window * weight / totalWeight
@@ -317,6 +389,6 @@ actor Qwen3ASREngine {
             lastEnd = cursor
             index = runEnd
         }
-        return result
+        return (result, matched.count, Set(matched.map(\.piece)))
     }
 }

@@ -38,5 +38,39 @@ final class Qwen3ASREngineTests: XCTestCase {
         for word in result.words.prefix(12) {
             print(String(format: "  %5.2f–%5.2f  %@", word.start ?? -1, word.end ?? -1, word.text))
         }
+
+        // Regression (bug report 2026-07-15): punctuation is silent — near-zero duration.
+        for word in result.words where Qwen3ASREngineTests.isPunctuation(word.text) {
+            let duration = (word.end ?? 0) - (word.start ?? 0)
+            XCTAssertLessThanOrEqual(duration, 0.05, "punctuation '\(word.text)' allocated speech time")
+        }
+
+        // Regression: long CJK runs must not be uniformly divided (stdev of durations > 0).
+        var run: [Double] = []
+        func checkRun() {
+            guard run.count >= 14 else { run = []; return }
+            let mean = run.reduce(0, +) / Double(run.count)
+            let variance = run.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(run.count)
+            XCTAssertGreaterThan(variance.squareRoot(), 0.001,
+                "CJK run of \(run.count) words has uniform durations — interpolation, not alignment")
+            run = []
+        }
+        for word in result.words {
+            let isCJK = word.text.unicodeScalars.contains { (0x4E00...0x9FFF).contains(Int($0.value)) }
+            if isCJK, let start = word.start, let end = word.end {
+                run.append(end - start)
+            } else if !Qwen3ASREngineTests.isPunctuation(word.text) {
+                checkRun()
+            }
+        }
+        checkRun()
+    }
+
+    private static func isPunctuation(_ text: String) -> Bool {
+        !text.unicodeScalars.contains {
+            let value = Int($0.value)
+            if (0x3000...0x303F).contains(value) { return false }
+            return CharacterSet.alphanumerics.contains($0) || (0x2E80...0x9FFF).contains(value)
+        }
     }
 }
