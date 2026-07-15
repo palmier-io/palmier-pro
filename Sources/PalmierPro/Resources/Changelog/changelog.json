@@ -2,14 +2,25 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.6.4",
-      "date": "2026-07-09",
+      "version": "0.6.9",
+      "date": "2026-07-14",
       "sections": [
         {
           "heading": "New",
           "items": [
-            "Multicam editing: Agent can now work with multiple camera footage with better tools. Especially useful for podcast or other multi-camera setups.",
-            "10-bit HDR export: New HEVC 10-bit HDR export option."
+            "More Text Styling: Agent can now have full control over text styling."
+          ]
+        },
+        {
+          "heading": "Improved",
+          "items": [
+            "Better Inspector panel UI"
+          ]
+        },
+        {
+          "heading": "Fixed",
+          "items": [
+            "Fix agent undo causing crashes."
           ]
         }
       ]
