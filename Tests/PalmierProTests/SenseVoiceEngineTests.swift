@@ -49,5 +49,18 @@ final class Qwen3ASREngineTests: XCTestCase {
         XCTAssertTrue(hasLatin, "transcript lost the English: \(text)")
         XCTAssertFalse(result.words.isEmpty, "no words")
         XCTAssertFalse(result.segments.isEmpty, "no segments")
+
+        // Word times must be monotonic and inside the audio duration.
+        var previousStart = -1.0
+        for word in result.words {
+            let start = try XCTUnwrap(word.start)
+            let end = try XCTUnwrap(word.end)
+            XCTAssertGreaterThanOrEqual(start, previousStart - 0.01, "non-monotonic at '\(word.text)'")
+            XCTAssertGreaterThanOrEqual(end, start)
+            previousStart = start
+        }
+        for word in result.words.prefix(12) {
+            print(String(format: "  %5.2f–%5.2f  %@", word.start ?? -1, word.end ?? -1, word.text))
+        }
     }
 }
