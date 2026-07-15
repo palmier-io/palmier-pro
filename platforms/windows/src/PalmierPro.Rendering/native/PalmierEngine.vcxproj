@@ -60,7 +60,7 @@
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>PALMIERENGINE_EXPORTS;_DEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>PALMIERENGINE_EXPORTS;_DEBUG;_WINDOWS;_USRDLL;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <SDLCheck>true</SDLCheck>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
@@ -80,7 +80,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>PALMIERENGINE_EXPORTS;NDEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>PALMIERENGINE_EXPORTS;NDEBUG;_WINDOWS;_USRDLL;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <SDLCheck>true</SDLCheck>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -108,6 +108,10 @@
     <ClCompile Include="MediaCache.cpp" />
     <ClCompile Include="TimelineRegistry.cpp" />
     <ClCompile Include="TimelineSession.cpp" />
+    <ClCompile Include="EffectRegistry.cpp" />
+    <ClCompile Include="CubeLutParser.cpp" />
+    <ClCompile Include="CurveMath.cpp" />
+    <ClCompile Include="GpuCompositor.cpp" />
     <!-- Vendored amalgamated single-source build (native/third_party/simdjson/) — reduced
          warning level, this translation unit is upstream code, not ours to fix warnings in. -->
     <ClCompile Include="third_party\simdjson\simdjson.cpp">
@@ -132,6 +136,36 @@
     <ClInclude Include="TimelineRegistry.h" />
     <ClInclude Include="TimelineSession.h" />
     <ClInclude Include="third_party\simdjson\simdjson.h" />
+    <ClInclude Include="Keyframe.h" />
+    <ClInclude Include="ClipGeometry.h" />
+    <ClInclude Include="ColorWheels.h" />
+    <ClInclude Include="CurveMath.h" />
+    <ClInclude Include="CubeLutParser.h" />
+    <ClInclude Include="EffectRegistry.h" />
+    <ClInclude Include="GpuCompositor.h" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Not compiled — runtime D3DCompile sources, deployed next to PalmierEngine.dll via
+         PalmierPro.Rendering.csproj's Content items (see GpuCompositor.cpp's
+         ResolveShadersDir). Listed here only so they show up in the VS solution explorer. -->
+    <None Include="shaders\Common.hlsl" />
+    <None Include="shaders\Fullscreen.hlsl" />
+    <None Include="shaders\Ingest.hlsl" />
+    <None Include="shaders\Levels.hlsl" />
+    <None Include="shaders\HighlightsShadows.hlsl" />
+    <None Include="shaders\Wheels.hlsl" />
+    <None Include="shaders\ChromaKey.hlsl" />
+    <None Include="shaders\Vignette.hlsl" />
+    <None Include="shaders\Grain.hlsl" />
+    <None Include="shaders\GradeCurves.hlsl" />
+    <None Include="shaders\HueCurves.hlsl" />
+    <None Include="shaders\LUTTetra.hlsl" />
+    <None Include="shaders\Blur.hlsl" />
+    <None Include="shaders\GlowBright.hlsl" />
+    <None Include="shaders\GlowComposite.hlsl" />
+    <None Include="shaders\Clarity.hlsl" />
+    <None Include="shaders\Composite.hlsl" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

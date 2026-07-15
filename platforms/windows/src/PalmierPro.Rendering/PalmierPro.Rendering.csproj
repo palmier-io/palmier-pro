@@ -34,6 +34,15 @@
       <Link>%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+
+    <!-- E3: HLSL kernel/composite sources, D3DCompile'd at runtime by GpuCompositor.cpp, which
+         resolves them next to PalmierEngine.dll's own module path (see its ResolveShadersDir) —
+         so they must land in a "shaders" subfolder alongside the DLL, same staging mechanism as
+         PalmierEngine.dll/the FFmpeg DLLs above. -->
+    <Content Include="native\shaders\*.hlsl">
+      <Link>shaders\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

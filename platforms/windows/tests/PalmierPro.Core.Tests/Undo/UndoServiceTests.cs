@@ -544,6 +544,41 @@ public class UndoServiceTests
         svc.UndoActionName.ShouldBe("Renamed");
     }
 
+    /// Mirrors ClearRegion's overlap-clearing path: WithTimelineSwap disables registration
+    /// without opening an event group, then a nested no-op group still ends with SetActionName
+    /// for the intended-but-suppressed edit. Without the IsRegistrationEnabled guard on
+    /// SetActionName, that call renames whatever is actually on top of the stack — silently
+    /// mislabeling an unrelated, already-committed undo step.
+    [Fact]
+    public void SetActionNameWhileRegistrationDisabledDoesNotRenamePriorStep()
+    {
+        var svc = new UndoService();
+        svc.RegisterUndo("Add Track", () => { });
+
+        svc.DisableRegistration();
+        svc.BeginGrouping();
+        svc.RegisterUndo("Split Clip", () => { }); // no-op: registration disabled
+        svc.EndGrouping(); // empty group: nothing pushed
+        svc.SetActionName("Split Clip"); // must not reach back and rename "Add Track"
+        svc.EnableRegistration();
+
+        svc.UndoActionName.ShouldBe("Add Track");
+    }
+
+    [Fact]
+    public void SetActionNameWhileRegistrationDisabledDoesNotFireChanged()
+    {
+        var svc = new UndoService();
+        svc.RegisterUndo("Add Track", () => { });
+        svc.DisableRegistration();
+
+        var count = 0;
+        svc.Changed += (_, _) => count++;
+        svc.SetActionName("Ignored");
+        count.ShouldBe(0);
+        svc.UndoActionName.ShouldBe("Add Track");
+    }
+
     [Fact]
     public void RedoActionNameReflectsTopOfRedoStack()
     {

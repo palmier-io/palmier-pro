@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using PalmierPro.App.ViewModels;
+using PalmierPro.Services;
 using WinRT.Interop;
 using Windows.Storage.Pickers;
 
@@ -15,16 +16,24 @@ public sealed class ProjectDialogService(Window window) : IProjectDialogService
 {
     public async Task<(string Directory, string Name)?> PickProjectLocationAsync(string suggestedName)
     {
+        if (AutomationMode.Enabled)
+        {
+            var path = AutomationMode.NextSavePath();
+            var directory = string.IsNullOrEmpty(path) ? null : Path.GetDirectoryName(path);
+            var name = string.IsNullOrEmpty(path) ? null : Path.GetFileName(path);
+            return string.IsNullOrEmpty(directory) || string.IsNullOrEmpty(name) ? null : (directory, name);
+        }
         var folder = await PickFolderAsync();
         if (folder is null)
         {
             return null;
         }
-        var name = await PromptForNameAsync(suggestedName);
-        return name is null ? null : (folder, name);
+        var promptedName = await PromptForNameAsync(suggestedName);
+        return promptedName is null ? null : (folder, promptedName);
     }
 
-    public Task<string?> PickExistingProjectPathAsync() => PickFolderAsync();
+    public Task<string?> PickExistingProjectPathAsync() =>
+        AutomationMode.Enabled ? Task.FromResult(AutomationMode.NextOpenProjectPath()) : PickFolderAsync();
 
     private async Task<string?> PickFolderAsync()
     {

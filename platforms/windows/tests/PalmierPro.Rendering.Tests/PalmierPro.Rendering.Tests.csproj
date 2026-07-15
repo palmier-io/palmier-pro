@@ -26,6 +26,9 @@
     <!-- Pulls PalmierEngine.dll + FFmpeg runtime DLLs into the test output too, via the
          same Content-item propagation PalmierPro.App relies on (see PalmierPro.Rendering.csproj). -->
     <ProjectReference Include="..\..\src\PalmierPro.Rendering\PalmierPro.Rendering.csproj" />
+    <!-- BuilderEmittedSnapshotTests feeds a live TimelineSnapshotBuilder/TimelineSnapshotSerializer
+         output straight into the native parser (no checked-in fixture) — needs the actual C# emitter. -->
+    <ProjectReference Include="..\..\src\PalmierPro.Services\PalmierPro.Services.csproj" />
   </ItemGroup>
 
   <ItemGroup>

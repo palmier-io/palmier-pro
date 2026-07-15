@@ -210,6 +210,17 @@ PALMIER_API int32_t PE_OpenTimeline(PE_SessionHandle session, const char* utf8Sn
 // completion — this call never blocks on that render, and never interrupts it.
 PALMIER_API int32_t PE_UpdateTimeline(PE_TimelineHandle timeline, const char* utf8SnapshotJson);
 
+// E3's Rebuild-vs-RefreshParams split (plan's "Render graph"/ABI section): takes a FULL
+// snapshot (same shape as PE_UpdateTimeline), but REUSES the existing decoder/media sessions
+// unconditionally — it asserts the new snapshot's media set (the set of distinct clip
+// mediaPath values, across every track) is IDENTICAL to the currently-open snapshot's, and
+// fails with PE_ERROR_INVALID_ARGUMENT (no swap performed) if it isn't. A media-set change is
+// a structural rebuild and must go through PE_UpdateTimeline instead. On success, swaps in the
+// new snapshot exactly like PE_UpdateTimeline (same atomic-pointer/in-flight-render contract) —
+// callers use this for opacity/transform/crop/blendMode/effects/keyframe param edits that don't
+// touch which media a clip points at.
+PALMIER_API int32_t PE_TimelineRefreshParams(PE_TimelineHandle timeline, const char* utf8SnapshotJson);
+
 PALMIER_API int32_t PE_CloseTimeline(PE_SessionHandle session, PE_TimelineHandle timeline);
 
 PALMIER_API int32_t PE_TimelineSeek(PE_TimelineHandle timeline, int64_t frame, int32_t mode);

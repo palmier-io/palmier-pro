@@ -506,6 +506,72 @@ public class TimelineSnapshotBuilderTests
         }
     }
 
+    [Fact]
+    public void GoldenFixture_EffectsAndKeyframes_MatchesLiveBuilderOutput()
+    {
+        // v1.1 emit path (docs/timeline-snapshot-v1.md §11): populated opacity/crop/transform
+        // keyframe envelopes plus a per-clip effect with one static and one keyframed param. No
+        // other test in this file exercises BuildKeyframes/BuildTransformKeyframes/ToSnapshotEffect
+        // via the live builder — every other fixture/test above uses all-static clips with no effects.
+        var dir = new TempDirectory();
+        try
+        {
+            var clipAPath = Path.Combine(dir.Path, "clip-a.mp4");
+            File.WriteAllBytes(clipAPath, []);
+
+            var clip = new Clip("asset-video", 0, 60)
+            {
+                Id = "CLIP-1", MediaType = ClipType.Video, SourceClipType = ClipType.Video,
+                OpacityTrack = new KeyframeTrack<double>([
+                    new Keyframe<double>(0, 0.2, Interpolation.Hold),
+                    new Keyframe<double>(30, 1.0, Interpolation.Linear),
+                ]),
+                // Constant (0,0) at both anchors -> TopLeftAt/TransformAt resolve to the same
+                // default full-canvas transform at every sampled frame (see Clip.TopLeftAt/
+                // TransformAt) while still emitting a real, populated 2-entry keyframe envelope.
+                PositionTrack = new KeyframeTrack<AnimPair>([
+                    new Keyframe<AnimPair>(0, new AnimPair(0, 0), Interpolation.Linear),
+                    new Keyframe<AnimPair>(30, new AnimPair(0, 0), Interpolation.Smooth),
+                ]),
+                CropTrack = new KeyframeTrack<Crop>([
+                    new Keyframe<Crop>(0, new Crop(), Interpolation.Linear),
+                    new Keyframe<Crop>(30, new Crop { Left = 0.1, Top = 0.05, Right = 0.1, Bottom = 0.05 }, Interpolation.Hold),
+                ]),
+                Effects =
+                [
+                    new Effect("color.blacksWhites")
+                    {
+                        Params =
+                        {
+                            ["blacks"] = new EffectParam(value: 0.1),
+                            ["whites"] = new EffectParam(track: new KeyframeTrack<double>([
+                                new Keyframe<double>(0, -0.3, Interpolation.Hold),
+                                new Keyframe<double>(60, 0.4, Interpolation.Linear),
+                            ])),
+                        },
+                    },
+                ],
+            };
+            var track = new Track(ClipType.Video, [clip]) { Id = "TRACK-VIDEO" };
+            var timeline = new Timeline { Id = "TIMELINE-1", Fps = 30, Width = 1920, Height = 1080, Tracks = [track] };
+            var project = new ProjectFile([timeline], timeline.Id, [timeline.Id]);
+            var manifest = new MediaManifest
+            {
+                Entries = [new MediaManifestEntry("asset-video", "asset-video", ClipType.Video, MediaSource.External(clipAPath), 10)],
+            };
+
+            var result = TimelineSnapshotBuilder.Build(project, "TIMELINE-1", Resolver(manifest));
+            var actual = Encoding.UTF8.GetString(TimelineSnapshotSerializer.ToJsonBytes(result.Snapshot));
+            var expected = LoadGolden("effects-and-keyframes.snapshot.json", dir.Path);
+
+            NormalizeLineEndings(actual).ShouldBe(NormalizeLineEndings(expected));
+        }
+        finally
+        {
+            dir.Dispose();
+        }
+    }
+
     // ----- Misc -----
 
     [Fact]

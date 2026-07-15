@@ -108,39 +108,45 @@
                 </MenuFlyoutItem.KeyboardAccelerators>
             </MenuFlyoutItem>
             <MenuFlyoutSeparator/>
-            <MenuFlyoutItem Text="Select Forward on Track" Command="{x:Bind vm:DisabledMenuCommands.SelectForwardOnTrack}">
+            <!--
+                Stage C (M3): real commands on Shell, backed by TimelineEditorViewModel — no
+                longer DisabledMenuCommands placeholders. Raw (unmodified/Shift-only) accelerators
+                route through RawKeyAccelerator_Invoked so a focused text field still gets the
+                keystroke (see KeyRouter's doc comment).
+            -->
+            <MenuFlyoutItem Text="Select Forward on Track" Command="{x:Bind Shell.SelectForwardOnTrackCommand, Mode=OneWay}">
                 <MenuFlyoutItem.KeyboardAccelerators>
                     <KeyboardAccelerator Key="A" Invoked="RawKeyAccelerator_Invoked"/>
                 </MenuFlyoutItem.KeyboardAccelerators>
             </MenuFlyoutItem>
-            <MenuFlyoutItem Text="Select Forward on All Tracks" Command="{x:Bind vm:DisabledMenuCommands.SelectForwardOnAllTracks}">
+            <MenuFlyoutItem Text="Select Forward on All Tracks" Command="{x:Bind Shell.SelectForwardOnAllTracksCommand, Mode=OneWay}">
                 <MenuFlyoutItem.KeyboardAccelerators>
                     <KeyboardAccelerator Key="A" Modifiers="Shift" Invoked="RawKeyAccelerator_Invoked"/>
                 </MenuFlyoutItem.KeyboardAccelerators>
             </MenuFlyoutItem>
             <MenuFlyoutSeparator/>
-            <MenuFlyoutItem Text="Split at Playhead" Command="{x:Bind vm:DisabledMenuCommands.SplitAtPlayhead}">
+            <MenuFlyoutItem Text="Split at Playhead" Command="{x:Bind Shell.SplitAtPlayheadCommand, Mode=OneWay}">
                 <MenuFlyoutItem.KeyboardAccelerators>
                     <KeyboardAccelerator Key="K" Modifiers="Control"/>
                 </MenuFlyoutItem.KeyboardAccelerators>
             </MenuFlyoutItem>
-            <MenuFlyoutItem Text="Trim Start to Playhead" Command="{x:Bind vm:DisabledMenuCommands.TrimStartToPlayhead}">
+            <MenuFlyoutItem Text="Trim Start to Playhead" Command="{x:Bind Shell.TrimStartToPlayheadCommand, Mode=OneWay}">
                 <MenuFlyoutItem.KeyboardAccelerators>
                     <KeyboardAccelerator Key="Q" Invoked="RawKeyAccelerator_Invoked"/>
                 </MenuFlyoutItem.KeyboardAccelerators>
             </MenuFlyoutItem>
-            <MenuFlyoutItem Text="Trim End to Playhead" Command="{x:Bind vm:DisabledMenuCommands.TrimEndToPlayhead}">
+            <MenuFlyoutItem Text="Trim End to Playhead" Command="{x:Bind Shell.TrimEndToPlayheadCommand, Mode=OneWay}">
                 <MenuFlyoutItem.KeyboardAccelerators>
                     <KeyboardAccelerator Key="W" Invoked="RawKeyAccelerator_Invoked"/>
                 </MenuFlyoutItem.KeyboardAccelerators>
             </MenuFlyoutItem>
             <MenuFlyoutSeparator/>
-            <MenuFlyoutItem Text="Delete" Command="{x:Bind vm:DisabledMenuCommands.DeleteSelectedClips}">
+            <MenuFlyoutItem Text="Delete" Command="{x:Bind Shell.DeleteSelectedClipsCommand, Mode=OneWay}">
                 <MenuFlyoutItem.KeyboardAccelerators>
                     <KeyboardAccelerator Key="Back" Invoked="RawKeyAccelerator_Invoked"/>
                 </MenuFlyoutItem.KeyboardAccelerators>
             </MenuFlyoutItem>
-            <MenuFlyoutItem Text="Ripple Delete" Command="{x:Bind vm:DisabledMenuCommands.RippleDelete}">
+            <MenuFlyoutItem Text="Ripple Delete" Command="{x:Bind Shell.RippleDeleteCommand, Mode=OneWay}">
                 <MenuFlyoutItem.KeyboardAccelerators>
                     <KeyboardAccelerator Key="Back" Modifiers="Shift" Invoked="RawKeyAccelerator_Invoked"/>
                 </MenuFlyoutItem.KeyboardAccelerators>

@@ -169,6 +169,10 @@ public sealed class UndoService
     public void SetActionName(string actionName)
     {
         ArgumentNullException.ThrowIfNull(actionName);
+        if (!IsRegistrationEnabled)
+        {
+            return;
+        }
         if (_groupingLevel > 0)
         {
             _openGroup!.SetExplicitName(actionName);

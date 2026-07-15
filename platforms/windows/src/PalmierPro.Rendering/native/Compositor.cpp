@@ -1,58 +1,17 @@
 #include "Compositor.h"
 #include "Affine2D.h"
+#include "ClipGeometry.h"
 #include "Half.h"
 
 #include <algorithm>
 #include <cmath>
 
+// BuildClipAffine/ResolveCropRect/CropRectPixels moved to ClipGeometry.h (shared verbatim with
+// GpuCompositor.cpp — see that header's comment) — no behavior change, same math.
+
 namespace
 {
     struct Vec4 { float b = 0, g = 0, r = 0, a = 0; };
-
-    // Mirrors CompositionBuilder.affineTransform(for:natSize:renderSize:) exactly —
-    // Sources/PalmierPro/Preview/CompositionBuilder.swift:911-926. t.width/t.height are
-    // normalized fractions of the RENDER canvas (not the source) — natWidth/natHeight
-    // only enter as the base scale that maps the source's full pixel extent onto the
-    // render canvas before t.width/height/rotation are applied on top. See Compositor.h's
-    // header comment for why this can be applied directly to our y-down pixel space with
-    // no extra axis flip.
-    Affine2D BuildClipAffine(const SnapshotTransform& t, double natWidth, double natHeight,
-        double renderWidth, double renderHeight)
-    {
-        double tlX = t.centerX - t.width / 2.0;
-        double tlY = t.centerY - t.height / 2.0;
-
-        double sx = (renderWidth / natWidth) * t.width * (t.flipHorizontal ? -1.0 : 1.0);
-        double sy = (renderHeight / natHeight) * t.height * (t.flipVertical ? -1.0 : 1.0);
-        double tx = (t.flipHorizontal ? tlX + t.width : tlX) * renderWidth;
-        double ty = (t.flipVertical ? tlY + t.height : tlY) * renderHeight;
-
-        Affine2D placed = Affine2D::Scale(sx, sy).Concatenate(Affine2D::Translation(tx, ty));
-        if (t.rotationDegrees == 0.0)
-        {
-            return placed;
-        }
-        double cx = t.centerX * renderWidth;
-        double cy = t.centerY * renderHeight;
-        return placed
-            .Concatenate(Affine2D::Translation(-cx, -cy))
-            .Concatenate(Affine2D::RotationDegrees(t.rotationDegrees))
-            .Concatenate(Affine2D::Translation(cx, cy));
-    }
-
-    struct CropRectPixels
-    {
-        double x0, y0, x1, y1;
-    };
-
-    CropRectPixels ResolveCropRect(const SnapshotCrop& crop, double natWidth, double natHeight)
-    {
-        double x0 = crop.left * natWidth;
-        double y0 = crop.top * natHeight;
-        double w = std::max(1.0, crop.VisibleWidthFraction() * natWidth);
-        double h = std::max(1.0, crop.VisibleHeightFraction() * natHeight);
-        return CropRectPixels{x0, y0, x0 + w, y0 + h};
-    }
 
     // Straight-alpha bilinear sample of an 8-bit BGRA source, hard-clipped to cropRect
     // (fully transparent outside it — matches CIImage.cropped(to:)'s hard edge; no
@@ -276,16 +235,10 @@ bool Compositor::Compose(
         for (int x = 0; x < w; ++x)
         {
             size_t idx = (static_cast<size_t>(y) * w + x) * 4;
-            auto to8 = [](Half v) -> uint8_t {
-                float f = HalfToFloat(v) * 255.0f;
-                if (f < 0.0f) f = 0.0f;
-                if (f > 255.0f) f = 255.0f;
-                return static_cast<uint8_t>(f + 0.5f);
-            };
-            row[x * 4 + 0] = to8(accum[idx + 0]);
-            row[x * 4 + 1] = to8(accum[idx + 1]);
-            row[x * 4 + 2] = to8(accum[idx + 2]);
-            row[x * 4 + 3] = to8(accum[idx + 3]);
+            row[x * 4 + 0] = HalfChannelTo8Bit(accum[idx + 0]);
+            row[x * 4 + 1] = HalfChannelTo8Bit(accum[idx + 1]);
+            row[x * 4 + 2] = HalfChannelTo8Bit(accum[idx + 2]);
+            row[x * 4 + 3] = HalfChannelTo8Bit(accum[idx + 3]);
         }
     }
 

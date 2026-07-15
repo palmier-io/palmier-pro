@@ -15,6 +15,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.*" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.*" />
+    <!-- Win2D — timeline canvas rendering (M3, Stage C): ruler, clips, filmstrips, waveforms. -->
+    <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.*" />
     <PackageReference Include="Serilog" Version="4.*" />
     <PackageReference Include="Serilog.Sinks.File" Version="6.*" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.*" />

@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using PalmierPro.App.ViewModels.Editor;
 using PalmierPro.Core.Undo;
 using PalmierPro.Services.Project;
 
@@ -15,6 +16,12 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly IProjectDialogService _dialogs;
     private UndoService? _wiredUndoService;
 
+    /// M3 timeline-editing surface for the active document; null when no project is open.
+    /// Rebuilt (not reused) whenever `ActiveDocument` changes, matching the Mac's one-editor-
+    /// per-document lifecycle. Wiring a real `IVideoEngine` instance here is Stage D's job — see
+    /// `TimelineEditorViewModel`'s doc comment.
+    public TimelineEditorViewModel? Timeline { get; private set; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEditorOpen))]
     [NotifyPropertyChangedFor(nameof(WindowTitle))]
@@ -23,6 +30,13 @@ public sealed partial class ShellViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(UndoCommand))]
     [NotifyCanExecuteChangedFor(nameof(RedoCommand))]
     [NotifyCanExecuteChangedFor(nameof(ImportMediaCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SplitAtPlayheadCommand))]
+    [NotifyCanExecuteChangedFor(nameof(TrimStartToPlayheadCommand))]
+    [NotifyCanExecuteChangedFor(nameof(TrimEndToPlayheadCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DeleteSelectedClipsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RippleDeleteCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SelectForwardOnTrackCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SelectForwardOnAllTracksCommand))]
     public partial ProjectDocument? ActiveDocument { get; set; }
 
     public bool IsEditorOpen => ActiveDocument is not null;
@@ -60,6 +74,7 @@ public sealed partial class ShellViewModel : ObservableObject
         {
             _wiredUndoService.Changed += OnUndoChanged;
         }
+        Timeline = value is not null ? new TimelineEditorViewModel(value) : null;
         OnPropertyChanged(nameof(UndoMenuText));
         OnPropertyChanged(nameof(RedoMenuText));
     }
@@ -180,4 +195,33 @@ public sealed partial class ShellViewModel : ObservableObject
 
     [RelayCommand(CanExecute = nameof(CanImportMedia))]
     private void ImportMedia() => ImportMediaRequested?.Invoke(this, EventArgs.Empty);
+
+    // MARK: - Timeline editing (M3, Stage C) — mirrors MainMenuBuilder's Edit-menu timeline
+    // section (Select Forward, Split/Trim to Playhead, Delete, Ripple Delete). CanExecute only
+    // gates on "a document is open", matching Save/Undo's simplicity — the commands themselves
+    // are no-op-safe on an empty selection, same as the Mac originals looping over
+    // `selectedClipIds`.
+
+    private bool CanEditTimeline() => Timeline is not null;
+
+    [RelayCommand(CanExecute = nameof(CanEditTimeline))]
+    private void SplitAtPlayhead() => Timeline?.SplitAtPlayhead();
+
+    [RelayCommand(CanExecute = nameof(CanEditTimeline))]
+    private void TrimStartToPlayhead() => Timeline?.TrimStartToPlayhead();
+
+    [RelayCommand(CanExecute = nameof(CanEditTimeline))]
+    private void TrimEndToPlayhead() => Timeline?.TrimEndToPlayhead();
+
+    [RelayCommand(CanExecute = nameof(CanEditTimeline))]
+    private void DeleteSelectedClips() => Timeline?.DeleteSelectedClips();
+
+    [RelayCommand(CanExecute = nameof(CanEditTimeline))]
+    private void RippleDelete() => Timeline?.RippleDeleteSelectedClips();
+
+    [RelayCommand(CanExecute = nameof(CanEditTimeline))]
+    private void SelectForwardOnTrack() => Timeline?.SelectForwardFromCurrentSelection(TimelineEditorViewModel.SelectForwardScope.Track);
+
+    [RelayCommand(CanExecute = nameof(CanEditTimeline))]
+    private void SelectForwardOnAllTracks() => Timeline?.SelectForwardFromCurrentSelection(TimelineEditorViewModel.SelectForwardScope.AllTracks);
 }

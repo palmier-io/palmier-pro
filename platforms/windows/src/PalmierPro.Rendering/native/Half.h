@@ -106,3 +106,13 @@ inline Half FloatToHalf(float f)
     }
     return static_cast<Half>(sign | (static_cast<uint32_t>(exp) << 10) | halfMant);
 }
+
+// Shared by Compositor.cpp (CPU path) and GpuCompositor.cpp (GPU readback) so the final
+// fp16 -> 8-bit narrowing is bit-identical on both paths — same round-to-nearest convention.
+inline uint8_t HalfChannelTo8Bit(Half h)
+{
+    float f = HalfToFloat(h) * 255.0f;
+    if (f < 0.0f) f = 0.0f;
+    if (f > 255.0f) f = 255.0f;
+    return static_cast<uint8_t>(f + 0.5f);
+}

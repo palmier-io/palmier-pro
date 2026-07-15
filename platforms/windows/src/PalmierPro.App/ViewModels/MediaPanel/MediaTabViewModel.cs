@@ -65,6 +65,11 @@ public sealed partial class MediaTabViewModel : ObservableObject, IDisposable
 
     public void Dispose() => _visualCache.ThumbnailsUpdated -= OnThumbnailsUpdated;
 
+    /// Resolves a media-library asset by id — the Timeline (Stage C) uses this to place a
+    /// `ClipRef` drag/drop from this panel and to look up a clip's source path for filmstrip/
+    /// waveform generation, without keeping its own duplicate asset list.
+    public MediaAsset? AssetById(string id) => _assets.FirstOrDefault(a => a.Id == id);
+
     private void RebuildAssetsFromManifest()
     {
         _assets.Clear();

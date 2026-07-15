@@ -12,6 +12,40 @@ namespace
 {
     constexpr auto kInteractiveThrottleInterval = std::chrono::milliseconds(33); // ~30 Hz
 
+    // GPU compositing (GpuCompositor) is the DEFAULT render path (plan: "MOVE COMPOSITING TO
+    // D3D11"). Compositor::Compose (CPU) stays compiled and reachable ONLY behind this explicit
+    // flag — mirrors EngineSession.cpp's PALMIERENGINE_FORCE_WARP pattern exactly, so CI can
+    // still exercise the CPU fallback deliberately (see GPU-vs-CPU-fallback-consistency tests)
+    // without it silently running as a second live path day-to-day. The CPU path does NOT
+    // support effects/keyframes (v1 geometry-only compositor, unchanged) — see Compositor.h.
+    bool CpuCompositorForced()
+    {
+        char* value = nullptr;
+        size_t len = 0;
+        if (_dupenv_s(&value, &len, "PALMIERENGINE_FORCE_CPU_COMPOSITOR") != 0 || !value)
+        {
+            return false;
+        }
+        bool forced = len > 0 && value[0] != '0';
+        free(value);
+        return forced;
+    }
+
+    // Distinct mediaPath values across every clip of every track — the "media set" RefreshParams
+    // asserts is unchanged (docs/timeline-snapshot-v1.md's Rebuild-vs-RefreshParams split).
+    std::set<std::string> MediaPathSet(const TimelineSnapshot& snapshot)
+    {
+        std::set<std::string> paths;
+        for (const SnapshotTrack& track : snapshot.tracks)
+        {
+            for (const SnapshotClip& clip : track.clips)
+            {
+                paths.insert(clip.mediaPath);
+            }
+        }
+        return paths;
+    }
+
     void AppendJsonEscaped(std::string& out, const std::string& s)
     {
         out += '"';
@@ -85,6 +119,7 @@ bool TimelineSession::Update(const std::string& utf8SnapshotJson, std::string& o
     TimelineSnapshot parsed;
     if (!TimelineSnapshotParser::Parse(utf8SnapshotJson, parsed, outError))
     {
+        owner_->SetLastError(outError);
         return false;
     }
     auto next = std::make_shared<const TimelineSnapshot>(std::move(parsed));
@@ -92,6 +127,43 @@ bool TimelineSession::Update(const std::string& utf8SnapshotJson, std::string& o
     // under this same mutex before rendering, so a render already past that point keeps
     // the OLD TimelineSnapshot alive via refcount and finishes against it — "in-flight
     // renders finish on the old snapshot," per the plan.
+    std::lock_guard<std::mutex> lock(snapshotMutex_);
+    snapshot_ = next;
+    return true;
+}
+
+bool TimelineSession::RefreshParams(const std::string& utf8SnapshotJson, std::string& outError)
+{
+    TimelineSnapshot parsed;
+    if (!TimelineSnapshotParser::Parse(utf8SnapshotJson, parsed, outError))
+    {
+        owner_->SetLastError(outError);
+        return false;
+    }
+
+    std::shared_ptr<const TimelineSnapshot> currentSnapshot;
+    {
+        std::lock_guard<std::mutex> lock(snapshotMutex_);
+        currentSnapshot = snapshot_;
+    }
+    if (!currentSnapshot)
+    {
+        outError = "RefreshParams called before any snapshot was opened";
+        owner_->SetLastError(outError);
+        return false;
+    }
+    if (MediaPathSet(*currentSnapshot) != MediaPathSet(parsed))
+    {
+        outError = "RefreshParams: media set changed — this is a structural rebuild "
+            "(use PE_UpdateTimeline/Update instead of PE_TimelineRefreshParams)";
+        owner_->SetLastError(outError);
+        return false;
+    }
+
+    // Same atomic-swap contract as Update() — mediaCache_ is untouched either way, so this
+    // call was already implicitly "no decoder rebuild"; the media-set assertion above is what
+    // makes that guarantee explicit/checked rather than incidental.
+    auto next = std::make_shared<const TimelineSnapshot>(std::move(parsed));
     std::lock_guard<std::mutex> lock(snapshotMutex_);
     snapshot_ = next;
     return true;
@@ -175,7 +247,7 @@ void TimelineSession::RenderThreadLoop()
             if (presenter_ && presenter_->IsAttached())
             {
                 std::string presentError;
-                std::lock_guard<std::mutex> gfxLock(owner_->GraphicsMutex());
+                std::lock_guard<std::recursive_mutex> gfxLock(owner_->GraphicsMutex());
                 presenter_->PresentBgra(result.bgra.data(), result.width, result.height, result.strideBytes, presentError);
             }
         }
@@ -208,7 +280,32 @@ bool TimelineSession::ComposeFrame(int64_t frame, bool interactive, const std::a
         return ProvideClipFrame(clip, sourceSeconds, interactive, cancelFlag, fps, outFrame, scratch);
     };
 
-    return Compositor::Compose(*snapshot, frame, provider, cancelFlag, outResult, outError);
+    if (CpuCompositorForced())
+    {
+        return Compositor::Compose(*snapshot, frame, provider, cancelFlag, outResult, outError);
+    }
+
+    // GPU is the default path — see the CpuCompositorForced() comment. The immediate D3D11
+    // context is shared session-wide (MediaSource's opportunistic D3D11VA readback, the
+    // presenter's Present/Resize) — GraphicsMutex() serializes every submission exactly like
+    // presenter_->PresentBgra already does in RenderThreadLoop.
+    std::string deviceError;
+    ID3D11Device* device = owner_->EnsureGraphicsDeviceShared(deviceError);
+    if (!device)
+    {
+        // No D3D11 device at all (hardware AND WARP both failed to create) — fall back to the
+        // CPU compositor rather than fail the whole render; this is the one path where running
+        // the CPU compositor isn't behind the explicit env flag, since there is no GPU path to
+        // prefer.
+        return Compositor::Compose(*snapshot, frame, provider, cancelFlag, outResult, outError);
+    }
+
+    std::lock_guard<std::recursive_mutex> gfxLock(owner_->GraphicsMutex());
+    if (!gpuCompositor_)
+    {
+        gpuCompositor_ = std::make_unique<GpuCompositor>(device, owner_->GraphicsContext());
+    }
+    return gpuCompositor_->Compose(*snapshot, frame, provider, cancelFlag, outResult, outError);
 }
 
 bool TimelineSession::ProvideClipFrame(const SnapshotClip& clip, double sourceSeconds, bool interactive,
@@ -337,7 +434,7 @@ int32_t TimelineSession::AttachSwapChain(void* swapChainPanelUnknown, int32_t wi
     {
         presenter_ = std::make_unique<D3D11Presenter>();
     }
-    std::lock_guard<std::mutex> gfxLock(owner_->GraphicsMutex());
+    std::lock_guard<std::recursive_mutex> gfxLock(owner_->GraphicsMutex());
     if (!presenter_->Attach(device, owner_->GraphicsContext(), swapChainPanelUnknown, width, height, outError))
     {
         return PE_ERROR_UNKNOWN;
@@ -353,7 +450,7 @@ int32_t TimelineSession::ResizeSwapChain(int32_t width, int32_t height, std::str
         outError = "no swap chain attached";
         return PE_ERROR_INVALID_HANDLE;
     }
-    std::lock_guard<std::mutex> gfxLock(owner_->GraphicsMutex());
+    std::lock_guard<std::recursive_mutex> gfxLock(owner_->GraphicsMutex());
     if (!presenter_->Resize(width, height, outError))
     {
         return PE_ERROR_UNKNOWN;
@@ -366,7 +463,7 @@ int32_t TimelineSession::DetachSwapChain(std::string& outError)
     std::lock_guard<std::mutex> presenterLock(presenterMutex_);
     if (presenter_)
     {
-        std::lock_guard<std::mutex> gfxLock(owner_->GraphicsMutex());
+        std::lock_guard<std::recursive_mutex> gfxLock(owner_->GraphicsMutex());
         presenter_->Detach();
     }
     outError.clear();
@@ -380,11 +477,26 @@ bool TimelineSession::RenderFrameToFile(int64_t frame, const std::string& utf8Pn
     // render thread's own cancelDecode_ flag.
     static thread_local std::atomic<int32_t> noCancel{0};
     ComposeResult result;
-    if (!ComposeFrame(frame, /*interactive*/ false, &noCancel, result, outError))
+    try
     {
+        if (!ComposeFrame(frame, /*interactive*/ false, &noCancel, result, outError))
+        {
+            owner_->SetLastError(outError);
+            return false;
+        }
+    }
+    catch (const std::exception& ex)
+    {
+        outError = std::string("ComposeFrame threw: ") + ex.what();
+        owner_->SetLastError(outError);
         return false;
     }
-    return WicPngWriter::WriteBgraToPng(result.bgra.data(), result.width, result.height, result.strideBytes, utf8PngPath, outError);
+    if (!WicPngWriter::WriteBgraToPng(result.bgra.data(), result.width, result.height, result.strideBytes, utf8PngPath, outError))
+    {
+        owner_->SetLastError(outError);
+        return false;
+    }
+    return true;
 }
 
 void TimelineSession::SetPlayheadCallback(PE_PlayheadCallback callback, void* userCtx)

@@ -27,17 +27,24 @@ public sealed record MediaStatus(IReadOnlySet<string> OfflineMediaRefs, IReadOnl
     public static readonly MediaStatus Empty = new(new HashSet<string>(), new HashSet<string>());
 }
 
+/// One effect param override within a <see cref="ClipParamPatch"/> — identifies the effect by
+/// `Type` (an effect list may contain at most one of a given type in practice, mirroring the
+/// Mac's one-effect-instance-per-type convention) and the param by key (EffectRegistry.swift's
+/// `EffectParamSpec.key`, e.g. "blacks"/"whites" for `color.blacksWhites`).
+public sealed record EffectParamPatch(string EffectType, string ParamKey, double Value);
+
 /// One clip's sparse param delta — only the fields `CompositionBuilder.buildVisuals`/
 /// `VideoEngine.refreshVisuals()` can change without a structural rebuild. Any field left `null`
-/// is unchanged. E3 semantics: applied in place against the engine's already-open timeline session,
-/// no rebuild. v1: see remarks on <see cref="IVideoEngine.RefreshParams"/> — reserved shape only.
+/// is unchanged. E3 semantics: applied in place against the engine's already-open timeline
+/// session (<see cref="VideoEngine.RefreshParams"/>), no rebuild.
 public sealed record ClipParamPatch(
     string ClipId,
     double? Opacity = null,
     Transform? Transform = null,
     Crop? Crop = null,
     double? VolumeGain = null,
-    BlendMode? BlendMode = null);
+    BlendMode? BlendMode = null,
+    IReadOnlyList<EffectParamPatch>? Effects = null);
 
 public sealed record TimelineParamPatch(string TimelineId, IReadOnlyList<ClipParamPatch> Clips);
 
@@ -63,11 +70,13 @@ public interface IVideoEngine
     /// the UI VM's responsibility, not this interface's.
     Task UpdateTimelineAsync(string timelineId, TimelineSnapshotBuildResult snapshot, CancellationToken ct = default);
 
-    /// Parameter-only change (opacity/transform/crop/volume/blendMode edits with no structural
-    /// change) → refresh without a rebuild. Mirrors `refreshVisuals()` — this split is what makes
-    /// live slider feedback possible while dragging. E3 semantics: applied against the engine's
-    /// per-clip GPU param state in place. v1: the native engine has no such state yet (no render
-    /// graph — that's E3), so this is a safe no-op, not a throw — see <see cref="VideoEngine"/>.
+    /// Parameter-only change (opacity/transform/crop/volume/blendMode/effect-param edits with no
+    /// structural change) → refresh without a rebuild. Mirrors `refreshVisuals()` — this split is
+    /// what makes live slider feedback possible while dragging. Applied against the engine's
+    /// already-open timeline session via PE_TimelineRefreshParams, which asserts the media set is
+    /// unchanged and fails loudly (see <see cref="VideoEngine"/>) rather than silently rebuilding
+    /// if it isn't — a genuine no-op if no session for `patch.TimelineId` is open yet (nothing to
+    /// refresh).
     void RefreshParams(TimelineParamPatch patch);
 
     /// Frees the native session/composition cache for a closed or evicted timeline tab. Mirrors

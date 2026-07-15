@@ -3,6 +3,7 @@
 #include "include/palmier_engine.h"
 #include "Compositor.h"
 #include "D3D11Presenter.h"
+#include "GpuCompositor.h"
 #include "MediaCache.h"
 #include "TimelineSnapshot.h"
 
@@ -42,6 +43,15 @@ public:
 
     bool Open(const std::string& utf8SnapshotJson, std::string& outError);
     bool Update(const std::string& utf8SnapshotJson, std::string& outError);
+
+    // Rebuild vs RefreshParams split (plan's "Render graph" / ABI section). Reuses the SAME
+    // decoder/media sessions as Update() (mediaCache_ is untouched by either — see Update()'s
+    // comment) but additionally ASSERTS the new snapshot's media set (the set of distinct
+    // mediaPath values across every clip) is identical to the current one, refusing the swap
+    // (returns false, outError set) if it isn't — a structural media-set change must go through
+    // Update()/PE_UpdateTimeline instead. This is what makes RefreshParams a genuine "params
+    // only, no rebuild" contract rather than just an alias for Update().
+    bool RefreshParams(const std::string& utf8SnapshotJson, std::string& outError);
 
     // Enqueues (InteractiveScrub) or dispatches (Exact/other) a seek; never blocks on the
     // render thread.
@@ -94,6 +104,12 @@ private:
 
     std::mutex presenterMutex_;
     std::unique_ptr<D3D11Presenter> presenter_;
+
+    // Default render path (see ComposeFrame) — lazily created against the owning session's
+    // shared D3D11 device/context (owner_->GraphicsMutex() serializes every use, same as
+    // presenter_). Compositor::Compose (CPU) is only reached when
+    // PALMIERENGINE_FORCE_CPU_COMPOSITOR is set — see ComposeFrame's comment.
+    std::unique_ptr<GpuCompositor> gpuCompositor_;
 
     std::mutex playheadMutex_;
     PE_PlayheadCallback playheadCallback_ = nullptr;

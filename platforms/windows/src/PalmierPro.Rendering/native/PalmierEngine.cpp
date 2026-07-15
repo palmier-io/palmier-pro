@@ -354,6 +354,32 @@ int32_t PE_UpdateTimeline(PE_TimelineHandle timeline, const char* utf8SnapshotJs
     }
 }
 
+int32_t PE_TimelineRefreshParams(PE_TimelineHandle timeline, const char* utf8SnapshotJson)
+{
+    if (!utf8SnapshotJson)
+    {
+        return PE_ERROR_INVALID_ARGUMENT;
+    }
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    try
+    {
+        std::string error;
+        if (!t->RefreshParams(utf8SnapshotJson, error))
+        {
+            return PE_ERROR_INVALID_ARGUMENT;
+        }
+        return PE_OK;
+    }
+    catch (const std::exception&)
+    {
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
 int32_t PE_CloseTimeline(PE_SessionHandle session, PE_TimelineHandle timeline)
 {
     if (!session || !timeline)

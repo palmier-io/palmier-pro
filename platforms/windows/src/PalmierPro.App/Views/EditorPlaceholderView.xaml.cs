@@ -2,7 +2,9 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using PalmierPro.App.Services;
 using PalmierPro.App.Theme;
+using PalmierPro.App.ViewModels.Editor;
 using PalmierPro.App.ViewModels.MediaPanel;
+using PalmierPro.App.Views.Timeline;
 using PalmierPro.Core.Theme;
 using PalmierPro.Rendering;
 using PalmierPro.Services.Media;
@@ -11,8 +13,9 @@ using Serilog;
 
 namespace PalmierPro.App.Views;
 
-/// Media panel is real (Stage B), wired to a per-document native EngineSession created/disposed
-/// alongside it; preview/inspector/timeline remain themed skeletons until Stage C/D.
+/// Media panel (Stage B) and timeline (Stage C) are real, both wired to a per-document native
+/// EngineSession created/disposed alongside them; preview/inspector remain themed skeletons until
+/// Stage D/E.
 public sealed partial class EditorPlaceholderView : UserControl
 {
     private readonly Window _window;
@@ -32,12 +35,15 @@ public sealed partial class EditorPlaceholderView : UserControl
         }
     }
 
-    /// Called whenever ShellViewModel.ActiveDocument changes — including to null on ShowHome, at
-    /// which point the previous document's engine session/media cache are torn down.
-    public void SetDocument(ProjectDocument? document)
+    /// Called whenever ShellViewModel.ActiveDocument (and its paired Timeline) changes — including
+    /// to null on ShowHome, at which point the previous document's engine session/media cache are
+    /// torn down.
+    public void SetDocument(ProjectDocument? document, TimelineEditorViewModel? timeline)
     {
         TearDownMediaTab();
-        if (document is null)
+        TimelineTabBarHost.SetViewModel(null);
+        TimelineHost.Attach(null);
+        if (document is null || timeline is null)
         {
             MediaPanelHost.SetViewModel(null);
             return;
@@ -56,6 +62,9 @@ public sealed partial class EditorPlaceholderView : UserControl
             _visualCache = visualCache;
             _mediaTabViewModel = viewModel;
             MediaPanelHost.SetViewModel(viewModel);
+
+            TimelineTabBarHost.SetViewModel(timeline);
+            TimelineHost.Attach(new TimelineCanvasContext(timeline, visualCache, viewModel.AssetById, viewModel.ImportPathsAsync));
         }
         catch (EngineException ex)
         {

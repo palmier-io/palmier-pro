@@ -103,3 +103,32 @@ token in the JSON is substituted with the snapshot file's own directory. Neither
 command touches a D3D device, swap chain, or display session, so both run on any
 CI runner; exit code 0 on success. Implemented via a hand-written `Main`
 (`DISABLE_XAML_GENERATED_MAIN`) so this path never calls `Application.Start`.
+
+## Automation mode
+
+`FileOpenPicker`/`FolderPicker` block on a human — a smoke test driving the real
+UI would hang forever waiting for one. Set `PALMIER_AUTOMATION=1` and every
+picker in `PalmierPro.App` and `PalmierPro.DevHarness` answers itself from
+scripted env vars instead of showing a dialog (`AutomationMode`,
+`src/PalmierPro.Services/AutomationMode.cs`):
+
+| Variable | Answers |
+|---|---|
+| `PALMIER_AUTO_OPEN_PROJECT` | Open Project / open-existing-project pickers — `.palmier` package paths |
+| `PALMIER_AUTO_SAVE_PATH` | New Project / Save As — full target path (split into directory + name) |
+| `PALMIER_AUTO_IMPORT_FILES` | Media import / Build Demo Timeline — file paths for one invocation |
+| `PALMIER_AUTO_PICK_FOLDER` | Any other folder picker |
+
+Each variable is a queue: entries are `;`-separated and consumed one per picker
+call, in order; `PALMIER_AUTO_IMPORT_FILES` groups are additionally
+`,`-separated within one entry (one group = the file list for one import). An
+exhausted or unset queue answers exactly what clicking Cancel would (`null`/empty)
+— automation never falls through to a real dialog. Every answer is logged
+(`automation: answered <kind> with <value>`).
+
+```powershell
+$env:PALMIER_AUTOMATION = "1"
+$env:PALMIER_AUTO_OPEN_PROJECT = "C:\Projects\Demo.palmier"
+$env:PALMIER_AUTO_IMPORT_FILES = "C:\Media\clip1.mp4,C:\Media\clip2.mp4"
+PalmierPro.App.exe
+```

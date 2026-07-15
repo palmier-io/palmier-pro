@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "minorVersion": 1,
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "outputWidth": 1920,
+  "outputHeight": 1080,
+  "tracks": [
+    {
+      "id": "TRACK-VIDEO",
+      "type": "video",
+      "muted": false,
+      "clips": [
+        {
+          "id": "CLIP-1",
+          "type": "video",
+          "startFrame": 0,
+          "durationFrames": 60,
+          "trimStartFrame": 0,
+          "speed": 1,
+          "mediaPath": "{{FIXTURE_DIR}}\\clip-a.mp4",
+          "hasAlphaHint": null,
+          "blendMode": null,
+          "opacity": {
+            "value": 1,
+            "keyframes": [
+              {
+                "frame": 0,
+                "value": 0.2,
+                "interpolation": "hold"
+              },
+              {
+                "frame": 30,
+                "value": 1,
+                "interpolation": "linear"
+              }
+            ]
+          },
+          "transform": {
+            "value": {
+              "centerX": 0.5,
+              "centerY": 0.5,
+              "width": 1,
+              "height": 1,
+              "rotation": 0,
+              "flipHorizontal": false,
+              "flipVertical": false
+            },
+            "keyframes": [
+              {
+                "frame": 0,
+                "value": {
+                  "centerX": 0.5,
+                  "centerY": 0.5,
+                  "width": 1,
+                  "height": 1,
+                  "rotation": 0,
+                  "flipHorizontal": false,
+                  "flipVertical": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "frame": 30,
+                "value": {
+                  "centerX": 0.5,
+                  "centerY": 0.5,
+                  "width": 1,
+                  "height": 1,
+                  "rotation": 0,
+                  "flipHorizontal": false,
+                  "flipVertical": false
+                },
+                "interpolation": "linear"
+              }
+            ]
+          },
+          "crop": {
+            "value": {
+              "left": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0
+            },
+            "keyframes": [
+              {
+                "frame": 0,
+                "value": {
+                  "left": 0,
+                  "top": 0,
+                  "right": 0,
+                  "bottom": 0
+                },
+                "interpolation": "linear"
+              },
+              {
+                "frame": 30,
+                "value": {
+                  "left": 0.1,
+                  "top": 0.05,
+                  "right": 0.1,
+                  "bottom": 0.05
+                },
+                "interpolation": "hold"
+              }
+            ]
+          },
+          "volume": {
+            "gain": 1,
+            "fadeInFrames": 0,
+            "fadeOutFrames": 0,
+            "fadeInInterpolation": "linear",
+            "fadeOutInterpolation": "linear",
+            "keyframes": null
+          },
+          "effects": [
+            {
+              "type": "color.blacksWhites",
+              "enabled": true,
+              "params": {
+                "blacks": {
+                  "value": 0.1,
+                  "string": null,
+                  "keyframes": null
+                },
+                "whites": {
+                  "value": null,
+                  "string": null,
+                  "keyframes": [
+                    {
+                      "frame": 0,
+                      "value": -0.3,
+                      "interpolation": "hold"
+                    },
+                    {
+                      "frame": 60,
+                      "value": 0.4,
+                      "interpolation": "linear"
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

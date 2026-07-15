@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Input;
 using PalmierPro.Core.Models;
 using PalmierPro.Core.Theme;
 using PalmierPro.Rendering;
+using PalmierPro.Services;
 using PalmierPro.Services.Engine;
 using PalmierPro.Services.Project;
 using Serilog;
@@ -119,24 +120,33 @@ public sealed partial class TimelinePage : UserControl
         {
             return;
         }
-        var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
-        picker.FileTypeFilter.Add("*");
-        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(_ownerWindow));
-        Windows.Storage.StorageFolder? folder = await picker.PickSingleFolderAsync();
-        if (folder is null)
+        string? folderPath;
+        if (AutomationMode.Enabled)
+        {
+            folderPath = AutomationMode.NextOpenProjectPath();
+        }
+        else
+        {
+            var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
+            picker.FileTypeFilter.Add("*");
+            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(_ownerWindow));
+            Windows.Storage.StorageFolder? folder = await picker.PickSingleFolderAsync();
+            folderPath = folder?.Path;
+        }
+        if (folderPath is null)
         {
             return;
         }
 
         try
         {
-            ProjectPackageContents contents = await Task.Run(() => ProjectPackageIO.Load(folder.Path));
+            ProjectPackageContents contents = await Task.Run(() => ProjectPackageIO.Load(folderPath));
             string timelineId = contents.ProjectFile.ActiveTimelineId ?? contents.ProjectFile.Timelines[0].Id;
             MediaManifest manifest = contents.Manifest ?? new MediaManifest();
-            var resolver = new MediaResolver(() => manifest, () => folder.Path);
+            var resolver = new MediaResolver(() => manifest, () => folderPath);
 
             await SubmitAsync(contents.ProjectFile, timelineId, resolver);
-            StatusText.Text = $"{Path.GetFileName(folder.Path)} — timeline '{timelineId}'";
+            StatusText.Text = $"{Path.GetFileName(folderPath)} — timeline '{timelineId}'";
             StatusText.Foreground = HarnessTheme.TextSecondaryBrush;
         }
         catch (Exception ex)
@@ -152,14 +162,23 @@ public sealed partial class TimelinePage : UserControl
         {
             return;
         }
-        var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.VideosLibrary };
-        foreach (string ext in VideoExtensions)
+        IReadOnlyList<string>? paths;
+        if (AutomationMode.Enabled)
         {
-            picker.FileTypeFilter.Add(ext);
+            paths = AutomationMode.NextImportFiles();
         }
-        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(_ownerWindow));
-        IReadOnlyList<Windows.Storage.StorageFile> files = await picker.PickMultipleFilesAsync();
-        if (files.Count < 2)
+        else
+        {
+            var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.VideosLibrary };
+            foreach (string ext in VideoExtensions)
+            {
+                picker.FileTypeFilter.Add(ext);
+            }
+            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(_ownerWindow));
+            IReadOnlyList<Windows.Storage.StorageFile> files = await picker.PickMultipleFilesAsync();
+            paths = [.. files.Select(f => f.Path)];
+        }
+        if (paths is null || paths.Count < 2)
         {
             StatusText.Text = "Pick two media files to build a demo timeline.";
             StatusText.Foreground = HarnessTheme.StatusErrorBrush;
@@ -168,9 +187,9 @@ public sealed partial class TimelinePage : UserControl
 
         try
         {
-            (ProjectFile project, string timelineId, MediaResolver resolver) = BuildSyntheticProject(files[0].Path, files[1].Path);
+            (ProjectFile project, string timelineId, MediaResolver resolver) = BuildSyntheticProject(paths[0], paths[1]);
             await SubmitAsync(project, timelineId, resolver);
-            StatusText.Text = $"Demo — {Path.GetFileName(files[0].Path)} (top, speed-toggle) / {Path.GetFileName(files[1].Path)} (bottom)";
+            StatusText.Text = $"Demo — {Path.GetFileName(paths[0])} (top, speed-toggle) / {Path.GetFileName(paths[1])} (bottom)";
             StatusText.Foreground = HarnessTheme.TextSecondaryBrush;
         }
         catch (Exception ex)

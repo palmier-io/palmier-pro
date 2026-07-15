@@ -9,12 +9,21 @@ namespace PalmierPro.Services.Engine;
 public sealed class TimelineSnapshot
 {
     public int Version { get; init; } = TimelineSnapshotBuilder.SchemaVersion;
+    public int MinorVersion { get; init; } = TimelineSnapshotBuilder.SchemaMinorVersion;
     public int FpsNumerator { get; init; }
     public int FpsDenominator { get; init; } = 1;
     public int OutputWidth { get; init; }
     public int OutputHeight { get; init; }
     public List<SnapshotTrack> Tracks { get; init; } = [];
 }
+
+/// One `{ frame, value, interpolation }` entry of a v1.1 keyframe envelope — see
+/// docs/timeline-snapshot-v1.md §11. `Frame` is clip-relative (matches Core's KeyframeTrack
+/// storage convention — Keyframe.swift's `toOffset`).
+public sealed record SnapshotKeyframe<T>(int Frame, T Value, Interpolation Interpolation);
+
+/// One entry of a v1.1 SnapshotClip's ordered `effects` list — mirrors Core's `Effect` verbatim.
+public sealed record SnapshotEffect(string Type, bool Enabled, Dictionary<string, EffectParam> Params);
 
 public sealed class SnapshotTrack
 {
@@ -49,6 +58,12 @@ public sealed class SnapshotClip
     public int FadeOutFrames { get; init; }
     public Interpolation FadeInInterpolation { get; init; } = Interpolation.Linear;
     public Interpolation FadeOutInterpolation { get; init; } = Interpolation.Linear;
+
+    // v1.1 (docs/timeline-snapshot-v1.md §11) — null/empty means "static", matching v1.
+    public List<SnapshotKeyframe<double>>? OpacityKeyframes { get; init; }
+    public List<SnapshotKeyframe<Crop>>? CropKeyframes { get; init; }
+    public List<SnapshotKeyframe<Transform>>? TransformKeyframes { get; init; }
+    public List<SnapshotEffect> Effects { get; init; } = [];
 }
 
 public sealed record TimelineSnapshotBuildResult(TimelineSnapshot Snapshot, IReadOnlySet<string> OfflineMediaRefs);
@@ -64,6 +79,9 @@ public sealed record TimelineSnapshotBuildResult(TimelineSnapshot Snapshot, IRea
 public static class TimelineSnapshotBuilder
 {
     public const int SchemaVersion = 1;
+    /// v1.1 (docs/timeline-snapshot-v1.md §11): populated keyframes envelopes + per-clip
+    /// `effects`. Native accepts an absent `minorVersion` as 0 and never rejects on this field.
+    public const int SchemaMinorVersion = 1;
 
     public static TimelineSnapshotBuildResult Build(ProjectFile project, string timelineId, MediaResolver mediaResolver)
     {
@@ -284,9 +302,53 @@ public static class TimelineSnapshotBuilder
             FadeOutFrames = clip.FadeOutFrames,
             FadeInInterpolation = clip.FadeInInterpolation,
             FadeOutInterpolation = clip.FadeOutInterpolation,
+            OpacityKeyframes = BuildKeyframes(clip.OpacityTrack, kf => kf.Value),
+            CropKeyframes = BuildKeyframes(clip.CropTrack, kf => kf.Value),
+            TransformKeyframes = BuildTransformKeyframes(clip),
+            Effects = clip.Effects?.Select(ToSnapshotEffect).ToList() ?? [],
         };
         return true;
     }
+
+    // clip.*Track keyframes are ALREADY clip-relative (Keyframe.swift's `toOffset` is applied at
+    // storage time, not just on the public accessor API — see Keyframe.cs's Upsert*Keyframe
+    // helpers) — so `kf.Frame` is emitted verbatim, no re-basing needed here.
+    private static List<SnapshotKeyframe<T>>? BuildKeyframes<T>(KeyframeTrack<T>? track, Func<Keyframe<T>, T> value)
+    {
+        if (track is not { IsActive: true })
+        {
+            return null;
+        }
+        return track.Keyframes.Select(kf => new SnapshotKeyframe<T>(kf.Frame, value(kf), kf.InterpolationOut)).ToList();
+    }
+
+    /// v1.1's `transform` keyframe envelope merges Core's THREE separate tracks
+    /// (PositionTrack/ScaleTrack/RotationTrack — there is no single Swift/C# "transform track")
+    /// into one combined list: at the union of every keyframe frame across all three, sample the
+    /// FULL Transform via <see cref="Clip.TransformAt"/> (which already independently, correctly
+    /// samples each underlying track with ITS OWN interpolation mode) — so every emitted anchor
+    /// point is an exact sample, not an approximation. The one deliberate simplification is the
+    /// curve shape BETWEEN two merged anchors: native re-interpolates the combined Transform
+    /// linearly (see docs/timeline-snapshot-v1.md §11), which does not reproduce independent
+    /// smooth/hold segments spanning an anchor that only ONE of the three source tracks defines.
+    /// Returns null when none of the three tracks are animated (matches v1's static behavior).
+    private static List<SnapshotKeyframe<Transform>>? BuildTransformKeyframes(Clip clip)
+    {
+        if (!clip.HasTransformAnimation)
+        {
+            return null;
+        }
+        var offsets = new SortedSet<int>();
+        foreach (var kf in clip.PositionTrack?.Keyframes ?? []) offsets.Add(kf.Frame);
+        foreach (var kf in clip.ScaleTrack?.Keyframes ?? []) offsets.Add(kf.Frame);
+        foreach (var kf in clip.RotationTrack?.Keyframes ?? []) offsets.Add(kf.Frame);
+        return offsets
+            .Select(o => new SnapshotKeyframe<Transform>(o, clip.TransformAt(clip.StartFrame + o), Interpolation.Linear))
+            .ToList();
+    }
+
+    private static SnapshotEffect ToSnapshotEffect(Effect effect) =>
+        new(effect.Type, effect.Enabled, effect.Params);
 }
 
 /// Coarse, extension-based `hasAlphaHint` — see docs/timeline-snapshot-v1.md §5. Never authoritative.
@@ -339,6 +401,10 @@ public static class TimelineSnapshotSerializer
     {
         w.WriteStartObject();
         w.WriteNumber("version", s.Version);
+        if (s.MinorVersion != 0)
+        {
+            w.WriteNumber("minorVersion", s.MinorVersion);
+        }
         w.WriteStartObject("fps");
         w.WriteNumber("numerator", s.FpsNumerator);
         w.WriteNumber("denominator", s.FpsDenominator);
@@ -391,30 +457,57 @@ public static class TimelineSnapshotSerializer
 
         w.WriteStartObject("opacity");
         w.WriteNumber("value", c.Opacity);
-        w.WriteNull("keyframes");
+        WriteDoubleKeyframes(w, c.OpacityKeyframes);
         w.WriteEndObject();
 
         w.WriteStartObject("transform");
         w.WriteStartObject("value");
-        w.WriteNumber("centerX", c.Transform.CenterX);
-        w.WriteNumber("centerY", c.Transform.CenterY);
-        w.WriteNumber("width", c.Transform.Width);
-        w.WriteNumber("height", c.Transform.Height);
-        w.WriteNumber("rotation", c.Transform.Rotation);
-        w.WriteBoolean("flipHorizontal", c.Transform.FlipHorizontal);
-        w.WriteBoolean("flipVertical", c.Transform.FlipVertical);
+        WriteTransformValue(w, c.Transform);
         w.WriteEndObject();
-        w.WriteNull("keyframes");
+        if (c.TransformKeyframes is { Count: > 0 } transformKfs)
+        {
+            w.WriteStartArray("keyframes");
+            foreach (var kf in transformKfs)
+            {
+                w.WriteStartObject();
+                w.WriteNumber("frame", kf.Frame);
+                w.WriteStartObject("value");
+                WriteTransformValue(w, kf.Value);
+                w.WriteEndObject();
+                w.WriteString("interpolation", SwiftStringEnumConverter<Interpolation>.RawValue(kf.Interpolation));
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
+        }
+        else
+        {
+            w.WriteNull("keyframes");
+        }
         w.WriteEndObject();
 
         w.WriteStartObject("crop");
         w.WriteStartObject("value");
-        w.WriteNumber("left", c.Crop.Left);
-        w.WriteNumber("top", c.Crop.Top);
-        w.WriteNumber("right", c.Crop.Right);
-        w.WriteNumber("bottom", c.Crop.Bottom);
+        WriteCropValue(w, c.Crop);
         w.WriteEndObject();
-        w.WriteNull("keyframes");
+        if (c.CropKeyframes is { Count: > 0 } cropKfs)
+        {
+            w.WriteStartArray("keyframes");
+            foreach (var kf in cropKfs)
+            {
+                w.WriteStartObject();
+                w.WriteNumber("frame", kf.Frame);
+                w.WriteStartObject("value");
+                WriteCropValue(w, kf.Value);
+                w.WriteEndObject();
+                w.WriteString("interpolation", SwiftStringEnumConverter<Interpolation>.RawValue(kf.Interpolation));
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
+        }
+        else
+        {
+            w.WriteNull("keyframes");
+        }
         w.WriteEndObject();
 
         w.WriteStartObject("volume");
@@ -423,9 +516,109 @@ public static class TimelineSnapshotSerializer
         w.WriteNumber("fadeOutFrames", c.FadeOutFrames);
         w.WriteString("fadeInInterpolation", SwiftStringEnumConverter<Interpolation>.RawValue(c.FadeInInterpolation));
         w.WriteString("fadeOutInterpolation", SwiftStringEnumConverter<Interpolation>.RawValue(c.FadeOutInterpolation));
-        w.WriteNull("keyframes");
+        w.WriteNull("keyframes"); // volume dB keyframe track — E4.5 (audio playback), not video render
         w.WriteEndObject();
 
+        if (c.Effects.Count > 0)
+        {
+            w.WriteStartArray("effects");
+            foreach (var effect in c.Effects)
+            {
+                WriteEffect(w, effect);
+            }
+            w.WriteEndArray();
+        }
+
+        w.WriteEndObject();
+    }
+
+    private static void WriteTransformValue(Utf8JsonWriter w, Transform t)
+    {
+        w.WriteNumber("centerX", t.CenterX);
+        w.WriteNumber("centerY", t.CenterY);
+        w.WriteNumber("width", t.Width);
+        w.WriteNumber("height", t.Height);
+        w.WriteNumber("rotation", t.Rotation);
+        w.WriteBoolean("flipHorizontal", t.FlipHorizontal);
+        w.WriteBoolean("flipVertical", t.FlipVertical);
+    }
+
+    private static void WriteCropValue(Utf8JsonWriter w, Crop c)
+    {
+        w.WriteNumber("left", c.Left);
+        w.WriteNumber("top", c.Top);
+        w.WriteNumber("right", c.Right);
+        w.WriteNumber("bottom", c.Bottom);
+    }
+
+    private static void WriteDoubleKeyframes(Utf8JsonWriter w, List<SnapshotKeyframe<double>>? keyframes)
+    {
+        if (keyframes is not { Count: > 0 })
+        {
+            w.WriteNull("keyframes");
+            return;
+        }
+        w.WriteStartArray("keyframes");
+        foreach (var kf in keyframes)
+        {
+            w.WriteStartObject();
+            w.WriteNumber("frame", kf.Frame);
+            w.WriteNumber("value", kf.Value);
+            w.WriteString("interpolation", SwiftStringEnumConverter<Interpolation>.RawValue(kf.Interpolation));
+            w.WriteEndObject();
+        }
+        w.WriteEndArray();
+    }
+
+    // v1.1 effect wire shape (docs/timeline-snapshot-v1.md §11): params[name] = { value, string,
+    // keyframes } — deliberately NOT Core's EffectParam project-file key names (which use
+    // "track", not "keyframes"); this is the engine's own ABI contract, hand-written like every
+    // other object in this serializer (§9's determinism guarantee covers this too).
+    private static void WriteEffect(Utf8JsonWriter w, SnapshotEffect effect)
+    {
+        w.WriteStartObject();
+        w.WriteString("type", effect.Type);
+        w.WriteBoolean("enabled", effect.Enabled);
+        w.WriteStartObject("params");
+        foreach (var (key, param) in effect.Params.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+        {
+            w.WriteStartObject(key);
+            if (param.Value is { } v)
+            {
+                w.WriteNumber("value", v);
+            }
+            else
+            {
+                w.WriteNull("value");
+            }
+            if (param.StringValue is { } s)
+            {
+                w.WriteString("string", s);
+            }
+            else
+            {
+                w.WriteNull("string");
+            }
+            if (param.Track is { IsActive: true } track)
+            {
+                w.WriteStartArray("keyframes");
+                foreach (var kf in track.Keyframes)
+                {
+                    w.WriteStartObject();
+                    w.WriteNumber("frame", kf.Frame);
+                    w.WriteNumber("value", kf.Value);
+                    w.WriteString("interpolation", SwiftStringEnumConverter<Interpolation>.RawValue(kf.InterpolationOut));
+                    w.WriteEndObject();
+                }
+                w.WriteEndArray();
+            }
+            else
+            {
+                w.WriteNull("keyframes");
+            }
+            w.WriteEndObject();
+        }
+        w.WriteEndObject();
         w.WriteEndObject();
     }
 

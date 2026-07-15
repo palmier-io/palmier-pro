@@ -13,4 +13,8 @@ public static class Defaults
 {
     public const double PixelsPerFrame = 4.0;
     public const double ImageDurationSeconds = 5.0;
+
+    /// Canvas/source aspect-ratio delta below which `fitTransform` treats them as identical and
+    /// skips letterboxing. Needed by the M3 clip-placement port (`placeClip`'s `fitTransform`).
+    public const double AspectTolerance = 0.02;
 }

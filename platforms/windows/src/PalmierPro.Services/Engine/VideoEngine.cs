@@ -1,4 +1,5 @@
 using PalmierPro.Rendering;
+using EffectParam = PalmierPro.Core.Models.EffectParam;
 
 namespace PalmierPro.Services.Engine;
 
@@ -119,15 +120,17 @@ public sealed class SeekCoordinator
 /// `IVideoEngine`: asset-preview open/present/seek and swap-chain attach/resize/detach are E1
 /// surface; timeline-session methods are E2 surface (Stage B) — each open `timelineId` gets its
 /// own native <see cref="PalmierPro.Rendering.TimelineSession"/>, keyed in <see cref="_timelines"/>.
-/// <see cref="RefreshParams"/> still no-ops: v1's native engine has no per-clip GPU param state to
-/// patch in place yet (that's the render graph's effect-chain seam — E3); a param-only edit falls
-/// back to a full <see cref="UpdateTimelineAsync"/> rebuild upstream in the VM today. See
-/// docs/timeline-snapshot-v1.md.
+/// <see cref="RefreshParams"/> (E3) applies the patch onto the last-built <see
+/// cref="TimelineSnapshot"/> for that timeline and pushes the result via
+/// PE_TimelineRefreshParams — no decoder/media-session rebuild, see
+/// docs/timeline-snapshot-v1.md §11 and native TimelineSession::RefreshParams's media-set
+/// assertion. A safe no-op if no session for `patch.TimelineId` is open yet.
 public sealed class VideoEngine : IVideoEngine, IDisposable
 {
     private readonly EngineSession _session = new();
     private readonly SeekCoordinator _assetSeekCoordinator;
     private readonly Dictionary<string, PalmierPro.Rendering.TimelineSession> _timelines = [];
+    private readonly Dictionary<string, TimelineSnapshot> _lastSnapshots = [];
     private readonly Lock _timelinesGate = new();
     private MediaSource? _assetPreview;
     private bool _disposed;
@@ -169,6 +172,11 @@ public sealed class VideoEngine : IVideoEngine, IDisposable
                     timeline.Update(json);
                 }
 
+                lock (_timelinesGate)
+                {
+                    _lastSnapshots[timelineId] = snapshot.Snapshot;
+                }
+
                 var unprocessable = timeline.GetUnprocessableMediaRefs();
                 MediaStatusChanged?.Invoke(this, new MediaStatus(snapshot.OfflineMediaRefs, unprocessable));
             },
@@ -177,9 +185,108 @@ public sealed class VideoEngine : IVideoEngine, IDisposable
 
     public void RefreshParams(TimelineParamPatch patch)
     {
-        // No-op: v1's native engine has no per-clip GPU param state to refresh in place yet
-        // (that's the render graph's effect-chain seam — E3). Intentionally does not throw —
-        // see class remarks.
+        ArgumentNullException.ThrowIfNull(patch);
+        PalmierPro.Rendering.TimelineSession timeline;
+        TimelineSnapshot lastSnapshot;
+        lock (_timelinesGate)
+        {
+            if (!_timelines.TryGetValue(patch.TimelineId, out timeline!) ||
+                !_lastSnapshots.TryGetValue(patch.TimelineId, out lastSnapshot!))
+            {
+                return; // no open session for this timeline — nothing to refresh (see class remarks)
+            }
+        }
+
+        var patchedTracks = new List<SnapshotTrack>(lastSnapshot.Tracks.Count);
+        foreach (var track in lastSnapshot.Tracks)
+        {
+            var patchedClips = new List<SnapshotClip>(track.Clips.Count);
+            foreach (var clip in track.Clips)
+            {
+                var clipPatch = patch.Clips.FirstOrDefault(c => c.ClipId == clip.Id);
+                patchedClips.Add(clipPatch is null ? clip : ApplyClipPatch(clip, clipPatch));
+            }
+            patchedTracks.Add(new SnapshotTrack { Id = track.Id, Type = track.Type, Muted = track.Muted, Clips = patchedClips });
+        }
+
+        var patched = new TimelineSnapshot
+        {
+            Version = lastSnapshot.Version,
+            MinorVersion = lastSnapshot.MinorVersion,
+            FpsNumerator = lastSnapshot.FpsNumerator,
+            FpsDenominator = lastSnapshot.FpsDenominator,
+            OutputWidth = lastSnapshot.OutputWidth,
+            OutputHeight = lastSnapshot.OutputHeight,
+            Tracks = patchedTracks,
+        };
+
+        byte[] json = TimelineSnapshotSerializer.ToJsonBytes(patched);
+        // Synchronous and fast (JSON parse + atomic pointer swap — no decode/rebuild; see
+        // TimelineSession::RefreshParams native-side), matching the "live slider feedback"
+        // contract this interface method exists for.
+        timeline.RefreshParams(json);
+        lock (_timelinesGate)
+        {
+            _lastSnapshots[patch.TimelineId] = patched;
+        }
+    }
+
+    private static SnapshotClip ApplyClipPatch(SnapshotClip clip, ClipParamPatch patch)
+    {
+        var effects = clip.Effects;
+        if (patch.Effects is { Count: > 0 })
+        {
+            effects = ApplyEffectPatches(clip.Effects, patch.Effects);
+        }
+        return new SnapshotClip
+        {
+            Id = clip.Id,
+            Type = clip.Type,
+            StartFrame = clip.StartFrame,
+            DurationFrames = clip.DurationFrames,
+            TrimStartFrame = clip.TrimStartFrame,
+            Speed = clip.Speed,
+            MediaPath = clip.MediaPath,
+            HasAlphaHint = clip.HasAlphaHint,
+            BlendMode = patch.BlendMode ?? clip.BlendMode,
+            Opacity = patch.Opacity ?? clip.Opacity,
+            Transform = patch.Transform ?? clip.Transform,
+            Crop = patch.Crop ?? clip.Crop,
+            VolumeGain = patch.VolumeGain ?? clip.VolumeGain,
+            FadeInFrames = clip.FadeInFrames,
+            FadeOutFrames = clip.FadeOutFrames,
+            FadeInInterpolation = clip.FadeInInterpolation,
+            FadeOutInterpolation = clip.FadeOutInterpolation,
+            OpacityKeyframes = clip.OpacityKeyframes,
+            CropKeyframes = clip.CropKeyframes,
+            TransformKeyframes = clip.TransformKeyframes,
+            Effects = effects,
+        };
+    }
+
+    private static List<SnapshotEffect> ApplyEffectPatches(List<SnapshotEffect> effects, IReadOnlyList<EffectParamPatch> patches)
+    {
+        var result = new List<SnapshotEffect>(effects.Count);
+        foreach (var effect in effects)
+        {
+            var relevant = patches.Where(p => p.EffectType == effect.Type).ToList();
+            if (relevant.Count == 0)
+            {
+                result.Add(effect);
+                continue;
+            }
+            var newParams = new Dictionary<string, EffectParam>(effect.Params);
+            foreach (var p in relevant)
+            {
+                var existing = newParams.GetValueOrDefault(p.ParamKey);
+                // Overwrites the static value only — a keyframed param (Track active) is left
+                // animated; a plain slider-drag patch targets the static value, matching
+                // EffectParam.Resolved's own "no active track -> use Value" precedence.
+                newParams[p.ParamKey] = new EffectParam(p.Value, existing?.StringValue, existing?.Track);
+            }
+            result.Add(new SnapshotEffect(effect.Type, effect.Enabled, newParams));
+        }
+        return result;
     }
 
     public void EvictTimeline(string timelineId)

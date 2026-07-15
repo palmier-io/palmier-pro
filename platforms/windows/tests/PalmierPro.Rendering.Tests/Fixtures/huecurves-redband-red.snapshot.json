@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "minorVersion": 1,
+  "fps": { "numerator": 30, "denominator": 1 },
+  "outputWidth": 640,
+  "outputHeight": 360,
+  "tracks": [
+    {
+      "id": "TRACK-0",
+      "type": "video",
+      "muted": false,
+      "clips": [
+        {
+          "id": "CLIP-RED",
+          "type": "video",
+          "startFrame": 0,
+          "durationFrames": 60,
+          "trimStartFrame": 0,
+          "speed": 1.0,
+          "mediaPath": "{{FIXTURE_DIR}}\\solid_red_640x360_30fps_2s.mp4",
+          "hasAlphaHint": null,
+          "blendMode": null,
+          "opacity": { "value": 1.0, "keyframes": null },
+          "transform": {
+            "value": { "centerX": 0.5, "centerY": 0.5, "width": 1.0, "height": 1.0, "rotation": 0.0, "flipHorizontal": false, "flipVertical": false },
+            "keyframes": null
+          },
+          "crop": { "value": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 }, "keyframes": null },
+          "volume": { "gain": 1.0, "fadeInFrames": 0, "fadeOutFrames": 0, "fadeInInterpolation": "linear", "fadeOutInterpolation": "linear", "keyframes": null },
+          "effects": [
+            {
+              "type": "color.hueCurves",
+              "enabled": true,
+              "params": {
+                "curves": {
+                  "value": null,
+                  "string": "{\"hueVsHue\":[{\"x\":0,\"y\":0.8},{\"x\":0.16666666666666666,\"y\":0.5},{\"x\":0.3333333333333333,\"y\":0.5},{\"x\":0.5,\"y\":0.5},{\"x\":0.6666666666666666,\"y\":0.5},{\"x\":0.8333333333333334,\"y\":0.5}],\"hueVsSat\":[],\"hueVsLum\":[]}",
+                  "keyframes": null
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

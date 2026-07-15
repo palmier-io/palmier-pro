@@ -91,6 +91,36 @@ public sealed class TimelineDeterminismTests(MediaFixtures fixtures)
 
     [Fact]
     [Trait("Category", "Media")]
+    public void RenderFrameToFile_WithEffectsChain_CalledTwice_ProducesByteIdenticalPngs()
+    {
+        // E3: the GPU effect-chain path (GpuCompositor.cpp — LUT texture builds, blur passes,
+        // ping-ponged working textures) must be exactly as deterministic as the plain-geometry
+        // path TimelineDeterminismTests already covers above.
+        using var session = new EngineSession();
+        string json = LoadTimelineSnapshotJson("wheels.snapshot.json", fixtures.FixturesDir);
+        using TimelineSession timeline = TimelineSession.Open(session, System.Text.Encoding.UTF8.GetBytes(json));
+
+        string firstPath = TempPngPath("determinism-effects-a");
+        string secondPath = TempPngPath("determinism-effects-b");
+        try
+        {
+            timeline.RenderFrameToFile(15, firstPath);
+            timeline.RenderFrameToFile(15, secondPath);
+
+            byte[] first = File.ReadAllBytes(firstPath);
+            byte[] second = File.ReadAllBytes(secondPath);
+            first.Length.ShouldBeGreaterThan(0);
+            second.ShouldBe(first, "the effect-chain GPU render path must be as deterministic as the plain geometry path");
+        }
+        finally
+        {
+            File.Delete(firstPath);
+            File.Delete(secondPath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Media")]
     public void SingleFullFrameClip_NoRetiming_MatchesDirectSourceDecodeAtMappedTime()
     {
         using var session = new EngineSession();

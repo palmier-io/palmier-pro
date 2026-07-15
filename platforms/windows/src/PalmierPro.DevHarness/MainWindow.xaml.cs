@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using PalmierPro.Core.Theme;
 using PalmierPro.Rendering;
+using PalmierPro.Services;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
@@ -51,22 +52,31 @@ public sealed partial class MainWindow : Window
 
     private async void OpenButton_Click(object sender, RoutedEventArgs e)
     {
-        var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.VideosLibrary };
-        foreach (string ext in VideoExtensions)
+        string? path;
+        if (AutomationMode.Enabled)
         {
-            picker.FileTypeFilter.Add(ext);
+            var files = AutomationMode.NextImportFiles();
+            path = files is { Count: > 0 } ? files[0] : null;
         }
-        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
-
-        Windows.Storage.StorageFile? file = await picker.PickSingleFileAsync();
-        if (file is null)
+        else
+        {
+            var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.VideosLibrary };
+            foreach (string ext in VideoExtensions)
+            {
+                picker.FileTypeFilter.Add(ext);
+            }
+            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
+            Windows.Storage.StorageFile? file = await picker.PickSingleFileAsync();
+            path = file?.Path;
+        }
+        if (path is null)
         {
             return;
         }
 
         try
         {
-            OpenMedia(file.Path);
+            OpenMedia(path);
         }
         catch (EngineException ex)
         {

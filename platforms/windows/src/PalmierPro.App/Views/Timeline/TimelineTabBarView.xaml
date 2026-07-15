@@ -1,0 +1,38 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.Timeline.TimelineTabBarView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!--
+        Timeline tab bar (M3, Stage C) — ports Timeline/TimelineTabBar.swift. Tabs are built in
+        code-behind (RefreshTabs) rather than data-templated: TimelineEditorViewModel.Timelines/
+        OpenTimelineIds are plain Lists, not observable collections (mirrors the Mac's own
+        derive-on-render `openTimelineIds.compactMap` — there is no incremental diffing to hook
+        into on either platform), so a full rebuild after every tab-affecting call is the simplest
+        correct approach, same as MediaTabView's own code-behind-built MenuFlyouts.
+    -->
+    <Grid x:Name="RootGrid" Background="{StaticResource AppBackgroundSurfaceBrush}"
+          BorderBrush="{StaticResource AppBorderPrimaryBrush}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <Button x:Name="AllTimelinesButton" Grid.Column="0" Content="&#xE712;"
+                FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0"
+                Click="AllTimelinesButton_Click" ToolTipService.ToolTip="All timelines"/>
+
+        <ScrollViewer Grid.Column="1" VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled"
+                      HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Hidden">
+            <StackPanel x:Name="TabsPanel" Orientation="Horizontal"/>
+        </ScrollViewer>
+
+        <Button x:Name="AddTabButton" Grid.Column="2" Content="&#xE710;"
+                FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0"
+                Click="AddTabButton_Click" ToolTipService.ToolTip="New timeline"/>
+    </Grid>
+</UserControl>

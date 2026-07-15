@@ -1,17 +1,21 @@
 using System.Globalization;
+using System.Text.Json;
+using PalmierPro.Core.Json;
 using PalmierPro.Core.Models;
 using PalmierPro.Rendering;
 using PalmierPro.Services.Engine;
+using PalmierPro.Services.Export;
 using PalmierPro.Services.Project;
 
 namespace PalmierPro.DevHarness;
 
 // Hand-written Main (DISABLE_XAML_GENERATED_MAIN in the csproj) so --dump-frame/
-// --dump-timeline-frame can run headless — no Application.Start, no WinUI/display
+// --dump-timeline-frame/--export-fcpxml can run headless — no Application.Start, no WinUI/display
 // dependency at all — before falling through to the normal WinUI-hosted app. Keeps the
 // CI-facing path minimal per the plan:
 //   PalmierPro.DevHarness.exe --dump-frame <media> <seconds> <outPng>
 //   PalmierPro.DevHarness.exe --dump-timeline-frame <projectOrSnapshotPath> <frame> <outPng>
+//   PalmierPro.DevHarness.exe --export-fcpxml <outFcpxmlPath>
 public static class Program
 {
     [STAThread]
@@ -24,6 +28,10 @@ public static class Program
         if (args.Length >= 1 && string.Equals(args[0], "--dump-timeline-frame", StringComparison.OrdinalIgnoreCase))
         {
             return RunDumpTimelineFrame(args);
+        }
+        if (args.Length >= 1 && string.Equals(args[0], "--export-fcpxml", StringComparison.OrdinalIgnoreCase))
+        {
+            return RunExportFcpxml(args);
         }
 
         HarnessLogging.Configure();
@@ -108,6 +116,79 @@ public static class Program
         {
             Console.Error.WriteLine($"--dump-timeline-frame failed: {ex.Message}");
             return 1;
+        }
+    }
+
+    // Builds a synthetic two-clip (title over a stand-in video) timeline entirely in memory — no
+    // real media needed, since FcpxmlExporter only checks a source file's existence/metadata, not
+    // its contents — and exports it end to end through the real FfprobeSourceTimingReader (probing
+    // the empty stand-in file, which fails soft to "no timecode") and DirectWriteFontTraitResolver
+    // shims this stage introduced, demonstrating the exporters before the Export dialog (Stage F).
+    private static int RunExportFcpxml(string[] args)
+    {
+        if (args.Length != 2)
+        {
+            Console.Error.WriteLine("usage: PalmierPro.DevHarness.exe --export-fcpxml <outFcpxmlPath>");
+            return 1;
+        }
+        string outPath = args[1];
+        string standInMedia = Path.Combine(Path.GetTempPath(), $"palmier-devharness-{Guid.NewGuid():N}.mp4");
+        try
+        {
+            File.WriteAllBytes(standInMedia, []);
+            var manifest = new MediaManifest
+            {
+                Entries =
+                [
+                    new MediaManifestEntry(
+                        "clip-1", "clip-1", ClipType.Video, PalmierPro.Core.Models.MediaSource.External(standInMedia), duration: 5.0,
+                        sourceWidth: 1920, sourceHeight: 1080, hasAudio: false),
+                ],
+            };
+            var resolver = new MediaResolver(() => manifest, () => null);
+
+            var video = new Clip("clip-1", 0, 90) { Id = SwiftId.New() };
+            var title = new Clip("title", 0, 90)
+            {
+                Id = SwiftId.New(),
+                MediaType = ClipType.Text,
+                SourceClipType = ClipType.Text,
+                TextContent = "PalmierPro",
+                TextStyle = JsonSerializer.SerializeToElement(new TextStyle()),
+            };
+            var timeline = new Timeline
+            {
+                Fps = 30,
+                Width = 1920,
+                Height = 1080,
+                Tracks =
+                [
+                    new Track(ClipType.Video, [title]),
+                    new Track(ClipType.Video, [video]),
+                ],
+            };
+
+            using var fontResolver = new DirectWriteFontTraitResolver();
+            var timingReader = new FfprobeSourceTimingReader();
+            FcpxmlExporter.ExportAsync(timeline, resolver, timingReader, fontResolver, outPath).GetAwaiter().GetResult();
+            Console.WriteLine($"Wrote {outPath}");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"--export-fcpxml failed: {ex.Message}");
+            return 1;
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(standInMedia);
+            }
+            catch (IOException)
+            {
+                // Best effort — a lingering handle shouldn't fail the run.
+            }
         }
     }
 

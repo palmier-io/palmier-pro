@@ -380,3 +380,120 @@ sits inside a JSON string, so a Windows path substituted in must be JSON-escaped
 `\\`) or the substitution corrupts the surrounding string's escaping — a raw string-replace of a
 literal `C:\Users\...` path will NOT produce valid JSON. `TimelineSnapshotBuilderTests`'s
 `LoadGolden` helper shows the correct substitution.
+
+## 11. v1.1 extension — keyframed params + per-clip effects (E3)
+
+E3 (GPU effect/compositing pipeline) extends the schema **additively**: every v1 fixture is still
+valid v1.1 input (all-`null` keyframes, no `effects` key, absent `minorVersion`). Both sides —
+`TimelineSnapshotBuilder`/`TimelineSnapshotSerializer` (C#) and `TimelineSnapshotParser`/
+`GpuCompositor` (native) — implement this section identically.
+
+### 11.1 `minorVersion`
+
+Top-level `version` stays `1`. A new optional `"minorVersion": 1` sits alongside it
+(`TimelineSnapshotBuilder.SchemaMinorVersion`). **Native treats an absent `minorVersion` as `0`
+and never rejects on this field** — `TimelineSnapshotParser` reads it with the same
+`GetInt64Or(..., default: 0)` helper every other optional field uses, and nothing downstream
+branches on its value (a v1.1 producer emitting an all-static clip is byte-for-byte
+indistinguishable, render-wise, from a real v1 producer).
+
+### 11.2 Populated keyframe envelopes
+
+The `{ "value": ..., "keyframes": null }` envelope already existed in v1 for `opacity`/
+`transform`/`crop` (§5) — v1 only ever emitted `null`. v1.1 populates it:
+
+```jsonc
+"opacity": {
+  "value": 1.0,
+  "keyframes": [
+    { "frame": 0, "value": 0.0, "interpolation": "linear" },
+    { "frame": 30, "value": 1.0, "interpolation": "smooth" }
+  ]
+}
+```
+
+- `frame` — **clip-relative** (`timelineFrame - clip.startFrame`), matching `Keyframe.swift`'s
+  `toOffset` storage convention (Core's `KeyframeTrack<T>.Keyframes[i].Frame` is ALREADY
+  clip-relative at rest — the builder emits it verbatim, no re-basing).
+  `value` — same shape as the envelope's own `value` field (a number for opacity, a `Crop`/
+  `Transform` object for those envelopes).
+- `interpolation` — `"linear"` | `"hold"` | `"smooth"`, mirroring `Keyframe.InterpolationOut`
+  (note: the wire key is `interpolation`, not Core's `interpolationOut` — this is the engine ABI's
+  own contract, hand-written like every other object in this schema, not a reflection of Core's
+  project-file JSON).
+- Sampling rules (native `SampleKeyframeTrack`, `Keyframe.h`) mirror `KeyframeTrack<T>.Sample`
+  (`Keyframe.cs`/`Keyframe.swift`) exactly: empty → the envelope's `value`; before the first
+  keyframe → the first keyframe's value; after the last → the last keyframe's value; between two
+  keyframes → hold (left value) / linear / smooth (`t*t*(3-2t)`) per the LEFT keyframe's
+  `interpolation`.
+
+**`opacity`** and **`crop`** map directly onto Core's own `Clip.OpacityTrack`
+(`KeyframeTrack<double>`) and `Clip.CropTrack` (`KeyframeTrack<Crop>`) — one Swift/C# track, one
+wire envelope, sampled with that track's own interpolation at every point. No approximation.
+
+**`transform`** has no single Core/Swift equivalent — the Mac tracks position (`AnimPair`), scale
+(`AnimPair`), and rotation (`double`) as **three separate** `KeyframeTrack`s on `Clip`, never one
+compound "transform" track. `TimelineSnapshotBuilder.BuildTransformKeyframes` merges them for wire
+simplicity: at the **union** of every keyframe frame across `PositionTrack`/`ScaleTrack`/
+`RotationTrack`, it samples the **full** `Transform` via `Clip.TransformAt(frame)` — which already
+independently and correctly samples each of the three underlying tracks with **its own**
+interpolation mode — so every emitted anchor point is an exact sample, never an approximation. The
+one deliberate, documented simplification: the **curve shape between two merged anchors** is
+always re-interpolated **linearly** on the combined `Transform` (`interpolation: "linear"` on every
+emitted transform keyframe) rather than reproducing three independent smooth/hold segments that
+may not share anchor points. Concretely: if only `ScaleTrack` is keyframed (position/rotation
+static), the merged transform keyframes exactly reproduce the scale curve (position/rotation
+anchors are identical at every point, so linear interpolation between them is a no-op); the
+approximation only bites when position/scale/rotation are keyframed at **different, non-aligned**
+frames with **non-linear** (smooth) interpolation on the Swift/C# side — a rare combination, and
+strictly better than v1's total silence on transform keyframes.
+
+### 11.3 `effects`
+
+Each `SnapshotClip` gains an optional, ordered `"effects"` array (omitted when empty — matches
+`Clip.Effects` being `null`/empty on the Swift/C# side):
+
+```jsonc
+"effects": [
+  {
+    "type": "color.blacksWhites",
+    "enabled": true,
+    "params": {
+      "blacks": { "value": 0.2, "string": null, "keyframes": null },
+      "whites": { "value": null, "string": null, "keyframes": [
+        { "frame": 0, "value": -0.3, "interpolation": "hold" },
+        { "frame": 60, "value": 0.4, "interpolation": "linear" }
+      ] }
+    }
+  }
+]
+```
+
+- `type` — `Effect.type` raw string verbatim (e.g. `"color.blacksWhites"`, `"stylize.vignette"`) —
+  see `EffectRegistry.swift` for the full id list and `native/EffectRegistry.h` for the native
+  table of the 11 ids E3 actually renders (every other registered id is parsed but silently
+  skipped by `GpuCompositor` — not an error, matches "an effect chain may reference an effect kind
+  a given engine build doesn't implement yet").
+- `enabled` — disabled effects are parsed but never dispatched.
+- `params[name]` — **not** Core's project-file `EffectParam` shape (that uses a `"track"` key);
+  this is the engine ABI's own `{ value, string, keyframes }` shape, matching §11.2's envelope
+  convention. `value`/`string` mirror `EffectParam.Value`/`StringValue`. `keyframes` (when
+  non-null) is a `KeyframeTrack<double>` — **only numeric params keyframe**; `string` params
+  (`curve`/`curves`/`path` — GradeCurves/HueCurves control-point JSON, LUTTetra's `.cube` path)
+  are always static.
+- Ordering matters (effects apply in array order, matching `Clip.Effects`'s list order — see
+  `EffectRegistry.canonicalOrder`/`insertIndex`, which the Swift inspector already enforces when
+  inserting a new effect).
+
+Native evaluates every numeric param per frame via `SnapshotEffectParam::Resolve` (`Keyframe.h`'s
+`SampleKeyframeTrack`, identical semantics to §11.2), clamped to the param's registered
+`(rangeMin, rangeMax)` — mirrors `EffectDescriptor.resolve`'s clamp (`EffectRegistry.swift`)
+exactly — then fills the effect's HLSL constant buffer (`GpuCompositor.cpp`).
+
+### 11.4 Compatibility
+
+A v1 producer (no `minorVersion`, all keyframes `null`, no `effects`) parses and renders
+identically under v1.1 native code — `SnapshotClip::OpacityAt`/`CropAt`/`TransformAt` all
+special-case "keyframes empty → return the static `value`" as their first branch, and an empty
+`effects` list is simply "no effect chain to run" (§11.3's E3 render path, `GpuCompositor::Compose`
+— see the E3 milestone report for what's GPU-default vs. CPU-fallback-only).

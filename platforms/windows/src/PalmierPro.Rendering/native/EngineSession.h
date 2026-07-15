@@ -63,7 +63,11 @@ public:
     // comment above.
     ID3D11Device* EnsureGraphicsDeviceShared(std::string& outError) { return EnsureGraphicsDevice(outError); }
     ID3D11DeviceContext* GraphicsContext() { return context_.Get(); }
-    std::mutex& GraphicsMutex() { return d3dMutex_; }
+    // Recursive: GpuCompositor::Compose (held under this lock — see TimelineSession::
+    // ComposeFrame) invokes the ClipFrameProvider callback synchronously, which calls back into
+    // EnsureGraphicsDeviceShared/this same mutex on the SAME thread (TimelineSession::
+    // ProvideClipFrame) — a plain std::mutex would self-deadlock there.
+    std::recursive_mutex& GraphicsMutex() { return d3dMutex_; }
     bool IsGraphicsDeviceHardware() const { return deviceIsHardware_; }
 
 private:
@@ -71,7 +75,7 @@ private:
     std::unordered_map<MediaSource*, std::unique_ptr<MediaSource>> mediaSources_;
     std::string lastError_;
 
-    std::mutex d3dMutex_;
+    std::recursive_mutex d3dMutex_;
     Microsoft::WRL::ComPtr<ID3D11Device> device_;
     Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
     bool deviceIsHardware_ = false;

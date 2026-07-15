@@ -75,6 +75,11 @@ Layout mirrors `Tests/PalmierProTests/<Area>/<Name>Tests.swift` on the Mac side:
 host, so WinUI types (`Window`, anything in `Microsoft.UI.Xaml.*`) must never be
 instantiated there. GPU-dependent tests carry `[Trait("Category","GPU")]`.
 
+Smoke tests that drive the real app MUST set `PALMIER_AUTOMATION=1` and script
+picker answers via the `PALMIER_AUTO_*` env vars (see `docs/README.md`'s
+"Automation mode") instead of relying on a human to click through a
+`FileOpenPicker`/`FolderPicker`.
+
 ## Voice
 
 Same as the Mac app: direct, technical, calm, confident. Apple HIG-style

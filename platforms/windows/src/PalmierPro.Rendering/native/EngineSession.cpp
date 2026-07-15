@@ -77,7 +77,7 @@ MediaSource* EngineSession::Resolve(PE_MediaHandle media)
 
 ID3D11Device* EngineSession::EnsureGraphicsDevice(std::string& outError)
 {
-    std::lock_guard<std::mutex> lock(d3dMutex_);
+    std::lock_guard<std::recursive_mutex> lock(d3dMutex_);
     if (device_)
     {
         return device_.Get();
@@ -117,7 +117,7 @@ int32_t EngineSession::AttachSwapChain(void* swapChainPanelUnknown, int32_t widt
         return PE_ERROR_UNKNOWN;
     }
 
-    std::lock_guard<std::mutex> lock(d3dMutex_);
+    std::lock_guard<std::recursive_mutex> lock(d3dMutex_);
     if (!presenter_)
     {
         presenter_ = std::make_unique<D3D11Presenter>();
@@ -133,7 +133,7 @@ int32_t EngineSession::AttachSwapChain(void* swapChainPanelUnknown, int32_t widt
 
 int32_t EngineSession::ResizeSwapChain(int32_t width, int32_t height)
 {
-    std::lock_guard<std::mutex> lock(d3dMutex_);
+    std::lock_guard<std::recursive_mutex> lock(d3dMutex_);
     if (!presenter_ || !presenter_->IsAttached())
     {
         SetLastError("no swap chain attached");
@@ -151,7 +151,7 @@ int32_t EngineSession::ResizeSwapChain(int32_t width, int32_t height)
 
 int32_t EngineSession::DetachSwapChain()
 {
-    std::lock_guard<std::mutex> lock(d3dMutex_);
+    std::lock_guard<std::recursive_mutex> lock(d3dMutex_);
     if (presenter_)
     {
         presenter_->Detach();
@@ -177,7 +177,7 @@ int32_t EngineSession::PresentFrameAt(PE_MediaHandle media, double timelineSecon
         return PE_ERROR_DECODE_FAILED;
     }
 
-    std::lock_guard<std::mutex> lock(d3dMutex_);
+    std::lock_guard<std::recursive_mutex> lock(d3dMutex_);
     if (!presenter_ || !presenter_->IsAttached())
     {
         SetLastError("no swap chain attached");

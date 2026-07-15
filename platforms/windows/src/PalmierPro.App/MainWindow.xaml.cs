@@ -92,7 +92,7 @@ public sealed partial class MainWindow : Window
     {
         if (e.PropertyName is null or nameof(ShellViewModel.ActiveDocument))
         {
-            _editorView.SetDocument(Shell.ActiveDocument);
+            _editorView.SetDocument(Shell.ActiveDocument, Shell.Timeline);
         }
         if (e.PropertyName is null or nameof(ShellViewModel.IsEditorOpen))
         {

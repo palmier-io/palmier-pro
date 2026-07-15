@@ -120,6 +120,9 @@ internal static partial class NativeMethods
     [LibraryImport(EngineLibrary, StringMarshalling = StringMarshalling.Utf8)]
     internal static partial int PE_UpdateTimeline(nint timeline, string utf8SnapshotJson);
 
+    [LibraryImport(EngineLibrary, StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial int PE_TimelineRefreshParams(nint timeline, string utf8SnapshotJson);
+
     [LibraryImport(EngineLibrary)]
     internal static partial int PE_CloseTimeline(nint session, nint timeline);
 

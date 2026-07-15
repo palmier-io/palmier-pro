@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using PalmierPro.App.ViewModels.MediaPanel;
+using PalmierPro.Services;
 using WinRT.Interop;
 using Windows.Storage.Pickers;
 
@@ -21,6 +22,10 @@ public sealed class MediaImportDialogService(Window window) : IMediaImportDialog
 
     public async Task<IReadOnlyList<string>?> PickMediaFilesAsync()
     {
+        if (AutomationMode.Enabled)
+        {
+            return AutomationMode.NextImportFiles();
+        }
         var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.VideosLibrary };
         foreach (var ext in Extensions)
         {

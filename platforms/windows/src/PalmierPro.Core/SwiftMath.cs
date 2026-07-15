@@ -7,4 +7,8 @@ public static class SwiftMath
     public static double Round(double value) => Math.Round(value, MidpointRounding.AwayFromZero);
 
     public static int RoundToInt(double value) => (int)Round(value);
+
+    /// Ported from Utilities/TimeFormatting.swift's `secondsToFrame` — truncates (Swift's
+    /// `Int(_:)` on a Double), not rounds.
+    public static int SecondsToFrame(double seconds, int fps) => (int)(seconds * fps);
 }

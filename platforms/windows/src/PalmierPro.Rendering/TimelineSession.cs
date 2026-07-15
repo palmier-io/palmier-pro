@@ -67,6 +67,22 @@ public sealed class TimelineSession : IDisposable
         }
     }
 
+    /// E3's Rebuild-vs-RefreshParams split: reuses the existing decoder/media sessions
+    /// unconditionally (native asserts the media set is unchanged and refuses the swap
+    /// otherwise — see palmier_engine.h's PE_TimelineRefreshParams). Callers use this for
+    /// opacity/transform/crop/blendMode/effects/keyframe param edits that don't touch which
+    /// media a clip points at; a structural change still goes through <see cref="Update"/>.
+    public void RefreshParams(ReadOnlySpan<byte> snapshotJsonUtf8)
+    {
+        ThrowIfDisposed();
+        string json = Encoding.UTF8.GetString(snapshotJsonUtf8);
+        int status = NativeMethods.PE_TimelineRefreshParams(_handle, json);
+        if (status != 0)
+        {
+            throw new EngineException(status, _session.GetLastErrorMessage());
+        }
+    }
+
     /// Enqueues (InteractiveScrub) or dispatches (Exact/other) a seek; never blocks on
     /// the native render thread. mode is a <c>PE_SeekMode</c> raw value — see
     /// PalmierPro.Services.Engine.PreviewSeekMode for the caller-facing enum.

@@ -7,6 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- AutomationMode.cs logs scripted picker answers through the same Serilog sink App/DevHarness configure. -->
+    <PackageReference Include="Serilog" Version="4.*" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\PalmierPro.Core\PalmierPro.Core.csproj" />
     <!-- VideoEngine (Engine/IVideoEngine.cs) delegates to EngineSession/MediaSource for the ABI
          surface E1 already covers (asset-preview open/present, swap-chain attach/resize/detach). -->

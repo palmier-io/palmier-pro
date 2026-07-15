@@ -1,0 +1,57 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.Timeline.TimelineCanvasControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
+    xmlns:primitives="using:Microsoft.UI.Xaml.Controls.Primitives"
+    mc:Ignorable="d">
+
+    <!--
+        Win2D timeline body (M3, Stage C) — ruler, track lanes, clips, playhead, snap guide. Ports
+        the drawing half of Timeline/TimelineView.swift + ClipRenderer.swift + TimelineRuler.swift
+        and the pointer half of Timeline/TimelineInputController.swift. See TimelineCanvasControl.*.cs
+        for the partial-class split (mirrors the Mac file split: rendering vs. input vs. drag-drop).
+
+        Ruler ticks + track-header column are drawn as sticky overlays inside the single
+        CanvasControl (fixed on one axis, scrolling on the other) rather than as separate
+        NSView-style siblings kept in sync — a deliberate simplification of the Mac's two-NSView
+        architecture that Win2D's single-surface model makes unnecessary. See the class doc comment
+        on TimelineCanvasControl for the coordinate-space contract this depends on.
+    -->
+    <Grid x:Name="RootGrid" Background="{StaticResource AppBackgroundRaisedBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <canvas:CanvasControl x:Name="Canvas" Grid.Row="0" Grid.Column="0"
+                               AllowDrop="True"
+                               CreateResources="Canvas_CreateResources"
+                               Draw="Canvas_Draw"
+                               SizeChanged="Canvas_SizeChanged"
+                               PointerPressed="Canvas_PointerPressed"
+                               PointerMoved="Canvas_PointerMoved"
+                               PointerReleased="Canvas_PointerReleased"
+                               PointerExited="Canvas_PointerExited"
+                               PointerWheelChanged="Canvas_PointerWheelChanged"
+                               DoubleTapped="Canvas_DoubleTapped"
+                               RightTapped="Canvas_RightTapped"
+                               KeyDown="Canvas_KeyDown"
+                               DragOver="Canvas_DragOver"
+                               DragLeave="Canvas_DragLeave"
+                               Drop="Canvas_Drop"/>
+
+        <primitives:ScrollBar x:Name="VerticalScrollBar" Grid.Row="0" Grid.Column="1"
+                               Orientation="Vertical" IndicatorMode="MouseIndicator"
+                               SmallChange="20" ValueChanged="VerticalScrollBar_ValueChanged"/>
+        <primitives:ScrollBar x:Name="HorizontalScrollBar" Grid.Row="1" Grid.Column="0"
+                               Orientation="Horizontal" IndicatorMode="MouseIndicator"
+                               ValueChanged="HorizontalScrollBar_ValueChanged"/>
+    </Grid>
+</UserControl>

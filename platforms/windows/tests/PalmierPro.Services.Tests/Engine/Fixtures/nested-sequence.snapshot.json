@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "minorVersion": 1,
   "fps": {
     "numerator": 30,
     "denominator": 1

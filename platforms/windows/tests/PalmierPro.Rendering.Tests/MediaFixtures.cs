@@ -12,6 +12,8 @@ public sealed class MediaFixtures
     public string AudioOnlyPath { get; }
     public string RedClipPath { get; }
     public string BlueClipPath { get; }
+    public string GreenClipPath { get; }
+    public string GrayClipPath { get; }
 
     public const int VideoWidth = 640;
     public const int VideoHeight = 360;
@@ -19,6 +21,10 @@ public sealed class MediaFixtures
     public const double VideoDurationSeconds = 2.0;
 
     public string FixturesDir { get; }
+    /// A hand-written, minimal (2^3) identity `.cube` LUT — every corner maps to itself, so
+    /// LUTTetra's tetrahedral interpolation reproduces the input exactly (see CubeLutParser.h /
+    /// LUTTetra.hlsl). Used by EffectKernelTests' LUTTetra identity-passthrough test.
+    public string IdentityCubePath { get; }
 
     public MediaFixtures()
     {
@@ -30,11 +36,39 @@ public sealed class MediaFixtures
         AudioOnlyPath = Path.Combine(fixturesDir, "audio_sine_1khz_2s.wav");
         RedClipPath = Path.Combine(fixturesDir, "solid_red_640x360_30fps_2s.mp4");
         BlueClipPath = Path.Combine(fixturesDir, "solid_blue_640x360_30fps_2s.mp4");
+        GreenClipPath = Path.Combine(fixturesDir, "solid_green_640x360_30fps_2s.mp4");
+        GrayClipPath = Path.Combine(fixturesDir, "solid_gray_640x360_30fps_2s.mp4");
 
         EnsureVideoFixture(VideoWithAudioPath);
         EnsureAudioFixture(AudioOnlyPath);
         EnsureSolidColorFixture(RedClipPath, "red");
         EnsureSolidColorFixture(BlueClipPath, "blue");
+        EnsureSolidColorFixture(GreenClipPath, "0x00FF00");
+        EnsureSolidColorFixture(GrayClipPath, "0x808080");
+
+        IdentityCubePath = Path.Combine(fixturesDir, "identity.cube");
+        EnsureIdentityCube(IdentityCubePath);
+    }
+
+    private static void EnsureIdentityCube(string path)
+    {
+        if (IsNonEmpty(path))
+        {
+            return;
+        }
+        // Standard .cube ordering: R fastest, then G, then B.
+        var lines = new List<string> { "LUT_3D_SIZE 2" };
+        for (int b = 0; b < 2; b++)
+        {
+            for (int g = 0; g < 2; g++)
+            {
+                for (int r = 0; r < 2; r++)
+                {
+                    lines.Add($"{r}.0 {g}.0 {b}.0");
+                }
+            }
+        }
+        File.WriteAllLines(path, lines);
     }
 
     private static string ResolveFfmpegExe()
