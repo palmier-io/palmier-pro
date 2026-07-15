@@ -95,11 +95,11 @@ actor Qwen3ASREngine {
         try await Self.ensureModel()
         let recognizer = try loadedRecognizer()
 
-        // Timing track: SenseVoice runs concurrently on its own actor (~10x realtime CTC
-        // with real token timestamps) while the slower Qwen3 decode below owns this actor.
-        // Qwen3's text is authoritative; SenseVoice only anchors word timing. If it fails
+        // Timing track: Whisper runs concurrently on its own actor (CoreML/ANE, so the
+        // hardware doesn't contend with Qwen3's CPU decode below). Qwen3's text is
+        // authoritative; Whisper's DTW word timestamps only anchor timing. If it fails
         // (e.g. model download offline), words fall back to interpolation.
-        let timingTask = Task { try await SenseVoiceEngine.shared.transcribe(fileURL: fileURL) }
+        let timingTask = Task { try await WhisperKitEngine.shared.transcribe(fileURL: fileURL) }
 
         let samples = try EngineAudio.loadSamples(fileURL: fileURL)
         var chunks: [(text: String, start: Double, end: Double)] = []
@@ -117,7 +117,7 @@ actor Qwen3ASREngine {
             chunkStart = chunkEnd
         }
 
-        let timingWords = (try? await timingTask.value)?.words ?? []
+        let timingWords = Self.expandCJKAnchors((try? await timingTask.value)?.words ?? [])
         var words: [TranscriptionWord] = []
         var segments: [TranscriptionSegment] = []
         for chunk in chunks {
@@ -195,7 +195,7 @@ actor Qwen3ASREngine {
         return String(cString: textPtr).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    // MARK: - Word timing (SenseVoice anchor alignment)
+    // MARK: - Word timing (Whisper anchor alignment)
 
     /// Split Qwen3 text into display words: CJK characters stand alone, latin runs group.
     private static func splitPieces(text: String) -> [String] {
@@ -215,6 +215,29 @@ actor Qwen3ASREngine {
         return pieces
     }
 
+    /// Whisper emits CJK as multi-character words ("小面" with one time range) while our
+    /// pieces are single characters; split such anchors into per-char anchors with
+    /// linearly divided time so the LCS can match them.
+    private static func expandCJKAnchors(_ words: [TranscriptionWord]) -> [TranscriptionWord] {
+        var expanded: [TranscriptionWord] = []
+        for word in words {
+            let cjkScalars = word.text.unicodeScalars.filter { (0x2E80...0x9FFF).contains(Int($0.value)) }
+            guard cjkScalars.count > 1, let start = word.start, let end = word.end else {
+                expanded.append(word)
+                continue
+            }
+            let step = (end - start) / Double(cjkScalars.count)
+            for (index, scalar) in cjkScalars.enumerated() {
+                expanded.append(TranscriptionWord(
+                    text: String(scalar),
+                    start: start + Double(index) * step,
+                    end: start + Double(index + 1) * step
+                ))
+            }
+        }
+        return expanded
+    }
+
     /// Lowercased, punctuation-free comparison key ("" for punctuation-only pieces).
     private static func matchKey(_ piece: String) -> String {
         String(piece.lowercased().unicodeScalars.filter {
@@ -222,7 +245,7 @@ actor Qwen3ASREngine {
         })
     }
 
-    /// Pin Qwen3 pieces to SenseVoice's real timestamps where the transcripts agree
+    /// Pin Qwen3 pieces to Whisper's real timestamps where the transcripts agree
     /// (longest-common-subsequence on normalized text), interpolating between anchors.
     private static func alignWords(
         pieces: [String], anchors: [TranscriptionWord], chunkStart: Double, chunkEnd: Double

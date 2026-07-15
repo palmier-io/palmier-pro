@@ -262,18 +262,6 @@ enum Transcription {
         case .qwen3:
             // Qwen3-ASR autodetects language per chunk; no hint parameter.
             return try await Qwen3ASREngine.shared.transcribe(fileURL: fileURL)
-        case .senseVoice:
-            // SenseVoice hints: zh, en, ja, ko, yue; empty string = auto (handles code-switching).
-            let hint: String
-            switch languageCode {
-            case "zh": hint = "zh"
-            case "en": hint = "en"
-            case "ja": hint = "ja"
-            case "ko": hint = "ko"
-            case "yue": hint = "yue"
-            default: hint = ""
-            }
-            return try await SenseVoiceEngine.shared.transcribe(fileURL: fileURL, language: hint)
         case .whisper:
             return try await WhisperKitEngine.shared.transcribe(fileURL: fileURL, language: languageCode)
         case .apple:

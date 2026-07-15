@@ -1,11 +1,10 @@
-// Selects which on-device ASR engine backs local transcription. SenseVoice is the default:
+// Selects which on-device ASR engine backs local transcription. Qwen3-ASR is the default:
 // unlike Apple Speech (locked to one locale chosen from SYSTEM language settings, not audio),
-// it transcribes code-switched zh/en/ja/ko/yue natively. Whisper adds word-precise timing.
+// it transcribes code-switched speech natively; a parallel Whisper pass anchors word timing.
 import Foundation
 
 enum LocalSpeechEngine: String, CaseIterable, Identifiable, Sendable {
     case qwen3
-    case senseVoice
     case whisper
     case apple
 
@@ -14,17 +13,15 @@ enum LocalSpeechEngine: String, CaseIterable, Identifiable, Sendable {
     var label: String {
         switch self {
         case .qwen3: "Qwen3-ASR (best quality)"
-        case .senseVoice: "SenseVoice (fastest)"
-        case .whisper: "Whisper (word timing)"
+        case .whisper: "Whisper (fastest)"
         case .apple: "Apple Speech"
         }
     }
 
     var detail: String {
         switch self {
-        case .qwen3: "Highest accuracy; 30+ languages, 20+ Chinese dialects, mixed-language speech. ~1 GB download. Word timing aligned via a parallel SenseVoice pass."
-        case .senseVoice: "Fast multilingual (Chinese, English, Japanese, Korean, Cantonese) with per-word timing. ~160 MB download."
-        case .whisper: "Best word-level timestamps, ~100 languages. ~1 GB download, slower."
+        case .qwen3: "Highest accuracy; 30+ languages, 20+ Chinese dialects, mixed-language speech. ~4 GB of downloads. Word timing aligned via a parallel Whisper pass."
+        case .whisper: "Word-level timestamps, ~100 languages. ~1 GB download."
         case .apple: "System engine. Single language per file, chosen from your macOS language settings."
         }
     }
@@ -33,8 +30,7 @@ enum LocalSpeechEngine: String, CaseIterable, Identifiable, Sendable {
     var cacheTag: String? {
         switch self {
         case .apple: nil  // preserves pre-existing cache entries
-        case .qwen3: "qw2"  // v2: SenseVoice-anchored word timing
-        case .senseVoice: "sv1"
+        case .qwen3: "qw3"  // v3: Whisper-anchored word timing
         case .whisper: "wk1"
         }
     }
