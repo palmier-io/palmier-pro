@@ -102,6 +102,17 @@ struct MediaResolverTests {
         #expect(resolver.resolveURL(for: "a") == nil)
     }
 
+    @Test func expectedURLMapKeepsFirstDuplicateId() {
+        let entries = [
+            entry(id: "a", source: .external(absolutePath: "/tmp/first")),
+            entry(id: "a", source: .external(absolutePath: "/tmp/second"))
+        ]
+
+        let urls = MediaResolver.expectedURLMap(entries: entries, projectURL: nil)
+
+        #expect(urls["a"]?.path == "/tmp/first")
+    }
+
     // MARK: - Cache behavior
 
     // MARK: - missingAssetIds (off-main-thread offline computation)

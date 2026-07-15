@@ -532,28 +532,35 @@ final class VideoProject: NSDocument {
 
     // MARK: - Media restore
 
-    private func restoreAssetsFromManifest() {
-        let resolver = editorViewModel.mediaResolver
+    func restoreAssetsFromManifest() {
+        let entries = editorViewModel.mediaManifest.entries
+        let expectedURLs = MediaResolver.expectedURLMap(entries: entries, projectURL: editorViewModel.projectURL)
         var missing = 0
         var missingRefs: Set<String> = []
+        var restoredAssets: [MediaAsset] = []
         var candidates: [RestoredMediaCandidate] = []
-        for entry in editorViewModel.mediaManifest.entries {
-            guard let url = resolver.expectedURL(for: entry.id) else {
+        restoredAssets.reserveCapacity(entries.count)
+        candidates.reserveCapacity(entries.count)
+        for entry in entries {
+            guard let url = expectedURLs[entry.id] else {
                 Log.project.warning("restore: could not resolve URL for entry id=\(entry.id) name=\(entry.name)")
                 missing += 1
                 missingRefs.insert(entry.id)
                 continue
             }
             let asset = MediaAsset(entry: entry, resolvedURL: url)
-            editorViewModel.mediaAssets.append(asset)
+            restoredAssets.append(asset)
             candidates.append(RestoredMediaCandidate(id: entry.id, name: entry.name, url: url))
+        }
+        if !restoredAssets.isEmpty {
+            editorViewModel.mediaAssets.append(contentsOf: restoredAssets)
         }
         editorViewModel.missingMediaRefs = missingRefs
 
         let restoreCandidates = candidates
         let initialMissingRefs = missingRefs
         let initialMissingCount = missing
-        let manifestEntries = editorViewModel.mediaManifest.entries.count
+        let manifestEntries = entries.count
         Task { [weak self] in
             let existingRefs = await Task.detached(priority: .utility) {
                 Self.existingMediaRefs(restoreCandidates)

@@ -1,6 +1,31 @@
 import Foundation
+import Observation
 import Testing
 @testable import PalmierPro
+
+@MainActor
+private final class MediaAssetsChangeCounter {
+    private weak var editor: EditorViewModel?
+    private(set) var count = 0
+
+    init(editor: EditorViewModel) {
+        self.editor = editor
+        observe()
+    }
+
+    private func observe() {
+        guard let editor else { return }
+        withObservationTracking {
+            _ = editor.mediaAssets.count
+        } onChange: { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.count += 1
+                self.observe()
+            }
+        }
+    }
+}
 
 /// A corrupt `media.json` must never make a project unopenable: the timeline lives in a
 /// separate file and is the real creative work. A bad manifest should degrade to "media
@@ -67,6 +92,29 @@ struct VideoProjectLoadTests {
 
         #expect(contents.manifest?.entries.count == 1)
         #expect(contents.manifestUnreadable == false)
+    }
+
+    @MainActor
+    @Test func manifestRestorePublishesMediaAssetsOnce() {
+        let document = VideoProject()
+        var manifest = MediaManifest()
+        manifest.entries = (0..<100).map { index in
+            MediaManifestEntry(
+                id: "asset-\(index)",
+                name: "Asset \(index)",
+                type: .video,
+                source: .external(absolutePath: "/tmp/asset-\(index).mp4"),
+                duration: 1
+            )
+        }
+        document.editorViewModel.mediaManifest = manifest
+        let changes = MediaAssetsChangeCounter(editor: document.editorViewModel)
+
+        document.restoreAssetsFromManifest()
+
+        #expect(changes.count == 1)
+        #expect(document.editorViewModel.mediaAssets.count == manifest.entries.count)
+        #expect(document.editorViewModel.mediaAssetsById.count == manifest.entries.count)
     }
 
     @Test func missingTimelineStillThrows() throws {
