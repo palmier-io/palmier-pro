@@ -7,6 +7,7 @@ using PalmierPro.App.Services;
 using PalmierPro.App.ViewModels;
 using PalmierPro.App.Views;
 using PalmierPro.Core.Theme;
+using PalmierPro.Services.Engine;
 using PalmierPro.Services.Project;
 using Windows.Graphics;
 using WinRT.Interop;
@@ -40,7 +41,7 @@ public sealed partial class MainWindow : Window
         var registry = ProjectRegistry.CreateDefault();
         _editorView = new EditorPlaceholderView(this);
 
-        Shell = new ShellViewModel(registry, new ProjectDialogService(this));
+        Shell = new ShellViewModel(registry, new ProjectDialogService(this), () => new VideoEngine());
         Shell.PropertyChanged += Shell_PropertyChanged;
         Shell.RequestQuit += (_, _) => Application.Current.Exit();
         Shell.ImportMediaRequested += (_, _) => _ = _editorView.RequestImportMediaAsync();

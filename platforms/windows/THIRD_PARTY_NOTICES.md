@@ -56,13 +56,24 @@ https://github.com/simdjson/simdjson), checked in unmodified under
 step or package manager involved — `PalmierEngine.vcxproj` compiles
 `simdjson.cpp` directly as a translation unit.
 
-## Time-stretch library (signalsmith-stretch or SoundTouch)
+## signalsmith-stretch
 
-**Status: added when the dependency lands (milestone E4.5).**
+**Status: landed (milestone E4.5, retime slice).**
 
-Realtime WSOLA-style pitch-preserving time stretch for retimed audio during
-preview (export uses FFmpeg `atempo` instead). Choice between the two candidates
-finalized when the audio engine milestone starts; both are GPL-compatible.
+Realtime pitch-preserving time stretch for retimed audio during preview
+(`clip.speed != 1.0` in `AudioMixer`'s per-clip decode path — export uses
+FFmpeg `atempo` instead, a separate, already-scoped path). MIT licensed.
+
+Pinned build: **signalsmith-stretch v1.1.0** (tag `1.1.0`,
+https://github.com/Signalsmith-Audio/signalsmith-stretch), vendored unmodified
+under `native/third_party/signalsmith-stretch/`: the top-level
+`signalsmith-stretch.h` plus its `dsp/` header dependencies (`common.h`,
+`perf.h`, `fft.h`, `windows.h`, `delay.h`, `spectral.h` — the subset of the
+sibling `signalsmith-linear`/`dsp` library it `#include`s; the repo's other
+`dsp/*.h` modules are unused and not vendored), each carrying its own
+`LICENSE.txt` (MIT, Geraint Luff / Signalsmith Audio Ltd.) alongside it. Header-
+only — `native/RetimeStretcher.h/.cpp` is the only translation unit that
+includes it, no separate build step.
 
 ## Windows App SDK / WinUI3 native interop (MIT)
 

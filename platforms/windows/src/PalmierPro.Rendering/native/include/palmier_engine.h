@@ -42,8 +42,10 @@ enum PE_Status : int32_t
 };
 
 // Mirrors PalmierPro.Services.Engine.PreviewSeekMode's Exact/InteractiveScrub split (the
-// two AudibleStep* cases are treated identically to Exact on the native side — see
-// IVideoEngine.cs's remarks; audio scrub feedback lands with E4.5).
+// two AudibleStep* cases are treated identically to Exact HERE on the video-seek path —
+// see IVideoEngine.cs's remarks. Their audio scrub feedback is a separate call,
+// PE_TimelineScrubAudio (see the Playback / A/V clock section below and
+// docs/audio-playback-v1.md §5) — the C# caller issues both calls for those two modes.
 enum PE_SeekMode : int32_t
 {
     PE_SEEK_EXACT = 0,
@@ -223,6 +225,12 @@ PALMIER_API int32_t PE_TimelineRefreshParams(PE_TimelineHandle timeline, const c
 
 PALMIER_API int32_t PE_CloseTimeline(PE_SessionHandle session, PE_TimelineHandle timeline);
 
+// Valid to call whether or not the timeline is currently playing (PE_TimelinePlay, below) —
+// while playing, this rebases the A/V clock to `frame` and playback CONTINUES from there; it
+// does not implicitly pause (mirrors the Mac's VideoEngine.seek(to:mode:), whose .exact/
+// .interactiveScrub branches never call pause() either — only its AudibleStep* handling does,
+// and that is caller policy on the C# side, not something this call enforces). See
+// docs/audio-playback-v1.md §3.3.
 PALMIER_API int32_t PE_TimelineSeek(PE_TimelineHandle timeline, int64_t frame, int32_t mode);
 
 // Same threading contract as PE_AttachSwapChain/PE_ResizeSwapChain/PE_DetachSwapChain
@@ -239,8 +247,10 @@ PALMIER_API int32_t PE_TimelineDetachSwapChain(PE_TimelineHandle timeline);
 PALMIER_API int32_t PE_TimelineRenderFrameToFile(PE_TimelineHandle timeline, int64_t frame, const char* utf8PngPath);
 
 // Fired from the timeline's render thread each time it actually composes (and, if a
-// swap chain is attached, presents) a frame in response to PE_TimelineSeek — not fired
-// by PE_TimelineRenderFrameToFile (that path is synchronous; the caller already knows
+// swap chain is attached, presents) a frame — in response to PE_TimelineSeek, OR (once
+// PE_TimelinePlay has started continuous playback, below) once per frame the playback
+// present loop actually presents against the A/V clock. Not fired by
+// PE_TimelineRenderFrameToFile (that path is synchronous; the caller already knows
 // when it completes). May be invoked from a background thread — marshal to the UI
 // thread on the C# side. Pass callback == nullptr to unregister.
 typedef void (*PE_PlayheadCallback)(void* userCtx, int64_t frame);
@@ -251,3 +261,120 @@ PALMIER_API int32_t PE_TimelineSetPlayheadCallback(PE_TimelineHandle timeline, P
 // §8). Owned by the timeline; valid until the next call that could invalidate it. Never
 // null (points at "[]" when there are none).
 PALMIER_API const char* PE_TimelineGetUnprocessableMediaRefsJson(PE_TimelineHandle timeline);
+
+// --- Playback / A/V clock (Stage D / E4.5) -------------------------------------------
+//
+// Normative spec: docs/audio-playback-v1.md. Summary: the engine mixes every audible
+// clip into ONE persistent XAudio2 source voice per open timeline; the master clock
+// derives from that voice's SamplesPlayed counter (falling back to a QueryPerformanceCounter
+// software clock whenever no clip is audible at the current position, OR no audio device
+// exists at all — e.g. a CI runner with no audio endpoint; see doc §3.4). Video presentation
+// (the timeline's existing render thread) schedules/drops frames against this same clock
+// once PE_TimelinePlay is called — see doc §3.5. None of these calls take a tolerance or
+// block on decode/compose; PE_TimelineGetClockFrame in particular never blocks (paused: an
+// O(1) return of the frozen rebase frame; playing: a single voice-state/QPC read).
+
+// v1 accepts ONLY 0.0 (paused) or 1.0 (playing forward) — PE_ERROR_INVALID_ARGUMENT for any
+// other value (PE_ERROR_INVALID_ARGUMENT, not a silent clamp: Phase 1 has no shuttle/J-K-L
+// feature, and a caller must never be able to "successfully" request a rate this build
+// cannot honor). The general `rate` primitive exists now — rather than baking "1.0 or 0.0"
+// into the ABI shape itself — purely so a future variable-speed-preview feature is a value
+// change, not an ABI break; see doc §4. Performs a clock rebase (doc §3.3) to the timeline's
+// current clock position, same as PE_TimelinePlay/PE_TimelinePause below.
+PALMIER_API int32_t PE_TimelineSetRate(PE_TimelineHandle timeline, double rate);
+
+// Equivalent to PE_TimelineSetRate(timeline, 1.0) / (timeline, 0.0) respectively — kept as
+// their own entry points because this is also where the C# surface (IVideoEngine.Play/Pause)
+// lands 1:1 with the Mac's VideoEngine.play()/pause() naming. Idempotent: calling Play while
+// already playing (or Pause while already paused) succeeds as a no-op, matching AVPlayer's
+// own play()/pause() semantics on the Mac. Rebases the clock (doc §3.3): Play does
+// FlushSourceBuffers+Start on the persistent voice from the CURRENT (frozen) clock position;
+// Pause does Stop+FlushSourceBuffers, freezing the clock at wherever it had reached.
+PALMIER_API int32_t PE_TimelinePlay(PE_TimelineHandle timeline);
+PALMIER_API int32_t PE_TimelinePause(PE_TimelineHandle timeline);
+
+// Synchronous poll of the current master-clock position — doc §3.2 for the exact formula.
+// Well-defined at any point after PE_OpenTimeline (a freshly opened timeline starts paused
+// at frame 0, i.e. as if PE_TimelinePause had just been called at frame 0). *outFrame is
+// only written on PE_OK.
+PALMIER_API int32_t PE_TimelineGetClockFrame(PE_TimelineHandle timeline, int64_t* outFrame);
+
+enum PE_ScrubAudioDirection : int32_t
+{
+    PE_SCRUB_AUDIO_FORWARD = 0,
+    PE_SCRUB_AUDIO_REVERSE = 1,
+};
+
+// Short (~50ms), edge-faded windowed audio grab at `frame`, played once through a
+// lightweight voice separate from the persistent playback voice — mirrors
+// ScrubAudioEngine.scrub/makeGrain/edgeGain on the Mac (doc §5). Uses the same per-clip
+// gain formula (Clip.volume × dB keyframe × fades, Track.muted honored, no pan) as normal
+// playback — a scrub grain is a miniature instance of the same mix, not a different gain
+// path. `direction` is always caller-supplied; native performs no auto-detection from frame
+// history (that bookkeeping is caller policy — doc §5). A new call cuts off any
+// still-playing grain and starts immediately (latest-wins). Despite the name mirroring the
+// AudibleStepForward/Backward PreviewSeekMode cases specifically, this is also the correct
+// call for InteractiveScrub (continuous drag) — see doc §5 for exactly which
+// PreviewSeekMode cases the C# caller should pair with this call. Callers are expected to
+// PE_TimelinePause first (not enforced natively — same class of caller-enforced contract as
+// the swap-chain UI-thread requirement below). Always returns PE_OK on a valid handle/
+// direction/frame, even when the result is silence (no audible clip at `frame`, or a
+// transient decode failure) — a persistently failing source surfaces through
+// PE_TimelineGetUnprocessableMediaRefsJson instead, not through this call's return code.
+PALMIER_API int32_t PE_TimelineScrubAudio(PE_TimelineHandle timeline, int64_t frame, int32_t direction);
+
+// Cuts off any still-playing scrub grain and drops any pending one — the Exact-settle counterpart
+// to PE_TimelineScrubAudio (doc §5). Mirrors the Mac's ScrubAudioEngine.stopScrubbing() on a
+// .exact seek (VideoEngine.swift): the future VideoEngine.Seek (C#) calls this on the Exact branch,
+// where PE_TimelineScrubAudio is NOT issued, so a scrub gesture that settles with an Exact seek
+// cuts its last grain instead of letting it play out. Idempotent and never fails on content
+// grounds — always PE_OK on a valid handle, even when no grain has ever played (the lightweight
+// scrub voice is created lazily, so this is then a no-op).
+PALMIER_API int32_t PE_TimelineStopScrubAudio(PE_TimelineHandle timeline);
+
+// Headless, CI-facing golden hook for the scrub grain (doc §5) — the audio analogue of
+// PE_TimelineRenderAudioRange, but for the fixed-length, edge-faded, direction-aware window
+// PE_TimelineScrubAudio plays. Synchronously computes that same grain against `timeline`'s
+// current snapshot and writes it into outInterleavedStereo (caller-owned, ScrubAudio::
+// kGrainFrameCount [2400] × 2 floats — see native/ScrubAudio.h) — no XAudio2 device involved, so
+// it is deterministic and works on a device-less CI runner. PE_ERROR_INVALID_ARGUMENT for a null
+// buffer; PE_ERROR_INVALID_HANDLE for an unknown/closed timeline or one with no open snapshot yet.
+PALMIER_API int32_t PE_TimelineRenderScrubGrain(PE_TimelineHandle timeline, int64_t frame, int32_t direction, float* outInterleavedStereo);
+
+// Fired whenever isPlaying actually transitions: PE_TimelinePlay/PE_TimelineSetRate(…, 1.0)
+// → true; PE_TimelinePause/PE_TimelineSetRate(…, 0.0) → false; AND the engine's own
+// automatic stop when the master clock reaches the timeline's output duration during
+// playback (doc §3.5 — mirrors the Mac's periodic-time-observer auto-pause-at-end, which is
+// engine-internal there too, not a UI-side poll). May be invoked from a background thread —
+// marshal to the UI thread on the C# side, same contract as PE_PlayheadCallback. Pass
+// callback == nullptr to unregister.
+typedef void (*PE_IsPlayingCallback)(void* userCtx, int32_t isPlaying);
+PALMIER_API int32_t PE_TimelineSetIsPlayingCallback(PE_TimelineHandle timeline, PE_IsPlayingCallback callback, void* userCtx);
+
+// Headless, CI-facing golden hook for the audio mix loop (doc §6) — the audio analogue of
+// PE_TimelineRenderFrameToFile. Synchronously mixes the current snapshot's audio for the range
+// starting at timeline frame `startFrame` and running `frameCount` sample-frames at 48 kHz,
+// writing interleaved stereo Float32 into outInterleavedStereo (caller-owned, frameCount × 2
+// floats). No XAudio2 device is involved, so it is deterministic and works on a device-less CI
+// runner. A range with no audible clip (or a muted track) yields silence, still returning PE_OK;
+// the mix bus is saturation-clamped to [-1, 1] (the device's own ±1.0 clip made explicit — no
+// soft limiter, doc §2). PE_ERROR_INVALID_ARGUMENT for a null buffer or frameCount <= 0.
+PALMIER_API int32_t PE_TimelineRenderAudioRange(PE_TimelineHandle timeline, int64_t startFrame, int32_t frameCount, float* outInterleavedStereo);
+
+// --- Fonts (E4) -----------------------------------------------------------------------
+//
+// FontRegistry.h/.cpp builds one process-wide IDWriteFactory5 custom font set from the 13
+// bundled families (Sources/PalmierPro/Resources/Fonts, referenced not duplicated —
+// PalmierPro.Rendering.csproj deploys them to fonts\ next to this DLL). No session/timeline
+// handle: the registry has no per-session state, only static bundled content, lazily
+// built on first use by whichever caller reaches it first (this probe, or the text/title
+// compositor).
+
+// Test/debug-only probe — resolves storedFontName (a TextStyle.fontName value) against the
+// bundled registry exactly as the text compositor will (FontRegistry::ResolveFamily) and
+// copies the resolved family as NUL-terminated UTF-8 into outFamilyNameUtf8. Always
+// resolves to SOME bundled family (see FontRegistry.h's kFallbackFamily) once the registry
+// initializes successfully — PE_ERROR_UNKNOWN only if the bundle itself failed to load
+// (missing/empty fonts\ directory, DirectWrite factory creation failure).
+// PE_ERROR_BUFFER_TOO_SMALL if capacity can't hold the resolved name + NUL.
+PALMIER_API int32_t PE_DebugResolveFontFamily(const char* storedFontName, char* outFamilyNameUtf8, int32_t capacity);

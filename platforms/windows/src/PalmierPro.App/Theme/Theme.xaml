@@ -259,6 +259,11 @@
     <x:Double x:Key="AppComponentSizeTimelineBadgeMinWidth">16</x:Double>
     <x:Double x:Key="AppComponentSizeTimelineDotSize">5</x:Double>
     <x:Double x:Key="AppComponentSizeUpdateOverlayWidth">640</x:Double>
+    <x:Double x:Key="AppComponentSizeTransportBarHeight">36</x:Double>
+    <x:Double x:Key="AppComponentSizeTransportButtonWidth">32</x:Double>
+    <x:Double x:Key="AppComponentSizeTransportButtonHeight">28</x:Double>
+    <x:Double x:Key="AppComponentSizePreviewScrubBarHeight">12</x:Double>
+    <x:Double x:Key="AppComponentSizePreviewScrubTrackHeight">3</x:Double>
 
     <!-- Window (NSSize pairs flattened to Width/Height) -->
     <x:Double x:Key="AppWindowHomeDefaultWidth">1200</x:Double>

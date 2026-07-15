@@ -1,0 +1,168 @@
+{
+  "version": 1,
+  "minorVersion": 2,
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "outputWidth": 1920,
+  "outputHeight": 1080,
+  "tracks": [
+    {
+      "id": "TRACK-VIDEO",
+      "type": "video",
+      "muted": false,
+      "clips": [
+        {
+          "id": "CLIP-VIDEO-1",
+          "type": "video",
+          "startFrame": 0,
+          "durationFrames": 90,
+          "trimStartFrame": 0,
+          "speed": 1,
+          "mediaPath": "{{FIXTURE_DIR}}\\clip-a.mp4",
+          "hasAlphaHint": null,
+          "blendMode": null,
+          "opacity": {
+            "value": 1,
+            "keyframes": null
+          },
+          "transform": {
+            "value": {
+              "centerX": 0.5,
+              "centerY": 0.5,
+              "width": 1,
+              "height": 1,
+              "rotation": 0,
+              "flipHorizontal": false,
+              "flipVertical": false
+            },
+            "keyframes": null
+          },
+          "crop": {
+            "value": {
+              "left": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0
+            },
+            "keyframes": null
+          },
+          "volume": {
+            "gain": 1,
+            "fadeInFrames": 0,
+            "fadeOutFrames": 0,
+            "fadeInInterpolation": "linear",
+            "fadeOutInterpolation": "linear",
+            "keyframes": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "TRACK-TEXT",
+      "type": "video",
+      "muted": false,
+      "clips": [],
+      "textClips": [
+        {
+          "id": "TEXT-CLIP-1",
+          "startFrame": 15,
+          "durationFrames": 60,
+          "content": "Hello world",
+          "opacity": {
+            "value": 1,
+            "keyframes": [
+              {
+                "frame": 0,
+                "value": 0,
+                "interpolation": "linear"
+              },
+              {
+                "frame": 10,
+                "value": 1,
+                "interpolation": "linear"
+              }
+            ]
+          },
+          "blendMode": null,
+          "transform": {
+            "centerX": 0.5,
+            "centerY": 0.9,
+            "width": 0.8,
+            "height": 0.2,
+            "rotation": 0,
+            "flipHorizontal": false,
+            "flipVertical": false
+          },
+          "style": {
+            "fontName": "Avenir Next Bold",
+            "fontSize": 72,
+            "fontScale": 1,
+            "isBold": true,
+            "isItalic": false,
+            "color": {
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 1
+            },
+            "alignment": "center",
+            "shadow": {
+              "enabled": true,
+              "color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.6
+              },
+              "offsetX": 0,
+              "offsetY": -2,
+              "blur": 6
+            },
+            "background": {
+              "enabled": false,
+              "color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.6
+              }
+            },
+            "border": {
+              "enabled": true,
+              "color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 1
+              }
+            }
+          },
+          "animation": {
+            "preset": "wordReveal",
+            "perWordFrames": 6,
+            "highlight": {
+              "r": 1,
+              "g": 0.85,
+              "b": 0,
+              "a": 1
+            }
+          },
+          "wordTimings": [
+            {
+              "text": "Hello",
+              "startFrame": 0,
+              "endFrame": 20
+            },
+            {
+              "text": "world",
+              "startFrame": 20,
+              "endFrame": 40
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

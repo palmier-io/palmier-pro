@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PalmierPro.App.ViewModels.Editor;
 using PalmierPro.Core.Undo;
+using PalmierPro.Services.Engine;
 using PalmierPro.Services.Project;
 
 namespace PalmierPro.App.ViewModels;
@@ -14,12 +15,18 @@ public sealed partial class ShellViewModel : ObservableObject
     public ProjectRegistry Registry { get; }
 
     private readonly IProjectDialogService _dialogs;
+    /// Null by default (every existing test's `TestFactory.MakeShell` call) so plain `dotnet test`
+    /// never touches the native engine; MainWindow supplies `() => new VideoEngine()` for the real
+    /// app. One engine per open document — see OnActiveDocumentChanged; EditorPlaceholderView's
+    /// PreviewViewModel (Stage D) owns the actual dispose, mirroring how it already owns disposing
+    /// the media panel's EngineSession (see that class's TearDownMediaTab).
+    private readonly Func<IVideoEngine>? _engineFactory;
     private UndoService? _wiredUndoService;
 
     /// M3 timeline-editing surface for the active document; null when no project is open.
     /// Rebuilt (not reused) whenever `ActiveDocument` changes, matching the Mac's one-editor-
-    /// per-document lifecycle. Wiring a real `IVideoEngine` instance here is Stage D's job — see
-    /// `TimelineEditorViewModel`'s doc comment.
+    /// per-document lifecycle, and constructed with a fresh `_engineFactory()` engine each time
+    /// (Stage D) — see `TimelineEditorViewModel`'s doc comment.
     public TimelineEditorViewModel? Timeline { get; private set; }
 
     [ObservableProperty]
@@ -57,10 +64,11 @@ public sealed partial class ShellViewModel : ObservableObject
     /// it, keeping ShellViewModel WinUI-free.
     public event EventHandler? ImportMediaRequested;
 
-    public ShellViewModel(ProjectRegistry registry, IProjectDialogService dialogs)
+    public ShellViewModel(ProjectRegistry registry, IProjectDialogService dialogs, Func<IVideoEngine>? engineFactory = null)
     {
         Registry = registry;
         _dialogs = dialogs;
+        _engineFactory = engineFactory;
     }
 
     partial void OnActiveDocumentChanged(ProjectDocument? value)
@@ -74,7 +82,7 @@ public sealed partial class ShellViewModel : ObservableObject
         {
             _wiredUndoService.Changed += OnUndoChanged;
         }
-        Timeline = value is not null ? new TimelineEditorViewModel(value) : null;
+        Timeline = value is not null ? new TimelineEditorViewModel(value, _engineFactory?.Invoke()) : null;
         OnPropertyChanged(nameof(UndoMenuText));
         OnPropertyChanged(nameof(RedoMenuText));
     }

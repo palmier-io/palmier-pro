@@ -204,10 +204,15 @@ namespace
         ParseTransform(el["transform"], out.transform);
         ParseCrop(el["crop"], out.crop);
         out.volumeGain = GetDoubleOr(el["volume"], "gain", 1.0);
+        out.fadeInFrames = GetInt64Or(el["volume"], "fadeInFrames", 0);
+        out.fadeOutFrames = GetInt64Or(el["volume"], "fadeOutFrames", 0);
+        out.fadeInInterpolation = ParseInterpolation(GetStringOr(el["volume"], "fadeInInterpolation", "linear"));
+        out.fadeOutInterpolation = ParseInterpolation(GetStringOr(el["volume"], "fadeOutInterpolation", "linear"));
 
         ParseKeyframesArray(el["opacity"], ParseDoubleKeyframeValue, out.opacityKeyframes);
         ParseKeyframesArray(el["crop"], ParseCropValue, out.cropKeyframes);
         ParseKeyframesArray(el["transform"], ParseTransformValue, out.transformKeyframes);
+        ParseKeyframesArray(el["volume"], ParseDoubleKeyframeValue, out.volumeKeyframes);
 
         dom::array effectsArr;
         if (el["effects"].get(effectsArr) == SUCCESS)
@@ -224,6 +229,112 @@ namespace
         {
             outError = "clip '" + out.id + "' has an empty mediaPath";
             return false;
+        }
+        return true;
+    }
+
+    // --- v1.2 text clips (docs/timeline-snapshot-v1.md §12) ------------------------------
+
+    template <typename Container>
+    void ParseRgba(Container&& obj, SnapshotRgba& out)
+    {
+        out.r = GetDoubleOr(obj, "r", 1.0);
+        out.g = GetDoubleOr(obj, "g", 1.0);
+        out.b = GetDoubleOr(obj, "b", 1.0);
+        out.a = GetDoubleOr(obj, "a", 1.0);
+    }
+
+    template <typename Container>
+    std::optional<SnapshotRgba> ParseOptionalRgba(Container&& parent, const char* key)
+    {
+        dom::object obj;
+        if (parent[key].get(obj) != SUCCESS)
+        {
+            return std::nullopt; // null or missing
+        }
+        SnapshotRgba rgba;
+        ParseRgba(parent[key], rgba);
+        return rgba;
+    }
+
+    // Mirrors WriteTextStyle (TimelineSnapshotBuilder.cs) key-for-key; every field is missing-
+    // tolerant, matching Models/TextStyle.swift's lenient decoder (TextStyle.swift:55).
+    void ParseTextStyle(simdjson_result<dom::element> style, SnapshotTextStyle& out)
+    {
+        out.fontName = GetStringOr(style, "fontName", "Helvetica-Bold");
+        out.fontSize = GetDoubleOr(style, "fontSize", 96.0);
+        out.fontScale = GetDoubleOr(style, "fontScale", 1.0);
+        out.isBold = GetBoolOr(style, "isBold", true);
+        out.isItalic = GetBoolOr(style, "isItalic", false);
+        ParseRgba(style["color"], out.color);
+        out.alignment = GetStringOr(style, "alignment", "center");
+
+        auto shadow = style["shadow"];
+        out.shadowEnabled = GetBoolOr(shadow, "enabled", true);
+        ParseRgba(shadow["color"], out.shadowColor);
+        out.shadowOffsetX = GetDoubleOr(shadow, "offsetX", 0.0);
+        out.shadowOffsetY = GetDoubleOr(shadow, "offsetY", -2.0);
+        out.shadowBlur = GetDoubleOr(shadow, "blur", 6.0);
+
+        auto background = style["background"];
+        out.backgroundEnabled = GetBoolOr(background, "enabled", false);
+        ParseRgba(background["color"], out.backgroundColor);
+
+        auto border = style["border"];
+        out.borderEnabled = GetBoolOr(border, "enabled", false);
+        ParseRgba(border["color"], out.borderColor);
+    }
+
+    void ParseTextAnimation(simdjson_result<dom::element> anim, SnapshotTextAnimation& out)
+    {
+        out.preset = GetStringOr(anim, "preset", "none");
+        out.perWordFrames = GetInt64Or(anim, "perWordFrames", 6);
+        out.highlight = ParseOptionalRgba(anim, "highlight");
+    }
+
+    bool ParseTextClip(dom::element el, SnapshotTextClip& out)
+    {
+        out.id = GetStringOr(el, "id", "");
+        out.startFrame = GetInt64Or(el, "startFrame", 0);
+        out.durationFrames = GetInt64Or(el, "durationFrames", 0);
+        out.content = GetStringOr(el, "content", "");
+        // The builder drops empty-content text clips before serializing (§12.3); mirror that
+        // defensively so a malformed snapshot can't smuggle an empty raster into the paint list.
+        if (out.content.empty())
+        {
+            return false;
+        }
+
+        out.opacity = GetDoubleOr(el["opacity"], "value", 1.0);
+        ParseKeyframesArray(el["opacity"], ParseDoubleKeyframeValue, out.opacityKeyframes);
+        out.blendMode = GetOptionalString(el, "blendMode");
+        // Flat transform, NOT a {value, keyframes} envelope (§12.3) — always static.
+        ParseTransformValue(el["transform"], out.transform);
+        ParseTextStyle(el["style"], out.style);
+        ParseTextAnimation(el["animation"], out.animation);
+
+        dom::array wordTimingsArr;
+        if (el["wordTimings"].get(wordTimingsArr) == SUCCESS)
+        {
+            for (dom::element wtEl : wordTimingsArr)
+            {
+                SnapshotWordTiming wt;
+                wt.text = GetStringOr(wtEl, "text", "");
+                wt.startFrame = GetInt64Or(wtEl, "startFrame", 0);
+                wt.endFrame = GetInt64Or(wtEl, "endFrame", 0);
+                out.wordTimings.push_back(std::move(wt));
+            }
+        }
+
+        dom::array effectsArr;
+        if (el["effects"].get(effectsArr) == SUCCESS)
+        {
+            for (dom::element effectEl : effectsArr)
+            {
+                SnapshotEffect effect;
+                ParseEffect(effectEl, effect);
+                out.effects.push_back(std::move(effect));
+            }
         }
         return true;
     }
@@ -248,6 +359,22 @@ namespace
                 return false;
             }
             out.clips.push_back(std::move(clip));
+        }
+
+        // v1.2: `textClips` is omitted-when-empty (§12.2). Only visited when present — an
+        // un-requested key never triggers a parse error (§12.6), so v1/v1.1 snapshots are
+        // unaffected.
+        dom::array textClipsArr;
+        if (el["textClips"].get(textClipsArr) == SUCCESS)
+        {
+            for (dom::element textEl : textClipsArr)
+            {
+                SnapshotTextClip textClip;
+                if (ParseTextClip(textEl, textClip))
+                {
+                    out.textClips.push_back(std::move(textClip));
+                }
+            }
         }
         return true;
     }

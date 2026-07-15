@@ -5,11 +5,13 @@
 #include "D3D11Presenter.h"
 #include "GpuCompositor.h"
 #include "MediaCache.h"
+#include "PlaybackClock.h"
 #include "TimelineSnapshot.h"
 
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -19,6 +21,9 @@
 #include <vector>
 
 class EngineSession;
+class AudioMixer;
+class AudioEngine;
+class ScrubAudio;
 
 // Owns one open timeline: its current snapshot (atomically swappable via shared_ptr —
 // PE_UpdateTimeline never blocks or interrupts an in-flight render; the render in flight
@@ -65,7 +70,44 @@ public:
     // hook: deterministic, immune to scrub throttling/coalescing/cancellation).
     bool RenderFrameToFile(int64_t frame, const std::string& utf8PngPath, std::string& outError);
 
+    // Offline audio mix (docs/audio-playback-v1.md §6) — fills outInterleavedStereo (sampleCount × 2
+    // floats) with the current snapshot's mix for the 48 kHz range starting at timeline `startFrame`.
+    // No XAudio2 device involved: deterministic, the CI-facing hook for the mix loop. The same
+    // AudioMixer instance is reused so a per-clip decode cursor persists across successive ranges.
+    bool RenderAudioRange(int64_t startFrame, int32_t sampleCount, float* outInterleavedStereo, std::string& outError);
+
+    // Latest-wins windowed audio grab at `frame` (docs/audio-playback-v1.md §5) — plays once
+    // through a lightweight voice separate from the persistent playback voice. A no-op (not an
+    // error) if this timeline has no open snapshot yet.
+    void ScrubAudioAt(int64_t frame, int32_t direction);
+
+    // Cuts off any still-playing scrub grain and drops any pending one (docs/audio-playback-v1.md
+    // §5). The Exact-settle counterpart to ScrubAudioAt — mirrors the Mac's
+    // ScrubAudioEngine.stopScrubbing() on a .exact seek (VideoEngine.swift). A no-op if no scrub
+    // grain has ever played on this timeline (the lightweight voice is created lazily).
+    void StopScrubAudio();
+
+    // Offline golden hook behind PE_TimelineRenderScrubGrain (docs/audio-playback-v1.md §5) —
+    // synchronously computes the same grain ScrubAudioAt would play, without touching any
+    // XAudio2 device. Same lazily-created ScrubAudio instance as ScrubAudioAt.
+    bool RenderScrubGrain(int64_t frame, int32_t direction, float* outInterleavedStereo, std::string& outError);
+
     void SetPlayheadCallback(PE_PlayheadCallback callback, void* userCtx);
+
+    // E4.5 playback / A/V clock (docs/audio-playback-v1.md §3, §4). Play/Pause/SetRate rebase the
+    // master clock and drive the render thread's present loop (§3.5); GetClockFrame reads the
+    // current clock position synchronously (never blocks). Idempotent Play/Pause mirror AVPlayer.
+    int32_t Play();
+    int32_t Pause();
+    int32_t SetRate(double rate);
+    int32_t GetClockFrame(int64_t* outFrame);
+    void SetIsPlayingCallback(PE_IsPlayingCallback callback, void* userCtx);
+
+    // Test/debug-only: is the master clock currently on the sample-locked audio path (true) or the
+    // QPC software fallback (false)? Reads clock_ under clockMutex_. Backs
+    // PE_DebugTimelineUsingAudioClock — the QPC→audio handover is otherwise unobservable through
+    // the ABI, so the device-gated handover test can't assert re-engagement without it.
+    bool DebugUsingAudioClock();
 
     // JSON array of media paths the engine itself failed to decode while composing — see
     // docs/timeline-snapshot-v1.md §8 for the distinction from the builder-side
@@ -115,7 +157,56 @@ private:
     PE_PlayheadCallback playheadCallback_ = nullptr;
     void* playheadUserCtx_ = nullptr;
 
+    // E4.5 audio mix (docs/audio-playback-v1.md §9 "mix"). Lazily created; owns its own per-clip
+    // audio decoders, entirely independent of mediaCache_'s video decode path.
+    std::mutex audioMixerMutex_;
+    std::unique_ptr<AudioMixer> audioMixer_;
+
+    // E4.5 scrub (docs/audio-playback-v1.md §9 "scrub"). Lazily created; owns its own per-clip
+    // audio decoders and lightweight one-shot voice, entirely independent of audioMixer_'s.
+    std::mutex audioScrubMutex_;
+    std::unique_ptr<ScrubAudio> audioScrub_;
+
+    // --- E4.5 playback / A/V clock (docs/audio-playback-v1.md §3) ---------------------------
+    //
+    // The persistent per-timeline source voice + master clock. clockMutex_ guards clock_ and the
+    // isPlaying flag and is only ever held for O(1) work (never across a blocking voice op), so
+    // GetClockFrame never blocks. The voice's Start/Stop/Flush and voiceStarted_/audio-mode flips
+    // are done ONLY on the render thread (RenderThreadLoop / PlaybackPresentTick) — Play/Pause/Seek
+    // just set clock state + intent and wake it, so no cross-thread voice contention exists.
+    std::unique_ptr<AudioEngine> audioEngine_;   // lazily created on first Play (device or null-device)
+    std::unique_ptr<AudioMixer> playbackMixer_;  // live-fill mixer, separate from audioMixer_ (offline)
+    PlaybackClock clock_;
+    std::mutex clockMutex_;
+    std::atomic<bool> isPlaying_{false};
+
+    // Render-thread-only playback state (no lock: written/read solely on renderThread_).
+    bool voiceStarted_ = false;          // is the persistent voice currently Started?
+    uint64_t voiceStartBaseline_ = 0;    // SamplesPlayed observed at the last fresh Start (reset detect)
+    int64_t lastPresentedFrame_ = -1;    // present-loop + seek de-dupe
+
+    // Live audio fill (submit-thread) cursor + whole-frame staging. fillMutex_ guards all three.
+    std::mutex fillMutex_;
+    int64_t fillCursorSample_ = 0;       // next timeline 48 kHz sample-frame the fill will emit
+    int64_t stagingBaseSample_ = 0;      // timeline sample-frame of stagingInterleaved_[0]
+    int64_t nextRenderFrame_ = 0;        // next timeline frame to render into staging
+    std::vector<float> stagingInterleaved_;
+
+    std::mutex isPlayingCbMutex_;
+    PE_IsPlayingCallback isPlayingCallback_ = nullptr;
+    void* isPlayingUserCtx_ = nullptr;
+
     void RenderThreadLoop();
+    void PlaybackPresentTick();
+    void PresentComposed(const ComposeResult& result);
+    void FirePlayhead(int64_t frame);
+    void FireIsPlaying(bool isPlaying);
+    void EnsureAudioEngine();
+    void FillAudio(float* dstInterleavedStereo, uint32_t frameCount);
+    void SetFillCursorToFrameLocked(int64_t frame); // fillMutex_ held by caller
+    bool AnyAudibleAt(const TimelineSnapshot& snapshot, int64_t frame) const;
+    static int64_t TimelineDurationFrames(const TimelineSnapshot& snapshot);
+
     bool ComposeFrame(int64_t frame, bool interactive, const std::atomic<int32_t>* cancelFlag,
         ComposeResult& outResult, std::string& outError);
     bool ProvideClipFrame(const SnapshotClip& clip, double sourceSeconds, bool interactive,
@@ -123,3 +214,12 @@ private:
         std::vector<uint8_t>& scratch);
     void MarkUnprocessable(const std::string& mediaPath);
 };
+
+// Test/debug-only probe for the E4.5 clock slice (docs/audio-playback-v1.md §3.4) — writes 1 to
+// *outUsingAudioClock if `timeline`'s master clock is on the sample-locked audio path, 0 if on the
+// QPC software fallback. Deliberately NOT part of the normative ABI in include/palmier_engine.h
+// (same one-slice-test-seam convention as PE_PlaybackClockSelfTest / PE_AudioEngineSmokeTest): the
+// QPC→audio handover is otherwise unobservable through the ABI, so the device-gated
+// play→pause→play handover test can't assert the clock re-engages the audio path without it.
+// PE_ERROR_INVALID_ARGUMENT for a null out; PE_ERROR_INVALID_HANDLE for an unknown/closed timeline.
+PALMIER_API int32_t PE_DebugTimelineUsingAudioClock(PE_TimelineHandle timeline, int32_t* outUsingAudioClock);

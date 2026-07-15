@@ -70,6 +70,24 @@ public sealed partial class MediaTabViewModel : ObservableObject, IDisposable
     /// waveform generation, without keeping its own duplicate asset list.
     public MediaAsset? AssetById(string id) => _assets.FirstOrDefault(a => a.Id == id);
 
+    /// Raised by <see cref="OpenAsset"/> (double-click on an asset tile) — mirrors the Mac's
+    /// `selectMediaAsset`. This view model doesn't own the preview surface itself (that's
+    /// PreviewViewModel, wired in from EditorPlaceholderView, same pattern as
+    /// TimelineEditorViewModel.StructuralChangeRequested), so it only requests; it never presumes
+    /// what happens next.
+    public event EventHandler<MediaAsset>? AssetOpenRequested;
+
+    /// Requests that `id`'s asset open in the source preview — a no-op if `id` isn't a known asset
+    /// (e.g. a stale double-click racing a delete). Pairs with <see cref="OpenFolder"/>'s naming;
+    /// unlike that one, this doesn't mutate any state here, it only raises <see cref="AssetOpenRequested"/>.
+    public void OpenAsset(string id)
+    {
+        if (AssetById(id) is { } asset)
+        {
+            AssetOpenRequested?.Invoke(this, asset);
+        }
+    }
+
     private void RebuildAssetsFromManifest()
     {
         _assets.Clear();

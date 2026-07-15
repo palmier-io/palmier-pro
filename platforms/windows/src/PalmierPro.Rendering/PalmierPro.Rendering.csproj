@@ -43,6 +43,19 @@
       <Link>shaders\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+
+    <!-- E4: the 13 bundled caption/title font families, referenced directly from the Mac
+         app's own Resources/Fonts (never duplicated into platforms/windows — one set of
+         font binaries for both platforms) and staged into a "fonts" subfolder next to
+         PalmierEngine.dll, same mechanism as the shaders above. FontRegistry.cpp's
+         ResolveFontsDir resolves that folder the same way GpuCompositor's ResolveShadersDir
+         does — anchored on this DLL's own module path, not the host process's. -->
+    <BundledFontFile Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\**\*.ttf" />
+    <BundledFontFile Include="..\..\..\..\Sources\PalmierPro\Resources\Fonts\**\*.otf" />
+    <Content Include="@(BundledFontFile)">
+      <Link>fonts\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

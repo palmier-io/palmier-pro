@@ -2,12 +2,14 @@
 
 #include "Compositor.h" // ComposeResult, ClipFrameProvider, DecodedSourceFrame
 #include "EffectRegistry.h"
+#include "TextRenderer.h"
 #include "TimelineSnapshot.h"
 
 #include <d3d11.h>
 #include <wrl/client.h>
 
 #include <atomic>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -81,6 +83,10 @@ private:
     Microsoft::WRL::ComPtr<ID3D11Texture2D> stagingTex_;
     int32_t stagingWidth_ = 0, stagingHeight_ = 0;
 
+    // Lazily created on first text clip — a WIC-software D2D/DirectWrite rasterizer (needs no D3D
+    // device, so it is independent of this compositor's GPU device).
+    std::unique_ptr<TextRenderer> textRenderer_;
+
     bool ResolveShadersDir(std::string& outError);
     bool EnsureCommonResources(std::string& outError);
     bool EnsureAccumulators(int32_t width, int32_t height, std::string& outError);
@@ -104,8 +110,17 @@ private:
     bool RunGaussianBlur(GpuTex& source, GpuTex& scratch, GpuTex& out, int32_t width, int32_t height, double radius, std::string& outError);
 
     bool ApplyEffectChain(
-        const SnapshotClip& clip, int64_t clipRelativeFrame, int32_t natW, int32_t natH,
+        const std::vector<SnapshotEffect>& effects, int64_t clipRelativeFrame, int32_t natW, int32_t natH,
         GpuTex& natA, GpuTex& natB, GpuTex*& current, std::string& outError);
+
+    // E4 text pass — rasterizes `textClip` at `frame` (TextRenderer, a canvas-sized straight-alpha
+    // BGRA raster), then ingests + effect-chains + composites it into the accumulator ping-pong
+    // exactly like a decoded clip (identity transform: the text box position is already baked into
+    // the raster by TextRenderer, mirroring composedTextLayer which composites the raster flat, no
+    // affine — FrameRenderer.swift:275). Advances `current` iff anything was drawn.
+    bool ComposeTextClip(
+        const SnapshotTextClip& textClip, int64_t frame, int32_t canvasWidth, int32_t canvasHeight,
+        int& current, std::string& outError);
 
     bool ApplyOneEffect(
         const EffectDescriptorNative& desc, const SnapshotEffect& effect,

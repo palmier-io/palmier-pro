@@ -3,6 +3,7 @@
 #include "include/palmier_engine.h"
 
 #include <atomic>
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -41,6 +42,14 @@ public:
     // sharedDevice may be null (no hw decode attempted); deviceIsHardware gates the
     // attempt off entirely on a WARP device, which has no video decode engine.
     bool Open(const std::string& utf8Path, ID3D11Device* sharedDevice, bool deviceIsHardware, std::string& outError);
+
+    // Audio-only open for the timeline mixer (AudioMixer): demuxes the file and opens ONLY its
+    // audio decoder — no video decoder, no D3D11VA. The mixer owns a dedicated MediaSource per
+    // audio clip so its own av_seek_frame calls (ReadAudioStereo48k's seek-resync) can never
+    // disturb the demuxer position of the instance the video compositor is decoding through.
+    // Succeeds (returns true) even for a file with no audio stream — ReadAudioStereo48k then
+    // yields silence. Returns false only if the container can't be opened/demuxed at all.
+    bool OpenForAudio(const std::string& utf8Path, std::string& outError);
 
     const PE_MediaInfo& Info() const { return info_; }
 
@@ -82,6 +91,19 @@ public:
         int32_t& outCount,
         std::string& outError);
 
+    // Fills outL/outR (planar Float32, `count` samples each) with this media's audio resampled to
+    // the mix format — 48 kHz stereo (docs/audio-playback-v1.md §2) — starting at source sample
+    // `startSample` (measured in 48 kHz units from the stream's presentation start). Maintains an
+    // internal decode cursor + resampled ring so consecutive forward reads stream without
+    // re-seeking; a `startSample` that jumps backward or far ahead of the cursor triggers a
+    // seek-resync. Samples past end-of-stream (or a file with no audio stream at all) are written
+    // as silence. Only for instances opened via OpenForAudio — never call on the video-decode
+    // instance (its shared demuxer position must not move). Never used concurrently on one
+    // instance (the mixer serializes per clip).
+    bool ReadAudioStereo48k(int64_t startSample, int32_t count, float* outL, float* outR, std::string& outError);
+
+    static constexpr int32_t kMixSampleRate = 48000;
+
 private:
     std::mutex mutex_;
 
@@ -96,6 +118,22 @@ private:
     // Reusable decode buffer for DecodeFrameAt (session/media-owned, per ABI contract).
     std::vector<uint8_t> bgraBuffer_;
     SwsContext* decodeSwsCtx_ = nullptr;
+
+    // Streaming-audio decode state for ReadAudioStereo48k (mixer path). audioMixBufL_/R_ hold a
+    // contiguous run of already-resampled 48 kHz stereo samples; audioMixBufStart_ is the 48 kHz
+    // source index of element [0] (kAudioCursorUnset = empty/unpositioned, anchored from the first
+    // decoded frame's PTS after a seek). Distinct from ExtractPeakEnvelope's own local SwrContext.
+    static constexpr int64_t kAudioCursorUnset = INT64_MIN;
+    SwrContext* audioMixSwr_ = nullptr;
+    int64_t audioMixBufStart_ = kAudioCursorUnset;
+    int64_t audioMixStartTimePts_ = 0;
+    bool audioMixEof_ = false;
+    std::vector<float> audioMixBufL_;
+    std::vector<float> audioMixBufR_;
+
+    bool EnsureAudioMixSwr(std::string& outError);
+    void SeekAudioMix(int64_t startSample);
+    bool DecodeAudioMixUntil(int64_t coverEnd, std::string& outError);
 
     // D3D11VA opportunistic hw decode state. hwDeviceCtx_ holds its own AddRef on the
     // shared ID3D11Device (via AVD3D11VADeviceContext::device), so it stays valid

@@ -2,6 +2,8 @@
 #include "TimelineSession.h"
 #include "WicPngWriter.h"
 
+#include <windows.h>
+
 #include <cstdlib>
 
 EngineSession::~EngineSession() = default;
@@ -11,18 +13,14 @@ namespace
     // Lets a WARP-forced smoke test (see SwapChainPresentTests.cs) exercise the WARP
     // presenter path in CI even on a runner whose hardware device creation would
     // otherwise succeed — the plan calls for a WARP-forced subset actually running in CI,
-    // not just whichever branch hardware availability happens to take.
+    // not just whichever branch hardware availability happens to take. GetEnvironmentVariableA,
+    // not _dupenv_s: see AudioEngine.cpp's ForceNullAudioRequested for why the latter can miss
+    // a managed caller's override in a Release build.
     bool ForceWarpRequested()
     {
-        char* value = nullptr;
-        size_t len = 0;
-        if (_dupenv_s(&value, &len, "PALMIERENGINE_FORCE_WARP") != 0 || !value)
-        {
-            return false;
-        }
-        bool forced = len > 0 && value[0] != '0';
-        free(value);
-        return forced;
+        char value[8]{};
+        DWORD len = GetEnvironmentVariableA("PALMIERENGINE_FORCE_WARP", value, sizeof(value));
+        return len > 0 && len < sizeof(value) && value[0] != '0';
     }
 }
 

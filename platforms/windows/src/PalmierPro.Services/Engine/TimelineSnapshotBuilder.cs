@@ -33,6 +33,11 @@ public sealed class SnapshotTrack
     /// Audio tracks only; meaningless for a video-type track (always false).
     public bool Muted { get; init; }
     public List<SnapshotClip> Clips { get; init; } = [];
+    /// v1.2 (docs/timeline-snapshot-v1.md §12) — text clips originally on this track (or, for a
+    /// nest-spliced synthetic track, text clips from that flattened sub-track). Always empty for
+    /// an audio-type track (text is never audio-compatible). Omitted from the wire format when
+    /// empty — see TimelineSnapshotSerializer.
+    public List<SnapshotTextClip> TextClips { get; init; } = [];
 }
 
 public sealed class SnapshotClip
@@ -63,6 +68,38 @@ public sealed class SnapshotClip
     public List<SnapshotKeyframe<double>>? OpacityKeyframes { get; init; }
     public List<SnapshotKeyframe<Crop>>? CropKeyframes { get; init; }
     public List<SnapshotKeyframe<Transform>>? TransformKeyframes { get; init; }
+    /// dB keyframe track (docs/timeline-snapshot-v1.md §5 addendum) — Clip.VolumeTrack, dB values,
+    /// clip-relative frames. Serialized inside the `volume` object. Consumed only by the audio mixer
+    /// (E4.5); null/empty means static (unity keyframe gain).
+    public List<SnapshotKeyframe<double>>? VolumeKeyframes { get; init; }
+    public List<SnapshotEffect> Effects { get; init; } = [];
+}
+
+/// v1.2 (docs/timeline-snapshot-v1.md §12) — a text clip's own entry, carried on the
+/// `SnapshotTrack` it originated from rather than inside `SnapshotTrack.Clips` (it has no
+/// `mediaPath`; it isn't decoded media). Mirrors exactly what `Compositing/TextFrameRenderer.swift`
+/// + `TextAnimator.swift` actually read off a `.text` `Clip` — no `crop`, no `volume`/fades: the
+/// Mac's `composedTextLayer` never consults them for text.
+public sealed class SnapshotTextClip
+{
+    public required string Id { get; init; }
+    public int StartFrame { get; init; }
+    public int DurationFrames { get; init; }
+    public required string Content { get; init; }
+    public double Opacity { get; init; } = 1.0;
+    public List<SnapshotKeyframe<double>>? OpacityKeyframes { get; init; }
+    /// Null means "normal" — same convention as SnapshotClip.BlendMode.
+    public BlendMode? BlendMode { get; init; }
+    /// The text box: position/anchor AND word-wrap width in one — TextFrameRenderer.boxRect derives
+    /// both the placement rect and the CoreText wrap width from this same Transform. Always static:
+    /// TextFrameRenderer reads `clip.transform` directly, never `transformAt(frame:)`, so a text
+    /// clip's position/scale/rotation keyframe tracks (if any) have no observable render effect on
+    /// the Mac — unlike SnapshotClip.Transform, this carries no keyframe envelope.
+    public Transform Transform { get; init; } = new();
+    public required TextStyle Style { get; init; }
+    public required TextAnimation Animation { get; init; }
+    /// Clip-relative frames (WordTiming.swift's own convention). Null/empty when the clip has none.
+    public List<WordTiming>? WordTimings { get; init; }
     public List<SnapshotEffect> Effects { get; init; } = [];
 }
 
@@ -79,9 +116,10 @@ public sealed record TimelineSnapshotBuildResult(TimelineSnapshot Snapshot, IRea
 public static class TimelineSnapshotBuilder
 {
     public const int SchemaVersion = 1;
-    /// v1.1 (docs/timeline-snapshot-v1.md §11): populated keyframes envelopes + per-clip
-    /// `effects`. Native accepts an absent `minorVersion` as 0 and never rejects on this field.
-    public const int SchemaMinorVersion = 1;
+    /// v1.2 (docs/timeline-snapshot-v1.md §12, additive over v1.1's §11): text clips now enter the
+    /// snapshot via each SnapshotTrack's `textClips` list. Native accepts an absent/unrecognized
+    /// `minorVersion` as "no keyframes/effects/text" and never rejects on this field.
+    public const int SchemaMinorVersion = 2;
 
     public static TimelineSnapshotBuildResult Build(ProjectFile project, string timelineId, MediaResolver mediaResolver)
     {
@@ -133,11 +171,12 @@ public static class TimelineSnapshotBuilder
         return new TimelineSnapshotBuildResult(snapshot, ctx.OfflineMediaRefs);
     }
 
-    /// §6: text/lottie are filtered structurally. Applied inside `EmitVideoLane`/`EmitAudioLane`
-    /// themselves (not by their callers) so every entry point — the top-level per-track loop in
-    /// `Build`, AND every recursive nested-sub-track call from `ExpandNestVideo`/`ExpandNestAudio`
-    /// — filters identically. A nested child timeline's own track can carry text/lottie clips too;
-    /// filtering only at the top level would leak them through when nested.
+    /// Audio-lane-only as of v1.2 (§12) — EmitVideoLane now inlines its own Text/Lottie branch (see
+    /// above) so a text clip can land on the right SnapshotTrack instead of being dropped. Text and
+    /// Lottie are both ClipType.IsVisual, so neither can legitimately sit on an audio-type track,
+    /// but a malformed/legacy project could still have one there; EmitAudioLane keeps filtering
+    /// defensively, at both the top-level per-track loop AND every recursive nested-sub-track call
+    /// from ExpandNestAudio.
     private static List<Clip> RenderableClips(IEnumerable<Clip> clips) =>
         clips.Where(c => c.MediaType is not (ClipType.Text or ClipType.Lottie))
              .OrderBy(c => c.StartFrame)
@@ -155,9 +194,29 @@ public static class TimelineSnapshotBuilder
     private static void EmitVideoLane(IEnumerable<Clip> rawClips, string ownTrackId, int depth, BuildContext ctx, List<SnapshotTrack> output)
     {
         var ownClips = new List<SnapshotClip>();
+        var ownTextClips = new List<SnapshotTextClip>();
         int previousEndFrame = int.MinValue;
-        foreach (var clip in RenderableClips(rawClips))
+        foreach (var clip in rawClips.OrderBy(c => c.StartFrame))
         {
+            // §12 (v1.2): a text clip is never part of the video-track composition invariant below
+            // — it renders through its own Direct2D/DirectWrite path (mirrors the Mac's separate
+            // `.text` compositing branch in `compositorInstructions`, which likewise never advances
+            // `prevEndFrame`). Collected onto THIS track's `textClips` rather than `ownClips` so it
+            // inherits this track's paint-order position (§2) without a new ordering scheme. An
+            // empty-content text clip is dropped — matches CompositionBuilder's
+            // `guard !(clip.textContent ?? "").isEmpty else { continue }`.
+            if (clip.MediaType == ClipType.Text)
+            {
+                if (!string.IsNullOrEmpty(clip.TextContent))
+                {
+                    ownTextClips.Add(BuildTextClip(clip));
+                }
+                continue;
+            }
+            if (clip.MediaType == ClipType.Lottie)
+            {
+                continue; // v1/v1.1 gap, unchanged by v1.2 — see docs §6
+            }
             if (clip.DurationFrames <= 0 || clip.StartFrame < previousEndFrame)
             {
                 continue; // out-of-order/overlapping clip — matches CompositionBuilder's previousEndFrame guard
@@ -184,9 +243,9 @@ public static class TimelineSnapshotBuilder
                 ownClips.Add(snapshotClip);
             }
         }
-        if (ownClips.Count > 0)
+        if (ownClips.Count > 0 || ownTextClips.Count > 0)
         {
-            output.Add(new SnapshotTrack { Id = ownTrackId, Type = ClipType.Video, Muted = false, Clips = ownClips });
+            output.Add(new SnapshotTrack { Id = ownTrackId, Type = ClipType.Video, Muted = false, Clips = ownClips, TextClips = ownTextClips });
         }
     }
 
@@ -305,6 +364,7 @@ public static class TimelineSnapshotBuilder
             OpacityKeyframes = BuildKeyframes(clip.OpacityTrack, kf => kf.Value),
             CropKeyframes = BuildKeyframes(clip.CropTrack, kf => kf.Value),
             TransformKeyframes = BuildTransformKeyframes(clip),
+            VolumeKeyframes = BuildKeyframes(clip.VolumeTrack, kf => kf.Value),
             Effects = clip.Effects?.Select(ToSnapshotEffect).ToList() ?? [],
         };
         return true;
@@ -349,6 +409,34 @@ public static class TimelineSnapshotBuilder
 
     private static SnapshotEffect ToSnapshotEffect(Effect effect) =>
         new(effect.Type, effect.Enabled, effect.Params);
+
+    // ----- Text (§12) -----
+
+    private static SnapshotTextClip BuildTextClip(Clip clip) => new()
+    {
+        Id = clip.Id,
+        StartFrame = clip.StartFrame,
+        DurationFrames = clip.DurationFrames,
+        Content = clip.TextContent ?? "",
+        Opacity = clip.Opacity,
+        OpacityKeyframes = BuildKeyframes(clip.OpacityTrack, kf => kf.Value),
+        BlendMode = clip.BlendMode,
+        Transform = clip.Transform,
+        // Fallback substitution for a missing/unavailable font name (e.g. "Helvetica-Bold" on a
+        // machine with no Helvetica installed) is a render-time concern (§12) — this carries
+        // whatever TextStyleJsonConverter's own lenient decode produced, verbatim.
+        Style = DeserializeTextField<TextStyle>(clip.TextStyle) ?? new TextStyle(),
+        Animation = DeserializeTextField<TextAnimation>(clip.TextAnimation) ?? new TextAnimation(),
+        WordTimings = clip.WordTimings,
+        Effects = clip.Effects?.Select(ToSnapshotEffect).ToList() ?? [],
+    };
+
+    /// `Clip.TextStyle`/`TextAnimation` are stored as raw `JsonElement` (see Timeline.cs's doc
+    /// comment on those properties) — this hands the raw JSON to the same lenient
+    /// `TextStyleJsonConverter`/`TextAnimationJsonConverter` the project file itself decodes with,
+    /// so a missing/legacy-shaped field resolves exactly like it would when the project was opened.
+    private static T? DeserializeTextField<T>(JsonElement? raw) where T : class =>
+        raw is { } el ? JsonSerializer.Deserialize<T>(el.GetRawText()) : null;
 }
 
 /// Coarse, extension-based `hasAlphaHint` — see docs/timeline-snapshot-v1.md §5. Never authoritative.
@@ -432,7 +520,142 @@ public static class TimelineSnapshotSerializer
             WriteClip(w, c);
         }
         w.WriteEndArray();
+        if (t.TextClips.Count > 0)
+        {
+            w.WriteStartArray("textClips");
+            foreach (var tc in t.TextClips)
+            {
+                WriteTextClip(w, tc);
+            }
+            w.WriteEndArray();
+        }
         w.WriteEndObject();
+    }
+
+    // v1.2 (docs/timeline-snapshot-v1.md §12) — every key hand-written, same determinism guarantee
+    // (§9) as the rest of this serializer.
+    private static void WriteTextClip(Utf8JsonWriter w, SnapshotTextClip c)
+    {
+        w.WriteStartObject();
+        w.WriteString("id", c.Id);
+        w.WriteNumber("startFrame", c.StartFrame);
+        w.WriteNumber("durationFrames", c.DurationFrames);
+        w.WriteString("content", c.Content);
+
+        w.WriteStartObject("opacity");
+        w.WriteNumber("value", c.Opacity);
+        WriteDoubleKeyframes(w, c.OpacityKeyframes);
+        w.WriteEndObject();
+
+        if (c.BlendMode is { } blendMode)
+        {
+            w.WriteString("blendMode", SwiftStringEnumConverter<BlendMode>.RawValue(blendMode));
+        }
+        else
+        {
+            w.WriteNull("blendMode");
+        }
+
+        // Flat, not a {value, keyframes} envelope — always static, see SnapshotTextClip.Transform.
+        w.WriteStartObject("transform");
+        WriteTransformValue(w, c.Transform);
+        w.WriteEndObject();
+
+        w.WriteStartObject("style");
+        WriteTextStyle(w, c.Style);
+        w.WriteEndObject();
+
+        w.WriteStartObject("animation");
+        WriteTextAnimation(w, c.Animation);
+        w.WriteEndObject();
+
+        if (c.WordTimings is { Count: > 0 } timings)
+        {
+            w.WriteStartArray("wordTimings");
+            foreach (var t in timings)
+            {
+                w.WriteStartObject();
+                w.WriteString("text", t.Text);
+                w.WriteNumber("startFrame", t.StartFrame);
+                w.WriteNumber("endFrame", t.EndFrame);
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
+        }
+        else
+        {
+            w.WriteNull("wordTimings");
+        }
+
+        if (c.Effects.Count > 0)
+        {
+            w.WriteStartArray("effects");
+            foreach (var effect in c.Effects)
+            {
+                WriteEffect(w, effect);
+            }
+            w.WriteEndArray();
+        }
+
+        w.WriteEndObject();
+    }
+
+    private static void WriteTextStyle(Utf8JsonWriter w, TextStyle s)
+    {
+        w.WriteString("fontName", s.FontName);
+        w.WriteNumber("fontSize", s.FontSize);
+        w.WriteNumber("fontScale", s.FontScale);
+        w.WriteBoolean("isBold", s.IsBold);
+        w.WriteBoolean("isItalic", s.IsItalic);
+        w.WriteStartObject("color");
+        WriteRgba(w, s.Color);
+        w.WriteEndObject();
+        w.WriteString("alignment", SwiftStringEnumConverter<TextStyleAlignment>.RawValue(s.Alignment));
+        w.WriteStartObject("shadow");
+        w.WriteBoolean("enabled", s.Shadow.Enabled);
+        w.WriteStartObject("color");
+        WriteRgba(w, s.Shadow.Color);
+        w.WriteEndObject();
+        w.WriteNumber("offsetX", s.Shadow.OffsetX);
+        w.WriteNumber("offsetY", s.Shadow.OffsetY);
+        w.WriteNumber("blur", s.Shadow.Blur);
+        w.WriteEndObject();
+        w.WriteStartObject("background");
+        w.WriteBoolean("enabled", s.Background.Enabled);
+        w.WriteStartObject("color");
+        WriteRgba(w, s.Background.Color);
+        w.WriteEndObject();
+        w.WriteEndObject();
+        w.WriteStartObject("border");
+        w.WriteBoolean("enabled", s.Border.Enabled);
+        w.WriteStartObject("color");
+        WriteRgba(w, s.Border.Color);
+        w.WriteEndObject();
+        w.WriteEndObject();
+    }
+
+    private static void WriteTextAnimation(Utf8JsonWriter w, TextAnimation a)
+    {
+        w.WriteString("preset", SwiftStringEnumConverter<TextAnimationPreset>.RawValue(a.Preset));
+        w.WriteNumber("perWordFrames", a.PerWordFrames);
+        if (a.Highlight is { } highlight)
+        {
+            w.WriteStartObject("highlight");
+            WriteRgba(w, highlight);
+            w.WriteEndObject();
+        }
+        else
+        {
+            w.WriteNull("highlight");
+        }
+    }
+
+    private static void WriteRgba(Utf8JsonWriter w, TextStyleRgba c)
+    {
+        w.WriteNumber("r", c.R);
+        w.WriteNumber("g", c.G);
+        w.WriteNumber("b", c.B);
+        w.WriteNumber("a", c.A);
     }
 
     private static void WriteClip(Utf8JsonWriter w, SnapshotClip c)
@@ -516,7 +739,7 @@ public static class TimelineSnapshotSerializer
         w.WriteNumber("fadeOutFrames", c.FadeOutFrames);
         w.WriteString("fadeInInterpolation", SwiftStringEnumConverter<Interpolation>.RawValue(c.FadeInInterpolation));
         w.WriteString("fadeOutInterpolation", SwiftStringEnumConverter<Interpolation>.RawValue(c.FadeOutInterpolation));
-        w.WriteNull("keyframes"); // volume dB keyframe track — E4.5 (audio playback), not video render
+        WriteDoubleKeyframes(w, c.VolumeKeyframes); // volume dB keyframe track — E4.5 (audio playback)
         w.WriteEndObject();
 
         if (c.Effects.Count > 0)

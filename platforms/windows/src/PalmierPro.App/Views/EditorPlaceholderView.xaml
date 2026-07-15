@@ -5,13 +5,18 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:mediaPanel="using:PalmierPro.App.Views.MediaPanel"
+    xmlns:preview="using:PalmierPro.App.Views.Preview"
     xmlns:timeline="using:PalmierPro.App.Views.Timeline"
     mc:Ignorable="d">
 
-    <!-- Media panel + timeline are real (Stage B/C); preview/inspector remain themed skeletons
-         until their own stage (D/E). -->
+    <!-- Media panel + timeline + preview canvas are real (Stage B/C/D); inspector remains a themed
+         skeleton until its own stage (E). Preview has a Timeline/source-asset toggle,
+         source-asset scrub, and timeline transport (play/pause/step/skip — TransportBar, M4).
+         RootGrid's own KeyDown is the Space/arrow-key transport-shortcut home (see KeyRouter.
+         HandleTransportKey) — it only ever sees a key TimelineCanvasControl/MediaGridView didn't
+         already mark Handled themselves, since routed KeyDown bubbles stop there. -->
     <Grid x:Name="RootGrid" Background="{StaticResource AppBackgroundBaseBrush}"
-          RowSpacing="{StaticResource AppSpacingSm}">
+          RowSpacing="{StaticResource AppSpacingSm}" KeyDown="RootGrid_KeyDown">
         <Grid.RowDefinitions>
             <RowDefinition Height="3*"/>
             <RowDefinition Height="1*"/>
@@ -26,7 +31,16 @@
             <Border x:Name="MediaPanel" Grid.Column="0">
                 <mediaPanel:MediaPanelView x:Name="MediaPanelHost"/>
             </Border>
-            <Border x:Name="PreviewPanel" Grid.Column="1" Background="{StaticResource AppBackgroundPreviewCanvasBrush}"/>
+            <Border x:Name="PreviewPanel" Grid.Column="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <preview:PreviewView x:Name="PreviewHost" Grid.Row="0"/>
+                    <preview:TransportBar x:Name="TransportBarHost" Grid.Row="1"/>
+                </Grid>
+            </Border>
             <Border x:Name="InspectorPanel" Grid.Column="2" Background="{StaticResource AppBackgroundRaisedBrush}"/>
         </Grid>
 

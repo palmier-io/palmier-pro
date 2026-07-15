@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using PalmierPro.Core.Json;
 using PalmierPro.Core.Models;
 using PalmierPro.Services.Engine;
@@ -289,62 +290,23 @@ public class TimelineSnapshotBuilderTests
         }
     }
 
-    // ----- Text/Lottie exclusion (§6) -----
+    // ----- Lottie exclusion (§6) — text clips now enter `SnapshotTrack.TextClips` instead of being
+    // excluded; see the "Text clips (§12)" section below. -----
 
     [Fact]
-    public void TextAndLottieClipsAreExcluded()
+    public void LottieClipIsExcluded()
     {
         var video = Clip("v", 0, 10, id: "V", type: ClipType.Video);
-        var text = Clip("t", 10, 10, id: "T", type: ClipType.Text);
         var lottie = Clip("l", 20, 10, id: "L", type: ClipType.Lottie);
-        var (project, manifest, dir) = SingleTrackProject(video, text, lottie);
+        var (project, manifest, dir) = SingleTrackProject(video, lottie);
         try
         {
             var result = TimelineSnapshotBuilder.Build(project, "TL-1", Resolver(manifest));
 
             var clips = result.Snapshot.Tracks.ShouldHaveSingleItem().Clips;
             clips.ShouldHaveSingleItem().Id.ShouldBe("V");
-            // Neither excluded clip is a "media problem" — they're a known, tracked v1 gap, not a
-            // missing/offline file.
+            // Not a "media problem" — a known, tracked v1/v1.1 gap, not a missing/offline file.
             result.OfflineMediaRefs.ShouldBeEmpty();
-        }
-        finally
-        {
-            dir.Dispose();
-        }
-    }
-
-    [Fact]
-    public void TextAndLottieClipsAreExcludedInsideANestedSequenceToo()
-    {
-        // Regression: the filter must be applied by EmitVideoLane/EmitAudioLane themselves, not
-        // only by their top-level caller — a clip list arriving via NestFlattener.Flatten never
-        // passes through the top-level filtering path at all.
-        var dir = new TempDirectory();
-        try
-        {
-            var video = Clip("child-media", 0, 10, id: "CHILD-VIDEO", type: ClipType.Video);
-            var text = Clip("n/a", 0, 10, id: "CHILD-TEXT", type: ClipType.Text);
-            var childTrack = new Track(ClipType.Video, [video, text]) { Id = "CHILD-TRACK" };
-            var child = new Timeline { Id = "CHILD", Fps = 30, Tracks = [childTrack] };
-
-            var seqClip = new Clip("CHILD", 0, 10) { Id = "SEQ", MediaType = ClipType.Sequence, SourceClipType = ClipType.Sequence };
-            var rootTrack = new Track(ClipType.Video, [seqClip]) { Id = "ROOT-TRACK" };
-            var root = new Timeline { Id = "ROOT", Fps = 30, Tracks = [rootTrack] };
-
-            var project = new ProjectFile([root, child], root.Id, [root.Id, child.Id]);
-            var childMediaPath = Path.Combine(dir.Path, "child-media.mp4");
-            File.WriteAllBytes(childMediaPath, []);
-            var manifest = new MediaManifest
-            {
-                Entries = [new MediaManifestEntry("child-media", "child-media", ClipType.Video, MediaSource.External(childMediaPath), 10)],
-            };
-
-            var result = TimelineSnapshotBuilder.Build(project, "ROOT", Resolver(manifest));
-
-            var clips = result.Snapshot.Tracks.ShouldHaveSingleItem().Clips;
-            clips.ShouldHaveSingleItem().Id.ShouldBe("SEQ/CHILD-VIDEO");
-            result.OfflineMediaRefs.ShouldBeEmpty(); // the excluded text clip must not be misreported as offline media
         }
         finally
         {
@@ -365,6 +327,46 @@ public class TimelineSnapshotBuilderTests
             var second = TimelineSnapshotSerializer.ToJsonBytes(TimelineSnapshotBuilder.Build(project, "TL-1", Resolver(manifest)).Snapshot);
 
             first.ShouldBe(second);
+        }
+        finally
+        {
+            dir.Dispose();
+        }
+    }
+
+    [Fact]
+    public void EffectParamsSerializeInOrdinalKeyOrder_RegardlessOfInsertionOrder()
+    {
+        // §9's determinism guarantee for `effects[].params` rests entirely on WriteEffect's
+        // explicit `.OrderBy(kv => kv.Key, StringComparer.Ordinal)` — Dictionary<K,V> enumeration
+        // order isn't a stable .NET contract. The golden fixture's own params ("blacks", "whites")
+        // happen to already be alphabetical in insertion order, so it can't catch a regression
+        // here; insert deliberately out of order.
+        var clip = Clip("m", 0, 30, id: "C");
+        clip.Effects =
+        [
+            new Effect("test.effect")
+            {
+                Params =
+                {
+                    ["zeta"] = new EffectParam(1.0),
+                    ["alpha"] = new EffectParam(2.0),
+                    ["mid"] = new EffectParam(3.0),
+                },
+            },
+        ];
+        var (project, manifest, dir) = SingleTrackProject(clip);
+        try
+        {
+            string json = Encoding.UTF8.GetString(TimelineSnapshotSerializer.ToJsonBytes(
+                TimelineSnapshotBuilder.Build(project, "TL-1", Resolver(manifest)).Snapshot));
+
+            int alpha = json.IndexOf("\"alpha\"", StringComparison.Ordinal);
+            int mid = json.IndexOf("\"mid\"", StringComparison.Ordinal);
+            int zeta = json.IndexOf("\"zeta\"", StringComparison.Ordinal);
+            alpha.ShouldBeGreaterThan(-1);
+            mid.ShouldBeGreaterThan(alpha);
+            zeta.ShouldBeGreaterThan(mid);
         }
         finally
         {
@@ -563,6 +565,199 @@ public class TimelineSnapshotBuilderTests
             var result = TimelineSnapshotBuilder.Build(project, "TIMELINE-1", Resolver(manifest));
             var actual = Encoding.UTF8.GetString(TimelineSnapshotSerializer.ToJsonBytes(result.Snapshot));
             var expected = LoadGolden("effects-and-keyframes.snapshot.json", dir.Path);
+
+            NormalizeLineEndings(actual).ShouldBe(NormalizeLineEndings(expected));
+        }
+        finally
+        {
+            dir.Dispose();
+        }
+    }
+
+    // ----- Text clips (§12) -----
+
+    private static readonly string SampleTextStyleJson = """
+        {
+          "fontName": "Avenir Next Bold",
+          "fontSize": 72,
+          "fontScale": 1.0,
+          "isBold": true,
+          "isItalic": false,
+          "color": { "r": 1, "g": 1, "b": 1, "a": 1 },
+          "alignment": "center",
+          "shadow": { "enabled": true, "color": { "r": 0, "g": 0, "b": 0, "a": 0.6 }, "offsetX": 0, "offsetY": -2, "blur": 6 },
+          "background": { "enabled": false, "color": { "r": 0, "g": 0, "b": 0, "a": 0.6 } },
+          "border": { "enabled": true, "color": { "r": 0, "g": 0, "b": 0, "a": 1 } }
+        }
+        """;
+
+    private static readonly string SampleTextAnimationJson = """
+        {
+          "preset": "wordReveal",
+          "perWordFrames": 6,
+          "highlight": { "r": 1, "g": 0.85, "b": 0, "a": 1 }
+        }
+        """;
+
+    /// A representative `.text` clip: overridden style/animation (raw JSON, matching how
+    /// `Clip.TextStyle`/`TextAnimation` are actually stored — see Timeline.cs), word timings, and a
+    /// keyframed opacity envelope (the one property TextFrameRenderer DOES sample per-frame for text).
+    private static Clip TextClip(string mediaRef, int start, int duration, string id) => new(mediaRef, start, duration)
+    {
+        Id = id,
+        MediaType = ClipType.Text,
+        SourceClipType = ClipType.Text,
+        TextContent = "Hello world",
+        Transform = new Transform { CenterX = 0.5, CenterY = 0.9, Width = 0.8, Height = 0.2 },
+        TextStyle = JsonDocument.Parse(SampleTextStyleJson).RootElement.Clone(),
+        TextAnimation = JsonDocument.Parse(SampleTextAnimationJson).RootElement.Clone(),
+        WordTimings = [new WordTiming("Hello", 0, 20), new WordTiming("world", 20, 40)],
+        OpacityTrack = new KeyframeTrack<double>([
+            new Keyframe<double>(0, 0, Interpolation.Linear),
+            new Keyframe<double>(10, 1, Interpolation.Linear),
+        ]),
+    };
+
+    [Fact]
+    public void TextClipEntersItsOwnTracksTextClipsListLottieStaysExcluded()
+    {
+        var video = Clip("v", 0, 10, id: "V", type: ClipType.Video);
+        var text = TextClip("", 10, 10, id: "T");
+        var lottie = Clip("l", 20, 10, id: "L", type: ClipType.Lottie);
+        var (project, manifest, dir) = SingleTrackProject(video, text, lottie);
+        try
+        {
+            var result = TimelineSnapshotBuilder.Build(project, "TL-1", Resolver(manifest));
+
+            var track = result.Snapshot.Tracks.ShouldHaveSingleItem();
+            track.Clips.ShouldHaveSingleItem().Id.ShouldBe("V"); // Lottie stays a silent v1/v1.1 gap
+            var textClip = track.TextClips.ShouldHaveSingleItem();
+            textClip.Id.ShouldBe("T");
+            textClip.Content.ShouldBe("Hello world");
+            textClip.Style.FontName.ShouldBe("Avenir Next Bold");
+            textClip.Animation.Preset.ShouldBe(TextAnimationPreset.WordReveal);
+            textClip.WordTimings.ShouldNotBeNull().Count.ShouldBe(2);
+            result.OfflineMediaRefs.ShouldBeEmpty(); // neither exclusion is a "media problem"
+        }
+        finally
+        {
+            dir.Dispose();
+        }
+    }
+
+    [Fact]
+    public void TextClipInsideANestedSequenceEntersTextClipsListWithRemappedFrames()
+    {
+        // Regression: the Text/Lottie branch must be evaluated by EmitVideoLane itself, not only by
+        // its top-level caller — a clip list arriving via NestFlattener.Flatten never passes through
+        // a separate top-level filtering path at all.
+        var dir = new TempDirectory();
+        try
+        {
+            var video = Clip("child-media", 0, 10, id: "CHILD-VIDEO", type: ClipType.Video);
+            var text = TextClip("", 0, 10, id: "CHILD-TEXT");
+            var childTrack = new Track(ClipType.Video, [video, text]) { Id = "CHILD-TRACK" };
+            var child = new Timeline { Id = "CHILD", Fps = 30, Tracks = [childTrack] };
+
+            var seqClip = new Clip("CHILD", 5, 10) { Id = "SEQ", MediaType = ClipType.Sequence, SourceClipType = ClipType.Sequence };
+            var rootTrack = new Track(ClipType.Video, [seqClip]) { Id = "ROOT-TRACK" };
+            var root = new Timeline { Id = "ROOT", Fps = 30, Tracks = [rootTrack] };
+
+            var project = new ProjectFile([root, child], root.Id, [root.Id, child.Id]);
+            var childMediaPath = Path.Combine(dir.Path, "child-media.mp4");
+            File.WriteAllBytes(childMediaPath, []);
+            var manifest = new MediaManifest
+            {
+                Entries = [new MediaManifestEntry("child-media", "child-media", ClipType.Video, MediaSource.External(childMediaPath), 10)],
+            };
+
+            var result = TimelineSnapshotBuilder.Build(project, "ROOT", Resolver(manifest));
+
+            var track = result.Snapshot.Tracks.ShouldHaveSingleItem();
+            track.Clips.ShouldHaveSingleItem().Id.ShouldBe("SEQ/CHILD-VIDEO");
+            // Nest-prefixed id (§4's convention), same as a video/audio SnapshotClip; the carrier
+            // starts at 5 with no trim, so the shift is +5 (matches RetimedClipCarriesSpeedAndTrims-
+            // style remap math: shift = seqClip.StartFrame - seqClip.TrimStartFrame).
+            var textClip = track.TextClips.ShouldHaveSingleItem();
+            textClip.Id.ShouldBe("SEQ/CHILD-TEXT");
+            textClip.StartFrame.ShouldBe(5);
+            result.OfflineMediaRefs.ShouldBeEmpty();
+        }
+        finally
+        {
+            dir.Dispose();
+        }
+    }
+
+    [Fact]
+    public void TextClipDoesNotConsumeOrRespectPreviousEndFrame()
+    {
+        // A text clip is exempt from the video-lane overlap invariant in both directions: it never
+        // advances previousEndFrame (so it can't shadow a later regular clip), and it's never itself
+        // rejected as "out of order" for overlapping one (matches CompositionBuilder's `.text`
+        // branch, which has no prevEndFrame interaction at all).
+        var video = Clip("v", 0, 100, id: "V", type: ClipType.Video);
+        var text = TextClip("", 10, 20, id: "T"); // fully inside the video clip's span
+        var (project, manifest, dir) = SingleTrackProject(video, text);
+        try
+        {
+            var result = TimelineSnapshotBuilder.Build(project, "TL-1", Resolver(manifest));
+
+            var track = result.Snapshot.Tracks.ShouldHaveSingleItem();
+            track.Clips.ShouldHaveSingleItem().Id.ShouldBe("V");
+            track.TextClips.ShouldHaveSingleItem().Id.ShouldBe("T");
+        }
+        finally
+        {
+            dir.Dispose();
+        }
+    }
+
+    [Fact]
+    public void EmptyContentTextClipIsDropped()
+    {
+        // Matches CompositionBuilder's `guard !(clip.textContent ?? "").isEmpty else { continue }`.
+        var empty = TextClip("", 0, 10, id: "EMPTY");
+        empty.TextContent = "";
+        var (project, manifest, dir) = SingleTrackProject(empty);
+        try
+        {
+            var result = TimelineSnapshotBuilder.Build(project, "TL-1", Resolver(manifest));
+
+            result.Snapshot.Tracks.ShouldBeEmpty();
+        }
+        finally
+        {
+            dir.Dispose();
+        }
+    }
+
+    [Fact]
+    public void GoldenFixture_TextClip_MatchesLiveBuilderOutput()
+    {
+        var dir = new TempDirectory();
+        try
+        {
+            var clipAPath = Path.Combine(dir.Path, "clip-a.mp4");
+            File.WriteAllBytes(clipAPath, []);
+
+            var videoClip = new Clip("asset-video", 0, 90) { Id = "CLIP-VIDEO-1", MediaType = ClipType.Video, SourceClipType = ClipType.Video };
+            var videoTrack = new Track(ClipType.Video, [videoClip]) { Id = "TRACK-VIDEO" };
+            var textClip = TextClip("", 15, 60, id: "TEXT-CLIP-1");
+            var textTrack = new Track(ClipType.Video, [textClip]) { Id = "TRACK-TEXT" };
+
+            // TRACK-TEXT is index 0 (Swift-topmost) so the golden output demonstrates the common
+            // case — a caption track painting over the video track beneath it (§2).
+            var timeline = new Timeline { Id = "TIMELINE-1", Fps = 30, Width = 1920, Height = 1080, Tracks = [textTrack, videoTrack] };
+            var project = new ProjectFile([timeline], timeline.Id, [timeline.Id]);
+            var manifest = new MediaManifest
+            {
+                Entries = [new MediaManifestEntry("asset-video", "asset-video", ClipType.Video, MediaSource.External(clipAPath), 10)],
+            };
+
+            var result = TimelineSnapshotBuilder.Build(project, "TIMELINE-1", Resolver(manifest));
+            var actual = Encoding.UTF8.GetString(TimelineSnapshotSerializer.ToJsonBytes(result.Snapshot));
+            var expected = LoadGolden("text-clip.snapshot.json", dir.Path);
 
             NormalizeLineEndings(actual).ShouldBe(NormalizeLineEndings(expected));
         }

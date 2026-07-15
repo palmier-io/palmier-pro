@@ -9,7 +9,7 @@
 
     <UserControl.Resources>
         <DataTemplate x:Key="AssetItemTemplate">
-            <Grid RightTapped="AssetTile_RightTapped">
+            <Grid DoubleTapped="AssetTile_DoubleTapped" RightTapped="AssetTile_RightTapped">
                 <mediaPanel:AssetTileControl/>
             </Grid>
         </DataTemplate>

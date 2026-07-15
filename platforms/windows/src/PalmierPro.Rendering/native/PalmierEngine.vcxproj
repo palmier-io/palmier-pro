@@ -64,13 +64,13 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <SDLCheck>true</SDLCheck>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(FFmpegDir)include;third_party\simdjson;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(FFmpegDir)include;third_party\simdjson;third_party\signalsmith-stretch;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(FFmpegDir)lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>avformat.lib;avcodec.lib;avutil.lib;swscale.lib;swresample.lib;d3d11.lib;dxgi.lib;d3dcompiler.lib;windowscodecs.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>avformat.lib;avcodec.lib;avutil.lib;swscale.lib;swresample.lib;d3d11.lib;dxgi.lib;d3dcompiler.lib;windowscodecs.lib;dwrite.lib;d2d1.lib;xaudio2.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
 
@@ -84,7 +84,7 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <SDLCheck>true</SDLCheck>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(FFmpegDir)include;third_party\simdjson;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(FFmpegDir)include;third_party\simdjson;third_party\signalsmith-stretch;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -92,7 +92,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(FFmpegDir)lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>avformat.lib;avcodec.lib;avutil.lib;swscale.lib;swresample.lib;d3d11.lib;dxgi.lib;d3dcompiler.lib;windowscodecs.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>avformat.lib;avcodec.lib;avutil.lib;swscale.lib;swresample.lib;d3d11.lib;dxgi.lib;d3dcompiler.lib;windowscodecs.lib;dwrite.lib;d2d1.lib;xaudio2.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
 
@@ -108,10 +108,18 @@
     <ClCompile Include="MediaCache.cpp" />
     <ClCompile Include="TimelineRegistry.cpp" />
     <ClCompile Include="TimelineSession.cpp" />
+    <ClCompile Include="PlaybackClock.cpp" />
     <ClCompile Include="EffectRegistry.cpp" />
     <ClCompile Include="CubeLutParser.cpp" />
     <ClCompile Include="CurveMath.cpp" />
     <ClCompile Include="GpuCompositor.cpp" />
+    <ClCompile Include="FontRegistry.cpp" />
+    <ClCompile Include="TextRenderer.cpp" />
+    <ClCompile Include="TextAnimator.cpp" />
+    <ClCompile Include="AudioEngine.cpp" />
+    <ClCompile Include="AudioMixer.cpp" />
+    <ClCompile Include="ScrubAudio.cpp" />
+    <ClCompile Include="RetimeStretcher.cpp" />
     <!-- Vendored amalgamated single-source build (native/third_party/simdjson/) — reduced
          warning level, this translation unit is upstream code, not ours to fix warnings in. -->
     <ClCompile Include="third_party\simdjson\simdjson.cpp">
@@ -135,6 +143,7 @@
     <ClInclude Include="MediaCache.h" />
     <ClInclude Include="TimelineRegistry.h" />
     <ClInclude Include="TimelineSession.h" />
+    <ClInclude Include="PlaybackClock.h" />
     <ClInclude Include="third_party\simdjson\simdjson.h" />
     <ClInclude Include="Keyframe.h" />
     <ClInclude Include="ClipGeometry.h" />
@@ -143,6 +152,14 @@
     <ClInclude Include="CubeLutParser.h" />
     <ClInclude Include="EffectRegistry.h" />
     <ClInclude Include="GpuCompositor.h" />
+    <ClInclude Include="FontRegistry.h" />
+    <ClInclude Include="TextRenderer.h" />
+    <ClInclude Include="TextAnimator.h" />
+    <ClInclude Include="AudioEngine.h" />
+    <ClInclude Include="AudioMixer.h" />
+    <ClInclude Include="ScrubAudio.h" />
+    <ClInclude Include="RetimeStretcher.h" />
+    <ClInclude Include="third_party\signalsmith-stretch\signalsmith-stretch.h" />
   </ItemGroup>
 
   <ItemGroup>

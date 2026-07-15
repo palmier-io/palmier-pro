@@ -176,6 +176,16 @@ public sealed partial class MediaTabView : UserControl
 
     // MARK: - Asset tile interaction
 
+    // Mirrors FolderTile_DoubleTapped's shape — opens the source preview instead of navigating.
+    private void AssetTile_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if (ViewModel is not { } vm || (sender as FrameworkElement)?.DataContext is not MediaAssetItemViewModel item)
+        {
+            return;
+        }
+        vm.OpenAsset(item.Id);
+    }
+
     private void AssetTile_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         if (ViewModel is not { } vm || (sender as FrameworkElement)?.DataContext is not MediaAssetItemViewModel item)

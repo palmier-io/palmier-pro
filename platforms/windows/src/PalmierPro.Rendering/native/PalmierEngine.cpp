@@ -1,8 +1,11 @@
 #include "include/palmier_engine.h"
 #include "EngineSession.h"
+#include "FontRegistry.h"
 #include "MediaSource.h"
 #include "TimelineRegistry.h"
 #include "TimelineSession.h"
+
+#include <windows.h>
 
 #include <new>
 
@@ -503,6 +506,32 @@ int32_t PE_TimelineRenderFrameToFile(PE_TimelineHandle timeline, int64_t frame, 
     }
 }
 
+int32_t PE_TimelineRenderAudioRange(PE_TimelineHandle timeline, int64_t startFrame, int32_t frameCount, float* outInterleavedStereo)
+{
+    if (!outInterleavedStereo || frameCount <= 0)
+    {
+        return PE_ERROR_INVALID_ARGUMENT;
+    }
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    try
+    {
+        std::string error;
+        if (!t->RenderAudioRange(startFrame, frameCount, outInterleavedStereo, error))
+        {
+            return PE_ERROR_UNKNOWN;
+        }
+        return PE_OK;
+    }
+    catch (const std::exception&)
+    {
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
 int32_t PE_TimelineSetPlayheadCallback(PE_TimelineHandle timeline, PE_PlayheadCallback callback, void* userCtx)
 {
     TimelineSession* t = ResolveTimeline(timeline);
@@ -522,4 +551,193 @@ const char* PE_TimelineGetUnprocessableMediaRefsJson(PE_TimelineHandle timeline)
         return "[]";
     }
     return t->UnprocessableMediaRefsJson();
+}
+
+// --- E4.5 playback / A/V clock (docs/audio-playback-v1.md §3, §4) ---------------------------
+
+int32_t PE_TimelineSetRate(PE_TimelineHandle timeline, double rate)
+{
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    try
+    {
+        return t->SetRate(rate); // PE_ERROR_INVALID_ARGUMENT for rate ∉ {0.0, 1.0} (doc §4)
+    }
+    catch (const std::exception&)
+    {
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
+int32_t PE_TimelinePlay(PE_TimelineHandle timeline)
+{
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    try
+    {
+        return t->Play();
+    }
+    catch (const std::exception&)
+    {
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
+int32_t PE_TimelinePause(PE_TimelineHandle timeline)
+{
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    try
+    {
+        return t->Pause();
+    }
+    catch (const std::exception&)
+    {
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
+int32_t PE_TimelineGetClockFrame(PE_TimelineHandle timeline, int64_t* outFrame)
+{
+    if (!outFrame)
+    {
+        return PE_ERROR_INVALID_ARGUMENT;
+    }
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    try
+    {
+        return t->GetClockFrame(outFrame);
+    }
+    catch (const std::exception&)
+    {
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
+int32_t PE_TimelineSetIsPlayingCallback(PE_TimelineHandle timeline, PE_IsPlayingCallback callback, void* userCtx)
+{
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    t->SetIsPlayingCallback(callback, userCtx);
+    return PE_OK;
+}
+
+// E4.5 scrub slice (docs/audio-playback-v1.md §5, §9). Never fails on content grounds — a valid
+// handle always returns PE_OK, even when the grain is silence (no audible clip at `frame`, or a
+// transient decode failure); a persistently failing source surfaces through
+// PE_TimelineGetUnprocessableMediaRefsJson instead, exactly like a failing video decode already does.
+int32_t PE_TimelineScrubAudio(PE_TimelineHandle timeline, int64_t frame, int32_t direction)
+{
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    try
+    {
+        t->ScrubAudioAt(frame, direction);
+        return PE_OK;
+    }
+    catch (const std::exception&)
+    {
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
+int32_t PE_TimelineStopScrubAudio(PE_TimelineHandle timeline)
+{
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    try
+    {
+        t->StopScrubAudio();
+        return PE_OK;
+    }
+    catch (const std::exception&)
+    {
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
+int32_t PE_TimelineRenderScrubGrain(PE_TimelineHandle timeline, int64_t frame, int32_t direction, float* outInterleavedStereo)
+{
+    if (!outInterleavedStereo)
+    {
+        return PE_ERROR_INVALID_ARGUMENT;
+    }
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    try
+    {
+        std::string error;
+        if (!t->RenderScrubGrain(frame, direction, outInterleavedStereo, error))
+        {
+            return PE_ERROR_INVALID_HANDLE;
+        }
+        return PE_OK;
+    }
+    catch (const std::exception&)
+    {
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
+int32_t PE_DebugTimelineUsingAudioClock(PE_TimelineHandle timeline, int32_t* outUsingAudioClock)
+{
+    if (!outUsingAudioClock)
+    {
+        return PE_ERROR_INVALID_ARGUMENT;
+    }
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    *outUsingAudioClock = t->DebugUsingAudioClock() ? 1 : 0;
+    return PE_OK;
+}
+
+int32_t PE_DebugResolveFontFamily(const char* storedFontName, char* outFamilyNameUtf8, int32_t capacity)
+{
+    if (!storedFontName || !outFamilyNameUtf8 || capacity <= 0)
+    {
+        return PE_ERROR_INVALID_ARGUMENT;
+    }
+
+    std::string initError;
+    if (!FontRegistry::Instance().EnsureInitialized(initError))
+    {
+        return PE_ERROR_UNKNOWN;
+    }
+
+    std::wstring family = FontRegistry::Instance().ResolveFamily(storedFontName);
+    int len = WideCharToMultiByte(CP_UTF8, 0, family.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (len <= 0 || len > capacity)
+    {
+        return PE_ERROR_BUFFER_TOO_SMALL;
+    }
+    WideCharToMultiByte(CP_UTF8, 0, family.c_str(), -1, outFamilyNameUtf8, capacity, nullptr, nullptr);
+    return PE_OK;
 }

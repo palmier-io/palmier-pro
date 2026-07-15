@@ -1,0 +1,72 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.Preview.PreviewView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- RootGrid: TabBarHost (M4, Stage D — Timeline vs. the one open source-asset preview, built
+         in code-behind like TimelineTabBarView; at most two tabs so no data-templated ItemsControl)
+         over CanvasArea, the black letterbox behind a SwapChainPanel sized to whichever surface is
+         active (timeline aspect, or the source asset's own) and centered — native stretch-blits
+         into whatever pixel size the panel is given (no aspect correction of its own, see
+         palmier_engine.h), so letterboxing is entirely this layout's job. MediaStatusOverlay is
+         sized to match Surface (not the full letterbox), mirroring PreviewContainerView.swift's
+         offline-banner sizing, and only shown in Timeline mode (it's timeline media health, not
+         source-asset health). SourceScrubBar is source-mode-only — timeline play/pause/step/scrub
+         lives in the sibling TransportBar control (EditorPlaceholderView.xaml), not here. -->
+    <Grid x:Name="RootGrid" Background="{StaticResource AppBackgroundPreviewCanvasBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="TabBarHost" Grid.Row="0" Background="{StaticResource AppBackgroundSurfaceBrush}">
+            <StackPanel x:Name="TabBar" Orientation="Horizontal" Spacing="{StaticResource AppSpacingXs}"/>
+        </Grid>
+
+        <Grid x:Name="CanvasArea" Grid.Row="1" SizeChanged="CanvasArea_SizeChanged">
+            <SwapChainPanel x:Name="Surface"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                             SizeChanged="Surface_SizeChanged"/>
+
+            <Border x:Name="MediaStatusOverlay"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Visibility="Collapsed" IsHitTestVisible="False">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{StaticResource AppSpacingMd}">
+                    <FontIcon Glyph="&#xE7BA;" FontSize="{StaticResource AppFontSizeDisplay}"
+                              Foreground="{StaticResource AppStatusErrorBrush}" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="MediaStatusTitle"
+                               FontSize="{StaticResource AppFontSizeLg}"
+                               Foreground="{StaticResource AppTextPrimaryBrush}"
+                               HorizontalAlignment="Center" TextAlignment="Center"/>
+                    <TextBlock x:Name="MediaStatusMessage"
+                               FontSize="{StaticResource AppFontSizeSm}"
+                               Foreground="{StaticResource AppTextSecondaryBrush}"
+                               HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="MediaStatusPath"
+                               FontSize="{StaticResource AppFontSizeSm}"
+                               Foreground="{StaticResource AppTextSecondaryBrush}"
+                               HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
+                               TextTrimming="CharacterEllipsis" IsTextSelectionEnabled="True"/>
+                </StackPanel>
+            </Border>
+
+            <Grid x:Name="SourceScrubBar" VerticalAlignment="Bottom"
+                  Height="{StaticResource AppComponentSizePreviewScrubBarHeight}" Visibility="Collapsed"
+                  Background="Transparent"
+                  PointerPressed="SourceScrubBar_PointerPressed"
+                  PointerMoved="SourceScrubBar_PointerMoved"
+                  PointerReleased="SourceScrubBar_PointerReleased"
+                  PointerCaptureLost="SourceScrubBar_PointerCaptureLost">
+                <Border x:Name="SourceScrubTrack" VerticalAlignment="Center"
+                        Height="{StaticResource AppComponentSizePreviewScrubTrackHeight}"
+                        Background="{StaticResource AppBorderPrimaryBrush}"/>
+                <Border x:Name="SourceScrubFill" HorizontalAlignment="Left" VerticalAlignment="Center"
+                        Height="{StaticResource AppComponentSizePreviewScrubTrackHeight}" Width="0"
+                        Background="{StaticResource AppAccentPrimaryBrush}"/>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

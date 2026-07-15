@@ -276,35 +276,71 @@ Field-by-field:
   - `fadeInFrames` / `fadeOutFrames` / `fadeInInterpolation` / `fadeOutInterpolation` — verbatim
     from `Clip` (post-flatten — a fade is zeroed at whichever edge a nest window cut through, per
     §4/`NestFlattener.remap`).
-  - `keyframes` — always `null` in v1 (dB keyframe track, `Keyframe<Double>` shape, arrives with
-    E3 — this is `Clip.VolumeTrack` in the Swift model).
+  - `keyframes` — the dB keyframe track (`Keyframe<Double>` shape, dB values, `Clip.VolumeTrack` in
+    the Swift model). `null` in v1; **populated as of E4.5** (audio playback) using the identical
+    `{ "frame", "value", "interpolation" }` envelope shape as `opacity`/`crop` (§11.2) — see the
+    §5.1 addendum below for the sampling contract. Static clips still emit `null`.
   - **Why volume is present at all before E4.5 (audio playback) lands:** the fields are part of
     the schema now so the engine doesn't need another ABI-shape change once E4.5 starts consuming
     them — v1's native side is free to ignore this object entirely today.
 
+### 5.1 Volume dB keyframe track (E4.5)
+
+The audio mixer (docs/audio-playback-v1.md §1) computes each clip's effective linear gain as
+`gain(frame) = volume.gain × VolumeScale.linearFromDb(volumeKeyframes.sample(frame)) × fadeMultiplier(frame)`,
+mirroring `Clip.VolumeAt` (`Timeline.cs:320`) exactly. The `volume.keyframes` array closes the one
+schema gap §5 left open, additively and by the **same** mechanical rules as §11.2's
+opacity/crop/transform envelopes:
+
+- **Producer** — `TimelineSnapshotBuilder.TryResolveClip` populates it with
+  `BuildKeyframes(clip.VolumeTrack, kf => kf.Value)`, the identical call opacity/crop already use;
+  `TimelineSnapshotSerializer.WriteClip` writes it with the shared `WriteDoubleKeyframes` helper (an
+  array of `{ frame, value, interpolation }`, or `null` when the track is inactive). `frame` is
+  clip-relative; `value` is **dB**, not linear.
+- **Consumer** — `TimelineSnapshotParser` reads it into `SnapshotClip.volumeKeyframes` with the same
+  `ParseKeyframesArray` opacity uses; `AudioMixer` samples it via `SampleKeyframeTrack`
+  (`Keyframe.h`, dB fallback `0.0` == unity) and maps the sampled dB through the
+  `VolumeScale.linearFromDb` port (clamp `[-60, +15]` dB, floor == hard mute). An empty/absent array
+  is unity gain — byte-for-byte the pre-E4.5 static behavior.
+- **Not sampled per-sample** — gain (this term included) is evaluated at **block cadence** (one 20 ms
+  mix block, docs/audio-playback-v1.md §2), not per output sample, so a keyframed or fading gain
+  moves in per-block steps. This matches the doc's own "sampled at block cadence" wording and is
+  inaudible at 20 ms granularity.
+- The `fadeInFrames`/`fadeOutFrames`/`fadeIn|OutInterpolation` fields (already present since v1) are
+  the mixer's fade-envelope input, ported verbatim as `Clip.FadeMultiplier` (`Timeline.cs:342`).
+  Native now parses them (it ignored the whole `volume` object through v1.1).
+
 ## 6. Excluded clip types
 
-- **Text** (`ClipType.Text`) — excluded entirely in v1. On the Mac, text never becomes a
-  composition track either (`CompositionBuilder.build`'s `.filter { $0.mediaType != .text }`) —
-  it renders through a separate Direct2D/DirectWrite text-compositing path, which is E4
-  ("Text/titles") on the Windows roadmap. A text clip contributes nothing to the snapshot: no
-  track, no clip entry, no `offlineMediaRefs`/`unprocessableMediaRefs` entry (it isn't a media
-  reference at all).
-- **Lottie** (`ClipType.Lottie`) — excluded entirely in v1. This is a genuine **divergence from
-  the Mac**, not a mirror of existing Mac behavior: `CompositionBuilder` *does* composite Lottie
-  clips today (baked to an alpha-video intermediate via `LottieVideoGenerator`, then treated as
-  ordinary footage). The Windows ThorVG bake pipeline is E4.7 and doesn't exist yet, so v1's
-  builder skips Lottie clips rather than emitting a clip the engine has no way to render. Skipped
-  Lottie clips are **not** added to `offlineMediaRefs`/`unprocessableMediaRefs` — that would
-  misreport a known, tracked gap as a missing-file error. A project with Lottie clips still opens
-  and plays in v1 (Phase 1 requirement); the Lottie clips are simply invisible/silent until E4.7.
+- **Text** (`ClipType.Text`) — excluded entirely in v1/v1.1 (**superseded in v1.2 — see §12**: a
+  text clip now enters the snapshot via its originating `SnapshotTrack`'s `textClips` list, not
+  `Clips`). On the Mac, text never becomes a *composition track* either
+  (`CompositionBuilder.build`'s `.filter { $0.mediaType != .text }`) — it renders through a
+  separate Direct2D/DirectWrite text-compositing path, which is E4 ("Text/titles") on the Windows
+  roadmap. Under v1/v1.1, a text clip contributed nothing to the snapshot at all: no track, no
+  clip entry, no `offlineMediaRefs`/`unprocessableMediaRefs` entry (it isn't a media reference at
+  all) — v1.2 keeps the "not a media reference" part (still no `offlineMediaRefs` entry) but stops
+  dropping the clip's data on the floor.
+- **Lottie** (`ClipType.Lottie`) — excluded entirely in v1, v1.1, **and v1.2** (unchanged by this
+  section). This is a genuine **divergence from the Mac**, not a mirror of existing Mac behavior:
+  `CompositionBuilder` *does* composite Lottie clips today (baked to an alpha-video intermediate
+  via `LottieVideoGenerator`, then treated as ordinary footage). The Windows ThorVG bake pipeline
+  is E4.7 and doesn't exist yet, so the builder skips Lottie clips rather than emitting a clip the
+  engine has no way to render. Skipped Lottie clips are **not** added to
+  `offlineMediaRefs`/`unprocessableMediaRefs` — that would misreport a known, tracked gap as a
+  missing-file error. A project with Lottie clips still opens and plays (Phase 1 requirement); the
+  Lottie clips are simply invisible/silent until E4.7.
 
-Both exclusions happen structurally — `RenderableClips` filters `MediaType is ClipType.Text or
-ClipType.Lottie` out of a clip list before it's walked. This filter runs *inside*
-`EmitVideoLane`/`EmitAudioLane` themselves, not once by their caller, specifically so every entry
-point applies it identically: the top-level per-track loop AND every recursive nested-sub-track
-call out of `ExpandNestVideo`/`ExpandNestAudio` (a nested child timeline's own tracks can carry
-text/lottie clips too — filtering only once at the top would leak those through).
+Through v1.1, both exclusions happened identically — `RenderableClips` filtered `MediaType is
+ClipType.Text or ClipType.Lottie` out of a clip list before it was walked, inside
+`EmitVideoLane`/`EmitAudioLane` themselves so every entry point (the top-level per-track loop AND
+every recursive nested-sub-track call out of `ExpandNestVideo`/`ExpandNestAudio`) applied it
+identically. **As of v1.2, `EmitVideoLane` inlines its own Text/Lottie branch instead of calling
+`RenderableClips`** (Text now needs to route to `ctx`'s per-track `textClips` output rather than
+simply being dropped) — `EmitAudioLane` is unaffected and still calls `RenderableClips` (Text and
+Lottie are both `ClipType.IsVisual`, so neither is ever audio-lane-eligible; the audio lane keeps
+filtering both defensively against a malformed/legacy project). See §12 for the full text-clip
+rationale, including why nested-sub-track recursion for text needed no new code at all.
 
 ## 7. Multicam clips — resolution is a no-op
 
@@ -354,12 +390,24 @@ sources for the UI to display as one list.
 ## 9. Determinism
 
 `TimelineSnapshotSerializer.ToJsonBytes` writes every object with a **fixed, hand-written key
-order** via `Utf8JsonWriter` calls in source order — no `JsonSerializer` reflection, no dictionary
-iteration anywhere in the write path (there is nothing dictionary-shaped in this schema: no
-`Effect.Params`, no keyframe collections — those are exactly the dictionary-shaped things v1
-excludes). Same `ProjectFile` + `MediaResolver` state in ⇒ byte-identical JSON out, every time.
-This is asserted directly by a golden-fixture test (`TimelineSnapshotBuilderTests`) that builds a
-snapshot twice from the same inputs and compares bytes.
+order** via `Utf8JsonWriter` calls in source order — no `JsonSerializer` reflection anywhere in the
+write path. Keyframe collections (`KeyframeTrack<T>`, §11.2) are list-shaped, so they need nothing
+special: array order is source/insertion order already.
+
+One field IS dictionary-shaped, as of v1.1 (§11.3): `Effect.Params` is a
+`Dictionary<string, EffectParam>`, and `WriteEffect` (`TimelineSnapshotBuilder.cs`) iterates it.
+`Dictionary<TKey,TValue>` enumeration order is not a stable .NET contract, so that loop does NOT
+rely on it — it explicitly sorts first: `effect.Params.OrderBy(kv => kv.Key,
+StringComparer.Ordinal)`. That sort, not enumeration order, is what keeps `params` deterministic;
+if a future dictionary-shaped field is added to this schema without the same explicit sort, this
+guarantee does not extend to it automatically.
+
+Same `ProjectFile` + `MediaResolver` state in ⇒ byte-identical JSON out, every time. This is
+asserted by a golden-fixture test (`TimelineSnapshotBuilderTests`) that builds a snapshot twice from
+the same inputs and compares bytes, and separately (`EffectParamsSerializeInOrdinalKeyOrder_
+RegardlessOfInsertionOrder`) by inserting `Effect.Params` entries out of alphabetical order and
+asserting the serialized key order is alphabetical regardless — the golden fixtures' own params
+happen to already be inserted in alphabetical order, so they alone don't exercise the sort.
 
 ## 10. Golden fixtures
 
@@ -372,6 +420,8 @@ lands:
 | `simple-two-track.snapshot.json` | Baseline shape: one video + one audio top-level track, track/clip field layout, the `{value, keyframes}` / `volume` envelopes, `blendMode: null` |
 | `nested-sequence.snapshot.json` | §4 flattening: a `.sequence` clip's child timeline (2 video sub-tracks) spliced in with remapped `startFrame`/`trimStartFrame`, nest-prefixed clip and track ids |
 | `missing-media.snapshot.json` | §8: one clip whose manifest entry points at a nonexistent file — clip skipped, empty track omitted entirely, ref surfaced only via the separate (non-JSON) `OfflineMediaRefs` result |
+| `effects-and-keyframes.snapshot.json` | §11 (v1.1): populated opacity/crop/transform keyframe envelopes plus a per-clip effect with one static and one keyframed param |
+| `text-clip.snapshot.json` | §12 (v1.2): a dedicated text-only track (`clips: []`, populated `textClips`) painting over a video track beneath it — full `style`/`animation`/`wordTimings`, a keyframed `opacity` envelope, `minorVersion: 2` |
 
 Every `mediaPath` value in these files is templated as the literal token `{{FIXTURE_DIR}}` in place
 of the absolute directory used when the fixture was generated (e.g.
@@ -497,3 +547,218 @@ identically under v1.1 native code — `SnapshotClip::OpacityAt`/`CropAt`/`Trans
 special-case "keyframes empty → return the static `value`" as their first branch, and an empty
 `effects` list is simply "no effect chain to run" (§11.3's E3 render path, `GpuCompositor::Compose`
 — see the E3 milestone report for what's GPU-default vs. CPU-fallback-only).
+
+## 12. v1.2 extension — text clips (E4)
+
+E4 ("Text/titles" on the Windows roadmap) extends the schema **additively over v1.1**, exactly the
+way v1.1 extended v1 (§11): every v1/v1.1 fixture is still valid v1.2 input (no `textClips` key on
+any track). Text clips (`ClipType.Text`) now enter the snapshot — they were structurally excluded
+through v1.1 (§6). This section covers the C#-side (`TimelineSnapshotBuilder`/
+`TimelineSnapshotSerializer`) contract; **native text parsing/rendering is out of scope here** —
+that is E4's own (separate) work. The only native-side change this section makes is confirming the
+parser doesn't choke on the new data (§12.6).
+
+### 12.1 `minorVersion`
+
+Bumped to `"minorVersion": 2` (`TimelineSnapshotBuilder.SchemaMinorVersion`). Top-level `version`
+stays `1`, unchanged (v1.2 is a minor-version bump, not a schema-breaking change). Native's version
+gate (`TimelineSnapshotParser::Parse`) only ever validated the top-level `version` field
+(`if (version != 1) reject`) — it has never validated `minorVersion` at all (an absent OR any
+unrecognized numeric `minorVersion` has always resolved to "no keyframes/effects," §11.1's
+established convention). **Bumping to 2 required zero changes to the version gate** — it was
+already permissive enough. (`TimelineSnapshot.h`'s doc comment on `minorVersion` was updated to
+mention "2 = v1.2" for documentation accuracy only; that's a comment-only diff.)
+
+### 12.2 Where a text clip lives: `SnapshotTrack.textClips`, not `SnapshotTrack.clips`
+
+A text clip is **not** a `SnapshotClip` and does **not** live in a track's `clips` array. Two
+reasons, both hard requirements rather than style preferences:
+
+1. **`mediaPath` has no meaning for text.** `SnapshotClip.mediaPath` is `required`
+   (`ParseClip` in `TimelineSnapshotParser.cpp` rejects the *entire* snapshot if any clip's
+   `mediaPath` is empty — `outError = "clip '<id>' has an empty mediaPath"`). A text clip is
+   synthesized at render time from font/content, not decoded from a file — there is no path to
+   put there, and inventing a placeholder would either lie about having a media reference or
+   require changing that validation rule (§12.6 explains why that's explicitly avoided).
+2. **Paint order must be preserved without inventing a new ordering scheme.** On the Mac,
+   `CompositionBuilder.compositorInstructions` builds its `layers` array **per track**, walking
+   `timeline.tracks.reversed()` (§2's bottom-to-top order) and, *within* that per-track walk,
+   appending each track's own clips **and** its text clips into the same `entries` list in
+   `startFrame` order (`Preview/CompositionBuilder.swift`, the "Walk tracks in reverse..." loop
+   — search the comment literally). A text clip's stacking position is therefore governed by
+   **which track it was authored on**, exactly like an ordinary clip — a caption track above the
+   video paints over it; a caption track below a video track would paint under it. A flat,
+   track-agnostic `textClips` array at the top level (the schema's first design considered) would
+   have thrown this information away. Attaching `textClips` to the `SnapshotTrack` that produced
+   it — the same `SnapshotTrack` whose position in the top-level `tracks[]` array already encodes
+   correct paint order per §2 — reuses that ordering with **zero new concepts**: whichever
+   `SnapshotTrack` a text clip's `EmitVideoLane` call is currently processing is exactly the track
+   it inherits z-order from, including a nest-spliced synthetic track (§4) — a text clip nested
+   inside a `.sequence` lands on `"{carrierClipId}#v{n}"` exactly like a nested video clip would.
+
+```jsonc
+{
+  "id": "TRACK-TEXT",
+  "type": "video",
+  "muted": false,
+  "clips": [],
+  "textClips": [
+    {
+      "id": "TEXT-CLIP-1",
+      "startFrame": 15,
+      "durationFrames": 60,
+      "content": "Hello world",
+      "opacity": { "value": 1.0, "keyframes": [ /* §12.3 */ ] },
+      "blendMode": null,
+      "transform": { "centerX": 0.5, "centerY": 0.9, "width": 0.8, "height": 0.2,
+                      "rotation": 0.0, "flipHorizontal": false, "flipVertical": false },
+      "style": { /* §12.4 */ },
+      "animation": { /* §12.5 */ },
+      "wordTimings": [ { "text": "Hello", "startFrame": 0, "endFrame": 20 }, /* ... */ ] 
+    }
+  ]
+}
+```
+
+`textClips` is **omitted from the wire format entirely when a track has none** — the same
+"omit an empty optional collection" convention `SnapshotClip.effects` already uses (§11.3), not the
+"always present, even empty" convention `tracks`/`clips` use (those are structurally load-bearing;
+`textClips` is a v1.2 addition with no meaning to a pre-v1.2 reader). A track that carries **only**
+text clips (no ordinary video/audio clips at all — e.g. a dedicated "Captions" track) is still
+emitted, with `"clips": []` and a populated `"textClips"` — `TimelineSnapshotBuilder.EmitVideoLane`
+now appends a `SnapshotTrack` when *either* list is non-empty (previously: only when `clips` was).
+
+### 12.3 Fields carried, and why each one is (or isn't) there
+
+`SnapshotTextClip` mirrors exactly what `Compositing/TextFrameRenderer.swift` (`TextFrameRenderer.image`)
+and `Compositing/FrameRenderer.swift` (`composedTextLayer`) actually read off a `.text` `Clip` at
+render time — nothing more, nothing less:
+
+- `id` — `Clip.id`, or the nest-prefixed id from §4 for a flattened clip (identical convention to
+  `SnapshotClip.id`).
+- `startFrame` / `durationFrames` — carried straight from `Clip` (post-flatten values for a nested
+  clip, identical convention to `SnapshotClip`).
+- `content` — `Clip.textContent`, verbatim. A clip whose content is empty (`null` or `""`) is
+  **dropped entirely** — not emitted as an empty-content `SnapshotTextClip` — mirroring
+  `CompositionBuilder`'s own `guard !(clip.textContent ?? "").isEmpty else { continue }` (present at
+  *both* of its two `.text`-handling call sites, `expandNestVideo`'s child-clip loop and
+  `compositorInstructions`' top-level loop).
+- `opacity` — a real `{ value, keyframes }` envelope, identical shape/semantics to
+  `SnapshotClip.opacity` (§11.2). This is the **one** animatable property `composedTextLayer`
+  genuinely samples per frame for text (`clip.opacityAt(frame:)`, which consults `OpacityTrack`
+  exactly like any other clip) — fade envelopes apply too, the same `opacityAt` call handles both.
+- `blendMode` — identical convention to `SnapshotClip.blendMode` (`null` = normal/source-over).
+  `FrameRenderer.composite`'s blend-mode branch reads `layer.clip.blendMode` generically for every
+  layer kind, text included — text is not special-cased out of blending.
+- `transform` — the text box: position/anchor **and** word-wrap width in one field, because that's
+  what `TextFrameRenderer.boxRect(clip.transform, renderSize)` derives from it — the CoreText
+  framesetter's wrap path is built directly from `box.width` (`layoutFrame`'s
+  `CGPath(rect: CGRect(x: box.minX, y: 0, width: box.width, height: box.maxY), ...)`). There is no
+  separate "wrap width" or "anchor" field in the schema because there is no separate one on the Mac
+  either — `transform.width`/`height` (normalized, same units as `SnapshotClip.transform`) *is* the
+  wrap width and box height; `transform.centerX`/`centerY` *is* the anchor. **Unlike
+  `SnapshotClip.transform`, this is a flat object, not a `{ value, keyframes }` envelope — it is
+  always static.** `TextFrameRenderer.image` reads `clip.transform` directly
+  (`let box = boxRect(clip.transform, renderSize)`), never `clip.transformAt(frame:)` — so even a
+  text clip that happens to carry populated `PositionTrack`/`ScaleTrack`/`RotationTrack` keyframes
+  (the Mac inspector doesn't expose keyframing UI for a text clip's transform, but nothing in the
+  model layer prevents one from existing on a legacy/agent-authored project) has **zero observable
+  render effect** from them — carrying a `keyframes` envelope here would document a capability that
+  doesn't exist. `TextLayout.naturalSize`/`.NaturalSize` (the auto-fit-box-to-content helper the UI
+  uses when a caption is first typed) is **not** part of this section at all — it's a pure
+  authoring-time convenience that already baked its answer into `Clip.transform` before the project
+  was ever saved; the render path never calls it.
+- `style` — full `TextStyle`, hand-written key-for-key (fontName, fontSize, fontScale, isBold,
+  isItalic, color, alignment, shadow, background, border — see §12.4 for the font-fallback note).
+- `animation` — full `TextAnimation` (preset, perWordFrames, highlight — see §12.5).
+- `wordTimings` — `Clip.wordTimings` verbatim (`null` when absent), one `{ text, startFrame,
+  endFrame }` triple per token, **clip-relative frames** — `WordTiming.startFrame`/`endFrame` are
+  already clip-relative at rest in the Swift/C# model (`TextFrameRenderer.tokenTimings` computes
+  `rel = frame - clip.startFrame` and compares directly against them), so, like every other
+  clip-relative field in this schema, they're emitted with no re-basing.
+- `effects` — identical shape/convention to `SnapshotClip.effects` (§11.3, omitted when empty).
+  `composedTextLayer` runs `clip.effects` through the exact same `EffectRegistry.descriptor(id:)` →
+  `render(...)` pipeline as any other layer, **after** rasterizing the glyphs
+  (`TextFrameRenderer.image` runs first, then effects apply to that image) — a color-grade effect
+  on a text clip is a real, supported thing on the Mac today.
+- **Deliberately absent, unlike `SnapshotClip`:** `crop`, and the whole `volume`/fade-envelope
+  bundle. `composedTextLayer` never calls `clip.cropAt(frame:)`, and none of `Clip.volume` /
+  `fadeInFrames` / `fadeOutFrames` / `volumeTrack` have any render-time meaning for a `.text` clip
+  (they're audio-mix concepts; text produces no audio). `SnapshotClip` carries `volumeGain` for
+  every clip type "for schema uniformity" (§5) because it already existed generically before text
+  entered the schema at all — `SnapshotTextClip` is a new type with no such legacy obligation, so
+  it simply omits fields that would always be dead weight.
+
+### 12.4 Font resolution happens at render time — the snapshot carries the stored name verbatim
+
+`TextStyle.fontName` defaults to `"Helvetica-Bold"` (`Models/TextStyle.swift:8`, and independently
+in its lenient-decoder fallback at `TextStyle.swift`'s custom `init(from decoder:)`) — a font that
+does not exist on Windows and is not bundled. **The builder performs no substitution.** Whatever
+string decoded out of the project's stored `textStyle` JSON — `"Helvetica-Bold"`, a real installed
+family, a bundled caption font, or anything else, including a name that resolves to nothing on the
+machine actually rendering — is written into `style.fontName` unchanged.
+`TimelineSnapshotBuilder.DeserializeTextField<TextStyle>` hands `Clip.TextStyle`'s raw stored JSON
+(`JsonElement`, per `Timeline.cs`'s doc comment on that property) straight to the same lenient
+`TextStyleJsonConverter` the project file itself decodes with — so a missing/legacy-shaped
+`textStyle` resolves to the *stored-default* `"Helvetica-Bold"` exactly as it would when the
+project was opened in the editor, not to some Windows-appropriate substitute.
+
+The Helvetica-Bold → bundled-fallback mapping (platforms/windows's own visual-parity requirement,
+"map it — and any missing font name in loaded projects — deterministically to a bundled fallback so
+the same project renders the same on both platforms") is **entirely a render-time concern**,
+belonging to whichever component resolves `style.fontName` against the DirectWrite font
+collection/custom font set at draw time (E4, native side). This keeps the snapshot itself a
+faithful, lossless mirror of what's actually stored in the project — the same principle every other
+section of this doc already follows (e.g. §5's `mediaPath` is "what `MediaResolver` found," not
+some display-friendly transformation of it).
+
+### 12.5 `animation`
+
+`TextAnimation`'s three fields carry straight across:
+
+```jsonc
+"animation": {
+  "preset": "wordReveal",
+  "perWordFrames": 6,
+  "highlight": { "r": 1.0, "g": 0.85, "b": 0.0, "a": 1.0 }
+}
+```
+
+- `preset` — `TextAnimation.Preset` raw value verbatim (`"none"`, `"fadeIn"`, `"popIn"`,
+  `"slideUp"`, `"typewriter"`, `"wordReveal"`, `"wordSlide"`, `"wordPop"`, `"wordCycle"`,
+  `"highlightPop"`, `"highlightBlock"` — see `TextAnimation.swift`'s `Preset` enum for the
+  authoritative list and each preset's `renderMode` grouping). `"none"` is a real, valid value
+  here (an inactive/no-animation text clip is still a text clip) — it is **not** omitted the way a
+  `null` field elsewhere in this schema might be.
+- `perWordFrames` — verbatim `Int`.
+- `highlight` — `TextStyle.RGBA?`; `null` when unset (`TextAnimation.highlight == nil` on the
+  Swift/C# side means "use `TextAnimation.defaultHighlight`" — that default-substitution is a
+  render-time concern, exactly like §12.4's font fallback; the snapshot carries `null`, not the
+  resolved default color).
+
+This section carries no per-frame evaluation logic of its own — `TextAnimator.swift`'s
+`clipEntry`/`wordState` functions are pure functions of `(preset, perWordFrames, highlight,
+wordTimings, frame)`, all of which are already in the snapshot (§12.3), so native has everything it
+needs to reproduce them without the builder precomputing anything.
+
+### 12.6 Compatibility
+
+A v1/v1.1 producer (`minorVersion` absent or `1`, no track has a `textClips` key) parses and
+renders identically under v1.2-aware native code once that exists — `textClips` is read as "absent
+→ empty" exactly like `effects`/keyframe arrays already are (§11.4's established pattern). Today,
+**before E4 implements native text parsing**, a v1.2 producer's `textClips` key is simply a JSON
+object member the current `TimelineSnapshotParser::ParseTrack` never queries — `simdjson`'s `dom`
+API only visits a key when something calls `element["thatKey"]`; an un-requested sibling key is
+never touched, so it cannot trigger a parse error or any other observable effect. This was verified
+by reading `ParseTrack`/`ParseClip` in full (`TimelineSnapshotParser.cpp`) rather than assumed: they
+read `id`, `type`, `muted`, `clips` and, per clip, the v1/v1.1 field set (§5/§11) — nothing else.
+**No native code changes were made or are needed for the parser to tolerate a v1.2 snapshot** — E4
+adds native `textClips` parsing/rendering as new code, not as a fix to existing code that would
+otherwise reject it.
+
+One consequence worth flagging explicitly: a `SnapshotTrack` that carries text clips but zero
+ordinary clips (§12.2's "dedicated Captions track" case) parses today as a **valid, entirely
+empty** video track under pre-E4 native code (`"clips": []`) — the track exists in `tracks[]` but
+contributes nothing to compositing, and its `textClips` are silently invisible until E4 lands. This
+is the intended, `minorVersion`-gate-free degradation (same posture as Lottie in v1: a known,
+tracked gap, not an error) — not a bug to fix here.

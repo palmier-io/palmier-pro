@@ -817,11 +817,11 @@ bool GpuCompositor::ApplyOneEffect(
 }
 
 bool GpuCompositor::ApplyEffectChain(
-    const SnapshotClip& clip, int64_t clipRelativeFrame, int32_t natW, int32_t natH,
+    const std::vector<SnapshotEffect>& effects, int64_t clipRelativeFrame, int32_t natW, int32_t natH,
     GpuTex& natA, GpuTex& natB, GpuTex*& current, std::string& outError)
 {
     bool altAllocated = false;
-    for (const SnapshotEffect& effect : clip.effects)
+    for (const SnapshotEffect& effect : effects)
     {
         if (!effect.enabled)
         {
@@ -857,6 +857,79 @@ bool GpuCompositor::ApplyEffectChain(
         // stays on `src`, matching every Swift kernel wrapper's own `guard ... else { return
         // image }` early-out.
     }
+    return true;
+}
+
+bool GpuCompositor::ComposeTextClip(
+    const SnapshotTextClip& textClip, int64_t frame, int32_t canvasWidth, int32_t canvasHeight,
+    int& current, std::string& outError)
+{
+    int64_t clipRelativeFrame = frame - textClip.startFrame;
+    // composedTextLayer's alpha gate (FrameRenderer.swift:283-284): opacityAt <= 0 -> nothing.
+    double alpha = std::min(1.0, std::max(0.0, textClip.OpacityAt(clipRelativeFrame)));
+    if (alpha <= 0.0)
+    {
+        return true;
+    }
+
+    if (!textRenderer_)
+    {
+        textRenderer_ = std::make_unique<TextRenderer>();
+    }
+    TextRenderer::Raster raster;
+    if (!textRenderer_->Render(textClip, frame, canvasWidth, canvasHeight, raster, outError))
+    {
+        return false;
+    }
+    if (raster.Empty())
+    {
+        return true; // empty content / faded-out entrance / all-whitespace — skip, not an error
+    }
+
+    // Upload the straight-alpha raster and ingest (straight -> premultiplied) exactly like a
+    // decoded clip frame — the text raster IS a DecodedSourceFrame in every respect.
+    DecodedSourceFrame decoded{raster.bgra.data(), raster.width, raster.height, raster.strideBytes};
+    GpuTex uploadTex;
+    if (!CreateUploadTexture(raster.width, raster.height, uploadTex, outError))
+    {
+        return false;
+    }
+    if (!UploadBgra(uploadTex, decoded, outError))
+    {
+        return false;
+    }
+
+    GpuTex natA;
+    if (!CreateWorkingTexture(raster.width, raster.height, false, natA, outError))
+    {
+        return false;
+    }
+    ID3D11PixelShader* ingestPs = nullptr;
+    if (!GetOrCompilePS("Ingest.hlsl", "PSMain", &ingestPs, outError))
+    {
+        return false;
+    }
+    ID3D11ShaderResourceView* ingestSrvs[] = {uploadTex.srv.Get()};
+    ID3D11SamplerState* ingestSamplers[] = {pointClampSampler_.Get()};
+    RunFullscreenPass(ingestPs, ingestSrvs, 1, ingestSamplers, 1, nullptr, 0, natA.rtv.Get(), raster.width, raster.height);
+
+    // Effects apply AFTER rasterizing, same order as composedTextLayer (swift:288-295).
+    GpuTex* natCurrent = &natA;
+    GpuTex natB;
+    if (!ApplyEffectChain(textClip.effects, clipRelativeFrame, raster.width, raster.height, natA, natB, natCurrent, outError))
+    {
+        return false;
+    }
+
+    // Identity transform/crop: the box position + wrap is already baked into the canvas-sized
+    // raster (TextRenderer), and composedTextLayer composites text flat with no affine. Opacity +
+    // blend mode flow through the standard composite pass, matching any other clip.
+    SnapshotTransform identity;
+    SnapshotCrop identityCrop;
+    int blendIndex = textClip.IsNormalBlend() ? 0 : BlendModeToIndex(textClip.blendMode);
+    int next = 1 - current;
+    RunCompositePass(*natCurrent, accum_[current], accum_[next], identity, identityCrop, alpha, blendIndex, canvasWidth, canvasHeight);
+    current = next;
     return true;
 }
 
@@ -1021,66 +1094,91 @@ bool GpuCompositor::Compose(
                 break;
             }
         }
-        if (!active || active->type == SnapshotClipType::Audio)
+
+        // Active video clip (at most one, non-overlapping). Wrapped so a decode miss `break`s out
+        // of ONLY the video path — a text-only track (clips: []) or a video clip that fails to
+        // decode must still fall through to this track's text clips below (§12.2), not skip them.
+        if (active && active->type != SnapshotClipType::Audio)
         {
-            continue;
+            int64_t clipRelativeFrame = frame - active->startFrame;
+            double alpha = std::min(1.0, std::max(0.0, active->OpacityAt(clipRelativeFrame)));
+            if (alpha > 0.0)
+            {
+                do
+                {
+                    double sourceSeconds = active->type == SnapshotClipType::Image
+                        ? 0.0
+                        : Compositor::SourceSeconds(*active, frame, fps);
+
+                    DecodedSourceFrame decoded{};
+                    if (!provider(*active, sourceSeconds, decoded) || !decoded.bgra || decoded.width <= 0 || decoded.height <= 0)
+                    {
+                        break;
+                    }
+
+                    GpuTex uploadTex;
+                    if (!CreateUploadTexture(decoded.width, decoded.height, uploadTex, outError))
+                    {
+                        return false;
+                    }
+                    if (!UploadBgra(uploadTex, decoded, outError))
+                    {
+                        return false;
+                    }
+
+                    GpuTex natA;
+                    if (!CreateWorkingTexture(decoded.width, decoded.height, false, natA, outError))
+                    {
+                        return false;
+                    }
+                    ID3D11PixelShader* ingestPs = nullptr;
+                    if (!GetOrCompilePS("Ingest.hlsl", "PSMain", &ingestPs, outError))
+                    {
+                        return false;
+                    }
+                    ID3D11ShaderResourceView* ingestSrvs[] = {uploadTex.srv.Get()};
+                    ID3D11SamplerState* ingestSamplers[] = {pointClampSampler_.Get()};
+                    RunFullscreenPass(ingestPs, ingestSrvs, 1, ingestSamplers, 1, nullptr, 0, natA.rtv.Get(), decoded.width, decoded.height);
+
+                    GpuTex* natCurrent = &natA;
+                    GpuTex natB;
+                    if (!ApplyEffectChain(active->effects, clipRelativeFrame, decoded.width, decoded.height, natA, natB, natCurrent, outError))
+                    {
+                        return false;
+                    }
+
+                    SnapshotTransform transform = active->TransformAt(clipRelativeFrame);
+                    SnapshotCrop crop = active->CropAt(clipRelativeFrame);
+                    int blendIndex = active->IsNormalBlend() ? 0 : BlendModeToIndex(active->blendMode);
+
+                    int next = 1 - current;
+                    RunCompositePass(*natCurrent, accum_[current], accum_[next], transform, crop, alpha, blendIndex, w, h);
+                    current = next;
+                } while (false);
+            }
         }
 
-        int64_t clipRelativeFrame = frame - active->startFrame;
-        double alpha = std::min(1.0, std::max(0.0, active->OpacityAt(clipRelativeFrame)));
-        if (alpha <= 0.0)
+        // Text clips paint OVER this track's video, in startFrame order (the builder emits textClips
+        // startFrame-ordered — §12.2). Within-track video-vs-text interleave by startFrame is not
+        // reproduced (video always painted first here); real captions live on dedicated text-only
+        // tracks, and cross-track z-order — the order that actually matters — is preserved exactly by
+        // walking snapshot.tracks in paint order (§2). Documented deviation.
+        for (const SnapshotTextClip& textClip : track.textClips)
         {
-            continue;
+            if (!textClip.ContainsFrame(frame))
+            {
+                continue;
+            }
+            if (cancelFlag && cancelFlag->load(std::memory_order_relaxed) != 0)
+            {
+                outError = "cancelled";
+                return false;
+            }
+            if (!ComposeTextClip(textClip, frame, w, h, current, outError))
+            {
+                return false;
+            }
         }
-
-        double sourceSeconds = active->type == SnapshotClipType::Image
-            ? 0.0
-            : Compositor::SourceSeconds(*active, frame, fps);
-
-        DecodedSourceFrame decoded{};
-        if (!provider(*active, sourceSeconds, decoded) || !decoded.bgra || decoded.width <= 0 || decoded.height <= 0)
-        {
-            continue;
-        }
-
-        GpuTex uploadTex;
-        if (!CreateUploadTexture(decoded.width, decoded.height, uploadTex, outError))
-        {
-            return false;
-        }
-        if (!UploadBgra(uploadTex, decoded, outError))
-        {
-            return false;
-        }
-
-        GpuTex natA;
-        if (!CreateWorkingTexture(decoded.width, decoded.height, false, natA, outError))
-        {
-            return false;
-        }
-        ID3D11PixelShader* ingestPs = nullptr;
-        if (!GetOrCompilePS("Ingest.hlsl", "PSMain", &ingestPs, outError))
-        {
-            return false;
-        }
-        ID3D11ShaderResourceView* ingestSrvs[] = {uploadTex.srv.Get()};
-        ID3D11SamplerState* ingestSamplers[] = {pointClampSampler_.Get()};
-        RunFullscreenPass(ingestPs, ingestSrvs, 1, ingestSamplers, 1, nullptr, 0, natA.rtv.Get(), decoded.width, decoded.height);
-
-        GpuTex* natCurrent = &natA;
-        GpuTex natB;
-        if (!ApplyEffectChain(*active, clipRelativeFrame, decoded.width, decoded.height, natA, natB, natCurrent, outError))
-        {
-            return false;
-        }
-
-        SnapshotTransform transform = active->TransformAt(clipRelativeFrame);
-        SnapshotCrop crop = active->CropAt(clipRelativeFrame);
-        int blendIndex = active->IsNormalBlend() ? 0 : BlendModeToIndex(active->blendMode);
-
-        int next = 1 - current;
-        RunCompositePass(*natCurrent, accum_[current], accum_[next], transform, crop, alpha, blendIndex, w, h);
-        current = next;
     }
 
     return ReadbackToBgra8(accum_[current], w, h, outResult, outError);

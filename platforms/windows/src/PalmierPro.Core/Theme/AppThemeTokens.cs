@@ -335,6 +335,21 @@ public static class AppThemeTokens
         public const double TimelineBadgeMinWidth = 16;
         public const double TimelineDotSize = 5;
         public const double UpdateOverlayWidth = 640;
+
+        /// Preview transport bar (M4) — the Mac hardcodes these directly in
+        /// PreviewContainerView.swift (`transportBar`'s `.frame(height: 36)` and
+        /// `transportButton`'s `.frame(width: 32, height: 28)`) rather than routing them through
+        /// AppTheme; ported here as real tokens since this port's AGENTS.md requires every UI size
+        /// to come from AppTheme.
+        public const double TransportBarHeight = 36;
+        public const double TransportButtonWidth = 32;
+        public const double TransportButtonHeight = 28;
+
+        /// Preview source-asset scrub bar (M4) — mirrors PreviewContainerView.swift's `scrubBar`
+        /// (`.frame(height: 12)`) and its inactive-state capsule thickness (`barHeight: CGFloat = 3`
+        /// when neither hovered nor dragging; this port doesn't yet grow the bar on hover/drag).
+        public const double PreviewScrubBarHeight = 12;
+        public const double PreviewScrubTrackHeight = 3;
     }
 
     public static class Window

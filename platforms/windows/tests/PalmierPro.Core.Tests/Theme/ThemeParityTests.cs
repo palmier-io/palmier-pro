@@ -296,6 +296,11 @@ public class ThemeParityTests
             ("AppComponentSizeTimelineBadgeMinWidth", AppThemeTokens.ComponentSize.TimelineBadgeMinWidth),
             ("AppComponentSizeTimelineDotSize", AppThemeTokens.ComponentSize.TimelineDotSize),
             ("AppComponentSizeUpdateOverlayWidth", AppThemeTokens.ComponentSize.UpdateOverlayWidth),
+            ("AppComponentSizeTransportBarHeight", AppThemeTokens.ComponentSize.TransportBarHeight),
+            ("AppComponentSizeTransportButtonWidth", AppThemeTokens.ComponentSize.TransportButtonWidth),
+            ("AppComponentSizeTransportButtonHeight", AppThemeTokens.ComponentSize.TransportButtonHeight),
+            ("AppComponentSizePreviewScrubBarHeight", AppThemeTokens.ComponentSize.PreviewScrubBarHeight),
+            ("AppComponentSizePreviewScrubTrackHeight", AppThemeTokens.ComponentSize.PreviewScrubTrackHeight),
 
             ("AppWindowHomeDefaultWidth", AppThemeTokens.Window.HomeDefault.Width),
             ("AppWindowHomeDefaultHeight", AppThemeTokens.Window.HomeDefault.Height),

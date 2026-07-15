@@ -125,6 +125,19 @@ public sealed class SeekCoordinator
 /// PE_TimelineRefreshParams — no decoder/media-session rebuild, see
 /// docs/timeline-snapshot-v1.md §11 and native TimelineSession::RefreshParams's media-set
 /// assertion. A safe no-op if no session for `patch.TimelineId` is open yet.
+///
+/// <see cref="Play"/>/<see cref="Pause"/>/<see cref="SetRate"/>/<see cref="IsPlaying"/> are E4.5
+/// surface (Stage D) — wired straight to native PE_TimelinePlay/Pause/SetRate via <see
+/// cref="PalmierPro.Rendering.TimelineSession"/> (docs/audio-playback-v1.md §4/§7). None of the
+/// four touch the swap chain or D3D11 device, so unlike AttachSwapChain/SetActiveTimeline they
+/// carry no UI-thread requirement — callable from any thread. <see cref="IsPlaying"/> is a local
+/// dictionary read, not a native poll: <see cref="Play"/>/<see cref="Pause"/>/<see cref="SetRate"/>
+/// set it directly, and the <see cref="PalmierPro.Rendering.TimelineSession.IsPlayingChanged"/>
+/// subscription wired alongside PlayheadChanged in <see cref="UpdateTimelineAsync"/> also updates
+/// it — that second path is what catches the engine's own auto-stop at timeline end, which
+/// nothing else here calls into. <see cref="Seek"/>'s paired `PE_TimelineScrubAudio` call
+/// (docs/audio-playback-v1.md §5) is wired: every non-`Exact` mode issues both the video-seek and
+/// the audio-scrub call.
 public sealed class VideoEngine : IVideoEngine, IDisposable
 {
     private readonly EngineSession _session = new();
@@ -133,7 +146,37 @@ public sealed class VideoEngine : IVideoEngine, IDisposable
     private readonly Dictionary<string, TimelineSnapshot> _lastSnapshots = [];
     private readonly Lock _timelinesGate = new();
     private MediaSource? _assetPreview;
+    // Timeline fps the open asset preview was last told to seek against — see SeekAssetPreview's
+    // remarks; PerformAssetPreviewSeek reads this instead of _assetPreview.Info.Fps.
+    private int _assetPreviewTimelineFps = 30;
     private bool _disposed;
+
+    // docs/audio-playback-v1.md §5: direction is always caller-supplied — native performs no
+    // auto-detection from frame history. Mirrors ScrubAudioEngine.scrub's own bookkeeping
+    // (VideoEngine.swift derives forward/reverse by comparing the requested sample to the
+    // previous one); concurrent-safe since Seek can be invoked off the UI thread (SeekCoordinator's
+    // internal Timer callback calls it directly for InteractiveScrub — see TransportViewModel.cs).
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _lastScrubFrame = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _lastScrubDirection = new();
+
+    // Last-known IsPlaying per timeline (docs/audio-playback-v1.md §7) — set directly by
+    // Play/Pause/SetRate and by the IsPlayingChanged subscription below; missing key == false
+    // (never opened or never played).
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _isPlaying = new();
+
+    // Swap-chain routing state (see SetActiveTimeline/SetAssetPreviewActive/AttachSwapChain
+    // remarks): `_swapChainPanel` is non-null whenever the UI wants a live swap chain;
+    // `_attachedTimelineId`/`_assetPreviewAttached` describe which ONE surface actually holds the
+    // native attachment right now (at most one of the two is ever "on" — asset preview wins
+    // whenever `_assetPreviewActive` is set, regardless of `_activeTimelineId`, mirroring the Mac's
+    // one-AVPlayerLayer-follows-activePreviewTab exclusivity).
+    private object? _swapChainPanel;
+    private int _swapChainWidth;
+    private int _swapChainHeight;
+    private string? _activeTimelineId;
+    private string? _attachedTimelineId;
+    private bool _assetPreviewActive;
+    private bool _assetPreviewAttached;
 
     public VideoEngine()
     {
@@ -162,6 +205,11 @@ public sealed class VideoEngine : IVideoEngine, IDisposable
                 {
                     timeline = PalmierPro.Rendering.TimelineSession.Open(_session, json);
                     timeline.PlayheadChanged += frame => PlayheadChanged?.Invoke(this, new PlayheadChangedEventArgs(timelineId, checked((int)frame)));
+                    timeline.IsPlayingChanged += isPlaying =>
+                    {
+                        _isPlaying[timelineId] = isPlaying;
+                        IsPlayingChanged?.Invoke(this, isPlaying);
+                    };
                     lock (_timelinesGate)
                     {
                         _timelines[timelineId] = timeline;
@@ -206,7 +254,10 @@ public sealed class VideoEngine : IVideoEngine, IDisposable
                 var clipPatch = patch.Clips.FirstOrDefault(c => c.ClipId == clip.Id);
                 patchedClips.Add(clipPatch is null ? clip : ApplyClipPatch(clip, clipPatch));
             }
-            patchedTracks.Add(new SnapshotTrack { Id = track.Id, Type = track.Type, Muted = track.Muted, Clips = patchedClips });
+            // TextClips carries over unpatched — RefreshParams only ever patches SnapshotClip
+            // params (opacity/effects), never text (docs/timeline-snapshot-v1.md §12); omitting it
+            // here would silently drop a track's text clips on every param-only refresh.
+            patchedTracks.Add(new SnapshotTrack { Id = track.Id, Type = track.Type, Muted = track.Muted, Clips = patchedClips, TextClips = track.TextClips });
         }
 
         var patched = new TimelineSnapshot
@@ -298,6 +349,15 @@ public sealed class VideoEngine : IVideoEngine, IDisposable
                 timeline.Dispose();
             }
         }
+        _lastScrubFrame.TryRemove(timelineId, out _);
+        _lastScrubDirection.TryRemove(timelineId, out _);
+        _isPlaying.TryRemove(timelineId, out _);
+        if (_attachedTimelineId == timelineId)
+        {
+            // The handle above is already disposed — nothing left to call DetachSwapChain on;
+            // just stop believing it's still holding the swap chain.
+            _attachedTimelineId = null;
+        }
     }
 
     /// Coalescing (~30 Hz, latest-wins) and in-flight-decode cancellation for
@@ -321,22 +381,103 @@ public sealed class VideoEngine : IVideoEngine, IDisposable
     public void Seek(string timelineId, int frame, PreviewSeekMode mode)
     {
         ArgumentException.ThrowIfNullOrEmpty(timelineId);
-        PalmierPro.Rendering.TimelineSession timeline;
-        lock (_timelinesGate)
-        {
-            if (!_timelines.TryGetValue(timelineId, out timeline!))
-            {
-                throw new InvalidOperationException(
-                    $"No open timeline session for '{timelineId}' — call OpenTimelineSessionAsync first.");
-            }
-        }
+        var timeline = GetOpenTimelineOrThrow(timelineId);
         timeline.Seek(frame, ToNativeSeekMode(mode));
+        if (mode != PreviewSeekMode.Exact)
+        {
+            // docs/audio-playback-v1.md §5: audio scrub feedback pairs with every non-Exact
+            // mode — InteractiveScrub (continuous drag) and both AudibleStep* cases alike, not
+            // only the two the ABI call's name emphasizes.
+            timeline.ScrubAudio(frame, ScrubDirectionFor(timelineId, frame));
+        }
+        else
+        {
+            // Mac parity (VideoEngine.swift's scrubAudioEngine.stopScrubbing() on .exact): an Exact
+            // settle cuts any lingering grain from the scrub gesture it concludes, rather than
+            // letting the last ~50 ms grain play out (docs/audio-playback-v1.md §5).
+            timeline.StopScrubAudio();
+        }
     }
 
     // Mirrors PE_SeekMode (palmier_engine.h): 0 = exact, 1 = interactive scrub. The two
-    // AudibleStep* cases are treated as Exact until E4.5 lands scrub-audio feedback — see
-    // IVideoEngine.cs's PreviewSeekMode remarks.
+    // AudibleStep* cases are still treated as Exact on THIS (video-seek) call — their audio
+    // scrub feedback is the separate PE_TimelineScrubAudio call above, not a third
+    // PE_SeekMode value. See docs/audio-playback-v1.md §5.
     private static int ToNativeSeekMode(PreviewSeekMode mode) => mode == PreviewSeekMode.InteractiveScrub ? 1 : 0;
+
+    /// Shared by every per-timeline call (Seek, Play, Pause, SetRate) that requires an
+    /// already-open session — same "call OpenTimelineSessionAsync first" contract for all of them.
+    private PalmierPro.Rendering.TimelineSession GetOpenTimelineOrThrow(string timelineId)
+    {
+        lock (_timelinesGate)
+        {
+            if (_timelines.TryGetValue(timelineId, out var timeline))
+            {
+                return timeline;
+            }
+        }
+        throw new InvalidOperationException(
+            $"No open timeline session for '{timelineId}' — call OpenTimelineSessionAsync first.");
+    }
+
+    /// Direction is derived by comparing `frame` to the last frame scrubbed on `timelineId` —
+    /// mirrors ScrubAudioEngine.scrub's own history-based forward/reverse detection
+    /// (VideoEngine.swift), since native performs no auto-detection (doc §5). A timeline with no
+    /// prior scrub this session, or a `frame` equal to the last one, keeps the previous direction
+    /// (default forward), matching the Mac's `lastDirection` carry-over.
+    private int ScrubDirectionFor(string timelineId, int frame)
+    {
+        int previous = _lastScrubFrame.GetOrAdd(timelineId, frame);
+        int direction = frame == previous
+            ? _lastScrubDirection.GetOrAdd(timelineId, PalmierPro.Rendering.TimelineSession.ScrubForward)
+            : (frame > previous ? PalmierPro.Rendering.TimelineSession.ScrubForward : PalmierPro.Rendering.TimelineSession.ScrubReverse);
+        _lastScrubFrame[timelineId] = frame;
+        _lastScrubDirection[timelineId] = direction;
+        return direction;
+    }
+
+    /// → native PE_TimelinePlay (docs/audio-playback-v1.md §4/§7). Callable from any thread — no
+    /// swap-chain/D3D11 involvement (see class remarks). Sets the local <see cref="IsPlaying"/>
+    /// state directly so a caller reading it immediately after this returns never sees a stale
+    /// value; the <see cref="PalmierPro.Rendering.TimelineSession.IsPlayingChanged"/> subscription
+    /// (see <see cref="UpdateTimelineAsync"/>) also fires for this same transition and sets it
+    /// again — redundant here, but it's the only path that catches the engine's auto-stop.
+    public void Play(string timelineId)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(timelineId);
+        var timeline = GetOpenTimelineOrThrow(timelineId);
+        timeline.Play();
+        _isPlaying[timelineId] = true;
+    }
+
+    /// → native PE_TimelinePause. See <see cref="Play"/>'s remarks on local state tracking.
+    public void Pause(string timelineId)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(timelineId);
+        var timeline = GetOpenTimelineOrThrow(timelineId);
+        timeline.Pause();
+        _isPlaying[timelineId] = false;
+    }
+
+    /// → native PE_TimelineSetRate. Rejects anything but {0.0, 1.0} client-side (docs/audio-playback-v1.md
+    /// §4/§7) — fails fast rather than relying solely on the native PE_ERROR_INVALID_ARGUMENT
+    /// round-trip. See <see cref="Play"/>'s remarks on local state tracking.
+    public void SetRate(string timelineId, double rate)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(timelineId);
+        if (rate != 0.0 && rate != 1.0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(rate), rate,
+                "v1 accepts only 0.0 (paused) or 1.0 (playing) — see docs/audio-playback-v1.md §4.");
+        }
+        var timeline = GetOpenTimelineOrThrow(timelineId);
+        timeline.SetRate(rate);
+        _isPlaying[timelineId] = rate == 1.0;
+    }
+
+    /// Local last-known-state read, not a native poll — see <see cref="IVideoEngine.IsPlaying"/>'s
+    /// remarks. `false` for a timeline that was never opened or never played.
+    public bool IsPlaying(string timelineId) => _isPlaying.GetValueOrDefault(timelineId);
 
     public Task OpenAssetPreviewAsync(string mediaPath, CancellationToken ct = default)
     {
@@ -352,62 +493,194 @@ public sealed class VideoEngine : IVideoEngine, IDisposable
             ct);
     }
 
-    public void SeekAssetPreview(int frame, PreviewSeekMode mode)
+    public void SeekAssetPreview(int frame, PreviewSeekMode mode, int timelineFps)
     {
         ThrowIfDisposed();
         if (_assetPreview is null)
         {
             throw new InvalidOperationException("No asset preview is open — call OpenAssetPreviewAsync first.");
         }
+        // Captured before enqueueing, same latest-wins contract as `frame` itself (see
+        // SeekCoordinator): a coalesced interactive-scrub flush replays whatever fps the most
+        // recent SeekAssetPreview call was made with. The timeline's fps doesn't change mid-scrub
+        // in practice, so this can't actually race against it.
+        _assetPreviewTimelineFps = timelineFps;
         // A single open asset is always exactly one active video layer.
         _assetSeekCoordinator.Seek(frame, mode, activeVideoLayerCount: 1);
     }
+
+    /// `frame → seconds` for <see cref="PerformAssetPreviewSeek"/> — `frame` is always expressed in
+    /// TIMELINE fps (see <see cref="SeekAssetPreview"/>'s remarks), never the asset's own decoded
+    /// fps (<see cref="MediaSource.Info"/>'s `Fps`, which is PE_GetMediaInfo's file-native rate and
+    /// can legitimately differ from the timeline's — e.g. a 24fps clip previewed on a 30fps
+    /// timeline). Dividing by the wrong one seeks off by `frame × (1/actualFps − 1/timelineFps)`,
+    /// which grows without bound as playhead advances (e.g. lands ~2.5s past EOF at the end of a
+    /// 10s 24fps clip on a 30fps timeline). Mirrors the Mac's
+    /// `CMTime(value: frame, timescale: editor.timeline.fps)` (VideoEngine.swift). `public static`
+    /// (not `private`) purely so <c>VideoEngineAssetPreviewSeekTests</c> can pin the exact formula
+    /// without a native session — same reasoning as <see cref="SeekCoordinator.InteractiveTolerance"/>.
+    public static double AssetPreviewSeekSeconds(int frame, int timelineFps) =>
+        frame / (double)(timelineFps > 0 ? timelineFps : 30);
 
     private void PerformAssetPreviewSeek(int frame, TimeSpan tolerance)
     {
         // PE_PresentFrameAt has no tolerance parameter yet (E1 surface) — every dispatched seek is
         // an exact decode+present regardless of `tolerance`; the coordinator still throttles
         // dispatch frequency during a scrub, which is the load-shedding half of the Mac's behavior.
+        // Presents to the session-level swap chain (PE_AttachSwapChain) — Stage D's Preview UI
+        // attaches it here whenever asset-preview mode is active (see SetAssetPreviewActive); the
+        // one swap chain the app owns is otherwise timeline-scoped (see AttachSwapChain/
+        // SetActiveTimeline). Presenting to a not-currently-attached session swap chain is harmless
+        // (native no-ops without a live attachment) — a caller that seeks before ever activating
+        // asset-preview mode just doesn't render anywhere yet.
         if (_assetPreview is not { } media)
         {
             return;
         }
-        var fps = media.Info.Fps > 0 ? media.Info.Fps : 30;
-        _session.PresentFrameAt(media, frame / fps);
+        _session.PresentFrameAt(media, AssetPreviewSeekSeconds(frame, _assetPreviewTimelineFps));
     }
 
+    /// Also deactivates asset-preview swap-chain routing (see <see cref="SetAssetPreviewActive"/>)
+    /// so a caller only has to make this one call to "switch back to timeline mode cleanly" — see
+    /// <see cref="IVideoEngine.CloseAssetPreview"/>.
     public void CloseAssetPreview()
     {
         _assetSeekCoordinator.CancelPending();
         _assetPreview?.Dispose();
         _assetPreview = null;
+        _assetPreviewActive = false;
+        ReattachSwapChain();
+    }
+
+    /// See <see cref="IVideoEngine.SetActiveTimeline"/>. Runs on the caller's thread (expected to
+    /// be the UI thread whenever a swap chain panel is currently attached — see that method's
+    /// remarks); reattaches the live swap chain (if any) from whatever previously held it to the
+    /// newly-active timeline's session, via <see cref="ReattachSwapChain"/> — a no-op on the swap
+    /// chain itself while asset-preview mode is active (see that method's remarks).
+    public void SetActiveTimeline(string? timelineId)
+    {
+        ThrowIfDisposed();
+        _activeTimelineId = timelineId;
+        ReattachSwapChain();
+    }
+
+    /// See <see cref="IVideoEngine.SetAssetPreviewActive"/>.
+    public void SetAssetPreviewActive(bool active)
+    {
+        ThrowIfDisposed();
+        _assetPreviewActive = active;
+        ReattachSwapChain();
     }
 
     public void AttachSwapChain(object swapChainPanel, int width, int height)
     {
         ThrowIfDisposed();
-        _session.AttachSwapChain(swapChainPanel, width, height);
+        _swapChainPanel = swapChainPanel;
+        _swapChainWidth = width;
+        _swapChainHeight = height;
+        ReattachSwapChain();
     }
 
     public void ResizeSwapChain(int width, int height)
     {
         ThrowIfDisposed();
-        _session.ResizeSwapChain(width, height);
+        _swapChainWidth = width;
+        _swapChainHeight = height;
+        if (_assetPreviewAttached)
+        {
+            _session.ResizeSwapChain(width, height);
+        }
+        else if (_attachedTimelineId is { } id && TryGetTimeline(id, out var timeline))
+        {
+            timeline.ResizeSwapChain(width, height);
+        }
     }
 
     public void DetachSwapChain()
     {
         ThrowIfDisposed();
-        _session.DetachSwapChain();
+        if (_assetPreviewAttached)
+        {
+            _session.DetachSwapChain();
+        }
+        else if (_attachedTimelineId is { } id && TryGetTimeline(id, out var timeline))
+        {
+            timeline.DetachSwapChain();
+        }
+        _attachedTimelineId = null;
+        _assetPreviewAttached = false;
+        _swapChainPanel = null;
+    }
+
+    /// Moves the one live swap chain (if <see cref="_swapChainPanel"/> is attached) to whichever
+    /// surface — the open asset preview (<see cref="_assetPreviewActive"/>, via the session-level
+    /// swap chain) or the active timeline's session (<see cref="_activeTimelineId"/>) — is
+    /// currently desired; asset preview always wins over any active timeline while it's on, mirroring
+    /// the Mac's one-AVPlayerLayer-follows-activePreviewTab exclusivity. A no-op if the desired
+    /// surface already matches what's attached (covers "nothing changed" and "no panel either way"),
+    /// and a no-op (deferred) if the desired timeline has no open session yet: the next
+    /// <see cref="SetActiveTimeline"/> or <see cref="UpdateTimelineAsync"/> call for that id
+    /// retries. Called from <see cref="AttachSwapChain"/>, <see cref="SetActiveTimeline"/>, and
+    /// <see cref="SetAssetPreviewActive"/> so any order of "panel attaches" / "timeline opens" /
+    /// "asset preview opens" ends up presenting correctly.
+    private void ReattachSwapChain()
+    {
+        if (_swapChainPanel is not { } panel)
+        {
+            return;
+        }
+        string? desiredTimelineId = _assetPreviewActive ? null : _activeTimelineId;
+        if (_assetPreviewAttached == _assetPreviewActive && _attachedTimelineId == desiredTimelineId)
+        {
+            return;
+        }
+        if (_assetPreviewAttached)
+        {
+            _session.DetachSwapChain();
+        }
+        else if (_attachedTimelineId is { } oldId && TryGetTimeline(oldId, out var oldTimeline))
+        {
+            oldTimeline.DetachSwapChain();
+        }
+        _attachedTimelineId = null;
+        _assetPreviewAttached = false;
+
+        if (_assetPreviewActive)
+        {
+            _session.AttachSwapChain(panel, _swapChainWidth, _swapChainHeight);
+            _assetPreviewAttached = true;
+        }
+        else if (desiredTimelineId is { } newId && TryGetTimeline(newId, out var newTimeline))
+        {
+            newTimeline.AttachSwapChain(panel, _swapChainWidth, _swapChainHeight);
+            _attachedTimelineId = newId;
+        }
+    }
+
+    private bool TryGetTimeline(string timelineId, out PalmierPro.Rendering.TimelineSession timeline)
+    {
+        lock (_timelinesGate)
+        {
+            return _timelines.TryGetValue(timelineId, out timeline!);
+        }
     }
 
     /// Raised from a native render-thread callback each time a timeline actually composes a
-    /// frame in response to <see cref="Seek"/> — see <see cref="PalmierPro.Rendering.TimelineSession.PlayheadChanged"/>.
-    /// Fired on whatever thread the native render worker runs on; subscribers marshal to the UI
-    /// thread themselves (mirrors the Mac's `AVPlayer` periodic time observer callback contract).
+    /// frame — in response to <see cref="Seek"/>, or continuously against the A/V clock once
+    /// <see cref="Play"/> starts playback (docs/audio-playback-v1.md §3.5) — see
+    /// <see cref="PalmierPro.Rendering.TimelineSession.PlayheadChanged"/>. Fired on whatever thread
+    /// the native render worker runs on; subscribers marshal to the UI thread themselves (mirrors
+    /// the Mac's `AVPlayer` periodic time observer callback contract).
     public event EventHandler<PlayheadChangedEventArgs>? PlayheadChanged;
 
-    /// Wired in Stage D (M4, preview UI / playback loop) — v1 has no play/pause transport yet.
+    /// Raised whenever any open timeline's isPlaying actually transitions — explicit
+    /// <see cref="Play"/>/<see cref="Pause"/>/<see cref="SetRate"/>, and the engine's own
+    /// auto-stop at timeline end (docs/audio-playback-v1.md §4/§7, via
+    /// <see cref="PalmierPro.Rendering.TimelineSession.IsPlayingChanged"/>). Synchronous with the
+    /// calling thread for explicit Play/Pause/SetRate, but may run on a native background thread
+    /// for the auto-stop case — subscribers marshal to the UI thread themselves, same contract as
+    /// <see cref="PlayheadChanged"/>. No timelineId in the payload (matches the declared
+    /// signature): Phase 1's transport UI drives exactly one active timeline at a time.
     public event EventHandler<bool>? IsPlayingChanged;
 
     /// Fires after every successful Open/UpdateTimelineAsync with the union of the builder-side

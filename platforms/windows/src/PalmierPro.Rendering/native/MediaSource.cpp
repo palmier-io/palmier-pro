@@ -11,6 +11,7 @@ extern "C"
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstring>
 #include <memory>
 
 namespace
@@ -89,6 +90,14 @@ void MediaSource::Close()
     {
         av_buffer_unref(&hwDeviceCtx_);
     }
+    if (audioMixSwr_)
+    {
+        swr_free(&audioMixSwr_);
+    }
+    audioMixBufStart_ = kAudioCursorUnset;
+    audioMixEof_ = false;
+    audioMixBufL_.clear();
+    audioMixBufR_.clear();
     hwPixFmt_ = AV_PIX_FMT_NONE;
     videoStreamIndex_ = -1;
     audioStreamIndex_ = -1;
@@ -258,6 +267,50 @@ bool MediaSource::Open(const std::string& utf8Path, ID3D11Device* sharedDevice, 
             outError = "avcodec_open2 (audio) failed: " + AvErrorToString(ret);
             Close();
             return false;
+        }
+    }
+
+    FillInfo();
+    return true;
+}
+
+bool MediaSource::OpenForAudio(const std::string& utf8Path, std::string& outError)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    int ret = avformat_open_input(&formatCtx_, utf8Path.c_str(), nullptr, nullptr);
+    if (ret < 0)
+    {
+        outError = "avformat_open_input failed: " + AvErrorToString(ret);
+        Close();
+        return false;
+    }
+    ret = avformat_find_stream_info(formatCtx_, nullptr);
+    if (ret < 0)
+    {
+        outError = "avformat_find_stream_info failed: " + AvErrorToString(ret);
+        Close();
+        return false;
+    }
+
+    audioStreamIndex_ = av_find_best_stream(formatCtx_, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    if (audioStreamIndex_ >= 0)
+    {
+        AVCodecParameters* params = formatCtx_->streams[audioStreamIndex_]->codecpar;
+        const AVCodec* decoder = avcodec_find_decoder(params->codec_id);
+        if (decoder)
+        {
+            audioCodecCtx_ = avcodec_alloc_context3(decoder);
+            avcodec_parameters_to_context(audioCodecCtx_, params);
+            if (avcodec_open2(audioCodecCtx_, decoder, nullptr) < 0)
+            {
+                avcodec_free_context(&audioCodecCtx_);
+                audioStreamIndex_ = -1; // undecodable audio -> treat as silent, not a hard failure
+            }
+        }
+        else
+        {
+            audioStreamIndex_ = -1;
         }
     }
 
@@ -769,5 +822,219 @@ bool MediaSource::ExtractPeakEnvelope(
     av_frame_free(&frame);
     av_packet_free(&pkt);
     swr_free(&swr);
+    return true;
+}
+
+bool MediaSource::EnsureAudioMixSwr(std::string& outError)
+{
+    if (audioMixSwr_)
+    {
+        return true;
+    }
+    AVChannelLayout stereo = AV_CHANNEL_LAYOUT_STEREO;
+    int ret = swr_alloc_set_opts2(&audioMixSwr_, &stereo, AV_SAMPLE_FMT_FLTP, kMixSampleRate,
+        &audioCodecCtx_->ch_layout, audioCodecCtx_->sample_fmt, audioCodecCtx_->sample_rate, 0, nullptr);
+    if (ret < 0 || !audioMixSwr_)
+    {
+        outError = "swr_alloc_set_opts2 (mix) failed: " + AvErrorToString(ret);
+        return false;
+    }
+    // "Mono source: duplicate to L/R" at unity (docs/audio-playback-v1.md §1) — override swr's
+    // default power-preserving mono->stereo rematrix (which spreads at 1/sqrt(2) per channel) so a
+    // mono clip lands at the same per-channel level the doc (and the Mac) specify. Stereo/other
+    // layouts keep swr's default matrix (stereo->stereo is identity; §1 says stereo passes through).
+    if (audioCodecCtx_->ch_layout.nb_channels == 1)
+    {
+        const double duplicate[2] = { 1.0, 1.0 }; // L = mono, R = mono; matrix[out*stride + in], stride 1
+        swr_set_matrix(audioMixSwr_, duplicate, 1);
+    }
+    ret = swr_init(audioMixSwr_);
+    if (ret < 0)
+    {
+        outError = "swr_init (mix) failed: " + AvErrorToString(ret);
+        swr_free(&audioMixSwr_);
+        return false;
+    }
+    return true;
+}
+
+void MediaSource::SeekAudioMix(int64_t startSample)
+{
+    AVStream* as = formatCtx_->streams[audioStreamIndex_];
+    double tb = av_q2d(as->time_base);
+    double sourceSeconds = static_cast<double>(startSample) / kMixSampleRate;
+    int64_t targetPts = static_cast<int64_t>(std::llround(sourceSeconds / tb)) + audioMixStartTimePts_;
+    av_seek_frame(formatCtx_, audioStreamIndex_, targetPts, AVSEEK_FLAG_BACKWARD);
+    avcodec_flush_buffers(audioCodecCtx_);
+    // A fresh resampler after every seek keeps the anchor exact — the first resampled sample lines
+    // up with the first decoded frame's PTS with no carried-over phase from the pre-seek position.
+    if (audioMixSwr_)
+    {
+        swr_free(&audioMixSwr_);
+    }
+    audioMixBufL_.clear();
+    audioMixBufR_.clear();
+    audioMixBufStart_ = kAudioCursorUnset;
+    audioMixEof_ = false;
+}
+
+bool MediaSource::DecodeAudioMixUntil(int64_t coverEnd, std::string& outError)
+{
+    AVStream* as = formatCtx_->streams[audioStreamIndex_];
+    double tb = av_q2d(as->time_base);
+
+    AVPacket* pkt = av_packet_alloc();
+    AVFrame* frame = av_frame_alloc();
+    std::vector<float> tmpL;
+    std::vector<float> tmpR;
+
+    auto appendFrame = [&](AVFrame* f) {
+        if (audioMixBufStart_ == kAudioCursorUnset)
+        {
+            int64_t framePts = f->best_effort_timestamp != AV_NOPTS_VALUE ? f->best_effort_timestamp : f->pts;
+            double frameSec = framePts != AV_NOPTS_VALUE ? (framePts - audioMixStartTimePts_) * tb : 0.0;
+            audioMixBufStart_ = static_cast<int64_t>(std::llround(frameSec * kMixSampleRate));
+        }
+        int outCapacity = swr_get_out_samples(audioMixSwr_, f->nb_samples);
+        if (outCapacity <= 0)
+        {
+            return;
+        }
+        tmpL.resize(static_cast<size_t>(outCapacity));
+        tmpR.resize(static_cast<size_t>(outCapacity));
+        uint8_t* planes[2] = { reinterpret_cast<uint8_t*>(tmpL.data()), reinterpret_cast<uint8_t*>(tmpR.data()) };
+        int converted = swr_convert(audioMixSwr_, planes, outCapacity,
+            const_cast<const uint8_t**>(f->data), f->nb_samples);
+        if (converted <= 0)
+        {
+            return;
+        }
+        audioMixBufL_.insert(audioMixBufL_.end(), tmpL.begin(), tmpL.begin() + converted);
+        audioMixBufR_.insert(audioMixBufR_.end(), tmpR.begin(), tmpR.begin() + converted);
+    };
+
+    bool covered = false;
+    while (!audioMixEof_)
+    {
+        if (audioMixBufStart_ != kAudioCursorUnset &&
+            audioMixBufStart_ + static_cast<int64_t>(audioMixBufL_.size()) >= coverEnd)
+        {
+            covered = true;
+            break;
+        }
+        int ret = av_read_frame(formatCtx_, pkt);
+        if (ret < 0)
+        {
+            // Physical EOF: drain the decoder, then flush the resampler's tail.
+            avcodec_send_packet(audioCodecCtx_, nullptr);
+            while (avcodec_receive_frame(audioCodecCtx_, frame) == 0)
+            {
+                appendFrame(frame);
+                av_frame_unref(frame);
+            }
+            int flushCap = swr_get_out_samples(audioMixSwr_, 0);
+            if (flushCap > 0)
+            {
+                tmpL.resize(static_cast<size_t>(flushCap));
+                tmpR.resize(static_cast<size_t>(flushCap));
+                uint8_t* planes[2] = { reinterpret_cast<uint8_t*>(tmpL.data()), reinterpret_cast<uint8_t*>(tmpR.data()) };
+                int converted = swr_convert(audioMixSwr_, planes, flushCap, nullptr, 0);
+                if (converted > 0 && audioMixBufStart_ != kAudioCursorUnset)
+                {
+                    audioMixBufL_.insert(audioMixBufL_.end(), tmpL.begin(), tmpL.begin() + converted);
+                    audioMixBufR_.insert(audioMixBufR_.end(), tmpR.begin(), tmpR.begin() + converted);
+                }
+            }
+            audioMixEof_ = true;
+            break;
+        }
+        if (pkt->stream_index != audioStreamIndex_)
+        {
+            av_packet_unref(pkt);
+            continue;
+        }
+        if (avcodec_send_packet(audioCodecCtx_, pkt) < 0)
+        {
+            av_packet_unref(pkt);
+            continue;
+        }
+        av_packet_unref(pkt);
+        while (avcodec_receive_frame(audioCodecCtx_, frame) == 0)
+        {
+            appendFrame(frame);
+            av_frame_unref(frame);
+        }
+    }
+
+    av_frame_free(&frame);
+    av_packet_free(&pkt);
+    (void)covered;
+    (void)outError;
+    return true;
+}
+
+bool MediaSource::ReadAudioStereo48k(int64_t startSample, int32_t count, float* outL, float* outR, std::string& outError)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (count <= 0)
+    {
+        return true;
+    }
+    if (audioStreamIndex_ < 0)
+    {
+        std::memset(outL, 0, static_cast<size_t>(count) * sizeof(float));
+        std::memset(outR, 0, static_cast<size_t>(count) * sizeof(float));
+        return true;
+    }
+
+    AVStream* as = formatCtx_->streams[audioStreamIndex_];
+    audioMixStartTimePts_ = as->start_time != AV_NOPTS_VALUE ? as->start_time : 0;
+
+    const int64_t coverEnd = startSample + count;
+    // Forward reads within (or just past) the buffered run stream on; a backward jump or a large
+    // forward gap re-seeks. One second of slack absorbs block-to-block cursor jitter without a seek.
+    constexpr int64_t kMaxForwardGap = kMixSampleRate;
+    const int64_t buffered = static_cast<int64_t>(audioMixBufL_.size());
+    const bool needSeek = audioMixBufStart_ == kAudioCursorUnset ||
+        startSample < audioMixBufStart_ ||
+        startSample > audioMixBufStart_ + buffered + kMaxForwardGap;
+
+    if (needSeek)
+    {
+        SeekAudioMix(startSample);
+    }
+    else if (startSample > audioMixBufStart_)
+    {
+        // Drop the consumed head so the buffer can't grow without bound during playback.
+        int64_t drop = std::min<int64_t>(startSample - audioMixBufStart_, buffered);
+        audioMixBufL_.erase(audioMixBufL_.begin(), audioMixBufL_.begin() + drop);
+        audioMixBufR_.erase(audioMixBufR_.begin(), audioMixBufR_.begin() + drop);
+        audioMixBufStart_ += drop;
+    }
+
+    if (!EnsureAudioMixSwr(outError))
+    {
+        return false;
+    }
+    if (!DecodeAudioMixUntil(coverEnd, outError))
+    {
+        return false;
+    }
+
+    for (int32_t i = 0; i < count; ++i)
+    {
+        int64_t idx = (audioMixBufStart_ == kAudioCursorUnset) ? -1 : (startSample + i - audioMixBufStart_);
+        if (idx >= 0 && idx < static_cast<int64_t>(audioMixBufL_.size()))
+        {
+            outL[i] = audioMixBufL_[static_cast<size_t>(idx)];
+            outR[i] = audioMixBufR_[static_cast<size_t>(idx)];
+        }
+        else
+        {
+            outL[i] = 0.0f;
+            outR[i] = 0.0f;
+        }
+    }
     return true;
 }

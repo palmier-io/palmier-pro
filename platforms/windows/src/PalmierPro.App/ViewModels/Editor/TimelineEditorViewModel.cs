@@ -38,9 +38,12 @@ public sealed partial class TimelineEditorViewModel : ObservableObject
 {
     public ProjectDocument Document { get; }
 
-    /// Null until Stage D wires a real engine; every call site below is a no-op-safe
-    /// null-conditional call, matching the Mac's `videoEngine: VideoEngine?` being nil until
-    /// `EditorWindowController` wires it up.
+    /// Set from Stage D on (ShellViewModel constructs one per document); every call site below is
+    /// still a no-op-safe null-conditional call for `dotnet test` callers that pass none, matching
+    /// the Mac's `videoEngine: VideoEngine?` being nil until `EditorWindowController` wires it up.
+    /// The snapshot-build-and-push side of `StructuralChangeRequested`/`RefreshVisualsRequested` is
+    /// PreviewViewModel's job, not this class's — this property exists here only for the
+    /// `EvictTimeline` calls below.
     public IVideoEngine? Engine { get; }
 
     /// Per-clip snapshot at drag start, keyed by clip id so multiple clips can be edited in

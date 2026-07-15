@@ -1,0 +1,71 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.Preview.TransportBar"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Transport controls (M4, Stage D) — ports PreviewContainerView.swift's `transportBar`:
+         timecode readout on the left, seek-start/step-back/play-pause/step-forward/seek-end
+         centered, balancing spacer on the right (the Mac's capture-frame/zoom controls on that
+         side are M5/inspector territory, not ported here). Height/button size aren't AppTheme
+         values on the Mac either (hardcoded 36 / 32x28 in Swift) — ported as real
+         AppComponentSizeTransport* tokens since this port's AGENTS.md requires it. Icon glyphs are
+         Segoe Fluent Icons (E892 Previous, E76B ChevronLeft, E768 Play/E769 Pause, E76C
+         ChevronRight, E893 Next) — BorderThickness="0" is a literal, not a {StaticResource}, so
+         the Thickness-type-converter caveat in AGENTS.md doesn't apply here. -->
+    <UserControl.Resources>
+        <Style x:Key="TransportButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons"/>
+            <Setter Property="FontSize" Value="{StaticResource AppFontSizeSm}"/>
+            <Setter Property="Foreground" Value="{StaticResource AppTextSecondaryBrush}"/>
+            <Setter Property="Width" Value="{StaticResource AppComponentSizeTransportButtonWidth}"/>
+            <Setter Property="Height" Value="{StaticResource AppComponentSizeTransportButtonHeight}"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid x:Name="RootGrid" Background="{StaticResource AppBackgroundSurfaceBrush}"
+          Height="{StaticResource AppComponentSizeTransportBarHeight}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+            <TextBlock x:Name="CurrentTimecodeText" FontFamily="Consolas"
+                       FontSize="{StaticResource AppFontSizeSm}"
+                       Foreground="{StaticResource AppAccentTimecodeBrush}"/>
+            <TextBlock Text=" / " FontFamily="Consolas"
+                       FontSize="{StaticResource AppFontSizeSm}"
+                       Foreground="{StaticResource AppTextTertiaryBrush}"/>
+            <TextBlock x:Name="DurationTimecodeText" FontFamily="Consolas"
+                       FontSize="{StaticResource AppFontSizeSm}"
+                       Foreground="{StaticResource AppTextSecondaryBrush}"/>
+        </StackPanel>
+
+        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Spacing="{StaticResource AppSpacingMd}">
+            <Button x:Name="SeekToStartButton" Style="{StaticResource TransportButtonStyle}"
+                    Content="&#xE892;" Click="SeekToStartButton_Click"
+                    ToolTipService.ToolTip="Go to Start"/>
+            <Button x:Name="StepBackButton" Style="{StaticResource TransportButtonStyle}"
+                    Content="&#xE76B;" Click="StepBackButton_Click"
+                    ToolTipService.ToolTip="Previous Frame"/>
+            <Button x:Name="PlayPauseButton" Style="{StaticResource TransportButtonStyle}"
+                    Content="&#xE768;" Click="PlayPauseButton_Click"
+                    ToolTipService.ToolTip="Play/Pause"/>
+            <Button x:Name="StepForwardButton" Style="{StaticResource TransportButtonStyle}"
+                    Content="&#xE76C;" Click="StepForwardButton_Click"
+                    ToolTipService.ToolTip="Next Frame"/>
+            <Button x:Name="SeekToEndButton" Style="{StaticResource TransportButtonStyle}"
+                    Content="&#xE893;" Click="SeekToEndButton_Click"
+                    ToolTipService.ToolTip="Go to End"/>
+        </StackPanel>
+
+        <Grid Grid.Column="2"/>
+    </Grid>
+</UserControl>
