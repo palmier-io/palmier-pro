@@ -135,6 +135,21 @@ enum Transcription {
             return result.offsetting(by: sourceRange.lowerBound)
         }
 
+        // Route through the configured on-device engine; fall back to Apple Speech on failure
+        // (e.g. first-run model download with no network).
+        let engine = LocalSpeechEngine.current
+        if engine != .apple {
+            do {
+                return try await transcribeWithEngine(engine, fileURL: fileURL, preferredLocale: preferredLocale)
+            } catch {
+                Log.transcription.warning(
+                    "engine \(engine.rawValue) failed, falling back to Apple Speech: \(error.localizedDescription)",
+                    telemetry: "Transcription engine fallback",
+                    data: ["engine": engine.rawValue, "error": error.localizedDescription]
+                )
+            }
+        }
+
         let supported = await SpeechTranscriber.supportedLocales
         let locale: Locale
         if let preferredLocale, let match = matchLocale(candidates: [preferredLocale], supported: supported) {
@@ -235,6 +250,32 @@ enum Transcription {
             ]
         )
         return decoded
+    }
+
+    private static func transcribeWithEngine(
+        _ engine: LocalSpeechEngine,
+        fileURL: URL,
+        preferredLocale: Locale?
+    ) async throws -> TranscriptionResult {
+        let languageCode = preferredLocale?.language.languageCode?.identifier
+        switch engine {
+        case .senseVoice:
+            // SenseVoice hints: zh, en, ja, ko, yue; empty string = auto (handles code-switching).
+            let hint: String
+            switch languageCode {
+            case "zh": hint = "zh"
+            case "en": hint = "en"
+            case "ja": hint = "ja"
+            case "ko": hint = "ko"
+            case "yue": hint = "yue"
+            default: hint = ""
+            }
+            return try await SenseVoiceEngine.shared.transcribe(fileURL: fileURL, language: hint)
+        case .whisper:
+            return try await WhisperKitEngine.shared.transcribe(fileURL: fileURL, language: languageCode)
+        case .apple:
+            throw TranscriptionError.analysisFailed("apple engine is not routed here")
+        }
     }
 
     /// Decode the asset's audio track to a PCM file with AVAssetReader

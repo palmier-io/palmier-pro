@@ -130,7 +130,9 @@ actor TranscriptCache {
         var prefix: String? {
             switch self {
             case .local:
-                return nil
+                // Engine-tagged so switching engines re-transcribes; Apple stays untagged
+                // to keep pre-engine cache entries valid.
+                return LocalSpeechEngine.current.cacheTag
             case .cloud(let range, let language):
                 let lang = language ?? "auto"
                 guard let range else { return "cloud|\(lang)|full" }

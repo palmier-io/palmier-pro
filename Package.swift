@@ -24,6 +24,7 @@ let package = Package(
         .package(url: "https://github.com/ml-explore/mlx-swift", exact: "0.31.5"),
         .package(url: "https://github.com/airbnb/lottie-ios", from: "4.6.1"),
         .package(url: "https://github.com/soniqo/speech-swift", exact: "0.0.21"),
+        .package(url: "https://github.com/argmaxinc/WhisperKit", from: "1.0.0"),
     ],
     targets: [
         .executableTarget(
@@ -61,6 +62,8 @@ let package = Package(
                     package: "speech-swift",
                     condition: .when(traits: ["BundledSpeech"])
                 ),
+                .product(name: "WhisperKit", package: "WhisperKit"),
+                "SherpaOnnxBinary",
             ],
             path: "Sources/PalmierPro",
             exclude: [
@@ -81,8 +84,12 @@ let package = Package(
                 .define("BUNDLED_SPEECH", .when(traits: ["BundledSpeech"])),
                 .define("PRODUCTION_TELEMETRY", .when(traits: ["ProductionTelemetry"])),
             ],
+            linkerSettings: [
+                .linkedLibrary("c++"),
+            ],
             plugins: ["MetalCIKernelPlugin"]
         ),
+        .binaryTarget(name: "SherpaOnnxBinary", path: "Vendor/sherpa-onnx.xcframework"),
         .plugin(name: "MetalCIKernelPlugin", capability: .buildTool()),
         .testTarget(
             name: "PalmierProTests",

@@ -6,11 +6,15 @@ struct StoragePane: View {
     @State private var indexBytes: Int64 = 0
     @State private var modelBytes: Int64 = 0
     @State private var searchEnabled = SearchIndexConfig.enabled
+    @State private var speechEngine = LocalSpeechEngine.current
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xxl) {
             SettingsSection(title: "Cache") {
                 cacheRow
+            }
+            SettingsSection(title: "Transcription") {
+                transcriptionEngineSection
             }
             SettingsSection(title: "Search") {
                 searchIndexSection
@@ -50,6 +54,32 @@ struct StoragePane: View {
             }
             .buttonStyle(actionButtonStyle)
             .disabled(isClearing || cacheBytes == 0)
+        }
+    }
+
+    private var transcriptionEngineSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            Text("Engine")
+                .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
+                .foregroundStyle(AppTheme.Text.primaryColor)
+            Text("Used for transcripts, captions, and spoken search. Models download on first use.")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .fixedSize(horizontal: false, vertical: true)
+            Picker("", selection: $speechEngine) {
+                ForEach(LocalSpeechEngine.allCases) { engine in
+                    Text(engine.label).tag(engine)
+                }
+            }
+            .pickerStyle(.radioGroup)
+            .labelsHidden()
+            .onChange(of: speechEngine) { _, newValue in
+                LocalSpeechEngine.current = newValue
+            }
+            Text(speechEngine.detail)
+                .font(.system(size: AppTheme.FontSize.xs))
+                .foregroundStyle(AppTheme.Text.tertiaryColor)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
