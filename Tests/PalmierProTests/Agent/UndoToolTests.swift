@@ -64,6 +64,56 @@ struct UndoToolTests {
         #expect(h.editor.timeline.tracks[0].clips[0].volume == 1.0)
     }
 
+    @Test func addFirstImportedClipIncludesSettingsInAgentTransaction() async throws {
+        let h = ToolHarness()
+        let um = UndoManager()
+        h.editor.undoManager = um
+        let originalTimeline = h.editor.timeline
+        let asset = h.addAsset(type: .video)
+        asset.sourceWidth = 1280
+        asset.sourceHeight = 720
+
+        let result = await h.runRaw("add_clips", args: ["entries": [[
+            "mediaRef": asset.id,
+            "startFrame": 0,
+            "endFrame": 30,
+        ]]])
+
+        #expect(!result.isError, "\(ToolHarness.textOf(result))")
+        #expect(h.editor.timeline.tracks.flatMap(\.clips).count == 1)
+        #expect(h.editor.timeline.width == 1280)
+        #expect(h.editor.timeline.height == 720)
+        #expect(um.groupingLevel == 0)
+
+        let undo = await h.runRaw("undo")
+        #expect(!undo.isError, "\(ToolHarness.textOf(undo))")
+        #expect(h.editor.timeline == originalTimeline)
+    }
+
+    @Test func insertFirstImportedClipIncludesSettingsInAgentTransaction() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack()]))
+        let um = UndoManager()
+        h.editor.undoManager = um
+        let originalTimeline = h.editor.timeline
+        let asset = h.addAsset(type: .video)
+        asset.sourceWidth = 1280
+        asset.sourceHeight = 720
+
+        let result = await h.runRaw("insert_clips", args: [
+            "trackIndex": 0,
+            "atFrame": 0,
+            "entries": [["mediaRef": asset.id, "durationFrames": 30]],
+        ])
+
+        #expect(!result.isError, "\(ToolHarness.textOf(result))")
+        #expect(h.editor.timeline.tracks.flatMap(\.clips).count == 1)
+        #expect(um.groupingLevel == 0)
+
+        let undo = await h.runRaw("undo")
+        #expect(!undo.isError, "\(ToolHarness.textOf(undo))")
+        #expect(h.editor.timeline == originalTimeline)
+    }
+
     @Test func automaticGroupingRemainsUsableAfterAgentEdit() async throws {
         let (h, um) = harness()
         um.registerUndo(withTarget: h.editor) { _ in }
