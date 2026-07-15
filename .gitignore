@@ -37,3 +37,5 @@ models/*/checkpoint*
 models/*/convert*.log
 
 AUDIO_SUITE_*
+# On-device ASR runtime (assembled by scripts/fetch-sherpa.sh; merged lib exceeds GitHub's 100MB cap)
+Vendor/
