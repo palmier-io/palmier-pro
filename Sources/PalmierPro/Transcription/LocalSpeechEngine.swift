@@ -22,7 +22,7 @@ enum LocalSpeechEngine: String, CaseIterable, Identifiable, Sendable {
 
     var detail: String {
         switch self {
-        case .qwen3: "Highest accuracy; 30+ languages, 20+ Chinese dialects, mixed-language speech. ~840 MB download. Word timings are approximate."
+        case .qwen3: "Highest accuracy; 30+ languages, 20+ Chinese dialects, mixed-language speech. ~1 GB download. Word timing aligned via a parallel SenseVoice pass."
         case .senseVoice: "Fast multilingual (Chinese, English, Japanese, Korean, Cantonese) with per-word timing. ~160 MB download."
         case .whisper: "Best word-level timestamps, ~100 languages. ~1 GB download, slower."
         case .apple: "System engine. Single language per file, chosen from your macOS language settings."
@@ -33,7 +33,7 @@ enum LocalSpeechEngine: String, CaseIterable, Identifiable, Sendable {
     var cacheTag: String? {
         switch self {
         case .apple: nil  // preserves pre-existing cache entries
-        case .qwen3: "qw1"
+        case .qwen3: "qw2"  // v2: SenseVoice-anchored word timing
         case .senseVoice: "sv1"
         case .whisper: "wk1"
         }

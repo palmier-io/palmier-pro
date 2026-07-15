@@ -95,9 +95,14 @@ actor Qwen3ASREngine {
         try await Self.ensureModel()
         let recognizer = try loadedRecognizer()
 
+        // Timing track: SenseVoice runs concurrently on its own actor (~10x realtime CTC
+        // with real token timestamps) while the slower Qwen3 decode below owns this actor.
+        // Qwen3's text is authoritative; SenseVoice only anchors word timing. If it fails
+        // (e.g. model download offline), words fall back to interpolation.
+        let timingTask = Task { try await SenseVoiceEngine.shared.transcribe(fileURL: fileURL) }
+
         let samples = try EngineAudio.loadSamples(fileURL: fileURL)
-        var words: [TranscriptionWord] = []
-        var segments: [TranscriptionSegment] = []
+        var chunks: [(text: String, start: Double, end: Double)] = []
         var chunkStart = 0
         while chunkStart < samples.count {
             let chunkEnd = EngineAudio.chunkBoundary(
@@ -107,10 +112,28 @@ actor Qwen3ASREngine {
             let end = Double(chunkEnd) / Double(EngineAudio.sampleRate)
             let text = Self.decodeChunk(recognizer: recognizer, samples: chunk)
             if !text.isEmpty {
-                segments.append(TranscriptionSegment(text: text, start: start, end: end))
-                words.append(contentsOf: Self.interpolatedWords(text: text, start: start, end: end))
+                chunks.append((text, start, end))
             }
             chunkStart = chunkEnd
+        }
+
+        let timingWords = (try? await timingTask.value)?.words ?? []
+        var words: [TranscriptionWord] = []
+        var segments: [TranscriptionSegment] = []
+        for chunk in chunks {
+            let pieces = Self.splitPieces(text: chunk.text)
+            let anchors = timingWords.filter { word in
+                guard let start = word.start, let end = word.end else { return false }
+                return end > chunk.start - 1.0 && start < chunk.end + 1.0
+            }
+            let chunkWords = Self.alignWords(
+                pieces: pieces, anchors: anchors, chunkStart: chunk.start, chunkEnd: chunk.end)
+            words.append(contentsOf: chunkWords)
+            segments.append(TranscriptionSegment(
+                text: chunk.text,
+                start: chunkWords.first?.start ?? chunk.start,
+                end: chunkWords.last?.end ?? chunk.end
+            ))
         }
 
         return TranscriptionResult(
@@ -172,9 +195,10 @@ actor Qwen3ASREngine {
         return String(cString: textPtr).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// The sherpa Qwen3 port has no token timestamps; distribute word times across the
-    /// chunk proportionally by character count (CJK chars count as words on their own).
-    private static func interpolatedWords(text: String, start: Double, end: Double) -> [TranscriptionWord] {
+    // MARK: - Word timing (SenseVoice anchor alignment)
+
+    /// Split Qwen3 text into display words: CJK characters stand alone, latin runs group.
+    private static func splitPieces(text: String) -> [String] {
         var pieces: [String] = []
         for token in text.split(separator: " ") {
             var latin = ""
@@ -188,15 +212,88 @@ actor Qwen3ASREngine {
             }
             if !latin.isEmpty { pieces.append(latin) }
         }
+        return pieces
+    }
+
+    /// Lowercased, punctuation-free comparison key ("" for punctuation-only pieces).
+    private static func matchKey(_ piece: String) -> String {
+        String(piece.lowercased().unicodeScalars.filter {
+            CharacterSet.alphanumerics.contains($0) || (0x2E80...0x9FFF).contains(Int($0.value))
+        })
+    }
+
+    /// Pin Qwen3 pieces to SenseVoice's real timestamps where the transcripts agree
+    /// (longest-common-subsequence on normalized text), interpolating between anchors.
+    private static func alignWords(
+        pieces: [String], anchors: [TranscriptionWord], chunkStart: Double, chunkEnd: Double
+    ) -> [TranscriptionWord] {
         guard !pieces.isEmpty else { return [] }
-        let totalWeight = pieces.reduce(0) { $0 + max(1, $1.count) }
-        let duration = max(0.1, end - start)
-        var cursor = start
-        return pieces.map { piece in
-            let weight = Double(max(1, piece.count)) / Double(totalWeight)
-            let wordStart = cursor
-            cursor += weight * duration
-            return TranscriptionWord(text: piece, start: wordStart, end: cursor)
+        let pieceKeys = pieces.map(matchKey)
+        let anchorKeys = anchors.map { matchKey($0.text) }
+
+        // LCS traceback → (pieceIndex, anchorIndex) matched pairs, in order.
+        var matched: [(piece: Int, anchor: Int)] = []
+        if !anchors.isEmpty {
+            let n = pieces.count, m = anchors.count
+            var dp = [[Int]](repeating: [Int](repeating: 0, count: m + 1), count: n + 1)
+            for i in stride(from: n - 1, through: 0, by: -1) {
+                for j in stride(from: m - 1, through: 0, by: -1) {
+                    if !pieceKeys[i].isEmpty && pieceKeys[i] == anchorKeys[j] {
+                        dp[i][j] = dp[i + 1][j + 1] + 1
+                    } else {
+                        dp[i][j] = max(dp[i + 1][j], dp[i][j + 1])
+                    }
+                }
+            }
+            var i = 0, j = 0
+            while i < n && j < m {
+                if !pieceKeys[i].isEmpty && pieceKeys[i] == anchorKeys[j] {
+                    matched.append((i, j))
+                    i += 1; j += 1
+                } else if dp[i + 1][j] >= dp[i][j + 1] {
+                    i += 1
+                } else {
+                    j += 1
+                }
+            }
         }
+
+        // Assign anchored times, then fill gaps by character-weight interpolation.
+        var starts = [Double?](repeating: nil, count: pieces.count)
+        var ends = [Double?](repeating: nil, count: pieces.count)
+        for (pieceIndex, anchorIndex) in matched {
+            starts[pieceIndex] = anchors[anchorIndex].start
+            ends[pieceIndex] = anchors[anchorIndex].end
+        }
+
+        var result: [TranscriptionWord] = []
+        var index = 0
+        var lastEnd = chunkStart
+        while index < pieces.count {
+            if let start = starts[index], let end = ends[index] {
+                let clampedStart = max(start, lastEnd)
+                result.append(TranscriptionWord(text: pieces[index], start: clampedStart, end: max(end, clampedStart)))
+                lastEnd = max(end, clampedStart)
+                index += 1
+                continue
+            }
+            // Unanchored run: interpolate between the previous anchor end and the next anchor start.
+            var runEnd = index
+            while runEnd < pieces.count && starts[runEnd] == nil { runEnd += 1 }
+            let windowEnd = runEnd < pieces.count ? (starts[runEnd] ?? chunkEnd) : chunkEnd
+            let window = max(0.1, windowEnd - lastEnd)
+            let runWeights = (index..<runEnd).map { Double(max(1, pieces[$0].count)) }
+            let totalWeight = runWeights.reduce(0, +)
+            var cursor = lastEnd
+            for (offset, weight) in runWeights.enumerated() {
+                let duration = window * weight / totalWeight
+                result.append(TranscriptionWord(
+                    text: pieces[index + offset], start: cursor, end: cursor + duration))
+                cursor += duration
+            }
+            lastEnd = cursor
+            index = runEnd
+        }
+        return result
     }
 }
