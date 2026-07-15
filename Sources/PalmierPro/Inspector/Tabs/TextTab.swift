@@ -55,7 +55,10 @@ struct TextTab: View {
         InspectorRow(
             label: "Opacity",
             onReset: {
-                editor.commitClipProperties(clipIds: clipIds) { $0.opacity = 1 }
+                editor.commitClipProperties(clipIds: clipIds) {
+                    $0.opacity = 1
+                    $0.opacityTrack = nil
+                }
             }
         ) {
             ScrubbableNumberField(
