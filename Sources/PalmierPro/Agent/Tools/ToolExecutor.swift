@@ -460,7 +460,7 @@ extension Dictionary where Key == String, Value == Any {
         guard let raw = self[key], !isJSONBoolean(raw) else { return nil }
         if let v = raw as? Int { return v }
         if let v = raw as? Double { return safeInt(v) }
-        if let v = raw as? NSNumber { return v.intValue }
+        if let v = raw as? NSNumber { return safeInt(v.doubleValue) }
         if let v = raw as? String { return Int(v) }
         return nil
     }

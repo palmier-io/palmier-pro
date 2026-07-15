@@ -198,6 +198,7 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
         decorationGroup(
             "Outline",
             isExpanded: $outlineExpanded,
+            fitToContent: true,
             enabledKeyPath: \.border.enabled,
             debounceKeys: ["outlineColor"],
             onReset: { $0.border = defaults.border }
@@ -212,6 +213,7 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
                 range: 0...40,
                 format: "%.1f",
                 suffix: " pt",
+                fitToContent: true,
                 keyPath: \.border.width
             )
         }
@@ -221,6 +223,7 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
         decorationGroup(
             "Shadow",
             isExpanded: $shadowExpanded,
+            fitToContent: true,
             enabledKeyPath: \.shadow.enabled,
             debounceKeys: ["shadowColor"],
             onReset: { $0.shadow = defaults.shadow }
@@ -242,6 +245,7 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
             pairRow(
                 label: "Offset",
                 range: -200...200,
+                fitToContent: true,
                 xKeyPath: \.shadow.offsetX,
                 yKeyPath: \.shadow.offsetY
             )
@@ -250,6 +254,7 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
                 range: 0...100,
                 format: "%.1f",
                 suffix: " pt",
+                fitToContent: true,
                 keyPath: \.shadow.blur
             )
         }
