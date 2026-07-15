@@ -30,7 +30,7 @@ enum LocalSpeechEngine: String, CaseIterable, Identifiable, Sendable {
     var cacheTag: String? {
         switch self {
         case .apple: nil  // preserves pre-existing cache entries
-        case .qwen3: "qw3"  // v3: Whisper-anchored word timing
+        case .qwen3: "qw4"  // v4: forced-language rescue pass, pinyin anchors, silent punctuation
         case .whisper: "wk1"
         }
     }
