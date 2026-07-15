@@ -20,16 +20,16 @@ struct AIEditTab: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
                 if hasScopeToggles {
-                    InspectorSection("Scope", contentSpacing: AppTheme.Spacing.smMd) {
+                    EditorPanelGroup("Scope", contentSpacing: AppTheme.Spacing.smMd) {
                         if isVisualClipContext, clipId != nil { replaceToggle }
                         if trimmedClipAvailable { trimmedClipToggle }
                     }
                 }
 
                 if isVisualClipContext {
-                    InspectorSection("AI Enhance", isExpanded: $aiEnhanceExpanded, contentSpacing: AppTheme.Spacing.smMd) {
+                    EditorPanelGroup("AI Enhance", isExpanded: $aiEnhanceExpanded, contentSpacing: AppTheme.Spacing.smMd) {
                         actionRow(
                             action: .upscale,
                             icon: "sparkles.rectangle.stack",
@@ -60,7 +60,7 @@ struct AIEditTab: View {
                 }
 
                 if asset.type == .video || asset.type == .audio {
-                    InspectorSection("AI Audio", isExpanded: $aiAudioExpanded, contentSpacing: AppTheme.Spacing.smMd) {
+                    EditorPanelGroup("AI Audio", isExpanded: $aiAudioExpanded, contentSpacing: AppTheme.Spacing.smMd) {
                         if showsAudioOutputOptions {
                             audioPlacementToggle
                         }
@@ -83,8 +83,6 @@ struct AIEditTab: View {
                     }
                 }
             }
-            .padding(.horizontal, AppTheme.Spacing.lg)
-            .padding(.vertical, AppTheme.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .alert("Rerun failed", isPresented: Binding(
@@ -167,6 +165,8 @@ struct AIEditTab: View {
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .labelsHidden()
+                .accessibilityLabel(label)
+                .accessibilityHint(help)
         }
         .help(help)
     }

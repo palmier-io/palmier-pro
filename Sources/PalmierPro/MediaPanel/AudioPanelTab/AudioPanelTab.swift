@@ -8,8 +8,11 @@ struct AudioPanelTab: View {
     @State private var tab: Tab = .speech
 
     var body: some View {
-        VStack(spacing: 0) {
-            TitleTabBar(titles: Tab.allCases.map(\.rawValue), selected: tab.rawValue, raisedBackground: true) { title in
+        VStack(spacing: AppTheme.Spacing.zero) {
+            TitleTabBar(
+                titles: Tab.allCases.map(\.rawValue),
+                selected: tab.rawValue
+            ) { title in
                 if let t = Tab(rawValue: title) { tab = t }
             }
             switch tab {

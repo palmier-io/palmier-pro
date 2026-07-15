@@ -319,6 +319,20 @@ enum AppTheme {
         static let skillToastDuration: Duration = .seconds(5)
     }
 
+    enum EditorPanel {
+        static let defaultWidth: CGFloat = 340
+        static let minimumWidth: CGFloat = 240
+        static let labelColumnWidth: CGFloat = 88
+        static let rowMinHeight: CGFloat = 22
+        static let groupHeaderHeight: CGFloat = 28
+        static let tabBarHeight: CGFloat = 34
+        static let fieldMinHeight: CGFloat = 22
+        static let numericFieldWidth: CGFloat = 56
+        static let compactNumericFieldWidth: CGFloat = 36
+        static let fontMenuWidth: CGFloat = 160
+        static let textEditorMinHeight: CGFloat = 96
+    }
+
     enum Window {
         static let homeDefault = NSSize(width: 1200, height: 800)
         static let homeMin = NSSize(width: 760, height: 480)

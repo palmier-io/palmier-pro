@@ -28,8 +28,8 @@ enum Layout {
     static let mediaPanelMin: CGFloat = 280
 
     // Inspector
-    static let inspectorDefault: CGFloat = 260
-    static let inspectorMin: CGFloat = 150
+    static let inspectorDefault: CGFloat = AppTheme.EditorPanel.defaultWidth
+    static let inspectorMin: CGFloat = AppTheme.EditorPanel.minimumWidth
 
     // Agent panel
     static let agentPanelMin: CGFloat = 240

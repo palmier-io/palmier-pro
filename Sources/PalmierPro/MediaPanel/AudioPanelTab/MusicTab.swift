@@ -90,16 +90,11 @@ struct MusicTab: View {
 
     var body: some View {
         ZStack {
-            VStack(spacing: 0) {
+            VStack(spacing: AppTheme.Spacing.zero) {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: AppTheme.Spacing.mdLg) {
-                        sourceSection
-                        modelSection
-                        promptSection
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
+                        musicSection
                     }
-                    .padding(.horizontal, AppTheme.Spacing.lgXl)
-                    .padding(.top, AppTheme.Spacing.md)
-                    .padding(.bottom, AppTheme.Spacing.md)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
                 generateBar
@@ -113,38 +108,44 @@ struct MusicTab: View {
         .background(AppTheme.Background.surfaceColor)
     }
 
-    private var sourceSection: some View {
-        InspectorSection("Source") {
-            if model.map(supportsTextMode) == true {
-                InspectorRow(icon: "slider.horizontal.3", label: "Input") {
-                    Menu {
-                        Button("Video to Music") { mode = .videoToMusic }
-                        Button("Text to Music") { mode = .textToMusic }
-                    } label: { menuValueLabel(modeLabel(effectiveMode)) }
-                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
-                }
+    private var musicSection: some View {
+        EditorPanelGroup("Music") {
+            sourceControls
+            modelControl
+            promptControl
+        }
+    }
+
+    @ViewBuilder
+    private var sourceControls: some View {
+        if model.map(supportsTextMode) == true {
+            InspectorRow(label: "Input") {
+                Menu {
+                    Button("Video to Music") { mode = .videoToMusic }
+                    Button("Text to Music") { mode = .textToMusic }
+                } label: { EditorMenuValue(text: modeLabel(effectiveMode), expanded: true) }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
+                .frame(maxWidth: .infinity)
             }
-            if isTextMode {
-                InspectorRow(
-                    icon: "clock",
-                    label: "Duration",
-                    labelHelp: "Length of the generated music. It's placed at the playhead, or at the marked range start."
-                ) {
-                    ScrubbableNumberField(
-                        value: textDuration,
-                        range: 1...600,
-                        format: "%.0f",
-                        valueSuffix: " s",
-                        onChanged: { textDuration = $0 }
-                    ) { textDuration = $0 }
-                }
-            } else {
-                InspectorRow(
-                    icon: "film",
-                    label: "Video",
-                    labelHelp: "Uses the whole timeline by default. Mark a range on the timeline to score only that span."
-                ) { valueText(sourceSummary) }
+        }
+        if isTextMode {
+            InspectorRow(
+                label: "Duration",
+                labelHelp: "Length of the generated music. It's placed at the playhead, or at the marked range start."
+            ) {
+                ScrubbableNumberField(
+                    value: textDuration,
+                    range: 1...600,
+                    format: "%.0f",
+                    valueSuffix: " s",
+                    onChanged: { textDuration = $0 }
+                ) { textDuration = $0 }
             }
+        } else {
+            InspectorRow(
+                label: "Video",
+                labelHelp: "Uses the whole timeline by default. Mark a range on the timeline to score only that span."
+            ) { valueText(sourceSummary) }
         }
     }
 
@@ -155,87 +156,50 @@ struct MusicTab: View {
         }
     }
 
-    private func menuValueLabel(_ text: String) -> some View {
-        HStack(spacing: AppTheme.Spacing.xxs) {
-            Text(text)
-            Image(systemName: "chevron.up.chevron.down").font(.system(size: AppTheme.FontSize.xxs))
-        }
-        .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
-        .foregroundStyle(AppTheme.Text.tertiaryColor)
-        .lineLimit(1)
-    }
-
-    private var modelSection: some View {
-        InspectorSection("Model") {
-            InspectorRow(icon: "music.note", label: "Model") {
-                Menu {
-                    ForEach(models, id: \.id) { m in
-                        Button(m.displayName) { selectedModelId = m.id }
-                    }
-                } label: {
-                    HStack(spacing: AppTheme.Spacing.xxs) {
-                        Text(model?.displayName ?? "None")
-                        Image(systemName: "chevron.up.chevron.down").font(.system(size: AppTheme.FontSize.xxs))
-                    }
-                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .lineLimit(1)
+    private var modelControl: some View {
+        InspectorRow(label: "Model") {
+            Menu {
+                ForEach(models, id: \.id) { m in
+                    Button(m.displayName) { selectedModelId = m.id }
                 }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
+            } label: {
+                EditorMenuValue(text: model?.displayName ?? "None", expanded: true)
             }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
+            .frame(maxWidth: .infinity)
         }
     }
 
-    private var promptSection: some View {
-        InspectorSection(model?.promptLabel ?? "Prompt") {
+    private var promptControl: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            Text(model?.promptLabel ?? "Prompt")
+                .font(.system(size: AppTheme.FontSize.sm))
+                .foregroundStyle(AppTheme.Text.secondaryColor)
             TextField(model?.promptLabel ?? "", text: $prompt, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(2...5)
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.primaryColor)
                 .padding(AppTheme.Spacing.smMd)
-                .background(
-                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                        .fill(AppTheme.Background.raisedColor)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                        .strokeBorder(AppTheme.Border.subtleColor, lineWidth: AppTheme.BorderWidth.hairline)
-                )
+                .editorValueField()
         }
     }
 
     private var generateBar: some View {
-        VStack(spacing: AppTheme.Spacing.sm) {
-            if let note = note ?? validationNote {
-                Text(note)
-                    .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
-                    .foregroundStyle(AppTheme.Status.errorColor)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        EditorActionFooter(message: note ?? validationNote) {
             HStack(spacing: AppTheme.Spacing.sm) {
                 Button(action: generate) {
                     Text(generateLabel)
-                        .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.semibold))
-                        .foregroundStyle(AppTheme.Background.baseColor)
                         .lineLimit(1)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, AppTheme.Spacing.smMd)
-                        .background(RoundedRectangle(cornerRadius: AppTheme.Radius.sm).fill(AppTheme.Accent.primary))
-                        .opacity((canGenerate && account.aiAllowed) ? AppTheme.Opacity.opaque : AppTheme.Opacity.medium)
                 }
-                .buttonStyle(.plain).focusable(false)
+                .buttonStyle(.editorPrimary)
+                .focusable(false)
                 .disabled(!canGenerate || !account.aiAllowed)
                 .help(account.aiAllowed ? "" : "Sign in to generate")
 
                 agentMenu
             }
-        }
-        .padding(.horizontal, AppTheme.Spacing.lgXl)
-        .padding(.vertical, AppTheme.Spacing.md)
-        .overlay(alignment: .top) {
-            Rectangle().fill(AppTheme.Border.subtleColor).frame(height: AppTheme.BorderWidth.hairline)
         }
     }
 
@@ -254,7 +218,9 @@ struct MusicTab: View {
     }
 
     private var agentMenu: some View {
-        Menu {
+        EditorAgentMenu(
+            help: "Let Agent generate music for you. Choose a starter, or ask Agent in the chat."
+        ) {
             Button {
                 musicTask("Score my timeline with music that matches the visuals. Use a video-to-music model on the full timeline span so the music follows the edit, and place it on an audio track.")
             } label: { Label("Generate music for the timeline", systemImage: "music.note") }
@@ -265,22 +231,7 @@ struct MusicTab: View {
                     }
                 }
             } label: { Label("Mood", systemImage: "slider.horizontal.3") }
-        } label: {
-            HStack(spacing: AppTheme.Spacing.xs) {
-                Text("Agent Mode")
-                Image(systemName: "chevron.down").font(.system(size: AppTheme.FontSize.xs))
-            }
-            .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.semibold))
-            .foregroundStyle(AppTheme.aiGradient)
-            .lineLimit(1)
-            .fixedSize()
-            .padding(.horizontal, AppTheme.Spacing.mdLg)
-            .padding(.vertical, AppTheme.Spacing.smMd)
-            .background(RoundedRectangle(cornerRadius: AppTheme.Radius.sm).fill(AppTheme.Background.raisedColor))
-            .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.sm).strokeBorder(AppTheme.aiGradient.opacity(AppTheme.Opacity.medium), lineWidth: AppTheme.BorderWidth.thin))
         }
-        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
-        .help("Let Agent generate music for you. Choose a starter, or ask Agent in the chat.")
     }
 
     private func musicTask(_ prompt: String) {

@@ -1,8 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// Scrubbable number: drag the value horizontally to change it,
-/// click to type. A subtle warm accent color marks it as interactive.
 struct ScrubbableNumberField: View {
     let value: Double?
     let range: ClosedRange<Double>
@@ -11,7 +9,7 @@ struct ScrubbableNumberField: View {
     var valueSuffix: String = ""
     /// Display units changed per pixel of horizontal drag.
     var dragSensitivity: Double = 1
-    var fieldWidth: CGFloat = 50
+    var fieldWidth: CGFloat = AppTheme.EditorPanel.numericFieldWidth
     var trailingLabel: String? = nil
     var displayTextOverride: ((Double) -> String?)? = nil
     var onChanged: ((Double) -> Void)? = nil
@@ -40,6 +38,13 @@ struct ScrubbableNumberField: View {
 
     var body: some View {
         HStack(spacing: AppTheme.Spacing.xs) {
+            if let trailingLabel {
+                Text(trailingLabel)
+                    .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.medium))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .fixedSize()
+            }
+
             ZStack {
                 if isEditing {
                     TextField("", text: $editText)
@@ -65,14 +70,8 @@ struct ScrubbableNumberField: View {
             .frame(width: fieldWidth, alignment: .trailing)
             .padding(.horizontal, AppTheme.Spacing.sm)
             .padding(.vertical, AppTheme.Spacing.xxs)
+            .editorValueField(active: isEditing || isDragging)
             .overlay(scrubOverlay)
-
-            if let trailingLabel {
-                Text(trailingLabel)
-                    .font(.system(size: AppTheme.FontSize.xs, weight: .semibold))
-                    .foregroundStyle(AppTheme.Text.tertiaryColor)
-                    .fixedSize()
-            }
         }
         .fixedSize(horizontal: true, vertical: false)
         .onAppear { liveValue = value ?? range.lowerBound }

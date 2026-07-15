@@ -10,21 +10,21 @@ struct TextTab: View {
     private var style: TextStyle { clip.textStyle ?? TextStyle() }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxl) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
             contentField
-            InspectorSection("Typography") {
+            EditorPanelGroup("Typography") {
                 fontRow
                 styleRow
                 sizeSlider
             }
-            InspectorSection("Appearance") {
+            EditorPanelGroup("Appearance") {
                 colorRow
                 opacitySlider
                 backgroundRow
                 borderRow
                 shadowRow
             }
-            InspectorSection("Layout") {
+            EditorPanelGroup("Layout") {
                 alignmentRow
                 positionSection
             }
@@ -34,8 +34,7 @@ struct TextTab: View {
     // MARK: - Controls
 
     private var contentField: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            InspectorRow(icon: "textformat", label: "Content")
+        EditorPanelGroup("Text") {
             TextContentField(
                 text: Binding(
                     get: { clip.textContent ?? "" },
@@ -53,17 +52,14 @@ struct TextTab: View {
             )
             .disabled(isBatch)
             .opacity(isBatch ? AppTheme.Opacity.medium : AppTheme.Opacity.opaque)
-            .frame(minHeight: 80)
-            .padding(AppTheme.Spacing.xs)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(Color.white.opacity(AppTheme.Opacity.hint))
-            )
+            .frame(minHeight: AppTheme.EditorPanel.textEditorMinHeight)
+            .padding(AppTheme.Spacing.smMd)
+            .editorValueField()
         }
     }
 
     private var fontRow: some View {
-        InspectorRow(icon: "character", label: "Font") {
+        InspectorRow(label: "Font") {
             FontPickerField(
                 current: sharedTextStyleValue { $0.fontName },
                 onPreview: { name in
@@ -80,7 +76,7 @@ struct TextTab: View {
     }
 
     private var styleRow: some View {
-        InspectorRow(icon: "textformat", label: "Style") {
+        InspectorRow(label: "Style") {
             TextStyleTraitButtons(
                 isBold: sharedTextStyleValue { $0.isBold },
                 isItalic: sharedTextStyleValue { $0.isItalic },
@@ -95,13 +91,13 @@ struct TextTab: View {
     }
 
     private var sizeSlider: some View {
-        InspectorRow(icon: "textformat.size", label: "Size") {
+        InspectorRow(label: "Size") {
             ScrubbableNumberField(
                 value: sharedTextStyleValue { $0.fontSize },
                 range: 12...300,
                 format: "%.0f",
                 valueSuffix: " pt",
-                fieldWidth: 50,
+                fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
                 onChanged: { newVal in
                     editor.applyTextStyles(clipIds: clipIds, fitToContent: true) { $0.fontSize = newVal }
                 }
@@ -112,14 +108,14 @@ struct TextTab: View {
     }
 
     private var opacitySlider: some View {
-        InspectorRow(icon: "circle.lefthalf.filled", label: "Opacity") {
+        InspectorRow(label: "Opacity") {
             ScrubbableNumberField(
                 value: sharedClipValue(clips) { $0.opacity },
                 range: 0...1,
                 displayMultiplier: 100,
                 format: "%.0f",
                 valueSuffix: "%",
-                fieldWidth: 50,
+                fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
                 onChanged: { newVal in
                     editor.applyClipProperties(clipIds: clipIds) { $0.opacity = newVal }
                 }
@@ -130,7 +126,7 @@ struct TextTab: View {
     }
 
     private var colorRow: some View {
-        InspectorRow(icon: "paintpalette", label: "Color") {
+        InspectorRow(label: "Color") {
             ColorField(
                 displayColor: style.color.swiftUIColor,
                 onUserChange: { new in
@@ -143,7 +139,7 @@ struct TextTab: View {
     }
 
     private var alignmentRow: some View {
-        InspectorRow(icon: "text.alignleft", label: "Alignment") {
+        InspectorRow(label: "Alignment") {
             Picker(
                 "",
                 selection: Binding(
@@ -166,7 +162,6 @@ struct TextTab: View {
 
     private var backgroundRow: some View {
         toggleColorRow(
-            icon: "rectangle.fill",
             label: "Background",
             enabled: style.background.enabled,
             color: style.background.color.swiftUIColor,
@@ -178,7 +173,6 @@ struct TextTab: View {
 
     private var borderRow: some View {
         toggleColorRow(
-            icon: "a.square",
             label: "Outline",
             enabled: style.border.enabled,
             color: style.border.color.swiftUIColor,
@@ -189,7 +183,6 @@ struct TextTab: View {
     }
 
     private func toggleColorRow(
-        icon: String,
         label: String,
         enabled: Bool,
         color: Color,
@@ -197,36 +190,25 @@ struct TextTab: View {
         setEnabled: @escaping (inout TextStyle, Bool) -> Void,
         setColor: @escaping (inout TextStyle, TextStyle.RGBA) -> Void
     ) -> some View {
-        InspectorRow(icon: icon, label: label) {
-            HStack(spacing: AppTheme.Spacing.sm) {
-                ColorField(
-                    displayColor: color,
-                    onUserChange: { new in
-                        editor.debouncedCommitTextStyles(clipIds: clipIds, key: debounceKey) {
-                            setColor(&$0, TextStyle.RGBA(new))
-                        }
+        InspectorRow(label: label) {
+            ToggleColorControl(
+                label: label,
+                isOn: Binding(
+                    get: { enabled },
+                    set: { new in editor.commitTextStyles(clipIds: clipIds) { setEnabled(&$0, new) } }
+                ),
+                color: color,
+                onColorChange: { new in
+                    editor.debouncedCommitTextStyles(clipIds: clipIds, key: debounceKey) {
+                        setColor(&$0, TextStyle.RGBA(new))
                     }
-                )
-                .opacity(enabled ? AppTheme.Opacity.opaque : AppTheme.Opacity.medium)
-                .disabled(!enabled)
-                Toggle(
-                    "",
-                    isOn: Binding(
-                        get: { enabled },
-                        set: { new in editor.commitTextStyles(clipIds: clipIds) { setEnabled(&$0, new) } }
-                    )
-                )
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                .tint(Color.white.opacity(AppTheme.Opacity.strong))
-            }
+                }
+            )
         }
     }
 
     private var shadowRow: some View {
         toggleColorRow(
-            icon: "square.on.square",
             label: "Shadow",
             enabled: style.shadow.enabled,
             color: style.shadow.color.swiftUIColor,
@@ -238,7 +220,7 @@ struct TextTab: View {
 
     @ViewBuilder
     private var positionSection: some View {
-        InspectorRow(icon: "arrow.up.and.down.and.arrow.left.and.right", label: "Position") {
+        InspectorRow(label: "Position") {
             InspectorPositionFields(clips: clips)
         }
     }
@@ -261,7 +243,7 @@ struct TextAnimateTab: View {
 
     var body: some View {
         let anim = clip.textAnimation ?? TextAnimation()
-        InspectorSection("Animation") {
+        EditorPanelGroup("Animation") {
             CaptionPresetGallery(
                 selection: Binding(
                     get: { anim.preset },
@@ -282,7 +264,7 @@ struct TextAnimateTab: View {
     }
 
     private func highlightRow(_ anim: TextAnimation) -> some View {
-        InspectorRow(icon: "highlighter", label: "Highlight") {
+        InspectorRow(label: "Highlight") {
             ColorField(
                 displayColor: (anim.highlight ?? TextAnimation.defaultHighlight).swiftUIColor,
                 onUserChange: { new in

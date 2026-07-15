@@ -169,18 +169,16 @@ extension InspectorView {
                 .labelsHidden()
                 .disabled(!hasEffects)
                 .help(hasEffects ? "Enable \(title.lowercased())" : "No adjustments yet")
+                .accessibilityLabel("Enable \(title)")
             }
             .padding(.horizontal, AppTheme.Spacing.lg)
             .padding(.vertical, AppTheme.Spacing.smMd)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(AppTheme.Background.raisedColor)
+            .background(AppTheme.Background.surfaceColor)
             .contentShape(Rectangle())
             .onTapGesture {
                 if expanded { collapsedAdjustSections.insert(title) }
                 else { collapsedAdjustSections.remove(title) }
-            }
-            .overlay(alignment: .bottom) {
-                if expanded { sectionDivider }
             }
             if expanded {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
@@ -197,7 +195,7 @@ extension InspectorView {
     private var sectionDivider: some View {
         Rectangle()
             .fill(AppTheme.Border.primaryColor)
-            .frame(height: AppTheme.BorderWidth.hairline)
+            .frame(height: AppTheme.BorderWidth.thin)
     }
 
     @ViewBuilder
@@ -434,7 +432,7 @@ extension InspectorView {
             )
             ScrubbableNumberField(
                 value: value, range: range, displayMultiplier: 100, format: "%.0f",
-                valueSuffix: "%", dragSensitivity: 0.5, fieldWidth: 50,
+                valueSuffix: "%", dragSensitivity: 0.5, fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
                 onChanged: { setLUTIntensity($0 / 100, clips: clips, commit: false) }
             ) { setLUTIntensity($0 / 100, clips: clips, commit: true) }
         }
@@ -516,7 +514,7 @@ extension InspectorView {
                     format: effectParamFormat(spec),
                     valueSuffix: spec.unit.isEmpty ? "" : " \(spec.unit)",
                     dragSensitivity: effectParamSensitivity(spec),
-                    fieldWidth: 50,
+                    fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
                     onChanged: { setControlParam(control, label: label, value: $0, clips: clips, commit: false) }
                 ) { setControlParam(control, label: label, value: $0, clips: clips, commit: true) }
             }

@@ -6,13 +6,10 @@ struct SpeechTab: View {
     var body: some View {
         ZStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.mdLg) {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
                     speakersSection
                     silenceSection
                 }
-                .padding(.horizontal, AppTheme.Spacing.lgXl)
-                .padding(.top, AppTheme.Spacing.md)
-                .padding(.bottom, AppTheme.Spacing.md)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             if let phase = editor.speakerIdentifyPhase {
@@ -24,9 +21,8 @@ struct SpeechTab: View {
     }
 
     private var speakersSection: some View {
-        InspectorSection("Speakers") {
+        EditorPanelGroup("Speakers") {
             InspectorRow(
-                icon: "person.wave.2",
                 label: "Mark Speakers",
                 labelHelp: "Tints waveforms by speaker. Voices are matched across clips using cloud transcripts."
             ) {
@@ -37,6 +33,7 @@ struct SpeechTab: View {
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .labelsHidden()
+                .accessibilityLabel("Mark Speakers")
             }
             HStack(spacing: AppTheme.Spacing.sm) {
                 Button(editor.projectSpeakers.isEmpty ? "Identify Speakers" : "Refresh") { editor.identifySpeakers(transcribeMissing: true) }
@@ -85,9 +82,8 @@ struct SpeechTab: View {
     }
 
     private var silenceSection: some View {
-        InspectorSection("Silence Detection") {
+        EditorPanelGroup("Silence Detection") {
             InspectorRow(
-                icon: "waveform.badge.mic",
                 label: "Mark Silence",
                 labelHelp: "Speech is detected on-device in the background. Dims quiet, speech-free spans on timeline waveforms."
             ) {
@@ -98,6 +94,7 @@ struct SpeechTab: View {
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .labelsHidden()
+                .accessibilityLabel("Mark Silence")
             }
             if editor.speechAnalyzingCount > 0 {
                 HStack(spacing: AppTheme.Spacing.xs) {

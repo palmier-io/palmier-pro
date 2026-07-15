@@ -5,56 +5,47 @@ extension InspectorView {
     @ViewBuilder
     func audioTabContent() -> some View {
         let audios = selectedAudioClips
-        let single = audios.count == 1 ? audios.first : nil
-        let kfVisible = single != nil && editor.keyframesPanelVisible
 
-        if let clip = single, kfVisible {
-            HStack(alignment: .top, spacing: 0) {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
-                    // Match the kf panel's ruler+strip header height so Volume aligns with its lane.
-                    sectionTitleLabel(title: "Levels")
-                        .frame(height: KeyframesMetrics.headerHeight, alignment: .bottomLeading)
-                    volumeRow(audios: audios)
-                    fadeRow(label: "Fade In", clips: audios, edge: .left)
-                        .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
-                    fadeRow(label: "Fade Out", clips: audios, edge: .right)
-                        .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
-                    sectionTitleLabel(title: "Enhance")
-                        .padding(.top, AppTheme.Spacing.md)
-                    denoiseRow(audios: audios)
-                        .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
-                    if nonTextVisualClips.isEmpty {
-                        speedSection(clips: audios)
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
+            levelsSection(audios: audios)
+            EditorPanelGroup("Enhance", contentSpacing: AppTheme.Spacing.smMd) {
+                denoiseRow(audios: audios)
+            }
+            if nonTextVisualClips.isEmpty {
+                speedSection(clips: audios)
+            }
+        }
+    }
+
+    private func levelsSection(audios: [Clip]) -> some View {
+        let single = audios.count == 1 ? audios.first : nil
+        return EditorPanelGroup(
+            "Levels",
+            isExpanded: $audioLevelsExpanded,
+            headerAccessory: {
+                if audioLevelsExpanded {
+                    keyframesToggleButton(enabled: single != nil)
+                }
+            }
+        ) {
+            if let clip = single, editor.keyframesPanelVisible {
+                keyframesSplitContent(clip: clip) {
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+                        volumeRow(audios: audios)
+                        fadeRow(label: "Fade In", clips: audios, edge: .left)
                             .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
-                            .padding(.top, AppTheme.Spacing.md)
+                        fadeRow(label: "Fade Out", clips: audios, edge: .right)
+                            .padding(.trailing, KeyframesMetrics.controlsColumnWidth + AppTheme.Spacing.sm)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.trailing, AppTheme.Spacing.sm)
-                Divider()
-                KeyframesPanel(clip: clip)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, AppTheme.Spacing.sm)
-            }
-        } else {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            } else {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
-                    sectionTitleLabel(title: "Levels")
                     volumeRow(audios: audios)
                     fadeRow(label: "Fade In", clips: audios, edge: .left)
                     fadeRow(label: "Fade Out", clips: audios, edge: .right)
-                }
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
-                    sectionTitleLabel(title: "Enhance")
-                    denoiseRow(audios: audios)
-                }
-                if nonTextVisualClips.isEmpty {
-                    speedSection(clips: audios)
                 }
             }
         }
-
-        keyframesToggleBar(enabled: single != nil)
     }
 
     @ViewBuilder
@@ -69,7 +60,7 @@ extension InspectorView {
                 format: "%.1f",
                 valueSuffix: " dB",
                 dragSensitivity: 0.3,
-                fieldWidth: 56,
+                fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
                 displayTextOverride: { db in db <= VolumeScale.floorDb ? "-∞ dB" : nil },
                 onChanged: { db in
                     for c in audios { editor.applyVolume(clipId: c.id, valueDb: db) }
@@ -100,7 +91,7 @@ extension InspectorView {
                                 format: "%.0f",
                                 valueSuffix: "%",
                                 dragSensitivity: 0.5,
-                                fieldWidth: 56
+                                fieldWidth: AppTheme.EditorPanel.numericFieldWidth
                             ) { percent in
                                 editor.setDenoise(
                                     clipIds: Set(audios.map(\.id)),
@@ -124,6 +115,7 @@ extension InspectorView {
                         .toggleStyle(.switch)
                         .controlSize(.mini)
                         .labelsHidden()
+                        .accessibilityLabel("Denoise")
                     }
                 }
                 .help("Removes background noise from this audio using an on-device model.")
@@ -160,7 +152,7 @@ extension InspectorView {
                 format: "%.2f",
                 valueSuffix: " s",
                 dragSensitivity: 0.02,
-                fieldWidth: 56,
+                fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
                 onChanged: { seconds in
                     let frames = Int((seconds * fps).rounded())
                     for c in clips { editor.applyFade(clipId: c.id, edge: edge, frames: frames) }
