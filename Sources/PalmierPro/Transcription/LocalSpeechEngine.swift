@@ -4,6 +4,7 @@
 import Foundation
 
 enum LocalSpeechEngine: String, CaseIterable, Identifiable, Sendable {
+    case qwen3
     case senseVoice
     case whisper
     case apple
@@ -12,7 +13,8 @@ enum LocalSpeechEngine: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
-        case .senseVoice: "SenseVoice (multilingual)"
+        case .qwen3: "Qwen3-ASR (best quality)"
+        case .senseVoice: "SenseVoice (fastest)"
         case .whisper: "Whisper (word timing)"
         case .apple: "Apple Speech"
         }
@@ -20,7 +22,8 @@ enum LocalSpeechEngine: String, CaseIterable, Identifiable, Sendable {
 
     var detail: String {
         switch self {
-        case .senseVoice: "Best for mixed-language speech (Chinese, English, Japanese, Korean, Cantonese). ~160 MB download."
+        case .qwen3: "Highest accuracy; 30+ languages, 20+ Chinese dialects, mixed-language speech. ~840 MB download. Word timings are approximate."
+        case .senseVoice: "Fast multilingual (Chinese, English, Japanese, Korean, Cantonese) with per-word timing. ~160 MB download."
         case .whisper: "Best word-level timestamps, ~100 languages. ~1 GB download, slower."
         case .apple: "System engine. Single language per file, chosen from your macOS language settings."
         }
@@ -30,6 +33,7 @@ enum LocalSpeechEngine: String, CaseIterable, Identifiable, Sendable {
     var cacheTag: String? {
         switch self {
         case .apple: nil  // preserves pre-existing cache entries
+        case .qwen3: "qw1"
         case .senseVoice: "sv1"
         case .whisper: "wk1"
         }
@@ -40,7 +44,7 @@ enum LocalSpeechEngine: String, CaseIterable, Identifiable, Sendable {
     static var current: LocalSpeechEngine {
         get {
             UserDefaults.standard.string(forKey: defaultsKey)
-                .flatMap(LocalSpeechEngine.init(rawValue:)) ?? .senseVoice
+                .flatMap(LocalSpeechEngine.init(rawValue:)) ?? .qwen3
         }
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: defaultsKey)

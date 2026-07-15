@@ -259,6 +259,9 @@ enum Transcription {
     ) async throws -> TranscriptionResult {
         let languageCode = preferredLocale?.language.languageCode?.identifier
         switch engine {
+        case .qwen3:
+            // Qwen3-ASR autodetects language per chunk; no hint parameter.
+            return try await Qwen3ASREngine.shared.transcribe(fileURL: fileURL)
         case .senseVoice:
             // SenseVoice hints: zh, en, ja, ko, yue; empty string = auto (handles code-switching).
             let hint: String

@@ -80,11 +80,12 @@ actor SenseVoiceEngine {
         try await Self.ensureModel()
         let recognizer = try recognizer(language: language)
 
-        let samples = try Self.loadSamples(fileURL: fileURL)
+        let samples = try EngineAudio.loadSamples(fileURL: fileURL)
         var words: [TranscriptionWord] = []
         var chunkStart = 0
         while chunkStart < samples.count {
-            let chunkEnd = Self.chunkBoundary(samples: samples, from: chunkStart)
+            let chunkEnd = EngineAudio.chunkBoundary(
+                samples: samples, from: chunkStart, targetSeconds: Self.chunkSeconds)
             let chunk = Array(samples[chunkStart..<chunkEnd])
             let offset = Double(chunkStart) / Double(Self.sampleRate)
             words.append(contentsOf: Self.decodeChunk(recognizer: recognizer, samples: chunk, offset: offset))
@@ -249,71 +250,5 @@ actor SenseVoiceEngine {
             out += piece
         }
         return out
-    }
-
-    // MARK: - Audio
-
-    private static func loadSamples(fileURL: URL) throws -> [Float] {
-        let file: AVAudioFile
-        do { file = try AVAudioFile(forReading: fileURL) } catch {
-            throw EngineError.audioReadFailed(error.localizedDescription)
-        }
-        guard let outFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32, sampleRate: Double(sampleRate), channels: 1, interleaved: false
-        ) else { throw EngineError.audioReadFailed("bad target format") }
-
-        guard let converter = AVAudioConverter(from: file.processingFormat, to: outFormat) else {
-            throw EngineError.audioReadFailed("unsupported source format")
-        }
-        var samples: [Float] = []
-        let inCapacity = AVAudioFrameCount(32_768)
-        let ratio = Double(sampleRate) / file.processingFormat.sampleRate
-        var drained = false
-        while !drained {
-            let outCapacity = AVAudioFrameCount(Double(inCapacity) * ratio) + 1024
-            guard let outBuffer = AVAudioPCMBuffer(pcmFormat: outFormat, frameCapacity: outCapacity) else { break }
-            var conversionError: NSError?
-            let status = converter.convert(to: outBuffer, error: &conversionError) { _, statusPtr in
-                guard let inBuffer = try? AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: inCapacity),
-                      (try? file.read(into: inBuffer)) != nil, inBuffer.frameLength > 0 else {
-                    statusPtr.pointee = .endOfStream
-                    return nil
-                }
-                statusPtr.pointee = .haveData
-                return inBuffer
-            }
-            if status == .error { throw EngineError.audioReadFailed(conversionError?.localizedDescription ?? "conversion failed") }
-            if let data = outBuffer.floatChannelData, outBuffer.frameLength > 0 {
-                samples.append(contentsOf: UnsafeBufferPointer(start: data[0], count: Int(outBuffer.frameLength)))
-            }
-            drained = status == .endOfStream
-        }
-        return samples
-    }
-
-    /// End index for the chunk starting at `from` — the quietest sample near the target boundary.
-    private static func chunkBoundary(samples: [Float], from: Int) -> Int {
-        let target = from + Int(chunkSeconds * Double(sampleRate))
-        guard target < samples.count else { return samples.count }
-        let span = Int(chunkSearchSpanSeconds * Double(sampleRate))
-        let windowStart = max(from + span, target - span)
-        let windowEnd = min(samples.count - 1, target + span)
-        guard windowStart < windowEnd else { return target }
-
-        // Slide a 50ms RMS window; cut at its quietest position.
-        let rmsWindow = sampleRate / 20
-        var best = target
-        var bestEnergy = Float.greatestFiniteMagnitude
-        var index = windowStart
-        while index + rmsWindow < windowEnd {
-            var energy: Float = 0
-            for sample in samples[index..<(index + rmsWindow)] { energy += sample * sample }
-            if energy < bestEnergy {
-                bestEnergy = energy
-                best = index + rmsWindow / 2
-            }
-            index += rmsWindow / 2
-        }
-        return best
     }
 }
