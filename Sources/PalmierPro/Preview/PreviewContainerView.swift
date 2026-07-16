@@ -207,15 +207,21 @@ struct PreviewContainerView: View {
 
     private var imagePreview: some View {
         Group {
-            if let asset = activeMediaAsset, let image = asset.thumbnail ?? NSImage(contentsOf: asset.url) {
+            if let asset = activeMediaAsset, let image = asset.thumbnail {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
+            } else {
+                ProgressView()
+                    .controlSize(.small)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.black)
         .allowsHitTesting(false)
+        .task(id: activeMediaAsset.map { "\($0.id)|\($0.url.path)" }) {
+            await activeMediaAsset?.loadPreviewThumbnail()
+        }
     }
 
     private func fitSize(in container: CGSize, aspect: CGFloat) -> CGSize {

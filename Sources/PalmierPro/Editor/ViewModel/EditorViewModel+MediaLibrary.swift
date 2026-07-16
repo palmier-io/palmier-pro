@@ -633,7 +633,7 @@ extension EditorViewModel {
         batchManifestUpdate: Bool = false
     ) async -> Bool {
         Log.project.debug("media finalize start asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue)")
-        let metadataLoaded = await asset.loadMetadata()
+        let metadataLoaded = await asset.loadMetadata(includeThumbnail: !batchManifestUpdate)
         guard metadataLoaded else {
             if FileManager.default.fileExists(atPath: asset.url.path) {
                 unprocessableMediaRefs.insert(asset.id)
@@ -664,6 +664,17 @@ extension EditorViewModel {
         }
         refreshMissingMediaCache()
         searchIndex.schedule(asset)
+        if !batchManifestUpdate {
+            prepareMediaVisuals(for: asset)
+        }
+        refreshPreviewForFinalizedAsset(asset)
+        Log.project.debug(
+            "media finalize ok asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue) duration=\(asset.duration)"
+        )
+        return true
+    }
+
+    func prepareMediaVisuals(for asset: MediaAsset) {
         switch asset.type {
         case .video:
             mediaVisualCache.generateWaveform(for: asset)
@@ -675,11 +686,6 @@ extension EditorViewModel {
         case .text, .lottie, .sequence:
             break
         }
-        refreshPreviewForFinalizedAsset(asset)
-        Log.project.debug(
-            "media finalize ok asset=\(asset.id.prefix(8)) type=\(asset.type.rawValue) duration=\(asset.duration)"
-        )
-        return true
     }
 
     private func recordManifestMetadata(for asset: MediaAsset, batching: Bool) {

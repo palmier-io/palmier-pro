@@ -39,6 +39,7 @@ final class MediaVisualCache {
 
     private var videoThumbnails: [String: [(time: Double, image: CGImage)]] = [:]
     private var videoThumbnailInFlight: Set<String> = []
+    private static let videoThumbnailGate = AsyncSemaphore(value: 2)
 
     // MARK: - Image thumbnails (single still per asset)
 
@@ -147,6 +148,14 @@ final class MediaVisualCache {
 
         let url = asset.url
         Task.detached(priority: .userInitiated) { [weak self] in
+            do {
+                try await Self.videoThumbnailGate.wait()
+            } catch {
+                await MainActor.run { [weak self] in _ = self?.videoThumbnailInFlight.remove(key) }
+                return
+            }
+            defer { Task { await Self.videoThumbnailGate.signal() } }
+
             let cacheKey = Self.diskCacheKey(for: url)
             var results = cacheKey.flatMap(Self.loadThumbnails(key:)) ?? []
 

@@ -631,6 +631,9 @@ extension EditorViewModel {
         guard let loc = findClip(id: clipId) else { return }
         let oldMediaRef = timeline.tracks[loc.trackIndex].clips[loc.clipIndex].mediaRef
         guard oldMediaRef != newAssetId else { return }
+        if let asset = mediaAssetsById[newAssetId] {
+            prepareMediaVisuals(for: asset)
+        }
 
         let targetIds = linkedClipIdsSharingMedia(anchor: clipId)
 
