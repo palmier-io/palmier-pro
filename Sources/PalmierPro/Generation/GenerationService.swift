@@ -385,6 +385,7 @@ final class GenerationService {
         case "wav": return "audio/wav"
         case "m4a": return "audio/mp4"
         case "aiff", "aif", "aifc": return "audio/aiff"
+        case "caf": return "audio/x-caf"
         case "flac": return "audio/flac"
         default:
             switch fallback {
