@@ -78,33 +78,35 @@ extension EditorViewModel {
         }
         child.regenerateIds()
 
-        timelines.append(child)
-        registerRemoveUndo(for: child.id, actionName: "Nest Clips")
-        selectedClipIds = []
-        withTimelineSwap(actionName: "Nest Clips") {
-            for i in timeline.tracks.indices {
-                timeline.tracks[i].clips.removeAll { ids.contains($0.id) }
+        undo.perform("Nest Clips") {
+            timelines.append(child)
+            registerRemoveUndo(for: child.id, actionName: "Nest Clips")
+            selectedClipIds = []
+            withTimelineSwap(actionName: "Nest Clips") {
+                for i in timeline.tracks.indices {
+                    timeline.tracks[i].clips.removeAll { ids.contains($0.id) }
+                }
+                let span = start..<(start + duration)
+                var videoIdx = lanes.first { $0.type != .audio }?.index
+                var audioIdx = lanes.first { $0.type == .audio }?.index
+                if let vi = videoIdx, trackOverlaps(vi, span: span) {
+                    let inserted = insertTrack(at: vi, type: .video)
+                    videoIdx = inserted
+                    if let ai = audioIdx, ai >= inserted { audioIdx = ai + 1 }
+                }
+                if let ai = audioIdx, trackOverlaps(ai, span: span) {
+                    audioIdx = insertTrack(at: ai + 1, type: .audio)
+                }
+                let carriers = insertNestCarriers(
+                    for: child, start: start, duration: duration,
+                    videoIdx: videoIdx, audioIdx: audioIdx
+                )
+                pruneEmptyTracks()
+                selectedClipIds = carriers
             }
-            let span = start..<(start + duration)
-            var videoIdx = lanes.first { $0.type != .audio }?.index
-            var audioIdx = lanes.first { $0.type == .audio }?.index
-            if let vi = videoIdx, trackOverlaps(vi, span: span) {
-                let inserted = insertTrack(at: vi, type: .video)
-                videoIdx = inserted
-                if let ai = audioIdx, ai >= inserted { audioIdx = ai + 1 }
-            }
-            if let ai = audioIdx, trackOverlaps(ai, span: span) {
-                audioIdx = insertTrack(at: ai + 1, type: .audio)
-            }
-            let carriers = insertNestCarriers(
-                for: child, start: start, duration: duration,
-                videoIdx: videoIdx, audioIdx: audioIdx
-            )
-            pruneEmptyTracks()
-            selectedClipIds = carriers
+            openTimelineIds.append(child.id)
+            timelineTabRenameRequest = child.id
         }
-        openTimelineIds.append(child.id)
-        timelineTabRenameRequest = child.id
     }
 
     /// Replaces a nest clip (and its linked audio) with the child's clips remapped in place

@@ -230,7 +230,7 @@ extension ToolExecutor {
         let snapshot = timelineSnapshot(editor)
         let actionName = specs.count == 1 ? "Add Clip (Agent)" : "Add Clips (Agent)"
         var settingsNote: String?
-        try withUndoGroup(editor, actionName: actionName) {
+        try editor.undo.perform(actionName) {
             settingsNote = applySettingsIfNeededForAgent(
                 editor,
                 assets: prepared.map(\.asset).filter { $0.type != .sequence }
@@ -283,7 +283,7 @@ extension ToolExecutor {
             }
 
             let addedIds = allAdded
-            editor.registerTimelineUndo { vm in
+            editor.registerTimelineUndo(actionName) { vm in
                 vm.removeClips(ids: Set(addedIds))
             }
         }
@@ -331,7 +331,7 @@ extension ToolExecutor {
 
         let snapshot = timelineSnapshot(editor)
         var settingsNote: String?
-        let ids = try withUndoGroup(editor, actionName: specs.count == 1 ? "Insert Clip (Agent)" : "Insert Clips (Agent)") {
+        let ids = editor.undo.perform(specs.count == 1 ? "Insert Clip (Agent)" : "Insert Clips (Agent)") {
             settingsNote = applySettingsIfNeededForAgent(
                 editor,
                 assets: resolvedAssets.filter { $0.type != .sequence }
@@ -355,7 +355,7 @@ extension ToolExecutor {
         }
         let expanded = editor.expandToLinkGroup(Set(clipIds))
         let snapshot = timelineSnapshot(editor)
-        try withUndoGroup(editor, actionName: clipIds.count == 1 ? "Remove Clip (Agent)" : "Remove Clips (Agent)") {
+        editor.undo.perform(clipIds.count == 1 ? "Remove Clip (Agent)" : "Remove Clips (Agent)") {
             editor.removeClips(ids: expanded)
         }
         return mutationResult(editor, since: snapshot)
@@ -433,7 +433,7 @@ extension ToolExecutor {
 
         let snapshot = timelineSnapshot(editor)
         let moveActionName = parsed.count == 1 ? "Move Clip (Agent)" : "Move Clips (Agent)"
-        try withUndoGroup(editor, actionName: moveActionName) {
+        editor.undo.perform(moveActionName) {
             if !moves.isEmpty { editor.moveClips(moves) }
         }
 
@@ -517,7 +517,7 @@ extension ToolExecutor {
 
         let snapshot = timelineSnapshot(editor)
         let setActionName = clipIds.count == 1 ? "Set Clip Property (Agent)" : "Set Clip Properties (Agent)"
-        try withUndoGroup(editor, actionName: setActionName) {
+        editor.undo.perform(setActionName) {
             for id in clipIds {
                 let changed = Self.applyPropertyChanges(
                     durationFrames: input.durationFrames,
@@ -623,7 +623,7 @@ extension ToolExecutor {
             throw ToolError("Clip not found: \(input.clipId)")
         }
 
-        try withUndoGroup(editor, actionName: "Set Keyframes (Agent)") {
+        try editor.undo.perform("Set Keyframes (Agent)") {
             switch input.property {
             case "volume":
                 let kfs = try Self.parseScalarKeyframes(rows, path: "keyframes")
@@ -701,7 +701,7 @@ extension ToolExecutor {
 
         guard !points.isEmpty else { throw ToolError("No valid split points") }
         let snapshot = timelineSnapshot(editor)
-        try withUndoGroup(editor, actionName: points.count == 1 ? "Split Clip (Agent)" : "Split Clips (Agent)") {
+        editor.undo.perform(points.count == 1 ? "Split Clip (Agent)" : "Split Clips (Agent)") {
             _ = editor.splitClips(at: points)
         }
         return mutationResult(editor, since: snapshot)
@@ -773,7 +773,7 @@ extension ToolExecutor {
 
         let ignoreSyncLocked = Set(input.ignoreSyncLockedTracks ?? [])
         let snapshot = timelineSnapshot(editor)
-        let outcome = try withUndoGroup(editor, actionName: "Ripple Delete (Agent)") {
+        let outcome = editor.undo.perform("Ripple Delete (Agent)") {
             editor.rippleDeleteRangesOnTrack(trackIndex: resolvedTrackIndex, ranges: frameRanges, ignoreSyncLockTrackIndices: ignoreSyncLocked)
         }
         switch outcome {
@@ -970,7 +970,7 @@ extension ToolExecutor {
             return ["trackId": track.id, "index": i, "label": editor.timelineTrackDisplayLabel(at: i), "type": track.type.rawValue]
         }
         var reorderResults: [(trackId: String, from: Int, to: Int)] = []
-        try withUndoGroup(editor, actionName: "Manage Tracks (Agent)") {
+        editor.undo.perform("Manage Tracks (Agent)") {
             if !reorders.isEmpty {
                 let before = editor.timeline
                 for r in reorders {

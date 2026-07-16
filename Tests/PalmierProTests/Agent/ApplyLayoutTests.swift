@@ -132,7 +132,7 @@ struct ApplyLayoutTests {
         let h = configured(1920, 1080)
         for id in ["a", "b", "c", "d"] { videoAsset(h, id: id, hasAudio: true) }
         let um = SpyUndoManager()
-        h.editor.undoManager = um
+        h.editor.undo.attach(um)
         let r = await h.runRaw("apply_layout", args: [
             "layout": "grid_2x2", "endFrame": 90,
             "slots": [

@@ -482,17 +482,17 @@ final class TimelineInputController {
                     editor.refuseWithToast(reason)
                     break
                 }
-                editor.undoManager?.beginUndoGrouping()
-                let newIdx = editor.insertTrack(at: insertIndex, type: leadTrackType)
-                let moves = resolved.map { item in
-                    let p = item.participant
-                    let hops = !pinned.contains(p.clipId) && item.trackIndex == leadTrack
-                    let shifted = item.trackIndex >= newIdx ? item.trackIndex + 1 : item.trackIndex
-                    return (clipId: p.clipId, toTrack: hops ? newIdx : shifted, toFrame: item.frame + frameDelta)
+                let actionName = newTrackActionName(count: resolved.count, isDuplicate: drag.isDuplicate)
+                editor.undo.perform(actionName) {
+                    let newIdx = editor.insertTrack(at: insertIndex, type: leadTrackType)
+                    let moves = resolved.map { item in
+                        let p = item.participant
+                        let hops = !pinned.contains(p.clipId) && item.trackIndex == leadTrack
+                        let shifted = item.trackIndex >= newIdx ? item.trackIndex + 1 : item.trackIndex
+                        return (clipId: p.clipId, toTrack: hops ? newIdx : shifted, toFrame: item.frame + frameDelta)
+                    }
+                    commitMoves(moves, isDuplicate: drag.isDuplicate)
                 }
-                commitMoves(moves, isDuplicate: drag.isDuplicate)
-                editor.undoManager?.setActionName(newTrackActionName(count: moves.count, isDuplicate: drag.isDuplicate))
-                editor.undoManager?.endUndoGrouping()
             }
 
         case .trimLeft(let drag):
@@ -777,10 +777,9 @@ final class TimelineInputController {
         let offset = max(0, min(clip.durationFrames, Int((xInClip / pxPerFrame).rounded())))
         let absFrame = clip.startFrame + offset
         let dB = max(VolumeScale.floorDb, min(VolumeScale.ceilingDb, ClipRenderer.db(forY: point.y, in: body)))
-        editor.commitClipProperty(clipId: clip.id) { c in
+        editor.commitClipProperty(clipId: clip.id, actionName: "Add Keyframe") { c in
             c.upsertKeyframe(in: \.volumeTrack, frame: absFrame, value: dB)
         }
-        editor.undoManager?.setActionName("Add Keyframe")
         view.needsDisplay = true
         return true
     }

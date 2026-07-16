@@ -30,7 +30,7 @@ extension EditorViewModel {
         guard let clip = clipFor(id: clipId) else { return }
         let f = frame ?? currentFrame
         guard clip.contains(timelineFrame: f) else { return }
-        commitClipProperty(clipId: clipId) { clip in
+        commitClipProperty(clipId: clipId, actionName: "Add Keyframe") { clip in
             switch property {
             case .opacity:
                 clip.upsertKeyframe(in: \.opacityTrack, frame: f, value: clip.rawOpacityAt(frame: f))
@@ -49,22 +49,18 @@ extension EditorViewModel {
                 clip.upsertKeyframe(in: \.volumeTrack, frame: f, value: currentDb)
             }
         }
-        undoManager?.setActionName("Add Keyframe")
     }
 
     func removeKeyframe(clipId: String, property: AnimatableProperty, at frame: Int) {
-        commitClipProperty(clipId: clipId) { $0.removeKeyframe(for: property, at: frame) }
-        undoManager?.setActionName("Delete Keyframe")
+        commitClipProperty(clipId: clipId, actionName: "Delete Keyframe") { $0.removeKeyframe(for: property, at: frame) }
     }
 
     func clearAnimation(clipId: String, property: AnimatableProperty) {
-        commitClipProperty(clipId: clipId) { $0.clearKeyframes(for: property) }
-        undoManager?.setActionName("Clear Animation")
+        commitClipProperty(clipId: clipId, actionName: "Clear Animation") { $0.clearKeyframes(for: property) }
     }
 
     func setInterpolation(clipId: String, property: AnimatableProperty, frame: Int, interpolation: Interpolation) {
-        commitClipProperty(clipId: clipId) { $0.setInterpolation(for: property, atFrame: frame, interpolation) }
-        undoManager?.setActionName("Change Interpolation")
+        commitClipProperty(clipId: clipId, actionName: "Change Interpolation") { $0.setInterpolation(for: property, atFrame: frame, interpolation) }
     }
 
     // MARK: - Drag-to-move keyframe
@@ -76,8 +72,7 @@ extension EditorViewModel {
 
     /// Closes the drag started by `applyMoveKeyframe` calls.
     func commitMoveKeyframe(clipId: String) {
-        commitClipProperty(clipId: clipId) { _ in /* applies already moved the kf */ }
-        undoManager?.setActionName("Move Keyframe")
+        commitClipProperty(clipId: clipId, actionName: "Move Keyframe") { _ in /* applies already moved the kf */ }
     }
 
     // MARK: - Animation-aware property writes
@@ -87,8 +82,7 @@ extension EditorViewModel {
     }
 
     func commitOpacity(clipId: String, value: Double) {
-        commitClipProperty(clipId: clipId) { self.writeOpacity(into: &$0, value: value) }
-        undoManager?.setActionName("Change Opacity")
+        commitClipProperty(clipId: clipId, actionName: "Change Opacity") { self.writeOpacity(into: &$0, value: value) }
     }
 
     private func writeOpacity(into clip: inout Clip, value: Double) {
@@ -105,8 +99,7 @@ extension EditorViewModel {
     }
 
     func commitRotation(clipId: String, valueDeg: Double) {
-        commitClipProperty(clipId: clipId) { self.writeRotation(into: &$0, valueDeg: valueDeg) }
-        undoManager?.setActionName("Change Rotation")
+        commitClipProperty(clipId: clipId, actionName: "Change Rotation") { self.writeRotation(into: &$0, valueDeg: valueDeg) }
     }
 
     private func writeRotation(into clip: inout Clip, valueDeg: Double) {
@@ -122,8 +115,7 @@ extension EditorViewModel {
     }
 
     func commitVolume(clipId: String, valueDb: Double) {
-        commitClipProperty(clipId: clipId) { self.writeVolume(into: &$0, valueDb: valueDb) }
-        undoManager?.setActionName("Change Volume")
+        commitClipProperty(clipId: clipId, actionName: "Change Volume") { self.writeVolume(into: &$0, valueDb: valueDb) }
     }
 
     private func writeVolume(into clip: inout Clip, valueDb: Double) {
@@ -141,13 +133,15 @@ extension EditorViewModel {
     }
 
     func commitFade(clipId: String, edge: FadeEdge, frames: Int) {
-        commitClipProperty(clipId: clipId) { $0.setFade(edge, frames: frames) }
-        undoManager?.setActionName(edge == .left ? "Change Fade In" : "Change Fade Out")
+        commitClipProperty(clipId: clipId, actionName: edge == .left ? "Change Fade In" : "Change Fade Out") {
+            $0.setFade(edge, frames: frames)
+        }
     }
 
     func setFadeInterpolation(clipId: String, edge: FadeEdge, interpolation: Interpolation) {
-        commitClipProperty(clipId: clipId) { $0.setFadeInterpolation(edge, interpolation) }
-        undoManager?.setActionName("Change Fade Interpolation")
+        commitClipProperty(clipId: clipId, actionName: "Change Fade Interpolation") {
+            $0.setFadeInterpolation(edge, interpolation)
+        }
     }
 
     func applyPosition(clipId: String, setX: Double?, setY: Double?) {
@@ -159,13 +153,15 @@ extension EditorViewModel {
     }
 
     func commitPosition(clipId: String, setX: Double?, setY: Double?) {
-        commitClipProperty(clipId: clipId) { self.writePosition(into: &$0, setX: setX, setY: setY) }
-        undoManager?.setActionName("Change Position")
+        commitClipProperty(clipId: clipId, actionName: "Change Position") {
+            self.writePosition(into: &$0, setX: setX, setY: setY)
+        }
     }
 
     func commitPositions(clipIds: [String], setX: Double?, setY: Double?) {
-        commitClipProperties(clipIds: clipIds) { self.writePosition(into: &$0, setX: setX, setY: setY) }
-        undoManager?.setActionName("Change Position")
+        commitClipProperties(clipIds: clipIds, actionName: "Change Position") {
+            self.writePosition(into: &$0, setX: setX, setY: setY)
+        }
     }
 
     private func writePosition(into clip: inout Clip, setX: Double?, setY: Double?) {
@@ -187,8 +183,9 @@ extension EditorViewModel {
     }
 
     func commitScale(clipId: String, newScale: Double) {
-        commitClipProperty(clipId: clipId) { self.writeScale(into: &$0, newScale: newScale) }
-        undoManager?.setActionName("Change Scale")
+        commitClipProperty(clipId: clipId, actionName: "Change Scale") {
+            self.writeScale(into: &$0, newScale: newScale)
+        }
     }
 
     private func writeScale(into clip: inout Clip, newScale: Double) {
@@ -208,8 +205,9 @@ extension EditorViewModel {
     }
 
     func commitTransform(clipId: String, newTransform: Transform, actionName: String = "Change Transform") {
-        commitClipProperty(clipId: clipId) { self.writeTransform(into: &$0, newTransform: newTransform) }
-        undoManager?.setActionName(actionName)
+        commitClipProperty(clipId: clipId, actionName: actionName) {
+            self.writeTransform(into: &$0, newTransform: newTransform)
+        }
     }
 
     private func writeTransform(into clip: inout Clip, newTransform: Transform) {
@@ -239,8 +237,9 @@ extension EditorViewModel {
     }
 
     func commitCrop(clipId: String, newCrop: Crop) {
-        commitClipProperty(clipId: clipId) { self.writeCrop(into: &$0, newCrop: newCrop) }
-        undoManager?.setActionName("Change Crop")
+        commitClipProperty(clipId: clipId, actionName: "Change Crop") {
+            self.writeCrop(into: &$0, newCrop: newCrop)
+        }
     }
 
     private func writeCrop(into clip: inout Clip, newCrop: Crop) {
@@ -268,7 +267,6 @@ extension EditorViewModel {
     }
 
     func commitMoveVolumeKeyframe(clipId: String) {
-        commitClipProperty(clipId: clipId) { _ in /* applied during drag */ }
-        undoManager?.setActionName("Move Keyframe")
+        commitClipProperty(clipId: clipId, actionName: "Move Keyframe") { _ in /* applied during drag */ }
     }
 }

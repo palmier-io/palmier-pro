@@ -144,7 +144,7 @@ extension ToolExecutor {
         let snapshot = timelineSnapshot(editor)
         let activeBefore = editor.activeTimelineId
 
-        try withUndoGroup(editor, actionName: "Organize Media") {
+        try editor.undo.perform("Organize Media") {
             for path in createPaths {
                 createdFolders += try resolveOrCreateFolder(path: path, editor: editor).created
             }

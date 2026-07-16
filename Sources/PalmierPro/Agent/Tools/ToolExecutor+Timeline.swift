@@ -74,7 +74,7 @@ extension ToolExecutor {
             guard let source = editor.timeline(for: fromRef) else {
                 throw ToolError("No timeline with id '\(fromRef)'. get_media lists the project's timelines.")
             }
-            id = try withUndoGroup(editor, actionName: "Duplicate Timeline (Agent)") {
+            id = try editor.undo.perform("Duplicate Timeline (Agent)") {
                 guard let newId = editor.duplicateTimeline(fromRef) else {
                     throw ToolError("Couldn't duplicate \"\(source.name)\".")
                 }
@@ -83,7 +83,7 @@ extension ToolExecutor {
             }
             note = "Duplicated \"\(source.name)\" and switched to the copy. Its clip and track ids are new — re-read get_timeline before editing."
         } else {
-            id = try withUndoGroup(editor, actionName: "Create Timeline (Agent)") {
+            id = editor.undo.perform("Create Timeline (Agent)") {
                 editor.createTimeline(name: args.string("name"))
             }
             note = "Empty and now active; all edit tools target it."

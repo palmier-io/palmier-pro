@@ -279,7 +279,6 @@ extension EditorViewModel {
             throw ToolError("No synced camera has picture — nothing to place.")
         }
 
-        var clipIds: [String] = []
         let groupOrigin = at - videoStart
 
         func memberClip(_ member: MulticamSource.Member, groupRange: Range<Int>, mediaType: ClipType) -> Clip? {
@@ -306,30 +305,33 @@ extension EditorViewModel {
         }
         programSpans.sort { $0.range.lowerBound < $1.range.lowerBound }
 
-        withTimelineSwap(actionName: "Create Multicam") {
-            let videoIdx = insertTrack(at: 0, type: .video)
-            for span in programSpans {
-                guard let clip = memberClip(span.member, groupRange: span.range, mediaType: .video) else { continue }
-                timeline.tracks[videoIdx].clips.append(clip)
-                clipIds.append(clip.id)
-            }
+        return try undo.perform("Create Multicam") {
+            var clipIds: [String] = []
+            withTimelineSwap(actionName: "Create Multicam") {
+                let videoIdx = insertTrack(at: 0, type: .video)
+                for span in programSpans {
+                    guard let clip = memberClip(span.member, groupRange: span.range, mediaType: .video) else { continue }
+                    timeline.tracks[videoIdx].clips.append(clip)
+                    clipIds.append(clip.id)
+                }
 
-            var audioInsert = timeline.tracks.count
-            for mic in group.mics {
-                guard let duration = durations[mic.mediaRef],
-                      let clip = memberClip(mic, groupRange: mic.coverage(sourceDuration: duration, fps: fps), mediaType: .audio)
-                else { continue }
-                let idx = insertTrack(at: audioInsert, type: .audio)
-                timeline.tracks[idx].clips.append(clip)
-                clipIds.append(clip.id)
-                audioInsert = idx + 1
+                var audioInsert = timeline.tracks.count
+                for mic in group.mics {
+                    guard let duration = durations[mic.mediaRef],
+                          let clip = memberClip(mic, groupRange: mic.coverage(sourceDuration: duration, fps: fps), mediaType: .audio)
+                    else { continue }
+                    let idx = insertTrack(at: audioInsert, type: .audio)
+                    timeline.tracks[idx].clips.append(clip)
+                    clipIds.append(clip.id)
+                    audioInsert = idx + 1
+                }
             }
+            guard !clipIds.isEmpty else {
+                throw ToolError("Could not place the multicam on the timeline.")
+            }
+            insertMulticamGroup(group, actionName: "Create Multicam")
+            return (group.id, clipIds)
         }
-        guard !clipIds.isEmpty else {
-            throw ToolError("Could not place the multicam on the timeline.")
-        }
-        insertMulticamGroup(group, actionName: "Create Multicam")
-        return (group.id, clipIds)
     }
 
     private func makeMemberClip(
@@ -377,19 +379,17 @@ extension EditorViewModel {
 
     private func insertMulticamGroup(_ group: MulticamSource, actionName: String) {
         multicamGroups.append(group)
-        undoManager?.registerUndo(withTarget: self) { vm in
+        undo.register(actionName, withTarget: self) { vm in
             vm.removeMulticamGroupMetadata(id: group.id, actionName: actionName)
         }
-        undoManager?.setActionName(actionName)
     }
 
     private func removeMulticamGroupMetadata(id: String, actionName: String) {
         guard let group = multicamGroup(id: id) else { return }
         multicamGroups.removeAll { $0.id == id }
-        undoManager?.registerUndo(withTarget: self) { vm in
+        undo.register(actionName, withTarget: self) { vm in
             vm.insertMulticamGroup(group, actionName: actionName)
         }
-        undoManager?.setActionName(actionName)
     }
 
     func referencedMulticamGroupIds() -> Set<String> {
@@ -411,19 +411,21 @@ extension EditorViewModel {
 
     func ungroupMulticam(groupId: String) {
         guard multicamGroup(id: groupId) != nil else { return }
-        withTimelineSwap(actionName: "Ungroup Multicam") {
-            for ti in timeline.tracks.indices {
-                for ci in timeline.tracks[ti].clips.indices
-                where timeline.tracks[ti].clips[ci].multicamGroupId == groupId {
-                    timeline.tracks[ti].clips[ci].multicamGroupId = nil
+        undo.perform("Ungroup Multicam") {
+            withTimelineSwap(actionName: "Ungroup Multicam") {
+                for ti in timeline.tracks.indices {
+                    for ci in timeline.tracks[ti].clips.indices
+                    where timeline.tracks[ti].clips[ci].multicamGroupId == groupId {
+                        timeline.tracks[ti].clips[ci].multicamGroupId = nil
+                    }
                 }
             }
-        }
-        let stillReferenced = timelines.contains { t in
-            t.tracks.contains { $0.clips.contains { $0.multicamGroupId == groupId } }
-        }
-        if !stillReferenced {
-            removeMulticamGroupMetadata(id: groupId, actionName: "Ungroup Multicam")
+            let stillReferenced = timelines.contains { t in
+                t.tracks.contains { $0.clips.contains { $0.multicamGroupId == groupId } }
+            }
+            if !stillReferenced {
+                removeMulticamGroupMetadata(id: groupId, actionName: "Ungroup Multicam")
+            }
         }
     }
 

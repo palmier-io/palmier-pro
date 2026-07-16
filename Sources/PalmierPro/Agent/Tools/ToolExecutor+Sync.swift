@@ -34,7 +34,7 @@ extension ToolExecutor {
             searchWindowSeconds: searchWindow,
             minConfidence: args.double("minConfidence") ?? EditorViewModel.SyncDefaults.minConfidence,
             applying: { mutation in
-                try await self.withUndoBoundary(editor, actionName: "Synchronize Clips (Agent)", mutation)
+                editor.undo.perform("Synchronize Clips (Agent)", mutation)
             }
         )
         guard !report.synced.isEmpty else {

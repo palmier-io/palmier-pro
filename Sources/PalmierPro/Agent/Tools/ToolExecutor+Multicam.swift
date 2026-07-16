@@ -41,7 +41,7 @@ extension ToolExecutor {
             searchWindowSeconds: args.double("searchWindowSeconds") ?? EditorViewModel.SyncDefaults.memberSearchWindowSeconds
         )
 
-        let (groupId, clipIds) = try await withUndoBoundary(editor, actionName: "Create Multicam (Agent)") {
+        let (groupId, clipIds) = try editor.undo.perform("Create Multicam (Agent)") {
             try editor.createMulticamGroup(
                 specs: specs, syncMaps: sync.maps, masterRef: masterRef,
                 name: args.string("name"), startFrame: args.int("startFrame")
@@ -64,7 +64,7 @@ extension ToolExecutor {
     private func ungroupSection(_ editor: EditorViewModel, _ args: [String: Any]) throws -> String {
         try validateUnknownKeys(args, allowed: ["groupId"], path: "manage_multicam.ungroup")
         let groupId = try requireGroup(editor, args.string("groupId"))
-        try withUndoGroup(editor, actionName: "Ungroup Multicam (Agent)") {
+        editor.undo.perform("Ungroup Multicam (Agent)") {
             editor.ungroupMulticam(groupId: groupId)
         }
         return groupId
@@ -104,7 +104,7 @@ extension ToolExecutor {
         }
 
         let snapshot = timelineSnapshot(editor)
-        let outcome = try withUndoGroup(editor, actionName: "Switch Angle (Agent)") {
+        let outcome = try editor.undo.perform("Switch Angle (Agent)") {
             try editor.switchMulticamAngles(groupId: groupId, requests: requests)
         }
 

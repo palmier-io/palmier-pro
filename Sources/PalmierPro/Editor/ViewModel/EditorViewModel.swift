@@ -291,7 +291,7 @@ final class EditorViewModel {
 
     // MARK: - Document bridge
 
-    weak var undoManager: UndoManager?
+    @ObservationIgnored let undo = EditorUndo()
     @ObservationIgnored var onProjectCheckpointRequired: (() -> Void)?
     var isDocumentEdited: Bool = false
 
@@ -425,7 +425,7 @@ final class EditorViewModel {
     var pendingRebuildTask: Task<Void, Never>?
 
     func notifyTimelineChanged(refreshVisuals: Bool = true) {
-        guard undoManager?.isUndoRegistrationEnabled ?? true else { return }
+        guard undo.isRegistrationEnabled else { return }
         enhancePendingDenoises()
         pendingRebuildTask?.cancel()
         pendingRebuildTask = nil

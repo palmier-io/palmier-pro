@@ -424,7 +424,7 @@ extension ToolExecutor {
 
         let snapshot = timelineSnapshot(editor)
         let actionName = partials.count == 1 ? "Add Text (Agent)" : "Add Texts (Agent)"
-        try withUndoGroup(editor, actionName: actionName) {
+        try editor.undo.perform(actionName) {
             var createdTrackId: String? = nil
             let resolvedTrackId: String?
             if omittedCount == partials.count {
@@ -457,7 +457,7 @@ extension ToolExecutor {
                 throw ToolError("Failed to place any text clips")
             }
 
-            editor.registerTimelineUndo { vm in
+            editor.registerTimelineUndo(actionName) { vm in
                 vm.removeClips(ids: Set(ids))
             }
         }
@@ -523,7 +523,7 @@ extension ToolExecutor {
         let shouldFitToContent = transform == nil && (hasContent || textStylePatch?.affectsLayout == true)
         let canvasW = Double(editor.timeline.width)
         let canvasH = Double(editor.timeline.height)
-        try withUndoGroup(editor, actionName: actionName) {
+        editor.undo.perform(actionName) {
             editor.commitClipProperties(clipIds: clipIds) { clip in
                 if let content {
                     if clip.textContent != content {

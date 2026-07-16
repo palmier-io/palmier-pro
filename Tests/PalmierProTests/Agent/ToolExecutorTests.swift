@@ -100,6 +100,27 @@ struct ToolExecutorSmokeTests {
 @Suite("ToolExecutor — import_media")
 @MainActor
 struct ToolExecutorImportMediaTests {
+    @Test func directoryImportAfterUserEditDoesNotBlock() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp-import-directory-after-edit-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data("fake-video".utf8).write(to: root.appendingPathComponent("reference.mov"))
+
+        let h = ToolHarness()
+        let undoManager = UndoManager()
+        h.editor.undo.attach(undoManager)
+        _ = h.editor.createFolder(name: "User Folder")
+
+        #expect(!(await h.runRaw("get_timeline")).isError)
+        #expect(!(await h.runRaw("get_media")).isError)
+        let result = await h.runRaw("import_media", args: ["source": ["path": root.path]])
+
+        #expect(!result.isError, "\(ToolHarness.textOf(result))")
+        #expect(undoManager.groupingLevel == 0)
+        #expect(h.editor.mediaAssets.count == 1)
+    }
+
     @Test func importBytesWritesFileAndRegistersAsset() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("pp-import-media-\(UUID().uuidString)", isDirectory: true)

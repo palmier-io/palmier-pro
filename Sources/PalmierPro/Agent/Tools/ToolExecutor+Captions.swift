@@ -55,7 +55,7 @@ extension ToolExecutor {
 
         let snapshot = timelineSnapshot(editor)
         let ids = try await editor.generateCaptions(for: request, applying: { mutation in
-            try await self.withUndoBoundary(editor, actionName: "Generate Captions (Agent)", mutation)
+            editor.undo.perform("Generate Captions (Agent)", mutation)
         })
         guard !ids.isEmpty else { throw ToolError("No speech detected to caption.") }
         return mutationResult(editor, since: snapshot)

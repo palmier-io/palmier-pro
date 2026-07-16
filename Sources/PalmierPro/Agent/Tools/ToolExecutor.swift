@@ -48,7 +48,6 @@ final class ToolExecutor {
         boundProject = project
     }
 
-    private let undoSessionID = UUID().uuidString
     var feedbackState = FeedbackState()
     var lastTranscriptContext: TranscriptionToolContext?
 
@@ -97,10 +96,6 @@ final class ToolExecutor {
                 failureReason: "editor_unavailable"
             )
             return .error("Editor not available")
-        }
-        if Self.isMutating(tool), let undoManager = editor.undoManager,
-           await !undoManager.awaitTopLevelUndoBoundary() {
-            return .error("An editor action is in progress. Try again.")
         }
         let before = editor.timelines
         let idsBefore = currentIdUniverse(editor)
@@ -167,18 +162,6 @@ final class ToolExecutor {
         let sessionName = session?.displayName ?? boundProject?.displayName ?? "no project"
         let frontmostName = frontmost?.displayName ?? "no project"
         return "This session is on '\(sessionName)', but '\(frontmostName)' is active in Palmier Pro. Activate '\(sessionName)' or call manage_project with action='open' before making changes."
-    }
-
-    private static func isMutating(_ tool: ToolName) -> Bool {
-        switch tool {
-        case .manageProject, .getTimeline, .inspectTimeline, .setActiveTimeline,
-             .exportProject, .manageExports, .getMedia, .inspectMedia, .searchMedia,
-             .getMulticam, .getTranscript, .detectBeats, .inspectColor, .listModels,
-             .sendFeedback, .readSkill:
-            false
-        default:
-            true
-        }
     }
 
     private static func canReadInactiveProject(_ tool: ToolName) -> Bool {
@@ -285,16 +268,10 @@ final class ToolExecutor {
         return .ok(body)
     }
 
-    /// Reverts the assistant's most recent timeline edit. Refuses to undo the user's own edits.
     func undo(_ editor: EditorViewModel) throws -> ToolResult {
-        guard let undoManager = editor.undoManager, undoManager.canUndo else {
+        guard let actionName = editor.undo.undoLatest() else {
             throw ToolError("Nothing to undo.")
         }
-        guard undoManager.topAgentSessionID == undoSessionID else {
-            throw ToolError("The most recent change ('\(undoManager.undoActionName)') wasn't made by this assistant session — not undoing it.")
-        }
-        let actionName = undoManager.undoActionName
-        undoManager.undo()
         return .ok("Undid: \(actionName). The timeline is restored to its state before that edit; re-read with get_timeline or get_transcript before editing again.")
     }
 
@@ -334,19 +311,6 @@ final class ToolExecutor {
         return String(data: data, encoding: .utf8)
     }
 
-    func withUndoGroup<T>(_ editor: EditorViewModel, actionName: String, _ work: () throws -> T) throws -> T {
-        guard let undoManager = editor.undoManager else { return try work() }
-        return try undoManager.withTopLevelGroup(actionName: actionName, sessionID: undoSessionID, work)
-    }
-
-    /// Ensures undo boundary is closed before mutating after async work.
-    func withUndoBoundary<T>(_ editor: EditorViewModel, actionName: String, _ work: () throws -> T) async throws -> T {
-        guard let undoManager = editor.undoManager else { return try work() }
-        guard await undoManager.awaitTopLevelUndoBoundary() else {
-            throw ToolError("An editor action is in progress. Try again.")
-        }
-        return try undoManager.withTopLevelGroup(actionName: actionName, sessionID: undoSessionID, work)
-    }
 }
 
 private extension Duration {

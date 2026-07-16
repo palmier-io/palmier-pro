@@ -23,12 +23,11 @@ extension EditorViewModel {
     func trimClips(_ edits: [(clipId: String, trimStartFrame: Int, trimEndFrame: Int)]) {
         guard !edits.isEmpty else { return }
         let batchIds = Set(edits.map(\.clipId))
-        undoManager?.beginUndoGrouping()
-        for e in edits {
-            trimClipInternal(clipId: e.clipId, trimStartFrame: e.trimStartFrame, trimEndFrame: e.trimEndFrame, protecting: batchIds)
+        undo.perform(edits.count == 1 ? "Trim Clip" : "Trim Clips") {
+            for e in edits {
+                trimClipInternal(clipId: e.clipId, trimStartFrame: e.trimStartFrame, trimEndFrame: e.trimEndFrame, protecting: batchIds)
+            }
         }
-        undoManager?.endUndoGrouping()
-        undoManager?.setActionName(edits.count == 1 ? "Trim Clip" : "Trim Clips")
     }
 
     /// Ripple trim result: resized clips, shifted clips, and optional obstacle frame if clamped.
@@ -497,36 +496,31 @@ extension EditorViewModel {
         let newDuration = prevDuration - deltaStartTimeline - deltaEndTimeline
         let newStartFrame = clip.startFrame + deltaStartTimeline
 
-        undoManager?.beginUndoGrouping()
+        undo.perform("Trim Clip") {
+            let prevStartFrame = clip.startFrame
+            let prevEndFrame = clip.endFrame
+            let newEndFrame = newStartFrame + newDuration
+            let protected = protecting.union([clipId])
+            if newStartFrame < prevStartFrame {
+                clearRegion(trackIndex: ti, start: newStartFrame, end: prevStartFrame, prune: false, excluding: protected)
+            }
+            if newEndFrame > prevEndFrame {
+                clearRegion(trackIndex: ti, start: prevEndFrame, end: newEndFrame, prune: false, excluding: protected)
+            }
 
-        let prevStartFrame = clip.startFrame
-        let prevEndFrame = clip.endFrame
-        let newEndFrame = newStartFrame + newDuration
-        let protected = protecting.union([clipId])
-        if newStartFrame < prevStartFrame {
-            clearRegion(trackIndex: ti, start: newStartFrame, end: prevStartFrame, prune: false, excluding: protected)
-        }
-        if newEndFrame > prevEndFrame {
-            clearRegion(trackIndex: ti, start: prevEndFrame, end: newEndFrame, prune: false, excluding: protected)
-        }
+            guard let loc = findClip(id: clipId) else { return }
+            timeline.tracks[loc.trackIndex].clips[loc.clipIndex].trimStartFrame = trimStartFrame
+            timeline.tracks[loc.trackIndex].clips[loc.clipIndex].trimEndFrame = trimEndFrame
+            timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame = newStartFrame
+            timeline.tracks[loc.trackIndex].clips[loc.clipIndex].setDuration(newDuration)
 
-        guard let loc = findClip(id: clipId) else {
-            undoManager?.endUndoGrouping()
-            return
-        }
-        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].trimStartFrame = trimStartFrame
-        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].trimEndFrame = trimEndFrame
-        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame = newStartFrame
-        timeline.tracks[loc.trackIndex].clips[loc.clipIndex].setDuration(newDuration)
+            sortClips(trackIndex: loc.trackIndex)
 
-        sortClips(trackIndex: loc.trackIndex)
-
-        registerTimelineUndo { vm in
-            vm.trimClipInternal(clipId: clipId, trimStartFrame: prevStart, trimEndFrame: prevEnd, protecting: protecting)
+            registerTimelineUndo("Trim Clip") { vm in
+                vm.trimClipInternal(clipId: clipId, trimStartFrame: prevStart, trimEndFrame: prevEnd, protecting: protecting)
+            }
+            notifyTimelineChanged()
         }
-        undoManager?.endUndoGrouping()
-        undoManager?.setActionName("Trim Clip")
-        notifyTimelineChanged()
     }
 
     // MARK: - Validation

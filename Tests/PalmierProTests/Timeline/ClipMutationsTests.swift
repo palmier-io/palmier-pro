@@ -191,6 +191,20 @@ struct SplitClipTests {
 @MainActor
 struct ApplyTimelineSettingsTests {
 
+    @Test func undoRestoresExactFramesAfterFpsRounding() {
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 1_000)
+        clip.trimEndFrame = 897
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+        let undo = UndoManager()
+        e.undo.attach(undo)
+        let before = e.timeline
+
+        e.applyTimelineSettings(fps: 24, width: 1280, height: 720)
+        undo.undo()
+
+        #expect(e.timeline == before)
+    }
+
     @Test func rescalesOpacityFadesByFpsRatio() {
         var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
         clip.fadeInFrames = 30
@@ -402,7 +416,7 @@ struct ClipPropertyCommitTests {
         let clip = Fixtures.clip(id: "clip", start: 0, duration: 30)
         let e = editor([Fixtures.videoTrack(clips: [clip])])
         let undoManager = UndoManager()
-        e.undoManager = undoManager
+        e.undo.attach(undoManager)
 
         e.toggleChromaKeySampling(clipId: clip.id)
         e.commitChromaKeySample(hue: 1.0 / 3.0, clipId: clip.id)
@@ -421,7 +435,7 @@ struct ClipPropertyCommitTests {
         b.textContent = "two"
         let e = editor([Fixtures.videoTrack(clips: [a, b])])
         let undoManager = UndoManager()
-        e.undoManager = undoManager
+        e.undo.attach(undoManager)
 
         e.commitClipProperties(clipIds: ["a", "b"]) {
             $0.textAnimation = TextAnimation(preset: .wordPop)

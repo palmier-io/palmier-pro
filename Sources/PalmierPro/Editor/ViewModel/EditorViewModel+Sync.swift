@@ -248,10 +248,7 @@ extension EditorViewModel {
             if let mutation {
                 try await mutation { self.moveClips(moves) }
             } else {
-                undoManager?.beginUndoGrouping()
-                moveClips(moves)
-                undoManager?.endUndoGrouping()
-                undoManager?.setActionName("Synchronize")
+                undo.perform("Synchronize") { moveClips(moves) }
             }
         }
         return report

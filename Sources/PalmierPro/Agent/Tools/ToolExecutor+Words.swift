@@ -102,7 +102,7 @@ extension ToolExecutor {
         let primaryRanges = rangesByTrack[primaryTrack]!
 
         let snapshot = timelineSnapshot(editor)
-        let outcome = try await withUndoBoundary(editor, actionName: "Remove Words (Agent)") {
+        let outcome = editor.undo.perform("Remove Words (Agent)") {
             editor.rippleDeleteRangesOnTrack(trackIndex: primaryTrack, ranges: primaryRanges)
         }
         guard case .ok(let report) = outcome else {
@@ -127,7 +127,7 @@ extension ToolExecutor {
     func removeSilence(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         try validateUnknownKeys(args, allowed: [], path: "remove_silence")
         let snapshot = timelineSnapshot(editor)
-        let result = try withUndoGroup(editor, actionName: "Remove Silence (Agent)") {
+        let result = editor.undo.perform("Remove Silence (Agent)") {
             editor.removeAllDeadAir()
         }
         guard let result else {
