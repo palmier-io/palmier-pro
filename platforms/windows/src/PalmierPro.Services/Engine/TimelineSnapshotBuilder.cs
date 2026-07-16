@@ -1,6 +1,7 @@
 using System.Text.Json;
 using PalmierPro.Core.Json;
 using PalmierPro.Core.Models;
+using PalmierPro.Services.Media;
 
 namespace PalmierPro.Services.Engine;
 
@@ -103,7 +104,11 @@ public sealed class SnapshotTextClip
     public List<SnapshotEffect> Effects { get; init; } = [];
 }
 
-public sealed record TimelineSnapshotBuildResult(TimelineSnapshot Snapshot, IReadOnlySet<string> OfflineMediaRefs);
+/// `PendingLottieBakes` (docs/lottie-bake-v1.md §10, additive over v1.2) — Lottie clip MediaRefs
+/// skipped this build because their bake hasn't completed yet (in flight, or just kicked off).
+/// Deliberately separate from <see cref="OfflineMediaRefs"/>: a pending bake is a known, tracked
+/// gap, never a missing/corrupt-file error.
+public sealed record TimelineSnapshotBuildResult(TimelineSnapshot Snapshot, IReadOnlySet<string> OfflineMediaRefs, IReadOnlySet<string> PendingLottieBakes);
 
 // ===== Builder =====
 
@@ -121,7 +126,11 @@ public static class TimelineSnapshotBuilder
     /// `minorVersion` as "no keyframes/effects/text" and never rejects on this field.
     public const int SchemaMinorVersion = 2;
 
-    public static TimelineSnapshotBuildResult Build(ProjectFile project, string timelineId, MediaResolver mediaResolver)
+    /// `lottieBakeService` is optional (docs/lottie-bake-v1.md §10) — absent, every Lottie clip is
+    /// reported via <see cref="TimelineSnapshotBuildResult.PendingLottieBakes"/> without ever
+    /// attempting a bake (a caller not yet wired up to a real service, e.g. most existing tests,
+    /// gets the same "always pending" behavior the pre-E4.7 skip already had).
+    public static TimelineSnapshotBuildResult Build(ProjectFile project, string timelineId, MediaResolver mediaResolver, ILottieBakeService? lottieBakeService = null)
     {
         ArgumentNullException.ThrowIfNull(project);
         ArgumentNullException.ThrowIfNull(mediaResolver);
@@ -133,7 +142,7 @@ public static class TimelineSnapshotBuilder
         {
             timelinesById[t.Id] = t;
         }
-        var ctx = new BuildContext(mediaResolver, timelinesById);
+        var ctx = new BuildContext(mediaResolver, timelinesById, lottieBakeService, timeline.Width, timeline.Height);
 
         // §2: output tracks are appended in an order that already satisfies "index 0 paints
         // first/bottom, last index paints last/top" — the reverse of Timeline.Tracks' own
@@ -168,7 +177,7 @@ public static class TimelineSnapshotBuilder
             OutputHeight = timeline.Height,
             Tracks = tracks,
         };
-        return new TimelineSnapshotBuildResult(snapshot, ctx.OfflineMediaRefs);
+        return new TimelineSnapshotBuildResult(snapshot, ctx.OfflineMediaRefs, ctx.PendingLottieBakes);
     }
 
     /// Audio-lane-only as of v1.2 (§12) — EmitVideoLane now inlines its own Text/Lottie branch (see
@@ -182,11 +191,15 @@ public static class TimelineSnapshotBuilder
              .OrderBy(c => c.StartFrame)
              .ToList();
 
-    private sealed class BuildContext(MediaResolver mediaResolver, Dictionary<string, Timeline> timelinesById)
+    private sealed class BuildContext(MediaResolver mediaResolver, Dictionary<string, Timeline> timelinesById, ILottieBakeService? lottieBakeService, int outputWidth, int outputHeight)
     {
         public MediaResolver MediaResolver { get; } = mediaResolver;
         public Dictionary<string, Timeline> TimelinesById { get; } = timelinesById;
         public HashSet<string> OfflineMediaRefs { get; } = [];
+        public HashSet<string> PendingLottieBakes { get; } = [];
+        public ILottieBakeService? LottieBakeService { get; } = lottieBakeService;
+        public int OutputWidth { get; } = outputWidth;
+        public int OutputHeight { get; } = outputHeight;
     }
 
     // ----- Video -----
@@ -213,10 +226,6 @@ public static class TimelineSnapshotBuilder
                 }
                 continue;
             }
-            if (clip.MediaType == ClipType.Lottie)
-            {
-                continue; // v1/v1.1 gap, unchanged by v1.2 — see docs §6
-            }
             if (clip.DurationFrames <= 0 || clip.StartFrame < previousEndFrame)
             {
                 continue; // out-of-order/overlapping clip — matches CompositionBuilder's previousEndFrame guard
@@ -236,8 +245,14 @@ public static class TimelineSnapshotBuilder
             // previousEndFrame advances ONLY on a successfully-resolved clip — an offline/unprocessable
             // clip must not consume its span, matching CompositionBuilder.insertVideoLane (which advances
             // only inside `if insertClip(...)`). This differs from EmitAudioLane, which advances
-            // unconditionally — CompositionBuilder.insertAudioLane does the same asymmetrically.
-            if (TryResolveClip(clip, ctx, volumeScale: 1.0, out var snapshotClip))
+            // unconditionally — CompositionBuilder.insertAudioLane does the same asymmetrically. A
+            // pending (not-yet-baked) Lottie clip is "unresolved" in exactly this same sense — see
+            // TryResolveLottieClip (doc §10).
+            SnapshotClip snapshotClip;
+            bool resolved = clip.MediaType == ClipType.Lottie
+                ? TryResolveLottieClip(clip, ctx, out snapshotClip)
+                : TryResolveClip(clip, ctx, volumeScale: 1.0, out snapshotClip);
+            if (resolved)
             {
                 previousEndFrame = clip.EndFrame;
                 ownClips.Add(snapshotClip);
@@ -342,32 +357,89 @@ public static class TimelineSnapshotBuilder
             snapshotClip = null!;
             return false;
         }
-        snapshotClip = new SnapshotClip
-        {
-            Id = clip.Id,
-            Type = clip.MediaType,
-            StartFrame = clip.StartFrame,
-            DurationFrames = clip.DurationFrames,
-            TrimStartFrame = clip.TrimStartFrame,
-            Speed = clip.Speed,
-            MediaPath = mediaPath,
-            HasAlphaHint = AlphaHint.Compute(clip, mediaPath),
-            BlendMode = clip.BlendMode,
-            Opacity = clip.Opacity,
-            Transform = clip.Transform,
-            Crop = clip.Crop,
-            VolumeGain = clip.Volume * volumeScale,
-            FadeInFrames = clip.FadeInFrames,
-            FadeOutFrames = clip.FadeOutFrames,
-            FadeInInterpolation = clip.FadeInInterpolation,
-            FadeOutInterpolation = clip.FadeOutInterpolation,
-            OpacityKeyframes = BuildKeyframes(clip.OpacityTrack, kf => kf.Value),
-            CropKeyframes = BuildKeyframes(clip.CropTrack, kf => kf.Value),
-            TransformKeyframes = BuildTransformKeyframes(clip),
-            VolumeKeyframes = BuildKeyframes(clip.VolumeTrack, kf => kf.Value),
-            Effects = clip.Effects?.Select(ToSnapshotEffect).ToList() ?? [],
-        };
+        snapshotClip = BuildSnapshotClip(clip, mediaPath, volumeScale, clip.MediaType);
         return true;
+    }
+
+    /// Shared by <see cref="TryResolveClip"/> (ordinary video/audio/image clips, `type` = the clip's
+    /// own `MediaType`) and the Lottie branch below (a baked Lottie clip becomes an ordinary
+    /// `Type = Video` `SnapshotClip` pointing at the cached `.mov` — doc §10's "falls straight into
+    /// the same code path a real video clip already takes"). `mediaPath` is always the ALREADY
+    /// resolved/baked path, never re-derived from `clip.MediaRef` here.
+    private static SnapshotClip BuildSnapshotClip(Clip clip, string mediaPath, double volumeScale, ClipType type) => new()
+    {
+        Id = clip.Id,
+        Type = type,
+        StartFrame = clip.StartFrame,
+        DurationFrames = clip.DurationFrames,
+        TrimStartFrame = clip.TrimStartFrame,
+        Speed = clip.Speed,
+        MediaPath = mediaPath,
+        HasAlphaHint = AlphaHint.Compute(clip, mediaPath),
+        BlendMode = clip.BlendMode,
+        Opacity = clip.Opacity,
+        Transform = clip.Transform,
+        Crop = clip.Crop,
+        VolumeGain = clip.Volume * volumeScale,
+        FadeInFrames = clip.FadeInFrames,
+        FadeOutFrames = clip.FadeOutFrames,
+        FadeInInterpolation = clip.FadeInInterpolation,
+        FadeOutInterpolation = clip.FadeOutInterpolation,
+        OpacityKeyframes = BuildKeyframes(clip.OpacityTrack, kf => kf.Value),
+        CropKeyframes = BuildKeyframes(clip.CropTrack, kf => kf.Value),
+        TransformKeyframes = BuildTransformKeyframes(clip),
+        VolumeKeyframes = BuildKeyframes(clip.VolumeTrack, kf => kf.Value),
+        Effects = clip.Effects?.Select(ToSnapshotEffect).ToList() ?? [],
+    };
+
+    // ----- Lottie (docs/lottie-bake-v1.md §10) -----
+
+    /// Cached -> an ordinary `Type = Video` `SnapshotClip` (zero Lottie-specific code left
+    /// downstream of this point). Not cached -> kicks off (or no-ops onto an already in-flight)
+    /// bake and reports the ref in `ctx.PendingLottieBakes` instead of `OfflineMediaRefs` — a
+    /// pending bake is a known, tracked gap, never a missing/corrupt-file error (doc §10; mirrors
+    /// docs/timeline-snapshot-v1.md §6's identical "never OfflineMediaRefs" rule for a skipped
+    /// Lottie clip pre-dating this document). `lottieBakeService` absent (no caller wired one up
+    /// yet) degrades to "always pending" — the same observable behavior as the v1/v1.1 gap this
+    /// replaces, just now correctly signaled via `PendingLottieBakes` instead of a silent skip.
+    private static bool TryResolveLottieClip(Clip clip, BuildContext ctx, out SnapshotClip snapshotClip)
+    {
+        snapshotClip = null!;
+        string? sourcePath = ctx.MediaResolver.ResolveUrl(clip.MediaRef);
+        if (sourcePath is null)
+        {
+            ctx.OfflineMediaRefs.Add(clip.MediaRef); // genuinely missing source file — existing semantics, unchanged
+            return false;
+        }
+        if (ctx.LottieBakeService is not { } bakeService)
+        {
+            ctx.PendingLottieBakes.Add(clip.MediaRef);
+            return false;
+        }
+
+        (int width, int height) = ResolveLottieBakeSize(clip.MediaRef, ctx);
+        var request = new LottieBakeRequest(clip.MediaRef, sourcePath, width, height);
+        if (bakeService.TryGetCachedPath(request) is { } cachedPath)
+        {
+            snapshotClip = BuildSnapshotClip(clip, cachedPath, volumeScale: 1.0, ClipType.Video);
+            return true;
+        }
+        bakeService.BakeAsync(request);
+        ctx.PendingLottieBakes.Add(clip.MediaRef);
+        return false;
+    }
+
+    /// doc §6: `MediaAsset.SourceWidth`/`SourceHeight` (via `MediaResolver.Entry`) when both are
+    /// populated and > 0, else the timeline's own output size — a direct port of
+    /// `resolveSourceSize(clip.mediaRef) ?? renderSize` (LottieVideoGenerator's Mac counterpart).
+    private static (int Width, int Height) ResolveLottieBakeSize(string mediaRef, BuildContext ctx)
+    {
+        MediaManifestEntry? entry = ctx.MediaResolver.Entry(mediaRef);
+        if (entry is { SourceWidth: > 0, SourceHeight: > 0 })
+        {
+            return (entry.SourceWidth.Value, entry.SourceHeight.Value);
+        }
+        return (ctx.OutputWidth, ctx.OutputHeight);
     }
 
     // clip.*Track keyframes are ALREADY clip-relative (Keyframe.swift's `toOffset` is applied at

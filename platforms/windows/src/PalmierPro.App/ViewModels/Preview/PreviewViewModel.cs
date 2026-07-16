@@ -3,6 +3,7 @@ using PalmierPro.Core;
 using PalmierPro.Core.Models;
 using PalmierPro.Rendering;
 using PalmierPro.Services.Engine;
+using PalmierPro.Services.Media;
 using PalmierPro.Services.Project;
 using Serilog;
 
@@ -35,6 +36,7 @@ public sealed class PreviewViewModel : IDisposable
     private readonly ProjectDocument _document;
     private readonly IVideoEngine _engine;
     private readonly MediaResolver _mediaResolver;
+    private readonly ILottieBakeService? _lottieBakeService;
     private readonly SemaphoreSlim _rebuildGate = new(1, 1);
     private readonly HashSet<string> _openedTimelineIds = [];
     private bool _disposed;
@@ -70,15 +72,23 @@ public sealed class PreviewViewModel : IDisposable
     /// <see cref="IVideoEngine.MediaStatusChanged"/>); PreviewView marshals it.
     public event EventHandler<MediaStatus>? MediaStatusChanged;
 
-    public PreviewViewModel(ProjectDocument document, TimelineEditorViewModel timeline, IVideoEngine engine)
+    /// `lottieBakeService` is optional — a caller (tests, DevHarness) that doesn't wire one up gets
+    /// the same "every Lottie clip stays pending forever" behavior `TimelineSnapshotBuilder.Build`
+    /// already falls back to when its own `lottieBakeService` parameter is omitted (doc §10).
+    public PreviewViewModel(ProjectDocument document, TimelineEditorViewModel timeline, IVideoEngine engine, ILottieBakeService? lottieBakeService = null)
     {
         _document = document;
         Timeline = timeline;
         _engine = engine;
+        _lottieBakeService = lottieBakeService;
         _mediaResolver = new MediaResolver(() => _document.Manifest, () => _document.PackagePath);
 
         _engine.MediaStatusChanged += OnEngineMediaStatusChanged;
         Timeline.StructuralChangeRequested += OnStructuralChangeRequested;
+        if (_lottieBakeService is not null)
+        {
+            _lottieBakeService.StatusChanged += OnLottieBakeStatusChanged;
+        }
 
         // Fire-and-forget, matching MediaTabViewModel's own ctor-time RefreshMissingMediaAsync —
         // failures land in the log, not as an unobservable exception; nothing here can synchronously
@@ -87,6 +97,22 @@ public sealed class PreviewViewModel : IDisposable
     }
 
     private void OnStructuralChangeRequested(object? sender, EventArgs e) => _ = RebuildAsync();
+
+    /// Rebuild-on-complete (docs/lottie-bake-v1.md §10's "whichever component owns the open
+    /// ProjectDocument/timeline VMs subscribes to StatusChanged" — this is that subscriber): a
+    /// newly-baked `mediaPath` is a new entry in the media set, a structural change, so a fresh
+    /// <see cref="RebuildAsync"/> (which always calls <see cref="IVideoEngine.UpdateTimelineAsync"/>,
+    /// never RefreshParams) is exactly the right response — no need to check whether the completed
+    /// bake's MediaRef is even referenced by the currently active timeline; an unrelated rebuild is
+    /// a harmless no-op cost, same as any other <see cref="OnStructuralChangeRequested"/> firing.
+    /// Ignores Failed — a failed bake leaves the clip pending/invisible rather than retrying.
+    private void OnLottieBakeStatusChanged(object? sender, LottieBakeStatusChangedEventArgs e)
+    {
+        if (e.Status == LottieBakeStatus.Completed)
+        {
+            _ = RebuildAsync();
+        }
+    }
 
     private void OnEngineMediaStatusChanged(object? sender, MediaStatus status) => MediaStatusChanged?.Invoke(this, status);
 
@@ -101,7 +127,7 @@ public sealed class PreviewViewModel : IDisposable
         try
         {
             var timelineId = Timeline.ActiveTimelineId;
-            var result = TimelineSnapshotBuilder.Build(_document.ProjectFile, timelineId, _mediaResolver);
+            var result = TimelineSnapshotBuilder.Build(_document.ProjectFile, timelineId, _mediaResolver, _lottieBakeService);
             // No ConfigureAwait(false): a WinUI window installs a DispatcherQueueSynchronizationContext
             // on its UI thread, so resuming on the captured context is what puts SetActiveTimeline
             // (below — a UI-thread-only call, see its remarks) back on the UI thread every caller of
@@ -201,6 +227,10 @@ public sealed class PreviewViewModel : IDisposable
         _disposed = true;
         Timeline.StructuralChangeRequested -= OnStructuralChangeRequested;
         _engine.MediaStatusChanged -= OnEngineMediaStatusChanged;
+        if (_lottieBakeService is not null)
+        {
+            _lottieBakeService.StatusChanged -= OnLottieBakeStatusChanged;
+        }
         if (Mode == PreviewMode.Source)
         {
             _engine.CloseAssetPreview();

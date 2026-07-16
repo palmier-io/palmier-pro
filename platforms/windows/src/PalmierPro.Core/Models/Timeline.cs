@@ -96,6 +96,36 @@ public sealed class Timeline
 
     public bool HasAudioClips => Tracks.Any(t => t.Type == ClipType.Audio && t.Clips.Count > 0);
 
+    /// Rescales every clip's frame-based fields by `scale` — ported from
+    /// EditorViewModel+ProjectSettings.swift's `Timeline.rescaleFrames(by:)`, used when the
+    /// project fps changes (frame counts are absolute, so every frame-denominated value has to
+    /// move to the new fps's frame grid). Clips are processed in pre-rescale start-frame order
+    /// and each new start is clamped against the previous clip's already-rescaled end, so
+    /// independent per-clip rounding can never introduce an overlap that didn't exist before.
+    public void RescaleFrames(double scale)
+    {
+        foreach (var track in Tracks)
+        {
+            var ordered = track.Clips.OrderBy(c => c.StartFrame).ToList();
+            int? previousEnd = null;
+            foreach (var clip in ordered)
+            {
+                var scaledStart = SwiftMath.RoundToInt(clip.StartFrame * scale);
+                var scaledEnd = SwiftMath.RoundToInt(clip.EndFrame * scale);
+                clip.StartFrame = Math.Max(scaledStart, previousEnd ?? scaledStart);
+                clip.DurationFrames = Math.Max(1, scaledEnd - clip.StartFrame);
+                clip.TrimStartFrame = SwiftMath.RoundToInt(clip.TrimStartFrame * scale);
+                clip.TrimEndFrame = SwiftMath.RoundToInt(clip.TrimEndFrame * scale);
+                clip.RescaleKeyframes(scale);
+                clip.FadeInFrames = SwiftMath.RoundToInt(clip.FadeInFrames * scale);
+                clip.FadeOutFrames = SwiftMath.RoundToInt(clip.FadeOutFrames * scale);
+                clip.ClampKeyframesToDuration();
+                clip.ClampFadesToDuration();
+                previousEnd = clip.EndFrame;
+            }
+        }
+    }
+
     /// Reachable nested timelines, breadth-first, deduped, excluding self and filtered by `include`.
     public List<Timeline> ReachableTimelines(Func<string, Timeline?> resolve, int maxDepth = int.MaxValue, Func<Timeline, bool>? include = null)
     {

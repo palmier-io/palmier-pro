@@ -1,0 +1,16 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.Inspector.Tabs.EffectsTabView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Effects tab (M5, Stage E): add-effect catalog flyout + per-clip reorderable effect stack
+         with generated param rows. Every child is built in code-behind off EffectsViewModel.Stack
+         (mirrors InspectorView.xaml.cs's own full-rebuild-on-change approach) — see that class and
+         EffectsViewModel's remarks for why a live param drag never touches this tree. -->
+    <ScrollViewer x:Name="RootScroll">
+        <StackPanel x:Name="RootStack"/>
+    </ScrollViewer>
+</UserControl>

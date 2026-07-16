@@ -1,0 +1,88 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.Inspector.InspectorView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Inspector shell (M5, Stage E) — ports Inspector/InspectorView.swift's tab structure,
+         selection-driven content switch, and empty state. Tab rail + active-tab content are built/
+         swapped in code-behind off InspectorViewModel (mirrors TimelineTabBarView's approach: the
+         tab set is small and changes on every selection edit, so a full rebuild is simplest and
+         correct on both platforms). Actual tab content views are never constructed here directly —
+         see InspectorTabRegistry. -->
+    <Grid x:Name="RootGrid" Background="{StaticResource AppBackgroundRaisedBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="TabRailHost" Grid.Row="0" Background="{StaticResource AppBackgroundRaisedBrush}">
+            <ScrollViewer VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled"
+                          HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Hidden">
+                <StackPanel x:Name="TabRail" Orientation="Horizontal" Spacing="{StaticResource AppSpacingMd}"/>
+            </ScrollViewer>
+            <Rectangle x:Name="TabRailDivider" VerticalAlignment="Bottom"
+                       Height="{StaticResource AppBorderWidthThin}"
+                       Fill="{StaticResource AppBorderPrimaryBrush}"/>
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <!-- Selection is a clip (single or multi) and its resolved tab is registered: hosts
+                 whatever InspectorTabRegistry.TryCreate returns for the active tab. -->
+            <ContentControl x:Name="ContentHost"
+                             HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                             IsTabStop="False"/>
+
+            <!-- No selection: read-only active-timeline metadata, ports `projectMetadataContent`. -->
+            <ScrollViewer x:Name="EmptyStateHost" Visibility="Collapsed">
+                <StackPanel x:Name="EmptyStatePanel" Spacing="{StaticResource AppSpacingXl}">
+                    <TextBlock Text="PROJECT" FontSize="{StaticResource AppFontSizeXxs}" FontWeight="SemiBold"
+                               Foreground="{StaticResource AppTextMutedBrush}"/>
+                    <StackPanel x:Name="ProjectSectionRows" Spacing="{StaticResource AppSpacingSm}">
+                        <Grid x:Name="NameRow" Height="{StaticResource AppIconSizeMd}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Name" FontSize="{StaticResource AppFontSizeXs}"
+                                       Foreground="{StaticResource AppTextTertiaryBrush}"/>
+                            <TextBlock x:Name="NameValueText" Grid.Column="1" HorizontalAlignment="Right"
+                                       FontSize="{StaticResource AppFontSizeXs}" Foreground="{StaticResource AppTextSecondaryBrush}"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </Grid>
+                        <Grid x:Name="PathRow" Height="{StaticResource AppIconSizeMd}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Path" FontSize="{StaticResource AppFontSizeXs}"
+                                       Foreground="{StaticResource AppTextTertiaryBrush}"/>
+                            <TextBlock x:Name="PathValueText" Grid.Column="1" HorizontalAlignment="Right"
+                                       FontSize="{StaticResource AppFontSizeXs}" Foreground="{StaticResource AppTextSecondaryBrush}"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </Grid>
+                        <Grid x:Name="DurationRow" Height="{StaticResource AppIconSizeMd}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Duration" FontSize="{StaticResource AppFontSizeXs}"
+                                       Foreground="{StaticResource AppTextTertiaryBrush}"/>
+                            <TextBlock x:Name="DurationValueText" Grid.Column="1" HorizontalAlignment="Right"
+                                       FontSize="{StaticResource AppFontSizeXs}" Foreground="{StaticResource AppTextSecondaryBrush}"/>
+                        </Grid>
+                    </StackPanel>
+
+                    <TextBlock Text="SETTINGS" FontSize="{StaticResource AppFontSizeXxs}" FontWeight="SemiBold"
+                               Foreground="{StaticResource AppTextMutedBrush}"/>
+                    <!-- Resolution/Frame Rate/Aspect Ratio rows are menu-backed (ports `menuMetadataRow` ->
+                         qualityMenuItems/fpsMenuItems/aspectMenuItems) — built in code-behind
+                         (RefreshEmptyState) since each needs a MenuFlyout, not a static value display. -->
+                    <StackPanel x:Name="SettingsSectionRows" Spacing="{StaticResource AppSpacingSm}"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</UserControl>

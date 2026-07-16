@@ -4,17 +4,18 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:inspector="using:PalmierPro.App.Views.Inspector"
     xmlns:mediaPanel="using:PalmierPro.App.Views.MediaPanel"
     xmlns:preview="using:PalmierPro.App.Views.Preview"
     xmlns:timeline="using:PalmierPro.App.Views.Timeline"
     mc:Ignorable="d">
 
-    <!-- Media panel + timeline + preview canvas are real (Stage B/C/D); inspector remains a themed
-         skeleton until its own stage (E). Preview has a Timeline/source-asset toggle,
-         source-asset scrub, and timeline transport (play/pause/step/skip — TransportBar, M4).
-         RootGrid's own KeyDown is the Space/arrow-key transport-shortcut home (see KeyRouter.
-         HandleTransportKey) — it only ever sees a key TimelineCanvasControl/MediaGridView didn't
-         already mark Handled themselves, since routed KeyDown bubbles stop there. -->
+    <!-- Media panel + timeline + preview canvas + inspector are real (Stage B/C/D/E). Preview has
+         a Timeline/source-asset toggle, source-asset scrub, and timeline transport (play/pause/
+         step/skip — TransportBar, M4). RootGrid's own KeyDown is the Space/arrow-key transport-
+         shortcut home (see KeyRouter.HandleTransportKey) — it only ever sees a key
+         TimelineCanvasControl/MediaGridView didn't already mark Handled themselves, since routed
+         KeyDown bubbles stop there. -->
     <Grid x:Name="RootGrid" Background="{StaticResource AppBackgroundBaseBrush}"
           RowSpacing="{StaticResource AppSpacingSm}" KeyDown="RootGrid_KeyDown">
         <Grid.RowDefinitions>
@@ -41,7 +42,9 @@
                     <preview:TransportBar x:Name="TransportBarHost" Grid.Row="1"/>
                 </Grid>
             </Border>
-            <Border x:Name="InspectorPanel" Grid.Column="2" Background="{StaticResource AppBackgroundRaisedBrush}"/>
+            <Border x:Name="InspectorPanel" Grid.Column="2">
+                <inspector:InspectorView x:Name="InspectorHost"/>
+            </Border>
         </Grid>
 
         <Border x:Name="TimelinePanel" Grid.Row="1">
@@ -51,7 +54,17 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <timeline:TimelineTabBarView x:Name="TimelineTabBarHost" Grid.Row="0"/>
-                <timeline:TimelineCanvasControl x:Name="TimelineHost" Grid.Row="1"/>
+                <!-- AudioMeterView docks beside the timeline canvas, matching the Mac's layout
+                     position (EditorSplitViewController's HStack { TimelineContainerView();
+                     AudioMeterView() }) even though its own source lives under Views/Preview. -->
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <timeline:TimelineCanvasControl x:Name="TimelineHost" Grid.Column="0"/>
+                    <preview:AudioMeterView x:Name="AudioMeterHost" Grid.Column="1"/>
+                </Grid>
             </Grid>
         </Border>
     </Grid>

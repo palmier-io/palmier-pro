@@ -424,6 +424,26 @@ public static class AppThemeTokens
         public const double ControlWidth = 116;
     }
 
+    /// Inspector property-row metrics — mirrors Inspector/Keyframes/KeyframesLane.swift's
+    /// `KeyframesMetrics` (rowHeight/stampButtonWidth/navButtonWidth/rulerHeight/stripHeight),
+    /// ported as real AppTheme tokens per this port's AGENTS.md rather than a standalone
+    /// Swift-style enum. `LabelColumn` isn't repeated here — the row label reuses
+    /// <see cref="Slider"/>.LabelColumn for alignment with every other Inspector row.
+    public static class Inspector
+    {
+        public const double RowHeight = 22;
+        public const double StampButtonWidth = 22;
+        public const double NavButtonWidth = 6;
+
+        /// Rotated-square keyframe stamp glyph side length (before the 45° rotation).
+        public const double DiamondSize = 8;
+
+        /// Keyframes tab's per-clip ruler + clip-strip header (KeyframesMetrics.rulerHeight/
+        /// stripHeight) — the compact timecode ruler above the property lanes.
+        public const double RulerHeight = 18;
+        public const double StripHeight = 14;
+    }
+
     public static class Shadow
     {
         public static readonly ShadowToken Sm = new(WithAlpha(Black, 0.3), 1, 0, 0.5);

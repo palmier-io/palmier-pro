@@ -1,0 +1,31 @@
+<UserControl
+    x:Class="PalmierPro.App.Controls.LabeledParamRow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:PalmierPro.App.Controls"
+    mc:Ignorable="d">
+
+    <!-- Port of the label + AdjustSlider + ScrubbableNumberField row repeated throughout
+         AdjustTab.swift/AudioTab.swift (adjustmentRow, lutIntensityRow, volumeRow, ...). LabelColumn
+         is set in code-behind (ColumnDefinition.Width can't take a {StaticResource} — see
+         platforms/windows/AGENTS.md). ShowSlider hides Slider for field-only rows (Volume, Fade). -->
+    <Grid x:Name="RootGrid" ColumnSpacing="{StaticResource AppSpacingSm}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="LabelColumn" Width="Auto"/>
+            <ColumnDefinition x:Name="SliderColumn" Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <TextBlock x:Name="LabelText" Grid.Column="0"
+                   VerticalAlignment="Center"
+                   FontSize="{StaticResource AppFontSizeSm}"
+                   Foreground="{StaticResource AppTextSecondaryBrush}"
+                   TextTrimming="CharacterEllipsis"/>
+
+        <controls:ParamSlider x:Name="Slider" Grid.Column="1" VerticalAlignment="Center"/>
+
+        <controls:ScrubbableNumberBox x:Name="NumberBox" Grid.Column="2" VerticalAlignment="Center"/>
+    </Grid>
+</UserControl>

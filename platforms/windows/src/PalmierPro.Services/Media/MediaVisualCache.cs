@@ -48,6 +48,7 @@ public sealed class MediaVisualCache : IDisposable
     private const double JpegQuality = 0.75;
 
     private readonly Func<string, MediaSource> _openMedia;
+    private readonly Func<string, int, int, byte[]> _renderLottieThumbnail;
     private readonly DiskCache _diskCache;
     private readonly Lock _gate = new();
     private readonly LruCache<string, IReadOnlyList<CachedThumbnail>> _thumbnailMemory;
@@ -59,7 +60,7 @@ public sealed class MediaVisualCache : IDisposable
     public event EventHandler<WaveformReadyEventArgs>? WaveformReady;
 
     public MediaVisualCache(EngineSession session, DiskCache? diskCache = null, int thumbnailMemoryCapacity = 64, int waveformMemoryCapacity = 128)
-        : this(session.OpenMedia, diskCache, thumbnailMemoryCapacity, waveformMemoryCapacity)
+        : this(session.OpenMedia, LottieThumbnail.Render, diskCache, thumbnailMemoryCapacity, waveformMemoryCapacity)
     {
     }
 
@@ -71,8 +72,23 @@ public sealed class MediaVisualCache : IDisposable
         DiskCache? diskCache = null,
         int thumbnailMemoryCapacity = 64,
         int waveformMemoryCapacity = 128)
+        : this(openMedia, LottieThumbnail.Render, diskCache, thumbnailMemoryCapacity, waveformMemoryCapacity)
+    {
+    }
+
+    /// Seam variant that additionally fakes <see cref="LottieThumbnail.Render"/> — used by
+    /// <see cref="GenerateLottieThumbnail"/>'s own tests (docs/lottie-bake-v1.md §11's follow-up:
+    /// no disk-cached bake involved, just a single rasterized frame via the vendored ThorVG
+    /// rasterizer).
+    public MediaVisualCache(
+        Func<string, MediaSource> openMedia,
+        Func<string, int, int, byte[]> renderLottieThumbnail,
+        DiskCache? diskCache = null,
+        int thumbnailMemoryCapacity = 64,
+        int waveformMemoryCapacity = 128)
     {
         _openMedia = openMedia;
+        _renderLottieThumbnail = renderLottieThumbnail;
         _diskCache = diskCache ?? new DiskCache("MediaVisualCache");
         _thumbnailMemory = new LruCache<string, IReadOnlyList<CachedThumbnail>>(thumbnailMemoryCapacity);
         _waveformMemory = new LruCache<string, float[]>(waveformMemoryCapacity);
@@ -143,6 +159,27 @@ public sealed class MediaVisualCache : IDisposable
             }
         }
         _ = RunGenerateWaveformAsync(mediaRef, path, ct);
+    }
+
+    /// Media-panel filmstrip tile for a `ClipType.Lottie` asset, via the same vendored ThorVG
+    /// rasterizer the bake pipeline uses (native `PE_RenderLottieThumbnail`) — a single frame-0
+    /// tile, not a disk-cached bake (docs/lottie-bake-v1.md §11 names this a scoped-out follow-up
+    /// of that document; implemented here as a small, additive addition). Memory-cached only
+    /// (unlike <see cref="GenerateVideoThumbnails"/>'s sprite-sheet disk cache) — alpha must
+    /// survive for a correctly-composited tile, and this assembly has no alpha-preserving disk
+    /// image codec yet (<see cref="WicImaging"/> only writes JPEG); regenerating once per session
+    /// is a minor perf cost, not a correctness one. Shares <see cref="_thumbnailInFlight"/>'s dedup
+    /// set with the video path — a given MediaRef is only ever one ClipType, so no collision risk.
+    public void GenerateLottieThumbnail(string mediaRef, string path, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            if (_thumbnailMemory.TryGet(mediaRef, out _) || !_thumbnailInFlight.Add(mediaRef))
+            {
+                return;
+            }
+        }
+        _ = RunGenerateLottieThumbnailAsync(mediaRef, path, ct);
     }
 
     private async Task RunGenerateVideoThumbnailsAsync(string mediaRef, string path, CancellationToken ct)
@@ -266,6 +303,29 @@ public sealed class MediaVisualCache : IDisposable
             lock (_gate)
             {
                 _waveformInFlight.Remove(mediaRef);
+            }
+        }
+    }
+
+    private async Task RunGenerateLottieThumbnailAsync(string mediaRef, string path, CancellationToken ct)
+    {
+        try
+        {
+            byte[] bgra = await Task.Run(() => _renderLottieThumbnail(path, ThumbnailWidth, ThumbnailHeight), ct).ConfigureAwait(false);
+            var thumb = new CachedThumbnail(0, bgra, ThumbnailWidth, ThumbnailHeight, ThumbnailWidth * 4);
+            Publish(mediaRef, [thumb], isComplete: true);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (EngineException)
+        {
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                _thumbnailInFlight.Remove(mediaRef);
             }
         }
     }

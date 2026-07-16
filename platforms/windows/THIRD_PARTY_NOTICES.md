@@ -33,12 +33,50 @@ license notices for the enabled third-party codecs (x264, x265, etc.).
 
 ## ThorVG
 
-**Status: added when the dependency lands (milestone E4.7).**
+**Status: vendored (E4.7 `vendor` slice, docs/lottie-bake-v1.md §16). The
+native `LottieBaker.h/.cpp` orchestration (PE_BakeLottieVideo /
+PE_ProbeLottieMetadata bodies) is a separate, not-yet-landed `bake` slice — see
+that document.**
 
 Lottie rasterization for offline bake (mirrors the Mac's `LottieVideoGenerator`
 architecture — bake to an alpha-capable intermediate, composite as normal
 footage). Replaces `lottie-ios`; not Lottie-Windows (Composition-based, no
-deterministic frame readback).
+deterministic frame readback). MIT licensed.
+
+Pin: **ThorVG v1.0.7** (tag `v1.0.7`, https://github.com/thorvg/thorvg). Vendored
+as a **static-lib `.vcxproj`** (`ThorVG.vcxproj`, linked into
+`PalmierEngine.vcxproj` via `<ProjectReference>` — MSBuild builds it
+automatically, no `.sln` membership needed) over an amalgamation — ThorVG ships
+no official single-header build (unlike simdjson's `singleheader/` artifact
+below), and its ~35-translation-unit renderer/rasterizer/Lottie-parser is too
+large and too actively factored for a hand-rolled concatenation to stay safe
+across upstream version bumps; full justification in docs/lottie-bake-v1.md §3.
+
+Vendored subset (CPU/software rasterizer only, no `gl_engine`/`wg_engine`, no
+`jerryscript` expressions engine, no `svg`/`png`/`jpg`/`webp`/`sfnt` loaders) lands
+unmodified under `native/third_party/thorvg/` alongside its upstream `LICENSE`
+file, mirroring `native/third_party/signalsmith-stretch/`'s layout:
+`inc/thorvg.h`; `src/common/*`; `src/renderer/*` (excluding `tvgSaver.*` — no
+save/export path needed); `src/renderer/cpu_engine/*`; `src/loaders/lottie/*`
+(excluding `jerryscript/`); `src/loaders/raw/*` — the always-built raw-pixel
+loader `tvgLoaderMgr.cpp` `#include`s unconditionally, needed regardless of
+which optional format loaders are enabled (upstream's own `src/loaders/
+meson.build` pulls it in unconditionally too; not itemized in docs/
+lottie-bake-v1.md §3's file list, added here as the one correction that list
+needed). `rapidjson` (bundled by ThorVG's own Lottie loader, not a separately
+vendored dependency in its own right) is trimmed to the transitive `#include`
+closure reachable from `tvgLottieParserHandler.h`'s `rapidjson/document.h` (19
+headers of the upstream ~30 — no `writer.h`/`schema.h`/stream-wrapper headers,
+which nothing in a read-only JSON parse path reaches), its own `LICENSE`
+carried alongside under `src/loaders/lottie/rapidjson/`.
+
+`config.h` (ThorVG's normal meson-generated build config) is hand-authored
+instead, since this repo builds ThorVG via MSBuild, not meson: threading,
+CPU-engine, partial-render, Lottie-loader, and file-IO support on; every
+option gated behind an unvendored file (GL/WG engines, `jerryscript`
+expressions, the other format loaders, OpenMP, SIMD) left off, matching
+`meson_options.txt`'s own defaults for the options this vendored subset
+actually reaches.
 
 ## simdjson
 

@@ -1,0 +1,18 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.Inspector.Tabs.TextTabView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Text tab (M5) — ports Inspector/Tabs/TextTab.swift. Content/typography/appearance/layout
+         rows are all built in code-behind (RootStack) rather than declared here: none of their row
+         shapes (font picker, toggle+swatch row, segmented alignment) exist as reusable XAML yet, so
+         authoring them per-instance in markup would just duplicate the same Grid/StackPanel
+         scaffolding InspectorRow/InspectorSection hard-code on the Mac. Controls/LabeledParamRow
+         (itself built for exactly this — see its own doc comment) is reused as-is for Size/Opacity. -->
+    <ScrollViewer x:Name="RootScroll">
+        <StackPanel x:Name="RootStack"/>
+    </ScrollViewer>
+</UserControl>

@@ -349,6 +349,13 @@ public class ThemeParityTests
             ("AppMatteSheetWidth", AppThemeTokens.Matte.SheetWidth),
             ("AppMatteControlWidth", AppThemeTokens.Matte.ControlWidth),
 
+            ("AppInspectorRowHeight", AppThemeTokens.Inspector.RowHeight),
+            ("AppInspectorStampButtonWidth", AppThemeTokens.Inspector.StampButtonWidth),
+            ("AppInspectorNavButtonWidth", AppThemeTokens.Inspector.NavButtonWidth),
+            ("AppInspectorDiamondSize", AppThemeTokens.Inspector.DiamondSize),
+            ("AppInspectorRulerHeight", AppThemeTokens.Inspector.RulerHeight),
+            ("AppInspectorStripHeight", AppThemeTokens.Inspector.StripHeight),
+
             ("AppShadowSmRadius", AppThemeTokens.Shadow.Sm.Radius),
             ("AppShadowSmX", AppThemeTokens.Shadow.Sm.X),
             ("AppShadowSmY", AppThemeTokens.Shadow.Sm.Y),

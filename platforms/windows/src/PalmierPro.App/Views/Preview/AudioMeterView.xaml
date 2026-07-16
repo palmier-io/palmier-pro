@@ -1,0 +1,23 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.Preview.AudioMeterView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
+    mc:Ignorable="d">
+
+    <!-- Master audio meter (Stage E, M5) — ports Audio/AudioMeterView.swift: two vertical segment
+         bars (L/R) plus a dB ruler, drawn with Win2D. Docked next to TimelineCanvasControl in
+         EditorPlaceholderView.xaml's timeline row, matching the Mac's layout position
+         (EditorSplitViewController's `HStack { TimelineContainerView(); AudioMeterView() }`) even
+         though this control's own source lives under Views/Preview per this port's file layout.
+         Width/border/canvas sizing are set from code-behind (AGENTS.md: {StaticResource} into a
+         Thickness-typed property throws at runtime). -->
+    <Grid x:Name="RootGrid" Background="{StaticResource AppBackgroundBaseBrush}">
+        <Border x:Name="LeadingBorder" HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                Background="{StaticResource AppBorderPrimaryBrush}"/>
+        <canvas:CanvasControl x:Name="Canvas" HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                               Draw="Canvas_Draw" Tapped="Canvas_Tapped"/>
+    </Grid>
+</UserControl>

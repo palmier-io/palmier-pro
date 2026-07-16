@@ -184,6 +184,23 @@ public sealed class TimelineSession : IDisposable
         }
     }
 
+    /// Synchronous, headless GPU compute of `frame`'s live color scopes (docs/color-scopes-v1.md)
+    /// — the Inspector Adjust tab's Curves/Hue Curves editors' data source. Same threading
+    /// contract as <see cref="RenderFrameToFile"/>: bypasses the render thread/mailbox entirely,
+    /// unaffected by a concurrent <see cref="Seek"/>. Callers should invoke this off the UI thread
+    /// (see <see cref="PalmierPro.Services.Engine.VideoEngine.GetColorScopesAsync"/>) — the
+    /// compose + GPU readback cost is not free.
+    public ColorScopesResult ComputeColorScopes(long frame)
+    {
+        ThrowIfDisposed();
+        int status = NativeMethods.PE_TimelineComputeColorScopes(_handle, frame, out PE_ColorScopesResult native);
+        if (status != 0)
+        {
+            throw new EngineException(status, _session.GetLastErrorMessage());
+        }
+        return ColorScopesResult.FromNative(native);
+    }
+
     /// Headless CI-facing golden hook for the audio mix loop (docs/audio-playback-v1.md §6):
     /// synchronously mixes the current snapshot's audio for the range at timeline <paramref
     /// name="startFrame"/>, returning <paramref name="frameCount"/> interleaved-stereo Float32
@@ -206,6 +223,24 @@ public sealed class TimelineSession : IDisposable
             throw new EngineException(status, _session.GetLastErrorMessage());
         }
         return buffer;
+    }
+
+    /// Master meter tap (Stage E, AudioMeterView): raw linear-amplitude peak + RMS per channel
+    /// from the most recently mixed audio block — fed by both <see cref="RenderAudioRange"/>
+    /// (offline, deterministic) and live playback (<see cref="Play"/>). Lock-free on the native
+    /// side, so this never blocks behind the audio submission thread's decode work. All zero
+    /// (silence) before either producer has ever run. Values are raw amplitude, not dB — the
+    /// caller (PalmierPro.Core.Audio.AudioMeterHub) owns the dB mapping/ballistics.
+    public (float LeftPeak, float LeftRms, float RightPeak, float RightRms) GetAudioLevels()
+    {
+        ThrowIfDisposed();
+        int status = NativeMethods.PE_TimelineGetAudioLevels(
+            _handle, out float leftPeak, out float leftRms, out float rightPeak, out float rightRms);
+        if (status != 0)
+        {
+            throw new EngineException(status, _session.GetLastErrorMessage());
+        }
+        return (leftPeak, leftRms, rightPeak, rightRms);
     }
 
     /// Offline golden hook for the scrub grain (docs/audio-playback-v1.md §5): synchronously

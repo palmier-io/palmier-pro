@@ -60,11 +60,11 @@
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>PALMIERENGINE_EXPORTS;_DEBUG;_WINDOWS;_USRDLL;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>PALMIERENGINE_EXPORTS;_DEBUG;_WINDOWS;_USRDLL;NOMINMAX;TVG_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <SDLCheck>true</SDLCheck>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(FFmpegDir)include;third_party\simdjson;third_party\signalsmith-stretch;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(FFmpegDir)include;third_party\simdjson;third_party\signalsmith-stretch;third_party\thorvg\inc;third_party\thorvg\src\loaders\lottie;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -80,11 +80,11 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>PALMIERENGINE_EXPORTS;NDEBUG;_WINDOWS;_USRDLL;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>PALMIERENGINE_EXPORTS;NDEBUG;_WINDOWS;_USRDLL;NOMINMAX;TVG_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <SDLCheck>true</SDLCheck>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(FFmpegDir)include;third_party\simdjson;third_party\signalsmith-stretch;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(FFmpegDir)include;third_party\simdjson;third_party\signalsmith-stretch;third_party\thorvg\inc;third_party\thorvg\src\loaders\lottie;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -113,6 +113,7 @@
     <ClCompile Include="CubeLutParser.cpp" />
     <ClCompile Include="CurveMath.cpp" />
     <ClCompile Include="GpuCompositor.cpp" />
+    <ClCompile Include="Scopes.cpp" />
     <ClCompile Include="FontRegistry.cpp" />
     <ClCompile Include="TextRenderer.cpp" />
     <ClCompile Include="TextAnimator.cpp" />
@@ -120,6 +121,9 @@
     <ClCompile Include="AudioMixer.cpp" />
     <ClCompile Include="ScrubAudio.cpp" />
     <ClCompile Include="RetimeStretcher.cpp" />
+    <ClCompile Include="AlphaVideoEncoder.cpp" />
+    <ClCompile Include="LottieRasterizer.cpp" />
+    <ClCompile Include="LottieBaker.cpp" />
     <!-- Vendored amalgamated single-source build (native/third_party/simdjson/) — reduced
          warning level, this translation unit is upstream code, not ours to fix warnings in. -->
     <ClCompile Include="third_party\simdjson\simdjson.cpp">
@@ -152,6 +156,7 @@
     <ClInclude Include="CubeLutParser.h" />
     <ClInclude Include="EffectRegistry.h" />
     <ClInclude Include="GpuCompositor.h" />
+    <ClInclude Include="Scopes.h" />
     <ClInclude Include="FontRegistry.h" />
     <ClInclude Include="TextRenderer.h" />
     <ClInclude Include="TextAnimator.h" />
@@ -159,7 +164,21 @@
     <ClInclude Include="AudioMixer.h" />
     <ClInclude Include="ScrubAudio.h" />
     <ClInclude Include="RetimeStretcher.h" />
+    <ClInclude Include="AlphaVideoEncoder.h" />
+    <ClInclude Include="LottieRasterizer.h" />
+    <ClInclude Include="LottieBaker.h" />
     <ClInclude Include="third_party\signalsmith-stretch\signalsmith-stretch.h" />
+    <ClInclude Include="third_party\thorvg\inc\thorvg.h" />
+    <ClInclude Include="third_party\thorvg\src\loaders\lottie\thorvg_lottie.h" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Static-lib project reference (docs/lottie-bake-v1.md §3/§16 "vendor" slice) — MSBuild
+         builds ThorVG.vcxproj first and links its output automatically even without a .sln
+         (same standalone-msbuild invocation this project already requires, see docs/README.md). -->
+    <ProjectReference Include="ThorVG.vcxproj">
+      <Project>{6C6B6E1E-6E6A-4E9E-9A5E-6B8F6A9C3D2F}</Project>
+    </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>
@@ -183,6 +202,8 @@
     <None Include="shaders\GlowComposite.hlsl" />
     <None Include="shaders\Clarity.hlsl" />
     <None Include="shaders\Composite.hlsl" />
+    <None Include="shaders\ScopesDownsample.hlsl" />
+    <None Include="shaders\ScopesHistogram.hlsl" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!--
+    Static-lib vcxproj for vendored ThorVG v1.0.7 (docs/lottie-bake-v1.md §3 — static lib chosen
+    over an amalgamation; ThorVG ships no official single-header build, unlike simdjson).
+    Sibling to PalmierEngine.vcxproj, which links this as a project reference and includes only
+    the two public umbrella headers (third_party\thorvg\inc\thorvg.h,
+    third_party\thorvg\src\loaders\lottie\thorvg_lottie.h) — every internal ThorVG header
+    (tvgCommon.h, tvgSwCommon.h, ...) stays private to this project.
+  -->
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <ProjectGuid>{6C6B6E1E-6E6A-4E9E-9A5E-6B8F6A9C3D2F}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>ThorVG</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Release'">false</UseDebugLibraries>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <ImportGroup Label="ExtensionSettings" />
+
+  <ImportGroup Label="Shared" />
+
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+
+  <PropertyGroup Label="UserMacros" />
+
+  <PropertyGroup>
+    <!-- Same artifacts convention as PalmierEngine.vcxproj (../../../artifacts, this project
+         lives at the same native\ directory depth). -->
+    <TargetName>ThorVG</TargetName>
+    <OutDir>$(MSBuildThisFileDirectory)..\..\..\artifacts\native\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(MSBuildThisFileDirectory)..\..\..\artifacts\native\obj\$(Platform)\$(Configuration)\ThorVG\</IntDir>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <!-- Vendored upstream code — not ours to fix warnings in (matches simdjson.cpp's own
+           WarningLevel override in PalmierEngine.vcxproj). -->
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <SDLCheck>false</SDLCheck>
+      <!-- TVG_STATIC: no dllexport/dllimport on TVG_API (this is a static lib, not the shared
+           build meson's TVG_EXPORT/TVG_BUILD path targets). NOMINMAX: mirrors meson.build's own
+           msvc branch (`compiler_flags += ['-DNOMINMAX']`) — ThorVG's own std::min/max usage
+           would otherwise collide with <windows.h>'s min/max macros. -->
+      <PreprocessorDefinitions>TVG_STATIC;NOMINMAX;WIN32_LEAN_AND_MEAN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- Root (for config.h) + inc\ (for thorvg.h) + every internal source dir this vendored
+           subset spans, so each tvg*.cpp's quoted #includes of sibling-directory headers
+           (e.g. cpu_engine's tvgSwCommon.h including common's tvgCommon.h) resolve. -->
+      <AdditionalIncludeDirectories>third_party\thorvg;third_party\thorvg\inc;third_party\thorvg\src\common;third_party\thorvg\src\renderer;third_party\thorvg\src\renderer\cpu_engine;third_party\thorvg\src\loaders\lottie;third_party\thorvg\src\loaders\raw;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <ClInclude Include="third_party\thorvg\config.h" />
+    <ClInclude Include="third_party\thorvg\inc\thorvg.h" />
+    <ClInclude Include="third_party\thorvg\src\common\tvgAllocator.h" />
+    <ClInclude Include="third_party\thorvg\src\common\tvgArray.h" />
+    <ClInclude Include="third_party\thorvg\src\common\tvgColor.h" />
+    <ClInclude Include="third_party\thorvg\src\common\tvgCommon.h" />
+    <ClInclude Include="third_party\thorvg\src\common\tvgCompressor.h" />
+    <ClInclude Include="third_party\thorvg\src\common\tvgInlist.h" />
+    <ClInclude Include="third_party\thorvg\src\common\tvgLock.h" />
+    <ClInclude Include="third_party\thorvg\src\common\tvgMath.h" />
+    <ClInclude Include="third_party\thorvg\src\common\tvgStr.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\tvgAccessor.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\tvgAnimation.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\tvgCanvas.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\tvgFill.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\tvgLoader.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\tvgLoaderMgr.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\tvgPaint.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\tvgPicture.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\tvgRender.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\tvgSaveModule.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\tvgScene.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\tvgShape.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\tvgTaskScheduler.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\tvgText.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\cpu_engine\tvgSwCommon.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\cpu_engine\tvgSwRasterAvx.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\cpu_engine\tvgSwRasterC.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\cpu_engine\tvgSwRasterNeon.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\cpu_engine\tvgSwRasterTexmap.h" />
+    <ClInclude Include="third_party\thorvg\src\renderer\cpu_engine\tvgSwRenderer.h" />
+    <ClInclude Include="third_party\thorvg\src\loaders\lottie\thorvg_lottie.h" />
+    <ClInclude Include="third_party\thorvg\src\loaders\lottie\tvgLottieBuilder.h" />
+    <ClInclude Include="third_party\thorvg\src\loaders\lottie\tvgLottieCommon.h" />
+    <ClInclude Include="third_party\thorvg\src\loaders\lottie\tvgLottieExpressions.h" />
+    <ClInclude Include="third_party\thorvg\src\loaders\lottie\tvgLottieInterpolator.h" />
+    <ClInclude Include="third_party\thorvg\src\loaders\lottie\tvgLottieLoader.h" />
+    <ClInclude Include="third_party\thorvg\src\loaders\lottie\tvgLottieModel.h" />
+    <ClInclude Include="third_party\thorvg\src\loaders\lottie\tvgLottieModifier.h" />
+    <ClInclude Include="third_party\thorvg\src\loaders\lottie\tvgLottieParser.h" />
+    <ClInclude Include="third_party\thorvg\src\loaders\lottie\tvgLottieParserHandler.h" />
+    <ClInclude Include="third_party\thorvg\src\loaders\lottie\tvgLottieProperty.h" />
+    <ClInclude Include="third_party\thorvg\src\loaders\lottie\tvgLottieRenderPooler.h" />
+    <ClInclude Include="third_party\thorvg\src\loaders\raw\tvgRawLoader.h" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ClCompile Include="third_party\thorvg\src\common\tvgCompressor.cpp" />
+    <ClCompile Include="third_party\thorvg\src\common\tvgMath.cpp" />
+    <ClCompile Include="third_party\thorvg\src\common\tvgStr.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\tvgAccessor.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\tvgAnimation.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\tvgCanvas.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\tvgFill.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\tvgInitializer.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\tvgLoaderMgr.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\tvgPaint.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\tvgPicture.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\tvgRender.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\tvgScene.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\tvgShape.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\tvgTaskScheduler.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\tvgText.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\cpu_engine\tvgSwBlendOp.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\cpu_engine\tvgSwFill.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\cpu_engine\tvgSwImage.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\cpu_engine\tvgSwMemPool.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\cpu_engine\tvgSwPostEffect.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\cpu_engine\tvgSwRaster.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\cpu_engine\tvgSwRenderer.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\cpu_engine\tvgSwRle.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\cpu_engine\tvgSwShape.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\cpu_engine\tvgSwStroke.cpp" />
+    <ClCompile Include="third_party\thorvg\src\renderer\cpu_engine\tvgSwUtil.cpp" />
+    <ClCompile Include="third_party\thorvg\src\loaders\lottie\tvgLottieAnimation.cpp" />
+    <ClCompile Include="third_party\thorvg\src\loaders\lottie\tvgLottieBuilder.cpp" />
+    <ClCompile Include="third_party\thorvg\src\loaders\lottie\tvgLottieExpressions.cpp" />
+    <ClCompile Include="third_party\thorvg\src\loaders\lottie\tvgLottieInterpolator.cpp" />
+    <ClCompile Include="third_party\thorvg\src\loaders\lottie\tvgLottieLoader.cpp" />
+    <ClCompile Include="third_party\thorvg\src\loaders\lottie\tvgLottieModel.cpp" />
+    <ClCompile Include="third_party\thorvg\src\loaders\lottie\tvgLottieModifier.cpp" />
+    <ClCompile Include="third_party\thorvg\src\loaders\lottie\tvgLottieParser.cpp" />
+    <ClCompile Include="third_party\thorvg\src\loaders\lottie\tvgLottieParserHandler.cpp" />
+    <ClCompile Include="third_party\thorvg\src\loaders\raw\tvgRawLoader.cpp" />
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

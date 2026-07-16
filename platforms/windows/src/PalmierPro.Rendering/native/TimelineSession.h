@@ -70,6 +70,14 @@ public:
     // hook: deterministic, immune to scrub throttling/coalescing/cancellation).
     bool RenderFrameToFile(int64_t frame, const std::string& utf8PngPath, std::string& outError);
 
+    // E6 color scopes (docs/color-scopes-v1.md) — synchronous GPU compute of `frame`'s live
+    // Y/R/G/B + hue histograms, same threading contract as RenderFrameToFile (bypasses the
+    // render thread/mailbox, unaffected by a concurrent Seek). Always uses the GPU compositor
+    // path (never the PALMIERENGINE_FORCE_CPU_COMPOSITOR fallback — scopes have no CPU
+    // equivalent); fails if no D3D11 device (hardware or WARP) is available at all.
+    // outResult.frame is stamped with `frame` on success.
+    bool ComputeColorScopes(int64_t frame, PE_ColorScopesResult& outResult, std::string& outError);
+
     // Offline audio mix (docs/audio-playback-v1.md §6) — fills outInterleavedStereo (sampleCount × 2
     // floats) with the current snapshot's mix for the 48 kHz range starting at timeline `startFrame`.
     // No XAudio2 device involved: deterministic, the CI-facing hook for the mix loop. The same
@@ -93,6 +101,16 @@ public:
     bool RenderScrubGrain(int64_t frame, int32_t direction, float* outInterleavedStereo, std::string& outError);
 
     void SetPlayheadCallback(PE_PlayheadCallback callback, void* userCtx);
+
+    // Master meter tap (Stage E, AudioMeterView) — raw linear-amplitude peak + RMS per channel
+    // from the most recently mixed audio block, written by UpdateAudioLevels (below) from BOTH
+    // RenderAudioRange (offline; what the deterministic Category=Media test and
+    // PE_TimelineRenderAudioRange drive, no XAudio2 device) and FillAudio (live; what actual
+    // Play() drives). Reads all zero (silence) before either producer has ever run. Values are
+    // NOT dB and NOT clamped — the C# AudioMeterHub port (PalmierPro.Core.Audio) owns the dB
+    // mapping/decay/peak-hold/clip-latch ballistics, mirroring the Mac's AudioMeterChannelState
+    // (Audio/AudioMeter.swift) exactly.
+    void GetAudioLevels(float& outLeftPeak, float& outLeftRms, float& outRightPeak, float& outRightRms) const;
 
     // E4.5 playback / A/V clock (docs/audio-playback-v1.md §3, §4). Play/Pause/SetRate rebase the
     // master clock and drive the render thread's present loop (§3.5); GetClockFrame reads the
@@ -196,11 +214,24 @@ private:
     PE_IsPlayingCallback isPlayingCallback_ = nullptr;
     void* isPlayingUserCtx_ = nullptr;
 
+    // Master meter tap storage (see GetAudioLevels above). Plain atomics, no mutex: the two
+    // writers (RenderAudioRange on whatever thread calls PE_TimelineRenderAudioRange; FillAudio
+    // on the audio submission thread) and the one reader (GetAudioLevels, polled from the UI
+    // thread) never need to observe all four values as a single atomic unit — a UI meter
+    // momentarily seeing peak/RMS from two adjacent blocks is harmless, and this is what keeps
+    // the tap genuinely lock-free (never blocks behind FillAudio's decode work).
+    std::atomic<float> levelLeftPeak_{0.0f};
+    std::atomic<float> levelLeftRms_{0.0f};
+    std::atomic<float> levelRightPeak_{0.0f};
+    std::atomic<float> levelRightRms_{0.0f};
+    void UpdateAudioLevels(const float* interleavedStereo, int32_t sampleCount);
+
     void RenderThreadLoop();
     void PlaybackPresentTick();
     void PresentComposed(const ComposeResult& result);
     void FirePlayhead(int64_t frame);
     void FireIsPlaying(bool isPlaying);
+    void NudgePresentIfPaused();
     void EnsureAudioEngine();
     void FillAudio(float* dstInterleavedStereo, uint32_t frameCount);
     void SetFillCursorToFrameLocked(int64_t frame); // fillMutex_ held by caller

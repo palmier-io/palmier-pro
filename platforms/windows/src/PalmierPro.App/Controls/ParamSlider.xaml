@@ -1,0 +1,32 @@
+<UserControl
+    x:Class="PalmierPro.App.Controls.ParamSlider"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Height="{StaticResource AppSliderThumbSize}">
+
+    <!-- Port of AdjustSlider.swift. TrackBackground/TrackFill render the plain (non-gradient)
+         track; TrackGradient replaces both when a gradient track is set (temp/tint/luma etc.).
+         Canvas positions everything by absolute X, mirroring the Mac's ZStack + .position(x:). -->
+    <Canvas x:Name="TrackArea"
+            Background="Transparent"
+            PointerPressed="TrackArea_PointerPressed"
+            PointerMoved="TrackArea_PointerMoved"
+            PointerReleased="TrackArea_PointerReleased"
+            PointerCaptureLost="TrackArea_PointerCaptureLost"
+            DoubleTapped="TrackArea_DoubleTapped"
+            SizeChanged="TrackArea_SizeChanged">
+        <Border x:Name="TrackBackground" Height="{StaticResource AppSliderTrackHeight}"
+                Background="{StaticResource AppBackgroundProminentBrush}"/>
+        <Border x:Name="TrackFill" Height="{StaticResource AppSliderTrackHeight}"
+                Background="{StaticResource AppTextTertiaryBrush}"/>
+        <Border x:Name="TrackGradient" Height="{StaticResource AppSliderTrackHeight}" Visibility="Collapsed"/>
+        <Ellipse x:Name="Thumb"
+                 Width="{StaticResource AppSliderThumbSize}" Height="{StaticResource AppSliderThumbSize}"
+                 Fill="{StaticResource AppAccentPrimaryBrush}"
+                 Stroke="{StaticResource AppBorderPrimaryBrush}"
+                 StrokeThickness="{StaticResource AppBorderWidthThin}"/>
+    </Canvas>
+</UserControl>

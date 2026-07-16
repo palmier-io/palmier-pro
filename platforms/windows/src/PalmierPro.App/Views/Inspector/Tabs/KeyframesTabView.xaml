@@ -1,0 +1,31 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.Inspector.Tabs.KeyframesTabView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
+    mc:Ignorable="d">
+
+    <!-- Keyframes tab content (M5, Stage E) — ports Inspector/Keyframes/KeyframesLane.swift's
+         KeyframesPanel as Windows' own top-level tab (InspectorTab.Keyframes) rather than the Mac's
+         togglable panel inside the Video tab — see TransformTabView.xaml's remarks ("Windows exposes
+         Keyframes as its own top-level tab ... only the per-row stamp/nav controls carry over").
+         Header: a compact per-clip ruler + colored clip strip (click/drag to seek — ports
+         ClipRulerBlock). Below: one KeyframesLaneRowControl per animatable property
+         (KeyframesViewModel.Rows). Only ever built for a single-clip selection —
+         InspectorViewModel.ComputeAvailableTabs gates this tab to exactly one non-text visual clip.
+         HeaderCanvas.Height is set in code-behind (RulerHeight + StripHeight isn't a single
+         StaticResource). -->
+    <ScrollViewer x:Name="RootScroll">
+        <StackPanel x:Name="RootStack" Spacing="{StaticResource AppSpacingMd}">
+            <canvas:CanvasControl x:Name="HeaderCanvas"
+                                   Draw="HeaderCanvas_Draw"
+                                   PointerPressed="HeaderCanvas_PointerPressed"
+                                   PointerMoved="HeaderCanvas_PointerMoved"
+                                   PointerReleased="HeaderCanvas_PointerReleased"
+                                   PointerCaptureLost="HeaderCanvas_PointerCaptureLost"/>
+            <StackPanel x:Name="RowsPanel" Spacing="{StaticResource AppSpacingMd}"/>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -1,0 +1,32 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.Inspector.Tabs.ColorWheelControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
+    xmlns:controls="using:PalmierPro.App.Controls"
+    mc:Ignorable="d">
+
+    <!-- Port of ColorWheelControl.swift + ColorWheelPad.swift (Inspector/Components/Adjust) — one
+         Lift/Gamma/Gain wheel: title, a circular hue/strength pad (Win2D, drag the puck / double-
+         tap to reset), and a master-luma ParamSlider underneath. Instantiated 3x by ColorTabView. -->
+    <StackPanel x:Name="Root" Spacing="{StaticResource AppSpacingSm}" HorizontalAlignment="Center">
+        <TextBlock x:Name="TitleText"
+                   FontSize="{StaticResource AppFontSizeXxs}"
+                   Foreground="{StaticResource AppTextMutedBrush}"
+                   HorizontalAlignment="Center"/>
+
+        <canvas:CanvasControl x:Name="Pad"
+                               Width="{StaticResource AppWheelsPadSize}" Height="{StaticResource AppWheelsPadSize}"
+                               CreateResources="Pad_CreateResources"
+                               Draw="Pad_Draw"
+                               PointerPressed="Pad_PointerPressed"
+                               PointerMoved="Pad_PointerMoved"
+                               PointerReleased="Pad_PointerReleased"
+                               PointerCaptureLost="Pad_PointerCaptureLost"
+                               DoubleTapped="Pad_DoubleTapped"/>
+
+        <controls:ParamSlider x:Name="MasterSlider" Width="{StaticResource AppWheelsPadSize}"/>
+    </StackPanel>
+</UserControl>

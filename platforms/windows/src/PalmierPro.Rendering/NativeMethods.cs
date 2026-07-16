@@ -27,6 +27,32 @@ internal struct PE_FrameBuffer
     public int StrideBytes;
 }
 
+// Mirrors native PE_LottieInfo (palmier_engine.h, docs/lottie-bake-v1.md §8).
+[StructLayout(LayoutKind.Sequential)]
+internal struct PE_LottieInfo
+{
+    public double DurationSeconds;
+    public double Width;
+    public double Height;
+    public double FrameRate;
+}
+
+// Mirrors native PE_ColorScopesResult (palmier_engine.h) — see docs/color-scopes-v1.md §2 for
+// the bin counts/normalization these fixed arrays already carry (no further scaling needed by
+// the caller). `unsafe`/`fixed`: the native struct embeds its float arrays inline, returned by
+// value across P/Invoke — see ColorScopesResult.cs's remarks on why that rules out a
+// copy-vs-alias choice on the managed side.
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct PE_ColorScopesResult
+{
+    public long Frame;
+    public fixed float YHistogram[256];
+    public fixed float RHistogram[256];
+    public fixed float GHistogram[256];
+    public fixed float BHistogram[256];
+    public fixed float HueHistogram[96];
+}
+
 // Mirrors native/include/palmier_engine.h's PE_Status. 0 = ok, negative = error.
 internal enum PE_Status
 {
@@ -160,10 +186,22 @@ internal static partial class NativeMethods
     [LibraryImport(EngineLibrary, StringMarshalling = StringMarshalling.Utf8)]
     internal static partial int PE_TimelineRenderFrameToFile(nint timeline, long frame, string utf8PngPath);
 
+    // E6 color scopes (docs/color-scopes-v1.md): synchronous GPU compute of `frame`'s live
+    // Y/R/G/B (256-bin) + hue (96-bin) histograms — same threading contract as
+    // PE_TimelineRenderFrameToFile (bypasses the render thread/mailbox).
+    [LibraryImport(EngineLibrary)]
+    internal static partial int PE_TimelineComputeColorScopes(nint timeline, long frame, out PE_ColorScopesResult outResult);
+
     // Offline audio mix (docs/audio-playback-v1.md §6): fills outInterleavedStereo (frameCount × 2
     // floats, caller-owned) with the 48 kHz stereo mix for the range at timeline `startFrame`.
     [LibraryImport(EngineLibrary)]
     internal static unsafe partial int PE_TimelineRenderAudioRange(nint timeline, long startFrame, int frameCount, float* outInterleavedStereo);
+
+    // Master meter tap (Stage E, AudioMeterView): raw linear-amplitude peak + RMS per channel from
+    // the most recently mixed audio block (fed by both PE_TimelineRenderAudioRange and live
+    // playback). Lock-free on the native side — never blocks behind the audio submission thread.
+    [LibraryImport(EngineLibrary)]
+    internal static partial int PE_TimelineGetAudioLevels(nint timeline, out float outLeftPeak, out float outLeftRms, out float outRightPeak, out float outRightRms);
 
     [LibraryImport(EngineLibrary)]
     internal static unsafe partial int PE_TimelineSetPlayheadCallback(
@@ -205,4 +243,46 @@ internal static partial class NativeMethods
 
     [LibraryImport(EngineLibrary, StringMarshalling = StringMarshalling.Utf8)]
     internal static unsafe partial int PE_DebugResolveFontFamily(string storedFontName, byte* outFamilyNameUtf8, int capacity);
+
+    // --- Lottie bake / alpha video encode (Stage E / E4.7, docs/lottie-bake-v1.md §7, §8) ---
+
+    [LibraryImport(EngineLibrary, StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial int PE_EncodeAlphaVideoOpen(nint session, string utf8OutputPath, int width, int height, out nint outEncoder);
+
+    // bgraData is premultiplied BGRA32, width*height pixels at strideBytes. presentationSeconds
+    // must strictly increase between calls — see AlphaVideoEncoder.h's PushFrame doc comment.
+    [LibraryImport(EngineLibrary)]
+    internal static unsafe partial int PE_EncodeAlphaVideoPushFrame(nint encoder, byte* bgraData, int strideBytes, double presentationSeconds);
+
+    [LibraryImport(EngineLibrary)]
+    internal static partial int PE_EncodeAlphaVideoClose(nint encoder);
+
+    [LibraryImport(EngineLibrary)]
+    internal static partial int PE_EncodeAlphaVideoAbort(nint encoder);
+
+    // One-call bake orchestration (docs/lottie-bake-v1.md §8) — rasterizes via vendored ThorVG and
+    // encodes via the PE_EncodeAlphaVideo* primitives above internally. Runs synchronously on the
+    // calling thread; callers invoke from a background Task. cancelFlag: same polled-once-per-frame
+    // convention as PE_ExtractThumbnails.
+    [LibraryImport(EngineLibrary, StringMarshalling = StringMarshalling.Utf8)]
+    internal static unsafe partial int PE_BakeLottieVideo(
+        nint session,
+        string utf8LottiePath,
+        int targetWidth,
+        int targetHeight,
+        double holdTailSeconds,
+        string utf8OutputPath,
+        delegate* unmanaged[Cdecl]<nint, int, int, void> callback,
+        nint userCtx,
+        int* cancelFlag);
+
+    // Metadata-only probe (docs/lottie-bake-v1.md §8) — no rasterization, no encode, no disk cache.
+    [LibraryImport(EngineLibrary, StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial int PE_ProbeLottieMetadata(nint session, string utf8LottiePath, out PE_LottieInfo outInfo);
+
+    // Additive, beyond docs/lottie-bake-v1.md's own frozen contract (named there as an explicit v1
+    // follow-up, §11) — backs MediaVisualCache's Lottie filmstrip-tile need via the same vendored
+    // ThorVG rasterizer (native/LottieBaker.cpp), no session/disk cache involved. Rasterizes frame 0.
+    [LibraryImport(EngineLibrary, StringMarshalling = StringMarshalling.Utf8)]
+    internal static unsafe partial int PE_RenderLottieThumbnail(string utf8LottiePath, int width, int height, byte* outBgra, int strideBytes);
 }

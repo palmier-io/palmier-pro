@@ -1,4 +1,5 @@
 #include "include/palmier_engine.h"
+#include "AlphaVideoEncoder.h"
 #include "EngineSession.h"
 #include "FontRegistry.h"
 #include "MediaSource.h"
@@ -7,6 +8,7 @@
 
 #include <windows.h>
 
+#include <memory>
 #include <new>
 
 namespace
@@ -19,6 +21,12 @@ namespace
     TimelineSession* ResolveTimeline(PE_TimelineHandle h)
     {
         return TimelineRegistry::Resolve(reinterpret_cast<TimelineSession*>(h));
+    }
+
+    // Same reasoning as ResolveTimeline, for PE_AlphaEncoderHandle — see AlphaVideoEncoder.h.
+    AlphaVideoEncoder* AsEncoder(PE_AlphaEncoderHandle h)
+    {
+        return AlphaVideoEncoder::Resolve(reinterpret_cast<AlphaVideoEncoder*>(h));
     }
 }
 
@@ -506,6 +514,32 @@ int32_t PE_TimelineRenderFrameToFile(PE_TimelineHandle timeline, int64_t frame, 
     }
 }
 
+int32_t PE_TimelineComputeColorScopes(PE_TimelineHandle timeline, int64_t frame, PE_ColorScopesResult* outResult)
+{
+    if (!outResult)
+    {
+        return PE_ERROR_INVALID_ARGUMENT;
+    }
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    try
+    {
+        std::string error;
+        if (!t->ComputeColorScopes(frame, *outResult, error))
+        {
+            return PE_ERROR_UNKNOWN;
+        }
+        return PE_OK;
+    }
+    catch (const std::exception&)
+    {
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
 int32_t PE_TimelineRenderAudioRange(PE_TimelineHandle timeline, int64_t startFrame, int32_t frameCount, float* outInterleavedStereo)
 {
     if (!outInterleavedStereo || frameCount <= 0)
@@ -530,6 +564,21 @@ int32_t PE_TimelineRenderAudioRange(PE_TimelineHandle timeline, int64_t startFra
     {
         return PE_ERROR_UNKNOWN;
     }
+}
+
+int32_t PE_TimelineGetAudioLevels(PE_TimelineHandle timeline, float* outLeftPeak, float* outLeftRms, float* outRightPeak, float* outRightRms)
+{
+    if (!outLeftPeak || !outLeftRms || !outRightPeak || !outRightRms)
+    {
+        return PE_ERROR_INVALID_ARGUMENT;
+    }
+    TimelineSession* t = ResolveTimeline(timeline);
+    if (!t)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    t->GetAudioLevels(*outLeftPeak, *outLeftRms, *outRightPeak, *outRightRms);
+    return PE_OK;
 }
 
 int32_t PE_TimelineSetPlayheadCallback(PE_TimelineHandle timeline, PE_PlayheadCallback callback, void* userCtx)
@@ -739,5 +788,86 @@ int32_t PE_DebugResolveFontFamily(const char* storedFontName, char* outFamilyNam
         return PE_ERROR_BUFFER_TOO_SMALL;
     }
     WideCharToMultiByte(CP_UTF8, 0, family.c_str(), -1, outFamilyNameUtf8, capacity, nullptr, nullptr);
+    return PE_OK;
+}
+
+// --- Lottie bake / alpha video encode (Stage E / E4.7, docs/lottie-bake-v1.md §7, §8) -------
+
+int32_t PE_EncodeAlphaVideoOpen(PE_SessionHandle session, const char* utf8OutputPath, int32_t width, int32_t height, PE_AlphaEncoderHandle* outEncoder)
+{
+    if (!session || !utf8OutputPath || !outEncoder)
+    {
+        return PE_ERROR_INVALID_ARGUMENT;
+    }
+    EngineSession* s = AsSession(session);
+    auto encoder = std::make_unique<AlphaVideoEncoder>(s);
+    int32_t status;
+    try
+    {
+        status = encoder->Open(utf8OutputPath, width, height);
+    }
+    catch (const std::exception& ex)
+    {
+        s->SetLastError(ex.what());
+        return PE_ERROR_UNKNOWN;
+    }
+    if (status != PE_OK)
+    {
+        return status; // encoder (and any partial FFmpeg state) is destroyed with the unique_ptr
+    }
+    *outEncoder = reinterpret_cast<PE_AlphaEncoderHandle>(encoder.release());
+    return PE_OK;
+}
+
+int32_t PE_EncodeAlphaVideoPushFrame(PE_AlphaEncoderHandle encoder, const uint8_t* bgraData, int32_t strideBytes, double presentationSeconds)
+{
+    if (!bgraData || strideBytes <= 0)
+    {
+        return PE_ERROR_INVALID_ARGUMENT;
+    }
+    AlphaVideoEncoder* e = AsEncoder(encoder);
+    if (!e)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    try
+    {
+        return e->PushFrame(bgraData, strideBytes, presentationSeconds);
+    }
+    catch (const std::exception&)
+    {
+        return PE_ERROR_UNKNOWN;
+    }
+}
+
+int32_t PE_EncodeAlphaVideoClose(PE_AlphaEncoderHandle encoder)
+{
+    AlphaVideoEncoder* e = AsEncoder(encoder);
+    if (!e)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    int32_t status;
+    try
+    {
+        status = e->Close();
+    }
+    catch (const std::exception&)
+    {
+        status = PE_ERROR_UNKNOWN;
+    }
+    delete e; // invalid handle from here regardless of status — see palmier_engine.h
+    return status;
+}
+
+int32_t PE_EncodeAlphaVideoAbort(PE_AlphaEncoderHandle encoder)
+{
+    AlphaVideoEncoder* e = AsEncoder(encoder);
+    if (!e)
+    {
+        return PE_ERROR_INVALID_HANDLE;
+    }
+    e->Abort();
+    delete e;
     return PE_OK;
 }

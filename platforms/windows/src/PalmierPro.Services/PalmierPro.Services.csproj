@@ -12,6 +12,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Lets VideoEngineEffectPatchesTests drive VideoEngine.ApplyEffectPatches directly — the
+         patch-merge logic is pure C#, but RefreshParams itself needs a live native
+         TimelineSession to exercise end-to-end, so it isn't otherwise reachable from a unit test. -->
+    <InternalsVisibleTo Include="PalmierPro.Services.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\PalmierPro.Core\PalmierPro.Core.csproj" />
     <!-- VideoEngine (Engine/IVideoEngine.cs) delegates to EngineSession/MediaSource for the ABI
          surface E1 already covers (asset-preview open/present, swap-chain attach/resize/detach). -->

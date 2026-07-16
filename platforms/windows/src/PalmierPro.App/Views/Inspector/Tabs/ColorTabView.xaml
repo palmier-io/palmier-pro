@@ -1,0 +1,19 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.Inspector.Tabs.ColorTabView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Content view for InspectorTab.Color (M5) — the color-grading slice of the Mac's single
+         Adjust tab (Inspector/Tabs/AdjustTab.swift's "Color Wheels"/"Curves"/"Hue Curves" sections),
+         split into its own Windows tab since EffectsTabView's generic effect-stack editor has no
+         seam for a custom-drawn wheel/curve control (see EffectsViewModel's class doc). Registered
+         into InspectorTabRegistry via RegisterTab below, per that registry's documented
+         module-initializer pattern. Section list + collapse chrome are built in code-behind (mirrors
+         InspectorView.xaml.cs's tab-rail approach) — this file is just the scroll host. -->
+    <ScrollViewer>
+        <StackPanel x:Name="Root"/>
+    </ScrollViewer>
+</UserControl>

@@ -60,6 +60,10 @@ public sealed partial class MediaTabViewModel : ObservableObject, IDisposable
         {
             _visualCache.GenerateVideoThumbnails(asset.Id, asset.Url);
         }
+        foreach (var asset in _assets.Where(a => a.Type == ClipType.Lottie))
+        {
+            _visualCache.GenerateLottieThumbnail(asset.Id, asset.Url);
+        }
         _ = RefreshMissingMediaAsync();
     }
 
@@ -271,6 +275,10 @@ public sealed partial class MediaTabViewModel : ObservableObject, IDisposable
             if (item.Asset.Type == ClipType.Video)
             {
                 _visualCache.GenerateVideoThumbnails(item.Asset.Id, item.Asset.Url);
+            }
+            else if (item.Asset.Type == ClipType.Lottie)
+            {
+                _visualCache.GenerateLottieThumbnail(item.Asset.Id, item.Asset.Url);
             }
         }
 

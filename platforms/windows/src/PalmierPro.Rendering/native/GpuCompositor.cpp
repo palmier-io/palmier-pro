@@ -1055,6 +1055,42 @@ bool GpuCompositor::Compose(
     ComposeResult& outResult,
     std::string& outError)
 {
+    GpuTex* accum = nullptr;
+    if (!ComposeToAccumulator(snapshot, frame, provider, cancelFlag, accum, outError))
+    {
+        return false;
+    }
+    return ReadbackToBgra8(*accum, accum->width, accum->height, outResult, outError);
+}
+
+bool GpuCompositor::ComputeColorScopes(
+    const TimelineSnapshot& snapshot,
+    int64_t frame,
+    const ClipFrameProvider& provider,
+    const std::atomic<int32_t>* cancelFlag,
+    PE_ColorScopesResult& outResult,
+    std::string& outError)
+{
+    GpuTex* accum = nullptr;
+    if (!ComposeToAccumulator(snapshot, frame, provider, cancelFlag, accum, outError))
+    {
+        return false;
+    }
+    if (!scopes_)
+    {
+        scopes_ = std::make_unique<Scopes>(device_.Get(), context_.Get());
+    }
+    return scopes_->Compute(accum->srv.Get(), accum->width, accum->height, outResult, outError);
+}
+
+bool GpuCompositor::ComposeToAccumulator(
+    const TimelineSnapshot& snapshot,
+    int64_t frame,
+    const ClipFrameProvider& provider,
+    const std::atomic<int32_t>* cancelFlag,
+    GpuTex*& outAccum,
+    std::string& outError)
+{
     if (!EnsureCommonResources(outError))
     {
         return false;
@@ -1181,5 +1217,6 @@ bool GpuCompositor::Compose(
         }
     }
 
-    return ReadbackToBgra8(accum_[current], w, h, outResult, outError);
+    outAccum = &accum_[current];
+    return true;
 }

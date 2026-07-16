@@ -1,0 +1,48 @@
+<UserControl
+    x:Class="PalmierPro.App.Controls.ScrubbableNumberBox"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Port of ScrubbableNumberField.swift: click-drag horizontally to scrub, click without
+         dragging to type. ValueArea carries the pointer handlers (the AppKit ScrubArea's WinUI
+         equivalent) and swaps between DisplayText and EditBox; TrailingLabelText mirrors the
+         optional unit glyph ("X"/"Y"/etc.) that sits outside the scrub area. -->
+    <StackPanel x:Name="RootStack" Orientation="Horizontal" VerticalAlignment="Center">
+        <Grid x:Name="ValueArea"
+              Width="50"
+              Background="Transparent"
+              PointerPressed="ValueArea_PointerPressed"
+              PointerMoved="ValueArea_PointerMoved"
+              PointerReleased="ValueArea_PointerReleased"
+              PointerCaptureLost="ValueArea_PointerCaptureLost"
+              PointerEntered="ValueArea_PointerEntered"
+              PointerExited="ValueArea_PointerExited">
+            <TextBlock x:Name="DisplayText"
+                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                       FontFamily="Consolas"
+                       FontSize="{StaticResource AppFontSizeSm}"
+                       FontWeight="Medium"
+                       TextTrimming="Clip"
+                       Foreground="{StaticResource AppAccentPrimaryBrush}"/>
+            <TextBox x:Name="EditBox"
+                     Visibility="Collapsed"
+                     TextAlignment="Right"
+                     FontFamily="Consolas"
+                     FontSize="{StaticResource AppFontSizeSm}"
+                     FontWeight="Medium"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     KeyDown="EditBox_KeyDown"
+                     LostFocus="EditBox_LostFocus"/>
+        </Grid>
+        <TextBlock x:Name="TrailingLabelText"
+                   Visibility="Collapsed"
+                   VerticalAlignment="Center"
+                   FontSize="{StaticResource AppFontSizeXs}"
+                   FontWeight="SemiBold"
+                   Foreground="{StaticResource AppTextTertiaryBrush}"/>
+    </StackPanel>
+</UserControl>

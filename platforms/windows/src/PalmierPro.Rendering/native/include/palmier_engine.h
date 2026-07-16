@@ -25,6 +25,7 @@
 typedef struct PE_Session* PE_SessionHandle;
 typedef struct PE_Media* PE_MediaHandle;
 typedef struct PE_Timeline* PE_TimelineHandle;
+typedef struct PE_AlphaEncoder* PE_AlphaEncoderHandle;
 
 enum PE_Status : int32_t
 {
@@ -361,6 +362,18 @@ PALMIER_API int32_t PE_TimelineSetIsPlayingCallback(PE_TimelineHandle timeline, 
 // soft limiter, doc §2). PE_ERROR_INVALID_ARGUMENT for a null buffer or frameCount <= 0.
 PALMIER_API int32_t PE_TimelineRenderAudioRange(PE_TimelineHandle timeline, int64_t startFrame, int32_t frameCount, float* outInterleavedStereo);
 
+// Master meter tap (Stage E, AudioMeterView) — reads the raw linear-amplitude peak + RMS per
+// channel of the most recently mixed audio block, fed by BOTH PE_TimelineRenderAudioRange
+// (offline; deterministic, no device) and the live playback fill path (Play()/FillAudio). Values
+// are NOT dB and NOT clamped — the C# AudioMeterHub port (PalmierPro.Core.Audio) owns the dB
+// mapping/decay/peak-hold/clip-latch ballistics, mirroring the Mac's AudioMeterChannelState
+// (Audio/AudioMeter.swift) exactly, so this call only ever reports the raw tap. Lock-free on the
+// native side (plain atomics — see native/TimelineSession.h) so a UI poll here never blocks
+// behind the audio submission thread's decode work. Reads 0 (silence) for all four before either
+// producer has ever run for this timeline. PE_ERROR_INVALID_ARGUMENT if any out pointer is null;
+// PE_ERROR_INVALID_HANDLE for an unknown/closed timeline.
+PALMIER_API int32_t PE_TimelineGetAudioLevels(PE_TimelineHandle timeline, float* outLeftPeak, float* outLeftRms, float* outRightPeak, float* outRightRms);
+
 // --- Fonts (E4) -----------------------------------------------------------------------
 //
 // FontRegistry.h/.cpp builds one process-wide IDWriteFactory5 custom font set from the 13
@@ -378,3 +391,159 @@ PALMIER_API int32_t PE_TimelineRenderAudioRange(PE_TimelineHandle timeline, int6
 // (missing/empty fonts\ directory, DirectWrite factory creation failure).
 // PE_ERROR_BUFFER_TOO_SMALL if capacity can't hold the resolved name + NUL.
 PALMIER_API int32_t PE_DebugResolveFontFamily(const char* storedFontName, char* outFamilyNameUtf8, int32_t capacity);
+
+// --- Lottie bake (Stage E / E4.7) ------------------------------------------------------
+//
+// Normative spec: docs/lottie-bake-v1.md. Mirrors the Mac's Preview/LottieVideoGenerator.swift:
+// vendored ThorVG (native/third_party/thorvg/ — see THIRD_PARTY_NOTICES.md) rasterizes a
+// (plain-JSON) Lottie animation frame-by-frame into a premultiplied BGRA32 buffer;
+// PE_EncodeAlphaVideo* muxes those frames into a prores_ks 4444 .mov via FFmpeg.
+// PE_BakeLottieVideo is the one-call orchestration entry point PalmierPro.Services.Media.
+// ILottieBakeService actually calls (doc §9); PE_EncodeAlphaVideo* is exposed independently
+// because it's directly testable with synthetic frames, no ThorVG/Lottie file involved — the
+// same "headless golden hook" split PE_TimelineRenderAudioRange already established for the
+// audio mix loop (doc §14). A .lottie (dotLottie zip) source is unzipped C#-side before
+// reaching either of these calls — native only ever opens a plain-JSON Lottie path; see doc §12.
+
+// Opens a streaming ProRes 4444 .mov encoder at utf8OutputPath. width/height must both be
+// positive and EVEN (ProRes 4:4:4:4 requirement — mirrors LottieVideoGenerator.
+// clampedForEncoder's even() rounding on the Mac); PE_ERROR_INVALID_ARGUMENT otherwise.
+// PE_ERROR_FILE_OPEN_FAILED if utf8OutputPath's directory can't be created/opened for write;
+// PE_ERROR_ENCODE_FAILED if avformat/avcodec setup itself fails (this FFmpeg build lacking
+// prores_ks, disk full, etc). This call performs no temp-file/atomic-rename dance of its own —
+// callers that need atomic "never publish a partial file" semantics (doc §5) open the encoder
+// against their own temp path and rename after PE_EncodeAlphaVideoClose succeeds.
+PALMIER_API int32_t PE_EncodeAlphaVideoOpen(PE_SessionHandle session, const char* utf8OutputPath, int32_t width, int32_t height, PE_AlphaEncoderHandle* outEncoder);
+
+// Submits one premultiplied BGRA32 frame — identical byte layout to PE_FrameBuffer, and (on
+// this little-endian target) byte-identical to ThorVG's own tvg::SwCanvas::ARGB8888 buffer
+// (premultiplied, alpha-red-green-blue word order == blue-green-red-alpha byte order) — see
+// doc §7: no channel reorder or premultiply pass is needed between ThorVG's raster output and
+// this call. presentationSeconds must be STRICTLY GREATER than the previous call's value on
+// the same encoder (PE_ERROR_INVALID_ARGUMENT otherwise — every sample needs a distinct,
+// increasing timestamp) but need NOT be evenly spaced: a large gap between two calls encodes a
+// long hold as one extra sample rather than as repeated frames. This is exactly how the
+// freeze-frame tail (doc §6) is realized — a direct port of writeVideo's non-uniform `schedule`
+// array on the Mac (LottieVideoGenerator.swift:219-220: the last frame is appended a second
+// time at `max(holdTailSeconds, duration + 1)`), not a Windows-specific technique. Copies
+// bgraData before returning; the caller may reuse/free its buffer immediately after this call.
+PALMIER_API int32_t PE_EncodeAlphaVideoPushFrame(PE_AlphaEncoderHandle encoder, const uint8_t* bgraData, int32_t strideBytes, double presentationSeconds);
+
+// Flushes buffered packets and finalizes the .mov container (moov atom). The output file is
+// only a complete, playable ProRes 4444 .mov once this returns PE_OK. Frees the encoder handle
+// regardless of return value — the handle is invalid after this call either way.
+PALMIER_API int32_t PE_EncodeAlphaVideoClose(PE_AlphaEncoderHandle encoder);
+
+// Cancellation path: discards any buffered/unflushed packets and frees the encoder WITHOUT
+// finalizing the container — the file at utf8OutputPath (if anything was ever written to it)
+// is left incomplete/unplayable. The caller still owns deleting it; this call does not touch
+// the filesystem beyond whatever the OS file handle's own close does.
+PALMIER_API int32_t PE_EncodeAlphaVideoAbort(PE_AlphaEncoderHandle encoder);
+
+// Progress-only callback (no pixel data — unlike PE_ThumbnailCallback, callers never need the
+// intermediate frames themselves). May fire from the calling thread only (PE_BakeLottieVideo
+// is fully synchronous — see below); marshal to the UI thread same as any other engine
+// callback if the subscriber touches UI state.
+typedef void (*PE_BakeProgressCallback)(void* userCtx, int32_t framesDone, int32_t framesTotal);
+
+// One-call bake: rasterizes every frame of the plain-JSON Lottie file at utf8LottiePath (via
+// vendored ThorVG) at targetWidth x targetHeight, appends the freeze-frame hold-tail sample
+// (holdTailSeconds — doc §6), and encodes the result to utf8OutputPath via the same
+// PE_EncodeAlphaVideo* primitives internally. This IS the entry point
+// ILottieBakeService.BakeAsync calls (doc §9) — unlike PE_EncodeAlphaVideo* above, this call
+// DOES own its own temp-file + atomic-rename discipline (doc §5): utf8OutputPath is only ever
+// created, complete and playable, on PE_OK; any failure or cancellation leaves no file at
+// utf8OutputPath at all (its own internal temp file is cleaned up before returning). Runs
+// synchronously on the calling thread — callers invoke it from a background Task, exactly like
+// every other blocking PE_ call in this header. cancelFlag: identical convention to
+// PE_ExtractThumbnails (may be null; polled once per frame). targetWidth/targetHeight need not
+// be even — this call rounds them down to even itself (mirrors clampedForEncoder's even()
+// exactly) before opening the encoder, so callers pass the size doc §6's sizing rule computes,
+// unrounded. PE_ERROR_FILE_OPEN_FAILED if utf8LottiePath can't be parsed as a Lottie
+// composition by ThorVG (invalid/non-Lottie JSON) — mirrors LottieVideoError.invalidAnimation
+// on the Mac.
+PALMIER_API int32_t PE_BakeLottieVideo(
+    PE_SessionHandle session,
+    const char* utf8LottiePath,
+    int32_t targetWidth,
+    int32_t targetHeight,
+    double holdTailSeconds,
+    const char* utf8OutputPath,
+    PE_BakeProgressCallback callback,
+    void* userCtx,
+    const int32_t* cancelFlag);
+
+// Metadata-only probe (native size / duration / frame rate) — no rasterization, no encode, no
+// disk cache involved. Closes PalmierPro.Services.Media.EngineMediaProbe.ProbeLottieAsync's
+// stub (currently unconditionally returns null — see that file's remarks; doc §11). Mirrors
+// LottieVideoGenerator.inspect's metadata half only, not its thumbnail half (a media-panel
+// thumbnail for a Lottie asset is a separate, already-existing-shape need — PE_ExtractThumbnails
+// operates on a decodable PE_MediaHandle, which a raw .json/.lottie file is not — deferred
+// alongside it, not part of this document).
+struct PE_LottieInfo
+{
+    double durationSeconds;
+    double width;
+    double height;
+    double frameRate;
+};
+PALMIER_API int32_t PE_ProbeLottieMetadata(PE_SessionHandle session, const char* utf8LottiePath, PE_LottieInfo* outInfo);
+
+// --- Color scopes (Stage E / E6) -------------------------------------------------------
+//
+// Normative spec: docs/color-scopes-v1.md. Ports Preview/VideoEngine.swift's
+// histogramYRGB(frame:count:256)/hueHistogram(frame:count:96) — the live scopes behind the
+// Inspector Adjust tab's Curves/Hue Curves editors (CurveEditorView.swift/HueCurveEditorView.swift).
+// Does NOT port Compositing/ColorScopes.swift's `Scopes` struct (percentile/zone stats, a
+// different 12-bin hue histogram) — that backs the Agent `inspect_color` tool and is Phase 2
+// (doc §1). GPU compute: downsample the composited frame to a small grid, then a groupshared/
+// InterlockedAdd histogram pass over that grid (doc §3) — only the resulting ~4.5 KB buffer is
+// read back, never the full frame. No native enable/disable flag exists: this is a pull-based
+// call, and "runs only while the Inspector color panel is visible" is satisfied by caller
+// discipline (never called except from the future Inspector ViewModel's own visible-tab +
+// change-triggered refresh, mirroring exactly when the Mac calls histogramYRGB/hueHistogram —
+// see doc §4). Bin counts, normalization (including the joint-max normalize for Y/R/G/B and the
+// sqrt-compressed max-normalize for hue), and the BT.709 luma coefficients (NOT Common.hlsl's
+// Lum(), which is a different, PDF-blend-mode constant) are specified exactly in doc §2 — this
+// header is the ABI shape only, not the numeric contract.
+
+enum PE_ColorScopesConstants : int32_t
+{
+    PE_COLOR_SCOPES_RGB_BINS = 256,
+    PE_COLOR_SCOPES_HUE_BINS = 96,
+    PE_COLOR_SCOPES_MAX_GRID_WIDTH = 320,
+    PE_COLOR_SCOPES_MAX_GRID_HEIGHT = 180,
+};
+
+#pragma pack(push, 8)
+
+// yHistogram/rHistogram/gHistogram/bHistogram are jointly max-normalized (one shared scalar
+// across all four, NOT four independent per-channel maxes — doc §2.1). hueHistogram is
+// max-normalized then sqrt-compressed (doc §2.2). All five arrays are already in the [0,1] range
+// the UI draws directly — no further scaling needed by the caller. frame echoes the requested
+// timeline frame back (doc §6) so an async caller can validate a result against its own request.
+struct PE_ColorScopesResult
+{
+    int64_t frame;
+    float yHistogram[PE_COLOR_SCOPES_RGB_BINS];
+    float rHistogram[PE_COLOR_SCOPES_RGB_BINS];
+    float gHistogram[PE_COLOR_SCOPES_RGB_BINS];
+    float bHistogram[PE_COLOR_SCOPES_RGB_BINS];
+    float hueHistogram[PE_COLOR_SCOPES_HUE_BINS];
+};
+
+#pragma pack(pop)
+
+// Synchronously composes `frame` (the full timeline composite — every visible track/clip's
+// effect chain, not an isolated single-clip render, doc §2.3) and returns its color scopes.
+// Threading contract mirrors PE_TimelineRenderFrameToFile exactly (doc §5): bypasses the render
+// thread's seek mailbox entirely (deterministic, unaffected by a concurrent PE_TimelineSeek on
+// the same handle), serialized against every other D3D11 call on this session through the
+// existing shared immediate-context mutex (see the D3D11 presentation section above), and is safe
+// to call from a background thread — it has no swap-chain/window-handle dependency, so unlike
+// PE_AttachSwapChain/PE_TimelineAttachSwapChain this is NOT a UI-thread-only call. Callers should
+// invoke it off the UI thread regardless, since the compose + GPU readback cost is not free (doc
+// §5). PE_ERROR_INVALID_ARGUMENT for a null outResult; PE_ERROR_INVALID_HANDLE for an unknown/
+// closed timeline; otherwise the same PE_Status values PE_TimelineRenderFrameToFile's compose
+// step can already produce. *outResult is only written on PE_OK.
+PALMIER_API int32_t PE_TimelineComputeColorScopes(PE_TimelineHandle timeline, int64_t frame, PE_ColorScopesResult* outResult);

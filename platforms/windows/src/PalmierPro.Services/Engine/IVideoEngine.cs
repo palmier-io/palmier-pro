@@ -29,6 +29,15 @@ public sealed record MediaStatus(IReadOnlySet<string> OfflineMediaRefs, IReadOnl
     public static readonly MediaStatus Empty = new(new HashSet<string>(), new HashSet<string>());
 }
 
+/// Raw linear-amplitude peak + RMS per channel from the most recently mixed audio block — the
+/// native mix-bus tap (PE_TimelineGetAudioLevels, Stage E's AudioMeterView). NOT dB, NOT
+/// ballistics-processed; PalmierPro.Core.Audio.AudioMeterHub owns the dB mapping/decay/peak-hold/
+/// clip-latch math, mirroring the Mac's AudioMeterChannelState (Audio/AudioMeter.swift) exactly.
+public readonly record struct AudioLevels(float LeftPeak, float LeftRms, float RightPeak, float RightRms)
+{
+    public static readonly AudioLevels Silence = new(0, 0, 0, 0);
+}
+
 /// One effect param override within a <see cref="ClipParamPatch"/> — identifies the effect by
 /// `Type` (an effect list may contain at most one of a given type in practice, mirroring the
 /// Mac's one-effect-instance-per-type convention) and the param by key (EffectRegistry.swift's
@@ -112,12 +121,31 @@ public interface IVideoEngine
     /// than what Phase 1 actually exercises.
     void SetRate(string timelineId, double rate);
 
+    /// Synchronous GPU compute of `timelineId`'s live color scopes at `frame` — the Inspector
+    /// Adjust tab's Curves/Hue Curves editors' data source (docs/color-scopes-v1.md). Mirrors
+    /// `VideoEngine.swift`'s `histogramYRGB`/`hueHistogram`, ported as ONE combined call (doc
+    /// §4's last bullet: a single shared <see cref="ColorScopesResult"/> for both editors, not
+    /// the Mac's two independent fetches). Returns `null` if no session for `timelineId` is open
+    /// yet. → native `PE_TimelineComputeColorScopes`, run on a background `Task` (doc §5) — the
+    /// compose + GPU readback cost is not free, and this must never be awaited on the UI thread.
+    /// Caller discipline (never while <see cref="IsPlaying"/>, coalesced, unreachable while the
+    /// Adjust tab isn't selected) is the Inspector ViewModel's responsibility (doc §4), not this
+    /// call's.
+    Task<ColorScopesResult?> GetColorScopesAsync(string timelineId, int frame, CancellationToken ct = default);
+
     /// Synchronous query of whether `timelineId` is currently playing. Not backed by a native poll
     /// call — the real implementation tracks last-known state locally (updated by
     /// <see cref="Play"/>/<see cref="Pause"/>/<see cref="SetRate"/> and by
     /// <see cref="IsPlayingChanged"/>, including the engine's own auto-stop at timeline end — see
     /// docs/audio-playback-v1.md §3.5). `false` for a timeline that was opened but never played.
     bool IsPlaying(string timelineId);
+
+    /// Master meter tap (Stage E, AudioMeterView) — see <see cref="AudioLevels"/>. Same
+    /// "call OpenTimelineSessionAsync first" contract as <see cref="Play"/>/<see cref="Pause"/>:
+    /// throws <see cref="InvalidOperationException"/> if no open session exists for
+    /// <paramref name="timelineId"/>. Callers are expected to only poll this while
+    /// <see cref="IsPlaying"/> is true — the tap doesn't move otherwise.
+    AudioLevels GetAudioLevels(string timelineId);
 
     /// Opens the media-panel source-preview surface for one asset — distinct from timeline
     /// preview (mirrors the Mac's `previewAsset`/`activePreviewTab` split). Only one asset preview

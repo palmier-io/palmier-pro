@@ -1,0 +1,39 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.Inspector.ScopesHueView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <!-- Hue-wheel spectrum backdrop — mirrors HueCurveEditorView.swift's own local
+             `private static let spectrum: [Color]` array (6 hues + repeated red, evenly spaced),
+             which lives on the view itself rather than AppTheme.swift on the Mac too. Not an
+             AppTheme token for the same reason (docs/color-scopes-v1.md §9): a one-off decorative
+             gradient with no other consumer, already hardcoded at the source of truth. -->
+        <LinearGradientBrush x:Key="HueSpectrumBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+            <GradientStop Color="#FFFF3B30" Offset="0.0"/>
+            <GradientStop Color="#FFF2D933" Offset="0.1667"/>
+            <GradientStop Color="#FF4DD959" Offset="0.3333"/>
+            <GradientStop Color="#FF33CCD9" Offset="0.5"/>
+            <GradientStop Color="#FF4080F2" Offset="0.6667"/>
+            <GradientStop Color="#FFCC59E6" Offset="0.8333"/>
+            <GradientStop Color="#FFFF3B30" Offset="1.0"/>
+        </LinearGradientBrush>
+    </UserControl.Resources>
+
+    <!-- Hue Curves editor scope backdrop (Stage E, E6) — ports the hue-histogram half of
+         Inspector/Components/Adjust/HueCurveEditorView.swift's Canvas draw plus its spectrum
+         gradient background, clipped to the same rounded rect the Mac clips its whole ZStack to
+         (RootGrid.CornerRadius set from code-behind — {StaticResource} into a CornerRadius-typed
+         property throws, see AGENTS.md — mirrors AssetTileControl.xaml.cs's ThumbArea). The
+         interactive curve line + points are the Adjust tab's own overlay on top (same
+         AppTheme.Curve.EditorHeight height), same read-only/interactive split as
+         ScopesHistogramView. -->
+    <Grid x:Name="RootGrid" Height="{StaticResource AppCurveEditorHeight}">
+        <Rectangle Fill="{StaticResource HueSpectrumBrush}" Opacity="{StaticResource AppOpacityMedium}"/>
+        <canvas:CanvasControl x:Name="Canvas" Draw="Canvas_Draw"/>
+    </Grid>
+</UserControl>

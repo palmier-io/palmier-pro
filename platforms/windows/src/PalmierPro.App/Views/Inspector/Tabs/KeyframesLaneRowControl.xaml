@@ -1,0 +1,39 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.Inspector.Tabs.KeyframesLaneRowControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
+    mc:Ignorable="d">
+
+    <!-- One property lane row (M5, Stage E) — Win2D port of Inspector/Keyframes/KeyframesLane.swift's
+         KeyframesLaneRow, plus a label + stamp/nav control cluster mirroring
+         InspectorView.swift's `animatableRow`/`keyframeControls` (the Video tab renders the same
+         cluster inline — see TransformTabView.xaml.cs's BuildKeyframeControls — this row duplicates
+         the visual recipe rather than sharing code, since that method is private to that tab). The
+         lane canvas: click-empty-area seeks the playhead, drag an existing diamond to move it
+         (frame-snapped), right-click a diamond for interpolation/delete. LabelColumn's width is set
+         in code-behind (AGENTS.md: {StaticResource} into a GridLength-typed property throws). -->
+    <Grid x:Name="RootGrid" Height="{StaticResource AppInspectorRowHeight}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="LabelColumn" Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <TextBlock x:Name="LabelText" Grid.Column="0" VerticalAlignment="Center"
+                   FontSize="{StaticResource AppFontSizeSm}"
+                   Foreground="{StaticResource AppTextSecondaryBrush}"/>
+
+        <canvas:CanvasControl x:Name="LaneCanvas" Grid.Column="1"
+                               Draw="LaneCanvas_Draw"
+                               PointerPressed="LaneCanvas_PointerPressed"
+                               PointerMoved="LaneCanvas_PointerMoved"
+                               PointerReleased="LaneCanvas_PointerReleased"
+                               PointerCaptureLost="LaneCanvas_PointerCaptureLost"
+                               RightTapped="LaneCanvas_RightTapped"/>
+
+        <StackPanel x:Name="ControlsPanel" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"/>
+    </Grid>
+</UserControl>

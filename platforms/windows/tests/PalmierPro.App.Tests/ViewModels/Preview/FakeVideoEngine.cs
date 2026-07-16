@@ -52,7 +52,12 @@ internal sealed class FakeVideoEngine : IVideoEngine
 
     public void SetRate(string timelineId, double rate) => throw new NotSupportedException();
 
+    public Task<ColorScopesResult?> GetColorScopesAsync(string timelineId, int frame, CancellationToken ct = default) =>
+        throw new NotSupportedException();
+
     public bool IsPlaying(string timelineId) => throw new NotSupportedException();
+
+    public AudioLevels GetAudioLevels(string timelineId) => throw new NotSupportedException();
 
     public Task OpenAssetPreviewAsync(string mediaPath, CancellationToken ct = default)
     {

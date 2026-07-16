@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace PalmierPro.Rendering;
@@ -90,6 +91,89 @@ public sealed class EngineSession : IDisposable
         if (status != 0)
         {
             throw new EngineException(status, GetLastErrorMessage());
+        }
+    }
+
+    // Metadata-only probe (docs/lottie-bake-v1.md §8/§11) — no rasterization, no encode, no disk
+    // cache. `lottiePath` must already be a plain-JSON path — a .lottie zip is unzipped C#-side
+    // first (§12; see DotLottieExtractor).
+    public LottieInfo ProbeLottieMetadata(string lottiePath)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(lottiePath);
+        int status = NativeMethods.PE_ProbeLottieMetadata(Handle, lottiePath, out PE_LottieInfo info);
+        if (status != 0)
+        {
+            throw new EngineException(status, GetLastErrorMessage());
+        }
+        return new LottieInfo(info.DurationSeconds, info.Width, info.Height, info.FrameRate);
+    }
+
+    /// One-call bake orchestration (docs/lottie-bake-v1.md §8) — synchronous; callers invoke from a
+    /// background Task (mirrors <see cref="ILottieBakeService"/>'s own async surface, which is the
+    /// only real caller). `lottiePath` must already be a plain-JSON path (§12). `onProgress` fires
+    /// once per rasterized animation frame (not for the hold-tail sample); cancelling `ct` polls the
+    /// same way <see cref="MediaSource.ExtractThumbnailsAsync"/>'s cancellation does.
+    public unsafe void BakeLottieVideo(
+        string lottiePath,
+        int targetWidth,
+        int targetHeight,
+        double holdTailSeconds,
+        string outputPath,
+        Action<int, int>? onProgress = null,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(lottiePath);
+        ArgumentException.ThrowIfNullOrEmpty(outputPath);
+
+        int[] cancelArray = new int[1];
+        GCHandle cancelPin = GCHandle.Alloc(cancelArray, GCHandleType.Pinned);
+        GCHandle progressHandle = onProgress is null ? default : GCHandle.Alloc(onProgress);
+        using CancellationTokenRegistration registration = ct.Register(() => Volatile.Write(ref cancelArray[0], 1));
+        try
+        {
+            int status;
+            int* cancelPtr = (int*)cancelPin.AddrOfPinnedObject();
+            status = NativeMethods.PE_BakeLottieVideo(
+                Handle,
+                lottiePath,
+                targetWidth,
+                targetHeight,
+                holdTailSeconds,
+                outputPath,
+                onProgress is null ? null : &ProgressTrampoline,
+                onProgress is null ? 0 : GCHandle.ToIntPtr(progressHandle),
+                cancelPtr);
+
+            if (status == (int)PE_Status.ErrorCancelled || (status != 0 && ct.IsCancellationRequested))
+            {
+                throw new OperationCanceledException(ct);
+            }
+            if (status != 0)
+            {
+                throw new EngineException(status, GetLastErrorMessage());
+            }
+        }
+        finally
+        {
+            cancelPin.Free();
+            if (progressHandle.IsAllocated)
+            {
+                progressHandle.Free();
+            }
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void ProgressTrampoline(nint userCtx, int framesDone, int framesTotal)
+    {
+        if (userCtx == 0)
+        {
+            return;
+        }
+        GCHandle handle = GCHandle.FromIntPtr(userCtx);
+        if (handle.Target is Action<int, int> callback)
+        {
+            callback(framesDone, framesTotal);
         }
     }
 

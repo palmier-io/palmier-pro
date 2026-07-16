@@ -1,0 +1,19 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.Inspector.ScopesHistogramView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
+    mc:Ignorable="d">
+
+    <!-- Curves editor scope backdrop (Stage E, E6) — ports the histogram-silhouette half of
+         Inspector/Components/Adjust/CurveEditorView.swift's Canvas draw: luma behind, then the
+         R/G/B parade additively on top, plus the quarter grid/border/diagonal reference chrome
+         that shares its coordinate space. The interactive curve line + draggable points are a
+         separate overlay the Adjust tab's own curve-editing view draws on top of this control (at
+         the same AppTheme.Curve.EditorHeight height) — this control owns only the read-only scope
+         data + static chrome, matching docs/color-scopes-v1.md's E6 file split. -->
+    <canvas:CanvasControl x:Name="Canvas" Height="{StaticResource AppCurveEditorHeight}"
+                          HorizontalAlignment="Stretch" Draw="Canvas_Draw"/>
+</UserControl>

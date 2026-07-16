@@ -2,6 +2,7 @@
 
 #include "Compositor.h" // ComposeResult, ClipFrameProvider, DecodedSourceFrame
 #include "EffectRegistry.h"
+#include "Scopes.h" // PE_ColorScopesResult
 #include "TextRenderer.h"
 #include "TimelineSnapshot.h"
 
@@ -53,6 +54,18 @@ public:
         ComposeResult& outResult,
         std::string& outError);
 
+    // E6 color scopes (docs/color-scopes-v1.md) — a Compose sibling that shares every stage up
+    // through the composited accumulator (ComposeToAccumulator) and diverges only at the final
+    // stage: GPU downsample + histogram (Scopes) instead of the BGRA8 CPU readback
+    // ReadbackToBgra8 performs. outResult.frame is left untouched — the caller stamps it.
+    bool ComputeColorScopes(
+        const TimelineSnapshot& snapshot,
+        int64_t frame,
+        const ClipFrameProvider& provider,
+        const std::atomic<int32_t>* cancelFlag,
+        PE_ColorScopesResult& outResult,
+        std::string& outError);
+
 private:
     struct GpuTex
     {
@@ -86,6 +99,10 @@ private:
     // Lazily created on first text clip — a WIC-software D2D/DirectWrite rasterizer (needs no D3D
     // device, so it is independent of this compositor's GPU device).
     std::unique_ptr<TextRenderer> textRenderer_;
+
+    // Lazily created on first ComputeColorScopes call (E6) — the downsample+histogram GPU
+    // compute helper. Independent of textRenderer_/psCache_/csCache_ above.
+    std::unique_ptr<Scopes> scopes_;
 
     bool ResolveShadersDir(std::string& outError);
     bool EnsureCommonResources(std::string& outError);
@@ -137,6 +154,18 @@ private:
         int32_t canvasWidth, int32_t canvasHeight);
 
     bool ReadbackToBgra8(GpuTex& source, int32_t width, int32_t height, ComposeResult& outResult, std::string& outError);
+
+    // Shared by Compose() and ComputeColorScopes(): runs every stage through the composited
+    // accumulator (clear, per-track clip/text compose, ping-pong) and points *outAccum at
+    // whichever of accum_[0]/accum_[1] holds the final result — the two callers diverge only in
+    // what they do with that texture next (BGRA8 readback vs. GPU scopes compute).
+    bool ComposeToAccumulator(
+        const TimelineSnapshot& snapshot,
+        int64_t frame,
+        const ClipFrameProvider& provider,
+        const std::atomic<int32_t>* cancelFlag,
+        GpuTex*& outAccum,
+        std::string& outError);
 };
 
 // Shared by TimelineSession.cpp (to decide which path a snapshot's clips need) and

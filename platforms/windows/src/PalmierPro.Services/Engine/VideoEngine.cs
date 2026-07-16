@@ -1,3 +1,4 @@
+using PalmierPro.Core.Effects;
 using PalmierPro.Rendering;
 using EffectParam = PalmierPro.Core.Models.EffectParam;
 
@@ -315,9 +316,12 @@ public sealed class VideoEngine : IVideoEngine, IDisposable
         };
     }
 
-    private static List<SnapshotEffect> ApplyEffectPatches(List<SnapshotEffect> effects, IReadOnlyList<EffectParamPatch> patches)
+    /// Internal (not private) so VideoEngineEffectPatchesTests can drive the real patch-merge logic
+    /// directly — RefreshParams itself needs a live native TimelineSession to exercise end-to-end.
+    internal static List<SnapshotEffect> ApplyEffectPatches(List<SnapshotEffect> effects, IReadOnlyList<EffectParamPatch> patches)
     {
         var result = new List<SnapshotEffect>(effects.Count);
+        var matchedTypes = new HashSet<string>();
         foreach (var effect in effects)
         {
             var relevant = patches.Where(p => p.EffectType == effect.Type).ToList();
@@ -326,6 +330,7 @@ public sealed class VideoEngine : IVideoEngine, IDisposable
                 result.Add(effect);
                 continue;
             }
+            matchedTypes.Add(effect.Type);
             var newParams = new Dictionary<string, EffectParam>(effect.Params);
             foreach (var p in relevant)
             {
@@ -337,7 +342,48 @@ public sealed class VideoEngine : IVideoEngine, IDisposable
             }
             result.Add(new SnapshotEffect(effect.Type, effect.Enabled, newParams));
         }
+
+        // A patch can target an effect type the clip doesn't have yet — e.g. the first color-wheel
+        // drag on a clip with no color.wheels effect. Only iterating `effects` above silently drops
+        // those patches, so the live preview stays frozen for the whole drag and only snaps to the
+        // graded frame on commit (which upserts the effect via a full rebuild). Synthesize the
+        // missing effect from its registry descriptor — defaults for every un-patched key, same as
+        // a real "Add Effect" — and insert it in canonical order so it refreshes live too.
+        foreach (var effectType in patches.Select(p => p.EffectType).Distinct())
+        {
+            if (matchedTypes.Contains(effectType) || EffectRegistry.Descriptor(effectType) is not { } descriptor)
+            {
+                continue;
+            }
+            var newParams = new Dictionary<string, EffectParam>();
+            foreach (var spec in descriptor.Params)
+            {
+                newParams[spec.Key] = new EffectParam(spec.DefaultValue);
+            }
+            foreach (var p in patches.Where(p => p.EffectType == effectType))
+            {
+                newParams[p.ParamKey] = new EffectParam(p.Value);
+            }
+            result.Insert(EffectInsertIndex(result, effectType), new SnapshotEffect(effectType, true, newParams));
+        }
         return result;
+    }
+
+    /// Canonical-order insert position for a synthesized effect — mirrors
+    /// EffectRegistry.InsertIndex, adapted for SnapshotEffect (a plain type string) rather than the
+    /// model-layer Effect list that method operates on. Shares EffectRegistry.RankOf so the two
+    /// stay in lockstep (unregistered types sort last, int.MaxValue).
+    private static int EffectInsertIndex(IReadOnlyList<SnapshotEffect> effects, string effectType)
+    {
+        var rank = EffectRegistry.RankOf(effectType);
+        for (var i = 0; i < effects.Count; i++)
+        {
+            if (EffectRegistry.RankOf(effects[i].Type) > rank)
+            {
+                return i;
+            }
+        }
+        return effects.Count;
     }
 
     public void EvictTimeline(string timelineId)
@@ -478,6 +524,37 @@ public sealed class VideoEngine : IVideoEngine, IDisposable
     /// Local last-known-state read, not a native poll — see <see cref="IVideoEngine.IsPlaying"/>'s
     /// remarks. `false` for a timeline that was never opened or never played.
     public bool IsPlaying(string timelineId) => _isPlaying.GetValueOrDefault(timelineId);
+
+    /// → native PE_TimelineComputeColorScopes (docs/color-scopes-v1.md), off the UI thread via
+    /// <see cref="Task.Run(Action, CancellationToken)"/> — mirrors <see cref="UpdateTimelineAsync"/>'s
+    /// dictionary-lookup shape. `null` (not a throw) if no session for `timelineId` is open yet —
+    /// callers are expected to have already called <see cref="OpenTimelineSessionAsync"/>, but a
+    /// scopes refresh racing a timeline close/evict should degrade quietly, not fault the caller's task.
+    public Task<ColorScopesResult?> GetColorScopesAsync(string timelineId, int frame, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(timelineId);
+        ThrowIfDisposed();
+        return Task.Run(
+            () =>
+            {
+                PalmierPro.Rendering.TimelineSession? timeline;
+                lock (_timelinesGate)
+                {
+                    _timelines.TryGetValue(timelineId, out timeline);
+                }
+                return timeline?.ComputeColorScopes(frame);
+            },
+            ct);
+    }
+
+    /// → native PE_TimelineGetAudioLevels (Stage E, AudioMeterView). See <see cref="AudioLevels"/>.
+    public AudioLevels GetAudioLevels(string timelineId)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(timelineId);
+        var timeline = GetOpenTimelineOrThrow(timelineId);
+        var (leftPeak, leftRms, rightPeak, rightRms) = timeline.GetAudioLevels();
+        return new AudioLevels(leftPeak, leftRms, rightPeak, rightRms);
+    }
 
     public Task OpenAssetPreviewAsync(string mediaPath, CancellationToken ct = default)
     {

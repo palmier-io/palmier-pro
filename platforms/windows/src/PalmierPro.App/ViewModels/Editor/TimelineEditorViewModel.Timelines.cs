@@ -1,3 +1,4 @@
+using PalmierPro.Core;
 using PalmierPro.Core.Json;
 using PalmierPro.Core.Models;
 using PalmierPro.Core.Timeline;
@@ -74,6 +75,120 @@ public sealed partial class TimelineEditorViewModel
             }
             handler();
         });
+    }
+
+    // MARK: - Project settings (fps/resolution) — ports EditorViewModel+ProjectSettings.swift's
+    // `applyTimelineSettings`. Only the mutation itself: the settings-mismatch dialog
+    // (`checkProjectSettings`/`addClipsWithSettingsCheck`) that surfaces on importing a clip whose
+    // fps/resolution differs from an already-configured timeline is not ported — nothing calls
+    // this yet except the empty-inspector Resolution/Frame Rate/Aspect Ratio menus (InspectorView),
+    // which always pass an explicit user pick, never an import-driven auto-detect.
+
+    /// Changes the project's fps and/or the active timeline's canvas resolution. fps is
+    /// project-wide (every timeline's frame-based values move to the new frame grid); width/height
+    /// apply to the active timeline only, matching the Mac's per-`Timeline` width/height fields.
+    public void ApplyTimelineSettings(int fps, int width, int height)
+    {
+        var prevFps = Timeline.Fps;
+        var prevWidth = Timeline.Width;
+        var prevHeight = Timeline.Height;
+
+        // FPS is project-wide: rescale frame-based values in every timeline.
+        if (fps != prevFps && prevFps > 0 && fps > 0)
+        {
+            var scale = (double)fps / prevFps;
+            CurrentFrame = SwiftMath.RoundToInt(CurrentFrame * scale);
+            foreach (var t in Timelines)
+            {
+                t.RescaleFrames(scale);
+            }
+        }
+
+        // Keep visual scale proportional when the canvas aspect changes.
+        if (width != prevWidth || height != prevHeight)
+        {
+            foreach (var track in Timeline.Tracks)
+            {
+                foreach (var clip in track.Clips)
+                {
+                    if (SourceDimensions(clip) is not { } dims || prevWidth <= 0 || prevHeight <= 0 || width <= 0 || height <= 0)
+                    {
+                        continue;
+                    }
+                    var sourceAspect = (double)dims.Width / dims.Height;
+                    var oldAspect = sourceAspect / ((double)prevWidth / prevHeight);
+                    var newAspect = sourceAspect / ((double)width / height);
+
+                    var scaleAnimated = clip.ScaleTrack?.IsActive ?? false;
+                    var oldFit = FitTransform(dims.Width, dims.Height, prevWidth, prevHeight);
+                    if (!scaleAnimated && TransformScaleMatches(clip.Transform, oldFit))
+                    {
+                        var newFit = FitTransform(dims.Width, dims.Height, width, height);
+                        clip.Transform.Width = newFit.Width;
+                        clip.Transform.Height = newFit.Height;
+                    }
+                    else
+                    {
+                        var heightScale = oldAspect / newAspect;
+                        clip.Transform.Height *= heightScale;
+                        if (clip.ScaleTrack is { IsActive: true } scaleTrack)
+                        {
+                            foreach (var kf in scaleTrack.Keyframes)
+                            {
+                                kf.Value.B *= heightScale;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        var prevConfiguredById = Timelines.Select(t => (t.Id, t.SettingsConfigured)).ToList();
+        foreach (var t in Timelines)
+        {
+            t.Fps = fps;
+            t.SettingsConfigured = true;
+        }
+        Timeline.Width = width;
+        Timeline.Height = height;
+
+        RegisterTimelineUndo("Change Project Settings", () =>
+        {
+            ApplyTimelineSettings(prevFps, prevWidth, prevHeight);
+            foreach (var (id, configured) in prevConfiguredById)
+            {
+                if (TimelineFor(id) is { } t)
+                {
+                    t.SettingsConfigured = configured;
+                }
+            }
+        });
+        NotifyTimelineChanged();
+    }
+
+    private static bool TransformScaleMatches(Transform transform, Transform other) =>
+        Math.Abs(transform.Width - other.Width) < 0.0001 && Math.Abs(transform.Height - other.Height) < 0.0001;
+
+    /// Source pixel dimensions for a clip: media-manifest entry dims, or the child timeline's for
+    /// nested-sequence carriers. Mirrors `EditorViewModel.sourceDimensions(for:)` — duplicated from
+    /// TransformViewModel's private copy of the same helper (different class, no shared owner to
+    /// hang it off yet).
+    private (int Width, int Height)? SourceDimensions(Clip clip)
+    {
+        var entry = Document.Manifest.Entries.FirstOrDefault(e => e.Id == clip.MediaRef);
+        if (entry is { SourceWidth: { } w, SourceHeight: { } h } && w > 0 && h > 0)
+        {
+            return (w, h);
+        }
+        if (clip.SourceClipType == ClipType.Sequence)
+        {
+            var child = Timelines.FirstOrDefault(t => t.Id == clip.MediaRef);
+            if (child is { Width: > 0, Height: > 0 })
+            {
+                return (child.Width, child.Height);
+            }
+        }
+        return null;
     }
 
     // MARK: - CRUD

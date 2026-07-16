@@ -1,0 +1,33 @@
+<UserControl
+    x:Class="PalmierPro.App.Views.Inspector.Tabs.ColorHueCurveEditorView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
+    xmlns:inspector="using:PalmierPro.App.Views.Inspector"
+    mc:Ignorable="d">
+
+    <!-- Port of HueCurveEditorView.swift (Inspector/Components/Adjust) — the Hue/Sat/Luma curve
+         editor behind the "Hue Curves" section (color.hueCurves). ScopesHueView draws the read-only
+         scope backdrop (hue-sixths grid/border/dashed midline + saturation-weighted hue histogram,
+         docs/color-scopes-v1.md); this view is the transparent interactive overlay on top of it. -->
+    <StackPanel x:Name="Root" Spacing="{StaticResource AppSpacingSm}">
+        <StackPanel x:Name="ChannelRow" Orientation="Horizontal" Spacing="{StaticResource AppSpacingSm}"/>
+
+        <Grid x:Name="EditorGrid" Height="{StaticResource AppCurveEditorHeight}">
+            <inspector:ScopesHueView x:Name="Backdrop"/>
+            <canvas:CanvasControl x:Name="Canvas"
+                                   Draw="Canvas_Draw"
+                                   PointerPressed="Canvas_PointerPressed"
+                                   PointerMoved="Canvas_PointerMoved"
+                                   PointerReleased="Canvas_PointerReleased"
+                                   PointerCaptureLost="Canvas_PointerCaptureLost"
+                                   DoubleTapped="Canvas_DoubleTapped"/>
+        </Grid>
+
+        <TextBlock Text="Drag to add or shape a point · double-click to remove"
+                   FontSize="{StaticResource AppFontSizeXxs}"
+                   Foreground="{StaticResource AppTextMutedBrush}"/>
+    </StackPanel>
+</UserControl>

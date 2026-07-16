@@ -19,16 +19,18 @@ using Windows.UI.Core;
 
 namespace PalmierPro.App.Views;
 
-/// Media panel (Stage B), timeline (Stage C), and preview canvas (Stage D) are real; inspector
-/// remains a themed skeleton until Stage E. The media panel's EngineSession and preview's
-/// IVideoEngine are two independent native sessions — the former backs thumbnail/peak extraction
-/// (per-asset), the latter backs timeline composition/swap-chain presentation; both are
-/// created/disposed alongside their document.
+/// Media panel (Stage B), timeline (Stage C), preview canvas (Stage D), and inspector (Stage E)
+/// are all real. The media panel's EngineSession and preview's IVideoEngine are two independent
+/// native sessions — the former backs thumbnail/peak extraction (per-asset), the latter backs
+/// timeline composition/swap-chain presentation; both are created/disposed alongside their
+/// document. InspectorHost owns no engine session of its own — it only reads the same
+/// TimelineEditorViewModel the timeline/preview already share.
 public sealed partial class EditorPlaceholderView : UserControl
 {
     private readonly Window _window;
     private EngineSession? _engineSession;
     private MediaVisualCache? _visualCache;
+    private LottieBakeService? _lottieBakeService;
     private MediaTabViewModel? _mediaTabViewModel;
     private PreviewViewModel? _previewViewModel;
     private TransportViewModel? _transportViewModel;
@@ -54,11 +56,17 @@ public sealed partial class EditorPlaceholderView : UserControl
         TearDownPreview();
         TimelineTabBarHost.SetViewModel(null);
         TimelineHost.Attach(null);
+        InspectorHost.SetTimeline(null);
         if (document is null || timeline is null)
         {
             MediaPanelHost.SetViewModel(null);
             return;
         }
+
+        // Unlike the media panel/timeline/preview above, the inspector owns no engine session of
+        // its own — it only reads clip selection off `timeline`, so it's wired independently of
+        // whether the native engine session below succeeds.
+        InspectorHost.SetTimeline(timeline);
 
         try
         {
@@ -68,9 +76,15 @@ public sealed partial class EditorPlaceholderView : UserControl
             var missingMediaService = new MissingMediaService();
             var dialogService = new MediaImportDialogService(_window);
             var viewModel = new MediaTabViewModel(document, importService, visualCache, missingMediaService, dialogService);
+            // Shares `session` rather than opening a third native session — PE_BakeLottieVideo/
+            // PE_ProbeLottieMetadata touch no session-scoped state beyond error-message reporting
+            // (docs/lottie-bake-v1.md §8), and this service's lifetime already tracks the media
+            // tab's (both torn down together below, both recreated together per document).
+            var lottieBakeService = new LottieBakeService(session);
 
             _engineSession = session;
             _visualCache = visualCache;
+            _lottieBakeService = lottieBakeService;
             _mediaTabViewModel = viewModel;
             viewModel.AssetOpenRequested += OnAssetOpenRequested;
             MediaPanelHost.SetViewModel(viewModel);
@@ -88,9 +102,10 @@ public sealed partial class EditorPlaceholderView : UserControl
         // without an engine factory (see ShellViewModel's ctor) — the real app always supplies one.
         if (timeline.Engine is { } engine)
         {
-            var previewViewModel = new PreviewViewModel(document, timeline, engine);
+            var previewViewModel = new PreviewViewModel(document, timeline, engine, _lottieBakeService);
             _previewViewModel = previewViewModel;
             PreviewHost.SetViewModel(previewViewModel);
+            AudioMeterHost.SetViewModel(previewViewModel);
 
             // `dispatch` marshals TransportViewModel's engine-thread callbacks (PlayheadChanged/
             // IsPlayingChanged) onto this UI thread — see that class's ctor remarks.
@@ -101,6 +116,7 @@ public sealed partial class EditorPlaceholderView : UserControl
         else
         {
             PreviewHost.SetViewModel(null);
+            AudioMeterHost.SetViewModel(null);
             TransportBarHost.SetViewModel(null);
         }
     }
@@ -122,6 +138,10 @@ public sealed partial class EditorPlaceholderView : UserControl
         _mediaTabViewModel = null;
         _visualCache?.Dispose();
         _visualCache = null;
+        // PreviewViewModel (torn down by TearDownPreview, called right after this) unsubscribes
+        // from _lottieBakeService.StatusChanged itself — nulling this field here doesn't affect
+        // that, since it holds its own captured reference from construction.
+        _lottieBakeService = null;
         _engineSession?.Dispose();
         _engineSession = null;
     }
@@ -131,6 +151,7 @@ public sealed partial class EditorPlaceholderView : UserControl
     private void TearDownPreview()
     {
         PreviewHost.SetViewModel(null);
+        AudioMeterHost.SetViewModel(null);
         _previewViewModel?.Dispose();
         _previewViewModel = null;
         TransportBarHost.SetViewModel(null);

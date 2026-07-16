@@ -322,6 +322,15 @@
     <x:Double x:Key="AppMatteSheetWidth">280</x:Double>
     <x:Double x:Key="AppMatteControlWidth">116</x:Double>
 
+    <!-- Inspector (property-row metrics; mirrors KeyframesMetrics on the Mac) -->
+    <x:Double x:Key="AppInspectorRowHeight">22</x:Double>
+    <x:Double x:Key="AppInspectorStampButtonWidth">22</x:Double>
+    <x:Double x:Key="AppInspectorNavButtonWidth">6</x:Double>
+    <x:Double x:Key="AppInspectorDiamondSize">8</x:Double>
+    <!-- Keyframes tab's per-clip ruler + clip-strip header. -->
+    <x:Double x:Key="AppInspectorRulerHeight">18</x:Double>
+    <x:Double x:Key="AppInspectorStripHeight">14</x:Double>
+
     <!-- Shadow (AppTheme.ShadowStyle flattened to Color/Radius/X/Y) -->
     <Color x:Key="AppShadowSmColor">#4D000000</Color>
     <x:Double x:Key="AppShadowSmRadius">1</x:Double>

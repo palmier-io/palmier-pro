@@ -153,8 +153,11 @@ bool TimelineSession::Update(const std::string& utf8SnapshotJson, std::string& o
         std::lock_guard<std::mutex> lock(snapshotMutex_);
         snapshot_ = next;
     }
-    std::lock_guard<std::mutex> clockLock(clockMutex_);
-    clock_.SetFps(fps);
+    {
+        std::lock_guard<std::mutex> clockLock(clockMutex_);
+        clock_.SetFps(fps);
+    }
+    NudgePresentIfPaused();
     return true;
 }
 
@@ -195,8 +198,11 @@ bool TimelineSession::RefreshParams(const std::string& utf8SnapshotJson, std::st
         std::lock_guard<std::mutex> lock(snapshotMutex_);
         snapshot_ = next;
     }
-    std::lock_guard<std::mutex> clockLock(clockMutex_);
-    clock_.SetFps(fps);
+    {
+        std::lock_guard<std::mutex> clockLock(clockMutex_);
+        clock_.SetFps(fps);
+    }
+    NudgePresentIfPaused();
     return true;
 }
 
@@ -241,6 +247,35 @@ int32_t TimelineSession::Seek(int64_t frame, int32_t mode)
     }
     mailboxCv_.notify_one();
     return PE_OK;
+}
+
+// Live param/clip-speed edits (RefreshParams/Update) swap snapshot_ but, unlike Seek/Play/
+// Pause, never used to notify the mailbox — the paused render thread had no periodic
+// re-present (that's the playing-only wait_for branch in RenderThreadLoop), so the preview
+// surface kept showing the pre-edit frame until the next Seek/Play. While paused, re-arm the
+// mailbox with the clock's current (frozen) frame in Exact mode so RenderThreadLoop's hadSeek
+// branch recomposes+presents against the NEW snapshot — it composes unconditionally there
+// (unlike PlaybackPresentTick's frame != lastPresentedFrame_ guard), so this fires even though
+// the frame number itself hasn't changed. No-op while playing: the present loop already
+// recomposes every changed frame against whatever snapshot_ currently is.
+void TimelineSession::NudgePresentIfPaused()
+{
+    if (isPlaying_.load(std::memory_order_relaxed))
+    {
+        return;
+    }
+    int64_t frame;
+    {
+        std::lock_guard<std::mutex> clockLock(clockMutex_);
+        frame = clock_.CurrentFrame();
+    }
+    {
+        std::lock_guard<std::mutex> lock(mailboxMutex_);
+        pendingFrame_ = frame;
+        pendingMode_ = PE_SEEK_EXACT;
+        hasPending_ = true;
+    }
+    mailboxCv_.notify_one();
 }
 
 void TimelineSession::RenderThreadLoop()
@@ -721,6 +756,66 @@ bool TimelineSession::RenderFrameToFile(int64_t frame, const std::string& utf8Pn
     return true;
 }
 
+bool TimelineSession::ComputeColorScopes(int64_t frame, PE_ColorScopesResult& outResult, std::string& outError)
+{
+    // Same dedicated-cancel-flag rationale as RenderFrameToFile: this synchronous golden/UI hook
+    // must never be aborted by a concurrent PE_TimelineSeek's cancelDecode_ flag.
+    static thread_local std::atomic<int32_t> noCancel{0};
+
+    std::shared_ptr<const TimelineSnapshot> snapshot;
+    {
+        std::lock_guard<std::mutex> lock(snapshotMutex_);
+        snapshot = snapshot_;
+    }
+    if (!snapshot)
+    {
+        outError = "timeline has no open snapshot";
+        owner_->SetLastError(outError);
+        return false;
+    }
+
+    double fps = snapshot->Fps();
+    std::vector<uint8_t> scratch;
+    ClipFrameProvider provider = [&](const SnapshotClip& clip, double sourceSeconds, DecodedSourceFrame& outFrame) -> bool {
+        return ProvideClipFrame(clip, sourceSeconds, /*interactive*/ false, &noCancel, fps, outFrame, scratch);
+    };
+
+    // Scopes are GPU-compute-only (docs/color-scopes-v1.md §3) — no CPU compositor equivalent,
+    // so unlike ComposeFrame this never consults CpuCompositorForced() or falls back to
+    // Compositor::Compose. EnsureGraphicsDeviceShared already tries hardware then WARP
+    // (palmier_engine.h's D3D11 presentation section) — a null device here means both failed.
+    std::string deviceError;
+    ID3D11Device* device = owner_->EnsureGraphicsDeviceShared(deviceError);
+    if (!device)
+    {
+        outError = "no D3D11 device available for color scopes compute: " + deviceError;
+        owner_->SetLastError(outError);
+        return false;
+    }
+
+    std::lock_guard<std::recursive_mutex> gfxLock(owner_->GraphicsMutex());
+    if (!gpuCompositor_)
+    {
+        gpuCompositor_ = std::make_unique<GpuCompositor>(device, owner_->GraphicsContext());
+    }
+    try
+    {
+        if (!gpuCompositor_->ComputeColorScopes(*snapshot, frame, provider, &noCancel, outResult, outError))
+        {
+            owner_->SetLastError(outError);
+            return false;
+        }
+    }
+    catch (const std::exception& ex)
+    {
+        outError = std::string("ComputeColorScopes threw: ") + ex.what();
+        owner_->SetLastError(outError);
+        return false;
+    }
+    outResult.frame = frame;
+    return true;
+}
+
 bool TimelineSession::RenderAudioRange(int64_t startFrame, int32_t sampleCount, float* outInterleavedStereo, std::string& outError)
 {
     std::shared_ptr<const TimelineSnapshot> snapshot;
@@ -745,7 +840,44 @@ bool TimelineSession::RenderAudioRange(int64_t startFrame, int32_t sampleCount, 
         owner_->SetLastError(outError);
         return false;
     }
+    UpdateAudioLevels(outInterleavedStereo, sampleCount);
     return true;
+}
+
+// Master meter tap (Stage E). One call per mixed block from either producer (RenderAudioRange or
+// FillAudio — see TimelineSession.h's remarks on GetAudioLevels/the levelLeft*_/levelRight*_
+// atomics). Peak is the max absolute sample; RMS is sqrt(mean(sample^2)) — both computed over the
+// WHOLE block in one pass, matching the "peak+RMS per channel per block" tap granularity, not
+// AudioMixer's internal 960-sample sub-blocks (a live FillAudio call is already one timeline
+// frame's worth of audio, ~33 ms at 30 fps — close enough to the UI's own ~30 Hz poll cadence
+// that a finer grain would buy nothing).
+void TimelineSession::UpdateAudioLevels(const float* interleavedStereo, int32_t sampleCount)
+{
+    float peakL = 0.0f;
+    float peakR = 0.0f;
+    double sumSqL = 0.0;
+    double sumSqR = 0.0;
+    for (int32_t i = 0; i < sampleCount; ++i)
+    {
+        const float l = interleavedStereo[i * 2];
+        const float r = interleavedStereo[i * 2 + 1];
+        peakL = std::max(peakL, std::fabs(l));
+        peakR = std::max(peakR, std::fabs(r));
+        sumSqL += static_cast<double>(l) * l;
+        sumSqR += static_cast<double>(r) * r;
+    }
+    levelLeftPeak_.store(peakL, std::memory_order_relaxed);
+    levelRightPeak_.store(peakR, std::memory_order_relaxed);
+    levelLeftRms_.store(sampleCount > 0 ? static_cast<float>(std::sqrt(sumSqL / sampleCount)) : 0.0f, std::memory_order_relaxed);
+    levelRightRms_.store(sampleCount > 0 ? static_cast<float>(std::sqrt(sumSqR / sampleCount)) : 0.0f, std::memory_order_relaxed);
+}
+
+void TimelineSession::GetAudioLevels(float& outLeftPeak, float& outLeftRms, float& outRightPeak, float& outRightRms) const
+{
+    outLeftPeak = levelLeftPeak_.load(std::memory_order_relaxed);
+    outLeftRms = levelLeftRms_.load(std::memory_order_relaxed);
+    outRightPeak = levelRightPeak_.load(std::memory_order_relaxed);
+    outRightRms = levelRightRms_.load(std::memory_order_relaxed);
 }
 
 void TimelineSession::ScrubAudioAt(int64_t frame, int32_t direction)
@@ -949,6 +1081,7 @@ void TimelineSession::FillAudio(float* dstInterleavedStereo, uint32_t frameCount
             }
         }
         fillCursorSample_ = needEnd;
+        UpdateAudioLevels(dstInterleavedStereo, static_cast<int32_t>(frameCount));
 
         // Drop fully-consumed staging to bound memory (keep well under a second).
         const int64_t consumed = fillCursorSample_ - stagingBaseSample_;
