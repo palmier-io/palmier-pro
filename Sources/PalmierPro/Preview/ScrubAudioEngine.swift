@@ -28,6 +28,11 @@ final class ScrubAudioEngine {
         var endSample: Int64 { startSample + Int64(left.count) }
     }
 
+    private struct CachedWindow {
+        let window: PCMWindow
+        var lastUsed: UInt64
+    }
+
     nonisolated private static let sampleRate = 48_000.0
     nonisolated private static let sampleTimescale: CMTimeScale = 48_000
     nonisolated private static let channelCount: AVAudioChannelCount = 2
@@ -36,19 +41,24 @@ final class ScrubAudioEngine {
     nonisolated private static let fadeFrameCount = 144
     nonisolated private static let meterFrameCount = 960
     nonisolated private static let meterPrefetchFrameCount = 12_000
+    nonisolated private static let prefetchMarginFrameCount = 24_000
+    nonisolated private static let maxCachedWindows = 32
+    nonisolated private static let mixInvalidationDebounce = Duration.milliseconds(250)
 
     private let meter: AudioMeterHub
     private let output = ScrubAudioOutput(sampleRate: sampleRate)
 
     private var source: Source?
     private var sourceGeneration = 0
-    private var cache: PCMWindow?
+    private var windows: [CachedWindow] = []
+    private var useCounter: UInt64 = 0
     private var latestRequest: Request?
     private var latestMeterSample: Int64?
     private var lastRequestedSample: Int64?
     private var lastDirection: Direction = .forward
     private var decodeTask: Task<Void, Never>?
     private var pendingDecodeRange: Range<Int64>?
+    private var mixInvalidationTask: Task<Void, Never>?
     private var lifecycleObservers: [(center: NotificationCenter, token: NSObjectProtocol)] = []
 
     init(meter: AudioMeterHub) {
@@ -62,11 +72,28 @@ final class ScrubAudioEngine {
     }
 
     func configure(asset: AVAsset?, audioMix: AVAudioMix?, resetMeter: Bool = true) {
+        let mixOnlyChange = asset != nil && asset === source?.asset
         stopScrubbing()
         sourceGeneration &+= 1
-        cache = nil
         source = asset.map { Source(asset: $0, audioMix: audioMix, generation: sourceGeneration) }
+        if mixOnlyChange {
+            scheduleMixInvalidation()
+        } else {
+            mixInvalidationTask?.cancel()
+            mixInvalidationTask = nil
+            windows.removeAll()
+        }
         if resetMeter { meter.reset() }
+    }
+
+    private func scheduleMixInvalidation() {
+        mixInvalidationTask?.cancel()
+        mixInvalidationTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.mixInvalidationDebounce)
+            guard !Task.isCancelled, let self else { return }
+            self.mixInvalidationTask = nil
+            self.windows.removeAll()
+        }
     }
 
     func scrub(to time: CMTime, movingForward: Bool? = nil) {
@@ -91,10 +118,11 @@ final class ScrubAudioEngine {
 
         let request = Request(sample: sample, direction: direction)
         latestRequest = request
-        if let cache, canServe(sample: sample, from: cache) {
-            play(request: request, from: cache)
+        if let window = serveableWindow(for: sample) {
+            play(request: request, from: window)
+            prefetchIfNeeded(sample: sample, direction: direction, from: window, source: source)
         } else {
-            requestWindow(around: sample, source: source)
+            requestWindow(around: sample, direction: direction, source: source)
         }
     }
 
@@ -105,13 +133,13 @@ final class ScrubAudioEngine {
 
         let sample = Int64((seconds * Self.sampleRate).rounded())
         latestMeterSample = sample
-        if let cache, canMeter(sample: sample, from: cache) {
-            publishMeter(sample: sample, from: cache)
-            if sample + Int64(Self.meterPrefetchFrameCount) >= cache.endSample {
-                requestWindow(around: sample, source: source)
+        if let window = meterableWindow(for: sample) {
+            publishMeter(sample: sample, from: window)
+            if sample + Int64(Self.meterPrefetchFrameCount) >= window.endSample {
+                requestWindow(around: sample, direction: .forward, source: source)
             }
         } else {
-            requestWindow(around: sample, source: source)
+            requestWindow(around: sample, direction: .forward, source: source)
         }
     }
 
@@ -132,8 +160,10 @@ final class ScrubAudioEngine {
 
     func teardown() {
         resetScrubState()
+        mixInvalidationTask?.cancel()
+        mixInvalidationTask = nil
         source = nil
-        cache = nil
+        windows.removeAll()
         output.invalidate()
         removeLifecycleObservers()
     }
@@ -145,12 +175,11 @@ final class ScrubAudioEngine {
         lifecycleObservers.removeAll()
     }
 
-    private func requestWindow(around sample: Int64, source: Source) {
+    private func requestWindow(around sample: Int64, direction: Direction, source: Source) {
         if let pendingDecodeRange, canServe(sample: sample, from: pendingDecodeRange) { return }
 
         decodeTask?.cancel()
-        let halfWindow = Int64(Self.cacheFrameCount / 2)
-        let startSample = max(0, sample - halfWindow)
+        let startSample = windowStart(around: sample, direction: direction)
         let range = startSample..<(startSample + Int64(Self.cacheFrameCount))
         pendingDecodeRange = range
 
@@ -168,13 +197,13 @@ final class ScrubAudioEngine {
                 if self.latestRequest != nil { self.lastRequestedSample = nil }
                 return
             }
-            self.cache = window
+            self.insert(window)
 
             if let request = self.latestRequest {
                 if self.canServe(sample: request.sample, from: window) {
                     self.play(request: request, from: window)
                 } else {
-                    self.requestWindow(around: request.sample, source: source)
+                    self.requestWindow(around: request.sample, direction: request.direction, source: source)
                 }
                 return
             }
@@ -182,9 +211,58 @@ final class ScrubAudioEngine {
                 if self.canMeter(sample: meterSample, from: window) {
                     self.publishMeter(sample: meterSample, from: window)
                 } else {
-                    self.requestWindow(around: meterSample, source: source)
+                    self.requestWindow(around: meterSample, direction: .forward, source: source)
                 }
             }
+        }
+    }
+
+    /// Bias the decode window in the scrub direction so most of it lands ahead of the playhead.
+    private func windowStart(around sample: Int64, direction: Direction) -> Int64 {
+        let behind = Int64(Self.cacheFrameCount / 8)
+        let offset: Int64 = direction == .forward ? behind : Int64(Self.cacheFrameCount) - behind
+        return max(0, sample - offset)
+    }
+
+    private func prefetchIfNeeded(sample: Int64, direction: Direction, from window: PCMWindow, source: Source) {
+        guard decodeTask == nil else { return }
+        let margin = Int64(Self.prefetchMarginFrameCount)
+        let nearEdge = direction == .forward
+            ? sample + margin >= window.endSample
+            : sample - margin <= window.startSample
+        guard nearEdge else { return }
+        let step = Int64(Self.cacheFrameCount - Self.prefetchMarginFrameCount)
+        let next = direction == .forward ? sample + step : sample - step
+        guard next >= 0, serveableWindow(for: next, touch: false) == nil else { return }
+        requestWindow(around: next, direction: direction, source: source)
+    }
+
+    private func serveableWindow(for sample: Int64, touch: Bool = true) -> PCMWindow? {
+        guard let index = windows.firstIndex(where: { canServe(sample: sample, from: $0.window) }) else { return nil }
+        if touch {
+            useCounter &+= 1
+            windows[index].lastUsed = useCounter
+        }
+        return windows[index].window
+    }
+
+    private func meterableWindow(for sample: Int64) -> PCMWindow? {
+        guard let index = windows.firstIndex(where: { canMeter(sample: sample, from: $0.window) }) else { return nil }
+        useCounter &+= 1
+        windows[index].lastUsed = useCounter
+        return windows[index].window
+    }
+
+    private func insert(_ window: PCMWindow) {
+        useCounter &+= 1
+        if let index = windows.firstIndex(where: { $0.window.startSample == window.startSample }) {
+            windows[index] = CachedWindow(window: window, lastUsed: useCounter)
+        } else {
+            windows.append(CachedWindow(window: window, lastUsed: useCounter))
+        }
+        if windows.count > Self.maxCachedWindows,
+           let evict = windows.indices.min(by: { windows[$0].lastUsed < windows[$1].lastUsed }) {
+            windows.remove(at: evict)
         }
     }
 
