@@ -637,13 +637,9 @@ final class VideoProject: NSDocument {
             }
             restored += 1
             guard timelineMediaRefs.contains(asset.id) else { continue }
-            if asset.needsMetadataRefresh {
-                Task { [weak self] in
-                    guard await asset.loadMetadata(includeThumbnail: false), let self else { return }
-                    self.editorViewModel.prepareMediaVisuals(for: asset)
-                }
-            } else {
-                editorViewModel.prepareMediaVisuals(for: asset)
+            Task { [weak self] in
+                guard await asset.loadMetadata(includeThumbnail: false), let self else { return }
+                self.editorViewModel.prepareMediaVisuals(for: asset)
             }
         }
 

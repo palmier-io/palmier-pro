@@ -141,7 +141,7 @@ struct VideoProjectLoadTests {
     }
 
     @MainActor
-    @Test func manifestRestoreRefreshesOnlyTimelineMetadataWithoutThumbnail() async throws {
+    @Test func manifestRestoreRefreshesTimelineMetadataWithoutThumbnail() async throws {
         let imageURL = try CompositorFixtures.patternPNG(size: CGSize(width: 640, height: 360))
         let document = VideoProject()
         document.editorViewModel.timeline = Fixtures.timeline(tracks: [
@@ -159,21 +159,25 @@ struct VideoProjectLoadTests {
                 name: "Used Image",
                 type: .image,
                 source: .external(absolutePath: imageURL.path),
-                duration: Defaults.imageDurationSeconds
+                duration: Defaults.imageDurationSeconds,
+                sourceWidth: 1,
+                sourceHeight: 1
             ),
             MediaManifestEntry(
                 id: "unused-image",
                 name: "Unused Image",
                 type: .image,
                 source: .external(absolutePath: imageURL.path),
-                duration: Defaults.imageDurationSeconds
+                duration: Defaults.imageDurationSeconds,
+                sourceWidth: 2,
+                sourceHeight: 2
             ),
         ]
         document.editorViewModel.mediaManifest = manifest
 
         document.restoreAssetsFromManifest()
         for _ in 0..<100 {
-            if document.editorViewModel.mediaAssets.first(where: { $0.id == "used-image" })?.sourceWidth != nil {
+            if document.editorViewModel.mediaAssets.first(where: { $0.id == "used-image" })?.sourceWidth == 640 {
                 break
             }
             try await Task.sleep(for: .milliseconds(10))
@@ -184,8 +188,8 @@ struct VideoProjectLoadTests {
         #expect(used.sourceWidth == 640)
         #expect(used.sourceHeight == 360)
         #expect(used.thumbnail == nil)
-        #expect(unused.sourceWidth == nil)
-        #expect(unused.sourceHeight == nil)
+        #expect(unused.sourceWidth == 2)
+        #expect(unused.sourceHeight == 2)
         #expect(unused.thumbnail == nil)
     }
 

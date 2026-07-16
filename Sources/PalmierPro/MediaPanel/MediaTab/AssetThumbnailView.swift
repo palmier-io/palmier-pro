@@ -69,8 +69,8 @@ struct AssetThumbnailView: View {
         .contextMenu { contextMenuItems }
         .opacity(isSwapDimmed ? AppTheme.Opacity.muted : 1)
         .allowsHitTesting(!isSwapDimmed)
-        .task(id: asset.url) {
-            guard !isMissing, !asset.isGenerating else { return }
+        .task(id: "\(asset.id)|\(asset.url.path)|\(asset.generationStatus.serialized)|\(isMissing)") {
+            guard case .none = asset.generationStatus, !isMissing else { return }
             await asset.loadLibraryThumbnail()
         }
     }

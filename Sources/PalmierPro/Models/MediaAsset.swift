@@ -155,21 +155,6 @@ final class MediaAsset: Identifiable {
         )
     }
 
-    var needsMetadataRefresh: Bool {
-        switch type {
-        case .image:
-            sourceWidth == nil || sourceHeight == nil
-        case .video:
-            duration <= 0 || sourceWidth == nil || sourceHeight == nil || sourceFPS == nil
-        case .audio:
-            duration <= 0
-        case .lottie:
-            duration <= 0 || sourceWidth == nil || sourceHeight == nil || sourceFPS == nil
-        case .text, .sequence:
-            false
-        }
-    }
-
     func loadLibraryThumbnail() async {
         switch type {
         case .image:
