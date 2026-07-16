@@ -7,7 +7,7 @@ extension ToolExecutor {
 
     private static let importMediaAllowedKeys: Set<String> = ["source", "name", "folder"]
     private static let importSourceAllowedKeys: Set<String> = ["url", "path", "bytes", "matte", "mimeType"]
-    private nonisolated static let acceptedMimeTypesMessage = "Accepted: video/mp4, video/quicktime, audio/mpeg, audio/wav, audio/aac, audio/mp4, audio/aiff, audio/flac, image/png, image/jpeg, image/tiff, image/heic."
+    private nonisolated static let acceptedMimeTypesMessage = "Accepted: video/mp4, video/quicktime, audio/mpeg, audio/wav, audio/aac, audio/mp4, audio/aiff, audio/x-caf, audio/flac, image/png, image/jpeg, image/tiff, image/heic."
 
     private struct ImportPathStatus: Sendable {
         let exists: Bool
@@ -82,7 +82,7 @@ extension ToolExecutor {
         }
         let ext = fileURL.pathExtension.lowercased()
         guard let type = ClipType(fileExtension: ext) else {
-            throw ToolError("Unsupported file extension '.\(ext)'. Supported: mov/mp4/m4v, mp3/wav/aac/m4a/aiff/aifc/flac, png/jpg/jpeg/tiff/heic, json (Lottie).")
+            throw ToolError("Unsupported file extension '.\(ext)'. Supported: mov/mp4/m4v, mp3/wav/aac/m4a/aiff/aifc/caf/flac, png/jpg/jpeg/tiff/heic, json (Lottie).")
         }
         if type == .lottie, !LottieVideoGenerator.isLottie(at: fileURL) {
             throw ToolError("Unsupported Lottie file: \(fileURL.lastPathComponent)")
@@ -329,6 +329,7 @@ extension ToolExecutor {
         case "audio/mp4", "audio/m4a", "audio/x-m4a": return "m4a"
         case "audio/aiff", "audio/x-aiff": return "aiff"
         case "audio/aifc", "audio/x-aifc": return "aifc"
+        case "audio/caf", "audio/x-caf": return "caf"
         case "audio/flac", "audio/x-flac": return "flac"
         case "image/png": return "png"
         case "image/jpeg", "image/jpg": return "jpg"
