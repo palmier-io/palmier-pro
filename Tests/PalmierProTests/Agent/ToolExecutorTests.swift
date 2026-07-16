@@ -635,6 +635,20 @@ struct ToolExecutorReadOnlyTests {
         #expect((assets?.first?["id"] as? String).map { a.id.hasPrefix($0) } == true)
     }
 
+    @Test func getMediaPollRecordsGenerationFailureForFeedback() async throws {
+        let h = ToolHarness()
+        let asset = h.makeAsset(name: "Failed generation")
+        h.editor.mediaManifest.entries[0].generationStatus = "failed: Provider rejected input"
+
+        _ = try await h.runOK("get_media")
+        #expect(h.executor.feedbackState.lastError == nil)
+
+        let json = try await h.runOK("get_media", args: ["ids": [asset.id]]) as? [String: Any]
+        let assets = json?["assets"] as? [[String: Any]]
+        #expect(assets?.first?["generationStatus"] as? String == "failed: Provider rejected input")
+        #expect(h.executor.feedbackState.lastError == "Provider rejected input")
+    }
+
     // MARK: - list_models
 
     /// ModelCatalog populates from Convex over the network — empty in tests. These verify
