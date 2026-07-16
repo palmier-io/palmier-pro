@@ -245,10 +245,7 @@ final class GenerationService {
                ClipType(fileExtension: realExt) != nil {
                 asset.url = asset.url.deletingPathExtension().appendingPathExtension(realExt)
             }
-            let destinationURL = asset.url
-            try await Task.detached(priority: .utility) {
-                _ = try FileIO.moveReplacingDestination(from: tempURL, to: destinationURL)
-            }.value
+            asset.url = try await editor.commitStagedProjectMedia(tempURL, filename: asset.url.lastPathComponent)
 
             asset.pendingDownloadURL = nil
             editor.importMediaAsset(asset, skipAppend: true)

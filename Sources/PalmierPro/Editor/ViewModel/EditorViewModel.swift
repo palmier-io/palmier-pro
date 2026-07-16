@@ -292,6 +292,7 @@ final class EditorViewModel {
     // MARK: - Document bridge
 
     @ObservationIgnored let undo = EditorUndo()
+    @ObservationIgnored let projectPackageCoordinator = ProjectPackageCoordinator()
     @ObservationIgnored var onProjectCheckpointRequired: (() -> Void)?
     var isDocumentEdited: Bool = false
 

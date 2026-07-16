@@ -128,6 +128,64 @@ private enum MediaImportScanner {
 
 extension EditorViewModel {
 
+    func commitStagedProjectMedia(_ stagedURL: URL, filename: String, maxBytes: Int64? = nil, removeSource: Bool = true) async throws -> URL {
+        defer { if removeSource { try? FileManager.default.removeItem(at: stagedURL) } }
+        guard projectURL != nil else {
+            let destination = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+            return try await Task.detached(priority: .userInitiated) {
+                try FileIO.moveReplacingDestination(from: stagedURL, to: destination, maxBytes: maxBytes)
+                return destination
+            }.value
+        }
+        for _ in 0..<3 {
+            guard let targetProjectURL = projectURL else { break }
+            try Task.checkCancellation()
+            do {
+                let preparedURL = try await Task.detached(priority: .userInitiated) {
+                    try FileIO.prepareStagedFile(from: stagedURL, nextTo: targetProjectURL, maxBytes: maxBytes)
+                }.value
+                defer { try? FileManager.default.removeItem(at: preparedURL) }
+                try Task.checkCancellation()
+                try projectPackageCoordinator.beginMutation()
+                defer { projectPackageCoordinator.endMutation() }
+                if let destination = try await projectPackageCoordinator.performMutation({ () -> URL? in
+                    guard self.projectURL?.standardizedFileURL == targetProjectURL.standardizedFileURL else { return nil }
+                    let destination = targetProjectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
+                        .appendingPathComponent(filename, isDirectory: false)
+                    try FileIO.installPreparedFile(from: preparedURL, to: destination)
+                    return destination
+                }) {
+                    return destination
+                }
+            }
+        }
+        throw CocoaError(.fileNoSuchFile)
+    }
+
+    func rebaseProjectURL(from oldURL: URL, to newURL: URL) {
+        guard projectURL?.standardizedFileURL == oldURL.standardizedFileURL else { return }
+        let oldPrefix = oldURL.standardizedFileURL.path + "/"
+        let newRoot = newURL.standardizedFileURL
+        for asset in mediaAssets {
+            let path = asset.url.standardizedFileURL.path
+            guard path.hasPrefix(oldPrefix) else { continue }
+            asset.url = newRoot.appendingPathComponent(String(path.dropFirst(oldPrefix.count)))
+        }
+        projectURL = newRoot
+        refreshMissingMediaCache()
+    }
+
+    func removeProjectMediaFile(_ url: URL) async {
+        guard (try? projectPackageCoordinator.beginMutation()) != nil else { return }
+        defer { projectPackageCoordinator.endMutation() }
+        try? await projectPackageCoordinator.performMutation {
+            guard let projectURL = self.projectURL else { return }
+            try FileManager.default.removeItem(at: projectURL
+                .appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
+                .appendingPathComponent(url.lastPathComponent, isDirectory: false))
+        }
+    }
+
     func importMediaAsset(_ asset: MediaAsset, skipAppend: Bool = false) {
         if !skipAppend, !mediaAssets.contains(where: { $0.id == asset.id }) {
             mediaAssets.append(asset)
@@ -308,22 +366,14 @@ extension EditorViewModel {
     @discardableResult
     func importPastedImageData(_ data: Data, fileExtension: String = "png") async -> MediaAsset? {
         let filename = "pasted-\(UUID().uuidString.prefix(8)).\(fileExtension)"
-        let destURL: URL
-        if let projectURL {
-            let dir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-            destURL = dir.appendingPathComponent(filename)
-        } else {
-            destURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-        }
         do {
-            try await Task.detached(priority: .userInitiated) {
-                try FileIO.writeData(data, to: destURL)
-            }.value
+            let stagedURL = try await Task.detached(priority: .userInitiated) { try FileIO.stageData(data, pathExtension: fileExtension) }.value
+            let destinationURL = try await commitStagedProjectMedia(stagedURL, filename: filename)
+            return addMediaAsset(from: destinationURL)
         } catch {
             Log.project.error("importPastedImageData: write failed \(error.localizedDescription)")
             return nil
         }
-        return addMediaAsset(from: destURL)
     }
 
     func fitTextClipToContent(clipId: String) {

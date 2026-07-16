@@ -47,8 +47,6 @@ final class VideoProject: NSDocument {
     private nonisolated(unsafe) var snapshotSourceProjectURL: URL?
     private nonisolated(unsafe) var snapshotPreparedForWrite = false
     private var projectCheckpointAutosaveScheduled = false
-    private var savesInProgress = 0
-    private var saveWaiters: [CheckedContinuation<Void, Never>] = []
     private var isSavingBeforeClose = false
 
     // MARK: - Persistence
@@ -136,17 +134,13 @@ final class VideoProject: NSDocument {
             fileModificationDate = date
         }
 
-        savesInProgress += 1
+        let coordinator = editorViewModel.projectPackageCoordinator
+        coordinator.saveStarted()
         captureSaveSnapshot()
         snapshotSourceProjectURL = fileURL
-        super.save(to: url, ofType: typeName, for: saveOperation) { [weak self] error in
+        super.save(to: url, ofType: typeName, for: saveOperation) { error in
+            coordinator.saveFinished()
             completionHandler(error)
-            guard let self else { return }
-            self.savesInProgress -= 1
-            if self.savesInProgress == 0 {
-                self.saveWaiters.forEach { $0.resume() }
-                self.saveWaiters.removeAll()
-            }
         }
     }
 
@@ -154,24 +148,26 @@ final class VideoProject: NSDocument {
     func saveBeforeClosing() async throws {
         isSavingBeforeClose = true
         defer { isSavingBeforeClose = false }
-        repeat {
-            await waitForSaves()
-            guard let url = fileURL else { throw CocoaError(.fileNoSuchFile) }
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                save(to: url, ofType: Self.typeIdentifier, for: .saveOperation) { error in
-                    if let error {
-                        continuation.resume(throwing: error)
-                    } else {
-                        continuation.resume()
+        let coordinator = editorViewModel.projectPackageCoordinator
+        await coordinator.beginClosing()
+        do {
+            repeat {
+                guard let url = fileURL else { throw CocoaError(.fileNoSuchFile) }
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    save(to: url, ofType: Self.typeIdentifier, for: .saveOperation) { error in
+                        if let error {
+                            continuation.resume(throwing: error)
+                        } else {
+                            continuation.resume()
+                        }
                     }
                 }
-            }
-        } while hasUnautosavedChanges
-    }
-
-    private func waitForSaves() async {
-        guard savesInProgress > 0 else { return }
-        await withCheckedContinuation { saveWaiters.append($0) }
+            } while hasUnautosavedChanges
+            await coordinator.waitUntilIdle()
+        } catch {
+            coordinator.cancelClosing()
+            throw error
+        }
     }
 
     override func write(to url: URL, ofType typeName: String) throws {
@@ -357,6 +353,7 @@ final class VideoProject: NSDocument {
                oldURL.standardizedFileURL != newURL.standardizedFileURL {
                 MainActor.assumeIsolated {
                     ProjectRegistry.shared.updateURL(from: oldURL, to: newURL)
+                    editorViewModel.rebaseProjectURL(from: oldURL, to: newURL)
                 }
             }
         }
@@ -515,19 +512,7 @@ final class VideoProject: NSDocument {
 
         guard let data else { return }
         cachedThumbnail = data
-        guard let packageURL = fileURL else { return }
-        let thumbURL = packageURL.appendingPathComponent(Project.thumbnailFilename, isDirectory: false)
-
-        // Pick up package mod date from our write so autosave won't hit "changed by another application".
-        let newDate: Date? = try? await Task.detached(priority: .utility) {
-            try data.write(to: thumbURL, options: .atomic)
-            var resolved = packageURL
-            resolved.removeCachedResourceValue(forKey: .contentModificationDateKey)
-            return try resolved.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
-        }.value
-        if let newDate {
-            fileModificationDate = newDate
-        }
+        editorViewModel.onProjectCheckpointRequired?()
     }
 
     // MARK: - Media restore
