@@ -24,6 +24,33 @@ private struct RestoredMediaCandidate: Sendable {
     let url: URL
 }
 
+private typealias DocumentCloseCallback = @convention(c) (
+    AnyObject, Selector, NSDocument, Bool, UnsafeMutableRawPointer?
+) -> Void
+
+@MainActor
+private final class DocumentCloseRelay: NSObject {
+    private let target: AnyObject
+    private let action: Selector
+    private let originalContextInfo: UnsafeMutableRawPointer?
+    private let onResult: (Bool) -> Void
+
+    init(target: Any, action: Selector, contextInfo: UnsafeMutableRawPointer?, onResult: @escaping (Bool) -> Void) {
+        self.target = target as AnyObject
+        self.action = action
+        self.originalContextInfo = contextInfo
+        self.onResult = onResult
+    }
+
+    @objc func document(_ document: NSDocument, shouldClose: Bool, contextInfo: UnsafeMutableRawPointer?) {
+        onResult(shouldClose)
+        let implementation = target.method(for: action)
+        unsafeBitCast(implementation, to: DocumentCloseCallback.self)(
+            target, action, document, shouldClose, originalContextInfo
+        )
+    }
+}
+
 final class VideoProject: NSDocument {
 
     static let typeIdentifier = Project.typeIdentifier
@@ -48,6 +75,7 @@ final class VideoProject: NSDocument {
     private nonisolated(unsafe) var snapshotPreparedForWrite = false
     private var projectCheckpointAutosaveScheduled = false
     private var isSavingBeforeClose = false
+    private var closeRelays: [UUID: DocumentCloseRelay] = [:]
 
     // MARK: - Persistence
 
@@ -141,6 +169,50 @@ final class VideoProject: NSDocument {
         super.save(to: url, ofType: typeName, for: saveOperation) { error in
             coordinator.saveFinished()
             completionHandler(error)
+        }
+    }
+
+    override func canClose(
+        withDelegate delegate: Any,
+        shouldClose shouldCloseSelector: Selector?,
+        contextInfo: UnsafeMutableRawPointer?
+    ) {
+        Task { @MainActor in
+            let relay: DocumentCloseRelay?
+            if let shouldCloseSelector {
+                let id = UUID()
+                relay = DocumentCloseRelay(
+                    target: delegate,
+                    action: shouldCloseSelector,
+                    contextInfo: contextInfo
+                ) { [weak self] shouldClose in
+                    self?.closeRelays[id] = nil
+                    if !shouldClose { self?.editorViewModel.projectPackageCoordinator.cancelClosing() }
+                }
+                closeRelays[id] = relay
+            } else {
+                relay = nil
+            }
+
+            do {
+                try await saveBeforeClosing()
+                if let relay {
+                    super.canClose(
+                        withDelegate: relay,
+                        shouldClose: #selector(DocumentCloseRelay.document(_:shouldClose:contextInfo:)),
+                        contextInfo: nil
+                    )
+                } else {
+                    super.canClose(
+                        withDelegate: delegate,
+                        shouldClose: shouldCloseSelector,
+                        contextInfo: contextInfo
+                    )
+                }
+            } catch {
+                presentError(error)
+                relay?.document(self, shouldClose: false, contextInfo: nil)
+            }
         }
     }
 

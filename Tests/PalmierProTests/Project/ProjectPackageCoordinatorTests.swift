@@ -1,6 +1,23 @@
-import Foundation
+import AppKit
 import Testing
 @testable import PalmierPro
+
+@MainActor
+private final class DocumentCloseProbe: NSObject {
+    private var continuation: CheckedContinuation<Bool, Never>?
+    private(set) var result: Bool?
+
+    @objc func document(_ document: NSDocument, shouldClose: Bool, contextInfo: UnsafeMutableRawPointer?) {
+        result = shouldClose
+        continuation?.resume(returning: shouldClose)
+        continuation = nil
+    }
+
+    func waitForResult() async -> Bool {
+        if let result { return result }
+        return await withCheckedContinuation { continuation = $0 }
+    }
+}
 
 @Suite("Project package coordination", .serialized)
 @MainActor
@@ -44,19 +61,35 @@ struct ProjectPackageCoordinatorTests {
         #expect(destination == newURL.appendingPathComponent("media/new.mp4"))
     }
 
-    @Test func closeWaitsForAcceptedMutationAndRejectsLateWork() async throws {
-        let coordinator = ProjectPackageCoordinator()
+    @Test func nativeCloseWaitsForAcceptedMutationAndRejectsLateWork() async throws {
+        let package = FileManager.default.temporaryDirectory
+            .appendingPathComponent("native-close-\(UUID().uuidString).palmier", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: package) }
+        let document = VideoProject()
+        document.fileURL = package
+        document.fileType = VideoProject.typeIdentifier
+        let coordinator = document.editorViewModel.projectPackageCoordinator
         try coordinator.beginMutation()
-        var didClose = false
-        let closing = Task {
-            await coordinator.beginClosing()
-            didClose = true
+
+        let probe = DocumentCloseProbe()
+        document.canClose(
+            withDelegate: probe,
+            shouldClose: #selector(DocumentCloseProbe.document(_:shouldClose:contextInfo:)),
+            contextInfo: nil
+        )
+        while true {
+            do {
+                try coordinator.beginMutation()
+                coordinator.endMutation()
+                await Task.yield()
+            } catch is CancellationError {
+                break
+            }
         }
-        await Task.yield()
-        #expect(!didClose)
+        #expect(probe.result == nil)
 
         coordinator.endMutation()
-        await closing.value
+        #expect(await probe.waitForResult())
         #expect(throws: CancellationError.self) { try coordinator.beginMutation() }
     }
 }
