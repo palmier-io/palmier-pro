@@ -136,20 +136,27 @@ actor Qwen3ASREngine {
             if let language = Self.rescueLanguage(pieces: pieces, alignment: aligned) {
                 let sampleStart = max(0, Int(chunk.start * Double(EngineAudio.sampleRate)))
                 let sampleEnd = min(samples.count, Int(chunk.end * Double(EngineAudio.sampleRate)))
-                if sampleStart < sampleEnd,
-                   let rescue = try? await WhisperKitEngine.shared.transcribe(
-                       samples: Array(samples[sampleStart..<sampleEnd]), language: language) {
-                    let rescueAnchors = Self.expandCJKAnchors(rescue.words).map { word in
-                        TranscriptionWord(
-                            text: word.text,
-                            start: word.start.map { $0 + chunk.start },
-                            end: word.end.map { $0 + chunk.start })
-                    }
-                    let rescued = Self.alignWords(
-                        pieces: pieces, anchors: rescueAnchors,
-                        chunkStart: chunk.start, chunkEnd: chunk.end)
-                    if rescued.anchoredCount > aligned.anchoredCount {
-                        aligned = rescued
+                if sampleStart < sampleEnd {
+                    do {
+                        let rescue = try await WhisperKitEngine.shared.transcribe(
+                            samples: Array(samples[sampleStart..<sampleEnd]), language: language)
+                        let rescueAnchors = Self.expandCJKAnchors(rescue.words).map { word in
+                            TranscriptionWord(
+                                text: word.text,
+                                start: word.start.map { $0 + chunk.start },
+                                end: word.end.map { $0 + chunk.start })
+                        }
+                        let rescued = Self.alignWords(
+                            pieces: pieces, anchors: rescueAnchors,
+                            chunkStart: chunk.start, chunkEnd: chunk.end)
+                        Log.transcription.notice(
+                            "qwen3 rescue chunk=\(String(format: "%.1f-%.1f", chunk.start, chunk.end)) lang=\(language) anchors=\(rescueAnchors.count) anchored=\(rescued.anchoredCount) vs \(aligned.anchoredCount)")
+                        if rescued.anchoredCount > aligned.anchoredCount {
+                            aligned = rescued
+                        }
+                    } catch {
+                        Log.transcription.warning(
+                            "qwen3 rescue failed chunk=\(String(format: "%.1f-%.1f", chunk.start, chunk.end)): \(error.localizedDescription)")
                     }
                 }
             }
@@ -364,7 +371,8 @@ actor Qwen3ASREngine {
         while index < pieces.count {
             if let start = starts[index], let end = ends[index] {
                 let clampedStart = max(start, lastEnd)
-                result.append(TranscriptionWord(text: pieces[index], start: clampedStart, end: max(end, clampedStart)))
+                result.append(TranscriptionWord(
+                    text: pieces[index], start: clampedStart, end: max(end, clampedStart), aligned: true))
                 lastEnd = max(end, clampedStart)
                 index += 1
                 continue
@@ -382,8 +390,10 @@ actor Qwen3ASREngine {
             var cursor = lastEnd
             for (offset, weight) in runWeights.enumerated() {
                 let duration = window * weight / totalWeight
+                // aligned: false = fabricated timing; callers must not cut on these.
                 result.append(TranscriptionWord(
-                    text: pieces[index + offset], start: cursor, end: cursor + duration))
+                    text: pieces[index + offset], start: cursor, end: cursor + duration,
+                    aligned: pieceKeys[index + offset].isEmpty ? nil : false))
                 cursor += duration
             }
             lastEnd = cursor

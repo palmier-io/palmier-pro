@@ -64,6 +64,18 @@ final class Qwen3ASREngineTests: XCTestCase {
             }
         }
         checkRun()
+
+        // Regression (bug report follow-up): on anchorable audio, most CJK words must be
+        // genuinely aligned; anything interpolated must carry aligned == false so callers
+        // can tell fabricated timing from aligned timing.
+        let cjkWords = result.words.filter { w in
+            w.text.unicodeScalars.contains { (0x4E00...0x9FFF).contains(Int($0.value)) }
+        }
+        if !cjkWords.isEmpty {
+            let alignedCount = cjkWords.filter { $0.aligned == true }.count
+            XCTAssertGreaterThan(Double(alignedCount) / Double(cjkWords.count), 0.5,
+                "most CJK words should be anchor-aligned on clean audio (\(alignedCount)/\(cjkWords.count))")
+        }
     }
 
     private static func isPunctuation(_ text: String) -> Bool {

@@ -19,12 +19,16 @@ struct TranscriptionWord: Sendable, Codable {
     let start: Double?
     let end: Double?
     let speaker: String?
+    /// false = timing is interpolated, not acoustically aligned (CJK runs the timing
+    /// track couldn't anchor). nil = engine-native timing with no alignment distinction.
+    let aligned: Bool?
 
-    init(text: String, start: Double?, end: Double?, speaker: String? = nil) {
+    init(text: String, start: Double?, end: Double?, speaker: String? = nil, aligned: Bool? = nil) {
         self.text = text
         self.start = start
         self.end = end
         self.speaker = speaker
+        self.aligned = aligned
     }
 }
 
@@ -59,7 +63,8 @@ struct TranscriptionResult: Sendable, Codable {
                     text: $0.text,
                     start: $0.start.map { $0 + offset },
                     end: $0.end.map { $0 + offset },
-                    speaker: $0.speaker
+                    speaker: $0.speaker,
+                    aligned: $0.aligned
                 )
             },
             segments: segments.map {

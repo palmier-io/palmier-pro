@@ -473,24 +473,35 @@ extension ToolExecutor {
         if includeWords {
             let words: [[Any]]
             if let mapping {
-                words = wordFrames(transcript, clip: mapping.clip, fps: mapping.fps).map { [$0.text, $0.start, $0.end] }
+                words = wordFrames(transcript, clip: mapping.clip, fps: mapping.fps).map {
+                    $0.aligned == false ? [$0.text, $0.start, $0.end, false] : [$0.text, $0.start, $0.end]
+                }
             } else {
-                words = transcript.words.map { [$0.text, round2OrNull($0.start), round2OrNull($0.end)] }
+                words = transcript.words.map {
+                    $0.aligned == false
+                        ? [$0.text, round2OrNull($0.start), round2OrNull($0.end), false]
+                        : [$0.text, round2OrNull($0.start), round2OrNull($0.end)]
+                }
             }
             out["words"] = Array(words.prefix(transcriptWordLimit))
             if words.count > transcriptWordLimit {
                 out["totalWords"] = words.count
                 out["wordsNote"] = "First \(transcriptWordLimit) of \(words.count) words. Narrow with startSeconds/endSeconds."
             }
+            let unaligned = transcript.words.filter { $0.aligned == false }.count
+            if unaligned > 0 {
+                out["unalignedWords"] = unaligned
+                out["alignmentNote"] = "Rows with a trailing `false` have interpolated (not acoustically aligned) times — do not derive cut points from them."
+            }
         }
         return out
     }
 
-    private static func wordFrames(_ transcript: TranscriptionResult, clip: Clip, fps: Int) -> [(text: String, start: Int, end: Int)] {
+    private static func wordFrames(_ transcript: TranscriptionResult, clip: Clip, fps: Int) -> [(text: String, start: Int, end: Int, aligned: Bool?)] {
         transcript.words.compactMap { word in
             guard let start = word.start, let end = word.end,
                   let frames = spanFrames(start: start, end: end, clip: clip, fps: fps) else { return nil }
-            return (word.text, frames.start, frames.end)
+            return (word.text, frames.start, frames.end, word.aligned)
         }
     }
 
