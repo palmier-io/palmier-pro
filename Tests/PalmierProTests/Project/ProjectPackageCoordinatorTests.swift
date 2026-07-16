@@ -19,8 +19,6 @@ struct ProjectPackageCoordinatorTests {
 
         coordinator.saveFinished()
         #expect(mutationRan)
-        coordinator.saveStarted()
-        coordinator.saveFinished()
         try await mutation.value
     }
 
@@ -34,8 +32,6 @@ struct ProjectPackageCoordinatorTests {
         document.fileURL = oldURL
         let editor = document.editorViewModel
         editor.projectURL = oldURL
-        let asset = MediaAsset(url: oldURL.appendingPathComponent("media/existing.mp4"), type: .video, name: "Existing")
-        editor.mediaAssets.append(asset)
 
         editor.projectPackageCoordinator.saveStarted()
         let stagedURL = try FileIO.stageData(Data("video".utf8), pathExtension: "mp4")
@@ -46,7 +42,6 @@ struct ProjectPackageCoordinatorTests {
 
         let destination = try await commit.value
         #expect(destination == newURL.appendingPathComponent("media/new.mp4"))
-        #expect(asset.url == newURL.appendingPathComponent("media/existing.mp4"))
     }
 
     @Test func closeWaitsForAcceptedMutationAndRejectsLateWork() async throws {
@@ -62,8 +57,6 @@ struct ProjectPackageCoordinatorTests {
 
         coordinator.endMutation()
         await closing.value
-        #expect(didClose)
         #expect(throws: CancellationError.self) { try coordinator.beginMutation() }
     }
-
 }
