@@ -56,6 +56,23 @@ struct TextFrameRendererTests {
         #expect(maxLuma > 720, "expected near-white text pixels, got max sum \(maxLuma)/765")
     }
 
+    @Test func lineDecorationsRender() {
+        let size = CGSize(width: 640, height: 360)
+        var plain = TextStyle()
+        plain.fontName = "Helvetica"
+        plain.fontSize = 260
+        plain.shadow.enabled = false
+        let box = Transform(topLeft: (0.1, 0.2), width: 0.8, height: 0.5)
+        let base = rawPixels(TextFrameRenderer.image(clip: textClip(content: "TEXT", style: plain, transform: box), frame: 0, renderSize: size)!, size: size)
+        var decorated = plain
+        decorated.isUnderlined = true
+        decorated.isStruckThrough = true
+        decorated.isOverlined = true
+        let styled = rawPixels(TextFrameRenderer.image(clip: textClip(content: "TEXT", style: decorated, transform: box), frame: 0, renderSize: size)!, size: size)
+        let added = stride(from: 3, to: styled.count, by: 4).count { Int(styled[$0]) > Int(base[$0]) + 24 }
+        #expect(added > 100)
+    }
+
     @Test func textRendersTopWhenPlacedTop() {
         let size = CGSize(width: 640, height: 360)
         let w = Int(size.width), h = Int(size.height)
