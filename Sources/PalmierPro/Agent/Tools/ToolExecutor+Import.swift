@@ -87,31 +87,23 @@ extension ToolExecutor {
         if type == .lottie, !LottieVideoGenerator.isLottie(at: fileURL) {
             throw ToolError("Unsupported Lottie file: \(fileURL.lastPathComponent)")
         }
-        guard let projectURL = editor.projectURL else {
+        guard editor.projectURL != nil else {
             throw ToolError("No project is open; cannot import from path")
         }
 
-        let displayName = name ?? fileURL.deletingPathExtension().lastPathComponent
-        let placeholder = createImportPlaceholder(
-            editor: editor,
-            projectURL: projectURL,
-            type: type,
-            fileExtension: ext,
-            displayName: displayName,
-            folderId: folderId,
-            importInput: MediaImportInput(sourcePath: fileURL.path, createdAt: Date())
-        )
-
-        Task { @MainActor [weak editor] in
-            guard let editor else { return }
-            await Self.copyImportedAsset(asset: placeholder, sourceURL: fileURL, editor: editor)
+        let asset = try editor.undo.perform("Import Media (Agent)") {
+            guard let asset = editor.addMediaAsset(from: fileURL) else {
+                throw ToolError("Failed to register imported asset")
+            }
+            applyImportMetadata(editor: editor, asset: asset, name: name, folderId: folderId)
+            return asset
         }
 
         return .ok(Self.jsonString([
-            "mediaRef": placeholder.id,
+            "mediaRef": asset.id,
+            "name": asset.name,
             "type": type.rawValue,
-            "status": "downloading",
-            "note": "Copying in the background. Poll get_media with ids:[\"\(placeholder.id)\"] until generationStatus clears.",
+            "status": "ready",
         ]) ?? "{}")
     }
 
@@ -263,24 +255,6 @@ extension ToolExecutor {
         } catch {
             let message = (error as? ToolError)?.message ?? error.localizedDescription
             Log.project.error("import_media download failed url=\(remoteURL.absoluteString) error=\(message)")
-            failImportedAsset(asset, editor: editor, message: message)
-        }
-    }
-
-    @MainActor
-    private static func copyImportedAsset(asset: MediaAsset, sourceURL: URL, editor: EditorViewModel) async {
-        do {
-            let destinationURL = asset.url
-            _ = try await Task.detached(priority: .userInitiated) {
-                try FileIO.copyReplacingDestination(
-                    from: sourceURL,
-                    to: destinationURL
-                )
-            }.value
-            await finishImportedAsset(asset, editor: editor)
-        } catch {
-            let message = (error as? ToolError)?.message ?? error.localizedDescription
-            Log.project.error("import_media copy failed path=\(sourceURL.path) error=\(message)")
             failImportedAsset(asset, editor: editor, message: message)
         }
     }

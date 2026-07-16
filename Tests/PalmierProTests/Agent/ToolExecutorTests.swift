@@ -143,7 +143,7 @@ struct ToolExecutorImportMediaTests {
         #expect(h.editor.mediaManifest.entries.first?.name == "Imported Still")
     }
 
-    @Test func importPathCreatesPlaceholderAndCopiesIntoProject() async throws {
+    @Test func importPathReferencesSourceFile() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("pp-import-path-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -156,28 +156,25 @@ struct ToolExecutorImportMediaTests {
 
         let result = await h.runRaw("import_media", args: [
             "source": ["path": source.path],
-            "name": "Copied Still",
+            "name": "Linked Still",
         ])
 
         #expect(result.isError == false)
         let body = try JSONSerialization.jsonObject(with: Data(ToolHarness.textOf(result).utf8)) as? [String: Any]
-        #expect(body?["status"] as? String == "downloading")
+        #expect(body?["status"] as? String == "ready")
         #expect(body?["mediaRef"] is String)
         let asset = try #require(h.editor.mediaAssets.first)
-        #expect(asset.name == "Copied Still")
+        #expect(asset.name == "Linked Still")
         #expect(asset.type == .image)
-        #expect(asset.url.path.contains("/Import.palmier/media/imported-"))
-        #expect(h.editor.mediaManifest.entries.first?.importInput?.sourcePath == source.path)
-
-        try await waitForImportCompletion(in: h.editor, assetId: asset.id)
+        #expect(asset.url.standardizedFileURL == source.standardizedFileURL)
 
         #expect(asset.generationStatus == .none)
         #expect(asset.importInput == nil)
-        #expect(FileManager.default.fileExists(atPath: asset.url.path))
+        #expect(h.editor.mediaManifest.entries.first?.source == .external(absolutePath: source.path))
         #expect(h.editor.mediaManifest.entries.first?.importInput == nil)
     }
 
-    @Test func importPathLeavesUnreadableMediaFailed() async throws {
+    @Test func importPathKeepsUnreadableMediaReferenced() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("pp-import-invalid-path-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -195,11 +192,12 @@ struct ToolExecutorImportMediaTests {
 
         #expect(result.isError == false)
         let asset = try #require(h.editor.mediaAssets.first)
-        try await waitForImportFailure(in: h.editor, assetId: asset.id)
+        try await waitForUnprocessableMedia(in: h.editor, assetId: asset.id)
 
-        #expect(asset.generationStatus == .failed("Could not read media file."))
-        #expect(asset.importInput?.sourcePath == source.path)
-        #expect(h.editor.mediaManifest.entries.first?.importInput?.sourcePath == source.path)
+        #expect(asset.generationStatus == .none)
+        #expect(asset.url.standardizedFileURL == source.standardizedFileURL)
+        #expect(asset.importInput == nil)
+        #expect(h.editor.mediaManifest.entries.first?.source == .external(absolutePath: source.path))
     }
 
     @Test func unreadableFinalizeRefreshesTimelinePreview() async throws {
@@ -228,26 +226,12 @@ struct ToolExecutorImportMediaTests {
         #expect(editor.timelineRenderRevision == before + 1)
     }
 
-    private func waitForImportCompletion(in editor: EditorViewModel, assetId: String) async throws {
+    private func waitForUnprocessableMedia(in editor: EditorViewModel, assetId: String) async throws {
         for _ in 0..<100 {
-            if let status = editor.mediaAssets.first(where: { $0.id == assetId })?.generationStatus,
-               status == .none {
-                return
-            }
+            if editor.unprocessableMediaRefs.contains(assetId) { return }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
-        Issue.record("import did not complete")
-    }
-
-    private func waitForImportFailure(in editor: EditorViewModel, assetId: String) async throws {
-        for _ in 0..<100 {
-            if let status = editor.mediaAssets.first(where: { $0.id == assetId })?.generationStatus,
-               case .failed = status {
-                return
-            }
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
-        Issue.record("import did not fail")
+        Issue.record("import was not marked unprocessable")
     }
 
     private func writeTestPNG(to url: URL) throws {
