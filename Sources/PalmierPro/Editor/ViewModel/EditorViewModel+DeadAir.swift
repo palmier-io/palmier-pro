@@ -69,26 +69,26 @@ extension EditorViewModel {
     /// Ripples dead air per-track, updating ranges between passes. Stops if a track refuses.
     @discardableResult
     func removeAllDeadAir() -> (sections: Int, removedFrames: Int, refusal: String?)? {
-        var sections = 0
-        var removedFrames = 0
-        var refusal: String?
-        undoManager?.beginUndoGrouping()
-        defer { undoManager?.endUndoGrouping() }
-        for _ in timeline.tracks.indices {
-            guard let next = allDeadAir().first else { break }
-            switch rippleDeleteRangesOnTrack(trackIndex: next.trackIndex, ranges: next.ranges) {
-            case .ok(let report):
-                sections += next.ranges.count
-                removedFrames += report.removedFrames
-            case .refused(let reason):
-                refusal = reason
-                NSSound.beep()
-                Log.editor.notice("remove dead air blocked: \(reason)")
+        undo.perform("Remove Dead Air") {
+            var sections = 0
+            var removedFrames = 0
+            var refusal: String?
+            for _ in timeline.tracks.indices {
+                guard let next = allDeadAir().first else { break }
+                switch rippleDeleteRangesOnTrack(trackIndex: next.trackIndex, ranges: next.ranges) {
+                case .ok(let report):
+                    sections += next.ranges.count
+                    removedFrames += report.removedFrames
+                case .refused(let reason):
+                    refusal = reason
+                    NSSound.beep()
+                    Log.editor.notice("remove dead air blocked: \(reason)")
+                }
+                if refusal != nil { break }
             }
-            if refusal != nil { break }
+            guard sections > 0 || refusal != nil else { return nil }
+            return (sections, removedFrames, refusal)
         }
-        guard sections > 0 || refusal != nil else { return nil }
-        return (sections, removedFrames, refusal)
     }
 
     private func timelineRange(clip: Clip, sourceStart: Double, sourceEnd: Double) -> FrameRange? {

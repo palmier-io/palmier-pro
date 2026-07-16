@@ -43,7 +43,7 @@ extension ToolExecutor {
     }
 
     func applyLayout(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
-        try withUndoGroup(editor, actionName: "Apply Layout (Agent)") {
+        try editor.undo.perform("Apply Layout (Agent)") {
             try applyLayoutMutation(editor, args)
         }
     }

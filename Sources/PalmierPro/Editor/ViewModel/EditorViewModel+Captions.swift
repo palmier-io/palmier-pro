@@ -288,20 +288,20 @@ extension EditorViewModel {
     }
 
     private func placeCaptionTrack(_ specs: [TextClipSpec]) -> [String] {
-        undoManager?.beginUndoGrouping()
-        defer { undoManager?.endUndoGrouping() }
-        let before = timeline
-        undoManager?.disableUndoRegistration()
-        timeline.tracks.insert(Track(type: .video), at: 0)
-        let ids = placeTextClips(specs, clearExistingRegions: false, refreshVisuals: false)
-        undoManager?.enableUndoRegistration()
-        guard !ids.isEmpty else {
-            timeline = before
-            videoEngine?.refreshVisuals()
-            return []
+        undo.perform("Generate Captions") {
+            let before = timeline
+            let ids = undo.withoutRegistration {
+                timeline.tracks.insert(Track(type: .video), at: 0)
+                return placeTextClips(specs, clearExistingRegions: false, refreshVisuals: false)
+            }
+            guard !ids.isEmpty else {
+                timeline = before
+                videoEngine?.refreshVisuals()
+                return []
+            }
+            registerTimelineSwap(undoState: before, redoState: timeline, actionName: "Generate Captions")
+            notifyTimelineChanged(refreshVisuals: false)
+            return ids
         }
-        registerTimelineSwap(undoState: before, redoState: timeline, actionName: "Generate Captions")
-        notifyTimelineChanged(refreshVisuals: false)
-        return ids
     }
 }

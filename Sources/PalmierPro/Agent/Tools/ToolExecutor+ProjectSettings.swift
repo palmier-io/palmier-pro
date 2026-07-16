@@ -60,7 +60,7 @@ extension ToolExecutor {
 
     func setProjectSettings(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         let settings = try validateProjectSettings(args)
-        return try withUndoGroup(editor, actionName: "Set Project Settings (Agent)") {
+        return try editor.undo.perform("Set Project Settings (Agent)") {
             try setProjectSettings(editor, settings)
         }
     }
@@ -102,7 +102,6 @@ extension ToolExecutor {
         let prevHeight = editor.timeline.height
 
         editor.applyTimelineSettings(fps: newFPS, width: newWidth, height: newHeight)
-        editor.undoManager?.setActionName("Set Project Settings (Agent)")
 
         var changed: [String] = []
         if newFPS != prevFPS { changed.append("fps") }

@@ -48,7 +48,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             MainActor.assumeIsolated {
                 guard let self, let editor = object as? NSTextView,
                       editor.window === self.window, let storage = editor.textStorage else { return }
-                self.editorViewModel.undoManager?.removeAllActions(withTarget: storage)
+                self.editorViewModel.undo.removeAllActions(withTarget: storage)
             }
         }
     }

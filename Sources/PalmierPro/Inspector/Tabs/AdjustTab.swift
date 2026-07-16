@@ -607,13 +607,10 @@ extension InspectorView {
     private func commitEffects(
         _ clips: [Clip], actionName: String, _ mutate: @escaping (inout [Effect]) -> Void
     ) {
-        editor.undoManager?.beginUndoGrouping()
-        editor.commitClipProperties(clipIds: clips.map(\.id)) { c in
+        editor.commitClipProperties(clipIds: clips.map(\.id), actionName: actionName) { c in
             var effects = c.effects ?? []
             mutate(&effects)
             c.effects = effects.isEmpty ? nil : effects
         }
-        editor.undoManager?.endUndoGrouping()
-        editor.undoManager?.setActionName(actionName)
     }
 }

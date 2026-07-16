@@ -68,7 +68,7 @@ extension ToolExecutor {
         }
         if status.isDirectory {
             let summary = try await editor.importFinderItems([fileURL], into: folderId, applying: { mutation in
-                try await self.withUndoBoundary(editor, actionName: "Import Media (Agent)", mutation)
+                editor.undo.perform("Import Media (Agent)", mutation)
             })
             guard summary.assetCount > 0 else {
                 throw ToolError("No supported media found in folder: \(path)")
@@ -127,7 +127,7 @@ extension ToolExecutor {
         }.value
         let asset: MediaAsset
         do {
-            asset = try await withUndoBoundary(editor, actionName: "Import Media (Agent)") {
+            asset = try editor.undo.perform("Import Media (Agent)") {
                 guard let asset = editor.addMediaAsset(from: imported.url) else {
                     throw ToolError("Failed to register imported asset")
                 }

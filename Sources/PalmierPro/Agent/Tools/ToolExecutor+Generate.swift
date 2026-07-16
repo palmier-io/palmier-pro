@@ -340,7 +340,7 @@ extension ToolExecutor {
 
         if let startFrame = placementStartFrame, let sourceSpan = spanSeconds {
             let outputSpan = requestedDurationSeconds.map(Double.init) ?? sourceSpan
-            let placeholderId = try await withUndoBoundary(editor, actionName: "Add \(model.category.label) (Agent)") {
+            let placeholderId = editor.undo.perform("Add \(model.category.label) (Agent)") {
                 let placeholderId = submission.submit(
                     service: editor.generationService,
                     projectURL: editor.projectURL,

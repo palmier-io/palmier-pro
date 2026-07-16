@@ -246,35 +246,35 @@ extension EditorViewModel {
 
     @discardableResult
     private func applyMediaImportPlan(_ plan: MediaImportPlan, restoringFrom before: MediaLibraryUndoSnapshot) -> MediaImportSummary {
-        undoManager?.disableUndoRegistration()
+        let importedAssets = undo.withoutRegistration {
+            var folderIds = Array(repeating: "", count: plan.folders.count)
+            for (index, folder) in plan.folders.enumerated() {
+                let parentId = parentFolderId(for: folder.parent, plannedFolderIds: folderIds)
+                folderIds[index] = createFolder(name: folder.name, in: parentId)
+            }
 
-        var folderIds = Array(repeating: "", count: plan.folders.count)
-        for (index, folder) in plan.folders.enumerated() {
-            let parentId = parentFolderId(for: folder.parent, plannedFolderIds: folderIds)
-            folderIds[index] = createFolder(name: folder.name, in: parentId)
+            let importedAssets = plan.files.map { file in
+                let folderId = parentFolderId(for: file.parent, plannedFolderIds: folderIds)
+                let asset = MediaAsset(url: file.url, type: file.type, name: file.name)
+                asset.folderId = folderId
+                return asset
+            }
+            if !importedAssets.isEmpty {
+                mediaAssets.append(contentsOf: importedAssets)
+                mediaManifest.entries.append(contentsOf: importedAssets.map { $0.toManifestEntry(projectURL: projectURL) })
+                Log.project.notice(
+                    "media import applied assets=\(importedAssets.count) folders=\(plan.folders.count)",
+                    telemetry: "Media import applied",
+                    data: [
+                        "assets": importedAssets.count,
+                        "folders": plan.folders.count,
+                        "media": mediaAssets.count,
+                        "manifestEntries": mediaManifest.entries.count
+                    ]
+                )
+            }
+            return importedAssets
         }
-
-        let importedAssets = plan.files.map { file in
-            let folderId = parentFolderId(for: file.parent, plannedFolderIds: folderIds)
-            let asset = MediaAsset(url: file.url, type: file.type, name: file.name)
-            asset.folderId = folderId
-            return asset
-        }
-        if !importedAssets.isEmpty {
-            mediaAssets.append(contentsOf: importedAssets)
-            mediaManifest.entries.append(contentsOf: importedAssets.map { $0.toManifestEntry(projectURL: projectURL) })
-            Log.project.notice(
-                "media import applied assets=\(importedAssets.count) folders=\(plan.folders.count)",
-                telemetry: "Media import applied",
-                data: [
-                    "assets": importedAssets.count,
-                    "folders": plan.folders.count,
-                    "media": mediaAssets.count,
-                    "manifestEntries": mediaManifest.entries.count
-                ]
-            )
-        }
-        undoManager?.enableUndoRegistration()
 
         if let name = plan.rejectedUnsupportedNames.last {
             mediaPanelToast = "Can't import \"\(name)\" — unsupported file type."
@@ -287,10 +287,9 @@ extension EditorViewModel {
             folderCount: mediaManifest.folders.count - before.mediaManifest.folders.count
         )
         guard summary.assetCount != 0 || summary.folderCount != 0 else { return summary }
-        undoManager?.registerUndo(withTarget: self) { vm in
+        undo.register("Import Media", withTarget: self) { vm in
             vm.restoreMediaLibraryUndoSnapshot(before, actionName: "Import Media")
         }
-        undoManager?.setActionName("Import Media")
         for asset in importedAssets {
             Task { await finalizeImportedAsset(asset, batchManifestUpdate: true) }
         }
@@ -504,10 +503,9 @@ extension EditorViewModel {
         if let idx = mediaManifest.entries.firstIndex(where: { $0.id == id }) {
             mediaManifest.entries[idx].name = name
         }
-        undoManager?.registerUndo(withTarget: self) { vm in
+        undo.register("Rename Asset", withTarget: self) { vm in
             vm.renameMediaAsset(id: id, name: oldName)
         }
-        undoManager?.setActionName("Rename Asset")
     }
 
     func updateManifestMetadata(for assets: [MediaAsset]) {
@@ -781,43 +779,43 @@ extension EditorViewModel {
 
     @discardableResult
     func addTextClip(content: String = "Text", style: TextStyle = TextStyle()) -> String? {
-        let durationFrames = max(1, secondsToFrame(seconds: Defaults.textDurationSeconds, fps: timeline.fps))
+        undo.perform("Add Text") {
+            let durationFrames = max(1, secondsToFrame(seconds: Defaults.textDurationSeconds, fps: timeline.fps))
 
-        // Index 0 is the topmost slot in the timeline UI.
-        let trackIdx = insertTrack(at: 0, type: .video)
+            // Index 0 is the topmost slot in the timeline UI.
+            let trackIdx = insertTrack(at: 0, type: .video)
 
-        let canvasW = Double(timeline.width)
-        let canvasH = Double(timeline.height)
-        let natural = TextLayout.naturalSize(content: content, style: style, maxWidth: CGFloat(canvasW) * 0.9, canvasHeight: CGFloat(canvasH))
-        let w = Double(natural.width) / canvasW
-        let h = Double(natural.height) / canvasH
-        let transform = Transform(topLeft: ((1 - w) / 2, (1 - h) / 2), width: w, height: h)
+            let canvasW = Double(timeline.width)
+            let canvasH = Double(timeline.height)
+            let natural = TextLayout.naturalSize(content: content, style: style, maxWidth: CGFloat(canvasW) * 0.9, canvasHeight: CGFloat(canvasH))
+            let w = Double(natural.width) / canvasW
+            let h = Double(natural.height) / canvasH
+            let transform = Transform(topLeft: ((1 - w) / 2, (1 - h) / 2), width: w, height: h)
 
-        var clip = Clip(
-            mediaRef: "",
-            mediaType: .text,
-            sourceClipType: .text,
-            startFrame: max(0, currentFrame),
-            durationFrames: durationFrames,
-            transform: transform
-        )
-        clip.textContent = content
-        clip.textStyle = style
-        let clipId = clip.id
+            var clip = Clip(
+                mediaRef: "",
+                mediaType: .text,
+                sourceClipType: .text,
+                startFrame: max(0, currentFrame),
+                durationFrames: durationFrames,
+                transform: transform
+            )
+            clip.textContent = content
+            clip.textStyle = style
+            let clipId = clip.id
 
-        timeline.tracks[trackIdx].clips.append(clip)
-        sortClips(trackIndex: trackIdx)
+            timeline.tracks[trackIdx].clips.append(clip)
+            sortClips(trackIndex: trackIdx)
 
-        undoManager?.registerUndo(withTarget: self) { vm in
-            if let loc = vm.findClip(id: clipId) {
-                vm.timeline.tracks[loc.trackIndex].clips.remove(at: loc.clipIndex)
-                vm.videoEngine?.refreshVisuals()
+            undo.register("Add Text", withTarget: self) { vm in
+                if let loc = vm.findClip(id: clipId) {
+                    vm.timeline.tracks[loc.trackIndex].clips.remove(at: loc.clipIndex)
+                    vm.videoEngine?.refreshVisuals()
+                }
             }
+            selectedClipIds = [clipId]
+            videoEngine?.refreshVisuals()
+            return clipId
         }
-        undoManager?.setActionName("Add Text")
-
-        selectedClipIds = [clipId]
-        videoEngine?.refreshVisuals()
-        return clipId
     }
 }

@@ -380,7 +380,7 @@ final class VideoProject: NSDocument {
             editorViewModel.applyProjectFile(loaded)
             loadedProjectFile = nil
         }
-        editorViewModel.undoManager = undoManager
+        editorViewModel.undo.attach(undoManager)
         editorViewModel.projectURL = fileURL
         editorViewModel.agentService.loadSessions(from: fileURL)
         editorViewModel.agentService.onSessionsChanged = { [weak self] in
