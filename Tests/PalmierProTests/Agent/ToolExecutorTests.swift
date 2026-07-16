@@ -1752,6 +1752,9 @@ struct ToolExecutorTextFolderTests {
                     "tracking": 5,
                     "lineSpacing": 12,
                     "fontCase": "uppercase",
+                    "underline": true,
+                    "strikethrough": true,
+                    "overline": true,
                     "outline": ["enabled": true, "width": 3],
                     "shadow": [
                         "opacity": 0.4,
@@ -1775,6 +1778,9 @@ struct ToolExecutorTextFolderTests {
         #expect(style?.tracking == 5)
         #expect(style?.lineSpacing == 12)
         #expect(style?.fontCase == .uppercase)
+        #expect(style?.isUnderlined == true)
+        #expect(style?.isStruckThrough == true)
+        #expect(style?.isOverlined == true)
         #expect(style?.border.enabled == true)
         #expect(style?.border.width == 3)
         #expect(style?.shadow.color.a == 0.4)
