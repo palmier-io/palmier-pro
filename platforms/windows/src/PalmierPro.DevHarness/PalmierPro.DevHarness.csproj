@@ -30,4 +30,16 @@
     <ProjectReference Include="..\PalmierPro.Rendering\PalmierPro.Rendering.csproj" />
   </ItemGroup>
 
+  <!-- Same `dotnet publish` gap as PalmierPro.App.csproj (see its comment) — kept here too
+       in case DevHarness is ever published standalone. -->
+  <Target Name="IncludeWinUIXamlOutputInPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <_WinUIPublishGap Include="$(OutDir)**\*.xbf" Condition="Exists('$(OutDir)')" />
+      <_WinUIPublishGap Include="$(OutDir)$(TargetName).pri" Condition="Exists('$(OutDir)$(TargetName).pri')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_WinUIPublishGap)"
+          DestinationFiles="@(_WinUIPublishGap->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

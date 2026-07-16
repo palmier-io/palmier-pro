@@ -8,4 +8,11 @@
     <Deterministic>true</Deterministic>
   </PropertyGroup>
 
+  <!-- Single-source version stamp: platforms/windows/VERSION, also read directly by
+       scripts/publish.ps1 and (later) the installer. CLI -p:Version=... still wins if passed. -->
+  <PropertyGroup>
+    <PalmierVersionFile>$(MSBuildThisFileDirectory)VERSION</PalmierVersionFile>
+    <Version Condition="'$(Version)' == '' and Exists('$(PalmierVersionFile)')">$([System.IO.File]::ReadAllText('$(PalmierVersionFile)').Trim())</Version>
+  </PropertyGroup>
+
 </Project>

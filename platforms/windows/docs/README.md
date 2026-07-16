@@ -41,6 +41,104 @@ host, so WinUI types are never instantiated there. GPU-dependent tests carry
 `[Trait("Category","GPU")]` and are excluded by default (CI runs a WARP-forced
 subset instead).
 
+## Release publish
+
+`scripts/publish.ps1` builds a complete, self-contained payload under
+`artifacts/publish/` — one command, no manual steps, and end users need
+neither the .NET runtime nor Visual Studio/MSBuild installed to run it:
+
+```powershell
+.\scripts\publish.ps1
+```
+
+What it does:
+
+1. Builds the native engine (`PalmierEngine.vcxproj`, Release|x64) via msbuild.
+2. `dotnet publish`es `PalmierPro.App` as a self-contained `win-x64`
+   deployment. `--self-contained true` is a separate switch from
+   `WindowsAppSDKSelfContained=true` (already set in `PalmierPro.App.csproj`):
+   the latter only bundles the Windows App SDK/WinUI runtime, not the .NET
+   runtime itself — `--self-contained true` is what actually removes the
+   "user must have .NET installed" requirement (bundles `hostfxr.dll`,
+   `coreclr.dll`, `System.*.dll`, etc.).
+3. Verifies the payload actually contains the native engine
+   (`PalmierEngine.dll`), the FFmpeg DLLs, `shaders/`, bundled fonts
+   (`Assets/Fonts/` for XAML, `fonts/` for the native text-compositing path),
+   the CLR host, and the compiled XAML. That last one matters: plain
+   `dotnet publish` silently drops the WinUI-generated `.xbf` files and the
+   app's own resource index (`PalmierPro.App.pri`) — present in a normal
+   `dotnet build` output, absent from `dotnet publish`'s — which crashes the
+   published exe on its first `ms-appx:///` resource load. Fixed via the
+   `IncludeWinUIXamlOutputInPublish` post-publish copy target in
+   `PalmierPro.App.csproj` (and mirrored in `PalmierPro.DevHarness.csproj`
+   for parity). The verification step fails loudly, naming whatever's
+   missing, rather than shipping a payload that only half-runs.
+4. Copies `THIRD_PARTY_NOTICES.md` and the repo `LICENSE` next to the exe.
+
+`artifacts/publish/PalmierPro.App.exe` is the payload (~360 MB — self-contained
+WinAppSDK + CLR + FFmpeg + bundled fonts). `PalmierPro.DevHarness` is **not**
+included; its headless `--dump-frame`/`--dump-timeline-frame` paths are a
+dev-only verification tool, not part of what ships.
+
+### Version
+
+`VERSION` (plain `MAJOR.MINOR.PATCH`, e.g. `0.1.0`) is the single source of
+truth for the app's version: `Directory.Build.props` reads it into the
+`Version` MSBuild property for every project under `platforms/windows`
+(stamped into the published exe's file/product version), `publish.ps1` reads
+the same file to log what it's building, and the installer (Stage E2, Inno
+Setup) reads it too. Bump `VERSION`, not individual `csproj` files; a
+`-p:Version=...` passed on the command line still overrides it if ever needed.
+
+### ReadyToRun
+
+Left off for now (`publish.ps1` does not pass `-p:PublishReadyToRun=true`).
+R2R precompiles for faster cold start at the cost of a larger, RID-specific,
+slower-to-build payload; revisit once startup latency is a measured problem,
+not before.
+
+## Installer
+
+`scripts/build-installer.ps1` runs `publish.ps1` and then compiles
+`installer/PalmierPro.iss` (Inno Setup 6) into
+`artifacts/installer/PalmierProSetup-<version>.exe` — one command:
+
+```powershell
+.\scripts\build-installer.ps1
+```
+
+It resolves `ISCC.exe` itself: checks the usual Inno Setup 6 install
+locations and `PATH`, and if none is found, installs Inno Setup 6 via
+`winget install JRSoftware.InnoSetup --silent`, falling back to downloading
+the official installer directly (`/VERYSILENT /CURRENTUSER`) if winget is
+unavailable or fails. `AppVersion` is passed to ISCC via `/DAppVersion=...`,
+read from `VERSION` — the same single-source version file `publish.ps1` and
+`Directory.Build.props` use.
+
+Install characteristics (`installer/PalmierPro.iss`):
+
+- **Per-user, no admin required** (`PrivilegesRequired=lowest`). Installs to
+  `%LOCALAPPDATA%\Programs\PalmierPro` — deliberately not
+  `{autopf}` (Program Files), which per-user installs can't write to without
+  elevation.
+- **Start Menu shortcut** for the app and the uninstaller; no desktop icon.
+- **GPLv3 license page** — shows the repo root `LICENSE` verbatim during
+  interactive install.
+- **Silent-install capable** out of the box (standard Inno Setup switches,
+  no custom wizard pages to block on): `PalmierProSetup-<version>.exe
+  /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`.
+- **Uninstall leaves user data alone.** The install directory
+  (`%LOCALAPPDATA%\Programs\PalmierPro`) is unrelated to the app's state
+  directory (`%LOCALAPPDATA%\PalmierPro` — project registry, `DiskCache`,
+  Serilog logs; see `AppPaths.cs`). The uninstaller only removes what it put
+  under the install directory, so projects/cache/logs survive an uninstall by
+  construction — the `.iss` script has no `[UninstallDelete]` entries that
+  touch `%LOCALAPPDATA%\PalmierPro`, and must not gain any.
+- **Unsigned.** No Authenticode certificate exists yet, so Windows
+  SmartScreen will warn on first run ("Windows protected your PC"). Signing
+  and auto-update are deferred until a signed release channel exists (see the
+  roadmap in `../AGENTS.md`).
+
 ## Why the native project isn't in the .sln
 
 `PalmierPro.sln` contains only the C# projects. `src/PalmierPro.Rendering/native/PalmierEngine.vcxproj`

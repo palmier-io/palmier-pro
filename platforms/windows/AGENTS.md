@@ -11,6 +11,10 @@ See `docs/README.md`. Short version: native engine via `msbuild` (not `dotnet`,
 which can't build `.vcxproj` — MSB4278), then `dotnet build PalmierPro.sln`. Both
 steps run in `scripts/dev.ps1`.
 
+Unsigned per-user installer: `scripts/build-installer.ps1` (`publish.ps1` +
+Inno Setup) → `artifacts/installer/PalmierProSetup-<version>.exe` — see
+`docs/README.md`'s "Installer" section.
+
 ## Code style
 
 - Keep comments minimal. Only write one when the *why* is non-obvious. Don't

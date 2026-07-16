@@ -29,6 +29,22 @@
     <ProjectReference Include="..\PalmierPro.Rendering\PalmierPro.Rendering.csproj" />
   </ItemGroup>
 
+  <!-- `dotnet publish` (unlike `dotnet build`) drops the compiled-XAML .xbf files and the
+       app's own resource index (PalmierPro.App.pri) — they land in $(OutDir) but the
+       published exe then crashes on its first ms-appx:/// resource load. The WinUI SDK
+       targets already register these for publish under metadata that collides with
+       @(ResolvedFileToPublish) (NETSDK1152) if re-added the "normal" way, so sidestep that
+       item-resolution pipeline entirely: plain-copy them into $(PublishDir) after publish. -->
+  <Target Name="IncludeWinUIXamlOutputInPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <_WinUIPublishGap Include="$(OutDir)**\*.xbf" Condition="Exists('$(OutDir)')" />
+      <_WinUIPublishGap Include="$(OutDir)$(TargetName).pri" Condition="Exists('$(OutDir)$(TargetName).pri')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_WinUIPublishGap)"
+          DestinationFiles="@(_WinUIPublishGap->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
   <!--
     Bundled caption/title fonts (mirrors Utilities/BundledFonts.swift), linked — not copied — from
     the Mac resources so there's one on-disk copy of each font. Variable-font files whose names
