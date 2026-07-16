@@ -196,6 +196,7 @@ struct ProjectRoundTripTests {
         #expect(style.tracking == 0)
         #expect(style.lineSpacing == 0)
         #expect(style.fontCase == .mixed)
+        #expect(!style.isUnderlined && !style.isStruckThrough && !style.isOverlined)
     }
 
     @Test func textStyleLegacyDecorationsPickUpAdjustableDefaults() throws {
@@ -228,6 +229,9 @@ struct ProjectRoundTripTests {
         style.tracking = 8
         style.lineSpacing = 18
         style.fontCase = .uppercase
+        style.isUnderlined = true
+        style.isStruckThrough = true
+        style.isOverlined = true
         style.border = .init(enabled: true, color: .init(r: 1, g: 0, b: 0, a: 1), width: 9)
         style.shadow = .init(
             enabled: true,

@@ -98,6 +98,31 @@ enum TextFrameRenderer {
         return CTFramesetterCreateFrame(setter, CFRange(location: 0, length: 0), path, nil)
     }
 
+    private static func drawOverlines(_ ctx: CGContext, frame: CTFrame, style: TextStyle,
+                                      box: CGRect, fontSize: CGFloat) {
+        guard style.isOverlined else { return }
+        let lines = CTFrameGetLines(frame) as? [CTLine] ?? []
+        var origins = [CGPoint](repeating: .zero, count: lines.count)
+        CTFrameGetLineOrigins(frame, CFRange(location: 0, length: 0), &origins)
+        let font = style.resolvedFont(size: fontSize)
+        for (index, line) in lines.enumerated() {
+            let width = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(line))
+            drawOverline(ctx, x: box.minX + origins[index].x, y: origins[index].y,
+                         width: width, font: font, color: style.color)
+        }
+    }
+
+    private static func drawOverline(_ ctx: CGContext, x: CGFloat, y: CGFloat, width: CGFloat,
+                                     font: NSFont, color: TextStyle.RGBA) {
+        guard width > 0 else { return }
+        let ctFont = font as CTFont
+        let thickness = max(1, CTFontGetUnderlineThickness(ctFont))
+        ctx.setLineWidth(thickness)
+        ctx.setStrokeColor(cgColor(color))
+        let top = y + CTFontGetAscent(ctFont) - thickness / 2
+        ctx.strokeLineSegments(between: [CGPoint(x: x, y: top), CGPoint(x: x + width, y: top)])
+    }
+
     // MARK: - Static
 
     private static func cachedStatic(content: String, style: TextStyle, transform: Transform,
@@ -106,7 +131,9 @@ enum TextFrameRenderer {
         let key = signature(content, style, transform, renderSize)
         if let cached = cache.object(forKey: key) { return cached }
         guard let ctx = beginContext(style: style, backgroundBox: boxes.background, renderSize: renderSize) else { return nil }
-        CTFrameDraw(layoutFrame(NSAttributedString(string: content, attributes: style.attributes(size: fontSize)), box: boxes.text), ctx)
+        let frame = layoutFrame(NSAttributedString(string: content, attributes: style.attributes(size: fontSize)), box: boxes.text)
+        CTFrameDraw(frame, ctx)
+        drawOverlines(ctx, frame: frame, style: style, box: boxes.text, fontSize: fontSize)
         guard let image = finish(ctx) else { return nil }
         cache.setObject(image, forKey: key)
         return image
@@ -187,6 +214,7 @@ enum TextFrameRenderer {
                 }
                 ctx.textPosition = CGPoint(x: penX, y: penY)
                 CTLineDraw(wordLine, ctx)
+                if style.isOverlined, let font { drawOverline(ctx, x: penX, y: penY, width: wWidth, font: font, color: st.color) }
                 ctx.restoreGState()
             }
         }
@@ -239,7 +267,9 @@ enum TextFrameRenderer {
         // Left-anchor so the text reveals rightward in place rather than re-centering as it grows.
         var attrs = style.attributes(size: fontSize)
         attrs[.paragraphStyle] = style.paragraphStyle(size: fontSize, alignment: .left)
-        CTFrameDraw(layoutFrame(NSAttributedString(string: visible, attributes: attrs), box: boxes.text), ctx)
+        let textFrame = layoutFrame(NSAttributedString(string: visible, attributes: attrs), box: boxes.text)
+        CTFrameDraw(textFrame, ctx)
+        drawOverlines(ctx, frame: textFrame, style: style, box: boxes.text, fontSize: fontSize)
         return finish(ctx)
     }
 
