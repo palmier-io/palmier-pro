@@ -13,6 +13,10 @@ extension ToolExecutor {
             if recentTools.count > 15 { recentTools.removeFirst() }
             if result.isError, case let .text(message)? = result.content.first { lastError = message }
         }
+
+        mutating func recordError(_ message: String) {
+            lastError = message
+        }
     }
 
     func resetFeedbackState() { feedbackState = FeedbackState() }
