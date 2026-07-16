@@ -9,7 +9,7 @@ struct NestingTests {
     @Test func nestTimelineCreatesLinkedClipsAndUndoes() {
         let e = EditorViewModel()
         let undo = UndoManager()
-        e.undoManager = undo
+        e.undo.attach(undo)
 
         var child = Fixtures.timeline(tracks: [
             Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 60)]),
@@ -40,7 +40,7 @@ struct NestingTests {
     @Test func nestSelectedClipsMovesSelectionIntoNewTimeline() {
         let e = EditorViewModel()
         let undo = UndoManager()
-        e.undoManager = undo
+        e.undo.attach(undo)
 
         // Two video lanes + audio; selection skips the top-lane clip at 0 and the audio tail.
         e.timeline.tracks = [
@@ -83,7 +83,6 @@ struct NestingTests {
 
     @Test func nestSelectedClipsKeepsUnselectedClipInsideSpan() {
         let e = EditorViewModel()
-        e.undoManager = UndoManager()
         e.timeline.tracks = [
             Fixtures.videoTrack(clips: [
                 Fixtures.clip(id: "s1", start: 0, duration: 20),
@@ -106,7 +105,6 @@ struct NestingTests {
 
     @Test func nestSelectedClipsRegeneratesGroupIdsInChild() {
         let e = EditorViewModel()
-        e.undoManager = UndoManager()
         var v = Fixtures.clip(id: "v", start: 0, duration: 30)
         v.linkGroupId = "g1"
         var a = Fixtures.clip(id: "a", mediaType: .audio, start: 0, duration: 30)
@@ -127,7 +125,7 @@ struct NestingTests {
     @Test func decomposeReplacesNestWithChildClipsInPlace() {
         let e = EditorViewModel()
         let undo = UndoManager()
-        e.undoManager = undo
+        e.undo.attach(undo)
 
         // Child: two video lanes + one audio lane; the audio clip carries volume 0.8.
         var linked = Fixtures.clip(id: "cv", start: 0, duration: 40)

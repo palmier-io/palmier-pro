@@ -114,7 +114,7 @@ struct MultiTimelineTests {
     @Test func deleteUndoRestoresTimelineAndTab() {
         let e = EditorViewModel()
         let undo = UndoManager()
-        e.undoManager = undo
+        e.undo.attach(undo)
         let secondId = e.createTimeline()
         e.timeline.tracks = [Fixtures.videoTrack()]
 
@@ -133,7 +133,7 @@ struct MultiTimelineTests {
     @Test func renameTrimsAndUndoes() {
         let e = EditorViewModel()
         let undo = UndoManager()
-        e.undoManager = undo
+        e.undo.attach(undo)
         let id = e.activeTimelineId
         let original = e.timeline.name
         e.renameTimeline(id, to: "  Selects  ")
@@ -177,7 +177,7 @@ struct MultiTimelineTests {
     @Test func settingsUndoLandsOnOwningTimeline() {
         let e = EditorViewModel()
         let undo = UndoManager()
-        e.undoManager = undo
+        e.undo.attach(undo)
         let firstId = e.activeTimelineId
         e.applyTimelineSettings(fps: 30, width: 1920, height: 1080)
         undo.removeAllActions()
@@ -207,7 +207,7 @@ struct MultiTimelineTests {
     @Test func deleteActiveTimelineUndoReactivatesWithFreshViewState() {
         let e = EditorViewModel()
         let undo = UndoManager()
-        e.undoManager = undo
+        e.undo.attach(undo)
         e.timeline.tracks = [Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 900)])]
         let firstId = e.activeTimelineId
         _ = e.createTimeline()
@@ -225,13 +225,13 @@ struct MultiTimelineTests {
     @Test func timelineUndoReactivatesOwningTimeline() {
         let e = EditorViewModel()
         let undo = UndoManager()
-        e.undoManager = undo
+        e.undo.attach(undo)
         let aId = e.activeTimelineId
         let bId = e.createTimeline(activate: false)
         undo.removeAllActions()
 
         var undoneOnTimeline: String?
-        e.registerTimelineUndo { vm in undoneOnTimeline = vm.activeTimelineId }
+        e.registerTimelineUndo("Test Undo") { vm in undoneOnTimeline = vm.activeTimelineId }
         e.activateTimeline(bId)
         undo.undo()
 
@@ -265,7 +265,7 @@ struct MultiTimelineTests {
     @Test func moveTimelinesToFolderSetsParentAndUndoes() {
         let e = EditorViewModel()
         let undo = UndoManager()
-        e.undoManager = undo
+        e.undo.attach(undo)
         let folderId = e.createFolder(name: "Cuts")
         let tid = e.activeTimelineId
         undo.removeAllActions()

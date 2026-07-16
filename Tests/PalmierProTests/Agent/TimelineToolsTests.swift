@@ -44,7 +44,7 @@ struct TimelineToolsTests {
         #expect(!result.isError)
         #expect(h.editor.activeTimelineId == second.id)
         #expect(h.editor.activeTimelineId != firstId)
-        // Switching registers no undo — the agent undo stack must stay clean.
+        // Switching should not create an undo action.
         let undo = await h.runRaw("undo")
         #expect(undo.isError)
     }
