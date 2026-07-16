@@ -21,11 +21,10 @@ final class ScrubAudioEngine {
 
     private struct PCMWindow: Sendable {
         let startSample: Int64
-        let left: [Float]
-        let right: [Float]
+        let samples: [Int16]  // mono; ~5.6 MiB/min vs 22 MiB/min for stereo Float32
         let hasAudioTracks: Bool
 
-        var endSample: Int64 { startSample + Int64(left.count) }
+        var endSample: Int64 { startSample + Int64(samples.count) }
     }
 
     private struct CachedWindow {
@@ -302,7 +301,7 @@ final class ScrubAudioEngine {
         let start = Int(sample - window.startSample)
         let range = start..<(start + Self.meterFrameCount)
         let analysis = window.hasAudioTracks
-            ? AudioLevelAnalyzer.analyze(left: window.left, right: window.right, range: range)
+            ? AudioLevelAnalyzer.analyzeMono(window.samples, range: range)
             : .silence
         meter.ingest(analysis)
     }
@@ -322,13 +321,16 @@ final class ScrubAudioEngine {
             }
             let cacheIndex = Int(sourceSample - window.startSample)
             let gain = Self.edgeGain(at: outputIndex, frameCount: frameCount)
-            if window.left.indices.contains(cacheIndex) {
-                left[outputIndex] = window.left[cacheIndex] * gain
-                right[outputIndex] = window.right[cacheIndex] * gain
+            if window.samples.indices.contains(cacheIndex) {
+                let value = Float(window.samples[cacheIndex]) * Self.int16ToFloat * gain
+                left[outputIndex] = value
+                right[outputIndex] = value
             }
         }
         return ScrubAudioGrain(left: left, right: right)
     }
+
+    nonisolated private static let int16ToFloat: Float = 1.0 / 32768.0
 
     private func observeLifecycle() {
         let appCenter = NotificationCenter.default
@@ -375,10 +377,9 @@ final class ScrubAudioEngine {
     ) async -> PCMWindow? {
         guard let tracks = try? await source.asset.loadTracks(withMediaType: .audio) else { return nil }
 
-        var left = [Float](repeating: 0, count: frameCount)
-        var right = [Float](repeating: 0, count: frameCount)
+        var samples = [Int16](repeating: 0, count: frameCount)
         guard !tracks.isEmpty else {
-            return PCMWindow(startSample: startSample, left: left, right: right, hasAudioTracks: false)
+            return PCMWindow(startSample: startSample, samples: samples, hasAudioTracks: false)
         }
 
         guard let reader = try? AVAssetReader(asset: source.asset) else { return nil }
@@ -438,16 +439,20 @@ final class ScrubAudioEngine {
             }
 
             let sourceChannelCount = Int(sampleFormat.channelCount)
+            let rightChannel = channels[min(1, sourceChannelCount - 1)]
             for sourceIndex in 0..<sampleCount {
                 let destinationIndex = destinationOffset + sourceIndex
-                guard left.indices.contains(destinationIndex) else { continue }
-                left[destinationIndex] = channels[0][sourceIndex]
-                right[destinationIndex] = channels[min(1, sourceChannelCount - 1)][sourceIndex]
+                guard samples.indices.contains(destinationIndex) else { continue }
+                let mono = sourceChannelCount > 1
+                    ? (channels[0][sourceIndex] + rightChannel[sourceIndex]) * 0.5
+                    : channels[0][sourceIndex]
+                let clamped = max(-1, min(1, mono))
+                samples[destinationIndex] = Int16((clamped * 32767).rounded())
             }
             runningOffset = max(runningOffset, destinationOffset + sampleCount)
         }
 
         guard reader.status != .failed else { return nil }
-        return PCMWindow(startSample: startSample, left: left, right: right, hasAudioTracks: true)
+        return PCMWindow(startSample: startSample, samples: samples, hasAudioTracks: true)
     }
 }

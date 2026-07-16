@@ -95,6 +95,21 @@ enum AudioLevelAnalyzer {
         )
     }
 
+    nonisolated static func analyzeMono(_ samples: [Int16], range: Range<Int>) -> AudioMeterAnalysis {
+        let upper = min(range.upperBound, samples.count)
+        let lower = max(0, min(range.lowerBound, upper))
+        guard lower < upper else { return .silence }
+        let count = upper - lower
+        var floats = [Float](repeating: 0, count: count)
+        samples.withUnsafeBufferPointer { buffer in
+            vDSP_vflt16(buffer.baseAddress! + lower, 1, &floats, 1, vDSP_Length(count))
+        }
+        var peak: Float = 0
+        vDSP_maxmgv(floats, 1, &peak, vDSP_Length(count))
+        peak /= 32768.0
+        return AudioMeterAnalysis(leftPeak: peak, rightPeak: peak)
+    }
+
     nonisolated static func analyze(_ buffer: AVAudioPCMBuffer) -> AudioMeterAnalysis {
         guard buffer.format.commonFormat == .pcmFormatFloat32,
               !buffer.format.isInterleaved,
