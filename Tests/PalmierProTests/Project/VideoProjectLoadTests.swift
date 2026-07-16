@@ -118,7 +118,7 @@ struct VideoProjectLoadTests {
     }
 
     @MainActor
-    @Test func manifestRestoreDefersUnusedImageHydration() async throws {
+    @Test func manifestRestoreLoadsUnusedMetadataWithoutVisuals() async throws {
         let imageURL = try CompositorFixtures.patternPNG(size: CGSize(width: 640, height: 360))
         let document = VideoProject()
         var manifest = MediaManifest()
@@ -132,12 +132,16 @@ struct VideoProjectLoadTests {
         document.editorViewModel.mediaManifest = manifest
 
         document.restoreAssetsFromManifest()
-        try await Task.sleep(for: .milliseconds(100))
+        for _ in 0..<100 {
+            if document.editorViewModel.mediaAssets.first?.sourceWidth == 640 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
 
         let asset = try #require(document.editorViewModel.mediaAssets.first)
-        #expect(asset.sourceWidth == nil)
-        #expect(asset.sourceHeight == nil)
+        #expect(asset.sourceWidth == 640)
+        #expect(asset.sourceHeight == 360)
         #expect(asset.thumbnail == nil)
+        #expect(document.editorViewModel.mediaVisualCache.imageThumbnail(for: asset.id) == nil)
     }
 
     @MainActor
@@ -177,7 +181,9 @@ struct VideoProjectLoadTests {
 
         document.restoreAssetsFromManifest()
         for _ in 0..<100 {
-            if document.editorViewModel.mediaAssets.first(where: { $0.id == "used-image" })?.sourceWidth == 640 {
+            let usedReady = document.editorViewModel.mediaVisualCache.imageThumbnail(for: "used-image") != nil
+            let unusedReady = document.editorViewModel.mediaAssets.first(where: { $0.id == "unused-image" })?.sourceWidth == 640
+            if usedReady && unusedReady {
                 break
             }
             try await Task.sleep(for: .milliseconds(10))
@@ -188,9 +194,11 @@ struct VideoProjectLoadTests {
         #expect(used.sourceWidth == 640)
         #expect(used.sourceHeight == 360)
         #expect(used.thumbnail == nil)
-        #expect(unused.sourceWidth == 2)
-        #expect(unused.sourceHeight == 2)
+        #expect(unused.sourceWidth == 640)
+        #expect(unused.sourceHeight == 360)
         #expect(unused.thumbnail == nil)
+        #expect(document.editorViewModel.mediaVisualCache.imageThumbnail(for: used.id) != nil)
+        #expect(document.editorViewModel.mediaVisualCache.imageThumbnail(for: unused.id) == nil)
     }
 
     @MainActor

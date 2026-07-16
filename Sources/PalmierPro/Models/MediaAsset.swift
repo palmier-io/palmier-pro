@@ -192,6 +192,7 @@ final class MediaAsset: Identifiable {
                     thumbnailMaxPixelSize: includeThumbnail ? ImageEncoder.maxLongestEdge : nil
                 )
             }.value
+            guard !Task.isCancelled, url == imageURL else { return false }
             if let width = metadata.width { sourceWidth = width }
             if let height = metadata.height { sourceHeight = height }
             if let image = metadata.thumbnail,
@@ -203,12 +204,14 @@ final class MediaAsset: Identifiable {
         }
 
         if type == .lottie {
-            guard let info = try? await LottieVideoGenerator.inspect(fileAt: url) else { return false }
+            let lottieURL = url
+            guard let info = try? await LottieVideoGenerator.inspect(fileAt: lottieURL),
+                  !Task.isCancelled, url == lottieURL else { return false }
             duration = info.meta.duration
             sourceWidth = Int(info.meta.size.width)
             sourceHeight = Int(info.meta.size.height)
             sourceFPS = info.meta.framerate
-            if let cg = info.thumbnail {
+            if includeThumbnail, let cg = info.thumbnail {
                 thumbnail = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
             }
             return true
@@ -273,7 +276,7 @@ final class MediaAsset: Identifiable {
         let metadata = await Task.detached(priority: .utility) {
             ImageEncoder.metadata(url: imageURL, thumbnailMaxPixelSize: maxPixelSize)
         }.value
-        guard !Task.isCancelled, maxPixelSize > thumbnailMaxPixelSize else { return }
+        guard !Task.isCancelled, url == imageURL, maxPixelSize > thumbnailMaxPixelSize else { return }
         duration = Defaults.imageDurationSeconds
         if let width = metadata.width { sourceWidth = width }
         if let height = metadata.height { sourceHeight = height }

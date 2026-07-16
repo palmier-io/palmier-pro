@@ -636,9 +636,10 @@ final class VideoProject: NSDocument {
                 manifestUpdates.append(asset)
             }
             restored += 1
-            guard timelineMediaRefs.contains(asset.id) else { continue }
+            let usedOnTimeline = timelineMediaRefs.contains(asset.id)
             Task { [weak self] in
-                guard await asset.loadMetadata(includeThumbnail: false), let self else { return }
+                _ = await asset.loadMetadata(includeThumbnail: false)
+                guard usedOnTimeline, let self else { return }
                 self.editorViewModel.prepareMediaVisuals(for: asset)
             }
         }
