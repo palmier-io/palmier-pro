@@ -153,6 +153,8 @@ struct ToolExecutorImportMediaTests {
 
         let h = ToolHarness()
         h.editor.projectURL = root.appendingPathComponent("Import.palmier", isDirectory: true)
+        var checkpointCount = 0
+        h.editor.onProjectCheckpointRequired = { checkpointCount += 1 }
 
         let result = await h.runRaw("import_media", args: [
             "source": ["path": source.path],
@@ -167,14 +169,17 @@ struct ToolExecutorImportMediaTests {
         #expect(asset.name == "Linked Still")
         #expect(asset.type == .image)
         #expect(asset.url.standardizedFileURL == source.standardizedFileURL)
+        #expect(asset.sourceWidth == 2)
+        #expect(asset.sourceHeight == 2)
 
         #expect(asset.generationStatus == .none)
         #expect(asset.importInput == nil)
         #expect(h.editor.mediaManifest.entries.first?.source == .external(absolutePath: source.path))
         #expect(h.editor.mediaManifest.entries.first?.importInput == nil)
+        #expect(checkpointCount == 1)
     }
 
-    @Test func importPathKeepsUnreadableMediaReferenced() async throws {
+    @Test func importPathRejectsUnreadableMedia() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("pp-import-invalid-path-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -190,14 +195,15 @@ struct ToolExecutorImportMediaTests {
             "name": "Unreadable Still",
         ])
 
-        #expect(result.isError == false)
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("Could not read media file"))
         let asset = try #require(h.editor.mediaAssets.first)
-        try await waitForUnprocessableMedia(in: h.editor, assetId: asset.id)
 
         #expect(asset.generationStatus == .none)
         #expect(asset.url.standardizedFileURL == source.standardizedFileURL)
         #expect(asset.importInput == nil)
         #expect(h.editor.mediaManifest.entries.first?.source == .external(absolutePath: source.path))
+        #expect(h.editor.unprocessableMediaRefs.contains(asset.id))
     }
 
     @Test func unreadableFinalizeRefreshesTimelinePreview() async throws {
@@ -224,14 +230,6 @@ struct ToolExecutorImportMediaTests {
 
         #expect(finalized == false)
         #expect(editor.timelineRenderRevision == before + 1)
-    }
-
-    private func waitForUnprocessableMedia(in editor: EditorViewModel, assetId: String) async throws {
-        for _ in 0..<100 {
-            if editor.unprocessableMediaRefs.contains(assetId) { return }
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
-        Issue.record("import was not marked unprocessable")
     }
 
     private func writeTestPNG(to url: URL) throws {

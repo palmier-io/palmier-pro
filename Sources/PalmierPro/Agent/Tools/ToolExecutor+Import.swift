@@ -92,11 +92,16 @@ extension ToolExecutor {
         }
 
         let asset = try editor.undo.perform("Import Media (Agent)") {
-            guard let asset = editor.addMediaAsset(from: fileURL) else {
+            guard let asset = editor.addMediaAsset(from: fileURL, finalize: false) else {
                 throw ToolError("Failed to register imported asset")
             }
             applyImportMetadata(editor: editor, asset: asset, name: name, folderId: folderId)
             return asset
+        }
+        let finalized = await editor.finalizeImportedAsset(asset)
+        editor.onProjectCheckpointRequired?()
+        guard finalized else {
+            throw ToolError("Could not read media file: \(fileURL.lastPathComponent)")
         }
 
         return .ok(Self.jsonString([

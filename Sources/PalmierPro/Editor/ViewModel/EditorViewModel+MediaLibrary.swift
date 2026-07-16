@@ -177,7 +177,7 @@ extension EditorViewModel {
     }
 
     @discardableResult
-    func addMediaAsset(from url: URL, folderId: String? = nil) -> MediaAsset? {
+    func addMediaAsset(from url: URL, folderId: String? = nil, finalize: Bool = true) -> MediaAsset? {
         guard let type = ClipType(fileExtension: url.pathExtension.lowercased()) else {
             mediaPanelToast = "Can't import \"\(url.lastPathComponent)\" — unsupported file type."
             return nil
@@ -186,16 +186,18 @@ extension EditorViewModel {
             mediaPanelToast = "Can't import \"\(url.lastPathComponent)\" — not a Lottie animation."
             return nil
         }
-        return addMediaAsset(from: url, type: type, folderId: folderId)
+        return addMediaAsset(from: url, type: type, folderId: folderId, finalize: finalize)
     }
 
     @discardableResult
-    private func addMediaAsset(from url: URL, type: ClipType, folderId: String? = nil) -> MediaAsset {
+    private func addMediaAsset(from url: URL, type: ClipType, folderId: String? = nil, finalize: Bool = true) -> MediaAsset {
         let name = url.deletingPathExtension().lastPathComponent
         let asset = MediaAsset(url: url, type: type, name: name)
         asset.folderId = folderId
         importMediaAsset(asset)
-        Task { await finalizeImportedAsset(asset) }
+        if finalize {
+            Task { await finalizeImportedAsset(asset) }
+        }
         return asset
     }
 
