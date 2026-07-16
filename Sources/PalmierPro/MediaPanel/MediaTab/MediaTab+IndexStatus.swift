@@ -1,9 +1,17 @@
 import SwiftUI
 
 extension MediaTab {
-    @ViewBuilder
     var searchIndexStatus: some View {
-        let search = editor.searchIndex
+        MediaSearchIndexStatus(search: editor.searchIndex, mediaAssets: editor.mediaAssets)
+    }
+}
+
+private struct MediaSearchIndexStatus: View {
+    let search: SearchIndexCoordinator
+    let mediaAssets: [MediaAsset]
+
+    @ViewBuilder
+    var body: some View {
         let model = VisualModelLoader.shared
         switch model.state {
         case .notInstalled where model.enabled && hasIndexableAssets:
@@ -30,7 +38,7 @@ extension MediaTab {
     }
 
     private var hasIndexableAssets: Bool {
-        editor.mediaAssets.contains { $0.type == .video || $0.type == .image }
+        mediaAssets.contains { $0.type == .video || $0.type == .image }
     }
 
     private var modelSizeLabel: String {
