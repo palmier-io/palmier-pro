@@ -121,15 +121,18 @@ extension MediaTab {
 
     @ViewBuilder
     private func momentThumb(_ asset: MediaAsset?, time: Double) -> some View {
-        if asset?.type == .image {
+        if let asset, asset.type == .image {
             ZStack {
                 Rectangle().fill(Color.black)
-                if let thumb = asset?.thumbnail {
+                if let thumb = asset.thumbnail {
                     Image(nsImage: thumb).resizable().aspectRatio(contentMode: .fit)
                 } else {
                     Image(systemName: "photo")
                         .foregroundStyle(AppTheme.Text.tertiaryColor)
                 }
+            }
+            .task(id: searchThumbnailTaskID(for: asset)) {
+                await loadSearchThumbnail(asset)
             }
         } else {
             MomentThumbnail(url: asset?.url, time: time)
@@ -187,6 +190,18 @@ extension MediaTab {
         }
         .draggable(dragPayload(for: asset)) { dragPreview(for: asset) }
         .onTapGesture { editor.selectMediaPanelItem(asset.id) }
+        .task(id: searchThumbnailTaskID(for: asset)) {
+            await loadSearchThumbnail(asset)
+        }
+    }
+
+    private func searchThumbnailTaskID(for asset: MediaAsset) -> String {
+        "\(asset.id)|\(asset.url.path)|\(asset.generationStatus.serialized)|\(editor.isMediaOffline(asset.id))"
+    }
+
+    private func loadSearchThumbnail(_ asset: MediaAsset) async {
+        guard case .none = asset.generationStatus, !editor.isMediaOffline(asset.id) else { return }
+        await asset.loadLibraryThumbnail()
     }
 
     private func previewMoment(assetID: String, atSeconds seconds: Double) {

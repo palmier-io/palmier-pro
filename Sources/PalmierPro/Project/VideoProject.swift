@@ -588,7 +588,6 @@ final class VideoProject: NSDocument {
         initialMissingCount: Int,
         manifestEntries: Int
     ) {
-        let cache = editorViewModel.mediaVisualCache
         var assetsByID: [String: MediaAsset] = [:]
         for asset in editorViewModel.mediaAssets {
             assetsByID[asset.id] = asset
@@ -597,6 +596,9 @@ final class VideoProject: NSDocument {
         var missing = initialMissingCount
         var missingRefs = initialMissingRefs
         var manifestUpdates: [MediaAsset] = []
+        let timelineMediaRefs = Set(editorViewModel.timelines.flatMap { timeline in
+            timeline.tracks.flatMap { track in track.clips.map(\.mediaRef) }
+        })
 
         for candidate in candidates {
             guard let asset = assetsByID[candidate.id] else { continue }
@@ -634,16 +636,12 @@ final class VideoProject: NSDocument {
                 manifestUpdates.append(asset)
             }
             restored += 1
-            if asset.type == .audio || asset.type == .video {
-                cache.generateWaveform(for: asset)
+            let usedOnTimeline = timelineMediaRefs.contains(asset.id)
+            Task { [weak self] in
+                _ = await asset.loadMetadata(includeThumbnail: false)
+                guard usedOnTimeline, let self else { return }
+                self.editorViewModel.prepareMediaVisuals(for: asset)
             }
-            if asset.type == .video {
-                cache.generateVideoThumbnails(for: asset)
-            }
-            if asset.type == .image {
-                cache.generateImageThumbnail(for: asset)
-            }
-            Task { await asset.loadMetadata() }
         }
 
         editorViewModel.updateManifestMetadata(for: manifestUpdates)
