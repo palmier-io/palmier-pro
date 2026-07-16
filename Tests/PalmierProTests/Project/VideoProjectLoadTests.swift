@@ -117,6 +117,120 @@ struct VideoProjectLoadTests {
         #expect(document.editorViewModel.mediaAssetsById.count == manifest.entries.count)
     }
 
+    @MainActor
+    @Test func manifestRestoreLoadsUnusedMetadataWithoutVisuals() async throws {
+        let imageURL = try CompositorFixtures.patternPNG(size: CGSize(width: 640, height: 360))
+        let document = VideoProject()
+        var manifest = MediaManifest()
+        manifest.entries = [MediaManifestEntry(
+            id: "unused-image",
+            name: "Unused Image",
+            type: .image,
+            source: .external(absolutePath: imageURL.path),
+            duration: Defaults.imageDurationSeconds
+        )]
+        document.editorViewModel.mediaManifest = manifest
+
+        document.restoreAssetsFromManifest()
+        for _ in 0..<100 {
+            if document.editorViewModel.mediaAssets.first?.sourceWidth == 640 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        let asset = try #require(document.editorViewModel.mediaAssets.first)
+        #expect(asset.sourceWidth == 640)
+        #expect(asset.sourceHeight == 360)
+        #expect(asset.thumbnail == nil)
+        #expect(document.editorViewModel.mediaVisualCache.imageThumbnail(for: asset.id) == nil)
+    }
+
+    @MainActor
+    @Test func manifestRestoreRefreshesTimelineMetadataWithoutThumbnail() async throws {
+        let imageURL = try CompositorFixtures.patternPNG(size: CGSize(width: 640, height: 360))
+        let document = VideoProject()
+        document.editorViewModel.timeline = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(
+                mediaRef: "used-image",
+                mediaType: .image,
+                start: 0,
+                duration: 30
+            )])
+        ])
+        var manifest = MediaManifest()
+        manifest.entries = [
+            MediaManifestEntry(
+                id: "used-image",
+                name: "Used Image",
+                type: .image,
+                source: .external(absolutePath: imageURL.path),
+                duration: Defaults.imageDurationSeconds,
+                sourceWidth: 1,
+                sourceHeight: 1
+            ),
+            MediaManifestEntry(
+                id: "unused-image",
+                name: "Unused Image",
+                type: .image,
+                source: .external(absolutePath: imageURL.path),
+                duration: Defaults.imageDurationSeconds,
+                sourceWidth: 2,
+                sourceHeight: 2
+            ),
+        ]
+        document.editorViewModel.mediaManifest = manifest
+
+        document.restoreAssetsFromManifest()
+        for _ in 0..<100 {
+            let usedReady = document.editorViewModel.mediaVisualCache.imageThumbnail(for: "used-image") != nil
+            let unusedReady = document.editorViewModel.mediaAssets.first(where: { $0.id == "unused-image" })?.sourceWidth == 640
+            if usedReady && unusedReady {
+                break
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        let used = try #require(document.editorViewModel.mediaAssets.first { $0.id == "used-image" })
+        let unused = try #require(document.editorViewModel.mediaAssets.first { $0.id == "unused-image" })
+        #expect(used.sourceWidth == 640)
+        #expect(used.sourceHeight == 360)
+        #expect(used.thumbnail == nil)
+        #expect(unused.sourceWidth == 640)
+        #expect(unused.sourceHeight == 360)
+        #expect(unused.thumbnail == nil)
+        #expect(document.editorViewModel.mediaVisualCache.imageThumbnail(for: used.id) != nil)
+        #expect(document.editorViewModel.mediaVisualCache.imageThumbnail(for: unused.id) == nil)
+    }
+
+    @MainActor
+    @Test func libraryThumbnailLoadsOnDemand() async throws {
+        let imageURL = try CompositorFixtures.patternPNG(size: CGSize(width: 640, height: 360))
+        let asset = MediaAsset(url: imageURL, type: .image, name: "Lazy Image")
+
+        await asset.loadLibraryThumbnail()
+
+        let thumbnail = try #require(asset.thumbnail)
+        #expect(asset.sourceWidth == 640)
+        #expect(asset.sourceHeight == 360)
+        #expect(max(thumbnail.size.width, thumbnail.size.height) <= 320)
+    }
+
+    @MainActor
+    @Test func placingDeferredImageStartsTimelineThumbnail() async throws {
+        let imageURL = try CompositorFixtures.patternPNG(size: CGSize(width: 640, height: 360))
+        let editor = EditorViewModel()
+        editor.timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack()])
+        let asset = MediaAsset(url: imageURL, type: .image, name: "Deferred Image")
+        editor.importMediaAsset(asset)
+
+        _ = editor.placeClip(asset: asset, trackIndex: 0, startFrame: 0, durationFrames: 30)
+        for _ in 0..<100 {
+            if editor.mediaVisualCache.imageThumbnail(for: asset.id) != nil { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        #expect(editor.mediaVisualCache.imageThumbnail(for: asset.id) != nil)
+    }
+
     @Test func missingTimelineStillThrows() throws {
         // project.json is the required file — degrading it would hide real corruption.
         let bundle = fm.temporaryDirectory

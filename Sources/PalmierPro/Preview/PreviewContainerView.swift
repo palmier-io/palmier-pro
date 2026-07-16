@@ -8,6 +8,7 @@ struct PreviewContainerView: View {
     private var isImage: Bool { editor.activePreviewTab.clipType == .image }
 
     @State private var hoveredTabId: String?
+    @State private var failedImagePreviewKey: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -206,16 +207,33 @@ struct PreviewContainerView: View {
     // MARK: - Image preview
 
     private var imagePreview: some View {
-        Group {
-            if let asset = activeMediaAsset, let image = asset.thumbnail ?? NSImage(contentsOf: asset.url) {
+        let assetKey = activeMediaAsset.map {
+            "\($0.id)|\($0.url.path)|\($0.generationStatus.serialized)|\(editor.isMediaOffline($0.id))"
+        }
+        return Group {
+            if let asset = activeMediaAsset, let image = asset.thumbnail {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
+            } else if let assetKey, failedImagePreviewKey == assetKey {
+                Image(systemName: "photo")
+                    .font(.system(size: AppTheme.FontSize.xl))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+            } else {
+                ProgressView()
+                    .controlSize(.small)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.black)
         .allowsHitTesting(false)
+        .task(id: assetKey) {
+            failedImagePreviewKey = nil
+            guard let asset = activeMediaAsset else { return }
+            await asset.loadPreviewThumbnail()
+            guard !Task.isCancelled, asset.thumbnail == nil else { return }
+            failedImagePreviewKey = assetKey
+        }
     }
 
     private func fitSize(in container: CGSize, aspect: CGFloat) -> CGSize {

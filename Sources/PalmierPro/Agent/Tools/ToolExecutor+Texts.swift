@@ -57,6 +57,9 @@ struct ParsedTextStylePatch {
     let fontSize: Double?
     let isBold: Bool?
     let isItalic: Bool?
+    let isUnderlined: Bool?
+    let isStruckThrough: Bool?
+    let isOverlined: Bool?
     let tracking: Double?
     let lineSpacing: Double?
     let fontCase: TextStyle.FontCase?
@@ -68,6 +71,7 @@ struct ParsedTextStylePatch {
 
     var hasAnyField: Bool {
         fontName != nil || fontSize != nil || isBold != nil || isItalic != nil
+            || isUnderlined != nil || isStruckThrough != nil || isOverlined != nil
             || tracking != nil || lineSpacing != nil || fontCase != nil
             || color != nil || alignment != nil || outline?.hasAnyField == true
             || shadow?.hasAnyField == true || background?.hasAnyField == true
@@ -114,7 +118,8 @@ extension ToolExecutor {
         try validateUnknownKeys(
             args,
             allowed: [
-                "fontName", "fontSize", "bold", "italic", "tracking", "lineSpacing", "fontCase",
+                "fontName", "fontSize", "bold", "italic", "underline", "strikethrough", "overline",
+                "tracking", "lineSpacing", "fontCase",
                 "color", "alignment", "outline", "shadow", "background",
             ],
             path: path
@@ -129,6 +134,9 @@ extension ToolExecutor {
             fontSize: try optionalNumber(args, key: "fontSize", path: path, range: 12...300),
             isBold: try optionalBool(args, key: "bold", path: path),
             isItalic: try optionalBool(args, key: "italic", path: path),
+            isUnderlined: try optionalBool(args, key: "underline", path: path),
+            isStruckThrough: try optionalBool(args, key: "strikethrough", path: path),
+            isOverlined: try optionalBool(args, key: "overline", path: path),
             tracking: try optionalNumber(args, key: "tracking", path: path, range: -20...100),
             lineSpacing: try optionalNumber(args, key: "lineSpacing", path: path, range: -100...300),
             fontCase: try parseFontCase(args, path: path),
@@ -270,6 +278,9 @@ extension ToolExecutor {
         if let s = patch.fontSize { style.fontSize = s }
         if let b = patch.isBold { style.isBold = b }
         if let i = patch.isItalic { style.isItalic = i }
+        if let u = patch.isUnderlined { style.isUnderlined = u }
+        if let s = patch.isStruckThrough { style.isStruckThrough = s }
+        if let o = patch.isOverlined { style.isOverlined = o }
         if let t = patch.tracking { style.tracking = t }
         if let l = patch.lineSpacing { style.lineSpacing = l }
         if let f = patch.fontCase { style.fontCase = f }

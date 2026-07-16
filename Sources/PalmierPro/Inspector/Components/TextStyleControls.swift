@@ -130,17 +130,32 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
                 actions.commit(true) {
                     $0.isBold = defaults.isBold
                     $0.isItalic = defaults.isItalic
+                    $0.isUnderlined = defaults.isUnderlined
+                    $0.isStruckThrough = defaults.isStruckThrough
+                    $0.isOverlined = defaults.isOverlined
                 }
             }
         ) {
             TextStyleTraitButtons(
                 isBold: selection.value(\.isBold),
                 isItalic: selection.value(\.isItalic),
+                isUnderlined: selection.value(\.isUnderlined),
+                isStruckThrough: selection.value(\.isStruckThrough),
+                isOverlined: selection.value(\.isOverlined),
                 onBold: { value in
                     actions.commit(true) { $0.isBold = value }
                 },
                 onItalic: { value in
                     actions.commit(true) { $0.isItalic = value }
+                },
+                onUnderline: { value in
+                    actions.commit(false) { $0.isUnderlined = value }
+                },
+                onStrikethrough: { value in
+                    actions.commit(false) { $0.isStruckThrough = value }
+                },
+                onOverline: { value in
+                    actions.commit(false) { $0.isOverlined = value }
                 }
             )
         }

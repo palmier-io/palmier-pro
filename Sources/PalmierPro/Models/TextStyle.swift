@@ -11,6 +11,9 @@ struct TextStyle: Codable, Sendable, Equatable, Hashable {
     var fontCase: FontCase = .mixed
     var isBold: Bool = true
     var isItalic: Bool = false
+    var isUnderlined: Bool = false
+    var isStruckThrough: Bool = false
+    var isOverlined: Bool = false
     var color: RGBA = RGBA()
     var alignment: Alignment = .center
     var shadow: Shadow = Shadow()
@@ -141,7 +144,8 @@ struct TextStyle: Codable, Sendable, Equatable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case fontName, fontSize, fontScale, tracking, lineSpacing, fontCase
-        case isBold, isItalic, color, alignment, shadow, background, border
+        case isBold, isItalic, isUnderlined, isStruckThrough, isOverlined
+        case color, alignment, shadow, background, border
     }
 }
 
@@ -161,6 +165,9 @@ extension TextStyle {
             fontCase: (try? c.decode(FontCase.self, forKey: .fontCase)) ?? .mixed,
             isBold: (try? c.decode(Bool.self, forKey: .isBold)) ?? inferredTraits.contains(.traitBold),
             isItalic: (try? c.decode(Bool.self, forKey: .isItalic)) ?? inferredTraits.contains(.traitItalic),
+            isUnderlined: (try? c.decode(Bool.self, forKey: .isUnderlined)) ?? false,
+            isStruckThrough: (try? c.decode(Bool.self, forKey: .isStruckThrough)) ?? false,
+            isOverlined: (try? c.decode(Bool.self, forKey: .isOverlined)) ?? false,
             color: (try? c.decode(RGBA.self, forKey: .color)) ?? RGBA(),
             alignment: (try? c.decode(Alignment.self, forKey: .alignment)) ?? .center,
             shadow: (try? c.decode(Shadow.self, forKey: .shadow)) ?? Shadow(),
@@ -266,6 +273,8 @@ extension TextStyle {
             .paragraphStyle: paragraphStyle(size: size),
             .kern: tracking * Double(size) / max(1, fontSize * fontScale),
         ]
+        if isUnderlined { attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue }
+        if isStruckThrough { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
         if includeColor { attrs[.foregroundColor] = nsColor }
         if border.enabled {
             attrs[.strokeWidth] = NSNumber(value: glyphBorderStrokePercentage)
