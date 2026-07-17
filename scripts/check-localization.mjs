@@ -263,6 +263,18 @@ const errors = [];
 
 const sourceGuards = [
     {
+        file: path.join(sourceRoot, "UI", "SidebarRowButton.swift"),
+        required: "L10n.text(label)",
+        forbidden: "Text(verbatim: label)",
+        error: "侧边栏固定标签必须通过 L10n 显示，不能按原文直出",
+    },
+    {
+        file: path.join(sourceRoot, "MediaPanel", "MediaTab", "MediaTab+IndexStatus.swift"),
+        required: "L10n.text(label)",
+        forbidden: "Text(verbatim: label)",
+        error: "媒体索引状态标签必须通过 L10n 显示，不能按原文直出",
+    },
+    {
         file: path.join(sourceRoot, "Agent", "Panel", "MentionPopover.swift"),
         required: "L10n.text(asset.type.trackLabel)",
         error: "媒体类型必须通过标题形式的本地化键显示，不能直接使用小写 rawValue",
@@ -299,7 +311,9 @@ const sourceGuards = [
     },
 ];
 for (const guard of sourceGuards) {
-    if (!fs.readFileSync(guard.file, "utf8").includes(guard.required)) {
+    const source = fs.readFileSync(guard.file, "utf8");
+    if ((guard.required && !source.includes(guard.required))
+        || (guard.forbidden && source.includes(guard.forbidden))) {
         errors.push(guard.error);
     }
 }

@@ -72,7 +72,7 @@ private struct MediaSearchIndexStatus: View {
             } else {
                 ProgressView().controlSize(.mini)
             }
-            Text(verbatim: label)
+            L10n.text(label)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
         }
