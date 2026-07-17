@@ -275,6 +275,11 @@ const sourceGuards = [
         error: "媒体索引状态标签必须通过 L10n 显示，不能按原文直出",
     },
     {
+        file: path.join(sourceRoot, "Editor", "EditorUndo.swift"),
+        required: "sourceActionNames[localizedActionName] = actionName",
+        error: "撤销菜单可以本地化，但 Agent 工具必须保留稳定的英文动作名",
+    },
+    {
         file: path.join(sourceRoot, "Agent", "Panel", "MentionPopover.swift"),
         required: "L10n.text(asset.type.trackLabel)",
         error: "媒体类型必须通过标题形式的本地化键显示，不能直接使用小写 rawValue",
@@ -291,7 +296,7 @@ const sourceGuards = [
     },
     {
         file: path.join(sourceRoot, "Editor", "EditorUndo.swift"),
-        required: "manager.setActionName(L10n.string(actionName))",
+        required: "let localizedActionName = localizeActionName(actionName)",
         error: "统一 Undo 入口必须本地化操作名称",
     },
     {
