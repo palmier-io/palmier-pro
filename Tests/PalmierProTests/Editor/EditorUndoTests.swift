@@ -115,6 +115,19 @@ struct EditorUndoTests {
         #expect(manager.groupingLevel == 0)
     }
 
+    @Test func agentUndoReturnsSourceNameWhileNativeMenuUsesLocalizedName() {
+        let undo = EditorUndo(localizeActionName: { "本地化：\($0)" })
+        let manager = UndoManager()
+        let counter = UndoCounter()
+        undo.attach(manager)
+
+        setCounter(1, actionName: "Trim Clip", counter: counter, undo: undo)
+
+        #expect(manager.undoActionName == "本地化：Trim Clip")
+        #expect(undo.undoLatest() == "Trim Clip")
+        #expect(counter.value == 0)
+    }
+
     @Test func throwingScopesRestoreUndoState() {
         let (undo, manager, counter) = harness()
 
