@@ -349,7 +349,7 @@ final class ScrubAudioEngine {
         let start = Int(sample - window.startSample)
         let range = start..<(start + Self.meterFrameCount)
         let analysis = window.hasAudioTracks
-            ? AudioLevelAnalyzer.analyze(left: window.left, right: window.right, range: range)
+            ? AudioLevelAnalyzer.analyzeInt16(left: window.left, right: window.right, range: range)
             : .silence
         meter.ingest(analysis)
     }

@@ -95,7 +95,7 @@ enum AudioLevelAnalyzer {
         )
     }
 
-    nonisolated static func analyze(left: [Int16], right: [Int16], range: Range<Int>) -> AudioMeterAnalysis {
+    nonisolated static func analyzeInt16(left: [Int16], right: [Int16], range: Range<Int>) -> AudioMeterAnalysis {
         let upper = min(range.upperBound, min(left.count, right.count))
         let lower = max(0, min(range.lowerBound, upper))
         guard lower < upper else { return .silence }
