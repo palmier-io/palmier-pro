@@ -40,7 +40,7 @@ struct EditorMenuValue: View {
 
     var body: some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            Text(text)
+            Text(verbatim: text)
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: AppTheme.Spacing.xs)

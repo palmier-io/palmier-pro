@@ -153,7 +153,7 @@ struct MentionPopover: View {
                     .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                     .lineLimit(1)
-                L10n.text(asset.type.rawValue)
+                L10n.text(asset.type.trackLabel)
                     .font(.system(size: AppTheme.FontSize.xxs))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }

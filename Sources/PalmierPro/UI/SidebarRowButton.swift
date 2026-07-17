@@ -12,7 +12,7 @@ struct SidebarRowButton: View {
                 Image(systemName: systemImage)
                     .font(.system(size: AppTheme.FontSize.md))
                     .frame(width: AppTheme.IconSize.sm)
-                Text(label)
+                Text(verbatim: label)
                     .font(.system(size: AppTheme.FontSize.mdLg, weight: AppTheme.FontWeight.regular))
                 Spacer(minLength: 0)
             }

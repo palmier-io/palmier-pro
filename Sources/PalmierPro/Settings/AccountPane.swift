@@ -109,11 +109,11 @@ struct AccountPane: View {
     }
 
     private func upgradeButton(for plan: AvailablePlan, isPrimary: Bool) -> some View {
-        let label = "Upgrade to \(plan.tier.upgradeLabel)"
+        let label = L10n.format("Upgrade to %@", L10n.string(plan.tier.upgradeLabel))
         return Button {
             Task { await account.subscribe(tier: plan.tier) }
         } label: {
-            Text(label).frame(maxWidth: .infinity)
+            Text(verbatim: label).frame(maxWidth: .infinity)
         }
         .buttonStyle(.capsule(
             isPrimary ? .prominent : .secondary,
@@ -128,13 +128,13 @@ struct AccountPane: View {
             card {
                 HStack(alignment: .center, spacing: AppTheme.Spacing.md) {
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                        Text(account.tier.planLabel)
+                        L10n.text(account.tier.planLabel)
                             .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
                             .foregroundStyle(AppTheme.Text.primaryColor)
 
                         if account.account?.user.cancelAtPeriodEnd == true,
                            let date = formattedPeriodEnd {
-                            Text("Cancels \(date)")
+                            Text(verbatim: L10n.format("Cancels %@", date))
                                 .font(.system(size: AppTheme.FontSize.sm))
                                 .foregroundStyle(AppTheme.Status.warningColor)
                         }
@@ -202,7 +202,11 @@ struct AccountPane: View {
                 account.buyCredits(dollars: topOffDollars)
             }
 
-            Text("$\(TopOffLimits.minDollars)–$\(TopOffLimits.maxDollars) · Credits expire at renewal.")
+            Text(verbatim: L10n.format(
+                "$%d–$%d · Credits expire at renewal.",
+                TopOffLimits.minDollars,
+                TopOffLimits.maxDollars
+            ))
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .fixedSize(horizontal: false, vertical: true)
@@ -210,7 +214,7 @@ struct AccountPane: View {
     }
 
     private func cardCaption(_ text: String) -> some View {
-        Text(text)
+        L10n.text(text)
             .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.regular))
             .foregroundStyle(AppTheme.Text.tertiaryColor)
     }

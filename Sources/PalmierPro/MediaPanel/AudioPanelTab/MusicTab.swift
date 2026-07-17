@@ -191,10 +191,14 @@ struct MusicTab: View {
         InspectorRow(label: "Model", onReset: { selectModel(nil) }) {
             Menu {
                 ForEach(models, id: \.id) { m in
-                    Button(m.displayName) { selectModel(m) }
+                    Button {
+                        selectModel(m)
+                    } label: {
+                        Text(verbatim: m.displayName)
+                    }
                 }
             } label: {
-                EditorMenuValue(text: model?.displayName ?? "None", expanded: true)
+                EditorMenuValue(text: model?.displayName ?? L10n.string("None"), expanded: true)
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
             .frame(maxWidth: .infinity)
@@ -215,7 +219,7 @@ struct MusicTab: View {
 
     private var promptControl: some View {
         InspectorRow(label: "Prompt") {
-            TextField(model?.promptLabel ?? "", text: $prompt, axis: .vertical)
+            TextField(L10n.string(model?.promptLabel ?? ""), text: $prompt, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(2...5)
                 .font(.system(size: AppTheme.FontSize.sm))
@@ -229,7 +233,7 @@ struct MusicTab: View {
         EditorActionFooter(message: note ?? validationNote) {
             HStack(spacing: AppTheme.Spacing.sm) {
                 Button(action: generate) {
-                    Text(generateLabel)
+                    Text(verbatim: generateLabel)
                         .lineLimit(1)
                         .frame(maxWidth: .infinity)
                 }
@@ -244,7 +248,7 @@ struct MusicTab: View {
     }
 
     private func valueText(_ text: String) -> some View {
-        Text(text)
+        Text(verbatim: text)
             .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
             .foregroundStyle(AppTheme.Text.tertiaryColor)
             .lineLimit(1)
@@ -266,8 +270,10 @@ struct MusicTab: View {
             } label: { Label("Generate music for the timeline", systemImage: "music.note") }
             Menu {
                 ForEach(["Cinematic", "Upbeat", "Ambient", "Tense", "Lo-fi"], id: \.self) { mood in
-                    Button(mood) {
+                    Button {
                         musicTask("Generate \(mood.lowercased()) music for my timeline and place it on an audio track aligned to the edit.")
+                    } label: {
+                        L10n.text(mood)
                     }
                 }
             } label: { Label("Mood", systemImage: "slider.horizontal.3") }

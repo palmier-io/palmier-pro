@@ -192,7 +192,7 @@ struct InspectorView: View {
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .fixedSize()
             Spacer()
-            Text(value)
+            Text(verbatim: value)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .lineLimit(1)
@@ -811,7 +811,7 @@ struct InspectorView: View {
     // MARK: - Section helpers
 
     func sectionTitleLabel(title: String) -> some View {
-        Text(title)
+        L10n.text(title)
             .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.medium))
             .foregroundStyle(AppTheme.Text.primaryColor)
             .fixedSize()
@@ -851,14 +851,16 @@ struct InspectorView: View {
         ) {
             Menu {
                 ForEach(BlendMode.allCases, id: \.self) { m in
-                    Button(m.displayName) {
+                    Button {
                         commitPropertiesToClips(clips, actionName: "Blend Mode") {
                             $0.blendMode = (m == .normal ? nil : m)
                         }
+                    } label: {
+                        L10n.text(m.displayName)
                     }
                 }
             } label: {
-                EditorMenuValue(text: mixed ? "—" : current.displayName)
+                EditorMenuValue(text: mixed ? "—" : L10n.string(current.displayName))
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().focusable(false)
         }
@@ -1097,7 +1099,7 @@ struct InspectorView: View {
 
     private func assetIdentityHeader(_ asset: MediaAsset) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
-            Text(asset.name)
+            Text(verbatim: asset.name)
                 .font(.system(size: AppTheme.FontSize.lg, weight: .semibold))
                 .foregroundStyle(AppTheme.Text.primaryColor)
                 .lineLimit(2)
@@ -1131,7 +1133,7 @@ struct InspectorView: View {
                 Spacer()
                 PromptCopyButton(text: prompt)
             }
-            Text(prompt)
+            Text(verbatim: prompt)
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.secondaryColor)
                 .textSelection(.enabled)

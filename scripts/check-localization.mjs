@@ -212,6 +212,31 @@ const englishInfo = parseStrings(englishInfoPath);
 const chineseInfo = parseStrings(chineseInfoPath);
 const { candidates, dynamicRisks, typedAssignmentRisks } = collectCandidates();
 
+const runtimeCandidates = [
+    "Ambient",
+    "Available",
+    "Both",
+    "Cinematic",
+    "Clear Search",
+    "Community",
+    "Gain",
+    "Gamma",
+    "Installed",
+    "Lift",
+    "Lo-fi",
+    "Mic",
+    "New Skill",
+    "Tense",
+    "Try Again",
+    "Upbeat",
+    "Update available",
+];
+for (const key of runtimeCandidates) {
+    const locations = candidates.get(key) ?? [];
+    locations.push("scripts/check-localization.mjs:runtimeCandidates");
+    candidates.set(key, locations);
+}
+
 if (syncEnglish) {
     const keys = new Set([...english.keys(), ...candidates.keys()]);
     const lines = [
@@ -235,6 +260,50 @@ if (listOnly) {
 }
 
 const errors = [];
+
+const sourceGuards = [
+    {
+        file: path.join(sourceRoot, "Agent", "Panel", "MentionPopover.swift"),
+        required: "L10n.text(asset.type.trackLabel)",
+        error: "媒体类型必须通过标题形式的本地化键显示，不能直接使用小写 rawValue",
+    },
+    {
+        file: path.join(sourceRoot, "Export", "ExportView.swift"),
+        required: "1 media file missing — it'll be skipped.",
+        error: "缺失媒体提示必须保留单数文案",
+    },
+    {
+        file: path.join(sourceRoot, "Export", "ExportView.swift"),
+        required: "%d media files missing — they'll be skipped.",
+        error: "缺失媒体提示必须保留复数文案",
+    },
+    {
+        file: path.join(sourceRoot, "Editor", "EditorUndo.swift"),
+        required: "manager.setActionName(L10n.string(actionName))",
+        error: "统一 Undo 入口必须本地化操作名称",
+    },
+    {
+        file: path.join(sourceRoot, "Project", "HomeView.swift"),
+        required: "window.title = L10n.string(\"Palmier Pro\")",
+        error: "主窗口标题必须显式本地化",
+    },
+    {
+        file: path.join(sourceRoot, "Settings", "SettingsView.swift"),
+        required: "window.title = L10n.string(\"Settings\")",
+        error: "设置窗口标题必须显式本地化",
+    },
+    {
+        file: path.join(sourceRoot, "Help", "FeedbackView.swift"),
+        required: "window.title = L10n.string(\"Send feedback\")",
+        error: "反馈窗口标题必须显式本地化",
+    },
+];
+for (const guard of sourceGuards) {
+    if (!fs.readFileSync(guard.file, "utf8").includes(guard.required)) {
+        errors.push(guard.error);
+    }
+}
+
 for (const risk of dynamicRisks) {
     errors.push(`动态 UI 未经过 L10n.format：${risk}`);
 }

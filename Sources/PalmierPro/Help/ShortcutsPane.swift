@@ -89,19 +89,19 @@ struct ShortcutsPane: View {
                         .gridCellColumns(2)
                 }
 
-                Text(group.title)
+                L10n.text(group.title)
                     .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.regular))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                     .gridCellColumns(2)
 
                 ForEach(group.shortcuts, id: \.0) { shortcut, description in
                     GridRow(alignment: .firstTextBaseline) {
-                        Text(shortcut)
+                        Text(verbatim: shortcut)
                             .font(.system(size: AppTheme.FontSize.xs, weight: AppTheme.FontWeight.regular, design: .monospaced))
                             .foregroundStyle(AppTheme.Text.primaryColor)
                             .fixedSize()
 
-                        Text(description)
+                        L10n.text(description)
                             .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.regular))
                             .foregroundStyle(AppTheme.Text.secondaryColor)
                             .fixedSize(horizontal: false, vertical: true)

@@ -284,10 +284,12 @@ struct ExportView: View {
                 .foregroundStyle(AppTheme.Text.secondaryColor)
 
             if palmierSummary.missing > 0 {
-                Text(verbatim: L10n.format(
-                    "%d media files missing — they'll be skipped.",
-                    palmierSummary.missing
-                ))
+                Text(verbatim: palmierSummary.missing == 1
+                    ? L10n.string("1 media file missing — it'll be skipped.")
+                    : L10n.format(
+                        "%d media files missing — they'll be skipped.",
+                        palmierSummary.missing
+                    ))
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Status.errorColor)
             }
