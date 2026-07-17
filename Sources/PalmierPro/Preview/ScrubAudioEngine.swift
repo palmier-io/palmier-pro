@@ -143,8 +143,9 @@ final class ScrubAudioEngine {
                     self.fillDecode = decode
                     let window = await decode.value
                     self.fillDecode = nil
-                    guard !Task.isCancelled, !decode.isCancelled, source.generation == self.source?.generation else { return }
-                    if let window { self.insert(window) }
+                    // Fill-task cancel or a source change stops the sweep; a preempted decode just skips this window.
+                    guard !Task.isCancelled, source.generation == self.source?.generation else { return }
+                    if let window, !decode.isCancelled { self.insert(window) }
                 }
             }
         }
