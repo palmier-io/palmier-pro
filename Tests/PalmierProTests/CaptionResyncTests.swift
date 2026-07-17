@@ -369,4 +369,26 @@ private func timeline(_ tracks: [Track]) -> Timeline {
         // preserve is the default → manual text kept, clip not overwritten.
         #expect(e.timeline.tracks[0].clips.first { $0.id == "cap" }?.textContent == "hand edited")
     }
+
+    // set_clip_properties applies timing outside withTimelineSwap — it reconciles via the same hook.
+    @Test func agentTimingPropertyTriggersResync() {
+        let (e, _) = editorWithAudioAndCaption(captionText: "one two three", generatedText: "one two three")
+        let before = e.timeline
+        e.undo.perform("Set Clip Property (Agent)") {
+            e.commitClipProperty(clipId: "audio") { $0.trimEndFrame = 30; $0.setDuration(60) }
+            e.resyncCaptionsAfterSwap(before: before, trigger: "Set Clip Property (Agent)")
+        }
+        #expect(e.timeline.tracks[0].clips.first { $0.id == "cap" }?.textContent == "one two")
+    }
+
+    @Test func agentNonTimingPropertyDoesNotTriggerResync() {
+        let (e, src) = editorWithAudioAndCaption(captionText: "one two three", generatedText: "one two three")
+        let before = e.timeline
+        e.undo.perform("Set Clip Property (Agent)") {
+            e.commitClipProperty(clipId: "audio") { $0.opacity = 0.5 }
+            e.resyncCaptionsAfterSwap(before: before, trigger: "Set Clip Property (Agent)")
+        }
+        #expect(src.queriedRanges.isEmpty)
+        #expect(e.timeline.tracks[0].clips.first { $0.id == "cap" }?.textContent == "one two three")
+    }
 }
