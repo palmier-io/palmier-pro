@@ -34,4 +34,17 @@ struct LUTLoaderTests {
     @Test func rejects1DLUT() {
         #expect(LUTLoader.parse("LUT_1D_SIZE 16\n0 0 0") == nil)
     }
+
+    @Test func loadUsesMemoryCacheAfterFirstRead() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lut-cache-\(UUID().uuidString).cube")
+        try cubeText(size: 2).write(to: url, atomically: true, encoding: .utf8)
+        let first = try #require(LUTLoader.load(path: url.path))
+        try FileManager.default.removeItem(at: url)
+        let cached = try #require(LUTLoader.load(path: url.path))
+
+        #expect(first.dimension == 2)
+        #expect(cached.dimension == 2)
+        #expect(cached.data == first.data)
+    }
 }
