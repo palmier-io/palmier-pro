@@ -65,8 +65,10 @@ private struct ExportAnalyticsRun {
         Analytics.capture(.exportFinished, properties: timedPayload())
     }
 
-    func fail() {
-        Analytics.capture(.exportFailed, properties: timedPayload())
+    func fail(reason: String = "other") {
+        var payload = timedPayload()
+        payload["failure_reason"] = reason
+        Analytics.capture(.exportFailed, properties: payload)
     }
 
     private func timedPayload() -> [String: Any] {
@@ -202,6 +204,7 @@ final class ExportService {
             ]
         )
         videoAnalytics.begin()
+        var failureStage = "preparing"
 
         do {
             try checkCancellation()
@@ -213,7 +216,8 @@ final class ExportService {
             let session = prepared.session
             guard let fileType = format.utType else { throw ExportError.invalidFormat }
             nonisolated(unsafe) let unsafeSession = session
-            try await withStagedOutput(to: outputURL) { stagingURL in
+            failureStage = "exporting"
+            try await withStagedOutput(to: outputURL, onCommit: { failureStage = "committing" }) { stagingURL in
                 var observationPhase = SessionObservationPhase.pending
                 let stateTask = Task { @MainActor in
                     defer { observationPhase = .ended }
@@ -275,14 +279,60 @@ final class ExportService {
                 )
             } else {
                 self.error = Log.detail(error)
+                let diagnostics = Self.failureDiagnostics(
+                    error: error,
+                    stage: failureStage,
+                    progress: progress,
+                    format: format,
+                    resolution: resolution
+                )
                 Log.export.error(
                     "export failed: \(Log.detail(error))",
                     telemetry: "Export failed",
-                    data: ["format": String(describing: format), "resolution": resolution.rawValue, "error": Log.detail(error)]
+                    data: diagnostics.data
                 )
-                videoAnalytics.fail()
+                videoAnalytics.fail(reason: diagnostics.reason)
             }
         }
+    }
+
+    static func failureDiagnostics(
+        error: Error,
+        stage: String,
+        progress: Double,
+        format: ExportFormat,
+        resolution: ExportResolution
+    ) -> (reason: String, data: Telemetry.Payload) {
+        var chain: [NSError] = []
+        var current: NSError? = error as NSError
+        while let value = current, chain.count < 8 {
+            chain.append(value)
+            current = value.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        func has(_ domain: String, _ code: Int) -> Bool {
+            chain.contains { $0.domain == domain && $0.code == code }
+        }
+        let reason = if has(AVFoundationErrorDomain, -11801) {
+            "out_of_memory"
+        } else if has(AVFoundationErrorDomain, -11821) {
+            "media_decode"
+        } else if has(AVFoundationErrorDomain, -11833) {
+            "decoder_missing"
+        } else if has(AVFoundationErrorDomain, -11841) {
+            "video_composition"
+        } else if has(AVFoundationErrorDomain, -11807) || has(NSPOSIXErrorDomain, 28) {
+            "disk_full"
+        } else {
+            "other"
+        }
+        return (reason, [
+            "stage": stage,
+            "progress": progress,
+            "format": String(describing: format),
+            "resolution": resolution.rawValue,
+            "failure_reason": reason,
+            "error_chain": chain.map { ["domain": $0.domain, "code": $0.code] },
+        ])
     }
 
     /// Writes a self-contained `.palmier` bundle (all media collected internally).
@@ -437,6 +487,7 @@ final class ExportService {
 
     private func withStagedOutput<T>(
         to outputURL: URL,
+        onCommit: () -> Void = {},
         operation: (URL) async throws -> T
     ) async throws -> T {
         try checkCancellation()
@@ -444,6 +495,7 @@ final class ExportService {
         defer { try? FileManager.default.removeItem(at: stagingURL) }
         let result = try await operation(stagingURL)
         try checkCancellation()
+        onCommit()
         try Self.commit(stagingURL: stagingURL, to: outputURL)
         didCommitOutput = true
         return result
