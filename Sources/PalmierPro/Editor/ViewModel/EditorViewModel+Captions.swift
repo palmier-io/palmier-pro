@@ -14,6 +14,10 @@ extension EditorViewModel {
         var provider: TranscriptionProvider = .local
         /// Animation applied to every generated caption clip (timed from the transcript).
         var animation: TextAnimation = TextAnimation()
+        /// Resolved caption-style profile driving filler removal; nil disables it.
+        var fillerProfile: CaptionStyleProfile? = nil
+        /// When true, removeAlways-classified tokens are dropped from caption TEXT (display only).
+        var dropRemoveAlwaysFillers: Bool = false
     }
 
     enum CaptionCase: String, CaseIterable, Sendable {
@@ -257,6 +261,7 @@ extension EditorViewModel {
         let transformFor = captionTransform(style: request.style, center: request.center)
 
         let animation: TextAnimation? = request.animation.isActive ? request.animation : nil
+        let fillerPolicy = (request.dropRemoveAlwaysFillers ? request.fillerProfile : nil).map { FillerPolicy(profile: $0) }
         return targets.flatMap { t -> [TextClipSpec] in
             guard let result = results[t.clip.mediaRef] else { return [] }
             let phrases = CaptionTranscriptMapper.phrases(
@@ -269,7 +274,8 @@ extension EditorViewModel {
             )
             guard !phrases.isEmpty else { return [] }
             let cased = phrases.map { CaptionBuilder.Phrase(text: request.textCase.apply($0.text), start: $0.start, end: $0.end, words: $0.words) }
-            return CaptionBuilder.specs(for: cased, sourceClip: t.clip, trackIndex: 0, fps: fps, style: request.style, captionGroupId: groupId, animation: animation, transformFor: transformFor)
+            let filtered = fillerPolicy.map { policy in cased.compactMap { policy.strippingRemoveAlways($0) } } ?? cased
+            return CaptionBuilder.specs(for: filtered, sourceClip: t.clip, trackIndex: 0, fps: fps, style: request.style, captionGroupId: groupId, animation: animation, transformFor: transformFor)
         }
     }
 

@@ -50,6 +50,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case addTexts = "add_texts"
     case updateText = "update_text"
     case addCaptions = "add_captions"
+    case captionStyle = "caption_style"
 
     // Color & effects
     case applyColor = "apply_color"
@@ -758,7 +759,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addCaptions,
-            description: "Transcribes the timeline's spoken audio and creates styled caption text clips on their own track — no targeting needed; it finds the spoken content itself. The app uses cloud only when the signed-in account has enough credits for the uncached request; otherwise it uses local transcription. Cloud auto-detects language. Per-word animations are timed from the transcript. Returns the caption group summary (captionGroupId, clipCount, frameRange, shared style, textPreview) — restyle it later with update_text and that captionGroupId.",
+            description: "Transcribes the timeline's spoken audio and creates styled caption text clips on their own track — no targeting needed; it finds the spoken content itself. The app uses cloud only when the signed-in account has enough credits for the uncached request; otherwise it uses local transcription. Cloud auto-detects language. Per-word animations are timed from the transcript. Style, transform, and maxWords omitted here fall back to the resolved caption_style profile (typography defaults + position); any param you pass wins. fillerPolicy:'removeAlways' drops only removeAlways-classified filler tokens from the caption TEXT (display only — audio is never cut); caseByCase tokens are never auto-removed. Returns the caption group summary (captionGroupId, clipCount, frameRange, shared style, textPreview) — restyle it later with update_text and that captionGroupId.",
             inputSchema: objectSchema(
                 properties: mergedProperties([
                     "language": ["type": "string", "description": "BCP-47 speech language. Applies to local only; cloud auto-detects."],
@@ -775,8 +776,14 @@ enum ToolDefinitions {
                 ], textStyleProperties(detailed: false), [
                     "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Caption animation preset."],
                     "highlightColor": ["type": "string", "description": "Active-word hex."],
+                    "fillerPolicy": ["type": "string", "enum": ["off", "removeAlways"], "description": "Default off. 'removeAlways' drops only removeAlways-classified filler tokens from caption text (display only, no audio cut). caseByCase tokens are never auto-removed — see caption_style."],
                 ])
             )
+        ),
+        AgentTool(
+            name: .captionStyle,
+            description: "Returns the resolved caption-style profile for the active project — the measured filler policy and typography defaults, merged from global → library → project layers (later wins). Read this before captioning to honor project-specific policy. fillers.removeAlways is safe to strip; neverRemove must be kept; caseByCase must NEVER be auto-removed — surface those tokens and decide per occurrence with update_text/remove_words. neverDedupe marks CJK reduplication (存存钱) and comic repetition (太酷了×3) as grammar/intent, not stutters — never dedupe them. protectedPhrases are never touched by any pass. `layers` shows each source file and whether it loaded, was missing, or was malformed; `provenance` records how the policy was measured. Read-only; takes no arguments.",
+            inputSchema: objectSchema()
         ),
         AgentTool(
             name: .applyColor,
