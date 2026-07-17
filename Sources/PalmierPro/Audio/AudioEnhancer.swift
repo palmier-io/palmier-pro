@@ -22,6 +22,7 @@ enum AudioEnhancer {
         let outputURL = denoisedURL(for: sourceURL, mediaRef: mediaRef)
         if FileManager.default.fileExists(atPath: outputURL.path) { return outputURL }
         #if BUNDLED_SPEECH
+        let start = ContinuousClock.now
         var dry = try await readChannels(from: sourceURL)
         guard dry.contains(where: { !$0.isEmpty }) else { throw EnhanceError.noAudioTrack }
         var wet: [[Float]] = []
@@ -31,6 +32,8 @@ enum AudioEnhancer {
         }
         removeStaleCaches(for: mediaRef, keeping: outputURL)
         try write(channels: wet, to: outputURL)
+        let elapsed = Double(start.duration(to: .now).components.seconds)
+        Log.preview.notice("denoise ok mediaRef=\(mediaRef) seconds=\(String(format: "%.0f", elapsed))")
         return outputURL
         #else
         throw MLXRuntime.Unavailable()
@@ -53,6 +56,8 @@ enum AudioEnhancer {
         private var enhancer: SpeechEnhancer?
 
         func enhance(audio: [Float], sampleRate: Int) async throws -> [Float] {
+            try await MLXRuntime.beginInference()
+            defer { MLXRuntime.endInference() }
             if enhancer == nil { enhancer = try await SpeechEnhancer.fromPretrained() }
             return try enhancer!.enhanceChunked(audio: audio, sampleRate: sampleRate)
         }
