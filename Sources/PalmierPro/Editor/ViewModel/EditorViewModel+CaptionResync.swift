@@ -117,14 +117,17 @@ extension EditorViewModel {
         let durationFrames: Int
     }
 
-    /// Ranges of the timeline whose audible content changed. Pure ripple shifts (a same-delta group
-    /// of clips moving together) are excluded — the captions above them shifted identically and stay
-    /// aligned, so recomputing them would be wasted work outside the genuinely edited region.
+    /// Ranges of the timeline whose audible content changed. A clip that only shifted is excluded as a
+    /// pure ripple ONLY when the captions above it shifted by the same delta — i.e. they stayed aligned
+    /// with it. Captions left behind (a block-swap, a stationary caption) or captions the clip landed
+    /// under (a move onto occupied territory) fail that test, so the clip is resynced. The rule is
+    /// content-grounded and order-independent, so a two-direction swap resolves the same way every run.
     func captionResyncAffectedSpans(before: Timeline, after: Timeline) -> [Range<Int>] {
         let b = audibleClips(before)
         let a = audibleClips(after)
+        let beforeCaps = captionSpans(before)
+        let afterCaps = captionSpans(after)
         var spans: [Range<Int>] = []
-        var shifts: [(delta: Int, before: Range<Int>, after: Range<Int>)] = []
 
         for id in Set(b.keys).union(a.keys) {
             switch (b[id], a[id]) {
@@ -133,11 +136,11 @@ extension EditorViewModel {
             case let (nil, new?):
                 spans.append(new.range)
             case let (old?, new?):
-                if old.sig == new.sig {
-                    if old.range.lowerBound != new.range.lowerBound {
-                        shifts.append((new.range.lowerBound - old.range.lowerBound, old.range, new.range))
-                    }
-                } else {
+                if old.sig != new.sig {
+                    spans.append(old.range)
+                    spans.append(new.range)
+                } else if old.range.lowerBound != new.range.lowerBound,
+                          !captionsMoved(with: old.range, to: new.range, beforeCaps: beforeCaps, afterCaps: afterCaps) {
                     spans.append(old.range)
                     spans.append(new.range)
                 }
@@ -145,16 +148,38 @@ extension EditorViewModel {
                 break
             }
         }
-
-        if !shifts.isEmpty {
-            let byDelta = Dictionary(grouping: shifts, by: \.delta)
-            let rippleDelta = byDelta.filter { $0.value.count >= 2 }.max { $0.value.count < $1.value.count }?.key
-            for s in shifts where s.delta != rippleDelta {
-                spans.append(s.before)
-                spans.append(s.after)
-            }
-        }
         return spans
+    }
+
+    private struct CaptionKey: Equatable, Comparable {
+        let id: String
+        let relStart: Int
+        let relEnd: Int
+        static func < (l: CaptionKey, r: CaptionKey) -> Bool {
+            (l.relStart, l.relEnd, l.id) < (r.relStart, r.relEnd, r.id)
+        }
+    }
+
+    /// True iff the caption clips overlapping `oldSpan`, translated by the shift, exactly match those
+    /// overlapping `newSpan` — same caption id at the same offset relative to the clip.
+    private func captionsMoved(
+        with oldSpan: Range<Int>, to newSpan: Range<Int>,
+        beforeCaps: [(id: String, range: Range<Int>)], afterCaps: [(id: String, range: Range<Int>)]
+    ) -> Bool {
+        captionKeys(overlapping: oldSpan, in: beforeCaps) == captionKeys(overlapping: newSpan, in: afterCaps)
+    }
+
+    private func captionKeys(overlapping span: Range<Int>, in caps: [(id: String, range: Range<Int>)]) -> [CaptionKey] {
+        caps
+            .filter { $0.range.lowerBound < span.upperBound && $0.range.upperBound > span.lowerBound }
+            .map { CaptionKey(id: $0.id, relStart: $0.range.lowerBound - span.lowerBound, relEnd: $0.range.upperBound - span.lowerBound) }
+            .sorted()
+    }
+
+    private func captionSpans(_ timeline: Timeline) -> [(id: String, range: Range<Int>)] {
+        timeline.tracks.flatMap(\.clips)
+            .filter { $0.mediaType == .text && $0.captionGroupId != nil }
+            .map { ($0.id, $0.startFrame..<$0.endFrame) }
     }
 
     private func audibleClips(_ timeline: Timeline) -> [String: (range: Range<Int>, sig: AudibleSig)] {

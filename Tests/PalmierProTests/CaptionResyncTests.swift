@@ -267,45 +267,65 @@ private func timeline(_ tracks: [Track]) -> Timeline {
 
 @MainActor
 @Suite struct CaptionResyncSpanTests {
-    private func editorWithCaptions() -> EditorViewModel {
-        let e = EditorViewModel()
-        e.timeline = timeline([Fixtures.videoTrack(clips: [captionClip(id: "c", start: 0, duration: 30, text: "x", generatedText: "x")])])
-        return e
+    private func aud(_ id: String, _ start: Int, _ dur: Int = 30) -> Clip {
+        Fixtures.clip(id: id, mediaType: .audio, start: start, duration: dur)
+    }
+    private func cap(_ id: String, _ start: Int, _ dur: Int = 30) -> Clip {
+        captionClip(id: id, start: start, duration: dur, text: "x", generatedText: "x")
+    }
+    private func tl(caps: [Clip], audio: [Clip]) -> Timeline {
+        timeline([Fixtures.videoTrack(clips: caps), Fixtures.audioTrack(clips: audio)])
+    }
+    private func spans(_ before: Timeline, _ after: Timeline) -> [Range<Int>] {
+        CaptionResyncEngine.mergeSpans(EditorViewModel().captionResyncAffectedSpans(before: before, after: after))
     }
 
     @Test func trimProducesUnionSpan() {
-        let e = editorWithCaptions()
-        let before = timeline([Fixtures.audioTrack(clips: [Fixtures.clip(id: "a", mediaType: .audio, start: 0, duration: 90)])])
-        let after = timeline([Fixtures.audioTrack(clips: [Fixtures.clip(id: "a", mediaType: .audio, start: 0, duration: 60)])])
-        let spans = CaptionResyncEngine.mergeSpans(e.captionResyncAffectedSpans(before: before, after: after))
-        #expect(spans == [0..<90])
+        let before = tl(caps: [cap("c", 0, 90)], audio: [aud("a", 0, 90)])
+        let after = tl(caps: [cap("c", 0, 90)], audio: [aud("a", 0, 60)])
+        #expect(spans(before, after) == [0..<90])
     }
 
     @Test func uniformRippleShiftExcludesDownstream() {
-        let e = editorWithCaptions()
-        func audio(_ id: String, _ s: Int) -> Clip { Fixtures.clip(id: id, mediaType: .audio, start: s, duration: 30) }
-        let before = timeline([Fixtures.audioTrack(clips: [audio("A", 0), audio("B", 30), audio("C", 60), audio("D", 90)])])
-        let after = timeline([Fixtures.audioTrack(clips: [audio("B", 0), audio("C", 30), audio("D", 60)])])
-        let spans = CaptionResyncEngine.mergeSpans(e.captionResyncAffectedSpans(before: before, after: after))
-        // A removed at [0,30); B/C/D shifted uniformly by -30 → excluded. Only the seam is affected.
-        #expect(spans == [0..<30])
+        // Ripple-delete A and its caption; everything downstream (audio AND captions) shifts -30 together.
+        let before = tl(caps: [cap("cA", 0), cap("cB", 30), cap("cC", 60), cap("cD", 90)],
+                        audio: [aud("A", 0), aud("B", 30), aud("C", 60), aud("D", 90)])
+        let after = tl(caps: [cap("cB", 0), cap("cC", 30), cap("cD", 60)],
+                       audio: [aud("B", 0), aud("C", 30), aud("D", 60)])
+        // Captions stayed aligned with their audio → only the deleted seam is affected.
+        #expect(spans(before, after) == [0..<30])
     }
 
     @Test func insertAffectsOnlyInsertRegion() {
-        let e = editorWithCaptions()
-        func audio(_ id: String, _ s: Int) -> Clip { Fixtures.clip(id: id, mediaType: .audio, start: s, duration: 30) }
-        let before = timeline([Fixtures.audioTrack(clips: [audio("B", 0), audio("C", 30)])])
-        let after = timeline([Fixtures.audioTrack(clips: [audio("NEW", 0), audio("B", 30), audio("C", 60)])])
-        let spans = CaptionResyncEngine.mergeSpans(e.captionResyncAffectedSpans(before: before, after: after))
-        #expect(spans == [0..<30])
+        let before = tl(caps: [cap("cB", 0), cap("cC", 30)], audio: [aud("B", 0), aud("C", 30)])
+        let after = tl(caps: [cap("cB", 30), cap("cC", 60)], audio: [aud("NEW", 0), aud("B", 30), aud("C", 60)])
+        #expect(spans(before, after) == [0..<30])
     }
 
     @Test func captionOnlyChangesProduceNoSpan() {
-        let e = editorWithCaptions()
-        // Two timelines differing only on the text track — audible occupancy identical.
-        let before = timeline([Fixtures.audioTrack(clips: [Fixtures.clip(id: "a", mediaType: .audio, start: 0, duration: 90)])])
-        let after = before
-        #expect(e.captionResyncAffectedSpans(before: before, after: after).isEmpty)
+        let before = tl(caps: [cap("c", 0, 90)], audio: [aud("a", 0, 90)])
+        #expect(EditorViewModel().captionResyncAffectedSpans(before: before, after: before).isEmpty)
+    }
+
+    // F1: a two-direction block swap must resync BOTH sides, and do so identically every run.
+    @Test func blockSwapResyncsBothSidesDeterministically() {
+        // Captions stay put; the two audio blocks swap places → each now sits under the other's caption.
+        let before = tl(caps: [cap("c1", 0), cap("c2", 30)], audio: [aud("A", 0), aud("B", 30)])
+        let after = tl(caps: [cap("c1", 0), cap("c2", 30)], audio: [aud("B", 0), aud("A", 30)])
+        let expected: [Range<Int>] = [0..<60]
+        for _ in 0..<50 {
+            #expect(spans(before, after) == expected)   // stable across runs — no hash-order dependence
+        }
+    }
+
+    // F2: ≥2 same-delta clips moving onto a captioned, occupied region must resync the destination.
+    @Test func moveOntoOccupiedRegionResyncsDestination() {
+        let before = tl(caps: [cap("cZ", 200)], audio: [aud("X", 0), aud("Y", 30), aud("Z", 200)])
+        // X and Y both shift +200; Z is overwritten at the destination; the caption there stays put.
+        let after = tl(caps: [cap("cZ", 200)], audio: [aud("X", 200), aud("Y", 230)])
+        let result = spans(before, after)
+        // Destination region [200,230) (under cZ) is resynced despite X/Y sharing a delta.
+        #expect(result.contains { $0.lowerBound <= 200 && $0.upperBound >= 230 })
     }
 }
 
@@ -390,5 +410,47 @@ private func timeline(_ tracks: [Track]) -> Timeline {
         }
         #expect(src.queriedRanges.isEmpty)
         #expect(e.timeline.tracks[0].clips.first { $0.id == "cap" }?.textContent == "one two three")
+    }
+
+    // Drives the REAL set_clip_properties tool (not resyncCaptionsAfterSwap directly) to prove the wiring.
+    @Test func setClipPropertiesToolPathTriggersResync() async {
+        let audio = Fixtures.clip(id: "audio", mediaRef: "m", mediaType: .audio, start: 0, duration: 90)
+        let caption = captionClip(id: "cap", start: 0, duration: 90, text: "one two three", generatedText: "one two three")
+        let h = ToolHarness(timeline: timeline([Fixtures.videoTrack(clips: [caption]), Fixtures.audioTrack(clips: [audio])]))
+        let src = FakeWordSource(words: [word("one", 0, 30), word("two", 30, 60)])
+        h.editor.captionWordSourceProvider = { _ in src }
+
+        _ = await h.runRaw("set_clip_properties", args: ["clipIds": ["audio"], "trimEndFrame": 30])
+        #expect(!src.queriedRanges.isEmpty)
+        #expect(h.editor.timeline.tracks[0].clips.first { $0.id == "cap" }?.textContent == "one two")
+    }
+}
+
+// F3: the production provider is cache-only — reads on-disk transcripts, never triggers ASR, never writes.
+@MainActor
+@Suite struct CaptionResyncIsolationTests {
+    @Test func providerReadsCacheOnlyAndWritesNothing() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pp-resync-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("clip.mov")
+        try Data("audio".utf8).write(to: file)
+
+        let e = EditorViewModel()
+        let asset = MediaAsset(id: "m", url: file, type: .audio, name: "m", duration: 3)
+        asset.hasAudio = true
+        e.mediaAssets.append(asset)
+        e.mediaManifest.entries.append(MediaManifestEntry(id: "m", name: "m", type: .audio, source: .external(absolutePath: file.path), duration: 3))
+        e.timeline = timeline([Fixtures.audioTrack(clips: [Fixtures.clip(id: "a", mediaRef: "m", mediaType: .audio, start: 0, duration: 90)])])
+
+        let cacheDir = TranscriptCache.directory
+        func listing() -> [String] { ((try? FileManager.default.contentsOfDirectory(atPath: cacheDir.path)) ?? []).sorted() }
+        let before = listing()
+
+        let provider = TimelineTranscriptProvider(editor: e)
+        // No transcript cached → cache-only read yields nothing and reports the ref uncached; no ASR, no write.
+        #expect(provider.audibleWords(in: 0..<90).isEmpty)
+        #expect(provider.uncachedRefs(in: 0..<90) == ["m"])
+        #expect(listing() == before)   // TranscriptCache directory untouched — resync never writes L1/L2.
     }
 }
