@@ -37,7 +37,8 @@ extension ToolExecutor {
         }
 
         var payload: [String: Any] = ["terms": rows]
-        if !store.warnings.isEmpty { payload["warnings"] = store.warnings }
+        let warnings = store.allWarnings()
+        if !warnings.isEmpty { payload["warnings"] = warnings }
         let suggestions = rows.filter { ($0["confidence"] as? String) == GlossaryConfidence.inferred.rawValue }.count
         if suggestions > 0 {
             payload["note"] = "\(suggestions) inferred term(s) are suggestions only and are not auto-applied."
@@ -205,7 +206,8 @@ extension ToolExecutor {
         if !examples.isEmpty { payload["examples"] = examples }
         let inferred = store.merged().filter { !$0.term.confidence.autoApplies }.map(\.term.canonical)
         if !inferred.isEmpty { payload["inferredSuggestions"] = inferred }
-        if !store.warnings.isEmpty { payload["warnings"] = store.warnings }
+        let warnings = store.allWarnings()
+        if !warnings.isEmpty { payload["warnings"] = warnings }
         guard let json = Self.jsonString(payload) else { throw ToolError("glossary_apply: failed to encode") }
         return .ok(json)
     }
