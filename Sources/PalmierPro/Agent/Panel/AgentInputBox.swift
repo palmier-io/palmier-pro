@@ -151,7 +151,8 @@ struct AgentInputBox<LeadingTools: View>: View {
             .controlSize(.regular)
             .tint(AppTheme.Text.secondaryColor)
             .glassEffectID("sendStop", in: sendStopNamespace)
-            .help("Stop")
+            .accessibilityLabel(L10n.string("Stop"))
+            .help(L10n.string("Stop"))
             .transition(.scale.combined(with: .opacity))
         } else {
             Button(action: onSend) {
@@ -166,6 +167,8 @@ struct AgentInputBox<LeadingTools: View>: View {
             .glassEffectID("sendStop", in: sendStopNamespace)
             .disabled(!canSend)
             .opacity(canSend ? 1 : AppTheme.Opacity.strong)
+            .accessibilityLabel(L10n.string("Send"))
+            .help(L10n.string("Send"))
             .transition(.scale.combined(with: .opacity))
         }
     }

@@ -107,7 +107,8 @@ struct AgentPanelView: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .help("New chat")
+        .accessibilityLabel(L10n.string("New chat"))
+        .help(L10n.string("New chat"))
     }
 
     @State private var showHistory = false
@@ -122,7 +123,8 @@ struct AgentPanelView: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .help("Chat history")
+        .accessibilityLabel(L10n.string("Chat history"))
+        .help(L10n.string("Chat history"))
         .popover(isPresented: $showHistory, arrowEdge: .top) {
             ChatHistoryList(
                 sessions: service.sessions.sorted { $0.updatedAt > $1.updatedAt },
@@ -250,7 +252,8 @@ struct AgentPanelView: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .help("Scroll to latest")
+        .accessibilityLabel(L10n.string("Scroll to latest"))
+        .help(L10n.string("Scroll to latest"))
     }
 
     @ViewBuilder
@@ -484,6 +487,8 @@ private struct ChatTabView: View {
                         }
                         .buttonStyle(.plain)
                         .focusable(false)
+                        .accessibilityLabel(L10n.string("Close Tab"))
+                        .help(L10n.string("Close Tab"))
                     }
                 }
                 Rectangle()

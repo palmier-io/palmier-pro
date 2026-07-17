@@ -200,6 +200,8 @@ struct GenerationView: View {
                         .hoverHighlight()
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(L10n.string("Close"))
+                .help(L10n.string("Close"))
             }
             .padding(.horizontal, AppTheme.Spacing.md)
 

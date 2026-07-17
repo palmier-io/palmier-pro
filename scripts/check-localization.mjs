@@ -44,7 +44,13 @@ function parseStrings(filePath) {
     const entries = new Map();
     const pattern = /^\s*"((?:\\.|[^"\\])*)"\s*=\s*"((?:\\.|[^"\\])*)"\s*;/gm;
     for (const match of source.matchAll(pattern)) {
-        entries.set(decodeEscapes(match[1]), decodeEscapes(match[2]));
+        const key = decodeEscapes(match[1]);
+        if (entries.has(key)) {
+            catalogParseErrors.push(
+                `词典存在重复键：${JSON.stringify(key)} (${path.relative(repoRoot, filePath)}:${lineNumber(source, match.index)})`
+            );
+        }
+        entries.set(key, decodeEscapes(match[2]));
     }
     return entries;
 }
@@ -63,13 +69,18 @@ function lineNumber(source, offset) {
 }
 
 const literalBody = "((?:\\\\.|[^\"\\\\])*)";
+const catalogParseErrors = [];
+const l10nLiteralPattern = new RegExp(
+    `\\bL10n\\.(?:string|text|format|message)\\s*\\(\\s*\"${literalBody}\"`,
+    "g"
+);
 const sourcePatterns = [
     new RegExp(`\\b(?:Text|Button|Label|Toggle|Picker|Menu|Section|GroupBox|ProgressView|ContentUnavailableView|InspectorSection|SettingsSection|TextField|SecureField|Link)\\s*\\(\\s*\"${literalBody}\"`, "g"),
     new RegExp(`\\.(?:help|accessibilityLabel|accessibilityHint|navigationTitle|confirmationDialog)\\s*\\(\\s*\"${literalBody}\"`, "g"),
     new RegExp(`\\b(?:NSMenu|NSMenuItem)\\s*\\(\\s*title:\\s*\"${literalBody}\"`, "g"),
     new RegExp(`\\baddItem\\s*\\(\\s*withTitle:\\s*\"${literalBody}\"`, "g"),
     new RegExp(`\\bsetActionName\\s*\\(\\s*\"${literalBody}\"`, "g"),
-    new RegExp(`\\bL10n\\.(?:string|text|format|message)\\s*\\(\\s*\"${literalBody}\"`, "g"),
+    l10nLiteralPattern,
     new RegExp(`\\b(?:panel|window|alert)\\.title\\s*=\\s*\"${literalBody}\"`, "g"),
     new RegExp(`\\bcontent\\.(?:title|body)\\s*=\\s*\"${literalBody}\"`, "g"),
     new RegExp(`\\bpanel\\.message\\s*=\\s*\"${literalBody}\"`, "g"),
@@ -97,8 +108,9 @@ function collectCandidates() {
     const candidates = new Map();
     const dynamicRisks = [];
     const typedAssignmentRisks = [];
-    const addCandidate = (value, location) => {
-        if (!looksLikeFixedEnglishUI(value)) return;
+    const nativeMenuRisks = [];
+    const addCandidate = (value, location, force = false) => {
+        if (!force && !looksLikeFixedEnglishUI(value)) return;
         const locations = candidates.get(value) ?? [];
         if (!locations.includes(location)) locations.push(location);
         candidates.set(value, locations);
@@ -106,6 +118,18 @@ function collectCandidates() {
     for (const filePath of walk(sourceRoot, ".swift")) {
         const relativePath = path.relative(sourceRoot, filePath);
         const source = fs.readFileSync(filePath, "utf8");
+        const nativeMenuPattern = new RegExp(
+            `\\bNSMenuItem\\s*\\(\\s*title:\\s*\"${literalBody}\"`,
+            "g"
+        );
+        for (const match of source.matchAll(nativeMenuPattern)) {
+            const raw = match[1];
+            if (!raw.includes("\\(") && looksLikeFixedEnglishUI(raw)) {
+                nativeMenuRisks.push(
+                    `${path.relative(repoRoot, filePath)}:${lineNumber(source, match.index)} ${JSON.stringify(decodeEscapes(raw))}`
+                );
+            }
+        }
         const isAgentTool = relativePath.startsWith(path.join("Agent", "Tools"));
         const patterns = isAgentTool
             ? [sourcePatterns[5]]
@@ -115,6 +139,7 @@ function collectCandidates() {
         for (const pattern of patterns) {
             for (const match of source.matchAll(pattern)) {
                 const raw = match[1];
+                const isExplicitL10nLiteral = pattern === l10nLiteralPattern;
                 if (raw.includes("\\(")) {
                     const fixedShell = decodeEscapes(raw.replace(/\\\((?:\\.|[^)])*\)/g, " ")).trim();
                     if (!["fps", "x"].includes(fixedShell.toLowerCase()) && looksLikeFixedEnglishUI(fixedShell)) {
@@ -124,10 +149,9 @@ function collectCandidates() {
                     }
                     continue;
                 }
-                if (!looksLikeFixedEnglishUI(raw)) continue;
                 const value = decodeEscapes(raw);
                 const location = `${path.relative(repoRoot, filePath)}:${lineNumber(source, match.index)}`;
-                addCandidate(value, location);
+                addCandidate(value, location, isExplicitL10nLiteral);
             }
         }
         const lines = source.split("\n");
@@ -186,13 +210,12 @@ function collectCandidates() {
             }
         }
     }
-    return { candidates, dynamicRisks, typedAssignmentRisks };
+    return { candidates, dynamicRisks, typedAssignmentRisks, nativeMenuRisks };
 }
 
 function placeholders(value) {
     return [...value.replace(/%%/g, "").matchAll(/%(?:\d+\$)?[-+0 #'I]*(?:\d+|\*)?(?:\.\d+|\.\*)?(?:hh|h|ll|l|L|z|j|t)?[@a-zA-Z]/g)]
-        .map((match) => match[0])
-        .sort();
+        .map((match) => match[0]);
 }
 
 const protectedTokens = [
@@ -210,7 +233,7 @@ const english = parseStrings(englishPath);
 const chinese = parseStrings(chinesePath);
 const englishInfo = parseStrings(englishInfoPath);
 const chineseInfo = parseStrings(chineseInfoPath);
-const { candidates, dynamicRisks, typedAssignmentRisks } = collectCandidates();
+const { candidates, dynamicRisks, typedAssignmentRisks, nativeMenuRisks } = collectCandidates();
 
 const runtimeCandidates = [
     "Ambient",
@@ -259,7 +282,22 @@ if (listOnly) {
     process.exit(0);
 }
 
-const errors = [];
+const errors = [...catalogParseErrors];
+
+const requiredLiteralCandidates = [
+    "First/Last",
+    "Preparing…",
+    "Downloading…",
+    "Rendering…",
+    "Generating…",
+    "Exporting…",
+    "Uploading…",
+];
+for (const key of requiredLiteralCandidates) {
+    if (!candidates.has(key)) {
+        errors.push(`直接 L10n 字面量未进入候选：${JSON.stringify(key)}`);
+    }
+}
 
 const sourceGuards = [
     {
@@ -434,6 +472,16 @@ const sourceGuards = [
         required: "window.title = L10n.string(\"Send feedback\")",
         error: "反馈窗口标题必须显式本地化",
     },
+    {
+        file: path.join(sourceRoot, "Timeline", "TimelineView.swift"),
+        required: "NSMenuItem(title: L10n.string(title)",
+        error: "时间线上下文菜单的固定闭包标题必须显式本地化",
+    },
+    {
+        file: path.join(sourceRoot, "Timeline", "TimelineView+AIEditMenu.swift"),
+        required: "NSMenuItem(title: L10n.string(title)",
+        error: "AI 编辑上下文菜单的固定闭包标题必须显式本地化",
+    },
 ];
 for (const guard of sourceGuards) {
     const source = fs.readFileSync(guard.file, "utf8");
@@ -448,6 +496,9 @@ for (const risk of dynamicRisks) {
 }
 for (const risk of typedAssignmentRisks) {
     errors.push(`MediaPanelToast 必须显式包装本地化字符串：${risk}`);
+}
+for (const risk of nativeMenuRisks) {
+    errors.push(`AppKit 菜单固定标题必须显式调用 L10n.string：${risk}`);
 }
 for (const [key, locations] of candidates) {
     if (!english.has(key)) errors.push(`英文词典缺少：${JSON.stringify(key)} (${locations[0]})`);

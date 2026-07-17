@@ -230,6 +230,7 @@
 "Choose a .cube LUT file" = "Choose a .cube LUT file";
 "Choose a crop aspect" = "Choose a crop aspect";
 "Choose a target language." = "Choose a target language.";
+"Choose color" = "Choose color";
 "Choose the folder that holds your media" = "Choose the folder that holds your media";
 "Choose the source file for “%@”" = "Choose the source file for “%@”";
 "Choose the source file for this clip" = "Choose the source file for this clip";
@@ -380,6 +381,7 @@
 "Double-click to rename" = "Double-click to rename";
 "Download a local model to index your media, so you or your agent can search any clips by describing them. The model runs on-device and nothing leaves your Mac." = "Download a local model to index your media, so you or your agent can search any clips by describing them. The model runs on-device and nothing leaves your Mac.";
 "Downloading %d%%" = "Downloading %d%%";
+"Downloading…" = "Downloading…";
 "Downloading the on-device model that powers visual search." = "Downloading the on-device model that powers visual search.";
 "Downloads a %@ on-device model so you can search media visually." = "Downloads a %@ on-device model so you can search media visually.";
 "Drag to add or shape a point · double-click to remove" = "Drag to add or shape a point · double-click to remove";
@@ -435,6 +437,7 @@
 "Exported, but %d media files were missing and couldn't be included." = "Exported, but %d media files were missing and couldn't be included.";
 "Exported, but 1 media file was missing and couldn't be included." = "Exported, but 1 media file was missing and couldn't be included.";
 "Exporting" = "Exporting";
+"Exporting…" = "Exporting…";
 "Exposure" = "Exposure";
 "Extra Large" = "Extra Large";
 "Fade In" = "Fade In";
@@ -449,7 +452,9 @@
 "File Type" = "File Type";
 "Fill prompt" = "Fill prompt";
 "Film Grain" = "Film Grain";
+"Filter" = "Filter";
 "First Frame" = "First Frame";
+"First/Last" = "First/Last";
 "First-time sign-ups only" = "First-time sign-ups only";
 "Fit" = "Fit";
 "Fix agent undo causing crashes." = "Fix agent undo causing crashes.";
@@ -488,6 +493,7 @@
 "Generate SFX" = "Generate SFX";
 "Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame." = "Generate video, image, or audio with different models and settings. Drag assets from the media panel above into the reference frame.";
 "Generated" = "Generated";
+"Generating…" = "Generating…";
 "Generation complete" = "Generation complete";
 "Generation Failed" = "Generation Failed";
 "Generation in progress" = "Generation in progress";
@@ -807,6 +813,7 @@
 "Remove model" = "Remove model";
 "Remove Silence" = "Remove Silence";
 "Remove Silence (Agent)" = "Remove Silence (Agent)";
+"Remove speaker" = "Remove speaker";
 "Remove Track" = "Remove Track";
 "Remove Tracks" = "Remove Tracks";
 "Remove vertical flip" = "Remove vertical flip";
@@ -819,6 +826,7 @@
 "Rename Folder" = "Rename Folder";
 "Rename Skill" = "Rename Skill";
 "Rename Timeline" = "Rename Timeline";
+"Rendering…" = "Rendering…";
 "Reorder Track" = "Reorder Track";
 "Replace clip source" = "Replace clip source";
 "Replace Clip Source" = "Replace Clip Source";
@@ -951,6 +959,7 @@
 "Smooth" = "Smooth";
 "Soft Light" = "Soft Light";
 "Softness" = "Softness";
+"Sort" = "Sort";
 "Sound Effects" = "Sound Effects";
 "Source" = "Source";
 "Source Audio" = "Source Audio";
@@ -1017,6 +1026,7 @@
 "This is where all your footage and assets live." = "This is where all your footage and assets live.";
 "This is your inspector panel. Select a clip from the timeline to edit it." = "This is your inspector panel. Select a clip from the timeline to edit it.";
 "This is your preview panel to play a selected media or the whole timeline." = "This is your preview panel to play a selected media or the whole timeline.";
+"This model does not use a prompt" = "This model does not use a prompt";
 "This permanently removes %@." = "This permanently removes %@.";
 "Three-Up" = "Three-Up";
 "Threshold" = "Threshold";
@@ -1068,6 +1078,7 @@
 "Upgrade to Max" = "Upgrade to Max";
 "Upgrade to Pro" = "Upgrade to Pro";
 "Upload failed: %@" = "Upload failed: %@";
+"Uploading…" = "Uploading…";
 "UPPERCASE" = "UPPERCASE";
 "Upscale" = "Upscale";
 "Upscale (Paid)" = "Upscale (Paid)";

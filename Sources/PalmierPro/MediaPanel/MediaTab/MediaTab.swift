@@ -385,7 +385,7 @@ struct MediaTab: View {
 
     @ViewBuilder
     private var displayControls: some View {
-        toolbarMenuIcon(systemName: "rectangle.grid.2x2") {
+        toolbarMenuIcon(systemName: "rectangle.grid.2x2", accessibilityLabel: "View") {
             Section("View") {
                 ForEach(ViewMode.allCases, id: \.self) { mode in
                     Button {
@@ -407,7 +407,7 @@ struct MediaTab: View {
             }
         }
 
-        toolbarMenuIcon(systemName: "arrow.up.arrow.down") {
+        toolbarMenuIcon(systemName: "arrow.up.arrow.down", accessibilityLabel: "Sort") {
             ForEach(SortMode.allCases, id: \.self) { mode in
                 Button {
                     sortMode = mode
@@ -419,6 +419,7 @@ struct MediaTab: View {
 
         toolbarMenuIcon(
             systemName: "line.3.horizontal.decrease",
+            accessibilityLabel: "Filter",
             foregroundStyle: hasActiveFilters ? AppTheme.Accent.primary : AppTheme.Text.tertiaryColor
         ) {
             ForEach(Self.filterableTypes, id: \.self) { type in
@@ -575,7 +576,8 @@ struct MediaTab: View {
                 }
                 .buttonStyle(.plain)
                 .focusable(false)
-                .help("Clear search")
+                .accessibilityLabel(L10n.string("Clear search"))
+                .help(L10n.string("Clear search"))
             }
         }
         .padding(.leading, AppTheme.Spacing.smMd)
@@ -627,7 +629,7 @@ struct MediaTab: View {
 
     private var overflowMenu: some View {
         let canOrganize = !AccountService.shared.isMisconfigured && !editor.mediaAssets.isEmpty
-        return toolbarMenuIcon(systemName: "ellipsis") {
+        return toolbarMenuIcon(systemName: "ellipsis", accessibilityLabel: "More") {
             Button(action: createNewFolderInCurrent) {
                 Label("New Folder", systemImage: "folder.badge.plus")
             }
@@ -662,6 +664,7 @@ struct MediaTab: View {
 
     private func toolbarMenuIcon<Content: View>(
         systemName: String,
+        accessibilityLabel: String,
         foregroundStyle: some ShapeStyle = AppTheme.Text.tertiaryColor,
         @ViewBuilder content: () -> Content
     ) -> some View {
@@ -675,6 +678,7 @@ struct MediaTab: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .focusable(false)
+        .accessibilityLabel(L10n.string(accessibilityLabel))
         .hoverHighlight()
     }
 

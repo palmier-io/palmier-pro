@@ -70,6 +70,7 @@ struct RefDropZone: View {
     @Binding var isTargeted: Bool
     var accepting: Set<ClipType> = [.image]
     var iconName: String = "photo.badge.plus"
+    var accessibilityLabel: String = "References"
     let onDrop: (MediaAsset) -> Void
 
     var body: some View {
@@ -96,6 +97,7 @@ struct RefDropZone: View {
                     }
                 }
             }
+            .accessibilityLabel(L10n.string(accessibilityLabel))
     }
 }
 
@@ -139,7 +141,8 @@ struct FrameSlot: View {
                 RefDropZone(
                     isTargeted: $isTargeted,
                     accepting: Set(ClipType.allCases),
-                    iconName: iconName
+                    iconName: iconName,
+                    accessibilityLabel: label
                 ) { dropped in
                     if accepting.contains(dropped.type) {
                         onDrop(dropped)

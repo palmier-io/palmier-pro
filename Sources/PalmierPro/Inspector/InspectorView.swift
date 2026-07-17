@@ -679,6 +679,9 @@ struct InspectorView: View {
             .buttonStyle(.plain)
             .disabled(!inRange)
             .opacity(inRange ? 1 : 0.4)
+            .accessibilityLabel(!inRange ? L10n.string("Move playhead inside the clip")
+                : onKeyframe ? L10n.string("Remove keyframe at playhead")
+                : L10n.string("Add keyframe at playhead"))
             .help(!inRange ? L10n.string("Move playhead inside the clip")
                 : onKeyframe ? L10n.string("Remove keyframe at playhead")
                 : L10n.string("Add keyframe at playhead"))
@@ -708,6 +711,7 @@ struct InspectorView: View {
         .buttonStyle(.plain)
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.3)
+        .accessibilityLabel(L10n.string(help))
         .help(L10n.string(help))
     }
 
@@ -932,6 +936,7 @@ struct InspectorView: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(L10n.string(help))
         .help(L10n.string(help))
     }
 
@@ -1224,6 +1229,7 @@ struct PromptCopyButton: View {
                 .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(copied ? L10n.string("Copied") : L10n.string("Copy prompt"))
         .help(copied ? L10n.string("Copied") : L10n.string("Copy prompt"))
     }
 

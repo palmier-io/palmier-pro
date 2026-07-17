@@ -75,6 +75,7 @@
 "Check for Updates…" = "检查更新…";
 "Check out community skills ↗" = "浏览社区技能 ↗";
 "Choose a crop aspect" = "选择裁剪宽高比";
+"Choose color" = "选择颜色";
 "Chroma Key" = "色度键";
 "Clarity" = "清晰度";
 "Clear Animation" = "清除动画";
@@ -128,6 +129,7 @@
 "Dismiss" = "关闭";
 "Done" = "完成";
 "Double-click to rename" = "双击以重命名";
+"Downloading…" = "下载中…";
 "Drag to add or shape a point · double-click to remove" = "拖动以添加或调整节点 · 双击以移除";
 "Drop files here or import from disk" = "将文件拖到此处，或从磁盘导入";
 "Duplicate" = "复制副本";
@@ -144,6 +146,7 @@
 "Export" = "导出";
 "Export (⌘E)" = "导出（⌘E）";
 "Export…" = "导出…";
+"Exporting…" = "正在导出…";
 "Exposure" = "曝光";
 "Fade In" = "淡入";
 "Fade Out" = "淡出";
@@ -156,7 +159,9 @@
 "File Type" = "文件类型";
 "Fill prompt" = "填入提示词";
 "Film Grain" = "胶片颗粒";
+"Filter" = "筛选";
 "First Frame" = "首帧";
+"First/Last" = "首帧/末帧";
 "Fix names & jargon" = "修正名称和术语";
 "Flip" = "翻转";
 "Flip horizontally" = "水平翻转";
@@ -175,6 +180,7 @@
 "Generate music and sync to my timeline" = "生成音乐并同步到时间线";
 "Generate music for the timeline" = "为时间线生成音乐";
 "Generated" = "已生成";
+"Generating…" = "生成中…";
 "Generation Failed" = "生成失败";
 "Generation panel" = "生成面板";
 "Get a system notification when a generation finishes." = "生成完成时发送系统通知。";
@@ -312,6 +318,7 @@
 "Remove model" = "移除模型";
 "Remove horizontal flip" = "取消水平翻转";
 "Remove Silence" = "移除静音";
+"Remove speaker" = "移除说话人";
 "Remove vertical flip" = "取消垂直翻转";
 "Removes background noise from this audio using an on-device model." = "使用本机模型移除此音频中的背景噪声。";
 "Removes this label and tint. Identify recreates it if the voice is still present." = "移除此标签和颜色。如果该人声仍存在，再次识别时会重新创建。";
@@ -320,6 +327,7 @@
 "Rename Asset" = "重命名素材";
 "Rename Folder" = "重命名文件夹";
 "Rename Timeline" = "重命名时间线";
+"Rendering…" = "渲染中…";
 "Replace clip source" = "替换片段源";
 "Replace Clip Source" = "替换片段源";
 "Report a Problem" = "报告问题";
@@ -386,6 +394,7 @@
 "Smart search" = "智能搜索";
 "Smooth" = "平滑";
 "Softness" = "柔化度";
+"Sort" = "排序";
 "Source" = "来源";
 "Source Video" = "源视频";
 "Speakers" = "说话人";
@@ -437,6 +446,7 @@
 "Upgrade" = "升级";
 "Upgrade to Max" = "升级到 Max";
 "Upgrade to Pro" = "升级到 Pro";
+"Uploading…" = "上传中…";
 "Upscale" = "提升分辨率";
 "Upscale (Paid)" = "提升分辨率（付费）";
 "Use trimmed portion only" = "仅使用修剪后的部分";
@@ -672,6 +682,7 @@
 "This is where all your footage and assets live." = "所有镜头和素材都集中在这里。";
 "This is your inspector panel. Select a clip from the timeline to edit it." = "这是检查器面板。选择时间线中的片段即可进行编辑。";
 "This is your preview panel to play a selected media or the whole timeline." = "这是预览面板，可播放选中的媒体或整段时间线。";
+"This model does not use a prompt" = "此模型不使用提示词";
 "Three-Up" = "三画面";
 "Top / Bottom" = "上下排列";
 "Trim End to Playhead (W)" = "将终点修剪到播放头（W）";

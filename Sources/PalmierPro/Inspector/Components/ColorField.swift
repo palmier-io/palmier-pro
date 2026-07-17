@@ -7,7 +7,7 @@ struct ColorField: View {
     let displayColor: Color
     let onUserChange: (Color) -> Void
     var supportsOpacity: Bool = true
-    var accessibilityLabel: String = "Choose color"
+    var accessibilityLabel: String = L10n.string("Choose color")
 
     var body: some View {
         Button(action: open) {
