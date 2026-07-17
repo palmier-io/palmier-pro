@@ -484,10 +484,10 @@ extension EditorViewModel {
         return true
     }
 
-    func clipDisplayLabel(for clip: Clip) -> String {
+    func clipDisplayLabel(for clip: Clip, localized: Bool = true) -> String {
         if clip.mediaType == .text {
             let content = clip.textContent ?? ""
-            if content.isEmpty { return L10n.string("Text") }
+            if content.isEmpty { return localized ? L10n.string("Text") : "Text" }
             // Timeline label bar is single-line.
             return content
                 .replacingOccurrences(of: "\n", with: " ")

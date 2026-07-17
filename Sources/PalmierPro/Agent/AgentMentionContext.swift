@@ -86,7 +86,7 @@ enum AgentMentionContext {
             "mediaRef": clip.mediaRef,
             "mediaType": clip.mediaType.rawValue,
             "sourceClipType": clip.sourceClipType.rawValue,
-            "label": editor.clipDisplayLabel(for: clip),
+            "label": editor.clipDisplayLabel(for: clip, localized: false),
             "trackIndex": loc.trackIndex,
             "trackType": track.type.rawValue,
             "startFrame": clip.startFrame,
