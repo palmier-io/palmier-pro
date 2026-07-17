@@ -126,10 +126,6 @@ final class SearchIndexCoordinator {
         ensureWorker()
     }
 
-    static func wantsTranscript(_ asset: MediaAsset) -> Bool {
-        asset.type == .audio || (asset.type == .video && asset.hasAudio)
-    }
-
     nonisolated static func preflight(_ request: PreflightRequest) -> PreflightResult {
         let needsVisual = (request.type == .video || request.type == .image)
             && VisualIndexer.needsIndex(url: request.url, spec: request.spec)

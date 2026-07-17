@@ -3,7 +3,7 @@ import CoreImage
 
 /// Renders a text clip as an NSImage for caption previews at backing resolution.
 enum CaptionPreviewRender {
-    nonisolated(unsafe) private static let ciContext = CIContext(options: [.workingColorSpace: NSNull()])
+    private static let ciContext = CIContext(options: [.workingColorSpace: NSNull()])
 
     static func loopFrames(_ preset: TextAnimation.Preset) -> Int { preset.renderMode == .entrance ? 28 : 54 }
 

@@ -349,7 +349,7 @@ extension ToolExecutor {
         }
         // Partial alignment would let a remapped label collide with an untouched local one.
         guard !map.isEmpty, files.allSatisfy({ map[$0.mediaRef] != nil }) else { return [:] }
-        for (url, refs) in refsByURL {
+        for refs in refsByURL.values {
             guard let primary = refs.first, let entry = map[primary] else { continue }
             for ref in refs.dropFirst() { map[ref] = entry }
         }

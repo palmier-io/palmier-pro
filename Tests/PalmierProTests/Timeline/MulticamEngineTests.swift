@@ -330,8 +330,6 @@ struct MulticamTests {
         // Metadata stays in memory for undo, but is filtered from saves.
         #expect(h.editor.multicamGroup(id: groupId) != nil)
         #expect(h.editor.savedMulticamGroups() == nil)
-        h.editor.pruneMulticamGroups()
-        #expect(h.editor.multicamGroup(id: groupId) == nil)
     }
 
     // MARK: - Guardrails

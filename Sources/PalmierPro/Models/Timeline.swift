@@ -31,16 +31,6 @@ struct Timeline: Codable, Sendable, Equatable, Identifiable {
         return maxFrame
     }
 
-    var nestedTimelineIds: Set<String> {
-        var ids: Set<String> = []
-        for track in tracks {
-            for clip in track.clips where clip.mediaType == .sequence || clip.sourceClipType == .sequence {
-                ids.insert(clip.mediaRef)
-            }
-        }
-        return ids
-    }
-
     var hasAudioClips: Bool {
         tracks.contains { $0.type == .audio && !$0.clips.isEmpty }
     }
@@ -342,11 +332,6 @@ extension Clip {
         id = UUID().uuidString
         linkGroupId = remap(linkGroupId)
         captionGroupId = remap(captionGroupId)
-    }
-
-    /// Drops volume keyframes outside `durationFrames`. Kept for callers that only touch volume.
-    mutating func clampVolumeKfsToDuration() {
-        volumeTrack = clampedKeyframeTrack(volumeTrack)
     }
 
     /// Drops kfs past `durationFrames`. Call after any mutation that shrinks the clip.

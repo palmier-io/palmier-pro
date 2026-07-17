@@ -391,25 +391,6 @@ extension EditorViewModel {
         }
     }
 
-    /// Apply live, commit one undo entry after `debounce` of quiet —
-    /// for continuous controls without drag-end events (ColorPicker).
-    func debouncedCommitClipProperty(
-        clipId: String,
-        key: String,
-        debounce: Duration = .milliseconds(400),
-        _ modify: @escaping (inout Clip) -> Void
-    ) {
-        applyClipProperty(clipId: clipId, rebuild: true, modify)
-        let taskKey = "\(clipId):\(key)"
-        pendingDebouncedCommits[taskKey]?.cancel()
-        pendingDebouncedCommits[taskKey] = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: debounce)
-            guard !Task.isCancelled, let self else { return }
-            self.commitClipProperty(clipId: clipId, modify)
-            self.pendingDebouncedCommits.removeValue(forKey: taskKey)
-        }
-    }
-
     func debouncedCommitClipProperties(
         clipIds: [String],
         key: String,
@@ -482,18 +463,6 @@ extension EditorViewModel {
             if fitToContent {
                 _ = self.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
             }
-        }
-    }
-
-    func debouncedCommitTextStyle(
-        clipId: String,
-        key: String,
-        _ modify: @escaping (inout TextStyle) -> Void
-    ) {
-        debouncedCommitClipProperty(clipId: clipId, key: key) { clip in
-            var style = clip.textStyle ?? TextStyle()
-            modify(&style)
-            clip.textStyle = style
         }
     }
 

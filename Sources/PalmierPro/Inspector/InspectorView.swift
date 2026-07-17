@@ -994,25 +994,6 @@ struct InspectorView: View {
         }
     }
 
-    private func metadataRow(_ icon: String, label: String, value: String) -> some View {
-        HStack(spacing: AppTheme.Spacing.sm) {
-            Image(systemName: icon)
-                .font(.system(size: AppTheme.FontSize.xs))
-                .foregroundStyle(AppTheme.Text.mutedColor)
-                .frame(width: AppTheme.IconSize.xs)
-            Text(label)
-                .font(.system(size: AppTheme.FontSize.xs))
-                .foregroundStyle(AppTheme.Text.tertiaryColor)
-            Spacer()
-            Text(value)
-                .font(.system(size: AppTheme.FontSize.xs))
-                .foregroundStyle(AppTheme.Text.secondaryColor)
-                .lineLimit(2)
-                .multilineTextAlignment(.trailing)
-        }
-    }
-
-
     // MARK: - Helpers
 
     private var selectedVisualClips: [Clip] {

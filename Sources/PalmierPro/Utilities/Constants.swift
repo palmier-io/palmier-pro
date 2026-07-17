@@ -44,7 +44,6 @@ enum Layout {
 
     // Timeline
     static let timelineMinHeight: CGFloat = 100
-    static let timelineMaxHeight: CGFloat = 700
     static let trackHeight: CGFloat = 50
     static let rulerHeight: CGFloat = 24
     static let trackHeaderWidth: CGFloat = 100
