@@ -249,6 +249,7 @@ const runtimeCandidates = [
     "Lo-fi",
     "Mic",
     "New Skill",
+    "Ripple Delete (Agent)",
     "Tense",
     "Try Again",
     "Upbeat",
@@ -472,6 +473,12 @@ const sourceGuards = [
         file: path.join(sourceRoot, "Agent", "Panel", "MentionPopover.swift"),
         required: "L10n.text(asset.type.trackLabel)",
         error: "媒体类型必须通过标题形式的本地化键显示，不能直接使用小写 rawValue",
+    },
+    {
+        file: path.join(sourceRoot, "Generation", "UI", "GenerationView+Mentions.swift"),
+        required: "kindLabel: type.trackLabel",
+        forbidden: "kindLabel: type.rawValue",
+        error: "生成引用类型必须使用可本地化的标题键，不能直出小写 rawValue",
     },
     {
         file: path.join(sourceRoot, "Export", "ExportView.swift"),

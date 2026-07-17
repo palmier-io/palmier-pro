@@ -340,6 +340,7 @@
 "Retry Download" = "重试下载";
 "Reveal in Finder" = "在访达中显示";
 "Ripple Delete" = "波纹删除";
+"Ripple Delete (Agent)" = "波纹删除（Agent）";
 "Ripple-deletes every silent section; downstream clips close the gaps." = "对所有静音区段执行波纹删除，后续片段会自动填补空隙。";
 "Rotation" = "旋转";
 "Roundness" = "圆角";
