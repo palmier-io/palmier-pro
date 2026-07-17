@@ -430,6 +430,7 @@ final class ScrubAudioEngine {
 
     private func suspendOutput() {
         resetScrubState()
+        cancelFill()
         output.invalidate()
     }
 
