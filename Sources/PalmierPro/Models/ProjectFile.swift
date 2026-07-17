@@ -8,6 +8,8 @@ struct ProjectFile: Codable, Sendable {
     var viewStates: [String: TimelineViewState]?
     var speakers: [SpeakerRegistryEntry]?
     var multicamGroups: [MulticamSource]?
+    /// How caption resync treats manually-edited caption clips. nil decodes as `.preserve`.
+    var captionConflictPolicy: CaptionConflictPolicy?
 
     static func decode(_ data: Data) throws -> ProjectFile {
         let decoder = JSONDecoder()

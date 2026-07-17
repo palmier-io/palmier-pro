@@ -756,6 +756,8 @@ extension EditorViewModel {
         var words: [WordTiming]? = nil
         var animation: TextAnimation? = nil
         var fillMode: TextFillMode? = nil
+        /// Transcript-derived text recorded as caption provenance; nil for non-caption text.
+        var generatedText: String? = nil
     }
 
     /// Batch variant of `addTextClip` for agent flows.
@@ -814,6 +816,7 @@ extension EditorViewModel {
             clip.wordTimings = spec.words
             clip.textAnimation = spec.animation
             clip.textFillMode = spec.fillMode == .footage ? .footage : nil
+            clip.generatedText = spec.generatedText
             if batchTimeline != nil {
                 batchTimeline!.tracks[spec.trackIndex].clips.append(clip)
             } else {

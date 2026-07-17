@@ -64,6 +64,8 @@ final class EditorUndo {
 
     var isRegistrationEnabled: Bool { manager?.isUndoRegistrationEnabled ?? true }
 
+    var isUndoingOrRedoing: Bool { (manager?.isUndoing ?? false) || (manager?.isRedoing ?? false) }
+
     func undoLatest() -> String? {
         guard let manager, manager.canUndo else { return nil }
         let actionName = manager.undoActionName

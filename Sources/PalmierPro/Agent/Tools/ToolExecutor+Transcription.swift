@@ -495,16 +495,7 @@ extension ToolExecutor {
     }
 
     private static func spanFrames(start: Double, end: Double, clip: Clip, fps: Int) -> (start: Int, end: Int)? {
-        let rate = Double(fps)
-        let visible = CaptionTranscriptMapper.sourceSpan(for: clip)
-        let startFrame = max(start * rate, visible.start)
-        let endFrame = min(end * rate, visible.end)
-        guard endFrame > startFrame else { return nil }
-        func toTimeline(_ sourceFrame: Double) -> Int {
-            Int((Double(clip.startFrame) + (sourceFrame - visible.start) / max(clip.speed, 0.0001)).rounded())
-        }
-        let mappedStart = toTimeline(startFrame)
-        return (mappedStart, max(mappedStart, toTimeline(endFrame)))
+        CaptionTranscriptMapper.timelineFrames(sourceStart: start, sourceEnd: end, clip: clip, fps: fps)
     }
 
     private static func round2OrNull(_ x: Double?) -> Any {

@@ -526,6 +526,14 @@ extension EditorViewModel {
             registerTimelineUndo("Trim Clip") { vm in
                 vm.trimClipInternal(clipId: clipId, trimStartFrame: prevStart, trimEndFrame: prevEnd, protecting: protecting)
             }
+            // A plain trim changes the audible content under its captions; resync joins this undo group.
+            if isAudibleSource(clip) {
+                resyncCaptionsAfterTrim(
+                    before: prevStartFrame..<prevEndFrame,
+                    after: newStartFrame..<newEndFrame,
+                    trigger: "Trim Clip"
+                )
+            }
             notifyTimelineChanged()
         }
     }

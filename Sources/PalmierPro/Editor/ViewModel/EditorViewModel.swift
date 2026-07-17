@@ -448,6 +448,19 @@ final class EditorViewModel {
     /// Coalesces rapid rebuild requests so `replaceCurrentItem` doesn't fire per keystroke.
     var pendingRebuildTask: Task<Void, Never>?
 
+    /// How caption resync treats manually-edited caption clips; persisted in project.json.
+    var captionConflictPolicy: CaptionConflictPolicy = .default
+
+    /// True while resync is applying its own writes, so those writes never re-trigger resync.
+    var isResyncingCaptions = false
+
+    /// Last resync summary, stashed by the trigger so the agent tool layer can surface it. Read-and-cleared.
+    var lastResyncReport: CaptionResyncReport?
+
+    /// Coalesced affected spans + trailing task for UI-origin (debounced) resync.
+    var pendingResyncSpans: [Range<Int>] = []
+    var pendingResyncTask: Task<Void, Never>?
+
     func notifyTimelineChanged(refreshVisuals: Bool = true) {
         guard undo.isRegistrationEnabled else { return }
         enhancePendingDenoises()

@@ -219,7 +219,8 @@ enum CaptionBuilder {
                 transform: transformFor(p.text),
                 captionGroupId: captionGroupId,
                 words: words.isEmpty ? nil : words,
-                animation: animation
+                animation: animation,
+                generatedText: captionGroupId == nil ? nil : p.text
             )
         }
     }

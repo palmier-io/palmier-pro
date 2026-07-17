@@ -74,6 +74,9 @@ extension ToolExecutor {
         shifts.sort { (($0["track"] as? Int) ?? 0, ($0["fromFrame"] as? Int) ?? 0) < (($1["track"] as? Int) ?? 0, ($1["fromFrame"] as? Int) ?? 0) }
 
         var payload = extra
+        if payload["captionResync"] == nil, let resync = editor.takeResyncReport(), !resync.isEmpty {
+            payload["captionResync"] = resync.agentPayload
+        }
         let captionGroups = collapseCaptionGroups(editor, changed: &changed)
         if !captionGroups.isEmpty { payload["captionGroups"] = captionGroups }
         var clips = readShapedClips(editor, ids: changed)

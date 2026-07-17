@@ -23,6 +23,7 @@ extension EditorViewModel {
         openTimelineIds = (file.openTimelineIds ?? []).filter { ids.contains($0) }
         speakerRegistry = file.speakers ?? []
         multicamGroups = file.multicamGroups ?? []
+        captionConflictPolicy = file.captionConflictPolicy ?? .default
         syncSpeakerColors()
         if !openTimelineIds.contains(activeTimelineId) {
             openTimelineIds.append(activeTimelineId)
@@ -40,7 +41,8 @@ extension EditorViewModel {
             openTimelineIds: openTimelineIds,
             viewStates: liveViewStates.filter { ids.contains($0.key) },
             speakers: speakerRegistry.isEmpty ? nil : speakerRegistry,
-            multicamGroups: savedMulticamGroups()
+            multicamGroups: savedMulticamGroups(),
+            captionConflictPolicy: captionConflictPolicy == .default ? nil : captionConflictPolicy
         )
     }
 

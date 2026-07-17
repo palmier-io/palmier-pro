@@ -14,6 +14,36 @@ enum CaptionTranscriptMapper {
         return max(lo / rate - paddingSeconds, 0)...(hi / rate + paddingSeconds)
     }
 
+    /// Map a source-seconds span to project frames through this clip's placement, trim, and speed.
+    /// Shared by get_transcript and caption resync so both compute identical timing.
+    static func timelineFrames(sourceStart start: Double, sourceEnd end: Double, clip: Clip, fps: Int) -> (start: Int, end: Int)? {
+        let rate = Double(fps)
+        let visible = sourceSpan(for: clip)
+        let startFrame = max(start * rate, visible.start)
+        let endFrame = min(end * rate, visible.end)
+        guard endFrame > startFrame else { return nil }
+        func toTimeline(_ sourceFrame: Double) -> Int {
+            Int((Double(clip.startFrame) + (sourceFrame - visible.start) / max(clip.speed, 0.0001)).rounded())
+        }
+        let mappedStart = toTimeline(startFrame)
+        return (mappedStart, max(mappedStart, toTimeline(endFrame)))
+    }
+
+    /// Transcript words landing within this clip's visible span, mapped to absolute project frames.
+    /// Cache-only callers pass a cached transcript; nothing here triggers transcription.
+    static func timelineWords(from transcript: TranscriptionResult, clip: Clip, fps: Int) -> [WordTiming] {
+        let visible = sourceSpan(for: clip)
+        let rate = Double(fps)
+        return transcript.words.compactMap { word -> WordTiming? in
+            guard let start = word.start, let end = word.end else { return nil }
+            let midFrame = (start + end) / 2 * rate
+            guard midFrame >= visible.start, midFrame < visible.end,
+                  let f = timelineFrames(sourceStart: start, sourceEnd: end, clip: clip, fps: fps) else { return nil }
+            return WordTiming(text: word.text, startFrame: f.start, endFrame: f.end)
+        }
+        .sorted { ($0.startFrame, $0.endFrame) < ($1.startFrame, $1.endFrame) }
+    }
+
     static func spokenWordCount(in clip: Clip, result: TranscriptionResult, fps: Int) -> Int {
         let visible = sourceSpan(for: clip)
         let rate = Double(fps)
