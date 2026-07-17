@@ -41,7 +41,9 @@ final class ScrubAudioEngine {
     nonisolated private static let meterFrameCount = 960
     nonisolated private static let meterPrefetchFrameCount = 12_000
     nonisolated private static let prefetchMarginFrameCount = 24_000
-    nonisolated private static let maxCachedWindows = 32
+    nonisolated private static let maxCachedWindows = 256
+    nonisolated private static let fillBudget = maxCachedWindows - 8
+    nonisolated private static let fillStride = cacheFrameCount - grainFrameCount
     nonisolated private static let mixInvalidationDebounce = Duration.milliseconds(250)
 
     private let meter: AudioMeterHub
@@ -58,6 +60,7 @@ final class ScrubAudioEngine {
     private var decodeTask: Task<Void, Never>?
     private var pendingDecodeRange: Range<Int64>?
     private var mixInvalidationTask: Task<Void, Never>?
+    private var fillTask: Task<Void, Never>?
     private var lifecycleObservers: [(center: NotificationCenter, token: NSObjectProtocol)] = []
 
     init(meter: AudioMeterHub) {
@@ -73,6 +76,8 @@ final class ScrubAudioEngine {
     func configure(asset: AVAsset?, audioMix: AVAudioMix?, resetMeter: Bool = true) {
         let mixOnlyChange = asset != nil && asset === source?.asset
         stopScrubbing()
+        fillTask?.cancel()
+        fillTask = nil
         sourceGeneration &+= 1
         source = asset.map { Source(asset: $0, audioMix: audioMix, generation: sourceGeneration) }
         if mixOnlyChange {
@@ -81,6 +86,7 @@ final class ScrubAudioEngine {
             mixInvalidationTask?.cancel()
             mixInvalidationTask = nil
             windows.removeAll()
+            if let source { startFill(from: 0, source: source) }
         }
         if resetMeter { meter.reset() }
     }
@@ -92,7 +98,48 @@ final class ScrubAudioEngine {
             guard !Task.isCancelled, let self else { return }
             self.mixInvalidationTask = nil
             self.windows.removeAll()
+            if let source = self.source { self.startFill(from: self.lastRequestedSample ?? 0, source: source) }
         }
+    }
+
+    /// Decode the whole timeline into the window store in the background, sweeping outward from the
+    /// anchor so the region around the playhead warms first. Reuses the reactive decode path and
+    /// yields to it so an in-flight real-miss decode always wins the reader.
+    private func startFill(from anchorSample: Int64, source: Source) {
+        fillTask?.cancel()
+        fillTask = Task { [weak self] in
+            guard let durationSeconds = try? await source.asset.load(.duration).seconds,
+                  durationSeconds.isFinite, durationSeconds > 0 else { return }
+            let stride = Int64(Self.fillStride)
+            let totalSamples = Int64(durationSeconds * Self.sampleRate)
+            let maxIndex = Int(max(0, (totalSamples - 1) / stride))
+            let anchorIndex = max(0, min(maxIndex, Int(anchorSample / stride)))
+
+            // Visit anchor, then anchor-1, anchor+1, anchor-2, anchor+2, … clamped to [0, maxIndex].
+            for offset in 0...maxIndex {
+                for index in offset == 0 ? [anchorIndex] : [anchorIndex - offset, anchorIndex + offset] {
+                    guard index >= 0, index <= maxIndex else { continue }
+                    guard !Task.isCancelled, let self, source.generation == self.source?.generation else { return }
+
+                    // Stop before the cap so the resident band stays put; reactive decode covers the rest.
+                    guard self.windows.count < Self.fillBudget else { return }
+                    let start = Int64(index) * stride
+                    if self.hasWindow(startingAt: start) { continue }
+                    while self.decodeTask != nil {
+                        try? await Task.sleep(for: .milliseconds(20))
+                        guard !Task.isCancelled, source.generation == self.source?.generation else { return }
+                    }
+
+                    let window = await Self.decodeWindow(source: source, startSample: start, frameCount: Self.cacheFrameCount)
+                    guard !Task.isCancelled, source.generation == self.source?.generation else { return }
+                    if let window { self.insert(window) }
+                }
+            }
+        }
+    }
+
+    private func hasWindow(startingAt startSample: Int64) -> Bool {
+        windows.contains { $0.window.startSample == startSample }
     }
 
     func scrub(to time: CMTime, movingForward: Bool? = nil) {
@@ -161,6 +208,8 @@ final class ScrubAudioEngine {
         resetScrubState()
         mixInvalidationTask?.cancel()
         mixInvalidationTask = nil
+        fillTask?.cancel()
+        fillTask = nil
         source = nil
         windows.removeAll()
         output.invalidate()
