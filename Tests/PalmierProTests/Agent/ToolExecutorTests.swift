@@ -143,6 +143,25 @@ struct ToolExecutorImportMediaTests {
         #expect(h.editor.mediaManifest.entries.first?.name == "Imported Still")
     }
 
+    @Test func importBytesRejectsInvalidLottieBeforePackageCommit() async {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp-import-lottie-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let h = ToolHarness()
+        let package = root.appendingPathComponent("Import.palmier", isDirectory: true)
+        h.editor.projectURL = package
+        let bytes = Data("not-lottie".utf8).base64EncodedString()
+
+        let result = await h.runRaw("import_media", args: [
+            "source": ["bytes": bytes, "mimeType": "application/json"],
+        ])
+
+        #expect(result.isError)
+        #expect(h.editor.mediaAssets.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: package.path))
+    }
+
     @Test func importPathReferencesSourceFile() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("pp-import-path-\(UUID().uuidString)", isDirectory: true)

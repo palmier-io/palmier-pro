@@ -122,19 +122,18 @@ extension ToolExecutor {
         let imported = try await Task.detached(priority: .userInitiated) {
             try Self.writeImportedBytes(base64: base64, mimeType: mimeType)
         }.value
+        defer { try? FileManager.default.removeItem(at: imported.url) }
+        guard let type = ClipType(fileExtension: imported.url.pathExtension.lowercased()) else {
+            throw ToolError("Unsupported mimeType '\(mimeType)'. \(Self.acceptedMimeTypesMessage)")
+        }
+        if type == .lottie, !LottieVideoGenerator.isLottie(at: imported.url) {
+            throw ToolError("source.bytes is not a valid Lottie animation")
+        }
         let committedURL = try await editor.commitStagedProjectMedia(imported.url, filename: imported.filename)
-        let asset: MediaAsset
-        do {
-            asset = try editor.undo.perform("Import Media (Agent)") {
-                guard let asset = editor.addMediaAsset(from: committedURL) else {
-                    throw ToolError("Failed to register imported asset")
-                }
-                applyImportMetadata(editor: editor, asset: asset, name: name, folderId: folderId)
-                return asset
-            }
-        } catch {
-            await editor.removeProjectMediaFile(committedURL)
-            throw error
+        let asset = editor.undo.perform("Import Media (Agent)") {
+            let asset = editor.addMediaAsset(from: committedURL, type: type)
+            applyImportMetadata(editor: editor, asset: asset, name: name, folderId: folderId)
+            return asset
         }
         return .ok(Self.jsonString([
             "mediaRef": asset.id,

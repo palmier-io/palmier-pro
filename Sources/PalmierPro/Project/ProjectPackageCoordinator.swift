@@ -28,9 +28,9 @@ final class ProjectPackageCoordinator {
         resumeIdleWaitersIfNeeded()
     }
 
-    func beginMutation(allowDuringClosing: Bool = false) throws {
+    func beginMutation() throws {
         try Task.checkCancellation()
-        guard allowDuringClosing || !isClosing else { throw CancellationError() }
+        guard !isClosing else { throw CancellationError() }
         activeMutations += 1
     }
 

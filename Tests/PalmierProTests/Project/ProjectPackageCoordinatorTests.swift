@@ -102,7 +102,40 @@ struct ProjectPackageCoordinatorTests {
         while probe.result == nil { await Task.yield() }
         #expect(probe.result == true)
         #expect(throws: CancellationError.self) { try coordinator.beginMutation() }
-        try coordinator.beginMutation(allowDuringClosing: true)
-        coordinator.endMutation()
+    }
+
+    @Test func admittedMediaWorkCommitsBeforeCloseSave() async throws {
+        let package = FileManager.default.temporaryDirectory
+            .appendingPathComponent("admitted-work-\(UUID().uuidString).palmier", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: package) }
+        let document = VideoProject()
+        document.fileURL = package
+        document.fileType = VideoProject.typeIdentifier
+        let editor = document.editorViewModel
+        editor.projectURL = package
+        let coordinator = editor.projectPackageCoordinator
+        let closing: Task<Void, any Error>
+        do {
+            try coordinator.beginMutation()
+            defer { coordinator.endMutation() }
+
+            var closingStarted = false
+            closing = Task {
+                closingStarted = true
+                try await document.saveBeforeClosing()
+            }
+            while !closingStarted { await Task.yield() }
+            await Task.yield()
+
+            let stagedURL = try FileIO.stageData(Data("video".utf8), pathExtension: "mp4")
+            let destination = try await editor.commitStagedProjectMedia(
+                stagedURL, filename: "rendered.mp4", workAlreadyAdmitted: true
+            )
+            editor.importMediaAsset(MediaAsset(url: destination, type: .video, name: "Rendered"))
+        }
+        try await closing.value
+
+        let saved = try VideoProject.readProjectPackage(at: package)
+        #expect(saved.manifest?.entries.first?.source == .project(relativePath: "media/rendered.mp4"))
     }
 }

@@ -128,8 +128,13 @@ private enum MediaImportScanner {
 
 extension EditorViewModel {
 
-    func commitStagedProjectMedia(_ stagedURL: URL, filename: String, maxBytes: Int64? = nil, removeSource: Bool = true) async throws -> URL {
-        defer { if removeSource { try? FileManager.default.removeItem(at: stagedURL) } }
+    func commitStagedProjectMedia(
+        _ stagedURL: URL,
+        filename: String,
+        maxBytes: Int64? = nil,
+        workAlreadyAdmitted: Bool = false
+    ) async throws -> URL {
+        defer { try? FileManager.default.removeItem(at: stagedURL) }
         guard projectURL != nil else {
             let destination = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
             return try await Task.detached(priority: .userInitiated) {
@@ -146,8 +151,14 @@ extension EditorViewModel {
                 }.value
                 defer { try? FileManager.default.removeItem(at: preparedURL) }
                 try Task.checkCancellation()
-                try projectPackageCoordinator.beginMutation()
-                defer { projectPackageCoordinator.endMutation() }
+                if !workAlreadyAdmitted {
+                    try projectPackageCoordinator.beginMutation()
+                }
+                defer {
+                    if !workAlreadyAdmitted {
+                        projectPackageCoordinator.endMutation()
+                    }
+                }
                 if let destination = try await projectPackageCoordinator.performMutation({ () -> URL? in
                     guard self.projectURL?.standardizedFileURL == targetProjectURL.standardizedFileURL else { return nil }
                     let destination = targetProjectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
@@ -173,24 +184,6 @@ extension EditorViewModel {
         }
         projectURL = newRoot
         refreshMissingMediaCache()
-    }
-
-    func removeProjectMediaFile(_ url: URL) async {
-        guard (try? projectPackageCoordinator.beginMutation(allowDuringClosing: true)) != nil else { return }
-        defer { projectPackageCoordinator.endMutation() }
-        for _ in 0..<2 {
-            do {
-                try await projectPackageCoordinator.performMutation {
-                    guard let projectURL = self.projectURL else { return }
-                    try FileManager.default.removeItem(at: projectURL
-                        .appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-                        .appendingPathComponent(url.lastPathComponent, isDirectory: false))
-                }
-                return
-            } catch {
-                guard error is CancellationError, !Task.isCancelled else { return }
-            }
-        }
     }
 
     func importMediaAsset(_ asset: MediaAsset, skipAppend: Bool = false) {
@@ -255,7 +248,7 @@ extension EditorViewModel {
     }
 
     @discardableResult
-    private func addMediaAsset(from url: URL, type: ClipType, folderId: String? = nil, finalize: Bool = true) -> MediaAsset {
+    func addMediaAsset(from url: URL, type: ClipType, folderId: String? = nil, finalize: Bool = true) -> MediaAsset {
         let name = url.deletingPathExtension().lastPathComponent
         let asset = MediaAsset(url: url, type: type, name: name)
         asset.folderId = folderId
