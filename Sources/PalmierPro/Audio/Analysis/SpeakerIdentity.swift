@@ -40,8 +40,8 @@ enum SpeakerIdentity {
     private actor ModelBox {
         private var model: WeSpeakerModel?
         func embed(_ samples: [Float]) async throws -> [Float] {
-            try MLXRuntime.beginOperation()
-            defer { MLXRuntime.endOperation() }
+            try await MLXRuntime.beginInference()
+            defer { MLXRuntime.endInference() }
             if model == nil {
                 model = try await WeSpeakerModel.fromPretrained()
             }

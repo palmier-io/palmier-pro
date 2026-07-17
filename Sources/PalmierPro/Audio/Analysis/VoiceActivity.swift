@@ -61,8 +61,8 @@ enum VoiceActivity {
 
         func analyze(samples: [Float]) async throws -> Analysis {
             guard !samples.isEmpty else { return Analysis(chunkCount: 0, segments: []) }
-            try MLXRuntime.beginOperation()
-            defer { MLXRuntime.endOperation() }
+            try await MLXRuntime.beginInference()
+            defer { MLXRuntime.endInference() }
 
             // .mlx pinned: the CoreML engine soft-fails per chunk on ANE errors, caching empty segments as truth.
             let vad: SileroVADModel

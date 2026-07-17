@@ -21,6 +21,20 @@ enum MLXRuntime {
         guard gate.begin() else { throw CancellationError() }
     }
     static func endOperation() { gate.end() }
+
+    private static let inferenceGate = AsyncSemaphore(value: 1)
+
+    static func beginInference() async throws {
+        try beginOperation()
+        do { try await inferenceGate.wait() } catch {
+            endOperation()
+            throw error
+        }
+    }
+    static func endInference() {
+        Task { await inferenceGate.signal() }
+        endOperation()
+    }
     static var shouldStop: Bool { gate.shouldStop }
     static func beginTermination() -> Bool { gate.stop() }
     static func waitUntilIdle() async { await gate.waitUntilIdle() }
