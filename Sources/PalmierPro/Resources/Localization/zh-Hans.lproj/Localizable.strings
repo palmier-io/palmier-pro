@@ -949,6 +949,9 @@
 "Can't ripple through multicam group “%@” — split its clips at the edit point, or remove silence/words to cut time." = "无法对多机位组“%@”执行跨组波纹编辑：请在编辑点拆分片段，或通过移除静音/字词来缩短时长。";
 "Can't shift part of multicam group “%@” — %@ would stay behind and desync." = "无法只移动多机位组“%@”的一部分：%@会留在原位并失去同步。";
 "Clip not found." = "找不到片段。";
+"Clip not found: %@" = "找不到片段：%@";
+"Track index out of range: %d" = "轨道索引超出范围：%d";
+"No non-empty ranges to delete" = "没有可删除的非空范围";
 "Shares the reference's track — move it to its own track first." = "它与参考片段共用轨道，请先将其移到独立轨道。";
 "Overlaps another clip being synced on the same track." = "它与同一轨道上另一个正在同步的片段重叠。";
 "Sound Effects" = "音效";

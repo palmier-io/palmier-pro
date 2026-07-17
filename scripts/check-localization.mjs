@@ -365,6 +365,37 @@ const sourceGuards = [
         error: "共享校验必须显式区分界面本地化文案与稳定英文协议",
     },
     {
+        file: path.join(sourceRoot, "UI", "L10n.swift"),
+        required: "root.appendingPathComponent(\"PalmierPro_PalmierPro.bundle\")",
+        forbidden: "Bundle.module",
+        error: "L10n 必须探测 SwiftPM 资源包，且不能依赖独立打包不可用的 Bundle.module",
+    },
+    {
+        file: path.join(sourceRoot, "UI", "L10n.swift"),
+        required: "Text(verbatim: string(key))",
+        error: "L10n.text 必须复用带资源包回退的字符串解析",
+    },
+    {
+        file: path.join(sourceRoot, "Editor", "ViewModel", "EditorViewModel+Ripple.swift"),
+        required: "\"Clip not found: %@\",\n                localized: localized",
+        error: "波纹编辑缺失片段提示必须遵守界面与 Agent 的本地化边界",
+    },
+    {
+        file: path.join(sourceRoot, "Editor", "ViewModel", "EditorViewModel+Ripple.swift"),
+        required: "\"Track index out of range: %d\",\n                localized: localized",
+        error: "波纹编辑轨道越界提示必须遵守界面与 Agent 的本地化边界",
+    },
+    {
+        file: path.join(sourceRoot, "Editor", "ViewModel", "EditorViewModel+Ripple.swift"),
+        required: "\"No non-empty ranges to delete\",\n                localized: localized",
+        error: "波纹编辑空范围提示必须遵守界面与 Agent 的本地化边界",
+    },
+    {
+        file: path.join(sourceRoot, "Editor", "ViewModel", "EditorViewModel+Ripple.swift"),
+        required: "localized: true\n                ) ?? reason\n            mediaPanelToast = MediaPanelToast(stringLiteral: toastReason)",
+        error: "Agent 波纹编辑必须将稳定英文协议与本地化界面提示分离",
+    },
+    {
         file: path.join(sourceRoot, "Editor", "ViewModel", "EditorViewModel+Nesting.swift"),
         required: "func nestBlockReason(childId: String, localized: Bool = false)",
         error: "嵌套校验默认必须返回稳定英文，仅由界面调用方显式请求本地化",

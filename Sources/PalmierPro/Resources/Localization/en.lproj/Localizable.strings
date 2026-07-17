@@ -254,6 +254,7 @@
 "clip" = "clip";
 "Clip" = "Clip";
 "Clip not found." = "Clip not found.";
+"Clip not found: %@" = "Clip not found: %@";
 "Clip Settings Mismatch" = "Clip Settings Mismatch";
 "Close" = "Close";
 "Close All Tabs" = "Close All Tabs";
@@ -692,6 +693,7 @@
 "No media yet" = "No media yet";
 "No models match “%@”." = "No models match “%@”.";
 "No music models available." = "No music models available.";
+"No non-empty ranges to delete" = "No non-empty ranges to delete";
 "No prompt needed" = "No prompt needed";
 "No speech detected." = "No speech detected.";
 "No track" = "No track";
@@ -1140,3 +1142,4 @@
 "Zoom Out" = "Zoom Out";
 "Zoom Preview to Cursor" = "Zoom Preview to Cursor";
 "Zoom to Cursor" = "Zoom to Cursor";
+"Track index out of range: %d" = "Track index out of range: %d";
