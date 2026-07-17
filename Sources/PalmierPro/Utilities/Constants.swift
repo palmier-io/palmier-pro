@@ -110,6 +110,7 @@ enum Project {
     static let manifestFilename = "media.json"
     static let generationLogFilename = "generation-log.json"
     static let thumbnailFilename = "thumbnail.jpg"
+    static let captionStyleFilename = "caption-style.json"
     static let mediaDirectoryName = "media"
 
     static var storageDirectory: URL {
