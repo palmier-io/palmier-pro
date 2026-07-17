@@ -95,6 +95,7 @@ struct ProjectActivityButton: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(L10n.string("Project Activity"))
         .help(L10n.format(
             "Project Activity · %@ used",
             CostEstimator.format(editor.totalGenerationCost)

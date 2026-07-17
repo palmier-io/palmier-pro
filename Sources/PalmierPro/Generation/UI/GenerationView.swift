@@ -186,6 +186,8 @@ struct GenerationView: View {
                         .hoverHighlight()
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(L10n.string("Close"))
+                .help(L10n.string("Close"))
             }
             .padding(.horizontal, AppTheme.Spacing.sm)
 
@@ -384,7 +386,7 @@ struct GenerationView: View {
         }
         .frame(height: promptHeight)
         .opacity(isPromptEnabled ? AppTheme.Opacity.opaque : AppTheme.Opacity.muted)
-        .accessibilityHint(isPromptEnabled ? "" : "This model does not use a prompt")
+        .accessibilityHint(isPromptEnabled ? "" : L10n.string("This model does not use a prompt"))
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measuredPromptHeight = $0 }
     }
 

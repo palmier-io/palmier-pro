@@ -275,6 +275,7 @@ extension MediaTab {
                 }
                 .buttonStyle(.plain)
                 .focusable(false)
+                .accessibilityLabel(isCollapsed ? L10n.string("Expand") : L10n.string("Collapse"))
                 .help(isCollapsed ? L10n.string("Expand") : L10n.string("Collapse"))
 
                 if let folderId {

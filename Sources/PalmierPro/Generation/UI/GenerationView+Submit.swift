@@ -119,6 +119,7 @@ extension GenerationView {
         .tint(AppTheme.Accent.primary)
         .disabled(aiAllowed ? !canSubmit : account.isMisconfigured || account.isSigningIn)
         .opacity((aiAllowed ? canSubmit : !account.isMisconfigured && !account.isSigningIn) ? AppTheme.Opacity.opaque : AppTheme.Opacity.strong)
+        .accessibilityLabel(L10n.string(aiAllowed ? "Generate" : "Sign in to generate"))
         .help(aiAllowed ? "" : (
             account.isMisconfigured ? L10n.string("AI is unavailable")
                 : account.isSigningIn ? L10n.string("Opening Google")

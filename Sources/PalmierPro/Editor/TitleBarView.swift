@@ -14,7 +14,8 @@ struct TitleBarLeadingView: View {
                     .hoverHighlight()
             }
             .buttonStyle(.plain)
-            .help("Toggle Agent Panel")
+            .accessibilityLabel(L10n.string("Toggle Agent Panel"))
+            .help(L10n.string("Toggle Agent Panel"))
         }
     }
 }

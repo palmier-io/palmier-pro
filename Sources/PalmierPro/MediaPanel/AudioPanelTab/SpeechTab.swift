@@ -80,7 +80,8 @@ struct SpeechTab: View {
                             .foregroundStyle(AppTheme.Text.tertiaryColor)
                     }
                     .buttonStyle(.plain)
-                    .help("Removes this label and tint. Identify recreates it if the voice is still present.")
+                    .accessibilityLabel(L10n.string("Remove speaker"))
+                    .help(L10n.string("Removes this label and tint. Identify recreates it if the voice is still present."))
                 }
             }
         }

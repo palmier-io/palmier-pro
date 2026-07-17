@@ -15,7 +15,7 @@ extension TimelineView {
             case .upscale:
                 let models = editor.aiEditUpscaleModels(clipId: clipId)
                 guard !models.isEmpty else { continue }
-                let upscaleItem = NSMenuItem(title: isPaid ? "Upscale" : "Upscale (Paid)", action: nil, keyEquivalent: "")
+                let upscaleItem = NSMenuItem(title: L10n.string(isPaid ? "Upscale" : "Upscale (Paid)"), action: nil, keyEquivalent: "")
                 upscaleItem.isEnabled = aiAllowed && isPaid
                 let modelsMenu = NSMenu()
                 modelsMenu.autoenablesItems = false
@@ -29,7 +29,7 @@ extension TimelineView {
                 upscaleItem.submenu = modelsMenu
                 submenu.addItem(upscaleItem)
             case .edit:
-                let item = NSMenuItem(title: isPaid ? "Edit…" : "Edit… (Paid)", action: #selector(performAIEditEdit(_:)), keyEquivalent: "")
+                let item = NSMenuItem(title: L10n.string(isPaid ? "Edit…" : "Edit… (Paid)"), action: #selector(performAIEditEdit(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = clipId
                 item.isEnabled = aiAllowed && isPaid
@@ -42,17 +42,17 @@ extension TimelineView {
                 item.isEnabled = aiAllowed
                 submenu.addItem(item)
             case .rerun:
-                let item = NSMenuItem(title: "Rerun", action: #selector(performAIEditRerun(_:)), keyEquivalent: "")
+                let item = NSMenuItem(title: L10n.string("Rerun"), action: #selector(performAIEditRerun(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = clipId
                 item.isEnabled = aiAllowed
                 submenu.addItem(item)
             case .createVideo:
-                let createItem = NSMenuItem(title: "Create Video", action: nil, keyEquivalent: "")
+                let createItem = NSMenuItem(title: L10n.string("Create Video"), action: nil, keyEquivalent: "")
                 let createMenu = NSMenu()
                 createMenu.autoenablesItems = false
                 let mk: (String, Bool) -> NSMenuItem = { title, asReference in
-                    let item = NSMenuItem(title: title, action: #selector(self.performAIEditCreateVideo(_:)), keyEquivalent: "")
+                    let item = NSMenuItem(title: L10n.string(title), action: #selector(self.performAIEditCreateVideo(_:)), keyEquivalent: "")
                     item.target = self
                     item.representedObject = ["clipId": clipId, "asReference": asReference]
                     item.isEnabled = aiAllowed
@@ -68,7 +68,7 @@ extension TimelineView {
             if !submenu.items.isEmpty { submenu.addItem(.separator()) }
             for kind in audioTransforms {
                 let paidBlocked = kind.model?.paidOnly == true && !isPaid
-                let title = paidBlocked ? "\(kind.menuTitle) (Paid)" : kind.menuTitle
+                let title = paidBlocked ? L10n.format("%@ (Paid)", kind.menuTitle) : kind.menuTitle
                 let item = NSMenuItem(
                     title: title,
                     action: #selector(performAIEditAudioTransform(_:)),

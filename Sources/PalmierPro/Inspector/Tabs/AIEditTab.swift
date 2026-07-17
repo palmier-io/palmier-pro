@@ -165,8 +165,8 @@ struct AIEditTab: View {
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .labelsHidden()
-                .accessibilityLabel(label)
-                .accessibilityHint(help)
+                .accessibilityLabel(L10n.string(label))
+                .accessibilityHint(L10n.string(help))
         }
         .help(L10n.string(help))
     }

@@ -107,7 +107,8 @@ struct AgentPane: View {
             }
             .buttonStyle(.capsule(.secondary, size: .regular))
             .controlSize(.large)
-            .help("Remove API key")
+            .accessibilityLabel(L10n.string("Remove API key"))
+            .help(L10n.string("Remove API key"))
         }
     }
 

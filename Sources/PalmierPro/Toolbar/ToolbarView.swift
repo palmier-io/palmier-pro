@@ -80,6 +80,7 @@ struct ToolbarView: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(L10n.string(help))
         .help(L10n.string(help))
     }
 
@@ -98,6 +99,7 @@ struct ToolbarView: View {
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
+        .accessibilityLabel(L10n.string(help))
         .help(L10n.string(help))
     }
 
@@ -131,6 +133,7 @@ struct ToolbarView: View {
                 .hoverHighlight(isActive: isActive)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(L10n.string(help))
         .help(L10n.string(help))
     }
 
@@ -143,6 +146,7 @@ struct ToolbarView: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(L10n.string(help))
         .help(L10n.string(help))
     }
 
@@ -155,6 +159,7 @@ struct ToolbarView: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(L10n.string(help))
         .help(L10n.string(help))
     }
 }

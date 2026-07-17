@@ -96,10 +96,10 @@ final class MediaAsset: Identifiable {
     }
     var generatingLabel: String {
         switch generationStatus {
-        case .preparing: L10n.string("Preparing...")
-        case .downloading: L10n.string("Downloading...")
-        case .rendering: L10n.string("Rendering...")
-        default: L10n.string("Generating...")
+        case .preparing: L10n.string("Preparing…")
+        case .downloading: L10n.string("Downloading…")
+        case .rendering: L10n.string("Rendering…")
+        default: L10n.string("Generating…")
         }
     }
 

@@ -304,6 +304,7 @@ private struct CopyButton: View {
                 .hoverHighlight()
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(copied ? L10n.string("Copied") : L10n.string("Copy"))
         .help(copied ? L10n.string("Copied") : L10n.string("Copy"))
     }
 
