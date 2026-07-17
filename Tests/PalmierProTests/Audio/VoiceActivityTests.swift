@@ -6,7 +6,14 @@ import Testing
 @Suite("VoiceActivity")
 struct VoiceActivityTests {
     @Test func reportsOnlyDamagedMedia() {
-        #expect(VoiceActivity.isDamagedMedia(NSError(domain: AVFoundationErrorDomain, code: -11829)))
+        let damagedMedia = NSError(domain: AVFoundationErrorDomain, code: -11829)
+        let wrappedDamage = AudioTrackReader.ReadError.readFailed(
+            damagedMedia.localizedDescription,
+            underlying: damagedMedia
+        )
+
+        #expect(VoiceActivity.isDamagedMedia(damagedMedia))
+        #expect(VoiceActivity.isDamagedMedia(wrappedDamage))
         #expect(!VoiceActivity.isDamagedMedia(NSError(domain: AVFoundationErrorDomain, code: -11800)))
         #expect(!VoiceActivity.isDamagedMedia(CancellationError()))
     }

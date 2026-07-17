@@ -124,7 +124,14 @@ enum VoiceActivity {
     }
 
     static func isDamagedMedia(_ error: Error) -> Bool {
-        let nsError = error as NSError
+        let nsError: NSError
+        if let readError = error as? AudioTrackReader.ReadError,
+           case .readFailed(_, let underlying) = readError,
+           let underlying {
+            nsError = underlying
+        } else {
+            nsError = error as NSError
+        }
         return nsError.domain == AVFoundationErrorDomain && nsError.code == -11829
     }
 
