@@ -112,7 +112,7 @@ final class ScrubAudioEngine {
         fillDecode = nil
     }
 
-    // Decode entire timeline outward from anchor, yielding so reactive misses always take priority
+    // Fill the whole timeline outward from the anchor; reactive misses cancel and preempt each decode.
     private func startFill(from anchorSample: Int64, source: Source) {
         cancelFill()
         fillTask = Task { [weak self] in
@@ -138,7 +138,6 @@ final class ScrubAudioEngine {
                         guard !Task.isCancelled, source.generation == self.source?.generation else { return }
                     }
 
-                    // Run as a tracked child so a reactive miss can cancel it and win the reader.
                     let decode = Task { await Self.decodeWindow(source: source, startSample: start, frameCount: Self.cacheFrameCount) }
                     self.fillDecode = decode
                     let window = await decode.value
