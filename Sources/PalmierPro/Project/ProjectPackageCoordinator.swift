@@ -18,7 +18,6 @@ final class ProjectPackageCoordinator {
         }
         savesInProgress -= 1
         guard savesInProgress == 0 else { return }
-        if !success { isClosing = false }
         let mutations = pendingMutations
         pendingMutations.removeAll()
         if !success {

@@ -34,10 +34,16 @@ struct ProjectPackageCoordinatorTests {
         try await mutation.value
     }
 
-    @Test func failedSaveCancelsQueuedMutation() async throws {
+    @Test func failedPreexistingSaveCancelsQueueWithoutReopening() async {
         let coordinator = ProjectPackageCoordinator()
-        await coordinator.beginClosing()
         coordinator.saveStarted()
+        var closingStarted = false
+        let closing = Task {
+            closingStarted = true
+            await coordinator.beginClosing()
+        }
+        while !closingStarted { await Task.yield() }
+
         var entered = false
         let mutation = Task {
             entered = true
@@ -46,9 +52,9 @@ struct ProjectPackageCoordinatorTests {
         while !entered { await Task.yield() }
 
         coordinator.saveFinished(success: false)
+        await closing.value
         await #expect(throws: CancellationError.self) { try await mutation.value }
-        try coordinator.beginMutation()
-        coordinator.endMutation()
+        #expect(throws: CancellationError.self) { try coordinator.beginMutation() }
     }
 
     @Test func queuedMediaCommitUsesRebasedProjectURL() async throws {
