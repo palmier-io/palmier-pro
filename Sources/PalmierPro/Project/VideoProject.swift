@@ -293,6 +293,10 @@ final class VideoProject: NSDocument {
         }
         try writeChatDirectory(snapshot.chatSessionFiles, to: packageURL, fm: fm)
         try copyMediaDirectoryIfNeeded(from: sourceURL, to: packageURL, fm: fm)
+        try fm.createDirectory(
+            at: packageURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true),
+            withIntermediateDirectories: true
+        )
     }
 
     private nonisolated static func createPackageDirectory(at url: URL, fm: FileManager) throws {

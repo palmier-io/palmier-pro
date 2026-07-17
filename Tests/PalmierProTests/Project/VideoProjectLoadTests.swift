@@ -261,6 +261,25 @@ struct VideoProjectLoadTests {
         #expect(VideoProject.manifestSnapshot(manifest: MediaManifest(), loadFailed: false) != nil)
     }
 
+    @Test func packageWriteCreatesMediaDirectory() throws {
+        let bundle = try makeBundle()
+        defer { try? fm.removeItem(at: bundle) }
+        let snapshot = ProjectPackageSnapshot(
+            timeline: try JSONEncoder().encode(Fixtures.timeline()),
+            manifest: nil,
+            generationLog: nil,
+            thumbnail: nil,
+            chatSessionFiles: []
+        )
+
+        try VideoProject.writeProjectPackage(snapshot, to: bundle, sourceURL: bundle)
+
+        var isDirectory = ObjCBool(false)
+        let mediaURL = bundle.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
+        #expect(fm.fileExists(atPath: mediaURL.path, isDirectory: &isDirectory))
+        #expect(isDirectory.boolValue)
+    }
+
     @Test func saveAsPreservesUnreadableManifestFile() throws {
         let source = try makeBundle()
         defer { try? fm.removeItem(at: source) }
