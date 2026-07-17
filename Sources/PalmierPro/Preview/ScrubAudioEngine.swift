@@ -21,10 +21,11 @@ final class ScrubAudioEngine {
 
     private struct PCMWindow: Sendable {
         let startSample: Int64
-        let samples: [Int16]  // mono; ~5.6 MiB/min vs 22 MiB/min for stereo Float32
+        let left: [Int16]
+        let right: [Int16]
         let hasAudioTracks: Bool
 
-        var endSample: Int64 { startSample + Int64(samples.count) }
+        var endSample: Int64 { startSample + Int64(left.count) }
     }
 
     private struct CachedWindow {
@@ -102,9 +103,7 @@ final class ScrubAudioEngine {
         }
     }
 
-    /// Decode the whole timeline into the window store in the background, sweeping outward from the
-    /// anchor so the region around the playhead warms first. Reuses the reactive decode path and
-    /// yields to it so an in-flight real-miss decode always wins the reader.
+    // Decode entire timeline outward from anchor, yielding so reactive misses always take priority
     private func startFill(from anchorSample: Int64, source: Source) {
         fillTask?.cancel()
         fillTask = Task { [weak self] in
@@ -350,7 +349,7 @@ final class ScrubAudioEngine {
         let start = Int(sample - window.startSample)
         let range = start..<(start + Self.meterFrameCount)
         let analysis = window.hasAudioTracks
-            ? AudioLevelAnalyzer.analyzeMono(window.samples, range: range)
+            ? AudioLevelAnalyzer.analyze(left: window.left, right: window.right, range: range)
             : .silence
         meter.ingest(analysis)
     }
@@ -370,16 +369,19 @@ final class ScrubAudioEngine {
             }
             let cacheIndex = Int(sourceSample - window.startSample)
             let gain = Self.edgeGain(at: outputIndex, frameCount: frameCount)
-            if window.samples.indices.contains(cacheIndex) {
-                let value = Float(window.samples[cacheIndex]) * Self.int16ToFloat * gain
-                left[outputIndex] = value
-                right[outputIndex] = value
+            if window.left.indices.contains(cacheIndex) {
+                left[outputIndex] = Float(window.left[cacheIndex]) * Self.int16ToFloat * gain
+                right[outputIndex] = Float(window.right[cacheIndex]) * Self.int16ToFloat * gain
             }
         }
         return ScrubAudioGrain(left: left, right: right)
     }
 
     nonisolated private static let int16ToFloat: Float = 1.0 / 32768.0
+
+    nonisolated private static func quantize(_ sample: Float) -> Int16 {
+        Int16((max(-1, min(1, sample)) * 32767).rounded())
+    }
 
     private func observeLifecycle() {
         let appCenter = NotificationCenter.default
@@ -426,9 +428,10 @@ final class ScrubAudioEngine {
     ) async -> PCMWindow? {
         guard let tracks = try? await source.asset.loadTracks(withMediaType: .audio) else { return nil }
 
-        var samples = [Int16](repeating: 0, count: frameCount)
+        var leftSamples = [Int16](repeating: 0, count: frameCount)
+        var rightSamples = [Int16](repeating: 0, count: frameCount)
         guard !tracks.isEmpty else {
-            return PCMWindow(startSample: startSample, samples: samples, hasAudioTracks: false)
+            return PCMWindow(startSample: startSample, left: leftSamples, right: rightSamples, hasAudioTracks: false)
         }
 
         guard let reader = try? AVAssetReader(asset: source.asset) else { return nil }
@@ -491,17 +494,14 @@ final class ScrubAudioEngine {
             let rightChannel = channels[min(1, sourceChannelCount - 1)]
             for sourceIndex in 0..<sampleCount {
                 let destinationIndex = destinationOffset + sourceIndex
-                guard samples.indices.contains(destinationIndex) else { continue }
-                let mono = sourceChannelCount > 1
-                    ? (channels[0][sourceIndex] + rightChannel[sourceIndex]) * 0.5
-                    : channels[0][sourceIndex]
-                let clamped = max(-1, min(1, mono))
-                samples[destinationIndex] = Int16((clamped * 32767).rounded())
+                guard leftSamples.indices.contains(destinationIndex) else { continue }
+                leftSamples[destinationIndex] = quantize(channels[0][sourceIndex])
+                rightSamples[destinationIndex] = quantize(rightChannel[sourceIndex])
             }
             runningOffset = max(runningOffset, destinationOffset + sampleCount)
         }
 
         guard reader.status != .failed else { return nil }
-        return PCMWindow(startSample: startSample, samples: samples, hasAudioTracks: true)
+        return PCMWindow(startSample: startSample, left: leftSamples, right: rightSamples, hasAudioTracks: true)
     }
 }
