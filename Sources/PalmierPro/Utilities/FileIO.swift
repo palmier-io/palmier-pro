@@ -12,6 +12,42 @@ enum FileIOError: LocalizedError {
 }
 
 enum FileIO {
+    nonisolated static func temporaryFileURL(pathExtension: String) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("palmier-stage-\(UUID().uuidString)")
+            .appendingPathExtension(pathExtension)
+    }
+
+    nonisolated static func stageData(_ data: Data, pathExtension: String) throws -> URL {
+        let url = temporaryFileURL(pathExtension: pathExtension)
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    nonisolated static func prepareStagedFile(from stagedURL: URL, nextTo packageURL: URL, maxBytes: Int64? = nil) throws -> URL {
+        let fm = FileManager.default
+        let directory = packageURL.deletingLastPathComponent()
+        let preparedURL = directory.appendingPathComponent(".palmier-stage-\(UUID().uuidString)")
+        do {
+            try copyReplacingDestination(from: stagedURL, to: preparedURL, maxBytes: maxBytes)
+            return preparedURL
+        } catch {
+            try? fm.removeItem(at: preparedURL)
+            throw error
+        }
+    }
+
+    nonisolated static func installPreparedFile(from preparedURL: URL, to destinationURL: URL) throws {
+        let fm = FileManager.default
+        defer { try? fm.removeItem(at: preparedURL) }
+        try fm.createDirectory(at: destinationURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if fm.fileExists(atPath: destinationURL.path) {
+            _ = try fm.replaceItemAt(destinationURL, withItemAt: preparedURL)
+        } else {
+            try fm.moveItem(at: preparedURL, to: destinationURL)
+        }
+    }
+
     nonisolated static func writeData(_ data: Data, to url: URL) throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: url)

@@ -16,7 +16,7 @@ extension ToolExecutor {
 
     private struct ImportedBytesFile: Sendable {
         let url: URL
-        let byteCount: Int
+        let filename: String
     }
 
     func importMedia(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
@@ -116,26 +116,24 @@ extension ToolExecutor {
         guard base64.utf8.count <= Self.importBytesMaxBase64Length else {
             throw ToolError("source.bytes is too large (\(base64.utf8.count) chars; max \(Self.importBytesMaxBase64Length)). Use source.url or source.path for larger files.")
         }
-        guard let projectURL = editor.projectURL else {
+        guard editor.projectURL != nil else {
             throw ToolError("No project is open; cannot import bytes")
         }
         let imported = try await Task.detached(priority: .userInitiated) {
-            try Self.writeImportedBytes(base64: base64, mimeType: mimeType, projectURL: projectURL)
+            try Self.writeImportedBytes(base64: base64, mimeType: mimeType)
         }.value
-        let asset: MediaAsset
-        do {
-            asset = try editor.undo.perform("Import Media (Agent)") {
-                guard let asset = editor.addMediaAsset(from: imported.url) else {
-                    throw ToolError("Failed to register imported asset")
-                }
-                applyImportMetadata(editor: editor, asset: asset, name: name, folderId: folderId)
-                return asset
-            }
-        } catch {
-            try? await Task.detached(priority: .utility) {
-                try FileManager.default.removeItem(at: imported.url)
-            }.value
-            throw error
+        defer { try? FileManager.default.removeItem(at: imported.url) }
+        guard let type = ClipType(fileExtension: imported.url.pathExtension.lowercased()) else {
+            throw ToolError("Unsupported mimeType '\(mimeType)'. \(Self.acceptedMimeTypesMessage)")
+        }
+        if type == .lottie, !LottieVideoGenerator.isLottie(at: imported.url) {
+            throw ToolError("source.bytes is not a valid Lottie animation")
+        }
+        let committedURL = try await editor.commitStagedProjectMedia(imported.url, filename: imported.filename)
+        let asset = editor.undo.perform("Import Media (Agent)") {
+            let asset = editor.addMediaAsset(from: committedURL, type: type)
+            applyImportMetadata(editor: editor, asset: asset, name: name, folderId: folderId)
+            return asset
         }
         return .ok(Self.jsonString([
             "mediaRef": asset.id,
@@ -248,14 +246,7 @@ extension ToolExecutor {
                 throw ToolError("server returned HTTP \(httpResp.statusCode)")
             }
 
-            let destinationURL = asset.url
-            _ = try await Task.detached(priority: .userInitiated) {
-                try FileIO.moveReplacingDestination(
-                    from: tempURL,
-                    to: destinationURL,
-                    maxBytes: remoteImportMaxBytes
-                )
-            }.value
+            asset.url = try await editor.commitStagedProjectMedia(tempURL, filename: asset.url.lastPathComponent, maxBytes: remoteImportMaxBytes)
             await finishImportedAsset(asset, editor: editor)
         } catch {
             let message = (error as? ToolError)?.message ?? error.localizedDescription
@@ -301,22 +292,20 @@ extension ToolExecutor {
         return ImportPathStatus(exists: exists, isDirectory: isDirectory.boolValue)
     }
 
-    private nonisolated static func writeImportedBytes(base64: String, mimeType: String, projectURL: URL) throws -> ImportedBytesFile {
+    private nonisolated static func writeImportedBytes(base64: String, mimeType: String) throws -> ImportedBytesFile {
         guard let fileExt = fileExtension(forMime: mimeType) else {
             throw ToolError("Unsupported mimeType '\(mimeType)'. \(acceptedMimeTypesMessage)")
         }
         guard let data = Data(base64Encoded: base64, options: [.ignoreUnknownCharacters]), !data.isEmpty else {
             throw ToolError("source.bytes is not valid non-empty base64")
         }
-        let mediaDir = projectURL.appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
         let filename = "imported-\(UUID().uuidString.prefix(8)).\(fileExt)"
-        let destURL = mediaDir.appendingPathComponent(filename)
         do {
-            try FileIO.writeData(data, to: destURL)
+            let stagedURL = try FileIO.stageData(data, pathExtension: fileExt)
+            return ImportedBytesFile(url: stagedURL, filename: filename)
         } catch {
             throw ToolError("Failed to write bytes to disk: \(error.localizedDescription)")
         }
-        return ImportedBytesFile(url: destURL, byteCount: data.count)
     }
 
     private nonisolated static func fileExtension(forMime mime: String) -> String? {
