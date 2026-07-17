@@ -1,0 +1,144 @@
+// GlossaryStore — loads and layers the glossary (global → library → project, later wins per canonical),
+// exposes the merged view, builds the read-time corrector, and reads/writes per-scope files. refs feature/glossary
+
+import CryptoKit
+import Foundation
+
+/// A glossary layer. Precedence runs global (weakest) → library → project (strongest):
+/// a later layer's entry for a canonical replaces an earlier one.
+enum GlossaryScope: String, Codable, Sendable, CaseIterable {
+    case global
+    case library
+    case project
+
+    /// Resolution order, weakest first.
+    static let precedence: [GlossaryScope] = [.global, .library, .project]
+
+    /// The glossary.json for this scope, or nil when unavailable (e.g. project scope with no open project).
+    func fileURL(projectURL: URL?) -> URL? {
+        switch self {
+        case .global:
+            return FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".config/glossary/global.json", isDirectory: false)
+        case .library:
+            // No cross-project media-library root exists; the shared storage dir is the closest concept.
+            return Project.storageDirectory.appendingPathComponent("glossary.json", isDirectory: false)
+        case .project:
+            return projectURL?.appendingPathComponent("glossary.json", isDirectory: false)
+        }
+    }
+}
+
+/// A merged term plus the layer it won from.
+struct MergedGlossaryTerm: Sendable {
+    let term: GlossaryTerm
+    let scope: GlossaryScope
+}
+
+/// The layered, read-only glossary for one project context.
+struct GlossaryStore: Sendable {
+    struct Layer: Sendable {
+        let scope: GlossaryScope
+        let document: GlossaryDocument
+    }
+
+    let layers: [Layer]
+    /// Human-readable load problems (malformed files) — surfaced as tool notes, never fatal.
+    let warnings: [String]
+
+    /// Load and layer all available scopes for `projectURL`. Missing files are skipped silently;
+    /// malformed files warn and are skipped so materialisation proceeds unbiased.
+    static func load(projectURL: URL?) -> GlossaryStore {
+        var layers: [Layer] = []
+        var warnings: [String] = []
+        for scope in GlossaryScope.precedence {
+            guard let url = scope.fileURL(projectURL: projectURL),
+                  FileManager.default.fileExists(atPath: url.path) else { continue }
+            do {
+                let data = try Data(contentsOf: url)
+                let doc = try JSONDecoder().decode(GlossaryDocument.self, from: data)
+                layers.append(Layer(scope: scope, document: doc))
+            } catch {
+                warnings.append("\(scope.rawValue) glossary could not be read (\(url.lastPathComponent)); proceeding without it.")
+                Log.agent.warning("glossary load failed scope=\(scope.rawValue) error=\(error.localizedDescription)")
+            }
+        }
+        return GlossaryStore(layers: layers, warnings: warnings)
+    }
+
+    /// Merged terms, later scope winning per canonical. Order is stable (by canonical).
+    func merged() -> [MergedGlossaryTerm] {
+        var byCanonical: [String: MergedGlossaryTerm] = [:]
+        for layer in layers {  // precedence order: later overwrites
+            for term in layer.document.terms {
+                byCanonical[term.canonical] = MergedGlossaryTerm(term: term, scope: layer.scope)
+            }
+        }
+        return byCanonical.values.sorted { $0.term.canonical < $1.term.canonical }
+    }
+
+    /// Auto-apply terms (verified/declared/asserted) from the merged view.
+    var autoApplyTerms: [GlossaryTerm] {
+        merged().map(\.term).filter { $0.confidence.autoApplies }
+    }
+
+    /// Read-time corrector built from the auto-apply terms. Empty when nothing auto-applies.
+    func corrector() -> GlossaryCorrector {
+        GlossaryCorrector(terms: autoApplyTerms)
+    }
+
+    /// Canonicals that should bias the decoder (auto-apply confidences only). §4
+    func hotwordTerms() -> [String] {
+        autoApplyTerms.map(\.canonical).sorted()
+    }
+
+    /// Stable fingerprint of the biasing terms, for salting a transcription cache key so changed
+    /// hotwords force a fresh transcription. §4
+    func biasFingerprint() -> String {
+        let material = autoApplyTerms
+            .map { "\($0.canonical)=\($0.variants.sorted().joined(separator: ","))" }
+            .sorted()
+            .joined(separator: "\n")
+        guard !material.isEmpty else { return "none" }
+        let digest = SHA256.hash(data: Data(material.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined().prefix(16).description
+    }
+
+    // MARK: - Per-scope reads/writes
+
+    /// Read one scope's document (empty when the file is missing).
+    static func read(scope: GlossaryScope, projectURL: URL?) throws -> GlossaryDocument {
+        guard let url = scope.fileURL(projectURL: projectURL) else {
+            throw GlossaryError.scopeUnavailable(scope)
+        }
+        guard FileManager.default.fileExists(atPath: url.path) else { return GlossaryDocument() }
+        let data = try Data(contentsOf: url)
+        return try JSONDecoder().decode(GlossaryDocument.self, from: data)
+    }
+
+    /// Write one scope's document, creating parent directories as needed.
+    static func write(_ document: GlossaryDocument, scope: GlossaryScope, projectURL: URL?) throws {
+        guard let url = scope.fileURL(projectURL: projectURL) else {
+            throw GlossaryError.scopeUnavailable(scope)
+        }
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(document).write(to: url, options: .atomic)
+    }
+}
+
+enum GlossaryError: LocalizedError {
+    case scopeUnavailable(GlossaryScope)
+
+    var errorDescription: String? {
+        switch self {
+        case .scopeUnavailable(.project):
+            return "No open project — glossary scope 'project' is unavailable. Use scope 'global' or 'library'."
+        case .scopeUnavailable(let scope):
+            return "Glossary scope '\(scope.rawValue)' is unavailable."
+        }
+    }
+}
