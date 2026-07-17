@@ -49,8 +49,7 @@ enum LUTLoader {
         lock.unlock()
 
         guard let lut = loadFromDisk(path: path) else { return nil }
-        cache(lut, path: path)
-        return lut
+        return cacheIfAbsent(lut, path: path)
     }
 
     private static func loadFromDisk(path: String) -> CubeLUT? {
@@ -63,6 +62,14 @@ enum LUTLoader {
         lock.lock()
         cachedLUTs[path] = lut
         lock.unlock()
+    }
+
+    private static func cacheIfAbsent(_ lut: CubeLUT, path: String) -> CubeLUT {
+        lock.lock()
+        defer { lock.unlock() }
+        if let cached = cachedLUTs[path] { return cached }
+        cachedLUTs[path] = lut
+        return lut
     }
 
     static func parse(_ text: String) -> CubeLUT? {
