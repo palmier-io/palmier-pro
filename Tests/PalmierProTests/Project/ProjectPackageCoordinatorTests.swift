@@ -4,18 +4,10 @@ import Testing
 
 @MainActor
 private final class DocumentCloseProbe: NSObject {
-    private var continuation: CheckedContinuation<Bool, Never>?
     private(set) var result: Bool?
 
     @objc func document(_ document: NSDocument, shouldClose: Bool, contextInfo: UnsafeMutableRawPointer?) {
         result = shouldClose
-        continuation?.resume(returning: shouldClose)
-        continuation = nil
-    }
-
-    func waitForResult() async -> Bool {
-        if let result { return result }
-        return await withCheckedContinuation { continuation = $0 }
     }
 }
 
@@ -77,19 +69,12 @@ struct ProjectPackageCoordinatorTests {
             shouldClose: #selector(DocumentCloseProbe.document(_:shouldClose:contextInfo:)),
             contextInfo: nil
         )
-        while true {
-            do {
-                try coordinator.beginMutation()
-                coordinator.endMutation()
-                await Task.yield()
-            } catch is CancellationError {
-                break
-            }
-        }
+        await Task.yield()
         #expect(probe.result == nil)
 
         coordinator.endMutation()
-        #expect(await probe.waitForResult())
+        while probe.result == nil { await Task.yield() }
+        #expect(probe.result == true)
         #expect(throws: CancellationError.self) { try coordinator.beginMutation() }
     }
 }
