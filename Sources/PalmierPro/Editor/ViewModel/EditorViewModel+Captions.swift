@@ -14,6 +14,10 @@ extension EditorViewModel {
         var provider: TranscriptionProvider = .local
         /// Animation applied to every generated caption clip (timed from the transcript).
         var animation: TextAnimation = TextAnimation()
+        /// Resolved caption-style profile driving filler removal; nil disables it.
+        var fillerProfile: CaptionStyleProfile? = nil
+        /// When true, removeAlways-classified tokens are dropped from caption TEXT (display only).
+        var dropRemoveAlwaysFillers: Bool = false
     }
 
     enum CaptionCase: String, CaseIterable, Sendable {
@@ -148,7 +152,8 @@ extension EditorViewModel {
             center: request.center,
             textCase: request.textCase,
             maxWords: request.maxWords,
-            animation: animation
+            animation: animation,
+            fillerProfile: request.dropRemoveAlwaysFillers ? request.fillerProfile : nil
         )
         let specs = try await CaptionSpecBuilder.build(input)
         try Task.checkCancellation()

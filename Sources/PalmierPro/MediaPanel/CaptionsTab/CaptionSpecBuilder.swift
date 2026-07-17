@@ -17,6 +17,8 @@ enum CaptionSpecBuilder {
         let textCase: EditorViewModel.CaptionCase
         let maxWords: Int?
         let animation: TextAnimation?
+        /// Resolved caption-style profile for display-side filler stripping; nil skips stripping.
+        var fillerProfile: CaptionStyleProfile? = nil
     }
 
     @concurrent
@@ -54,8 +56,10 @@ enum CaptionSpecBuilder {
                     words: $0.words
                 )
             }
+            let fillerPolicy = input.fillerProfile.map { FillerPolicy(profile: $0) }
+            let filtered = fillerPolicy.map { policy in cased.compactMap { policy.strippingRemoveAlways($0) } } ?? cased
             specs.append(contentsOf: CaptionBuilder.specs(
-                for: cased,
+                for: filtered,
                 sourceClip: target.clip,
                 trackIndex: 0,
                 fps: input.fps,
