@@ -36,7 +36,7 @@ extension EditorViewModel {
     func runCaptionResync(spans: [Range<Int>], trigger: String, dryRun: Bool = false, policyOverride: CaptionConflictPolicy? = nil) -> CaptionResyncReport? {
         let merged = CaptionResyncEngine.mergeSpans(spans)
         guard !merged.isEmpty else { return nil }
-        let source = TimelineTranscriptProvider(editor: self)
+        let source = captionWordSourceProvider?(self) ?? TimelineTranscriptProvider(editor: self)
         let plan = CaptionResyncEngine.plan(
             timeline: timeline,
             triggerSpans: merged,

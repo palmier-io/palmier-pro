@@ -434,9 +434,10 @@ final class EditorViewModel {
     /// Last resync summary, stashed by the trigger so the agent tool layer can surface it. Read-and-cleared.
     var lastResyncReport: CaptionResyncReport?
 
-    /// Coalesced affected spans + trailing task for UI-origin (debounced) resync.
-    var pendingResyncSpans: [Range<Int>] = []
-    var pendingResyncTask: Task<Void, Never>?
+    /// Test seam: overrides the cache-only word source so triggers can be exercised without real ASR.
+    /// UI edits commit once on mouse-up, so resync runs synchronously in the trigger's transaction
+    /// (one undo reverts both) rather than on a trailing debounce that would split the undo group.
+    var captionWordSourceProvider: (@MainActor (EditorViewModel) -> CaptionWordSource)?
 
     func notifyTimelineChanged(refreshVisuals: Bool = true) {
         guard undo.isRegistrationEnabled else { return }
