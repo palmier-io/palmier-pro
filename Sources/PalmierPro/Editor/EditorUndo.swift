@@ -27,7 +27,7 @@ final class EditorUndo {
             transactionActive = false
             transactionGroupOpened = false
             if groupOpened {
-                manager.setActionName(actionName)
+                manager.setActionName(L10n.string(actionName))
                 manager.endUndoGrouping()
             }
             if restoresEventGrouping { manager.groupsByEvent = true }

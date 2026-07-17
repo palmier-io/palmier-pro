@@ -29,7 +29,7 @@ struct SkillExternalAgentMenu: View {
                     } label: {
                         HStack(spacing: AppTheme.Spacing.smMd) {
                             ExternalAgentLogo(agent: agent)
-                            Text("Add to \(agent.label)")
+                            Text(verbatim: L10n.format("Add to %@", agent.label))
                                 .font(.system(size: AppTheme.FontSize.sm))
                                 .foregroundStyle(AppTheme.Text.primaryColor)
                             Spacer(minLength: AppTheme.Spacing.sm)

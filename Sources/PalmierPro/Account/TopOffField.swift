@@ -42,7 +42,7 @@ struct TopOffField<Trailing: View>: View {
             HStack(spacing: AppTheme.Spacing.sm) {
                 Button(action: onBuy) {
                     HStack(spacing: AppTheme.Spacing.xs) {
-                        Text(buttonLabel)
+                        Text(verbatim: buttonLabel)
                         if showsExternalLinkIcon {
                             Image(systemName: "arrow.up.right")
                                 .font(.system(

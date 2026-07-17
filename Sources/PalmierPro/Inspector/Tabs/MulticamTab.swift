@@ -6,7 +6,10 @@ struct MulticamTab: View {
 
     var body: some View {
         if let group = editor.multicamGroup(id: groupId) {
-            EditorPanelGroup(group.name.isEmpty ? "Multicam" : group.name) {
+            EditorPanelGroup(
+                group.name.isEmpty ? "Multicam" : group.name,
+                localizesTitle: group.name.isEmpty
+            ) {
                 ForEach(group.members) { member in
                     memberRow(member, group: group)
                 }
@@ -16,14 +19,14 @@ struct MulticamTab: View {
 
     private func memberRow(_ member: MulticamSource.Member, group: MulticamSource) -> some View {
         HStack(spacing: AppTheme.Spacing.sm) {
-            Text(member.kind.rawValue.capitalized)
+            L10n.text(member.kind.rawValue.capitalized)
                 .font(.system(size: AppTheme.FontSize.xxs, weight: AppTheme.FontWeight.semibold))
                 .foregroundStyle(.black.opacity(AppTheme.Opacity.prominent))
                 .padding(.horizontal, AppTheme.Spacing.xs)
                 .padding(.vertical, AppTheme.Spacing.xxs)
                 .background(Color(kindColor(member.kind)), in: RoundedRectangle(cornerRadius: AppTheme.Radius.xs))
 
-            Text(member.angleLabel)
+            Text(verbatim: member.angleLabel)
                 .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.medium))
                 .lineLimit(1)
 

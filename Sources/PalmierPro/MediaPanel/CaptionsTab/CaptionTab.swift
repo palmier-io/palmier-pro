@@ -188,7 +188,9 @@ struct CaptionTab: View {
                             Button(languageName(loc)) { locale = loc }
                         }
                     }
-                } label: { EditorMenuValue(text: locale.map(languageName) ?? "Auto", expanded: true) }
+                } label: {
+                    EditorMenuValue(text: locale.map(languageName) ?? L10n.string("Auto"), expanded: true)
+                }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
                 .frame(maxWidth: .infinity)
             }
@@ -202,7 +204,9 @@ struct CaptionTab: View {
                     ForEach(1...8, id: \.self) { n in
                         Button("\(n)") { maxWords = n }
                     }
-                } label: { EditorMenuValue(text: maxWords.map(String.init) ?? "None", expanded: true) }
+                } label: {
+                    EditorMenuValue(text: maxWords.map(String.init) ?? L10n.string("None"), expanded: true)
+                }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
                 .frame(maxWidth: .infinity)
             }

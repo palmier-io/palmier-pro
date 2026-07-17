@@ -195,12 +195,14 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
         ) {
             Menu {
                 ForEach(TextStyle.FontCase.allCases, id: \.self) { fontCase in
-                    Button(fontCase.label) {
+                    Button {
                         actions.commit(true) { $0.fontCase = fontCase }
+                    } label: {
+                        L10n.text(fontCase.label)
                     }
                 }
             } label: {
-                EditorMenuValue(text: selection.value(\.fontCase)?.label ?? "—")
+                EditorMenuValue(text: selection.value(\.fontCase).map { L10n.string($0.label) } ?? "—")
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
@@ -391,7 +393,7 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .tint(AppTheme.Text.primaryColor.opacity(AppTheme.Opacity.strong))
-                .accessibilityLabel(title)
+                .accessibilityLabel(L10n.string(title))
             }
         ) {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.smMd) {
@@ -510,7 +512,7 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
             range: range,
             format: "%.1f",
             fieldWidth: AppTheme.EditorPanel.compactNumericFieldWidth,
-            trailingLabel: label,
+            trailingLabel: L10n.string(label),
             onChanged: { update($0, false) }
         ) { update($0, true) }
     }

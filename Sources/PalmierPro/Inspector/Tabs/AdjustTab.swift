@@ -194,7 +194,13 @@ extension InspectorView {
                 if state.hasEffects {
                     EditorResetButton(
                         title: title,
-                        action: { resetEffects(effectIds, clips: clips, actionName: "Reset \(title)") }
+                        action: {
+                            resetEffects(
+                                effectIds,
+                                clips: clips,
+                                actionName: L10n.format("Reset %@", L10n.string(title))
+                            )
+                        }
                     )
                 }
                 Toggle("", isOn: Binding(
@@ -204,8 +210,10 @@ extension InspectorView {
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .disabled(!state.hasEffects)
-                .help(state.hasEffects ? "Enable \(title.lowercased())" : "No adjustments yet")
-                .accessibilityLabel("Enable \(title)")
+                .help(state.hasEffects
+                    ? L10n.format("Enable %@", L10n.string(title).lowercased())
+                    : L10n.string("No adjustments yet"))
+                .accessibilityLabel(L10n.format("Enable %@", L10n.string(title)))
             }
         ) {
             Group {

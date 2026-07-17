@@ -43,8 +43,8 @@ struct SkillCollectionButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: AppTheme.Spacing.sm) {
-                Text(title)
-                Text(count.formatted())
+                L10n.text(title)
+                Text(verbatim: count.formatted())
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
             }
             .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
@@ -59,7 +59,7 @@ struct SkillCollectionButton: View {
             .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(title), \(count.formatted()) skills")
+        .accessibilityLabel(L10n.format("%@, %d skills", L10n.string(title), count))
     }
 }
 
@@ -78,7 +78,7 @@ struct SkillRow: View {
             summary
                 .frame(maxWidth: .infinity)
 
-            Text(status)
+            L10n.text(status)
                 .font(.system(size: AppTheme.FontSize.smMd))
                 .foregroundStyle(statusColor)
                 .lineLimit(1)
@@ -88,9 +88,11 @@ struct SkillRow: View {
                 if working {
                     ProgressView()
                         .controlSize(.small)
-                        .accessibilityLabel("Working on \(name)")
+                        .accessibilityLabel(L10n.format("Working on %@", name))
                 } else {
-                    Button(actionTitle, action: action)
+                    Button(action: action) {
+                        L10n.text(actionTitle)
+                    }
                         .buttonStyle(.capsule(
                             actionTitle == "Install" ? .prominent : .secondary,
                             fill: actionTitle == "Install" ? nil : AnyShapeStyle(AppTheme.Background.raisedColor)
@@ -112,7 +114,7 @@ struct SkillRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Open \(name)")
+            .accessibilityLabel(L10n.format("Open %@", name))
         } else {
             SkillRowSummary(name: name, description: description)
         }
@@ -127,11 +129,11 @@ private struct SkillRowSummary: View {
         HStack(spacing: AppTheme.Spacing.md) {
             SkillRowIcon()
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-                Text(name)
+                Text(verbatim: name)
                     .font(.system(size: AppTheme.FontSize.mdLg, weight: AppTheme.FontWeight.regular))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                     .lineLimit(1)
-                Text(description)
+                Text(verbatim: description)
                     .font(.system(size: AppTheme.FontSize.smMd))
                     .foregroundStyle(AppTheme.Text.tertiaryColor)
                     .lineLimit(1)
@@ -154,15 +156,17 @@ struct SkillEmptyState: View {
                 .font(.system(size: AppTheme.FontSize.xl))
                 .foregroundStyle(AppTheme.Text.mutedColor)
                 .accessibilityHidden(true)
-            Text(title)
+            L10n.text(title)
                 .font(.system(size: AppTheme.FontSize.smMd, weight: AppTheme.FontWeight.regular))
                 .foregroundStyle(AppTheme.Text.primaryColor)
-            Text(message)
+            L10n.text(message)
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-            Button(actionTitle, action: action)
+            Button(action: action) {
+                L10n.text(actionTitle)
+            }
                 .buttonStyle(.capsule(.secondary, fill: AnyShapeStyle(AppTheme.Background.raisedColor)))
         }
         .frame(maxWidth: .infinity)

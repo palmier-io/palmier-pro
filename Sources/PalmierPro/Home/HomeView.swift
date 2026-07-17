@@ -138,7 +138,7 @@ final class HomeWindowController: NSWindowController {
         let window = NSWindow(contentViewController: hostingController)
         window.setContentSize(AppTheme.Window.homeDefault)
         window.minSize = AppTheme.Window.homeMin
-        window.title = "Palmier Pro"
+        window.title = L10n.string("Palmier Pro")
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = AppTheme.Background.base.withAlphaComponent(0.4)
         window.isOpaque = false
