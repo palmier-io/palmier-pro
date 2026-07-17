@@ -3,6 +3,7 @@ import Foundation
 @MainActor
 final class ProjectPackageCoordinator {
     private var savesInProgress = 0
+    private var saveFailed = false
     private var activeMutations = 0
     private var nextMutationID = 0
     private var pendingMutations: [(id: Int, run: () -> Void, cancel: () -> Void)] = []
@@ -11,22 +12,29 @@ final class ProjectPackageCoordinator {
 
     func saveStarted() { savesInProgress += 1 }
 
-    func saveFinished() {
+    func saveFinished(success: Bool) {
         guard savesInProgress > 0 else {
             assertionFailure("Unbalanced project save completion")
             return
         }
+        if !success { saveFailed = true }
         savesInProgress -= 1
         guard savesInProgress == 0 else { return }
         let mutations = pendingMutations
         pendingMutations.removeAll()
-        mutations.forEach { $0.run() }
+        let shouldCancel = saveFailed
+        saveFailed = false
+        if shouldCancel {
+            mutations.forEach { $0.cancel() }
+        } else {
+            mutations.forEach { $0.run() }
+        }
         resumeIdleWaitersIfNeeded()
     }
 
-    func beginMutation() throws {
+    func beginMutation(allowDuringClosing: Bool = false) throws {
         try Task.checkCancellation()
-        guard !isClosing else { throw CancellationError() }
+        guard allowDuringClosing || !isClosing else { throw CancellationError() }
         activeMutations += 1
     }
 

@@ -143,7 +143,7 @@ final class VideoProject: NSDocument {
         captureSaveSnapshot()
         snapshotSourceProjectURL = fileURL
         super.save(to: url, ofType: typeName, for: saveOperation) { error in
-            coordinator.saveFinished()
+            coordinator.saveFinished(success: error == nil)
             completionHandler(error)
         }
     }

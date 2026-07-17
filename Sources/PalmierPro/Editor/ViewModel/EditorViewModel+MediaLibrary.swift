@@ -176,13 +176,20 @@ extension EditorViewModel {
     }
 
     func removeProjectMediaFile(_ url: URL) async {
-        guard (try? projectPackageCoordinator.beginMutation()) != nil else { return }
+        guard (try? projectPackageCoordinator.beginMutation(allowDuringClosing: true)) != nil else { return }
         defer { projectPackageCoordinator.endMutation() }
-        try? await projectPackageCoordinator.performMutation {
-            guard let projectURL = self.projectURL else { return }
-            try FileManager.default.removeItem(at: projectURL
-                .appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
-                .appendingPathComponent(url.lastPathComponent, isDirectory: false))
+        for _ in 0..<2 {
+            do {
+                try await projectPackageCoordinator.performMutation {
+                    guard let projectURL = self.projectURL else { return }
+                    try FileManager.default.removeItem(at: projectURL
+                        .appendingPathComponent(Project.mediaDirectoryName, isDirectory: true)
+                        .appendingPathComponent(url.lastPathComponent, isDirectory: false))
+                }
+                return
+            } catch {
+                guard error is CancellationError, !Task.isCancelled else { return }
+            }
         }
     }
 

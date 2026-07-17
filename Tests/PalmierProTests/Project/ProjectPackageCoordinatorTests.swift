@@ -26,9 +26,23 @@ struct ProjectPackageCoordinatorTests {
         while !enteredCoordinator { await Task.yield() }
         #expect(!mutationRan)
 
-        coordinator.saveFinished()
+        coordinator.saveFinished(success: true)
         #expect(mutationRan)
         try await mutation.value
+    }
+
+    @Test func failedSaveCancelsQueuedMutation() async {
+        let coordinator = ProjectPackageCoordinator()
+        coordinator.saveStarted()
+        var entered = false
+        let mutation = Task {
+            entered = true
+            try await coordinator.performMutation {}
+        }
+        while !entered { await Task.yield() }
+
+        coordinator.saveFinished(success: false)
+        await #expect(throws: CancellationError.self) { try await mutation.value }
     }
 
     @Test func queuedMediaCommitUsesRebasedProjectURL() async throws {
@@ -47,7 +61,7 @@ struct ProjectPackageCoordinatorTests {
         let commit = Task { try await editor.commitStagedProjectMedia(stagedURL, filename: "new.mp4") }
         await Task.yield()
         document.fileURL = newURL
-        editor.projectPackageCoordinator.saveFinished()
+        editor.projectPackageCoordinator.saveFinished(success: true)
 
         let destination = try await commit.value
         #expect(destination == newURL.appendingPathComponent("media/new.mp4"))
@@ -76,5 +90,7 @@ struct ProjectPackageCoordinatorTests {
         while probe.result == nil { await Task.yield() }
         #expect(probe.result == true)
         #expect(throws: CancellationError.self) { try coordinator.beginMutation() }
+        try coordinator.beginMutation(allowDuringClosing: true)
+        coordinator.endMutation()
     }
 }
