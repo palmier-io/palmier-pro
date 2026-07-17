@@ -108,6 +108,12 @@ enum CostEstimator {
         return L10n.format("%d credits", credits)
     }
 
+    static func agentFormat(_ credits: Int) -> String {
+        if credits <= 0 { return "0 credits" }
+        if credits == 1 { return "1 credit" }
+        return "\(credits) credits"
+    }
+
     private static func resolvedRate(_ dict: [String: Double], key: String?) -> Double? {
         if let key, let v = dict[key] { return v }
         return dict[""]

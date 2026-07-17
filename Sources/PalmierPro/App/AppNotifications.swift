@@ -133,7 +133,7 @@ enum AppNotifications {
     }
 
     private static func body(assetName: String, assetType: ClipType, count: Int) -> String {
-        let typeName = L10n.string(assetType.trackLabel).lowercased()
+        let typeName = L10n.string(assetType.notificationLabel).lowercased()
         if count > 1 {
             return L10n.format("%d %@ assets are ready in Palmier Pro.", count, typeName)
         }

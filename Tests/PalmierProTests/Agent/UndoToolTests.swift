@@ -22,6 +22,7 @@ struct UndoToolTests {
 
         let result = await h.runRaw("undo")
         #expect(result.isError == false)
+        #expect(ToolHarness.textOf(result).contains("Undid the latest edit."))
         // Only the ripple reverts — the split from the earlier call must survive.
         #expect(h.editor.timeline.tracks[0].clips.count == 2)
         #expect(h.editor.timeline.tracks[0].clips.map(\.durationFrames) == [30, 70])

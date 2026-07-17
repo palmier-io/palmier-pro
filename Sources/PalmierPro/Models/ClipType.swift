@@ -30,6 +30,10 @@ enum ClipType: String, Codable, Sendable, CaseIterable {
 
     var trackLabelPrefix: String { String(trackLabel.prefix(1)) }
 
+    var notificationLabel: String {
+        self == .sequence ? "Sequence" : trackLabel
+    }
+
     var isVisual: Bool {
         self != .audio
     }
