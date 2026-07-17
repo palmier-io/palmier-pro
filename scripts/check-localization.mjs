@@ -276,8 +276,33 @@ const sourceGuards = [
     },
     {
         file: path.join(sourceRoot, "Editor", "EditorUndo.swift"),
-        required: "sourceActionNames[localizedActionName] = actionName",
-        error: "撤销菜单可以本地化，但 Agent 工具必须保留稳定的英文动作名",
+        required: "func undoLatest() -> Bool",
+        forbidden: "sourceActionNames",
+        error: "Agent 撤销必须与本地化菜单标题解耦，不能按标题反查协议动作名",
+    },
+    {
+        file: path.join(sourceRoot, "Agent", "Tools", "ToolExecutor.swift"),
+        required: "Undid the latest edit.",
+        forbidden: "Undid: \\(actionName)",
+        error: "Agent 撤销结果必须使用稳定协议文案，不能插入本地化菜单标题",
+    },
+    {
+        file: path.join(sourceRoot, "Agent", "Tools", "ToolExecutor+Transcription.swift"),
+        required: "CostEstimator.agentFormat(cost)",
+        forbidden: "CostEstimator.format(cost)) needed.",
+        error: "Agent 积分错误必须保持完整英文协议，不能混入本地化积分标签",
+    },
+    {
+        file: path.join(sourceRoot, "App", "AppNotifications.swift"),
+        required: "assetType.notificationLabel",
+        forbidden: "assetType.trackLabel",
+        error: "生成通知必须区分 Sequence 与 Video，不能复用轨道标签",
+    },
+    {
+        file: path.join(sourceRoot, "Generation", "UI", "GenerationView.swift"),
+        required: "Text(verbatim: promptPlaceholder)",
+        forbidden: "L10n.text(promptPlaceholder)",
+        error: "生成提示占位符已完成本地化，显示层不能再次当作词典键解析",
     },
     {
         file: path.join(sourceRoot, "Account", "AccountService.swift"),

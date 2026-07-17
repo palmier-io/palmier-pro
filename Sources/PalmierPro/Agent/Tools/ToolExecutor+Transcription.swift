@@ -205,7 +205,7 @@ extension ToolExecutor {
         let remaining = account.remainingCredits
         guard remaining > 0 else { throw ToolError("Add credits to use Cloud transcription.") }
         if cost > remaining {
-            throw ToolError("\(CostEstimator.format(cost)) needed. Only \(remaining.formatted()) remaining.")
+            throw ToolError("\(CostEstimator.agentFormat(cost)) needed. Only \(remaining.formatted()) remaining.")
         }
     }
 

@@ -393,7 +393,7 @@ struct GenerationView: View {
                 }
 
             if prompt.isEmpty {
-                L10n.text(promptPlaceholder)
+                Text(verbatim: promptPlaceholder)
                     .font(.system(size: AppTheme.FontSize.sm))
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .padding(.horizontal, AppTheme.Spacing.md)

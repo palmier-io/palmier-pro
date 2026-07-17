@@ -4,7 +4,6 @@ import Foundation
 final class EditorUndo {
     private weak var manager: UndoManager?
     private let localizeActionName: (String) -> String
-    private var sourceActionNames: [String: String] = [:]
     private var transactionActive = false
     private var transactionGroupOpened = false
 
@@ -14,7 +13,6 @@ final class EditorUndo {
 
     func attach(_ manager: UndoManager?) {
         self.manager = manager
-        sourceActionNames.removeAll()
     }
 
     func perform<T>(_ actionName: String, _ work: () throws -> T) rethrows -> T {
@@ -35,7 +33,6 @@ final class EditorUndo {
             transactionGroupOpened = false
             if groupOpened {
                 let localizedActionName = localizeActionName(actionName)
-                sourceActionNames[localizedActionName] = actionName
                 manager.setActionName(localizedActionName)
                 manager.endUndoGrouping()
             }
@@ -73,12 +70,11 @@ final class EditorUndo {
 
     var isRegistrationEnabled: Bool { manager?.isUndoRegistrationEnabled ?? true }
 
-    func undoLatest() -> String? {
-        guard let manager, manager.canUndo else { return nil }
-        let localizedActionName = manager.undoActionName
-        let actionName = sourceActionNames[localizedActionName] ?? localizedActionName
+    @discardableResult
+    func undoLatest() -> Bool {
+        guard let manager, manager.canUndo else { return false }
         manager.undo()
-        return actionName
+        return true
     }
 
     func removeAllActions<Target: AnyObject>(withTarget target: Target) {
