@@ -113,7 +113,7 @@ enum AudioLevelAnalyzer {
         }
         var peak: Float = 0
         vDSP_maxmgv(floats, 1, &peak, vDSP_Length(count))
-        return peak / 32768.0
+        return peak / 32767.0  // matches ScrubAudioEngine quantize scale so full-scale reads as 1.0
     }
 
     nonisolated static func analyze(_ buffer: AVAudioPCMBuffer) -> AudioMeterAnalysis {

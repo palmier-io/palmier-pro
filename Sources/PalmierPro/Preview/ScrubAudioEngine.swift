@@ -88,7 +88,7 @@ final class ScrubAudioEngine {
             mixInvalidationTask?.cancel()
             mixInvalidationTask = nil
             windows.removeAll()
-            if let source { startFill(from: 0, source: source) }
+            if let source { startFill(from: anchor, source: source) }
         }
         if resetMeter { meter.reset() }
     }
@@ -384,7 +384,7 @@ final class ScrubAudioEngine {
         return ScrubAudioGrain(left: left, right: right)
     }
 
-    nonisolated private static let int16ToFloat: Float = 1.0 / 32768.0
+    nonisolated private static let int16ToFloat: Float = 1.0 / 32767.0  // matches quantize scale so full-scale = 1.0
 
     nonisolated private static func quantize(_ sample: Float) -> Int16 {
         Int16((max(-1, min(1, sample)) * 32767).rounded())
@@ -580,7 +580,8 @@ final class ScrubAudioEngine {
                 ? Int64((presentationTime.seconds * sampleRate).rounded())
                 : filledEnd
             let base = Int(abs - bufferStart)
-            guard base >= 0 else { continue }
+            let sourceStart = max(0, -base)
+            guard sourceStart < sampleCount else { continue }
 
             let neededCount = base + sampleCount
             if left.count < neededCount {
@@ -589,7 +590,7 @@ final class ScrubAudioEngine {
             }
             let sourceChannelCount = Int(sampleFormat.channelCount)
             let rightChannel = channels[min(1, sourceChannelCount - 1)]
-            for sourceIndex in 0..<sampleCount {
+            for sourceIndex in sourceStart..<sampleCount {
                 left[base + sourceIndex] = quantize(channels[0][sourceIndex])
                 right[base + sourceIndex] = quantize(rightChannel[sourceIndex])
             }
