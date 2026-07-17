@@ -94,7 +94,13 @@ struct ExportView: View {
         }
         .task {
             selectedTimelineId = editor.activeTimelineId
-            palmierSummary = computePalmierSummary()
+            let entries = editor.mediaManifest.entries
+            let projectURL = editor.projectURL
+            let summary = await Task.detached(priority: .utility) {
+                Self.computePalmierSummary(entries: entries, projectURL: projectURL)
+            }.value
+            guard !Task.isCancelled else { return }
+            palmierSummary = summary
         }
     }
 
@@ -606,13 +612,16 @@ struct ExportView: View {
     }
 
     /// Quick estimate for exporting a Palmier Project
-    private func computePalmierSummary() -> (collect: Int, missing: Int, bytes: Int64) {
+    private nonisolated static func computePalmierSummary(
+        entries: [MediaManifestEntry],
+        projectURL: URL?
+    ) -> (collect: Int, missing: Int, bytes: Int64) {
         var collect = 0, missing = 0
         var bytes: Int64 = 0
-        for entry in editor.mediaManifest.entries {
+        for entry in entries {
             let url: URL? = switch entry.source {
             case .external(let path): URL(fileURLWithPath: path)
-            case .project(let rel): editor.projectURL?.appendingPathComponent(rel)
+            case .project(let rel): projectURL?.appendingPathComponent(rel)
             }
             guard let url, FileManager.default.fileExists(atPath: url.path) else { missing += 1; continue }
             if case .external = entry.source { collect += 1 }
