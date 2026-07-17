@@ -8,7 +8,7 @@ extension GenerationView {
         return ClipType.allCases.flatMap { type -> [RefTag] in
             let noun = tagNoun(for: type)
             return (0..<refCount(for: type)).map { i in
-                RefTag(label: "\(noun)\(i + 1)", kindLabel: type.rawValue)
+                RefTag(label: "\(noun)\(i + 1)", kindLabel: type.trackLabel)
             }
         }
     }
