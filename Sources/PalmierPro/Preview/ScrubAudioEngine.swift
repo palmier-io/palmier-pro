@@ -143,7 +143,7 @@ final class ScrubAudioEngine {
                     self.fillDecode = decode
                     let window = await decode.value
                     self.fillDecode = nil
-                    guard !Task.isCancelled, source.generation == self.source?.generation else { return }
+                    guard !Task.isCancelled, !decode.isCancelled, source.generation == self.source?.generation else { return }
                     if let window { self.insert(window) }
                 }
             }
@@ -521,7 +521,7 @@ final class ScrubAudioEngine {
             runningOffset = max(runningOffset, destinationOffset + sampleCount)
         }
 
-        guard reader.status != .failed else { return nil }
+        guard reader.status == .completed else { return nil }
         return PCMWindow(startSample: startSample, left: leftSamples, right: rightSamples, hasAudioTracks: true)
     }
 }
