@@ -468,6 +468,19 @@ final class TimelineView: NSView {
                     // Slip never moves the clip: rect is the resting rect, only content shifts.
                     let rect = geo.clipRect(for: clip, trackIndex: ti)
                     clipDisplayRects[clip.id] = rect
+                    let sourceRect = slipSourceRect(for: previewClip, activeRect: rect, geometry: geo)
+                    if sourceRect.intersects(dirtyRect) {
+                        drawSlipSourceRange(
+                            clip: previewClip,
+                            sourceRect: sourceRect,
+                            activeRect: rect,
+                            isSelected: isSelected,
+                            isMissing: clipMissing,
+                            isGenerating: clipGenerating,
+                            angleLabel: angleLabel(clip),
+                            context: ctx
+                        )
+                    }
                     if rect.intersects(dirtyRect) {
                         let chip = angleLabel(clip)
                         let cache = editor.mediaVisualCache
@@ -524,6 +537,86 @@ final class TimelineView: NSView {
                 ctx.setFillColor(AppTheme.Status.error.cgColor)
                 ctx.fill(line)
             }
+        }
+    }
+
+    private func slipSourceRect(for clip: Clip, activeRect: NSRect, geometry geo: TimelineGeometry) -> NSRect {
+        let speed = max(clip.speed, 0.001)
+        let sourceFrames = clip.trimStartFrame + clip.sourceFramesConsumed + editor.effectiveTrimEnd(for: clip)
+        let sourceTimelineFrames = max(1, Double(sourceFrames) / speed)
+        let headTimelineFrames = Double(clip.trimStartFrame) / speed
+        return NSRect(
+            x: activeRect.minX - headTimelineFrames * geo.pixelsPerFrame,
+            y: activeRect.minY,
+            width: sourceTimelineFrames * geo.pixelsPerFrame,
+            height: activeRect.height
+        )
+    }
+
+    private func drawSlipSourceRange(
+        clip: Clip,
+        sourceRect: NSRect,
+        activeRect: NSRect,
+        isSelected: Bool,
+        isMissing: Bool,
+        isGenerating: Bool,
+        angleLabel: String?,
+        context ctx: CGContext
+    ) {
+        var sourceClip = clip
+        let speed = max(sourceClip.speed, 0.001)
+        let sourceFrames = sourceClip.trimStartFrame + sourceClip.sourceFramesConsumed + editor.effectiveTrimEnd(for: sourceClip)
+        sourceClip.durationFrames = max(1, Int((Double(sourceFrames) / speed).rounded()))
+        sourceClip.trimStartFrame = 0
+        sourceClip.trimEndFrame = 0
+
+        ClipRenderer.draw(
+            sourceClip,
+            type: clip.mediaType,
+            in: sourceRect,
+            isSelected: false,
+            opacity: CGFloat(AppTheme.Opacity.medium),
+            context: ctx,
+            cache: editor.mediaVisualCache,
+            displayName: editor.clipDisplayLabel(for: clip),
+            multicamAngleLabel: angleLabel,
+            fps: editor.timeline.fps,
+            isMissing: isMissing,
+            isGenerating: isGenerating
+        )
+
+        ctx.saveGState()
+        defer { ctx.restoreGState() }
+
+        let outside = CGMutablePath()
+        outside.addRect(sourceRect)
+        outside.addRect(activeRect)
+        ctx.addPath(outside)
+        ctx.setFillColor(AppTheme.Background.base.withAlphaComponent(AppTheme.Opacity.medium).cgColor)
+        ctx.drawPath(using: .eoFill)
+
+        let sourcePath = CGPath(
+            roundedRect: sourceRect.insetBy(dx: AppTheme.BorderWidth.hairline, dy: AppTheme.BorderWidth.hairline),
+            cornerWidth: Trim.clipCornerRadius,
+            cornerHeight: Trim.clipCornerRadius,
+            transform: nil
+        )
+        ctx.addPath(sourcePath)
+        ctx.setStrokeColor(AppTheme.Text.primary.withAlphaComponent(AppTheme.Opacity.prominent).cgColor)
+        ctx.setLineWidth(AppTheme.BorderWidth.medium)
+        ctx.strokePath()
+
+        ctx.setStrokeColor(AppTheme.Text.primary.cgColor)
+        ctx.setLineWidth(AppTheme.BorderWidth.thick)
+        ctx.stroke(activeRect.insetBy(dx: AppTheme.BorderWidth.hairline, dy: AppTheme.BorderWidth.hairline))
+
+        guard isSelected else { return }
+        ctx.setFillColor(AppTheme.Text.primary.cgColor)
+        let handleWidth = AppTheme.BorderWidth.thick
+        let handleHeight = min(activeRect.height, AppTheme.IconSize.md)
+        let y = activeRect.minY
+        for x in [activeRect.minX - handleWidth / 2, activeRect.maxX - handleWidth / 2] {
+            ctx.fill(NSRect(x: x, y: y, width: handleWidth, height: handleHeight))
         }
     }
 

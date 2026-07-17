@@ -16,6 +16,8 @@ struct SlipTwoUpView: View {
     @State private var loader = SlipFrameLoader()
     @State private var inImage: CGImage?
     @State private var outImage: CGImage?
+    @State private var pendingState: SlipPreviewState?
+    @State private var loaderTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -25,16 +27,42 @@ struct SlipTwoUpView: View {
                 pane(image: outImage, label: "End", frame: state.outSourceFrame)
             }
         }
-        .task(id: state) {
-            loader.prepare(url: state.url, fps: state.fps)
-            async let start = loader.frame(at: state.inSourceFrame)
-            async let end = loader.frame(at: state.outSourceFrame)
-            let (i, o) = await (start, end)
-            // Keep the previous frame while the next decode is in flight.
-            if let i { inImage = i }
-            if let o { outImage = o }
+        .onAppear {
+            enqueue(state)
+        }
+        .onChange(of: state) { _, newState in
+            enqueue(newState)
+        }
+        .onDisappear {
+            loaderTask?.cancel()
+            loaderTask = nil
+            pendingState = nil
         }
         .allowsHitTesting(false)
+    }
+
+    private func enqueue(_ state: SlipPreviewState) {
+        pendingState = state
+        guard loaderTask == nil else { return }
+        loaderTask = Task { @MainActor in
+            while let state = pendingState {
+                pendingState = nil
+                await load(state)
+                try? await Task.sleep(for: AppTheme.Anim.slipPreviewRefresh)
+                guard !Task.isCancelled else { break }
+            }
+            loaderTask = nil
+        }
+    }
+
+    private func load(_ state: SlipPreviewState) async {
+        loader.prepare(url: state.url, fps: state.fps)
+        async let start = loader.frame(at: state.inSourceFrame)
+        async let end = loader.frame(at: state.outSourceFrame)
+        let (i, o) = await (start, end)
+        guard !Task.isCancelled else { return }
+        if let i { inImage = i }
+        if let o { outImage = o }
     }
 
     private func pane(image: CGImage?, label: String, frame: Int) -> some View {

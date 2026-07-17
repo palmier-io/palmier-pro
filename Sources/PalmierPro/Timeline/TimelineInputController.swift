@@ -451,9 +451,11 @@ final class TimelineInputController {
             let delta = max(-drag.maxLeftDelta, min(drag.maxRightDelta, frame - drag.grabFrame))
             if delta != drag.deltaFrames, let clip = editor.clipFor(id: drag.clipId) {
                 editor.slipPreview = slipPreviewState(for: clip, deltaFrames: delta, linked: drag.propagateToLinked)
+                invalidateSlipRects(for: drag, newDeltaFrames: delta, geometry: geometry)
             }
             drag.deltaFrames = delta
             dragState = .slip(drag)
+            return
 
         case .audioVolumeKf(let drag):
             dragState = .audioVolumeKf(applyVolumeKfDrag(drag, cursorFrame: frame, cursorY: point.y, geometry: geometry))
@@ -503,6 +505,38 @@ final class TimelineInputController {
         }
 
         view.needsDisplay = true
+    }
+
+    private func invalidateSlipRects(for drag: DragState.SlipDrag, newDeltaFrames: Int, geometry: TimelineGeometry) {
+        var ids = [drag.clipId]
+        if drag.propagateToLinked {
+            ids += editor.slipPropagationPartnerIds(of: drag.clipId)
+        }
+        let pad = AppTheme.BorderWidth.thick
+        for id in ids {
+            guard let loc = editor.findClip(id: id) else { continue }
+            let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            let activeRect = geometry.clipRect(for: clip, trackIndex: loc.trackIndex)
+            let oldRect = slipSourceRect(for: clip, deltaFrames: drag.deltaFrames, activeRect: activeRect, geometry: geometry)
+            let newRect = slipSourceRect(for: clip, deltaFrames: newDeltaFrames, activeRect: activeRect, geometry: geometry)
+            view.setNeedsDisplay(oldRect.union(newRect).union(activeRect).insetBy(dx: -pad, dy: -pad))
+        }
+    }
+
+    private func slipSourceRect(for clip: Clip, deltaFrames: Int, activeRect: NSRect, geometry: TimelineGeometry) -> NSRect {
+        let speed = max(clip.speed, 0.001)
+        let sourceDelta = Int((Double(deltaFrames) * speed).rounded())
+        let applied = max(-editor.effectiveTrimEnd(for: clip), min(clip.trimStartFrame, sourceDelta))
+        let trimStart = clip.trimStartFrame - applied
+        let sourceFrames = trimStart + clip.sourceFramesConsumed + editor.effectiveTrimEnd(for: clip) + applied
+        let sourceTimelineFrames = max(1, Double(sourceFrames) / speed)
+        let headTimelineFrames = Double(trimStart) / speed
+        return NSRect(
+            x: activeRect.minX - headTimelineFrames * geometry.pixelsPerFrame,
+            y: activeRect.minY,
+            width: sourceTimelineFrames * geometry.pixelsPerFrame,
+            height: activeRect.height
+        )
     }
 
     // MARK: - Mouse up
