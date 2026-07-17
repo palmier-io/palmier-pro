@@ -15,13 +15,21 @@ extension EditorViewModel {
     }
 
     /// Why `childId` can't nest into the active timeline, or nil if it can.
-    func nestBlockReason(childId: String) -> String? {
+    func nestBlockReason(childId: String, localized: Bool = false) -> String? {
         guard let child = timeline(for: childId) else { return nil }
         if child.totalFrames == 0 {
-            return L10n.format("“%@” is empty. Add clips before nesting it.", child.name)
+            return L10n.message(
+                "“%@” is empty. Add clips before nesting it.",
+                localized: localized,
+                child.name
+            )
         }
         if wouldCreateNestCycle(nesting: childId, into: activeTimelineId) {
-            return L10n.format("Can't nest “%@” — it would contain itself.", child.name)
+            return L10n.message(
+                "Can't nest “%@” — it would contain itself.",
+                localized: localized,
+                child.name
+            )
         }
         return nil
     }
@@ -30,7 +38,7 @@ extension EditorViewModel {
     @discardableResult
     func nestTimeline(_ childId: String, cursor: TrackDropTarget, atFrame frame: Int) -> Bool {
         guard let child = timeline(for: childId) else { return false }
-        if let reason = nestBlockReason(childId: childId) {
+        if let reason = nestBlockReason(childId: childId, localized: true) {
             mediaPanelToast = MediaPanelToast(message: reason)
             return false
         }

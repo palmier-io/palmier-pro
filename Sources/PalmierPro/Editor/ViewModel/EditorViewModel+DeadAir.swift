@@ -68,14 +68,18 @@ extension EditorViewModel {
 
     /// Ripples dead air per-track, updating ranges between passes. Stops if a track refuses.
     @discardableResult
-    func removeAllDeadAir() -> (sections: Int, removedFrames: Int, refusal: String?)? {
+    func removeAllDeadAir(localized: Bool = true) -> (sections: Int, removedFrames: Int, refusal: String?)? {
         undo.perform("Remove Dead Air") {
             var sections = 0
             var removedFrames = 0
             var refusal: String?
             for _ in timeline.tracks.indices {
                 guard let next = allDeadAir().first else { break }
-                switch rippleDeleteRangesOnTrack(trackIndex: next.trackIndex, ranges: next.ranges) {
+                switch rippleDeleteRangesOnTrack(
+                    trackIndex: next.trackIndex,
+                    ranges: next.ranges,
+                    localized: localized
+                ) {
                 case .ok(let report):
                     sections += next.ranges.count
                     removedFrames += report.removedFrames

@@ -163,105 +163,161 @@ struct VideoGenerationSubmission {
         }
 
         @MainActor
-        func validate(for model: VideoModelConfig) -> String? {
+        func validate(for model: VideoModelConfig, localized: Bool = false) -> String? {
             if model.requiresSourceVideo {
-                return validateEditReferences(for: model)
+                return validateEditReferences(for: model, localized: localized)
             }
-            return validateTextToVideoReferences(for: model)
+            return validateTextToVideoReferences(for: model, localized: localized)
         }
 
         @MainActor
-        private func validateEditReferences(for model: VideoModelConfig) -> String? {
+        private func validateEditReferences(for model: VideoModelConfig, localized: Bool) -> String? {
             guard let sourceVideo else {
-                return L10n.format("Model '%@' requires a source video.", model.id)
+                return L10n.message(
+                    "Model '%@' requires a source video.",
+                    localized: localized,
+                    model.id
+                )
             }
             guard sourceVideo.type == .video else {
-                return L10n.string("sourceVideoMediaRef must reference a video asset")
+                return L10n.message(
+                    "sourceVideoMediaRef must reference a video asset",
+                    localized: localized
+                )
             }
             if !frames.isEmpty || !videoRefs.isEmpty || !audioRefs.isEmpty {
-                return L10n.format("%@ only accepts a source video and image references", model.displayName)
+                return L10n.message(
+                    "%@ only accepts a source video and image references",
+                    localized: localized,
+                    model.displayName
+                )
             }
             if !model.supportsReferences, !imageRefs.isEmpty {
-                return L10n.format("%@ does not accept image references", model.displayName)
+                return L10n.message(
+                    "%@ does not accept image references",
+                    localized: localized,
+                    model.displayName
+                )
             }
             if imageRefs.count > model.maxReferenceImages {
-                return L10n.format(
+                return L10n.message(
                     "%@ accepts at most %d image reference(s)",
+                    localized: localized,
                     model.displayName,
                     model.maxReferenceImages
                 )
             }
             return validateTypes([
                 (imageRefs, .image, "referenceImageMediaRefs")
-            ])
+            ], localized: localized)
         }
 
         @MainActor
-        private func validateTextToVideoReferences(for model: VideoModelConfig) -> String? {
+        private func validateTextToVideoReferences(for model: VideoModelConfig, localized: Bool) -> String? {
             if sourceVideo != nil {
-                return L10n.format("%@ does not accept a source video", model.displayName)
+                return L10n.message(
+                    "%@ does not accept a source video",
+                    localized: localized,
+                    model.displayName
+                )
             }
             if frames.count > 2 {
-                return L10n.format("%@ accepts at most 2 frame references", model.displayName)
+                return L10n.message(
+                    "%@ accepts at most 2 frame references",
+                    localized: localized,
+                    model.displayName
+                )
             }
             if !frames.isEmpty, !model.supportsFirstFrame {
-                return L10n.format("%@ does not accept frame references", model.displayName)
+                return L10n.message(
+                    "%@ does not accept frame references",
+                    localized: localized,
+                    model.displayName
+                )
             }
             if frames.count > 1, !model.supportsLastFrame {
-                return L10n.format("%@ does not accept a last frame", model.displayName)
+                return L10n.message(
+                    "%@ does not accept a last frame",
+                    localized: localized,
+                    model.displayName
+                )
             }
             if model.framesAndReferencesExclusive, !frames.isEmpty, !allRefs.isEmpty {
-                return L10n.format("%@ uses frames OR references, not both. Clear one side.", model.displayName)
+                return L10n.message(
+                    "%@ uses frames OR references, not both. Clear one side.",
+                    localized: localized,
+                    model.displayName
+                )
             }
             if imageRefs.count > model.maxReferenceImages {
-                return L10n.format(
+                return L10n.message(
                     "%@ accepts at most %d image references",
+                    localized: localized,
                     model.displayName,
                     model.maxReferenceImages
                 )
             }
             if videoRefs.count > model.maxReferenceVideos {
-                return L10n.format(
+                return L10n.message(
                     "%@ accepts at most %d video references",
+                    localized: localized,
                     model.displayName,
                     model.maxReferenceVideos
                 )
             }
             if audioRefs.count > model.maxReferenceAudios {
-                return L10n.format(
+                return L10n.message(
                     "%@ accepts at most %d audio references",
+                    localized: localized,
                     model.displayName,
                     model.maxReferenceAudios
                 )
             }
             if let totalCap = model.maxTotalReferences, totalRefCount > totalCap {
-                return L10n.format("%@ accepts at most %d references total", model.displayName, totalCap)
+                return L10n.message(
+                    "%@ accepts at most %d references total",
+                    localized: localized,
+                    model.displayName,
+                    totalCap
+                )
             }
             if let cap = model.maxCombinedVideoRefSeconds,
                videoRefs.reduce(0, { $0 + $1.duration }) > cap {
-                return L10n.format("Combined video reference duration exceeds %ds", Int(cap))
+                return L10n.message(
+                    "Combined video reference duration exceeds %ds",
+                    localized: localized,
+                    Int(cap)
+                )
             }
             if let cap = model.maxCombinedAudioRefSeconds,
                audioRefs.reduce(0, { $0 + $1.duration }) > cap {
-                return L10n.format("Combined audio reference duration exceeds %ds", Int(cap))
+                return L10n.message(
+                    "Combined audio reference duration exceeds %ds",
+                    localized: localized,
+                    Int(cap)
+                )
             }
             return validateTypes([
                 (frames, .image, "frame references"),
                 (imageRefs, .image, "referenceImageMediaRefs"),
                 (videoRefs, .video, "referenceVideoMediaRefs"),
                 (audioRefs, .audio, "referenceAudioMediaRefs")
-            ])
+            ], localized: localized)
         }
 
         @MainActor
-        private func validateTypes(_ groups: [([MediaAsset], ClipType, String)]) -> String? {
+        private func validateTypes(
+            _ groups: [([MediaAsset], ClipType, String)],
+            localized: Bool
+        ) -> String? {
             for (assets, expected, label) in groups {
                 for asset in assets where asset.type != expected {
-                    return L10n.format(
+                    return L10n.message(
                         "%@ entry '%@' must be a %@ asset",
+                        localized: localized,
                         label,
                         asset.id,
-                        L10n.string(expected.trackLabel)
+                        localized ? L10n.string(expected.trackLabel) : expected.trackLabel
                     )
                 }
             }

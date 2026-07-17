@@ -952,7 +952,12 @@ extension ToolExecutor {
         let ignoreSyncLocked = Set(input.ignoreSyncLockedTracks ?? [])
         let snapshot = timelineSnapshot(editor)
         let outcome = editor.undo.perform("Ripple Delete (Agent)") {
-            editor.rippleDeleteRangesOnTrack(trackIndex: resolvedTrackIndex, ranges: frameRanges, ignoreSyncLockTrackIndices: ignoreSyncLocked)
+            editor.rippleDeleteRangesOnTrack(
+                trackIndex: resolvedTrackIndex,
+                ranges: frameRanges,
+                ignoreSyncLockTrackIndices: ignoreSyncLocked,
+                localized: false
+            )
         }
         switch outcome {
         case .refused(let reason):

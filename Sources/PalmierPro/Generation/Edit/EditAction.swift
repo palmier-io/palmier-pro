@@ -147,7 +147,7 @@ enum EditAction {
         guard let model = kind.model else {
             return .disabled(reason: L10n.format("%@ model not available", kind.providerName))
         }
-        if let err = model.validate(spanSeconds: duration) {
+        if let err = model.validate(spanSeconds: duration, localized: true) {
             return .disabled(reason: err)
         }
         return .available

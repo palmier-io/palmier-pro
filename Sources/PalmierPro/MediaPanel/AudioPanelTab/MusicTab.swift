@@ -87,7 +87,7 @@ struct MusicTab: View {
             guard source != nil else {
                 return L10n.string("Add video to the timeline, then mark a range to score only part of it.")
             }
-            if let issue = model.validate(spanSeconds: spanSeconds) { return issue }
+            if let issue = model.validate(spanSeconds: spanSeconds, localized: true) { return issue }
         }
         if let cost = estimatedCost, cost > AccountService.shared.remainingCredits,
            AccountService.shared.budgetCredits != nil {

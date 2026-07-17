@@ -37,7 +37,10 @@ extension EditSubmitter {
 
         if let videoModel = VideoModelConfig.allModels.first(where: { $0.id == modelId }) {
             if let err = videoModel.validate(
-                duration: gen.duration, aspectRatio: gen.aspectRatio, resolution: gen.resolution
+                duration: gen.duration,
+                aspectRatio: gen.aspectRatio,
+                resolution: gen.resolution,
+                localized: true
             ) {
                 throw RerunError.invalid(err)
             }
@@ -111,7 +114,7 @@ extension EditSubmitter {
             let refCount = (preUploaded ?? []).count
             if let err = imageModel.validate(
                 aspectRatio: gen.aspectRatio, resolution: gen.resolution, quality: gen.quality,
-                imageRefCount: refCount, numImages: count
+                imageRefCount: refCount, numImages: count, localized: true
             ) {
                 throw RerunError.invalid(err)
             }
@@ -171,7 +174,7 @@ extension EditSubmitter {
                 sourceURL: sourceURL,
                 targetLanguage: gen.targetLanguage
             )
-            if let err = audioModel.validate(params: params) {
+            if let err = audioModel.validate(params: params, localized: true) {
                 throw RerunError.invalid(err)
             }
             return editor.generationService.generate(

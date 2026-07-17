@@ -155,15 +155,21 @@ extension GenerationView {
             let inputAssets = videoInputAssets(for: videoModel)
             let modelError: String?
             if videoModel.requiresSourceVideo {
-                modelError = videoModel.validate(duration: 0, aspectRatio: "", resolution: nil)
+                modelError = videoModel.validate(
+                    duration: 0,
+                    aspectRatio: "",
+                    resolution: nil,
+                    localized: true
+                )
             } else {
                 modelError = videoModel.validate(
                     duration: selectedDuration,
                     aspectRatio: selectedAspectRatio,
-                    resolution: effectiveResolution
+                    resolution: effectiveResolution,
+                    localized: true
                 )
             }
-            return modelError ?? inputAssets.validate(for: videoModel)
+            return modelError ?? inputAssets.validate(for: videoModel, localized: true)
         case .image:
             let quality = imageModel.qualities != nil ? selectedQuality : nil
             let imageCount = imageModel.maxImages > 1
@@ -173,15 +179,22 @@ extension GenerationView {
                 resolution: effectiveResolution,
                 quality: quality,
                 imageRefCount: imageReferences.count,
-                numImages: imageCount
+                numImages: imageCount,
+                localized: true
             )
         case .audio:
             if audioUsesSource {
                 guard audioSource != nil else { return L10n.string("Add source media.") }
-                return audioModel.validate(spanSeconds: effectiveAudioSourceSpanSeconds)
-                    ?? audioModel.validate(params: audioParams(audioDuration: audioDuration))
+                return audioModel.validate(spanSeconds: effectiveAudioSourceSpanSeconds, localized: true)
+                    ?? audioModel.validate(
+                        params: audioParams(audioDuration: audioDuration),
+                        localized: true
+                    )
             }
-            return audioModel.validate(params: audioParams(audioDuration: audioDuration))
+            return audioModel.validate(
+                params: audioParams(audioDuration: audioDuration),
+                localized: true
+            )
         }
     }
 

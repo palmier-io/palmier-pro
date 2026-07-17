@@ -188,7 +188,7 @@ extension GenerationView {
             flashDropError(L10n.format("%@ only accepts %@ references.", videoModel.displayName, supported))
             return
         }
-        if let err = selection.validate(for: videoModel) {
+        if let err = selection.validate(for: videoModel, localized: true) {
             flashDropError(err)
             return
         }
@@ -270,7 +270,7 @@ extension GenerationView {
                     iconName: "photo.badge.plus"
                 ) { asset in
                     if asset.type != .image {
-                        flashDropError("Drop image here.")
+                        flashDropError(L10n.string("Drop image here."))
                     } else if imageReferences.contains(where: { $0.id == asset.id }) {
                         flashDropError(L10n.format("%@ is already a reference", asset.name))
                     } else {

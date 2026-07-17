@@ -88,7 +88,7 @@ enum AudioTransformEditKind: CaseIterable, Equatable {
         guard duration > 0 else {
             return .disabled(reason: L10n.string("Loading media metadata…"))
         }
-        if let error = model.validate(spanSeconds: duration) {
+        if let error = model.validate(spanSeconds: duration, localized: true) {
             return .disabled(reason: error)
         }
         return .available

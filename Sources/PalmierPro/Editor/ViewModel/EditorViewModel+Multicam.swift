@@ -73,7 +73,10 @@ extension EditorViewModel {
         NSSound.beep()
     }
 
-    func multicamMoveViolation(moves: [(clipId: String, toTrack: Int, toFrame: Int)]) -> String? {
+    func multicamMoveViolation(
+        moves: [(clipId: String, toTrack: Int, toFrame: Int)],
+        localized: Bool = false
+    ) -> String? {
         let infos = moves.compactMap { m in clipFor(id: m.clipId).map { ($0, m.toTrack, m.toFrame) } }
         let movedIds = Set(infos.map { $0.0.id })
         let horizontal = infos.contains { $0.0.startFrame != $0.2 }
@@ -83,14 +86,18 @@ extension EditorViewModel {
         }
         guard horizontal || laneChange else { return nil }
         if laneChange {
-            return L10n.string("Can't move a multicam camera clip to another track — the group's program track stays fixed.")
+            return L10n.message(
+                "Can't move a multicam camera clip to another track — the group's program track stays fixed.",
+                localized: localized
+            )
         }
         for gid in Set(infos.compactMap { $0.0.multicamGroupId }) {
             let leftBehind = Set(multicamClips(of: gid).map { $0.clip.id }).subtracting(movedIds)
             if !leftBehind.isEmpty {
                 let name = multicamGroup(id: gid)?.name ?? "Multicam"
-                return L10n.format(
+                return L10n.message(
                     "Can't move part of multicam group “%@” — its clips stay in sync and move together.",
+                    localized: localized,
                     name
                 )
             }
