@@ -17,6 +17,7 @@ struct ProjectPackageCoordinatorTests {
     @Test func queuedMutationRunsBeforeSaveCompletionReturns() async throws {
         let coordinator = ProjectPackageCoordinator()
         coordinator.saveStarted()
+        coordinator.saveStarted()
         var enteredCoordinator = false
         var mutationRan = false
         let mutation = Task {
@@ -26,13 +27,16 @@ struct ProjectPackageCoordinatorTests {
         while !enteredCoordinator { await Task.yield() }
         #expect(!mutationRan)
 
+        coordinator.saveFinished(success: false)
+        #expect(!mutationRan)
         coordinator.saveFinished(success: true)
         #expect(mutationRan)
         try await mutation.value
     }
 
-    @Test func failedSaveCancelsQueuedMutation() async {
+    @Test func failedSaveCancelsQueuedMutation() async throws {
         let coordinator = ProjectPackageCoordinator()
+        await coordinator.beginClosing()
         coordinator.saveStarted()
         var entered = false
         let mutation = Task {
@@ -43,6 +47,8 @@ struct ProjectPackageCoordinatorTests {
 
         coordinator.saveFinished(success: false)
         await #expect(throws: CancellationError.self) { try await mutation.value }
+        try coordinator.beginMutation()
+        coordinator.endMutation()
     }
 
     @Test func queuedMediaCommitUsesRebasedProjectURL() async throws {

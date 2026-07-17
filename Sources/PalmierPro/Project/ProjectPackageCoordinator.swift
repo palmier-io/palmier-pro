@@ -3,7 +3,6 @@ import Foundation
 @MainActor
 final class ProjectPackageCoordinator {
     private var savesInProgress = 0
-    private var saveFailed = false
     private var activeMutations = 0
     private var nextMutationID = 0
     private var pendingMutations: [(id: Int, run: () -> Void, cancel: () -> Void)] = []
@@ -17,14 +16,12 @@ final class ProjectPackageCoordinator {
             assertionFailure("Unbalanced project save completion")
             return
         }
-        if !success { saveFailed = true }
         savesInProgress -= 1
         guard savesInProgress == 0 else { return }
+        if !success { isClosing = false }
         let mutations = pendingMutations
         pendingMutations.removeAll()
-        let shouldCancel = saveFailed
-        saveFailed = false
-        if shouldCancel {
+        if !success {
             mutations.forEach { $0.cancel() }
         } else {
             mutations.forEach { $0.run() }

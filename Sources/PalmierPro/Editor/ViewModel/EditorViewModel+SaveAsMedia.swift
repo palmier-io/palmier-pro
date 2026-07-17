@@ -29,7 +29,7 @@ extension EditorViewModel {
         let speed = clip.speed
         let mediaType = clip.mediaType
 
-        Task { @MainActor [weak self] in
+        Task { @MainActor in
             let stagedURL = FileIO.temporaryFileURL(pathExtension: mediaType == .video ? "mp4" : "m4a")
             defer { try? FileManager.default.removeItem(at: stagedURL) }
             do {
@@ -43,9 +43,9 @@ extension EditorViewModel {
                     speed: speed,
                     mediaType: mediaType
                 )
-                if let self { placeholder.url = try await self.commitStagedProjectMedia(stagedURL, filename: filename) }
+                placeholder.url = try await self.commitStagedProjectMedia(stagedURL, filename: filename)
                 placeholder.generationStatus = .none
-                await self?.finalizeImportedAsset(placeholder)
+                await self.finalizeImportedAsset(placeholder)
                 Log.project.notice("saveClipAsMedia ok clip=\(clipId) out=\(placeholder.url.lastPathComponent)")
             } catch {
                 placeholder.generationStatus = .failed(error.localizedDescription)
@@ -74,7 +74,7 @@ extension EditorViewModel {
         let missingMediaRefs = self.missingMediaRefs
         let resolveTimeline = timelineResolver()
 
-        Task { @MainActor [weak self] in
+        Task { @MainActor in
             do {
                 let tempURL = try await TimelineRenderer.render(
                     timeline: timeline,
@@ -85,9 +85,9 @@ extension EditorViewModel {
                     frameCount: frameCount,
                     preset: AVAssetExportPresetHighestQuality
                 )
-                if let self { placeholder.url = try await self.commitStagedProjectMedia(tempURL, filename: filename) }
+                placeholder.url = try await self.commitStagedProjectMedia(tempURL, filename: filename)
                 placeholder.generationStatus = .none
-                await self?.finalizeImportedAsset(placeholder)
+                await self.finalizeImportedAsset(placeholder)
                 Log.project.notice("saveTimelineRangeAsMedia ok frames=\(startFrame)..<\(startFrame + frameCount) out=\(placeholder.url.lastPathComponent)")
             } catch {
                 placeholder.generationStatus = .failed(error.localizedDescription)
