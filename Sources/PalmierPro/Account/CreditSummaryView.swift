@@ -24,7 +24,12 @@ struct CreditSummaryView: View {
                     compactView(left: left, budget: budget, remaining: remaining)
                 }
                 .buttonStyle(.plain)
-                .help("Manage credits")
+                .accessibilityLabel(L10n.format(
+                    "%@ of %@ credits remaining this period",
+                    left.formatted(),
+                    budget.formatted()
+                ))
+                .help(L10n.string("Manage credits"))
                 .popover(isPresented: $showActions, arrowEdge: .bottom) {
                     CreditActionsPopover(isPresented: $showActions)
                 }
@@ -52,6 +57,7 @@ struct CreditSummaryView: View {
             Image(systemName: "dollarsign.circle.fill")
                 .font(.system(size: AppTheme.FontSize.sm))
                 .foregroundStyle(barColor(remaining))
+                .accessibilityHidden(true)
             Text(left.formatted())
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .monospacedDigit()
