@@ -47,4 +47,15 @@ struct LUTLoaderTests {
         #expect(cached.dimension == 2)
         #expect(cached.data == first.data)
     }
+
+    @Test func protocolErrorsRemainEnglish() {
+        #expect(
+            LUTStoreError.noFile("/tmp/missing.cube").protocolDescription
+                == "No file at path: /tmp/missing.cube"
+        )
+        #expect(
+            LUTStoreError.invalid("broken.cube").protocolDescription
+                == "Not a valid .cube 3D LUT: broken.cube"
+        )
+    }
 }

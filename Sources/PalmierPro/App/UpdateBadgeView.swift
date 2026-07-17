@@ -11,7 +11,7 @@ struct UpdateSidebarCard: View {
             } label: {
                 HStack(spacing: AppTheme.Spacing.sm) {
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
-                        Text("Click to install update")
+                        L10n.text("Click to install update")
                             .font(.system(size: AppTheme.FontSize.smMd, weight: .medium))
                             .foregroundStyle(AppTheme.Text.primaryColor)
                         Text(verbatim: updateSubtitle)
@@ -55,16 +55,20 @@ struct UpdateProjectBadge: View {
             Button {
                 updater.checkForUpdates(nil)
             } label: {
-                Label("Update", systemImage: "arrow.down.circle.fill")
-                    .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
-                    .foregroundStyle(AppTheme.Update.accent)
-                    .lineLimit(1)
-                    .padding(.horizontal, AppTheme.Spacing.smMd)
-                    .frame(height: AppTheme.IconSize.lg)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(AppTheme.Update.accent.opacity(AppTheme.Opacity.muted))
-                    )
+                Label {
+                    L10n.text("Update")
+                } icon: {
+                    Image(systemName: "arrow.down.circle.fill")
+                }
+                .font(.system(size: AppTheme.FontSize.sm, weight: .semibold))
+                .foregroundStyle(AppTheme.Update.accent)
+                .lineLimit(1)
+                .padding(.horizontal, AppTheme.Spacing.smMd)
+                .frame(height: AppTheme.IconSize.lg)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(AppTheme.Update.accent.opacity(AppTheme.Opacity.muted))
+                )
             }
             .buttonStyle(.plain)
             .help(helpText)

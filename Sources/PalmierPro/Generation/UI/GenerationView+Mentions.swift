@@ -27,7 +27,7 @@ extension GenerationView {
         let tags = matchedRefTags
         return VStack(alignment: .leading, spacing: 0) {
             if tags.isEmpty {
-                Text("No matches")
+                L10n.text("No matches")
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .padding(AppTheme.Spacing.md)
