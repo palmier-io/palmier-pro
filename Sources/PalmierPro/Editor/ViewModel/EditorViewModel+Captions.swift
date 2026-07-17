@@ -190,6 +190,7 @@ extension EditorViewModel {
     }
 
     private func transcribe(_ targets: [CaptionTarget], request: CaptionRequest) async throws -> [String: TranscriptionResult] {
+        GlossaryStore.load(projectURL: projectURL).applyBias()
         let targetClips = targets.map(\.clip)
         var seen: Set<String> = []
         let jobs: [TranscribeJob] = targets.compactMap { t in

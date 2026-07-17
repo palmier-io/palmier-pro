@@ -21,6 +21,27 @@ extension EditorViewModel {
         runCaptionResync(spans: [before, after], trigger: trigger)
     }
 
+    /// A glossary change re-derives exactly the caption clips that mention the term — global
+    /// selection, cost proportional to occurrences, never the whole timeline. §5.2
+    func resyncCaptionsForGlossaryTerm(strings: [String], trigger: String) {
+        guard shouldResync else { return }
+        let needles = strings.filter { !$0.isEmpty }
+        guard !needles.isEmpty else { return }
+        var spans: [Range<Int>] = []
+        for track in timeline.tracks {
+            for clip in track.clips where clip.mediaType == .text && clip.captionGroupId != nil {
+                guard let text = clip.textContent,
+                      needles.contains(where: { text.contains($0) }),
+                      clip.endFrame > clip.startFrame else { continue }
+                spans.append(clip.startFrame..<clip.endFrame)
+            }
+        }
+        guard !spans.isEmpty else { return }
+        undo.perform("Resync Captions (Glossary)") {
+            _ = runCaptionResync(spans: spans, trigger: trigger)
+        }
+    }
+
     private var shouldResync: Bool {
         !isResyncingCaptions
             && !undo.isUndoingOrRedoing

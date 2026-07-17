@@ -211,6 +211,7 @@ extension ToolExecutor {
 
     func getTranscript(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.getTranscriptAllowedKeys, path: "get_transcript")
+        glossaryStore(editor).applyBias()
         let clipFilter = args.string("clipId")
         let windowStart = args.int("startFrame")
         let windowEnd = args.int("endFrame")

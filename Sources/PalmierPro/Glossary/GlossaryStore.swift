@@ -134,6 +134,12 @@ struct GlossaryStore: Sendable {
         return digest.map { String(format: "%02x", $0) }.joined().prefix(16).description
     }
 
+    /// Publish this store's hotwords to the transcription engines (TranscriptionBias). Call from
+    /// project-aware paths before transcribing and after any glossary write. §4
+    func applyBias() {
+        TranscriptionBias.update(hotwords: hotwordTerms(), fingerprint: biasFingerprint())
+    }
+
     // MARK: - Per-scope reads/writes
 
     /// Read one scope's document (empty when the file is missing).

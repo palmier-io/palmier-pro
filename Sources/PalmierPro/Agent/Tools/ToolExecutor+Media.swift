@@ -67,6 +67,7 @@ extension ToolExecutor {
 
     func inspectMedia(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.inspectMediaAllowedKeys, path: "inspect_media")
+        glossaryStore(editor).applyBias()
         let mediaRef = try args.requireString("mediaRef")
         let asset = try asset(mediaRef, editor: editor)
         let url = asset.url

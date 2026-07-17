@@ -21,7 +21,7 @@ actor TranscriptCache {
                 : try await Transcription.transcribe(fileURL: url, preferredLocale: preferredLocale, sourceRange: range)
         }
         // Cache full transcripts only; windowed calls filter the cached result for consistency.
-        let key = Self.key(for: url, cacheTag: cacheTag)
+        let key = Self.key(for: url, cacheTag: cacheTag ?? TranscriptionBias.fingerprint)
         let full: TranscriptionResult
         if let key, let cached = cached(key) {
             full = cached
@@ -34,16 +34,29 @@ actor TranscriptCache {
         return range.map { Self.filter(full, to: $0) } ?? full
     }
 
+    // Read-only lookups prefer the bias-salted entry but fall back to the unsalted one, so
+    // pre-glossary transcripts stay searchable/resyncable until a biased pass supersedes them.
+    private nonisolated static var readTags: [String?] {
+        TranscriptionBias.fingerprint.map { [$0, nil] } ?? [nil]
+    }
+
     nonisolated static func hasCachedOnDisk(for url: URL) -> Bool {
-        guard let key = key(for: url) else { return false }
-        return FileManager.default.fileExists(atPath: diskURL(key).path)
+        readTags.contains { tag in
+            guard let key = key(for: url, cacheTag: tag) else { return false }
+            return FileManager.default.fileExists(atPath: diskURL(key).path)
+        }
     }
 
     /// Disk-only read
     nonisolated static func cachedOnDisk(for url: URL) -> TranscriptionResult? {
-        guard let key = key(for: url),
-              let data = try? Data(contentsOf: diskURL(key)) else { return nil }
-        return try? JSONDecoder().decode(TranscriptionResult.self, from: data)
+        for tag in readTags {
+            if let key = key(for: url, cacheTag: tag),
+               let data = try? Data(contentsOf: diskURL(key)),
+               let result = try? JSONDecoder().decode(TranscriptionResult.self, from: data) {
+                return result
+            }
+        }
+        return nil
     }
 
     static func filter(_ r: TranscriptionResult, to range: ClosedRange<Double>) -> TranscriptionResult {

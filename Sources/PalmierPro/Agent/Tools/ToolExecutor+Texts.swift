@@ -550,6 +550,8 @@ extension ToolExecutor {
         let shouldFitToContent = transform == nil && (hasContent || textStylePatch?.affectsLayout == true)
         let canvasW = Double(editor.timeline.width)
         let canvasH = Double(editor.timeline.height)
+        var promoted: [[String: Any]] = []
+        var promotedStrings: [String] = []
         editor.undo.perform(actionName) {
             editor.commitClipProperties(clipIds: clipIds) { clip in
                 if let content {
@@ -596,18 +598,24 @@ extension ToolExecutor {
                     _ = editor.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)
                 }
             }
+
+            // Auto-promote clean single-substitution caption edits into the glossary (no confirmation). §6
+            if let content {
+                for edit in captionEditsBefore {
+                    guard let promotion = GlossaryClassifier.classify(old: edit.oldContent, new: content),
+                          let row = promoteCaptionEdit(promotion, clipId: edit.clipId, editor: editor) else { continue }
+                    promoted.append(row)
+                    promotedStrings.append(contentsOf: [promotion.canonical, promotion.variant])
+                    // §5.1: the term now materialises in L1/L2, so this caption is generated again,
+                    // not an override — mark it clean or every later resync logs a false conflict.
+                    editor.commitClipProperties(clipIds: [edit.clipId]) { $0.generatedText = content }
+                }
+            }
         }
 
-        // Auto-promote clean single-substitution caption edits into the glossary (no confirmation). §6
-        var promoted: [[String: Any]] = []
-        if let content {
-            for edit in captionEditsBefore {
-                guard let promotion = GlossaryClassifier.classify(old: edit.oldContent, new: content),
-                      let row = promoteCaptionEdit(promotion, clipId: edit.clipId, editor: editor) else { continue }
-                promoted.append(row)
-                // INTEGRATION TODO (§5.1): once Clip gains `generatedText` (another branch), set it to
-                // `content` on this clip here so a later resync doesn't re-promote the same edit.
-            }
+        // §5.2: update every other caption that still shows a promoted variant.
+        if !promotedStrings.isEmpty {
+            editor.resyncCaptionsForGlossaryTerm(strings: promotedStrings, trigger: "glossary_promotion")
         }
 
         var extra: [String: Any] = [:]

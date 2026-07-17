@@ -89,6 +89,11 @@ extension ToolExecutor {
         let (added, warnings) = try upsertGlossaryTerm(term, scope: scope, editor: editor)
         var payload: [String: Any] = ["added": Self.termRow(MergedGlossaryTerm(term: added, scope: scope))]
         if !warnings.isEmpty { payload["warnings"] = warnings }
+        // §5.2: re-derive exactly the captions that still show a variant of this term.
+        if added.confidence.autoApplies {
+            editor.resyncCaptionsForGlossaryTerm(strings: [added.canonical] + added.variants, trigger: "glossary_add")
+            if let report = editor.takeResyncReport() { payload["captionResync"] = report.agentPayload }
+        }
         guard let json = Self.jsonString(payload) else { throw ToolError("glossary_add: failed to encode") }
         return .ok(json)
     }
@@ -115,6 +120,7 @@ extension ToolExecutor {
         } catch {
             throw ToolError("glossary_add: could not write \(scope.rawValue) glossary: \(error.localizedDescription)")
         }
+        glossaryStore(editor).applyBias()
         return (sanitized.term, sanitized.warnings)
     }
 
@@ -147,13 +153,21 @@ extension ToolExecutor {
             throw ToolError(error.errorDescription ?? "glossary scope unavailable")
         }
         let before = doc.terms.count
+        let removedTerms = doc.terms.filter { $0.canonical == canonical }
         doc.terms.removeAll { $0.canonical == canonical }
         let removed = doc.terms.count != before
         if removed {
             do { try GlossaryStore.write(doc, scope: scope, projectURL: editor.projectURL) }
             catch { throw ToolError("glossary_remove: could not write \(scope.rawValue) glossary: \(error.localizedDescription)") }
+            glossaryStore(editor).applyBias()
         }
-        let payload: [String: Any] = ["removed": removed, "canonical": canonical, "scope": scope.rawValue]
+        var payload: [String: Any] = ["removed": removed, "canonical": canonical, "scope": scope.rawValue]
+        // §5.2: captions showing the canonical revert to whatever the transcript now materialises.
+        if removed {
+            let strings = [canonical] + removedTerms.flatMap(\.variants)
+            editor.resyncCaptionsForGlossaryTerm(strings: strings, trigger: "glossary_remove")
+            if let report = editor.takeResyncReport() { payload["captionResync"] = report.agentPayload }
+        }
         guard let json = Self.jsonString(payload) else { throw ToolError("glossary_remove: failed to encode") }
         return .ok(json)
     }
