@@ -344,17 +344,32 @@ struct MulticamTests {
         }
         let micTrack = h.editor.multicamClips(of: groupId).first { $0.clip.mediaType == .audio }!.trackIndex
         let programTrack = h.editor.multicamClips(of: groupId).first { $0.clip.mediaType != .audio }!.trackIndex
+        let shiftingIds: Set<String> = Set(h.editor.timeline.tracks.indices.compactMap { index in
+            guard index == micTrack
+                    || (h.editor.timeline.tracks[index].syncLocked && index != programTrack)
+            else { return nil }
+            return h.editor.timeline.tracks[index].id
+        })
+        let expectedProtocolReason = h.editor.multicamAtomicityViolation(
+            shiftingTrackIds: shiftingIds,
+            localized: false
+        )
+        let expectedToastReason = h.editor.multicamAtomicityViolation(
+            shiftingTrackIds: shiftingIds,
+            localized: true
+        )
         // Unlock the program track so only the mic would shift — must refuse.
         let outcome = h.editor.rippleDeleteRangesOnTrack(
             trackIndex: micTrack, ranges: [FrameRange(start: 300, end: 400)],
-            ignoreSyncLockTrackIndices: [programTrack]
+            ignoreSyncLockTrackIndices: [programTrack],
+            localized: false
         )
         guard case .refused(let reason) = outcome else {
             Issue.record("expected refusal")
             return
         }
-        #expect(reason.localizedCaseInsensitiveContains("multicam"))
-        #expect(h.editor.mediaPanelToast?.message.localizedCaseInsensitiveContains("multicam") == true)
+        #expect(reason == expectedProtocolReason)
+        #expect(h.editor.mediaPanelToast?.message == expectedToastReason)
     }
 
     @Test func atomicRippleKeepsRelativeAlignment() throws {

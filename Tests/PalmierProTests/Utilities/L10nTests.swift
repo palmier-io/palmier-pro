@@ -4,6 +4,15 @@ import Testing
 @Suite("L10n")
 struct L10nTests {
 
+    @Test func discoversSwiftPMResourceBundleLocalization() {
+        #expect(
+            L10n.localizationBundles.contains {
+                $0.bundleURL.lastPathComponent == "Localization"
+                    && $0.localizations.contains("zh-Hans")
+            }
+        )
+    }
+
     @Test func protocolMessageBypassesBundleLocalization() {
         #expect(
             L10n.message("Downloading %d%%", localized: false, 25)

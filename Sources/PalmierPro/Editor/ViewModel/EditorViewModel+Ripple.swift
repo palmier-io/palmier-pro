@@ -195,7 +195,11 @@ extension EditorViewModel {
         localized: Bool = true
     ) -> RippleRangesOutcome {
         guard let anchorLoc = findClip(id: anchorClipId) else {
-            return .refused("Clip not found: \(anchorClipId)")
+            return .refused(L10n.message(
+                "Clip not found: %@",
+                localized: localized,
+                anchorClipId
+            ))
         }
         return rippleDeleteRangesOnTrack(
             trackIndex: anchorLoc.trackIndex,
@@ -212,13 +216,22 @@ extension EditorViewModel {
         localized: Bool = true
     ) -> RippleRangesOutcome {
         guard timeline.tracks.indices.contains(trackIndex) else {
-            return .refused("Track index out of range: \(trackIndex)")
+            return .refused(L10n.message(
+                "Track index out of range: %d",
+                localized: localized,
+                trackIndex
+            ))
         }
         let ignoredTrackIds = Set(ignoreSyncLockTrackIndices.compactMap {
             timeline.tracks.indices.contains($0) ? timeline.tracks[$0].id : nil
         })
         let merged = RippleEngine.mergeRanges(ranges.filter { $0.length > 0 })
-        guard !merged.isEmpty else { return .refused("No non-empty ranges to delete") }
+        guard !merged.isEmpty else {
+            return .refused(L10n.message(
+                "No non-empty ranges to delete",
+                localized: localized
+            ))
+        }
         let totalRemoved = merged.reduce(0) { $0 + $1.length }
 
         let anchorTrackId = timeline.tracks[trackIndex].id
@@ -251,7 +264,13 @@ extension EditorViewModel {
             shiftingTrackIds: shiftingIds,
             localized: localized
         ) {
-            mediaPanelToast = MediaPanelToast(stringLiteral: reason)
+            let toastReason = localized
+                ? reason
+                : multicamAtomicityViolation(
+                    shiftingTrackIds: shiftingIds,
+                    localized: true
+                ) ?? reason
+            mediaPanelToast = MediaPanelToast(stringLiteral: toastReason)
             return .refused(reason)
         }
 

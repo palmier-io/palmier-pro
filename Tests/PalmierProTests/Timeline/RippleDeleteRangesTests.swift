@@ -21,6 +21,40 @@ private func spans(_ track: Track) -> [[Int]] {
 @MainActor
 struct RippleDeleteRangesTests {
 
+    @Test func earlyRefusalsHonorLocalizedBoundary() {
+        let empty = editor([])
+        guard case .refused(let missingLocalized) = empty.rippleDeleteRanges(
+            anchorClipId: "missing",
+            ranges: [],
+            localized: true
+        ), case .refused(let missingProtocol) = empty.rippleDeleteRanges(
+            anchorClipId: "missing",
+            ranges: [],
+            localized: false
+        ) else {
+            Issue.record("expected missing clip refusals")
+            return
+        }
+        #expect(missingLocalized == L10n.message("Clip not found: %@", localized: true, "missing"))
+        #expect(missingProtocol == "Clip not found: missing")
+
+        let e = editor([Fixtures.videoTrack()])
+        guard case .refused(let invalidTrack) = e.rippleDeleteRangesOnTrack(
+            trackIndex: 1,
+            ranges: [],
+            localized: false
+        ), case .refused(let emptyRanges) = e.rippleDeleteRangesOnTrack(
+            trackIndex: 0,
+            ranges: [],
+            localized: false
+        ) else {
+            Issue.record("expected invalid range refusals")
+            return
+        }
+        #expect(invalidTrack == "Track index out of range: 1")
+        #expect(emptyRanges == "No non-empty ranges to delete")
+    }
+
     @Test func cutsMidClipAndClosesGap() {
         // [0,100), remove [40,50): head [0,40) stays, tail slides left by 10 to meet it.
         let e = editor([Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 100)])])
