@@ -10,6 +10,12 @@ enum L10n {
         String(format: string(key), locale: Locale.current, arguments: arguments)
     }
 
+    static func message(_ key: String, localized: Bool, _ arguments: CVarArg...) -> String {
+        let format = localized ? string(key) : key
+        let locale = localized ? Locale.current : Locale(identifier: "en_US_POSIX")
+        return String(format: format, locale: locale, arguments: arguments)
+    }
+
     static func text(_ key: String) -> Text {
         Text(LocalizedStringKey(key))
     }

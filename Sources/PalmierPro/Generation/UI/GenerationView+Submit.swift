@@ -188,16 +188,24 @@ extension GenerationView {
             let inputAssets = videoInputAssets(for: videoModel)
             let modelError: String?
             if videoModel.requiresSourceVideo {
-                modelError = videoModel.validateSourceDuration(effectiveSourceVideoSeconds)
-                    ?? videoModel.validate(duration: 0, aspectRatio: "", resolution: nil)
+                modelError = videoModel.validateSourceDuration(
+                    effectiveSourceVideoSeconds,
+                    localized: true
+                ) ?? videoModel.validate(
+                    duration: 0,
+                    aspectRatio: "",
+                    resolution: nil,
+                    localized: true
+                )
             } else {
                 modelError = videoModel.validate(
                     duration: selectedDuration,
                     aspectRatio: selectedAspectRatio,
-                    resolution: effectiveResolution
+                    resolution: effectiveResolution,
+                    localized: true
                 )
             }
-            return modelError ?? inputAssets.validate(for: videoModel)
+            return modelError ?? inputAssets.validate(for: videoModel, localized: true)
         case .image:
             let quality = imageModel.qualities != nil ? selectedQuality : nil
             let imageCount = imageModel.maxImages > 1
@@ -207,17 +215,24 @@ extension GenerationView {
                 resolution: effectiveResolution,
                 quality: quality,
                 imageRefCount: imageReferences.count,
-                numImages: imageCount
+                numImages: imageCount,
+                localized: true
             )
         case .audio:
             let inputAssets = audioInputAssets(for: audioModel)
             if audioUsesSource {
                 guard audioSource != nil else { return L10n.string("Add source media.") }
-                return audioModel.validate(spanSeconds: effectiveAudioSourceSpanSeconds)
-                    ?? audioModel.validate(params: audioParams(audioDuration: audioDuration))
+                return audioModel.validate(spanSeconds: effectiveAudioSourceSpanSeconds, localized: true)
+                    ?? audioModel.validate(
+                        params: audioParams(audioDuration: audioDuration),
+                        localized: true
+                    )
             }
-            return audioModel.validate(params: audioParams(audioDuration: audioDuration))
-                ?? inputAssets.validate(for: audioModel)
+            return audioModel.validate(
+                params: audioParams(audioDuration: audioDuration),
+                localized: true
+            )
+                ?? inputAssets.validate(for: audioModel, localized: true)
         case .upscale:
             guard let source = upscaleSource else { return L10n.string("Add source media.") }
             guard upscaleModel.supportedTypes.contains(source.type) else {

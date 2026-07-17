@@ -69,7 +69,7 @@ const sourcePatterns = [
     new RegExp(`\\b(?:NSMenu|NSMenuItem)\\s*\\(\\s*title:\\s*\"${literalBody}\"`, "g"),
     new RegExp(`\\baddItem\\s*\\(\\s*withTitle:\\s*\"${literalBody}\"`, "g"),
     new RegExp(`\\bsetActionName\\s*\\(\\s*\"${literalBody}\"`, "g"),
-    new RegExp(`\\bL10n\\.(?:string|text|format)\\s*\\(\\s*\"${literalBody}\"`, "g"),
+    new RegExp(`\\bL10n\\.(?:string|text|format|message)\\s*\\(\\s*\"${literalBody}\"`, "g"),
     new RegExp(`\\b(?:panel|window|alert)\\.title\\s*=\\s*\"${literalBody}\"`, "g"),
     new RegExp(`\\bcontent\\.(?:title|body)\\s*=\\s*\"${literalBody}\"`, "g"),
     new RegExp(`\\bpanel\\.message\\s*=\\s*\"${literalBody}\"`, "g"),
@@ -270,9 +270,14 @@ const sourceGuards = [
     },
     {
         file: path.join(sourceRoot, "MediaPanel", "MediaTab", "MediaTab+IndexStatus.swift"),
-        required: "L10n.text(label)",
-        forbidden: "Text(verbatim: label)",
-        error: "媒体索引状态标签必须通过 L10n 显示，不能按原文直出",
+        required: "Text(verbatim: formattedLabel)",
+        forbidden: "L10n.text(formattedLabel)",
+        error: "媒体索引动态进度已完成格式化，显示层不能再次把结果当作词典键",
+    },
+    {
+        file: path.join(sourceRoot, "MediaPanel", "MediaTab", "MediaTab+IndexStatus.swift"),
+        required: "statusIndicator(L10n.string(\"Preparing…\")",
+        error: "媒体索引静态状态必须先本地化，再进入统一的动态状态显示层",
     },
     {
         file: path.join(sourceRoot, "Editor", "EditorUndo.swift"),
@@ -303,6 +308,78 @@ const sourceGuards = [
         required: "Text(verbatim: promptPlaceholder)",
         forbidden: "L10n.text(promptPlaceholder)",
         error: "生成提示占位符已完成本地化，显示层不能再次当作词典键解析",
+    },
+    {
+        file: path.join(sourceRoot, "Generation", "UI", "GenerationView+References.swift"),
+        required: "flashDropError(L10n.string(\"Drop image here.\"))",
+        forbidden: "flashDropError(\"Drop image here.\")",
+        error: "图片参考拖放类型错误必须显示本地化提示",
+    },
+    {
+        file: path.join(sourceRoot, "Editor", "ViewModel", "EditorViewModel+Sync.swift"),
+        required: "return \"Clip not found.\"",
+        forbidden: "return L10n.string(\"Clip not found.\")",
+        error: "同步报告由 UI 与 Agent 共用，底层失败原因必须保持一致的英文协议",
+    },
+    {
+        file: path.join(sourceRoot, "UI", "L10n.swift"),
+        required: "static func message(_ key: String, localized: Bool",
+        error: "共享校验必须显式区分界面本地化文案与稳定英文协议",
+    },
+    {
+        file: path.join(sourceRoot, "Editor", "ViewModel", "EditorViewModel+Nesting.swift"),
+        required: "func nestBlockReason(childId: String, localized: Bool = false)",
+        error: "嵌套校验默认必须返回稳定英文，仅由界面调用方显式请求本地化",
+    },
+    {
+        file: path.join(sourceRoot, "Editor", "ViewModel", "EditorViewModel+Nesting.swift"),
+        required: "nestBlockReason(childId: childId, localized: true)",
+        error: "嵌套界面提示必须显式请求本地化",
+    },
+    {
+        file: path.join(sourceRoot, "Editor", "ViewModel", "EditorViewModel+Multicam.swift"),
+        required: "localized: Bool = false",
+        error: "多机位移动校验默认必须返回稳定英文协议",
+    },
+    {
+        file: path.join(sourceRoot, "Generation", "Submission", "VideoGenerationSubmission.swift"),
+        required: "func validate(for model: VideoModelConfig, localized: Bool = false)",
+        error: "生成引用校验默认必须返回稳定英文协议",
+    },
+    {
+        file: path.join(sourceRoot, "Generation", "UI", "GenerationView+Submit.swift"),
+        required: "inputAssets.validate(for: videoModel, localized: true)",
+        error: "生成界面必须显式请求本地化校验文案",
+    },
+    {
+        file: path.join(sourceRoot, "Agent", "Tools", "ToolExecutor+Generate.swift"),
+        forbidden: "localized: true",
+        error: "Agent 生成工具不能请求界面语言校验文案",
+    },
+    {
+        file: path.join(sourceRoot, "Generation", "Catalog", "VideoModelConfig.swift"),
+        required: "localized: Bool = false",
+        error: "视频模型校验默认必须保持英文协议",
+    },
+    {
+        file: path.join(sourceRoot, "Generation", "Catalog", "ImageModelConfig.swift"),
+        required: "localized: Bool = false",
+        error: "图片模型校验默认必须保持英文协议",
+    },
+    {
+        file: path.join(sourceRoot, "Generation", "Catalog", "AudioModelConfig.swift"),
+        required: "func validate(params: AudioGenerationParams, localized: Bool = false)",
+        error: "音频模型校验默认必须保持英文协议",
+    },
+    {
+        file: path.join(sourceRoot, "Agent", "Tools", "ToolExecutor+Clips.swift"),
+        required: "localized: false",
+        error: "Agent 波纹编辑拒绝原因必须保持稳定英文协议",
+    },
+    {
+        file: path.join(sourceRoot, "Agent", "Tools", "ToolExecutor+Words.swift"),
+        required: "removeAllDeadAir(localized: false)",
+        error: "Agent 静音移除拒绝原因必须保持稳定英文协议",
     },
     {
         file: path.join(sourceRoot, "Account", "AccountService.swift"),

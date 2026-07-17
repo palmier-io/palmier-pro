@@ -47,24 +47,59 @@ struct ImageModelConfig: Identifiable, Sendable {
     var supportsImageReference: Bool { caps.supportsImageReference }
     var maxImages: Int { max(1, min(4, caps.maxImages)) }
 
-    func validate(aspectRatio: String, resolution: String?, quality: String?, imageRefCount: Int, numImages: Int) -> String? {
+    func validate(
+        aspectRatio: String,
+        resolution: String?,
+        quality: String?,
+        imageRefCount: Int,
+        numImages: Int,
+        localized: Bool = false
+    ) -> String? {
         if !aspectRatios.isEmpty, !aspectRatio.isEmpty, !aspectRatios.contains(aspectRatio) {
-            return unsupportedValue(model: displayName, field: "aspect ratio", value: aspectRatio, allowed: aspectRatios)
+            return unsupportedValue(
+                model: displayName,
+                field: "aspect ratio",
+                value: aspectRatio,
+                allowed: aspectRatios,
+                localized: localized
+            )
         }
         if let allowed = resolutions, let r = resolution, !r.isEmpty, !allowed.contains(r) {
-            return unsupportedValue(model: displayName, field: "resolution", value: r, allowed: allowed)
+            return unsupportedValue(
+                model: displayName,
+                field: "resolution",
+                value: r,
+                allowed: allowed,
+                localized: localized
+            )
         }
         if let allowed = qualities, let q = quality, !q.isEmpty, !allowed.contains(q) {
-            return unsupportedValue(model: displayName, field: "quality", value: q, allowed: allowed)
+            return unsupportedValue(
+                model: displayName,
+                field: "quality",
+                value: q,
+                allowed: allowed,
+                localized: localized
+            )
         }
         if imageRefCount > 0, !supportsImageReference {
-            return L10n.format("%@ does not accept reference images.", displayName)
+            return L10n.message(
+                "%@ does not accept reference images.",
+                localized: localized,
+                displayName
+            )
         }
         if numImages < 1 || numImages > maxImages {
             return maxImages == 1
-                ? L10n.format("%@ supports 1 image per request (got %d).", displayName, numImages)
-                : L10n.format(
+                ? L10n.message(
+                    "%@ supports 1 image per request (got %d).",
+                    localized: localized,
+                    displayName,
+                    numImages
+                )
+                : L10n.message(
                     "%@ supports 1…%d images per request (got %d).",
+                    localized: localized,
                     displayName,
                     maxImages,
                     numImages

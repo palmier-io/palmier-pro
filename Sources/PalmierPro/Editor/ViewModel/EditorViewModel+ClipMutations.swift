@@ -56,7 +56,10 @@ extension EditorViewModel {
         }
         guard !clipInfos.isEmpty else { return }
 
-        if let reason = multicamMoveViolation(moves: clipInfos.map { ($0.clip.id, $0.toTrack, $0.toFrame) }) {
+        if let reason = multicamMoveViolation(
+            moves: clipInfos.map { ($0.clip.id, $0.toTrack, $0.toFrame) },
+            localized: true
+        ) {
             refuseWithToast(reason)
             return
         }

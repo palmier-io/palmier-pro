@@ -1013,6 +1013,7 @@
 "Exporting" = "正在导出";
 "No exports yet" = "暂无导出任务";
 "Preparing" = "准备中";
+"Preparing…" = "准备中…";
 "Remove from Queue" = "从队列移除";
 "Waiting" = "等待中";
 

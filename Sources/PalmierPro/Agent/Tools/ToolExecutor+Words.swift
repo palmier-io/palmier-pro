@@ -104,7 +104,11 @@ extension ToolExecutor {
 
         let snapshot = timelineSnapshot(editor)
         let outcome = editor.undo.perform("Remove Words (Agent)") {
-            editor.rippleDeleteRangesOnTrack(trackIndex: primaryTrack, ranges: primaryRanges)
+            editor.rippleDeleteRangesOnTrack(
+                trackIndex: primaryTrack,
+                ranges: primaryRanges,
+                localized: false
+            )
         }
         guard case .ok(let report) = outcome else {
             if case .refused(let reason) = outcome { throw ToolError("Ripple delete refused: \(reason)") }
@@ -154,9 +158,13 @@ extension ToolExecutor {
         do {
             result = try editor.undo.perform("Remove Silence (Agent)") {
                 if let clipIds {
-                    try editor.removeDeadAir(clipIds: clipIds, settings: settings)
+                    try editor.removeDeadAir(
+                        clipIds: clipIds,
+                        settings: settings,
+                        localized: false
+                    )
                 } else {
-                    editor.removeAllDeadAir(settings: settings)
+                    editor.removeAllDeadAir(settings: settings, localized: false)
                 }
             }
         } catch let error as DeadAirSelectionError {

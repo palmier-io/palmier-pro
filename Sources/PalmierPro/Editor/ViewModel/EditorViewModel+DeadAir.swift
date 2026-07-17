@@ -106,7 +106,8 @@ extension EditorViewModel {
     @discardableResult
     func removeDeadAir(
         clipIds: [String],
-        settings: SilenceRemovalSettings
+        settings: SilenceRemovalSettings,
+        localized: Bool = true
     ) throws -> (sections: Int, removedFrames: Int, refusal: String?)? {
         let targets = clipIds.compactMap { id -> (trackIndex: Int, clip: Clip)? in
             guard let loc = findClip(id: id) else { return nil }
@@ -139,7 +140,11 @@ extension EditorViewModel {
         )
         guard !ranges.isEmpty else { return nil }
         return undo.perform("Remove Dead Air") {
-            switch rippleDeleteRangesOnTrack(trackIndex: anchorTrackIndex, ranges: ranges) {
+            switch rippleDeleteRangesOnTrack(
+                trackIndex: anchorTrackIndex,
+                ranges: ranges,
+                localized: localized
+            ) {
             case .ok(let report):
                 return (ranges.count, report.removedFrames, nil)
             case .refused(let reason):
@@ -153,7 +158,8 @@ extension EditorViewModel {
     /// Ripples dead air per-track, updating ranges between passes. Stops if a track refuses.
     @discardableResult
     func removeAllDeadAir(
-        settings: SilenceRemovalSettings? = nil
+        settings: SilenceRemovalSettings? = nil,
+        localized: Bool = true
     ) -> (sections: Int, removedFrames: Int, refusal: String?)? {
         let effectiveSettings = settings ?? silenceRemovalSettings
         return undo.perform("Remove Dead Air") { () -> (sections: Int, removedFrames: Int, refusal: String?)? in
@@ -162,7 +168,11 @@ extension EditorViewModel {
             var refusal: String?
             for _ in timeline.tracks.indices {
                 guard let next = allDeadAir(settings: effectiveSettings).first else { break }
-                switch rippleDeleteRangesOnTrack(trackIndex: next.trackIndex, ranges: next.ranges) {
+                switch rippleDeleteRangesOnTrack(
+                    trackIndex: next.trackIndex,
+                    ranges: next.ranges,
+                    localized: localized
+                ) {
                 case .ok(let report):
                     sections += next.ranges.count
                     removedFrames += report.removedFrames

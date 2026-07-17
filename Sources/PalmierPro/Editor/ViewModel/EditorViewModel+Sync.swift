@@ -218,7 +218,7 @@ extension EditorViewModel {
             return liveClip(clipId)?.durationFrames ?? 0
         }
         func queueMove(of clipId: String, toFrame rawStart: Int) -> String? {
-            guard let loc = findClip(id: clipId) else { return L10n.string("Clip not found.") }
+            guard let loc = findClip(id: clipId) else { return "Clip not found." }
             let delta = rawStart - timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame
             var moves = [(clipId: clipId, toTrack: loc.trackIndex, toFrame: rawStart)]
             // Include all linked partners, regardless of current positions, to avoid splitting pairs when shifting.

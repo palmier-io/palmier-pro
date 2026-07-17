@@ -27,7 +27,7 @@ private struct MediaSearchIndexStatus: View {
                             help: "Downloading the on-device model that powers visual search.",
                             progress: fraction)
         case .preparing:
-            statusIndicator("Preparing…", help: "Getting the search model ready.")
+            statusIndicator(L10n.string("Preparing…"), help: "Getting the search model ready.")
         case .ready where search.indexingActive:
             statusIndicator(L10n.format(
                                 "Indexing %d/%d",
@@ -65,14 +65,18 @@ private struct MediaSearchIndexStatus: View {
         .buttonStyle(.plain)
     }
 
-    private func statusIndicator(_ label: String, help: String, progress: Double? = nil) -> some View {
+    private func statusIndicator(
+        _ formattedLabel: String,
+        help: String,
+        progress: Double? = nil
+    ) -> some View {
         HStack(spacing: AppTheme.Spacing.xs) {
             if let progress {
                 progressRing(progress)
             } else {
                 ProgressView().controlSize(.mini)
             }
-            L10n.text(label)
+            Text(verbatim: formattedLabel)
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
         }
