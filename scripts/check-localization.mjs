@@ -280,6 +280,24 @@ const sourceGuards = [
         error: "撤销菜单可以本地化，但 Agent 工具必须保留稳定的英文动作名",
     },
     {
+        file: path.join(sourceRoot, "Account", "AccountService.swift"),
+        required: "case .pro: return \"Pro plan\"",
+        forbidden: "return L10n.string(\"Pro plan\")",
+        error: "套餐属性必须返回稳定词典键，只能由 UI 消费端本地化一次",
+    },
+    {
+        file: path.join(sourceRoot, "Utilities", "Constants.swift"),
+        required: "case .default: \"Default\"",
+        forbidden: "case .default: L10n.string(\"Default\")",
+        error: "布局属性必须返回稳定词典键，只能由菜单消费端本地化一次",
+    },
+    {
+        file: path.join(sourceRoot, "Generation", "Submission", "VideoGenerationSubmission.swift"),
+        required: "L10n.string(expected.trackLabel)",
+        forbidden: "expected.rawValue",
+        error: "生成引用类型错误必须显示本地化类型名，不能直出小写 raw value",
+    },
+    {
         file: path.join(sourceRoot, "Agent", "Panel", "MentionPopover.swift"),
         required: "L10n.text(asset.type.trackLabel)",
         error: "媒体类型必须通过标题形式的本地化键显示，不能直接使用小写 rawValue",

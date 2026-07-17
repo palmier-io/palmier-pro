@@ -12,17 +12,17 @@ enum AccountTier: String, Decodable, Sendable {
 
     var planLabel: String {
         switch self {
-        case .none: return L10n.string("Free")
-        case .pro: return L10n.string("Pro plan")
-        case .max: return L10n.string("Max plan")
+        case .none: return "Free"
+        case .pro: return "Pro plan"
+        case .max: return "Max plan"
         }
     }
 
     var upgradeLabel: String {
         switch self {
         case .none: return ""
-        case .pro: return L10n.string("Pro")
-        case .max: return L10n.string("Max")
+        case .pro: return "Pro"
+        case .max: return "Max"
         }
     }
 }

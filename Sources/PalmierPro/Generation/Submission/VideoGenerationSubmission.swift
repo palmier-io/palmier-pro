@@ -261,7 +261,7 @@ struct VideoGenerationSubmission {
                         "%@ entry '%@' must be a %@ asset",
                         label,
                         asset.id,
-                        expected.rawValue
+                        L10n.string(expected.trackLabel)
                     )
                 }
             }
