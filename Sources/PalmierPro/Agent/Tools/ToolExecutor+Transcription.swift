@@ -288,9 +288,11 @@ extension ToolExecutor {
             registry: registry, assignments: assignments
         )
 
+        // Materialise L1 corrections at read time — raw cached transcripts stay untouched.
+        let corrector = glossaryCorrector(editor)
         var words: [TimelineWord] = []
         for frag in fragments.sorted(by: { $0.clip.startFrame < $1.clip.startFrame }) {
-            guard let transcript = transcripts.results[frag.url] else { continue }
+            guard let transcript = transcripts.results[frag.url]?.applyingGlossary(corrector) else { continue }
             for row in timelineRows(from: transcript, clip: frag.clip, fps: fps) {
                 words.append(TimelineWord(
                     index: words.count,

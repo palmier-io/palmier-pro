@@ -9,19 +9,52 @@ enum TranscriptSearch {
         let text: String
     }
 
-    static func search(query: String, assets: [(id: String, url: URL)], limit: Int = 20) -> [Hit] {
+    /// Dual-layer search: a query hits if it matches the RAW segment text OR the glossary-CORRECTED
+    /// text, so both the mis-heard spelling and the canonical stay findable. Corrected/canonical hits
+    /// rank above raw-only hits. Passing no corrector (or an empty one) searches raw text only.
+    static func search(
+        query: String,
+        assets: [(id: String, url: URL)],
+        limit: Int = 20,
+        corrector: GlossaryCorrector? = nil
+    ) -> [Hit] {
+        rank(
+            query: query,
+            transcripts: assets.compactMap { asset in
+                TranscriptCache.cachedOnDisk(for: asset.url).map { (asset.id, $0) }
+            },
+            limit: limit,
+            corrector: corrector
+        )
+    }
+
+    /// The disk-independent ranking core: a query hits if it matches the RAW segment text OR the
+    /// glossary-CORRECTED text, so both the mis-heard spelling and the canonical stay findable.
+    /// Corrected/canonical hits rank above raw-only hits.
+    static func rank(
+        query: String,
+        transcripts: [(assetID: String, transcript: TranscriptionResult)],
+        limit: Int = 20,
+        corrector: GlossaryCorrector? = nil
+    ) -> [Hit] {
         let terms = terms(in: query)
         guard !terms.isEmpty else { return [] }
 
-        var hits: [Hit] = []
-        for asset in assets {
-            guard let transcript = TranscriptCache.cachedOnDisk(for: asset.url) else { continue }
-            for segment in transcript.segments where matches(segment.text, terms: terms) {
-                hits.append(Hit(assetID: asset.id, start: segment.start, end: segment.end, text: segment.text))
-                if hits.count >= limit { return hits }
+        var corrected: [Hit] = []   // matched the canonical/corrected layer — ranked first
+        var rawOnly: [Hit] = []     // matched only the raw transcript
+        for (assetID, transcript) in transcripts {
+            for segment in transcript.segments {
+                let correctedText = corrector.map { $0.isEmpty ? segment.text : $0.correct(segment.text) } ?? segment.text
+                let hitsCorrected = correctedText != segment.text && matches(correctedText, terms: terms)
+                let hitsRaw = matches(segment.text, terms: terms)
+                if hitsCorrected {
+                    corrected.append(Hit(assetID: assetID, start: segment.start, end: segment.end, text: correctedText))
+                } else if hitsRaw {
+                    rawOnly.append(Hit(assetID: assetID, start: segment.start, end: segment.end, text: segment.text))
+                }
             }
         }
-        return hits
+        return Array((corrected + rawOnly).prefix(limit))
     }
 
     /// Query split into words, edge punctuation stripped (so "budget," → "budget").

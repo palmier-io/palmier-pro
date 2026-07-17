@@ -51,6 +51,12 @@ enum ToolName: String, CaseIterable, Sendable {
     case updateText = "update_text"
     case addCaptions = "add_captions"
 
+    // Glossary (L1 transcript correction layer)
+    case glossaryList = "glossary_list"
+    case glossaryAdd = "glossary_add"
+    case glossaryRemove = "glossary_remove"
+    case glossaryApply = "glossary_apply"
+
     // Color & effects
     case applyColor = "apply_color"
     case applyEffect = "apply_effect"
@@ -749,6 +755,7 @@ enum ToolDefinitions {
                         "description": "Partial text-box transform; omitted fields keep current values.",
                         "properties": textBoxTransformProperties(),
                     ],
+                    "origin": ["type": "string", "enum": ["user", "resync"], "description": "Optional. Default 'user'. A user content edit that fixes one mis-transcribed term may be auto-promoted into the glossary; pass 'resync' for programmatic caption rewrites to suppress that."],
                 ], textStyleProperties(detailed: true), [
                     "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Animation preset; off clears."],
                     "highlightColor": ["type": "string", "description": "Active-word hex."],
@@ -776,6 +783,54 @@ enum ToolDefinitions {
                     "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Caption animation preset."],
                     "highlightColor": ["type": "string", "description": "Active-word hex."],
                 ])
+            )
+        ),
+        AgentTool(
+            name: .glossaryList,
+            description: "List the project's transcript-correction glossary — the canonical spellings of names, places, shops, dishes, and brands and the ASR mis-hearings (variants) that get rewritten to them at read time. Corrections never touch the stored raw transcript; they are applied when get_transcript, inspect_media, add_captions, and spoken search read it. Returns each term merged across three layers (global → library → project, later wins) with the layer it came from, its variants, confidence, and provenance. verified/declared/asserted terms auto-apply; inferred terms are suggestions only (shown but never applied). Filter by scope or confidence.",
+            inputSchema: objectSchema(
+                properties: [
+                    "scope": ["type": "string", "enum": GlossaryScope.allCases.map(\.rawValue), "description": "Optional. Show only terms whose winning layer is this scope."],
+                    "confidence": ["type": "string", "enum": GlossaryConfidence.allCases.map(\.rawValue), "description": "Optional. Show only terms at this confidence."],
+                ]
+            )
+        ),
+        AgentTool(
+            name: .glossaryAdd,
+            description: "Add or update a glossary term so future transcript reads rewrite the mis-heard variants to the canonical spelling. Use when you learn the correct spelling of a proper noun (from a sign in a frame, the user, or a fixed caption) and the transcript keeps getting it wrong. canonical is required; variants are the exact mis-hearings to rewrite (a term with no variants is bias-only — it nudges transcription but performs no find/replace). Unsafe variants are rejected and reported: shorter than 2 CJK characters or 3 Latin characters (they would corrupt longer words). Matching is longest-first on token/word boundaries, so a variant never fires inside a larger known term. lang is a bias hint, not a hard filter. Defaults to project scope. Adding the same canonical again replaces that term in the target scope.",
+            inputSchema: objectSchema(
+                properties: [
+                    "canonical": ["type": "string", "description": "The correct spelling everything rewrites to."],
+                    "variants": ["type": "array", "items": ["type": "string"], "description": "Exact mis-heard spellings to rewrite to canonical. Omit for a bias-only entry."],
+                    "lang": ["type": "string", "description": "Optional BCP-47 language hint (e.g. 'zh', 'en'). A hint for biasing, not a hard filter."],
+                    "type": ["type": "string", "enum": GlossaryTermType.allCases.map(\.rawValue), "description": "Optional category: person, place, shop, brand, dish, other."],
+                    "provenance": ["type": "string", "description": "Where this came from, e.g. 'frame:<mediaRef>@<sec>', 'user', 'auto:caption-edit@<clipId>', 'inferred'."],
+                    "confidence": ["type": "string", "enum": GlossaryConfidence.allCases.map(\.rawValue), "description": "verified/declared/asserted auto-apply during materialisation; inferred is a suggestion only. Defaults to declared."],
+                    "note": ["type": "string", "description": "Optional free-form note for review."],
+                    "scope": ["type": "string", "enum": GlossaryScope.allCases.map(\.rawValue), "description": "Which layer to write. Default project. global and library persist across projects."],
+                ],
+                required: ["canonical"]
+            )
+        ),
+        AgentTool(
+            name: .glossaryRemove,
+            description: "Remove a glossary term by its canonical spelling from one scope (default project). Use to undo a wrong auto-promotion or a stale correction. Only the named scope's copy is removed; a same-canonical term in another layer still applies.",
+            inputSchema: objectSchema(
+                properties: [
+                    "canonical": ["type": "string", "description": "Canonical spelling of the term to remove."],
+                    "scope": ["type": "string", "enum": GlossaryScope.allCases.map(\.rawValue), "description": "Which layer to remove from. Default project."],
+                ],
+                required: ["canonical"]
+            )
+        ),
+        AgentTool(
+            name: .glossaryApply,
+            description: "Retrofit the glossary onto already-cached transcripts and report what would change. Materialisation is read-time, so this is mainly a diff preview: it recomputes the corrected view of the project's cached transcripts and reports how many segments change plus a sample. dryRun (default true) only reports; dryRun:false additionally drops in-memory transcript caches so the next read rebuilds the corrected view (the raw cached transcripts on disk stay raw). inferred terms are listed as suggestions and never applied.",
+            inputSchema: objectSchema(
+                properties: [
+                    "dryRun": ["type": "boolean", "description": "Default true. Report only. false also invalidates in-memory transcript caches."],
+                    "confidence": ["type": "string", "enum": GlossaryConfidence.allCases.map(\.rawValue), "description": "Optional. Preview only terms at this confidence (still excludes inferred from application)."],
+                ]
             )
         ),
         AgentTool(
