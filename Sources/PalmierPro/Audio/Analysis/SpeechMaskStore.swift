@@ -27,8 +27,16 @@ final class SpeechMaskStore {
                 let analysis = try await VoiceActivity.analysis(for: url, mediaRef: key)
                 mask = analysis.mask
                 Log.preview.notice("vad ok mediaRef=\(key) segments=\(analysis.segments.count) chunks=\(analysis.chunkCount)")
+            } catch is CancellationError {
             } catch {
-                Log.preview.error("vad failed mediaRef=\(key): \(Log.detail(error))")
+                if VoiceActivity.isDamagedMedia(error) {
+                    Log.preview.error(
+                        "vad failed mediaRef=\(key): \(Log.detail(error))",
+                        telemetry: "VAD media decode failed"
+                    )
+                } else {
+                    Log.preview.info("vad unavailable mediaRef=\(key): \(Log.detail(error))")
+                }
             }
             guard let self else { return }
             await MainActor.run { [self] in

@@ -39,13 +39,14 @@ enum VoiceActivity {
         #if BUNDLED_SPEECH
         try await pipelineGate.wait()
         defer { Task { await pipelineGate.signal() } }
-        let samples = try await AudioTrackReader.readMonoFloats(from: sourceURL, sampleRate: Double(sampleRate))
-        let analysis = try await modelBox.analyze(samples: samples)
-        let outputURL = analysisURL(for: sourceURL, mediaRef: mediaRef)
-        removeStaleCaches(for: mediaRef, keeping: outputURL)
-        if let data = try? JSONEncoder().encode(analysis) {
-            try? data.write(to: outputURL)
+        let samples: [Float]
+        do {
+            samples = try await AudioTrackReader.readMonoFloats(from: sourceURL, sampleRate: Double(sampleRate))
+        } catch AudioTrackReader.ReadError.noAudioTrack(_) {
+            return cacheNoAudioAnalysis(for: sourceURL, mediaRef: mediaRef)
         }
+        let analysis = try await modelBox.analyze(samples: samples)
+        cache(analysis, for: sourceURL, mediaRef: mediaRef)
         return analysis
         #else
         throw MLXRuntime.Unavailable()
@@ -58,6 +59,7 @@ enum VoiceActivity {
     /// Silero is not thread-safe; the actor serializes model use.
     private actor ModelBox {
         private var model: SileroVADModel?
+        private var modelLoadFailure: (any Error)?
 
         func analyze(samples: [Float]) async throws -> Analysis {
             guard !samples.isEmpty else { return Analysis(chunkCount: 0, segments: []) }
@@ -69,7 +71,15 @@ enum VoiceActivity {
             if let model {
                 vad = model
             } else {
-                vad = try await SileroVADModel.fromPretrained(engine: .mlx)
+                if let modelLoadFailure { throw modelLoadFailure }
+                do {
+                    vad = try await SileroVADModel.fromPretrained(engine: .mlx)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    modelLoadFailure = error
+                    throw error
+                }
                 model = vad
             }
             let chunkCount = (samples.count + SileroVADModel.chunkSize - 1) / SileroVADModel.chunkSize
@@ -111,6 +121,32 @@ enum VoiceActivity {
     static func cachedAnalysis(for sourceURL: URL, mediaRef: String) -> Analysis? {
         guard let data = try? Data(contentsOf: analysisURL(for: sourceURL, mediaRef: mediaRef)) else { return nil }
         return try? JSONDecoder().decode(Analysis.self, from: data)
+    }
+
+    static func isDamagedMedia(_ error: Error) -> Bool {
+        let nsError: NSError
+        if let readError = error as? AudioTrackReader.ReadError,
+           case .readFailed(_, let underlying) = readError,
+           let underlying {
+            nsError = underlying
+        } else {
+            nsError = error as NSError
+        }
+        return nsError.domain == AVFoundationErrorDomain && nsError.code == -11829
+    }
+
+    private static func cache(_ analysis: Analysis, for sourceURL: URL, mediaRef: String) {
+        let outputURL = analysisURL(for: sourceURL, mediaRef: mediaRef)
+        removeStaleCaches(for: mediaRef, keeping: outputURL)
+        if let data = try? JSONEncoder().encode(analysis) {
+            try? data.write(to: outputURL)
+        }
+    }
+
+    static func cacheNoAudioAnalysis(for sourceURL: URL, mediaRef: String) -> Analysis {
+        let analysis = Analysis(chunkCount: 0, segments: [])
+        cache(analysis, for: sourceURL, mediaRef: mediaRef)
+        return analysis
     }
 
     private static func analysisURL(for sourceURL: URL, mediaRef: String) -> URL {
