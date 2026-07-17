@@ -55,10 +55,6 @@ extension EditorViewModel {
         commitClipProperty(clipId: clipId, actionName: "Delete Keyframe") { $0.removeKeyframe(for: property, at: frame) }
     }
 
-    func clearAnimation(clipId: String, property: AnimatableProperty) {
-        commitClipProperty(clipId: clipId, actionName: "Clear Animation") { $0.clearKeyframes(for: property) }
-    }
-
     func setInterpolation(clipId: String, property: AnimatableProperty, frame: Int, interpolation: Interpolation) {
         commitClipProperty(clipId: clipId, actionName: "Change Interpolation") { $0.setInterpolation(for: property, atFrame: frame, interpolation) }
     }
@@ -144,18 +140,8 @@ extension EditorViewModel {
         }
     }
 
-    func applyPosition(clipId: String, setX: Double?, setY: Double?) {
-        applyClipProperty(clipId: clipId) { self.writePosition(into: &$0, setX: setX, setY: setY) }
-    }
-
     func applyPositions(clipIds: [String], setX: Double?, setY: Double?) {
         applyClipProperties(clipIds: clipIds) { self.writePosition(into: &$0, setX: setX, setY: setY) }
-    }
-
-    func commitPosition(clipId: String, setX: Double?, setY: Double?) {
-        commitClipProperty(clipId: clipId, actionName: "Change Position") {
-            self.writePosition(into: &$0, setX: setX, setY: setY)
-        }
     }
 
     func commitPositions(clipIds: [String], setX: Double?, setY: Double?) {

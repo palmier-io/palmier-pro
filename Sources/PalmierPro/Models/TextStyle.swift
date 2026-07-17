@@ -310,13 +310,3 @@ extension TextStyle {
         return CTFontGetSymbolicTraits(font as CTFont)
     }
 }
-
-extension TextStyle.Alignment {
-    var caTextAlignmentMode: CATextLayerAlignmentMode {
-        switch self {
-        case .left: .left
-        case .center: .center
-        case .right: .right
-        }
-    }
-}

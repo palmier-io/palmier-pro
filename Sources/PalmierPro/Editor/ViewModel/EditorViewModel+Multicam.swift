@@ -396,11 +396,6 @@ extension EditorViewModel {
         Set(timelines.flatMap { t in t.tracks.flatMap { $0.clips.compactMap(\.multicamGroupId) } })
     }
 
-    func pruneMulticamGroups() {
-        let referenced = referencedMulticamGroupIds()
-        multicamGroups.removeAll { !referenced.contains($0.id) }
-    }
-
     func savedMulticamGroups() -> [MulticamSource]? {
         let referenced = referencedMulticamGroupIds()
         let live = multicamGroups.filter { referenced.contains($0.id) }

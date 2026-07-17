@@ -98,22 +98,6 @@ enum Telemetry {
         #endif
     }
 
-    static func captureMessage(_ message: String, level: Level = .warning) {
-        #if PRODUCTION_TELEMETRY
-        guard didStart else { return }
-        SentrySDK.capture(message: message) { scope in
-            scope.setLevel(level.sentryLevel)
-        }
-        #endif
-    }
-
-    static func captureError(_ error: Error) {
-        #if PRODUCTION_TELEMETRY
-        guard didStart else { return }
-        SentrySDK.capture(error: error)
-        #endif
-    }
-
     static func logWarning(_ message: String, category: String, data: Payload? = nil) {
         breadcrumb(message, category: category, level: .warning, data: data)
     }
@@ -139,39 +123,6 @@ enum Telemetry {
         #endif
     }
 
-    static func trace<T>(name: String, operation: String = "task", _ work: () throws -> T) rethrows -> T {
-        #if PRODUCTION_TELEMETRY
-        guard didStart else { return try work() }
-        let txn = SentrySDK.startTransaction(name: name, operation: operation)
-        do {
-            let result = try work()
-            txn.finish()
-            return result
-        } catch {
-            txn.finish(status: .internalError)
-            throw error
-        }
-        #else
-        return try work()
-        #endif
-    }
-
-    static func trace<T>(name: String, operation: String = "task", _ work: () async throws -> T) async rethrows -> T {
-        #if PRODUCTION_TELEMETRY
-        guard didStart else { return try await work() }
-        let txn = SentrySDK.startTransaction(name: name, operation: operation)
-        do {
-            let result = try await work()
-            txn.finish()
-            return result
-        } catch {
-            txn.finish(status: .internalError)
-            throw error
-        }
-        #else
-        return try await work()
-        #endif
-    }
 }
 
 #if PRODUCTION_TELEMETRY

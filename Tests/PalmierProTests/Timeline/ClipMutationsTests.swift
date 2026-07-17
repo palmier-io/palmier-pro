@@ -376,7 +376,7 @@ struct WritePositionTests {
         let e = editor([Fixtures.videoTrack(clips: [clip])])
         e.currentFrame = 0
 
-        e.commitPosition(clipId: "c1", setX: 0.4, setY: 0.4)
+        e.commitPositions(clipIds: ["c1"], setX: 0.4, setY: 0.4)
 
         let updated = e.timeline.tracks[0].clips[0]
         let kf = updated.positionTrack?.keyframes.first(where: { $0.frame == 0 })

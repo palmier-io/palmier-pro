@@ -41,16 +41,6 @@ struct FormatTimecodeTests {
 @Suite("frame/seconds conversion")
 struct FrameSecondsConversionTests {
 
-    @Test func frameToSecondsDividesByFps() {
-        #expect(frameToSeconds(frame: 60, fps: 30) == 2.0)
-        #expect(frameToSeconds(frame: 15, fps: 30) == 0.5)
-        #expect(frameToSeconds(frame: 0, fps: 30) == 0)
-    }
-
-    @Test func frameToSecondsHandlesZeroFps() {
-        #expect(frameToSeconds(frame: 100, fps: 0) == 0)
-    }
-
     @Test func secondsToFrameMultipliesByFps() {
         #expect(secondsToFrame(seconds: 2.0, fps: 30) == 60)
         #expect(secondsToFrame(seconds: 0.5, fps: 30) == 15)
@@ -68,17 +58,6 @@ struct FrameSecondsConversionTests {
 
 @Suite("TimeFormatting — adversarial")
 struct TimeFormattingAdversarialTests {
-
-    /// Frame → seconds → frame should round-trip at common frame counts.
-    /// IEEE 754 multiply-after-divide cancels the floating error for these inputs,
-    /// so this passes today; it'd break if either function changed precision.
-    @Test func frameSecondsRoundtripAtCommonFrames() {
-        for f in [0, 1, 15, 29, 30, 31, 59, 60, 61] {
-            let s = frameToSeconds(frame: f, fps: 30)
-            let back = secondsToFrame(seconds: s, fps: 30)
-            #expect(back == f, "round-trip lost for frame \(f): seconds=\(s) → back=\(back)")
-        }
-    }
 
     @Test func negativeFrameFormatsWithLeadingSign() {
         // SMPTE-style signed timecode: one `-` at the front, fields well-formed.

@@ -47,8 +47,6 @@ enum DragState {
 
         var all: [Participant] { [lead] + companions }
 
-        func isLead(_ p: Participant) -> Bool { p.clipId == lead.clipId }
-
         var trackDelta: Int {
             if case .existingTrack(let idx) = dropTarget {
                 return idx - lead.originalTrack

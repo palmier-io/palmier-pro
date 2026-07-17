@@ -101,8 +101,6 @@ extension Updater: SPUUpdaterDelegate {
         markUpdateAvailable(item)
     }
 
-    @objc func updaterDidNotFindUpdate(_ updater: SPUUpdater) {}
-
     @objc func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: any Error) {
         guard let error = error as NSError?, shouldClearAfterNoUpdateFound(error) else { return }
         clearUpdateAvailability()
