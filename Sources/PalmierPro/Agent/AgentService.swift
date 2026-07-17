@@ -203,7 +203,7 @@ final class AgentService {
             for clip in track.clips where requested.contains(clip.id) {
                 refs.append(ClipMentionReference(
                     clip: clip,
-                    label: editor.clipDisplayLabel(for: clip),
+                    label: editor.clipDisplayLabel(for: clip, localized: false),
                     trackLabel: trackLabel
                 ))
             }

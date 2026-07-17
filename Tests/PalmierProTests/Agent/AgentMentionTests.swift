@@ -48,6 +48,32 @@ struct AgentMentionTests {
         #expect(editor.agentService.draft == "@Interview-Take-V1-00:00:01:00 ")
     }
 
+    @Test func emptyTextClipMentionKeepsProtocolLabelEnglish() throws {
+        let editor = EditorViewModel()
+        var clip = Fixtures.clip(
+            id: "text-clip",
+            mediaRef: "text",
+            mediaType: .text,
+            start: 0,
+            duration: 30
+        )
+        clip.textContent = ""
+        editor.timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+
+        editor.agentService.attachMentions(forClipIds: [clip.id])
+
+        #expect(editor.agentService.draft == "@Text-V1-00:00:00:00 ")
+        let entry = try #require(
+            AgentMentionContext.mentionEntries(
+                editor.agentService.mentions,
+                editor: editor
+            ).first
+        )
+        let summary = try #require(entry["clip"] as? [String: Any])
+        #expect(summary["label"] as? String == "Text")
+        #expect(editor.clipDisplayLabel(for: clip, localized: false) == "Text")
+    }
+
     @Test func attachLinkedVideoAndAudioMentionsUseTrackLabelsAndShortNames() {
         let editor = EditorViewModel()
         let asset = MediaAsset(

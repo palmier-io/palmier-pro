@@ -518,6 +518,16 @@ const sourceGuards = [
         error: "Agent LUT 错误必须保持稳定英文协议，不能透传本地化界面文案",
     },
     {
+        file: path.join(sourceRoot, "Agent", "AgentMentionContext.swift"),
+        required: "clipDisplayLabel(for: clip, localized: false)",
+        error: "Agent 片段摘要必须使用稳定英文占位标签，不能序列化本地化 UI 文案",
+    },
+    {
+        file: path.join(sourceRoot, "Agent", "AgentService.swift"),
+        required: "clipDisplayLabel(for: clip, localized: false)",
+        error: "Agent 片段引用必须使用稳定英文占位标签，不能把本地化 UI 文案写入协议名称",
+    },
+    {
         file: path.join(sourceRoot, "Export", "ExportView.swift"),
         required: "1 media file missing — it'll be skipped.",
         error: "缺失媒体提示必须保留单数文案",
