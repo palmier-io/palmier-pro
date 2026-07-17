@@ -77,14 +77,44 @@ struct GlossaryStore: Sendable {
         return byCanonical.values.sorted { $0.term.canonical < $1.term.canonical }
     }
 
-    /// Auto-apply terms (verified/declared/asserted) from the merged view.
+    /// Auto-apply terms (verified/declared/asserted) with §5.4 variant sanitization applied.
+    /// Sanitizing at READ time — not only in glossary_add — means a hand-authored glossary.json
+    /// can never feed an unsafe short variant into the corrector (e.g. 师→狮 corrupting 老师).
     var autoApplyTerms: [GlossaryTerm] {
-        merged().map(\.term).filter { $0.confidence.autoApplies }
+        sanitizedAutoApply().terms
     }
 
-    /// Read-time corrector built from the auto-apply terms. Empty when nothing auto-applies.
+    /// Read-time corrector built from the sanitized auto-apply terms. Empty when nothing auto-applies.
     func corrector() -> GlossaryCorrector {
         GlossaryCorrector(terms: autoApplyTerms)
+    }
+
+    /// Sanitized auto-apply terms plus warnings for any variant dropped at read time. Every read
+    /// path that shows warnings (glossary_list, glossary_apply) should surface these alongside
+    /// `warnings` so a hand-author can see why an entry didn't apply.
+    func sanitizedAutoApply() -> (terms: [GlossaryTerm], warnings: [String]) {
+        let mergedTerms = merged()
+        let allCanonicals = Set(mergedTerms.map(\.term.canonical))
+        var terms: [GlossaryTerm] = []
+        var dropWarnings: [String] = []
+        for m in mergedTerms where m.term.confidence.autoApplies {
+            let result = GlossaryValidation.sanitize(
+                m.term, otherCanonicals: allCanonicals.subtracting([m.term.canonical])
+            )
+            if !result.rejectedVariants.isEmpty {
+                dropWarnings.append(
+                    "Term '\(m.term.canonical)' (\(m.scope.rawValue)): dropped unsafe variant(s) "
+                        + "\(result.rejectedVariants.joined(separator: ", ")) — too short to apply safely."
+                )
+            }
+            terms.append(result.term)
+        }
+        return (terms, dropWarnings)
+    }
+
+    /// Load warnings (malformed files) plus read-time sanitization warnings.
+    func allWarnings() -> [String] {
+        warnings + sanitizedAutoApply().warnings
     }
 
     /// Canonicals that should bias the decoder (auto-apply confidences only). §4

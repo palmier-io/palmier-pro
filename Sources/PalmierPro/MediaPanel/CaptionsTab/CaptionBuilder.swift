@@ -44,7 +44,9 @@ enum CaptionBuilder {
     ) -> [Phrase] {
         let timed = words.filter { $0.start != nil && $0.end != nil }
         guard let first = timed.first, let last = timed.last, let start = first.start, let end = last.end, end > start else { return [] }
-        let text = timed.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        // Drop empty tokens (a multi-token glossary variant empties the span's tail) so the join
+        // doesn't leave a double space in caption content. Timing already ignores empty words.
+        let text = timed.map(\.text).filter { !$0.isEmpty }.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return [] }
         return phrases(
             for: TranscriptionSegment(text: text, start: start, end: end, speaker: first.speaker),

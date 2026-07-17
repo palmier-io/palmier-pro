@@ -119,17 +119,28 @@ struct GlossaryTests {
 
     // MARK: - Boundary safety (§5.4)
 
-    @Test func shortCJKVariantIsRejectedSoLongerTermSurvives() {
-        // 师→狮 with variant 师 (1 CJK char) must be rejected, leaving 老师 uncorrupted.
-        let result = GlossaryValidation.sanitize(
-            term("狮", ["师"]), otherCanonicals: []
-        )
+    @Test func shortCJKVariantRejectedByValidator() {
+        // 师→狮 with variant 师 (1 CJK char) must be rejected by the validator.
+        let result = GlossaryValidation.sanitize(term("狮", ["师"]), otherCanonicals: [])
         #expect(result.term.variants.isEmpty)
         #expect(!result.rejectedVariants.isEmpty)
+    }
 
-        // With the variant rejected, materialisation leaves 老师 alone.
-        let c = corrector([result.term])
-        #expect(c.correct("老师说") == "老师说")
+    @Test func handAuthoredShortVariantIsSanitizedAtReadTime() throws {
+        // A malicious/hand-authored glossary.json bypasses glossary_add's validation entirely,
+        // so the STORE read path must drop 师 (1 CJK char) before building the corrector —
+        // otherwise correct("我的老师说") would corrupt 老师 into 老狮.
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".palmier")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let json = #"{"version":1,"terms":[{"canonical":"狮","variants":["师"],"provenance":"user","confidence":"declared"}]}"#
+        try Data(json.utf8).write(to: dir.appendingPathComponent("glossary.json"))
+
+        let store = GlossaryStore.load(projectURL: dir)
+        #expect(store.corrector().correct("我的老师说") == "我的老师说")
+        // The drop is surfaced so a hand-author can see why the entry didn't apply.
+        #expect(store.allWarnings().contains { $0.contains("师") && $0.contains("狮") })
+        #expect(store.autoApplyTerms.first?.variants.isEmpty == true)
     }
 
     @Test func longestMatchFirstAcrossVariants() {
@@ -192,11 +203,12 @@ struct GlossaryTests {
     // MARK: - Fingerprint
 
     @Test func biasFingerprintIsStableAndSensitive() {
-        let a = GlossaryStore(layers: [.init(scope: .project, document: GlossaryDocument(terms: [term("X", ["y"])]))], warnings: [])
-        let b = GlossaryStore(layers: [.init(scope: .project, document: GlossaryDocument(terms: [term("X", ["y"])]))], warnings: [])
-        let c = GlossaryStore(layers: [.init(scope: .project, document: GlossaryDocument(terms: [term("X", ["z"])]))], warnings: [])
+        // Variants must clear the §5.4 length floor or read-time sanitization strips them.
+        let a = GlossaryStore(layers: [.init(scope: .project, document: GlossaryDocument(terms: [term("Xterm", ["variantone"])]))], warnings: [])
+        let b = GlossaryStore(layers: [.init(scope: .project, document: GlossaryDocument(terms: [term("Xterm", ["variantone"])]))], warnings: [])
+        let c = GlossaryStore(layers: [.init(scope: .project, document: GlossaryDocument(terms: [term("Xterm", ["varianttwo"])]))], warnings: [])
         #expect(a.biasFingerprint() == b.biasFingerprint())
         #expect(a.biasFingerprint() != c.biasFingerprint())
-        #expect(a.hotwordTerms() == ["X"])
+        #expect(a.hotwordTerms() == ["Xterm"])
     }
 }
