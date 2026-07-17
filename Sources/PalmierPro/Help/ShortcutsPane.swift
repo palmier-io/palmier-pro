@@ -22,7 +22,7 @@ struct ShortcutsPane: View {
             ("Backspace", "Delete"),
             ("Shift + Backspace", "Ripple Delete"),
             ("Shift + Drag Edge", "Ripple Trim"),
-            ("Cmd + Drag Media", "Ripple Insert"),
+            ("Cmd + Drag", "Ripple Insert"),
             ("Opt + Drag", "Duplicate Clip"),
         ]),
         ShortcutGroup(title: "Timeline", shortcuts: [

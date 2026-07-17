@@ -478,6 +478,83 @@ extension EditorViewModel {
         return created
     }
 
+    func rippleMoveClips(_ moves: [(clipId: String, toTrack: Int, toFrame: Int)]) {
+        var infos: [(clip: Clip, toTrack: Int, toFrame: Int)] = []
+        for m in moves {
+            guard let loc = findClip(id: m.clipId),
+                  timeline.tracks.indices.contains(m.toTrack) else { continue }
+            let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            guard timeline.tracks[m.toTrack].type.isCompatible(with: timeline.tracks[loc.trackIndex].type) else { continue }
+            infos.append((clip, m.toTrack, max(0, m.toFrame)))
+        }
+        guard !infos.isEmpty else { return }
+
+        let insertFrame = infos.map(\.toFrame).min()!
+        let pushAmount = infos.map { $0.toFrame + $0.clip.durationFrames }.max()! - insertFrame
+        guard pushAmount > 0 else { return }
+
+        if let reason = multicamMoveViolation(moves: infos.map { ($0.clip.id, $0.toTrack, $0.toFrame) }) {
+            refuseWithToast(reason)
+            return
+        }
+        let destTracks = Set(infos.map(\.toTrack))
+        let pushTrackIndexes = timeline.tracks.indices.filter { destTracks.contains($0) || timeline.tracks[$0].syncLocked }
+        if let reason = multicamManualRippleViolation(
+            shiftingTrackIds: Set(pushTrackIndexes.map { timeline.tracks[$0].id }),
+            atFrame: insertFrame
+        ) {
+            refuseRipple(reason: reason)
+            return
+        }
+
+        withTimelineSwap(actionName: infos.count == 1 ? "Ripple Move Clip" : "Ripple Move Clips") {
+            let toTrackIds = infos.map { timeline.tracks[$0.toTrack].id }
+            let pushTrackIds = pushTrackIndexes.map { timeline.tracks[$0].id }
+
+            for info in infos {
+                if let loc = findClip(id: info.clip.id) {
+                    timeline.tracks[loc.trackIndex].clips.remove(at: loc.clipIndex)
+                }
+            }
+
+            var splitRightIds: [String] = []
+            for tid in pushTrackIds {
+                guard let ti = timeline.tracks.firstIndex(where: { $0.id == tid }) else { continue }
+                if let straddler = timeline.tracks[ti].clips.first(where: {
+                    $0.startFrame < insertFrame && insertFrame < $0.endFrame
+                }) {
+                    splitRightIds += splitClip(clipId: straddler.id, atFrame: insertFrame)
+                }
+            }
+
+            for tid in pushTrackIds {
+                guard let ti = timeline.tracks.firstIndex(where: { $0.id == tid }) else { continue }
+                applyShifts(RippleEngine.computeRipplePush(
+                    clips: timeline.tracks[ti].clips,
+                    insertFrame: insertFrame,
+                    pushAmount: pushAmount
+                ))
+            }
+
+            // splitClip also splits linked partners; push their right halves on tracks outside the push set.
+            let pushTrackIdSet = Set(pushTrackIds)
+            for id in splitRightIds {
+                guard let loc = findClip(id: id),
+                      !pushTrackIdSet.contains(timeline.tracks[loc.trackIndex].id) else { continue }
+                timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame += pushAmount
+            }
+
+            for (i, info) in infos.enumerated() {
+                guard let idx = timeline.tracks.firstIndex(where: { $0.id == toTrackIds[i] }) else { continue }
+                var clip = info.clip
+                clip.startFrame = info.toFrame
+                timeline.tracks[idx].clips.append(clip)
+            }
+            for i in timeline.tracks.indices { sortClips(trackIndex: i) }
+            pruneEmptyTracks()
+        }
+    }
+
     // MARK: - Internal
 
     fileprivate func trimClipInternal(clipId: String, trimStartFrame: Int, trimEndFrame: Int, protecting: Set<String> = []) {

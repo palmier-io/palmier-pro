@@ -36,6 +36,7 @@ final class TimelineView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override var isFlipped: Bool { true }
+    override var acceptsFirstResponder: Bool { true }
 
     // MARK: - Viewport canvas
 
@@ -229,6 +230,8 @@ final class TimelineView: NSView {
                 drawRippleInsertIndicator(atFrame: externalDragFrame, geometry: geo, context: ctx)
                 drawRippleInsertBadge(atFrame: externalDragFrame, geometry: geo, scrollOffset: scrollOffset, visibleWidth: visibleWidth, context: ctx)
             }
+        } else if let insertFrame = inputController.rippleMoveInsertFrame() {
+            drawRippleInsertIndicator(atFrame: insertFrame, geometry: geo, context: ctx)
         }
 
         if case .marquee(let marq) = inputController.dragState,
@@ -400,12 +403,18 @@ final class TimelineView: NSView {
                     }
                     clipDisplayRects[clip.id] = ghostRect
                     if ghostRect.intersects(dirtyRect) {
-                        ClipRenderer.draw(ghostClip, type: clip.mediaType, in: ghostRect,
-                                          isSelected: true, opacity: 0.7, context: ctx,
-                                          cache: editor.mediaVisualCache,
-                                          displayName: editor.clipDisplayLabel(for: clip),
-                                          multicamAngleLabel: angleLabel(clip),
-                                          fps: editor.timeline.fps, isMissing: clipMissing, isGenerating: clipGenerating)
+                        let chip = angleLabel(clip)
+                        let cache = editor.mediaVisualCache
+                        let name = editor.clipDisplayLabel(for: clip)
+                        let fps = editor.timeline.fps
+                        // Ghosts draw after all clips so they stay on top in either drag direction.
+                        deferredDraws.append {
+                            ClipRenderer.draw(ghostClip, type: clip.mediaType, in: ghostRect,
+                                              isSelected: true, opacity: 0.7, context: ctx,
+                                              cache: cache, displayName: name,
+                                              multicamAngleLabel: chip,
+                                              fps: fps, isMissing: clipMissing, isGenerating: clipGenerating)
+                        }
                     }
                     continue
                 }
@@ -670,7 +679,6 @@ final class TimelineView: NSView {
               let assets = externalDragAssets,
               !assets.isEmpty,
               let target = externalDropTarget else { return nil }
-
         let plan = editor.resolveDropPlan(cursor: target, assets: assets, atFrame: externalDragFrame, segments: externalDragSegments)
         return editor.planRippleInsertPreview(dropPlan: plan, atFrame: externalDragFrame)
     }
@@ -799,6 +807,7 @@ final class TimelineView: NSView {
     // MARK: - Input forwarding
 
     override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
         inputController.mouseDown(with: event, geometry: geometry)
     }
 
@@ -808,6 +817,10 @@ final class TimelineView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         inputController.mouseUp(with: event, geometry: geometry)
+    }
+
+    override func flagsChanged(with event: NSEvent) {
+        inputController.flagsChanged(with: event)
     }
 
     override func mouseMoved(with event: NSEvent) {

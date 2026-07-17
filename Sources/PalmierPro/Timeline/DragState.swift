@@ -44,6 +44,7 @@ enum DragState {
         var deltaFrames: Int = 0
         var dropTarget: TrackDropTarget
         let isDuplicate: Bool
+        var isRipple: Bool = false
 
         var all: [Participant] { [lead] + companions }
 

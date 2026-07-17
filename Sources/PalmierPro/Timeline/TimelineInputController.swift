@@ -221,7 +221,8 @@ final class TimelineInputController {
                     companions: companions,
                     grabOffsetFrames: grabFrame - clip.startFrame,
                     dropTarget: .existingTrack(hit.trackIndex),
-                    isDuplicate: isOption
+                    isDuplicate: isOption,
+                    isRipple: isCommand && !isOption
                 ))
             }
         } else {
@@ -278,6 +279,7 @@ final class TimelineInputController {
             editor.setTimelineRange(startFrame: drag.anchorFrame, endFrame: rangeEndFrame)
 
         case .moveClip(var drag):
+            drag.isRipple = event.modifierFlags.contains(.command) && !drag.isDuplicate
             let candidateFrame = frame - drag.grabOffsetFrames
             let allDraggedIds = Set(drag.all.map(\.clipId))
             let targets = SnapEngine.collectTargets(
@@ -441,40 +443,43 @@ final class TimelineInputController {
         view.needsDisplay = true
     }
 
+    // MARK: - Flags changed
+
+    func flagsChanged(with event: NSEvent) {
+        guard case .moveClip(var drag) = dragState else { return }
+        let isRipple = event.modifierFlags.contains(.command) && !drag.isDuplicate
+        guard isRipple != drag.isRipple else { return }
+        drag.isRipple = isRipple
+        dragState = .moveClip(drag)
+        view.needsDisplay = true
+    }
+
     // MARK: - Mouse up
 
     func mouseUp(with event: NSEvent, geometry: TimelineGeometry) {
         stopPlayheadAutoScroll()
 
         switch dragState {
-        case .moveClip(let drag):
+        case .moveClip(var drag):
+            drag.isRipple = event.modifierFlags.contains(.command) && !drag.isDuplicate
             if case .existingTrack(let idx) = drag.dropTarget,
                idx == drag.lead.originalTrack, drag.deltaFrames == 0 {
                 break
             }
 
-            let resolved = resolvedMoveParticipants(for: drag)
-            guard let resolvedLead = resolved.first(where: { $0.participant.clipId == drag.lead.clipId }) else {
-                break
-            }
-            let minOrigFrame = resolved.map { $0.frame }.min()!
-            let frameDelta = max(-minOrigFrame, drag.deltaFrames)
-            let pinned = pinnedCompanionIds(for: drag)
-            let leadTrack = resolvedLead.trackIndex
-
             switch drag.dropTarget {
             case .existingTrack:
-                // Rigid translation: non-pinned shift by trackDelta; pinned hold their row.
-                let delta = drag.dropTargetTrackIndex.map { $0 - leadTrack } ?? 0
-                let moves = resolved.map { item in
-                    let p = item.participant
-                    let toTrack = pinned.contains(p.clipId) ? item.trackIndex : item.trackIndex + delta
-                    return (clipId: p.clipId, toTrack: toTrack, toFrame: item.frame + frameDelta)
-                }
-                commitMoves(moves, isDuplicate: drag.isDuplicate)
+                guard let moves = existingTrackMoves(for: drag) else { break }
+                commitMoves(moves, isDuplicate: drag.isDuplicate, isRipple: drag.isRipple)
 
             case .newTrackAt(let insertIndex):
-                guard let leadTrackType = resolvedLeadTrackType(for: drag) else { break }
+                let resolved = resolvedMoveParticipants(for: drag)
+                guard let resolvedLead = resolved.first(where: { $0.participant.clipId == drag.lead.clipId }),
+                      let leadTrackType = resolvedLeadTrackType(for: drag) else { break }
+                let minOrigFrame = resolved.map { $0.frame }.min()!
+                let frameDelta = max(-minOrigFrame, drag.deltaFrames)
+                let pinned = pinnedCompanionIds(for: drag)
+                let leadTrack = resolvedLead.trackIndex
                 if !drag.isDuplicate,
                    let reason = editor.multicamMoveViolation(moves: resolved.map {
                        (clipId: $0.participant.clipId, toTrack: $0.trackIndex, toFrame: $0.frame + frameDelta)
@@ -985,12 +990,38 @@ final class TimelineInputController {
         editor.seekToFrame(frame, mode: .interactiveScrub)
     }
 
-    private func commitMoves(_ moves: [(clipId: String, toTrack: Int, toFrame: Int)], isDuplicate: Bool) {
+    private func commitMoves(_ moves: [(clipId: String, toTrack: Int, toFrame: Int)], isDuplicate: Bool, isRipple: Bool = false) {
         if isDuplicate {
             editor.duplicateClipsToPositions(moves)
+        } else if isRipple {
+            editor.rippleMoveClips(moves)
         } else {
             editor.moveClips(moves)
         }
+    }
+
+    func existingTrackMoves(for drag: DragState.MoveClipDrag) -> [(clipId: String, toTrack: Int, toFrame: Int)]? {
+        let resolved = resolvedMoveParticipants(for: drag)
+        guard let resolvedLead = resolved.first(where: { $0.participant.clipId == drag.lead.clipId }) else {
+            return nil
+        }
+        let minOrigFrame = resolved.map { $0.frame }.min()!
+        let frameDelta = max(-minOrigFrame, drag.deltaFrames)
+        let pinned = pinnedCompanionIds(for: drag)
+        let delta = drag.dropTargetTrackIndex.map { $0 - resolvedLead.trackIndex } ?? 0
+        return resolved.map { item in
+            let p = item.participant
+            let toTrack = pinned.contains(p.clipId) ? item.trackIndex : item.trackIndex + delta
+            return (clipId: p.clipId, toTrack: toTrack, toFrame: item.frame + frameDelta)
+        }
+    }
+
+    func rippleMoveInsertFrame() -> Int? {
+        guard case .moveClip(let drag) = dragState,
+              drag.isRipple, !drag.isDuplicate,
+              case .existingTrack(let idx) = drag.dropTarget,
+              !(idx == drag.lead.originalTrack && drag.deltaFrames == 0) else { return nil }
+        return existingTrackMoves(for: drag)?.map(\.toFrame).min()
     }
 
     private func resolvedMoveParticipants(
