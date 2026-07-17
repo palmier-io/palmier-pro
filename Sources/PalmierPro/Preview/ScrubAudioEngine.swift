@@ -31,6 +31,7 @@ final class ScrubAudioEngine {
     private struct CachedWindow {
         let window: PCMWindow
         var lastUsed: UInt64
+        let inserted: UInt64
     }
 
     nonisolated private static let sampleRate = 48_000.0
@@ -62,6 +63,7 @@ final class ScrubAudioEngine {
     private var pendingDecodeRange: Range<Int64>?
     private var mixInvalidationTask: Task<Void, Never>?
     private var fillTask: Task<Void, Never>?
+    private var fillDecode: Task<PCMWindow?, Never>?
     private var lifecycleObservers: [(center: NotificationCenter, token: NSObjectProtocol)] = []
 
     init(meter: AudioMeterHub) {
@@ -76,13 +78,13 @@ final class ScrubAudioEngine {
 
     func configure(asset: AVAsset?, audioMix: AVAudioMix?, resetMeter: Bool = true) {
         let mixOnlyChange = asset != nil && asset === source?.asset
+        let anchor = lastRequestedSample ?? 0
         stopScrubbing()
-        fillTask?.cancel()
-        fillTask = nil
+        cancelFill()
         sourceGeneration &+= 1
         source = asset.map { Source(asset: $0, audioMix: audioMix, generation: sourceGeneration) }
         if mixOnlyChange {
-            scheduleMixInvalidation()
+            scheduleMixInvalidation(anchor: anchor)
         } else {
             mixInvalidationTask?.cancel()
             mixInvalidationTask = nil
@@ -92,20 +94,27 @@ final class ScrubAudioEngine {
         if resetMeter { meter.reset() }
     }
 
-    private func scheduleMixInvalidation() {
+    private func scheduleMixInvalidation(anchor: Int64) {
         mixInvalidationTask?.cancel()
         mixInvalidationTask = Task { [weak self] in
             try? await Task.sleep(for: Self.mixInvalidationDebounce)
             guard !Task.isCancelled, let self else { return }
             self.mixInvalidationTask = nil
             self.windows.removeAll()
-            if let source = self.source { self.startFill(from: self.lastRequestedSample ?? 0, source: source) }
+            if let source = self.source { self.startFill(from: self.lastRequestedSample ?? anchor, source: source) }
         }
+    }
+
+    private func cancelFill() {
+        fillTask?.cancel()
+        fillTask = nil
+        fillDecode?.cancel()
+        fillDecode = nil
     }
 
     // Decode entire timeline outward from anchor, yielding so reactive misses always take priority
     private func startFill(from anchorSample: Int64, source: Source) {
-        fillTask?.cancel()
+        cancelFill()
         fillTask = Task { [weak self] in
             guard let durationSeconds = try? await source.asset.load(.duration).seconds,
                   durationSeconds.isFinite, durationSeconds > 0 else { return }
@@ -129,7 +138,11 @@ final class ScrubAudioEngine {
                         guard !Task.isCancelled, source.generation == self.source?.generation else { return }
                     }
 
-                    let window = await Self.decodeWindow(source: source, startSample: start, frameCount: Self.cacheFrameCount)
+                    // Run as a tracked child so a reactive miss can cancel it and win the reader.
+                    let decode = Task { await Self.decodeWindow(source: source, startSample: start, frameCount: Self.cacheFrameCount) }
+                    self.fillDecode = decode
+                    let window = await decode.value
+                    self.fillDecode = nil
                     guard !Task.isCancelled, source.generation == self.source?.generation else { return }
                     if let window { self.insert(window) }
                 }
@@ -207,8 +220,7 @@ final class ScrubAudioEngine {
         resetScrubState()
         mixInvalidationTask?.cancel()
         mixInvalidationTask = nil
-        fillTask?.cancel()
-        fillTask = nil
+        cancelFill()
         source = nil
         windows.removeAll()
         output.invalidate()
@@ -225,6 +237,7 @@ final class ScrubAudioEngine {
     private func requestWindow(around sample: Int64, direction: Direction, source: Source) {
         if let pendingDecodeRange, canServe(sample: sample, from: pendingDecodeRange) { return }
 
+        fillDecode?.cancel()  // reactive miss preempts an in-flight background fill decode
         decodeTask?.cancel()
         let startSample = windowStart(around: sample, direction: direction)
         let range = startSample..<(startSample + Int64(Self.cacheFrameCount))
@@ -285,7 +298,7 @@ final class ScrubAudioEngine {
     }
 
     private func serveableWindow(for sample: Int64, touch: Bool = true) -> PCMWindow? {
-        guard let index = windows.firstIndex(where: { canServe(sample: sample, from: $0.window) }) else { return nil }
+        guard let index = freshestWindowIndex(where: { canServe(sample: sample, from: $0) }) else { return nil }
         if touch {
             useCounter &+= 1
             windows[index].lastUsed = useCounter
@@ -294,18 +307,24 @@ final class ScrubAudioEngine {
     }
 
     private func meterableWindow(for sample: Int64) -> PCMWindow? {
-        guard let index = windows.firstIndex(where: { canMeter(sample: sample, from: $0.window) }) else { return nil }
+        guard let index = freshestWindowIndex(where: { canMeter(sample: sample, from: $0) }) else { return nil }
         useCounter &+= 1
         windows[index].lastUsed = useCounter
         return windows[index].window
     }
 
+    private func freshestWindowIndex(where covers: (PCMWindow) -> Bool) -> Int? {
+        windows.indices
+            .filter { covers(windows[$0].window) }
+            .max(by: { windows[$0].inserted < windows[$1].inserted })
+    }
+
     private func insert(_ window: PCMWindow) {
         useCounter &+= 1
         if let index = windows.firstIndex(where: { $0.window.startSample == window.startSample }) {
-            windows[index] = CachedWindow(window: window, lastUsed: useCounter)
+            windows[index] = CachedWindow(window: window, lastUsed: useCounter, inserted: useCounter)
         } else {
-            windows.append(CachedWindow(window: window, lastUsed: useCounter))
+            windows.append(CachedWindow(window: window, lastUsed: useCounter, inserted: useCounter))
         }
         if windows.count > Self.maxCachedWindows,
            let evict = windows.indices.min(by: { windows[$0].lastUsed < windows[$1].lastUsed }) {
