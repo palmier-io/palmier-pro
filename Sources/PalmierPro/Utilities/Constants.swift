@@ -7,9 +7,9 @@ enum LayoutPreset: String, CaseIterable {
 
     var label: String {
         switch self {
-        case .default: L10n.string("Default")
-        case .media: L10n.string("Media")
-        case .vertical: L10n.string("Vertical")
+        case .default: "Default"
+        case .media: "Media"
+        case .vertical: "Vertical"
         }
     }
 
