@@ -482,6 +482,31 @@ const sourceGuards = [
         required: "NSMenuItem(title: L10n.string(title)",
         error: "AI 编辑上下文菜单的固定闭包标题必须显式本地化",
     },
+    {
+        file: path.join(sourceRoot, "Account", "IdentityViews.swift"),
+        required: ".clipShape(Circle())\n        .accessibilityHidden(true)",
+        error: "用户头像的 SF Symbol 必须对辅助功能隐藏，并由父按钮提供本地化标签",
+    },
+    {
+        file: path.join(sourceRoot, "Account", "IdentityViews.swift"),
+        required: ".accessibilityLabel(account.isSignedIn ? L10n.string(\"Account\") : L10n.string(\"Sign in\"))",
+        error: "用户头像按钮必须提供本地化辅助功能标签",
+    },
+    {
+        file: path.join(sourceRoot, "MediaPanel", "MediaTab", "MediaTab.swift"),
+        required: "Label {\n                L10n.text(accessibilityLabel)\n            } icon:",
+        error: "媒体工具栏菜单必须使用本地化 Label，避免泄露 SF Symbol 英文名称",
+    },
+    {
+        file: path.join(sourceRoot, "Generation", "UI", "GenerationView+Submit.swift"),
+        required: ".accessibilityLabel(costHelpText)",
+        error: "生成积分预估必须提供完整的本地化辅助功能标签",
+    },
+    {
+        file: path.join(sourceRoot, "MediaPanel", "CaptionsTab", "CaptionTab.swift"),
+        required: ".font(.system(size: AppTheme.FontSize.xs))\n                                .accessibilityHidden(true)",
+        error: "字幕积分图标必须对辅助功能隐藏，避免泄露 SF Symbol 英文名称",
+    },
 ];
 for (const guard of sourceGuards) {
     const source = fs.readFileSync(guard.file, "utf8");

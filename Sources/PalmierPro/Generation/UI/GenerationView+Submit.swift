@@ -95,12 +95,15 @@ extension GenerationView {
         HStack(spacing: AppTheme.Spacing.xs) {
             Image(systemName: "dollarsign.circle.fill")
                 .font(.system(size: AppTheme.FontSize.sm))
+                .accessibilityHidden(true)
             Text(estimatedCost.map { $0.formatted() } ?? "—")
                 .font(.system(size: AppTheme.FontSize.xs, weight: .medium))
                 .monospacedDigit()
                 .lineLimit(1)
         }
         .foregroundStyle(hasInsufficientCredits ? .red : AppTheme.Text.secondaryColor)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(costHelpText)
         .help(costHelpText)
     }
 

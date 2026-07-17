@@ -647,16 +647,20 @@ struct MediaTab: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         Menu(content: content) {
-            Image(systemName: systemName)
-                .font(.system(size: AppTheme.FontSize.xs))
-                .foregroundStyle(foregroundStyle)
-                .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
+            Label {
+                L10n.text(accessibilityLabel)
+            } icon: {
+                Image(systemName: systemName)
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(foregroundStyle)
+                    .frame(width: AppTheme.IconSize.sm, height: AppTheme.IconSize.sm)
+            }
+            .labelStyle(.iconOnly)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
         .focusable(false)
-        .accessibilityLabel(L10n.string(accessibilityLabel))
         .hoverHighlight()
     }
 

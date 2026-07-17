@@ -454,7 +454,9 @@ struct CaptionTab: View {
                     HStack(spacing: AppTheme.Spacing.xs) {
                         L10n.text(cloudModeUnavailableMessage ?? "Generate Captions")
                         if cloudModeUnavailableMessage == nil, provider == .cloud, let cost = estimatedCloudCost {
-                            Image(systemName: "dollarsign.circle.fill").font(.system(size: AppTheme.FontSize.xs))
+                            Image(systemName: "dollarsign.circle.fill")
+                                .font(.system(size: AppTheme.FontSize.xs))
+                                .accessibilityHidden(true)
                             Text("\(cost)").monospacedDigit()
                         }
                     }
