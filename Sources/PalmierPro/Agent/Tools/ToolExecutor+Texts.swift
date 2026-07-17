@@ -108,7 +108,7 @@ extension ToolExecutor {
 
     private static let updateTextAllowedKeys: Set<String> = Set([
         "clipIds", "captionGroupId", "content",
-        "style", "transform", "animation", "highlightColor", "fillMode",
+        "style", "transform", "animation", "highlightColor", "fillMode", "origin",
     ])
 
     func parseTextStylePatch(_ args: [String: Any], path: String) throws -> ParsedTextStylePatch? {
@@ -572,7 +572,23 @@ extension ToolExecutor {
             }
         }
 
+        // origin=user is the promotable path; resync (programmatic caption rewrites) is excluded (§5.3 loop guard).
+        let origin = args.string("origin") ?? "user"
+        guard ["user", "resync"].contains(origin) else {
+            throw ToolError("update_text.origin: expected 'user' or 'resync'")
+        }
+
         var notes: [String] = []
+        // Snapshot caption clips' old content before mutation so we can classify term corrections after.
+        var captionEditsBefore: [(clipId: String, oldContent: String)] = []
+        if hasContent, origin == "user", let content {
+            for id in clipIds {
+                guard let loc = editor.findClip(id: id) else { continue }
+                let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+                guard clip.captionGroupId != nil, let old = clip.textContent, old != content else { continue }
+                captionEditsBefore.append((id, old))
+            }
+        }
         if hasContent {
             let timingCleared = clipIds.filter { id in
                 guard let loc = editor.findClip(id: id) else { return false }
@@ -641,13 +657,21 @@ extension ToolExecutor {
             }
         }
 
+        // Auto-promote clean single-substitution caption edits into the glossary (no confirmation). §6
+        var promoted: [[String: Any]] = []
+        if let content {
+            for edit in captionEditsBefore {
+                guard let promotion = GlossaryClassifier.classify(old: edit.oldContent, new: content),
+                      let row = promoteCaptionEdit(promotion, clipId: edit.clipId, editor: editor) else { continue }
+                promoted.append(row)
+                // INTEGRATION TODO (§5.1): once Clip gains `generatedText` (another branch), set it to
+                // `content` on this clip here so a later resync doesn't re-promote the same edit.
+            }
+        }
+
         let changed = beforeClips.contains { id, clip in editor.clipFor(id: id) != clip }
-        return mutationResult(
-            editor,
-            since: snapshot,
-            touched: clipIds,
-            extra: ["changed": changed],
-            notes: notes
-        )
+        var extra: [String: Any] = ["changed": changed]
+        if !promoted.isEmpty { extra["promoted"] = promoted }
+        return mutationResult(editor, since: snapshot, touched: clipIds, extra: extra, notes: notes)
     }
 }

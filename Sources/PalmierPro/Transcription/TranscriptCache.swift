@@ -11,7 +11,9 @@ actor TranscriptCache {
     private var memory: [String: TranscriptionResult] = [:]
     private static let memoryMax = 4
 
-    func transcript(for url: URL, isVideo: Bool, range: ClosedRange<Double>?, preferredLocale: Locale? = nil) async throws -> TranscriptionResult {
+    /// `cacheTag` salts the cache key (e.g. a decoder-bias fingerprint from GlossaryStore.biasFingerprint())
+    /// so a changed hotword set yields a fresh transcription instead of a stale cached one. §4
+    func transcript(for url: URL, isVideo: Bool, range: ClosedRange<Double>?, preferredLocale: Locale? = nil, cacheTag: String? = nil) async throws -> TranscriptionResult {
         // When a locale is forced, bypass the cache — locale variants must not overwrite the auto-detected entry.
         if let preferredLocale {
             return isVideo
@@ -19,7 +21,7 @@ actor TranscriptCache {
                 : try await Transcription.transcribe(fileURL: url, preferredLocale: preferredLocale, sourceRange: range)
         }
         // Cache full transcripts only; windowed calls filter the cached result for consistency.
-        let key = Self.key(for: url)
+        let key = Self.key(for: url, cacheTag: cacheTag)
         let full: TranscriptionResult
         if let key, let cached = cached(key) {
             full = cached
@@ -114,11 +116,12 @@ actor TranscriptCache {
         directory.appendingPathComponent("\(key).json")
     }
 
-    private static func key(for url: URL, variant: CacheVariant = .local) -> String? {
+    private static func key(for url: URL, variant: CacheVariant = .local, cacheTag: String? = nil) -> String? {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
               let size = (attrs[.size] as? NSNumber)?.int64Value,
               let mtime = attrs[.modificationDate] as? Date else { return nil }
-        let base = "\(url.path)|\(mtime.timeIntervalSince1970)|\(size)"
+        var base = "\(url.path)|\(mtime.timeIntervalSince1970)|\(size)"
+        if let cacheTag { base += "|bias:\(cacheTag)" }
         let identity = variant.prefix.map { "\($0)|\(base)" } ?? base
         return SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined().prefix(32).description
     }

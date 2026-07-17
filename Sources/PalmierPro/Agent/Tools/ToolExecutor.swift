@@ -180,7 +180,8 @@ final class ToolExecutor {
     private static func canReadInactiveProject(_ tool: ToolName) -> Bool {
         switch tool {
         case .getTimeline, .inspectTimeline, .getMedia, .inspectMedia, .searchMedia,
-             .getMulticam, .getTranscript, .detectBeats, .inspectColor, .listModels, .sendFeedback:
+             .getMulticam, .getTranscript, .detectBeats, .inspectColor, .listModels, .sendFeedback,
+             .glossaryList, .glossaryApply:
             true
         default:
             false
@@ -253,6 +254,10 @@ final class ToolExecutor {
         case .addTexts:      return try addTexts(editor, args)
         case .updateText:    return try updateText(editor, args)
         case .addCaptions:   return try await addCaptions(editor, args)
+        case .glossaryList:   return try glossaryList(editor, args)
+        case .glossaryAdd:    return try glossaryAdd(editor, args)
+        case .glossaryRemove: return try glossaryRemove(editor, args)
+        case .glossaryApply:  return try await glossaryApply(editor, args)
         case .exportProject: return try await exportProject(editor, args)
         case .manageExports: return try manageExports(editor, args)
         case .generateVideo: return try generate(editor, args, type: .video)

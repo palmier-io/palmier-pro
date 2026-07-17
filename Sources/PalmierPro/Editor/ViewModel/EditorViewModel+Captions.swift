@@ -230,11 +230,13 @@ extension EditorViewModel {
             return collected
         }
 
+        // Materialise L1 glossary corrections onto the caption source — read-time, raw cache untouched.
+        let corrector = GlossaryStore.load(projectURL: projectURL).corrector()
         var results: [String: TranscriptionResult] = [:]
         var firstError: Error?
         for (mediaRef, outcome) in outcomes {
             switch outcome {
-            case .success(let result): results[mediaRef] = result
+            case .success(let result): results[mediaRef] = result.applyingGlossary(corrector)
             case .failure(let error): firstError = firstError ?? error
             }
         }

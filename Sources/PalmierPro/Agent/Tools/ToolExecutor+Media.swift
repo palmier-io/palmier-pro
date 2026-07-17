@@ -192,7 +192,8 @@ extension ToolExecutor {
         switch await transcriptTask {
         case .success(let transcript):
             meta["transcription"] = Self.transcriptionMeta(
-                from: transcript, mapping: mapping, includeWords: args.bool("wordTimestamps") ?? false
+                from: transcript.applyingGlossary(glossaryCorrector(editor)),
+                mapping: mapping, includeWords: args.bool("wordTimestamps") ?? false
             )
         case .failure(let error):
             Log.transcription.error("video transcription failed: \(error.localizedDescription)")
@@ -299,7 +300,8 @@ extension ToolExecutor {
         var meta = Self.baseMeta(for: asset)
         if let range { meta["timeRange"] = [range.lowerBound, range.upperBound] }
         let transcription = Self.transcriptionMeta(
-            from: transcript, mapping: mapping, includeWords: args.bool("wordTimestamps") ?? false
+            from: transcript.applyingGlossary(glossaryCorrector(editor)),
+            mapping: mapping, includeWords: args.bool("wordTimestamps") ?? false
         )
         for (k, v) in transcription { meta[k] = v }
         if let mapping { meta["timelineMapping"] = Self.timelineMappingMeta(clip: mapping.clip, fps: mapping.fps) }
