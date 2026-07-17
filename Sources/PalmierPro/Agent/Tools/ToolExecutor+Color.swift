@@ -123,7 +123,7 @@ extension ToolExecutor {
         // LUT file I/O up front so it can throw before mutating.
         func storeLUT(_ path: String) throws -> String {
             do { return try LUTLoader.store(path: path, projectId: editor.projectId) }
-            catch let e as LUTStoreError { throw ToolError(e.errorDescription ?? "Invalid LUT.") }
+            catch let e as LUTStoreError { throw ToolError(e.protocolDescription) }
         }
         var lutDestPath: String?
         if let path = input.lut?.path, !path.isEmpty {

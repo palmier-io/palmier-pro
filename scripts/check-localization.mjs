@@ -221,7 +221,7 @@ function placeholders(value) {
 const protectedTokens = [
     "Palmier Pro", "Google", "Anthropic", "Claude", "Codex", "Cursor", "MCP", "API", "HDR", "LUT",
 ];
-const allowedUntranslatedKeys = new Set(["AI", "Agent", "FPS", "MCP", "Max", "Palmier Pro", "Pro"]);
+const allowedUntranslatedKeys = new Set(["AI", "Agent", "FPS", "Lottie", "MCP", "Max", "Palmier Pro", "Pro"]);
 const protectedTokenExceptions = new Set(["Zoom Preview to Cursor", "Zoom to Cursor"]);
 
 function containsProtectedToken(value, token) {
@@ -247,6 +247,7 @@ const runtimeCandidates = [
     "Installed",
     "Lift",
     "Lo-fi",
+    "Lottie",
     "Mic",
     "New Skill",
     "Ripple Delete (Agent)",
@@ -479,6 +480,42 @@ const sourceGuards = [
         required: "kindLabel: type.trackLabel",
         forbidden: "kindLabel: type.rawValue",
         error: "生成引用类型必须使用可本地化的标题键，不能直出小写 rawValue",
+    },
+    {
+        file: path.join(sourceRoot, "App", "UpdateBadgeView.swift"),
+        required: "L10n.text(\"Click to install update\")",
+        forbidden: "Text(\"Click to install update\")",
+        error: "更新卡片标题必须显式使用 L10n 资源包",
+    },
+    {
+        file: path.join(sourceRoot, "App", "UpdateBadgeView.swift"),
+        required: "L10n.text(\"Update\")",
+        forbidden: "Label(\"Update\"",
+        error: "更新项目徽标必须显式使用 L10n 资源包",
+    },
+    {
+        file: path.join(sourceRoot, "Generation", "UI", "GenerationView+Mentions.swift"),
+        required: "L10n.text(\"No matches\")",
+        forbidden: "Text(\"No matches\")",
+        error: "生成引用空状态必须显式使用 L10n 资源包",
+    },
+    {
+        file: path.join(sourceRoot, "Editor", "ProjectActivityView.swift"),
+        required: "L10n.text(\"Project Activity\")",
+        forbidden: "Text(\"Project Activity\")",
+        error: "项目活动标题必须显式使用 L10n 资源包",
+    },
+    {
+        file: path.join(sourceRoot, "Editor", "ProjectActivityView.swift"),
+        required: "L10n.text(\"No generations yet\")",
+        forbidden: "Text(\"No generations yet\")",
+        error: "项目活动空状态必须显式使用 L10n 资源包",
+    },
+    {
+        file: path.join(sourceRoot, "Agent", "Tools", "ToolExecutor+Color.swift"),
+        required: "throw ToolError(e.protocolDescription)",
+        forbidden: "throw ToolError(e.errorDescription",
+        error: "Agent LUT 错误必须保持稳定英文协议，不能透传本地化界面文案",
     },
     {
         file: path.join(sourceRoot, "Export", "ExportView.swift"),

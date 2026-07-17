@@ -24,7 +24,7 @@ struct ProjectActivityView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             HStack {
-                Text("Project Activity")
+                L10n.text("Project Activity")
                     .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
                     .foregroundStyle(AppTheme.Text.primaryColor)
                 Spacer()
@@ -48,7 +48,7 @@ struct ProjectActivityView: View {
                         .foregroundStyle(AppTheme.Text.mutedColor)
                         .padding(.vertical, AppTheme.Spacing.sm)
                 } else if entries.isEmpty {
-                    Text("No generations yet")
+                    L10n.text("No generations yet")
                         .font(.system(size: AppTheme.FontSize.xs))
                         .foregroundStyle(AppTheme.Text.mutedColor)
                         .padding(.vertical, AppTheme.Spacing.sm)
@@ -57,7 +57,6 @@ struct ProjectActivityView: View {
                         VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
                             ForEach(entries) { entry in
                                 row(entry)
-                            }
                         }
                     }
                 }
