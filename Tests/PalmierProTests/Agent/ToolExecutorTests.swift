@@ -922,6 +922,32 @@ struct ToolExecutorClipTests {
         #expect(ToolHarness.textOf(result).contains("Mixed trackIndex"))
     }
 
+    @Test func addClipsOmittingAudioTrackIndexAppendsBelowLinkedAudio() async throws {
+        let h = ToolHarness()
+        let video = h.addAsset(type: .video, hasAudio: true)
+        let music = h.addAsset(type: .audio)
+
+        let videoResult = await h.runRaw("add_clips", args: [
+            "entries": [["mediaRef": video.id, "startFrame": 0, "endFrame": 30]]
+        ])
+        #expect(videoResult.isError == false, "\(ToolHarness.textOf(videoResult))")
+
+        let musicResult = await h.runRaw("add_clips", args: [
+            "entries": [["mediaRef": music.id, "startFrame": 0, "endFrame": 30]]
+        ])
+        #expect(musicResult.isError == false, "\(ToolHarness.textOf(musicResult))")
+
+        let audioTracks = h.editor.timeline.tracks.enumerated().filter { $0.element.type == .audio }
+        #expect(audioTracks.count == 2)
+
+        let linkedTrack = audioTracks[0]
+        let musicTrack = audioTracks[1]
+        #expect(h.editor.timelineTrackDisplayLabel(at: linkedTrack.offset) == "A1")
+        #expect(h.editor.timelineTrackDisplayLabel(at: musicTrack.offset) == "A2")
+        #expect(linkedTrack.element.clips.contains { $0.linkGroupId != nil })
+        #expect(musicTrack.element.clips.contains { $0.mediaRef == music.id && $0.linkGroupId == nil })
+    }
+
     // MARK: - remove_clips
 
     @Test func removeClipsDropsClipsByIds() async throws {

@@ -244,7 +244,9 @@ extension ToolExecutor {
                     videoTrackId = editor.timeline.tracks[editor.insertTrack(at: 0, type: .video)].id
                 }
                 if needsAudio {
-                    audioTrackId = editor.timeline.tracks[editor.insertTrack(at: 0, type: .audio)].id
+                    audioTrackId = editor.timeline.tracks[
+                        editor.insertTrack(at: editor.timeline.tracks.count, type: .audio)
+                    ].id
                 }
                 for i in specs.indices {
                     specs[i].trackId = (specs[i].asset.type == .audio) ? audioTrackId : videoTrackId
