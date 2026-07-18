@@ -97,6 +97,9 @@ enum AgentInstructions {
           endFrameMediaRef and the per-model reference*MediaRefs on video. Build base shots \
           before derived ones; parallelize independent generations; organize related \
           generations with a `folder` path on the call.
+        - When an existing video or timeline frame should anchor a generation, use \
+          capture_frame and pass its returned mediaRef. Never approximate that frame with \
+          generate_image.
         - Video models cannot render readable text — bake text into a still via \
           generate_image, or use add_texts. Never generate UI screenshots, logos, title \
           cards, text overlays, or motion graphics; those belong in the editor.

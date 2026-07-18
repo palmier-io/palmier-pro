@@ -1,0 +1,172 @@
+import AVFoundation
+import Foundation
+import ImageIO
+import UniformTypeIdentifiers
+
+struct RenderedFrame: Sendable {
+    let stagedURL: URL
+    let width: Int
+    let height: Int
+    let actualSourceSeconds: Double?
+}
+
+enum FrameCaptureRenderer {
+    private static let renderGate = AsyncSemaphore(value: 2)
+    private static let mediaDurationReceiptTolerance = 0.001
+
+    enum RenderError: LocalizedError {
+        case noVideoTrack
+        case invalidDuration
+        case sourceTimeOutOfRange(requested: Double, duration: Double)
+        case renderFailed(String)
+        case encodeFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .noVideoTrack:
+                "No video track is available."
+            case .invalidDuration:
+                "The video has no finite duration."
+            case .sourceTimeOutOfRange(let requested, let duration):
+                "Source time \(Self.formatted(requested))s is outside 0…\(Self.formatted(duration))s."
+            case .renderFailed(let reason):
+                "Could not render the frame: \(reason)"
+            case .encodeFailed:
+                "Could not encode the captured frame as PNG."
+            }
+        }
+
+        private static func formatted(_ value: Double) -> String {
+            String(format: "%.3f", value)
+        }
+    }
+
+    @concurrent
+    static func timeline(
+        _ timeline: Timeline,
+        frame: Int,
+        mediaURLs: [String: URL],
+        resolveTimeline: @escaping @Sendable (String) -> Timeline?,
+        missingMediaRefs: Set<String>
+    ) async throws -> RenderedFrame {
+        try await renderGate.wait()
+        defer { Task { await renderGate.signal() } }
+        try Task.checkCancellation()
+
+        let canvas = CGSize(width: timeline.width, height: timeline.height)
+        let result = try await CompositionBuilder.build(
+            timeline: timeline,
+            resolveURL: { mediaURLs[$0] },
+            resolveTimeline: resolveTimeline,
+            missingMediaRefs: missingMediaRefs,
+            renderSize: canvas
+        )
+        let videoTrack = try? await result.composition.loadTracks(withMediaType: .video).first
+        try Task.checkCancellation()
+        guard videoTrack != nil else {
+            throw RenderError.noVideoTrack
+        }
+
+        let generator = AVAssetImageGenerator(asset: result.composition)
+        generator.videoComposition = result.videoComposition
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = canvas
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+
+        let time = CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(timeline.fps))
+        let image: CGImage
+        do {
+            image = try await generator.image(at: time).image
+        } catch {
+            try Task.checkCancellation()
+            throw RenderError.renderFailed(error.localizedDescription)
+        }
+        return try stage(image, actualSourceSeconds: nil)
+    }
+
+    @concurrent
+    static func media(url: URL, sourceSeconds: Double) async throws -> RenderedFrame {
+        try await renderGate.wait()
+        defer { Task { await renderGate.signal() } }
+        try Task.checkCancellation()
+
+        let asset = AVURLAsset(url: url)
+        guard let track = try await asset.loadTracks(withMediaType: .video).first else {
+            throw RenderError.noVideoTrack
+        }
+        let duration = try await asset.load(.duration)
+        let durationSeconds = duration.seconds
+        guard duration.isNumeric, durationSeconds.isFinite, durationSeconds > 0 else {
+            throw RenderError.invalidDuration
+        }
+        let loadedMinimum = try? await track.load(.minFrameDuration)
+        try Task.checkCancellation()
+        let minimumFrameDuration = loadedMinimum.flatMap { duration in
+            duration.isNumeric && duration > .zero ? duration : nil
+        } ?? CMTime(value: 1, timescale: 600)
+        guard sourceSeconds.isFinite,
+              sourceSeconds >= 0,
+              sourceSeconds <= durationSeconds + mediaDurationReceiptTolerance else {
+            throw RenderError.sourceTimeOutOfRange(requested: sourceSeconds, duration: durationSeconds)
+        }
+        let capturesLastFrame = sourceSeconds >= durationSeconds - minimumFrameDuration.seconds
+        let requestedTime = capturesLastFrame
+            ? max(.zero, duration - minimumFrameDuration)
+            : CMTime(seconds: sourceSeconds, preferredTimescale: 60_000)
+
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.requestedTimeToleranceBefore = minimumFrameDuration
+        generator.requestedTimeToleranceAfter = capturesLastFrame ? .zero : minimumFrameDuration
+
+        let image: CGImage
+        let actualTime: CMTime
+        do {
+            let generated = try await generator.image(at: requestedTime)
+            image = generated.image
+            actualTime = generated.actualTime
+        } catch {
+            try Task.checkCancellation()
+            throw RenderError.renderFailed(error.localizedDescription)
+        }
+        return try stage(image, actualSourceSeconds: actualTime.seconds)
+    }
+
+    @concurrent
+    static func discardStagedFile(at url: URL) async {
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    private nonisolated static func stage(
+        _ image: CGImage,
+        actualSourceSeconds: Double?
+    ) throws -> RenderedFrame {
+        let buffer = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            buffer,
+            UTType.png.identifier as CFString,
+            1,
+            nil
+        ) else {
+            throw RenderError.encodeFailed
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else {
+            throw RenderError.encodeFailed
+        }
+        let stagedURL = try FileIO.stageData(buffer as Data, pathExtension: "png")
+        do {
+            try Task.checkCancellation()
+        } catch {
+            try? FileManager.default.removeItem(at: stagedURL)
+            throw error
+        }
+        return RenderedFrame(
+            stagedURL: stagedURL,
+            width: image.width,
+            height: image.height,
+            actualSourceSeconds: actualSourceSeconds
+        )
+    }
+}

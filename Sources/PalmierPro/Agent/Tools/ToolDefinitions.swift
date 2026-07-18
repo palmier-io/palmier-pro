@@ -19,6 +19,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case inspectMedia = "inspect_media"
     case searchMedia = "search_media"
     case importMedia = "import_media"
+    case captureFrame = "capture_frame"
     case organizeMedia = "organize_media"
 
     // Clips
@@ -235,6 +236,18 @@ enum ToolDefinitions {
                     "folder": ["type": "string", "description": "Optional destination folder path, e.g. 'B-roll/Sunset'. Created if missing. Omit for the project root."],
                 ],
                 required: ["source"]
+            )
+        ),
+        AgentTool(
+            name: .captureFrame,
+            description: "Capture one video frame as a full-resolution PNG media asset. Use timelineFrame to capture the active timeline's final composited image, including transforms, crop, color, effects, text, and captions. Use mediaRef with sourceSeconds to capture an unedited frame directly from a source video instead. Pass the asset's durationSeconds as sourceSeconds to capture its final decodable frame. Exactly one mode is allowed. The returned mediaRef is ready for add_clips, generate_video startFrameMediaRef/endFrameMediaRef, generate_image references, or inspect_media. Every call creates one new undoable media asset.",
+            inputSchema: objectSchema(
+                properties: [
+                    "timelineFrame": ["type": "integer", "description": "Project frame in the active timeline. Use this alone for the composited timeline image."],
+                    "mediaRef": ["type": "string", "description": "Video asset ID from get_media. Use with sourceSeconds for a raw source frame."],
+                    "sourceSeconds": ["type": "number", "description": "Source time in seconds for mediaRef. May equal durationSeconds to select the final decodable frame."],
+                    "name": ["type": "string", "description": "Optional media-library name for the captured PNG."],
+                ]
             )
         ),
         AgentTool(
