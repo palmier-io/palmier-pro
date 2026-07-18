@@ -17,45 +17,9 @@ enum GlossaryClassifier {
     /// or an unsafe-length variant). Pure deletions, insertions, scattered edits, and
     /// punctuation/casing/whitespace-only changes return nil.
     static func classify(old: String, new: String) -> Promotion? {
-        let oldTrimmed = old.trimmingCharacters(in: .whitespacesAndNewlines)
-        let newTrimmed = new.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard oldTrimmed != newTrimmed else { return nil }
-        // Whole-edit punctuation/casing/whitespace-only change → nothing to correct.
-        if normalize(oldTrimmed) == normalize(newTrimmed) { return nil }
-
-        let isCJK = GlossaryText.isCJKPhrase(oldTrimmed) || GlossaryText.isCJKPhrase(newTrimmed)
-        let oldTokens = tokenize(oldTrimmed, isCJK: isCJK)
-        let newTokens = tokenize(newTrimmed, isCJK: isCJK)
-
-        let regions = diffRegions(oldTokens, newTokens)
-        guard regions.count == 1 else { return nil }  // scattered or multi-region → not a term fix
-        let region = regions[0]
-
-        let oldSpanTokens = Array(oldTokens[region.oldRange])
-        let newSpanTokens = Array(newTokens[region.newRange])
-        // Substitution only: both sides non-empty (rules out pure delete / pure insert).
-        guard !oldSpanTokens.isEmpty, !newSpanTokens.isEmpty else { return nil }
-
-        let variant = join(oldSpanTokens, isCJK: isCJK)
-        let canonical = join(newSpanTokens, isCJK: isCJK)
-        guard !variant.isEmpty, !canonical.isEmpty else { return nil }
-
-        // Guards apply to the MINIMAL span. Phonetic distance is deliberately NOT one of them.
-        if normalize(variant) == normalize(canonical) { return nil }          // punctuation/casing-only span
-        if GlossaryCommonWords.isAllFiller(oldSpanTokens) { return nil }        // filler cleanup
-        if GlossaryCommonWords.isAllFiller(newSpanTokens) { return nil }
-        if GlossaryCommonWords.isCommonVocabulary(canonical) { return nil }     // rephrase, not a term
-
-        // Length safety: a variant below the find/replace threshold (a single CJK char like 开→拍)
-        // would corrupt longer words. Dropping it makes the user re-fix the term every episode, so
-        // instead widen the span into the shared neighbouring context until the variant clears the
-        // threshold (开→拍 inside 开视频→拍视频 becomes 开视频→拍视频). CJK only; Latin is unchanged.
-        if GlossaryValidation.tooShortReason(variant) != nil {
-            guard isCJK, let widened = widen(old: oldTrimmed, new: newTrimmed) else { return nil }
-            return widened
-        }
-
-        return Promotion(canonical: canonical, variant: variant)
+        // Single implementation lives in classifyWithReason so the two can never drift.
+        if case let .promote(promotion) = classifyWithReason(old: old, new: new) { return promotion }
+        return nil
     }
 
     // MARK: - Span widening
@@ -231,7 +195,17 @@ enum GlossaryClassifier {
         if GlossaryCommonWords.isAllFiller(oldSpanTokens) { return .reject(.filler) }
         if GlossaryCommonWords.isAllFiller(newSpanTokens) { return .reject(.filler) }
         if GlossaryCommonWords.isCommonVocabulary(canonical) { return .reject(.commonVocabulary) }
-        if GlossaryValidation.tooShortReason(variant) != nil { return .reject(.unsafeShortVariant) }
+
+        // Length safety: a variant below the find/replace threshold (a single CJK char like 开→拍)
+        // would corrupt longer words. Dropping it makes the user re-fix the term every episode, so
+        // instead widen the span into the shared neighbouring context until the variant clears the
+        // threshold (开→拍 inside 开视频→拍视频 becomes 开视频→拍视频). CJK only; Latin is unchanged.
+        if GlossaryValidation.tooShortReason(variant) != nil {
+            guard isCJK, let widened = widen(old: oldTrimmed, new: newTrimmed) else {
+                return .reject(.unsafeShortVariant)
+            }
+            return .promote(widened)
+        }
 
         return .promote(Promotion(canonical: canonical, variant: variant))
     }
