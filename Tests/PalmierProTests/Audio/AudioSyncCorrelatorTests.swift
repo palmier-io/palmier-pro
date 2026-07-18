@@ -76,4 +76,56 @@ struct AudioSyncCorrelatorTests {
         #expect(AudioSyncCorrelator.correlate(reference: [], target: [1, 2, 3], maxLagHops: 5) == nil)
         #expect(AudioSyncCorrelator.correlate(reference: [1, 2, 3], target: [], maxLagHops: 5) == nil)
     }
+
+    @Test func seededCorrelationChoosesStrongerFullWindowMatch() async {
+        let target = signal(count: 300, seed: 7)
+        let interference = signal(count: 300, seed: 99)
+        var reference = [Float](repeating: 0, count: 1_000)
+        reference.replaceSubrange(100..<400, with: target)
+        reference.replaceSubrange(600..<900, with: zip(target, interference).map { $0 * 0.6 + $1 * 0.4 })
+
+        let result = await AudioSyncCorrelator.seededCorrelate(
+            reference: reference, target: target, seedHops: 600, seedWindowHops: 10,
+            maxLagHops: 200, minOverlapHops: 100, minConfidence: 0.5
+        )
+
+        #expect(result?.lagHops == 100)
+        #expect((result?.confidence ?? 0) > 0.99)
+    }
+
+    @Test func searchesAroundAdditionalTimelineCenter() async {
+        let target = signal(count: 300, seed: 11)
+        var reference = [Float](repeating: 0, count: 1_000)
+        reference.replaceSubrange(600..<900, with: target)
+
+        let result = await AudioSyncCorrelator.seededCorrelate(
+            reference: reference, target: target, seedHops: nil, seedWindowHops: 10,
+            maxLagHops: 50, minOverlapHops: 100, minConfidence: 0.5,
+            additionalSearchCenterHops: [600]
+        )
+
+        #expect(result?.lagHops == 600)
+        #expect((result?.confidence ?? 0) > 0.99)
+    }
+
+    @Test func requestedOverlapAdaptsForShortClips() {
+        let samples = signal(count: 120)
+        let result = AudioSyncCorrelator.correlate(
+            reference: samples, target: samples, maxLagHops: 20, minOverlapHops: 300
+        )
+
+        #expect(result?.lagHops == 0)
+        #expect((result?.confidence ?? 0) > 0.99)
+    }
+
+    @Test func multiresolutionSearchRefinesToExactHop() {
+        let base = signal(count: 2_000)
+        let lag = 37
+        let result = AudioSyncCorrelator.correlate(
+            reference: base, target: Array(base[lag...]), maxLagHops: 400, minOverlapHops: 300
+        )
+
+        #expect(result?.lagHops == lag)
+        #expect((result?.confidence ?? 0) > 0.99)
+    }
 }

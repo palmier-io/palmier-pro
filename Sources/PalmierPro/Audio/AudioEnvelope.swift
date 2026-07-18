@@ -23,7 +23,7 @@ enum AudioEnvelopeError: LocalizedError {
 
 enum AudioEnvelopeExtractor {
     static let sampleRate: Double = 16_000
-    static let hopSeconds: Double = 0.01
+    static let hopSeconds: Double = 0.0025
 
     static func extract(from url: URL, range: ClosedRange<Double>? = nil) async throws -> AudioEnvelope {
         let hopSize = max(1, Int((sampleRate * hopSeconds).rounded()))
@@ -53,7 +53,7 @@ enum AudioEnvelopeExtractor {
                     carry += take
                     i += take
                     if carry == hopSize {
-                        samples.append((sumSquares / Float(hopSize)).squareRoot())
+                        samples.append(logEnergy(sumSquares: sumSquares, count: hopSize))
                         sumSquares = 0
                         carry = 0
                     }
@@ -67,8 +67,12 @@ enum AudioEnvelopeExtractor {
         }
 
         if carry > 0 {
-            samples.append((sumSquares / Float(carry)).squareRoot())
+            samples.append(logEnergy(sumSquares: sumSquares, count: carry))
         }
         return AudioEnvelope(hopSeconds: hopSeconds, samples: samples)
+    }
+
+    private static func logEnergy(sumSquares: Float, count: Int) -> Float {
+        log1p((sumSquares / Float(count)).squareRoot() * 100)
     }
 }

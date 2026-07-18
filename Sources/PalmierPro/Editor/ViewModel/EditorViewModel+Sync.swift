@@ -83,6 +83,7 @@ extension EditorViewModel {
             let clipId: String
             let samples: [Float]
             let speed: Double
+            let currentStart: Int
             let mediaRef: String
             let trimStartFrame: Int
         }
@@ -100,10 +101,13 @@ extension EditorViewModel {
                     + Double(target.trimStartFrame - anchor.clip.trimStartFrame) / fps
                 seedHops = Int((lagSeconds / hop).rounded())
             }
+            let timelineLagSeconds = (Double(target.currentStart) - Double(anchor.rawStart))
+                * max(anchor.clip.speed, SyncDefaults.minSpeed) / fps
+            let timelineCenterHops = Int((timelineLagSeconds / hop).rounded())
             guard let result = await AudioSyncCorrelator.seededCorrelate(
                 reference: anchor.clip.samples, target: target.samples, seedHops: seedHops,
                 seedWindowHops: seedWindow, maxLagHops: maxLag, minOverlapHops: minOverlap,
-                minConfidence: minConfidence
+                minConfidence: minConfidence, additionalSearchCenterHops: [timelineCenterHops]
             ) else { return nil }
             let lagFrames = Double(result.lagHops) * hop * fps / max(anchor.clip.speed, SyncDefaults.minSpeed)
             return (Int((Double(anchor.rawStart) + lagFrames).rounded()), result.confidence)
@@ -157,6 +161,7 @@ extension EditorViewModel {
                    let refEnv = await envelope(of: liveRef, fps: fps), !refEnv.samples.isEmpty {
                     anchors.append((liveRef.startFrame, AudioClip(
                         clipId: liveRef.id, samples: refEnv.samples, speed: liveRef.speed,
+                        currentStart: liveRef.startFrame,
                         mediaRef: liveRef.mediaRef, trimStartFrame: liveRef.trimStartFrame)))
                 }
             }
@@ -172,6 +177,7 @@ extension EditorViewModel {
             }
             let clip = AudioClip(
                 clipId: bearer.id, samples: env.samples, speed: liveBearer.speed,
+                currentStart: liveBearer.startFrame,
                 mediaRef: liveBearer.mediaRef, trimStartFrame: liveBearer.trimStartFrame)
             candidates.append((clip, await match(refAnchor, clip), tcHint?.rawStart))
         }
