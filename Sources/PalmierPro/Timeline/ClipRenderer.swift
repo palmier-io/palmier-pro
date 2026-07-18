@@ -301,7 +301,6 @@ enum ClipRenderer {
 
         let dur = CGFloat(max(1, clip.durationFrames))
         let frameStep = dur / CGFloat(barCount)
-        let visCount = sampleEnd - sampleStart
 
         // Samples are dB-normalized over this range, so volume shifts the dB axis (not multiplies).
         let dbRange: CGFloat = 50
@@ -313,20 +312,26 @@ enum ClipRenderer {
         let maskCount = deadAirMask?.count ?? 0
         let maskStart = max(0, min(maskCount, Int(startFrac * Double(maskCount))))
         let maskEnd = max(maskStart, min(maskCount, Int(endFrac * Double(maskCount))))
-        let maskVisCount = maskEnd - maskStart
         var washes: [CGRect] = []
         let spkCount = speakerMask?.count ?? 0
         let spkStart = max(0, min(spkCount, Int(startFrac * Double(spkCount))))
         let spkEnd = max(spkStart, min(spkCount, Int(endFrac * Double(spkCount))))
-        let spkVisCount = spkEnd - spkStart
         var tintedBars: [Int: [CGRect]] = [:]
+
+        func sourceIndex(count: Int, timelineOffset: Double) -> Int {
+            let sourceFrame = Double(clip.trimStartFrame)
+                + clip.sourceOffset(atTimelineOffset: timelineOffset)
+            return max(0, min(count, Int(sourceFrame / Double(totalSource) * Double(count))))
+        }
 
         var bars: [CGRect] = []
         bars.reserveCapacity(lastBar - firstBar)
         for i in firstBar..<lastBar {
             // Peak-detect (min, since 0=loud) over the bar's range so zero crossings don't flatten loud audio.
-            let sStart = sampleStart + i * visCount / barCount
-            let sEnd = max(sStart + 1, sampleStart + (i + 1) * visCount / barCount)
+            let timelineStart = Double(i) * Double(clip.durationFrames) / Double(barCount)
+            let timelineEnd = Double(i + 1) * Double(clip.durationFrames) / Double(barCount)
+            let sStart = sourceIndex(count: samples.count, timelineOffset: timelineStart)
+            let sEnd = max(sStart + 1, sourceIndex(count: samples.count, timelineOffset: timelineEnd))
             var loudest: Float = 1
             for j in sStart..<min(sEnd, sampleEnd) {
                 let s = samples[j]
@@ -345,8 +350,11 @@ enum ClipRenderer {
             let barY = drawRect.maxY - barHeight - 1
             let bar = CGRect(x: drawRect.minX + CGFloat(i), y: barY, width: 1, height: barHeight)
             var speaker = -1
-            if let speakerMask, spkVisCount > 0 {
-                let c = min(spkEnd - 1, spkStart + i * spkVisCount / barCount)
+            if let speakerMask, spkEnd > spkStart {
+                let c = min(
+                    spkEnd - 1,
+                    sourceIndex(count: spkCount, timelineOffset: (timelineStart + timelineEnd) / 2)
+                )
                 speaker = speakerMask[c]
             }
             if speaker >= 0, speakerColors[speaker] != nil {
@@ -355,9 +363,9 @@ enum ClipRenderer {
                 bars.append(bar)
             }
 
-            if let deadAirMask, maskVisCount > 0 {
-                let m0 = maskStart + i * maskVisCount / barCount
-                let m1 = min(maskEnd, max(m0 + 1, maskStart + (i + 1) * maskVisCount / barCount))
+            if let deadAirMask, maskEnd > maskStart {
+                let m0 = sourceIndex(count: maskCount, timelineOffset: timelineStart)
+                let m1 = min(maskEnd, max(m0 + 1, sourceIndex(count: maskCount, timelineOffset: timelineEnd)))
                 if deadAirMask[m0..<m1].contains(true) {
                     washes.append(CGRect(x: drawRect.minX + CGFloat(i), y: drawRect.minY, width: 1, height: drawRect.height))
                 }

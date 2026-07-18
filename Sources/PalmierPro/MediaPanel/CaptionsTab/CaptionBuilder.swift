@@ -179,7 +179,7 @@ enum CaptionBuilder {
     ) -> [EditorViewModel.TextClipSpec] {
         phrases.compactMap { p in
             let visibleStartSource = Double(sourceClip.trimStartFrame)
-            let visibleEndSource = visibleStartSource + Double(sourceClip.durationFrames) * max(sourceClip.speed, 0.0001)
+            let visibleEndSource = visibleStartSource + Double(sourceClip.sourceFramesConsumed)
             let phraseStartSource = p.start * Double(fps)
             let phraseEndSource = p.end * Double(fps)
             guard phraseEndSource > visibleStartSource, phraseStartSource < visibleEndSource else { return nil }
@@ -187,7 +187,9 @@ enum CaptionBuilder {
             func clampedTimelineFrame(sourceSeconds: Double) -> Int {
                 let sourceFrame = sourceSeconds * Double(fps)
                 let offsetFromTrim = sourceFrame - visibleStartSource
-                let frame = Int((Double(sourceClip.startFrame) + offsetFromTrim / max(sourceClip.speed, 0.0001)).rounded())
+                let timelineOffset = sourceClip.timelineOffset(atSourceOffset: max(0, offsetFromTrim))
+                    ?? Double(sourceClip.durationFrames)
+                let frame = Int((Double(sourceClip.startFrame) + timelineOffset).rounded())
                 return min(max(frame, sourceClip.startFrame), sourceClip.endFrame)
             }
 

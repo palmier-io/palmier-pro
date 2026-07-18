@@ -304,6 +304,29 @@ struct XMLExporterTests {
         #expect(!xml.contains("timeremap"))
     }
 
+    @Test func speedRampEmitsVariableSpeedKeyframes() async throws {
+        let (resolver, tmpDir) = try makeResolver(entries: [videoManifestEntry(id: "media-v", in: NSTemporaryDirectory())])
+        var clip = Fixtures.clip(id: "c1", mediaRef: "media-v", start: 0, duration: 60)
+        clip.speedRamp = SpeedRamp(points: [
+            SpeedRampPoint(position: 0, speed: 1, interpolationOut: .linear),
+            SpeedRampPoint(position: 1, speed: 3),
+        ])
+        clip.speed = clip.speedRamp!.averageSpeed
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+
+        let outURL = tmpDir.appendingPathComponent("out.xml")
+        try await XMLExporter.export(timeline: timeline, resolver: resolver, outputURL: outURL)
+        let xml = try readXML(at: outURL)
+
+        #expect(xml.contains("<effectid>timeremap</effectid>"))
+        #expect(xml.contains("<parameterid>variablespeed</parameterid><name>variablespeed</name><valuemin>0</valuemin><valuemax>1</valuemax><value>1</value>"))
+        #expect(xml.contains("<parameterid>graphdict</parameterid><name>graphdict</name>"))
+        #expect(xml.contains("<when>0</when><value>0.0000</value>"))
+        #expect(xml.contains("<when>60</when><value>120.0000</value>"))
+        #expect(xml.contains("<speedkfin>TRUE</speedkfin>"))
+        #expect(xml.contains("<speedkfout>TRUE</speedkfout>"))
+    }
+
     @Test func volumeNotOneEmitsAudioLevelsFilter() async throws {
         let (resolver, tmpDir) = try makeResolver(entries: [audioManifestEntry(id: "media-a", in: NSTemporaryDirectory())])
         let clip = Fixtures.clip(id: "c1", mediaRef: "media-a", mediaType: .audio, start: 0, duration: 60, volume: 0.5)

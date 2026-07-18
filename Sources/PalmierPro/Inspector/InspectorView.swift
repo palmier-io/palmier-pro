@@ -19,6 +19,11 @@ struct InspectorView: View {
         case ai = "AI Edit"
     }
 
+    enum SpeedMode: String, Hashable {
+        case constant = "Constant"
+        case ramp = "Ramp"
+    }
+
     @State private var preferredTab: ClipTab = .video
     @State private var preferredAssetTab: AssetTab = .details
     @State private var transformExpanded = true
@@ -387,23 +392,93 @@ struct InspectorView: View {
     @ViewBuilder
     func speedSection(clips: [Clip]) -> some View {
         if !clips.isEmpty {
-            EditorPanelGroup("Playback", contentSpacing: AppTheme.Spacing.smMd) {
-                propertyRow(
-                    label: "Speed",
-                    onReset: { editor.commitClipSpeed(ids: clips.map(\.id), newSpeed: 1) }
-                ) {
-                    ScrubbableNumberField(
-                        value: sharedClipValue(clips) { $0.speed },
-                        range: 0.25...4.0,
-                        format: "%.2f",
-                        valueSuffix: "x",
-                        dragSensitivity: 0.01,
-                        fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
-                        onChanged: { newVal in
-                            for c in clips { editor.applyClipSpeed(clipId: c.id, newSpeed: newVal) }
+            let allRamped = clips.allSatisfy(\.isSpeedRamped)
+            EditorPanelGroup(
+                "Playback",
+                contentSpacing: AppTheme.Spacing.smMd,
+                onReset: { editor.commitClipSpeed(ids: clips.map(\.id), newSpeed: 1) }
+            ) {
+                propertyRow(label: "Mode") {
+                    Picker(
+                        "Speed mode",
+                        selection: Binding(
+                            get: { allRamped ? SpeedMode.ramp : SpeedMode.constant },
+                            set: { mode in
+                                editor.commitClipSpeedMode(
+                                    ids: clips.map(\.id),
+                                    ramped: mode == .ramp
+                                )
+                            }
+                        )
+                    ) {
+                        Text(SpeedMode.constant.rawValue).tag(SpeedMode.constant)
+                        Text(SpeedMode.ramp.rawValue).tag(SpeedMode.ramp)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .accessibilityLabel("Speed mode")
+                }
+
+                if allRamped {
+                    if let clip = clips.count == 1 ? clips[0] : nil,
+                       let ramp = clip.speedRamp {
+                        propertyRow(label: "Curve") {
+                            Picker(
+                                "Ramp curve",
+                                selection: Binding(
+                                    get: { ramp.points.first?.interpolationOut ?? .smooth },
+                                    set: { interpolation in
+                                        var points = ramp.points
+                                        for index in points.indices.dropLast() {
+                                            points[index].interpolationOut = interpolation
+                                        }
+                                        editor.commitClipSpeedRamp(
+                                            ids: [clip.id],
+                                            ramp: SpeedRamp(points: points)
+                                        )
+                                    }
+                                )
+                            ) {
+                                Text("Smooth").tag(Interpolation.smooth)
+                                Text("Linear").tag(Interpolation.linear)
+                                Text("Hold").tag(Interpolation.hold)
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .accessibilityLabel("Speed ramp curve")
                         }
-                    ) { newVal in
-                        editor.commitClipSpeed(ids: clips.map(\.id), newSpeed: newVal)
+
+                        SpeedRampEditorView(
+                            ramp: ramp,
+                            onChange: { editor.applyClipSpeedRamp(clipId: clip.id, ramp: $0) },
+                            onCommit: { editor.commitClipSpeedRamp(ids: [clip.id], ramp: $0) }
+                        )
+                    } else {
+                        Text("Select one clip to shape its speed curve.")
+                            .font(.system(size: AppTheme.FontSize.xs))
+                            .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    }
+                } else {
+                    propertyRow(
+                        label: "Speed",
+                        onReset: { editor.commitClipSpeed(ids: clips.map(\.id), newSpeed: 1) }
+                    ) {
+                        ScrubbableNumberField(
+                            value: sharedClipValue(clips) { $0.speed },
+                            range: SpeedRamp.minimumSpeed...SpeedRamp.maximumSpeed,
+                            format: "%.2f",
+                            valueSuffix: "x",
+                            dragSensitivity: 0.01,
+                            fieldWidth: AppTheme.EditorPanel.numericFieldWidth,
+                            onChanged: { newVal in
+                                for clip in clips {
+                                    editor.applyClipSpeed(clipId: clip.id, newSpeed: newVal)
+                                }
+                            }
+                        ) { newVal in
+                            editor.commitClipSpeed(ids: clips.map(\.id), newSpeed: newVal)
+                        }
+                        .accessibilityLabel("Playback speed")
                     }
                 }
             }

@@ -734,6 +734,74 @@ struct ToolExecutorClipTests {
         ])
     }
 
+    @Test func setSpeedRampPreservesSourceAndIsReadable() async throws {
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [Fixtures.clip(id: "c1", start: 0, duration: 100)]),
+        ]))
+
+        let result = await h.runRaw("set_speed_ramp", args: [
+            "clipIds": ["c1"],
+            "mode": "ramp",
+            "points": [
+                ["position": 0.0, "speed": 1.0, "interpolation": "linear"],
+                ["position": 1.0, "speed": 3.0],
+            ],
+        ])
+
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let clip = h.editor.timeline.tracks[0].clips[0]
+        #expect(clip.durationFrames == 50)
+        #expect(clip.sourceFramesConsumed == 100)
+        #expect(clip.speedRamp?.points.count == 2)
+        let timeline = try await h.runOK("get_timeline") as? [String: Any]
+        let clips = ((timeline?["tracks"] as? [[String: Any]])?.first?["clips"] as? [[String: Any]])
+        #expect(clips?.first?["speedRamp"] != nil)
+    }
+
+    @Test func setSpeedRampPropagatesToLinkedAudio() async throws {
+        var video = Fixtures.clip(id: "v", start: 0, duration: 100)
+        video.linkGroupId = "g"
+        var audio = Fixtures.clip(id: "a", mediaType: .audio, start: 0, duration: 100)
+        audio.linkGroupId = "g"
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [video]),
+            Fixtures.audioTrack(clips: [audio]),
+        ]))
+
+        _ = await h.runRaw("set_speed_ramp", args: [
+            "clipIds": ["v"],
+            "mode": "ramp",
+            "points": [
+                ["position": 0.0, "speed": 0.5],
+                ["position": 1.0, "speed": 1.5],
+            ],
+        ])
+
+        let clips = h.editor.timeline.tracks.flatMap(\.clips)
+        #expect(clips.first { $0.id == "v" }?.speedRamp != nil)
+        #expect(clips.first { $0.id == "a" }?.speedRamp != nil)
+        #expect(clips.first { $0.id == "v" }?.durationFrames == clips.first { $0.id == "a" }?.durationFrames)
+    }
+
+    @Test func setSpeedRampRejectsMissingEndpointsWithoutMutation() async {
+        let original = Fixtures.clip(id: "c1", start: 0, duration: 100)
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [original]),
+        ]))
+
+        let result = await h.runRaw("set_speed_ramp", args: [
+            "clipIds": ["c1"],
+            "mode": "ramp",
+            "points": [
+                ["position": 0.2, "speed": 1.0],
+                ["position": 1.0, "speed": 2.0],
+            ],
+        ])
+
+        #expect(result.isError)
+        #expect(h.editor.timeline.tracks[0].clips[0] == original)
+    }
+
     // MARK: - add_clips
 
     @Test func addClipsPlacesClipOnTrack() async throws {

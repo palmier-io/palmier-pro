@@ -82,6 +82,21 @@ fileprivate struct SetClipPropertiesInput: DecodableToolArgs {
     }
 }
 
+fileprivate struct SetSpeedRampInput: DecodableToolArgs {
+    let clipIds: [String]
+    let mode: String
+    let speed: Double?
+    let points: [Point]?
+    static let allowedKeys: Set<String> = ["clipIds", "mode", "speed", "points"]
+
+    struct Point: DecodableToolArgs {
+        let position: Double
+        let speed: Double
+        let interpolation: String?
+        static let allowedKeys: Set<String> = ["position", "speed", "interpolation"]
+    }
+}
+
 fileprivate struct RippleDeleteRangesInput: DecodableToolArgs {
     let clipId: String?
     let trackIndex: Int?
@@ -454,8 +469,8 @@ extension ToolExecutor {
         if let df = input.durationFrames, df < 1 {
             throw ToolError("durationFrames must be >= 1 (got \(df))")
         }
-        if let s = input.speed, s <= 0 {
-            throw ToolError("speed must be > 0 (got \(s))")
+        if let s = input.speed, !(SpeedRamp.minimumSpeed...SpeedRamp.maximumSpeed).contains(s) {
+            throw ToolError("speed must be between 0.25 and 4 (got \(s))")
         }
         if let v = input.volume, !(0...1).contains(v) {
             throw ToolError("volume must be between 0 and 1 (got \(v))")
@@ -580,11 +595,14 @@ extension ToolExecutor {
                     changed.append("speed skipped (nested timelines don't support retiming)")
                 } else {
                     if durationFrames == nil, v > 0 {
-                        let sourceConsumed = Double(clip.durationFrames) * clip.speed
+                        let sourceConsumed = clip.sourceOffset(
+                            atTimelineOffset: Double(clip.durationFrames)
+                        )
                         clip.setDuration(max(1, safeInt((sourceConsumed / v).rounded()) ?? clip.durationFrames))
                         changed.append("durationFrames")
                     }
                     clip.speed = v
+                    clip.speedRamp = nil
                     changed.append("speed")
                 }
             }
@@ -607,6 +625,80 @@ extension ToolExecutor {
             }
         }
         return changed
+    }
+
+    // MARK: set_speed_ramp
+
+    func setSpeedRamp(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        let input: SetSpeedRampInput = try decodeToolArgs(args, path: "set_speed_ramp")
+        let clipIds = Array(Set(input.clipIds))
+        guard !clipIds.isEmpty else { throw ToolError("Provide a non-empty 'clipIds' array") }
+        guard input.mode == "constant" || input.mode == "ramp" else {
+            throw ToolError("mode must be 'constant' or 'ramp'")
+        }
+
+        let touched = Set(clipIds).union(editor.timingPropagationPartners(of: Set(clipIds)))
+        for id in touched {
+            guard let clip = editor.clipFor(id: id) else { throw ToolError("Clip not found: \(id)") }
+            guard clip.supportsRetiming else {
+                throw ToolError("Clip \(id) is a nested timeline and cannot be retimed")
+            }
+            guard clip.multicamGroupId == nil else {
+                throw ToolError("Speed changes would slip multicam clip \(id) out of sync")
+            }
+        }
+
+        let ramp: SpeedRamp?
+        if input.mode == "constant" {
+            guard let speed = input.speed else { throw ToolError("constant mode requires 'speed'") }
+            guard input.points == nil else { throw ToolError("constant mode does not accept 'points'") }
+            guard (SpeedRamp.minimumSpeed...SpeedRamp.maximumSpeed).contains(speed) else {
+                throw ToolError("speed must be between 0.25 and 4 (got \(speed))")
+            }
+            ramp = nil
+        } else {
+            guard input.speed == nil else { throw ToolError("ramp mode does not accept scalar 'speed'") }
+            guard let rows = input.points, rows.count >= 2 else {
+                throw ToolError("ramp mode requires at least two points")
+            }
+            guard rows.first?.position == 0, rows.last?.position == 1 else {
+                throw ToolError("ramp points must include position 0 first and position 1 last")
+            }
+            var previous = -Double.infinity
+            var points: [SpeedRampPoint] = []
+            for (index, row) in rows.enumerated() {
+                guard row.position > previous, (0...1).contains(row.position) else {
+                    throw ToolError("points[\(index)].position must be within 0–1 and strictly increasing")
+                }
+                guard (SpeedRamp.minimumSpeed...SpeedRamp.maximumSpeed).contains(row.speed) else {
+                    throw ToolError("points[\(index)].speed must be between 0.25 and 4")
+                }
+                let interpolation: Interpolation
+                if let raw = row.interpolation {
+                    guard let parsed = Interpolation(rawValue: raw) else {
+                        throw ToolError("points[\(index)].interpolation must be smooth, linear, or hold")
+                    }
+                    interpolation = parsed
+                } else {
+                    interpolation = .smooth
+                }
+                points.append(SpeedRampPoint(
+                    position: row.position,
+                    speed: row.speed,
+                    interpolationOut: interpolation
+                ))
+                previous = row.position
+            }
+            ramp = SpeedRamp(points: points)
+        }
+
+        let snapshot = timelineSnapshot(editor)
+        if let ramp {
+            editor.commitClipSpeedRamp(ids: clipIds, ramp: ramp)
+        } else if let speed = input.speed {
+            editor.commitClipSpeed(ids: clipIds, newSpeed: speed)
+        }
+        return mutationResult(editor, since: snapshot, touched: Array(touched))
     }
 
     // MARK: set_keyframes
@@ -741,9 +833,12 @@ extension ToolExecutor {
             let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
             // 'frames' are project frames as-is; 'seconds' are source seconds → map through trim/speed/position.
             func toFrame(_ v: Double) -> Double {
-                units == "frames"
-                    ? v
-                    : Double(clip.startFrame) + (v * Double(fps) - Double(clip.trimStartFrame)) / max(clip.speed, 0.0001)
+                guard units != "frames" else { return v }
+                let sourceOffset = v * Double(fps) - Double(clip.trimStartFrame)
+                if sourceOffset <= 0 { return Double(clip.startFrame) }
+                if sourceOffset >= Double(clip.sourceFramesConsumed) { return Double(clip.endFrame) }
+                return Double(clip.startFrame)
+                    + (clip.timelineOffset(atSourceOffset: sourceOffset) ?? 0)
             }
             for r in input.ranges {
                 let s = clampInt(toFrame(r[0]), min: clip.startFrame, max: clip.endFrame)

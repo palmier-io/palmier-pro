@@ -225,6 +225,10 @@ extension ToolExecutor {
                 out[key] = pv
             }
         }
+        if let partnerRamp = partner["speedRamp"],
+           (partnerRamp as? NSObject)?.isEqual(visual["speedRamp"]) != true {
+            out["speedRamp"] = partnerRamp
+        }
         let stripped = strippingDefaults(compactClipKeyframes(partner), clipDefaults)
         for key in ["volume", "fadeInFrames", "fadeOutFrames", "fadeInInterpolation", "fadeOutInterpolation", "keyframes"] {
             if let v = stripped[key] { out[key] = v }

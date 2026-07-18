@@ -186,7 +186,9 @@ extension EditorViewModel {
     }
 
     func trimValues(for clip: Clip, edge: TrimEdge, delta: Int) -> (trimStart: Int, trimEnd: Int) {
-        let sourceDelta = Int((Double(delta) * clip.speed).rounded())
+        let sourceDelta = Int((edge == .left
+            ? clip.sourceDeltaAtStart(forTimelineDelta: delta)
+            : clip.sourceDeltaAtEnd(forTimelineDelta: delta)).rounded())
         // Image/Text clips have no source-material bound, so their trim fields can go negative
         let unbounded = clip.mediaType == .image || clip.mediaType == .text
         switch edge {

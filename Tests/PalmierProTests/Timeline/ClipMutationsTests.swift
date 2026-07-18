@@ -71,6 +71,40 @@ struct ApplyClipSpeedTests {
         #expect(updated.opacityTrack?.keyframes.map(\.frame) == [0, 15, 30])
         #expect(updated.scaleTrack?.keyframes.map(\.frame) == [30])
     }
+
+    @Test func speedRampPreservesSourceAndRipplesFollower() {
+        let c1 = Fixtures.clip(id: "c1", start: 0, duration: 120)
+        let c2 = Fixtures.clip(id: "c2", start: 120, duration: 30)
+        let e = editor([Fixtures.videoTrack(clips: [c1, c2])])
+        let ramp = SpeedRamp(points: [
+            SpeedRampPoint(position: 0, speed: 1, interpolationOut: .linear),
+            SpeedRampPoint(position: 1, speed: 3),
+        ])
+
+        e.commitClipSpeedRamp(ids: ["c1"], ramp: ramp)
+
+        let clips = e.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(clips[0].durationFrames == 60)
+        #expect(clips[0].sourceFramesConsumed == 120)
+        #expect(clips[1].startFrame == 60)
+    }
+
+    @Test func switchingRampToConstantKeepsAverageTiming() {
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 60)
+        clip.speedRamp = SpeedRamp(points: [
+            SpeedRampPoint(position: 0, speed: 1, interpolationOut: .linear),
+            SpeedRampPoint(position: 1, speed: 3),
+        ])
+        clip.speed = clip.speedRamp!.averageSpeed
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+
+        e.commitClipSpeedMode(ids: ["c1"], ramped: false)
+
+        let updated = e.timeline.tracks[0].clips[0]
+        #expect(updated.speedRamp == nil)
+        #expect(updated.speed == 2)
+        #expect(updated.durationFrames == 60)
+    }
 }
 
 @Suite("EditorViewModel — splitClip")
@@ -170,6 +204,39 @@ struct SplitClipTests {
         let right = e.timeline.tracks[0].clips.first { $0.id == rightId }!
         #expect(right.opacityTrack?.sample(at: 5, fallback: 0.0) == 1.0)   // hold: still flat
         #expect(right.rotationTrack?.sample(at: 5, fallback: 0.0) == 15.0) // linear: 10°→20° at halfway
+    }
+
+    @Test func splitClipSlicesSpeedRampContinuously() {
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 100)
+        clip.speedRamp = SpeedRamp(points: [
+            SpeedRampPoint(position: 0, speed: 1, interpolationOut: .linear),
+            SpeedRampPoint(position: 1, speed: 3),
+        ])
+        clip.speed = clip.speedRamp!.averageSpeed
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+
+        _ = e.splitClip(clipId: "c1", atFrame: 50)
+
+        let clips = e.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(abs((clips[0].speedRamp?.points.last?.speed ?? 0) - 2) < 0.000_001)
+        #expect(abs((clips[1].speedRamp?.points.first?.speed ?? 0) - 2) < 0.000_001)
+        #expect(clips[0].sourceFramesConsumed + clips[1].sourceFramesConsumed == 200)
+    }
+
+    @Test func splitClipKeepsSmoothRampSourceMapping() {
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 120)
+        clip.speedRamp = SpeedRamp(points: [
+            SpeedRampPoint(position: 0, speed: 0.5, interpolationOut: .smooth),
+            SpeedRampPoint(position: 1, speed: 3),
+        ])
+        clip.speed = clip.speedRamp!.averageSpeed
+        let originalQuarterSource = clip.sourceOffset(atTimelineOffset: 30)
+        let e = editor([Fixtures.videoTrack(clips: [clip])])
+
+        _ = e.splitClip(clipId: "c1", atFrame: 60)
+
+        let left = e.timeline.tracks[0].clips.first { $0.id == "c1" }!
+        #expect(abs(left.sourceOffset(atTimelineOffset: 30) - originalQuarterSource) < 0.05)
     }
 
     @Test func splitClipZerosOpacityFadesAcrossCut() {

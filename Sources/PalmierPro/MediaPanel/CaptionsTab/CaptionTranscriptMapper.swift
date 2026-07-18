@@ -4,7 +4,7 @@ import Foundation
 enum CaptionTranscriptMapper {
     static func sourceSpan(for clip: Clip) -> (start: Double, end: Double) {
         let start = Double(clip.trimStartFrame)
-        return (start, start + Double(clip.durationFrames) * max(clip.speed, 0.0001))
+        return (start, start + Double(clip.sourceFramesConsumed))
     }
 
     static func sourceUnion(for mediaRef: String, clips: [Clip], fps: Int, paddingSeconds: Double = 1.0) -> ClosedRange<Double>? {

@@ -421,7 +421,9 @@ final class TimelineView: NSView {
                         previewClip.trimEndFrame = resize.trimEnd
                         previewClip.durationFrames = resize.duration
                     } else {
-                        let sourceDelta = Int((Double(drag.deltaFrames) * clip.speed).rounded())
+                        let sourceDelta = Int((isLeft
+                            ? clip.sourceDeltaAtStart(forTimelineDelta: drag.deltaFrames)
+                            : clip.sourceDeltaAtEnd(forTimelineDelta: drag.deltaFrames)).rounded())
                         if isLeft {
                             previewClip.startFrame = clip.startFrame + drag.deltaFrames
                             previewClip.trimStartFrame = clip.trimStartFrame + sourceDelta

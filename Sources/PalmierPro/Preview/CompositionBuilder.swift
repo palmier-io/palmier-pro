@@ -401,6 +401,23 @@ enum CompositionBuilder {
             compTrack.insertEmptyTimeRange(CMTimeRange(start: cursor, duration: gap))
         }
 
+        if let speedRamp = clip.speedRamp {
+            let inserted = await insertRampedClip(
+                clip,
+                speedRamp: speedRamp,
+                sourceAsset: sourceAsset,
+                sourceTrack: sourceTrack,
+                into: compTrack,
+                clipStart: clipStart,
+                trimStartFrame: trimStartFrame,
+                sourceTimescale: sourceTimescale,
+                timescale: timescale
+            )
+            guard inserted else { return false }
+            cursor = clipStart + clipDuration
+            return true
+        }
+
         let sourceFrames = clip.speed == 1.0
             ? clip.durationFrames
             : max(1, Int(Double(clip.durationFrames) * clip.speed))
@@ -432,6 +449,65 @@ enum CompositionBuilder {
 
         cursor = clipStart + clipDuration
         return true
+    }
+
+    private static func insertRampedClip(
+        _ clip: Clip,
+        speedRamp: SpeedRamp,
+        sourceAsset: AVURLAsset,
+        sourceTrack: AVAssetTrack,
+        into compTrack: AVMutableCompositionTrack,
+        clipStart: CMTime,
+        trimStartFrame: Int,
+        sourceTimescale: CMTimeScale,
+        timescale: CMTimeScale
+    ) async -> Bool {
+        let offsets = speedRamp.timelineOffsetsForRendering(duration: clip.durationFrames)
+        let assetDuration = try? await sourceAsset.load(.duration)
+        do {
+            for (startOffset, endOffset) in zip(offsets, offsets.dropFirst()) {
+                guard endOffset > startOffset else { continue }
+                let sourceStartFrames = Double(trimStartFrame)
+                    + clip.sourceOffset(atTimelineOffset: Double(startOffset))
+                let sourceEndFrames = Double(trimStartFrame)
+                    + clip.sourceOffset(atTimelineOffset: Double(endOffset))
+                let sourceStart = CMTime(
+                    seconds: sourceStartFrames / Double(timescale),
+                    preferredTimescale: sourceTimescale
+                )
+                var sourceEnd = CMTime(
+                    seconds: sourceEndFrames / Double(timescale),
+                    preferredTimescale: sourceTimescale
+                )
+                if let assetDuration, assetDuration.isNumeric {
+                    sourceEnd = CMTimeMinimum(sourceEnd, assetDuration)
+                }
+                let sourceDuration = sourceEnd - sourceStart
+                guard sourceStart >= .zero, sourceDuration > .zero else { throw InvalidTimelineError(reason: "speed ramp exceeds source bounds") }
+
+                let targetStart = clipStart + CMTime(value: CMTimeValue(startOffset), timescale: timescale)
+                let targetDuration = CMTime(value: CMTimeValue(endOffset - startOffset), timescale: timescale)
+                try compTrack.insertTimeRange(
+                    CMTimeRange(start: sourceStart, duration: sourceDuration),
+                    of: sourceTrack,
+                    at: targetStart
+                )
+                compTrack.scaleTimeRange(
+                    CMTimeRange(start: targetStart, duration: sourceDuration),
+                    toDuration: targetDuration
+                )
+            }
+            return true
+        } catch {
+            compTrack.removeTimeRange(CMTimeRange(
+                start: clipStart,
+                duration: CMTime(value: CMTimeValue(clip.durationFrames), timescale: timescale)
+            ))
+            Log.preview.error(
+                "insert speed ramp failed — skipping clip. clipId=\(clip.id) mediaRef=\(clip.mediaRef) error=\(error.localizedDescription)"
+            )
+            return false
+        }
     }
 
     private static func insertBlackBackground(

@@ -24,10 +24,6 @@ extension EditorViewModel {
         importMediaAsset(placeholder)
 
         let fps = timeline.fps
-        let trimStartFrame = clip.trimStartFrame
-        let sourceFramesConsumed = clip.sourceFramesConsumed
-        let durationFrames = clip.durationFrames
-        let speed = clip.speed
         let mediaType = clip.mediaType
 
         Task { @MainActor in
@@ -39,10 +35,7 @@ extension EditorViewModel {
                     sourceURL: sourceURL,
                     destURL: stagedURL,
                     fps: fps,
-                    trimStartFrame: trimStartFrame,
-                    sourceFramesConsumed: sourceFramesConsumed,
-                    durationFrames: durationFrames,
-                    speed: speed,
+                    clip: clip,
                     mediaType: mediaType
                 )
                 placeholder.url = try await self.commitStagedProjectMedia(
@@ -119,10 +112,7 @@ extension EditorViewModel {
         sourceURL: URL,
         destURL: URL,
         fps: Int,
-        trimStartFrame: Int,
-        sourceFramesConsumed: Int,
-        durationFrames: Int,
-        speed: Double,
+        clip: Clip,
         mediaType: ClipType
     ) async throws {
         struct ExportError: LocalizedError {
@@ -145,22 +135,9 @@ extension EditorViewModel {
         }
 
         let timescale = CMTimeScale(max(1, fps))
-        let sourceFrames = max(1, sourceFramesConsumed)
-        let timelineFrames = max(1, durationFrames)
-        let trimStart = CMTime(value: CMTimeValue(trimStartFrame), timescale: timescale)
-        let sourceDuration = CMTime(value: CMTimeValue(sourceFrames), timescale: timescale)
-        let timelineDuration = CMTime(value: CMTimeValue(timelineFrames), timescale: timescale)
-        let sourceRange = CMTimeRange(start: trimStart, duration: sourceDuration)
-
-        try primaryComp.insertTimeRange(sourceRange, of: primarySource, at: .zero)
+        try await insertRetimedRange(clip: clip, source: primarySource, into: primaryComp, timescale: timescale)
         if mediaType == .video {
             primaryComp.preferredTransform = try await primarySource.load(.preferredTransform)
-        }
-        if speed != 1.0 {
-            primaryComp.scaleTimeRange(
-                CMTimeRange(start: .zero, duration: sourceDuration),
-                toDuration: timelineDuration
-            )
         }
 
         if mediaType == .video,
@@ -169,13 +146,7 @@ extension EditorViewModel {
                withMediaType: .audio,
                preferredTrackID: kCMPersistentTrackID_Invalid
            ) {
-            try? audioComp.insertTimeRange(sourceRange, of: audioSource, at: .zero)
-            if speed != 1.0 {
-                audioComp.scaleTimeRange(
-                    CMTimeRange(start: .zero, duration: sourceDuration),
-                    toDuration: timelineDuration
-                )
-            }
+            try? await insertRetimedRange(clip: clip, source: audioSource, into: audioComp, timescale: timescale)
         }
 
         try? FileManager.default.removeItem(at: destURL)
@@ -188,5 +159,59 @@ extension EditorViewModel {
         }
         let outType: AVFileType = mediaType == .audio ? .m4a : .mp4
         try await session.export(to: destURL, as: outType)
+    }
+
+    private static func insertRetimedRange(
+        clip: Clip,
+        source: AVAssetTrack,
+        into compositionTrack: AVMutableCompositionTrack,
+        timescale: CMTimeScale
+    ) async throws {
+        let sourceTimescale = (try? await source.load(.naturalTimeScale)) ?? timescale
+        if let speedRamp = clip.speedRamp {
+            let offsets = speedRamp.timelineOffsetsForRendering(duration: clip.durationFrames)
+            for (startOffset, endOffset) in zip(offsets, offsets.dropFirst()) where endOffset > startOffset {
+                let sourceStartFrames = Double(clip.trimStartFrame)
+                    + clip.sourceOffset(atTimelineOffset: Double(startOffset))
+                let sourceEndFrames = Double(clip.trimStartFrame)
+                    + clip.sourceOffset(atTimelineOffset: Double(endOffset))
+                let sourceStart = CMTime(
+                    seconds: sourceStartFrames / Double(timescale),
+                    preferredTimescale: sourceTimescale
+                )
+                let sourceDuration = CMTime(
+                    seconds: (sourceEndFrames - sourceStartFrames) / Double(timescale),
+                    preferredTimescale: sourceTimescale
+                )
+                let targetStart = CMTime(value: CMTimeValue(startOffset), timescale: timescale)
+                let targetDuration = CMTime(value: CMTimeValue(endOffset - startOffset), timescale: timescale)
+                try compositionTrack.insertTimeRange(
+                    CMTimeRange(start: sourceStart, duration: sourceDuration),
+                    of: source,
+                    at: targetStart
+                )
+                compositionTrack.scaleTimeRange(
+                    CMTimeRange(start: targetStart, duration: sourceDuration),
+                    toDuration: targetDuration
+                )
+            }
+            return
+        }
+
+        let sourceFrames = max(1, clip.sourceFramesConsumed)
+        let timelineFrames = max(1, clip.durationFrames)
+        let trimStart = CMTime(value: CMTimeValue(clip.trimStartFrame), timescale: timescale)
+        let sourceDuration = CMTime(value: CMTimeValue(sourceFrames), timescale: timescale)
+        try compositionTrack.insertTimeRange(
+            CMTimeRange(start: trimStart, duration: sourceDuration),
+            of: source,
+            at: .zero
+        )
+        if clip.speed != 1 {
+            compositionTrack.scaleTimeRange(
+                CMTimeRange(start: .zero, duration: sourceDuration),
+                toDuration: CMTime(value: CMTimeValue(timelineFrames), timescale: timescale)
+            )
+        }
     }
 }

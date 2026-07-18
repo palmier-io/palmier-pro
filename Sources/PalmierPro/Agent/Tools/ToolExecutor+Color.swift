@@ -220,10 +220,12 @@ extension ToolExecutor {
         let offset: Int   // clip-relative frame (0…durationFrames-1), drives keyframed/animated effects
         if let f = atFrame {
             offset = max(0, min(clip.durationFrames - 1, f - clip.startFrame))
-            sourceFrame = Double(clip.trimStartFrame) + Double(offset) * clip.speed
+            sourceFrame = Double(clip.trimStartFrame)
+                + clip.sourceOffset(atTimelineOffset: Double(offset))
         } else {
             offset = clip.durationFrames / 2
-            sourceFrame = Double(clip.trimStartFrame) + Double(clip.sourceFramesConsumed) / 2
+            sourceFrame = Double(clip.trimStartFrame)
+                + clip.sourceOffset(atTimelineOffset: Double(offset))
         }
         guard let frame = await Self.frameImage(url: srcURL, type: clip.mediaType, atSeconds: sourceFrame / max(1, fps)) else {
             throw ToolError("Could not decode a frame for clip \(clipId).")

@@ -142,6 +142,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     var trimStartFrame: Int = 0
     var trimEndFrame: Int = 0
     var speed: Double = 1.0
+    var speedRamp: SpeedRamp?
     var volume: Double = 1.0
     var fadeInFrames: Int = 0
     var fadeOutFrames: Int = 0
@@ -175,7 +176,7 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case id, mediaRef, mediaType, sourceClipType, startFrame, durationFrames
-        case trimStartFrame, trimEndFrame, speed, volume
+        case trimStartFrame, trimEndFrame, speed, speedRamp, volume
         case fadeInFrames, fadeOutFrames, fadeInInterpolation, fadeOutInterpolation
         case opacity, transform, crop
         case linkGroupId, captionGroupId, multicamGroupId, textContent, textStyle, textAnimation, wordTimings
@@ -188,8 +189,14 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
 
     var supportsRetiming: Bool { sourceClipType != .sequence }
 
+    var isSpeedRamped: Bool { speedRamp != nil }
+
+    var effectiveAverageSpeed: Double { speedRamp?.averageSpeed ?? speed }
+
     /// Source frames consumed by the visible portion
-    var sourceFramesConsumed: Int { Int((Double(durationFrames) * speed).rounded()) }
+    var sourceFramesConsumed: Int {
+        Int(sourceOffset(atTimelineOffset: Double(durationFrames)).rounded())
+    }
 
     /// Total source frames the clip references, including both trims.
     var sourceDurationFrames: Int { sourceFramesConsumed + trimStartFrame + trimEndFrame }
@@ -311,9 +318,58 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
         let sourceFrame = t * Double(fps)
         let offsetFromTrim = sourceFrame - Double(trimStartFrame)
         guard offsetFromTrim >= 0 else { return nil }
-        let frame = Int((Double(startFrame) + offsetFromTrim / max(speed, 0.0001)).rounded())
+        guard let timelineOffset = timelineOffset(atSourceOffset: offsetFromTrim) else { return nil }
+        let frame = Int((Double(startFrame) + timelineOffset).rounded())
         guard frame >= startFrame && frame < endFrame else { return nil }
         return frame
+    }
+
+    func speed(atTimelineOffset offset: Double) -> Double {
+        guard let speedRamp, durationFrames > 0 else { return max(speed, 0.0001) }
+        return speedRamp.speed(at: offset / Double(durationFrames))
+    }
+
+    func sourceOffset(atTimelineOffset offset: Double) -> Double {
+        if let speedRamp {
+            return speedRamp.sourceOffset(atTimelineOffset: offset, duration: durationFrames)
+        }
+        return offset * max(speed, 0.0001)
+    }
+
+    func timelineOffset(atSourceOffset offset: Double) -> Double? {
+        if let speedRamp {
+            return speedRamp.timelineOffset(atSourceOffset: offset, duration: durationFrames)
+        }
+        guard offset >= 0 else { return nil }
+        let result = offset / max(speed, 0.0001)
+        return result <= Double(durationFrames) + 0.000_001 ? result : nil
+    }
+
+    func sourceDeltaAtStart(forTimelineDelta delta: Int) -> Double {
+        guard delta >= 0 else { return Double(delta) * speed(atTimelineOffset: 0) }
+        return sourceOffset(atTimelineOffset: Double(delta))
+    }
+
+    func sourceDeltaAtEnd(forTimelineDelta delta: Int) -> Double {
+        guard delta <= 0 else {
+            return Double(delta) * speed(atTimelineOffset: Double(durationFrames))
+        }
+        let retained = sourceOffset(atTimelineOffset: Double(durationFrames + delta))
+        return retained - sourceOffset(atTimelineOffset: Double(durationFrames))
+    }
+
+    func timelineSpanAtStart(forSourceDelta delta: Int) -> Double {
+        guard delta >= 0 else { return Double(delta) / speed(atTimelineOffset: 0) }
+        return timelineOffset(atSourceOffset: Double(delta)) ?? Double(durationFrames)
+    }
+
+    func timelineSpanAtEnd(forSourceDelta delta: Int) -> Double {
+        guard delta >= 0 else {
+            return Double(delta) / speed(atTimelineOffset: Double(durationFrames))
+        }
+        let retainedSource = max(0, Double(sourceFramesConsumed - delta))
+        let retainedTimeline = timelineOffset(atSourceOffset: retainedSource) ?? 0
+        return Double(durationFrames) - retainedTimeline
     }
 }
 
@@ -429,6 +485,19 @@ extension Clip {
         clampFadesToDuration()
     }
 
+    mutating func applyRetimingWindow(startOffset: Int, newDuration: Int) {
+        let oldDuration = durationFrames
+        if let speedRamp {
+            self.speedRamp = speedRamp.windowed(
+                startOffset: startOffset,
+                duration: newDuration,
+                oldDuration: oldDuration
+            )
+            speed = self.speedRamp?.averageSpeed ?? speed
+        }
+        setDuration(newDuration)
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
@@ -441,6 +510,7 @@ extension Clip {
             trimStartFrame: (try? c.decode(Int.self, forKey: .trimStartFrame)) ?? 0,
             trimEndFrame: (try? c.decode(Int.self, forKey: .trimEndFrame)) ?? 0,
             speed: (try? c.decode(Double.self, forKey: .speed)) ?? 1.0,
+            speedRamp: try c.decodeIfPresent(SpeedRamp.self, forKey: .speedRamp),
             volume: (try? c.decode(Double.self, forKey: .volume)) ?? 1.0,
             fadeInFrames: (try? c.decode(Int.self, forKey: .fadeInFrames)) ?? 0,
             fadeOutFrames: (try? c.decode(Int.self, forKey: .fadeOutFrames)) ?? 0,
@@ -465,6 +535,9 @@ extension Clip {
             effects: try? c.decode([Effect].self, forKey: .effects),
             blendMode: try? c.decode(BlendMode.self, forKey: .blendMode)
         )
+        if let speedRamp {
+            speed = speedRamp.averageSpeed
+        }
     }
 }
 

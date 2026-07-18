@@ -213,7 +213,9 @@ enum FCPXMLExporter {
                 let v = pair.videos[0], a = pair.audios[0]
                 guard v.clip.mediaRef == a.clip.mediaRef, v.enabled == a.enabled,
                       v.clip.startFrame == a.clip.startFrame, v.clip.durationFrames == a.clip.durationFrames,
-                      v.clip.trimStartFrame == a.clip.trimStartFrame, abs(v.clip.speed - a.clip.speed) < 0.0001
+                      v.clip.trimStartFrame == a.clip.trimStartFrame,
+                      abs(v.clip.speed - a.clip.speed) < 0.0001,
+                      v.clip.speedRamp == a.clip.speedRamp
                 else { continue }
                 linkedAudioForVideo[v.clip.id] = a.clip
                 redundantAudioClipIds.insert(a.clip.id)
@@ -577,6 +579,10 @@ enum FCPXMLExporter {
         /// `start` (= clipStart): `start + (f − startFrame)/fps`. Without it the animation lands before the
         /// content and plays compressed. Unspeeded clips have no timeMap origin, so they stay clip-relative.
         private func keyframeTime(_ f: Int, clip: Clip) -> String {
+            if let speedRamp = clip.speedRamp {
+                let startFrames = Double(clip.trimStartFrame) / speedRamp.points[0].speed
+                return rationalFrameTime(startFrames + Double(f - clip.startFrame))
+            }
             guard abs(clip.speed - 1.0) > 0.001 else { return time(frames: f - clip.startFrame) }
             let (p, q) = rationalSpeed(clip.speed)
             let num = clip.trimStartFrame * q + (f - clip.startFrame) * p
@@ -621,6 +627,9 @@ enum FCPXMLExporter {
         /// source frame when unspeeded. `origin` is the asset's embedded start timecode, added only to the
         /// unspeeded case (a retimed clip carries its origin in the timeMap values, not in `start`).
         private func clipStart(for clip: Clip, origin: Int = 0) -> String {
+            if let speedRamp = clip.speedRamp {
+                return rationalFrameTime(Double(clip.trimStartFrame) / speedRamp.points[0].speed)
+            }
             guard abs(clip.speed - 1.0) > 0.001 else { return time(frames: origin + clip.trimStartFrame) }
             let (p, q) = rationalSpeed(clip.speed)
             return rationalTime(num: clip.trimStartFrame * q, den: fps * p)
@@ -629,6 +638,42 @@ enum FCPXMLExporter {
         /// Resolve ramps the WHOLE media (`output[0, media/speed] → source[0, media]`) and windows in via
         /// `start`/`duration`. A ramp that stops at the clip edge leaves no tail mapping → black last frames.
         private func timeMapNode(for clip: Clip, mediaFrames: Int, origin: Int = 0) -> FCPXMLNode? {
+            if let speedRamp = clip.speedRamp {
+                let outputStartFrames = Double(clip.trimStartFrame) / speedRamp.points[0].speed
+                var points: [FCPXMLNode] = outputStartFrames > 0 ? [
+                    FCPXMLNode(name: "timept", attributes: [
+                        ("time", "0s"),
+                        ("value", time(frames: origin)),
+                        ("interp", "linear"),
+                    ])
+                ] : []
+                points += speedRamp.timelineOffsetsForRendering(duration: clip.durationFrames).map { offset in
+                    let sourceFrames = Double(origin + clip.trimStartFrame)
+                        + clip.sourceOffset(atTimelineOffset: Double(offset))
+                    return FCPXMLNode(name: "timept", attributes: [
+                        ("time", rationalFrameTime(outputStartFrames + Double(offset))),
+                        ("value", rationalFrameTime(sourceFrames)),
+                        ("interp", "linear"),
+                    ])
+                }
+                let sourceEnd = clip.trimStartFrame + clip.sourceFramesConsumed
+                if mediaFrames > sourceEnd {
+                    let tailFrames = Double(mediaFrames - sourceEnd)
+                        / speedRamp.points[speedRamp.points.count - 1].speed
+                    points.append(FCPXMLNode(name: "timept", attributes: [
+                        ("time", rationalFrameTime(
+                            outputStartFrames + Double(clip.durationFrames) + tailFrames
+                        )),
+                        ("value", time(frames: origin + mediaFrames)),
+                        ("interp", "linear"),
+                    ]))
+                }
+                return FCPXMLNode(
+                    name: "timeMap",
+                    attributes: [("frameSampling", "floor")],
+                    children: points
+                )
+            }
             guard abs(clip.speed - 1.0) > 0.001, mediaFrames > 0 else { return nil }
             let (p, q) = rationalSpeed(clip.speed)
             return FCPXMLNode(name: "timeMap", attributes: [("frameSampling", "floor")], children: [
@@ -661,6 +706,10 @@ enum FCPXMLExporter {
             let g = gcd(abs(num), abs(den))
             let n = num / g, d = den / g
             return d == 1 ? "\(n)s" : "\(n)/\(d)s"
+        }
+
+        private func rationalFrameTime(_ frames: Double) -> String {
+            rationalTime(num: Int((frames * 1_000).rounded()), den: fps * 1_000)
         }
 
         private func collectResources(from clips: [EmittableClip]) {

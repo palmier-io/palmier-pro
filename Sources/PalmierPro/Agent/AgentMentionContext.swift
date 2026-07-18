@@ -81,7 +81,7 @@ enum AgentMentionContext {
         }
         let track = editor.timeline.tracks[loc.trackIndex]
         let clip = track.clips[loc.clipIndex]
-        return [
+        var context: [String: Any] = [
             "clipId": clip.id,
             "mediaRef": clip.mediaRef,
             "mediaType": clip.mediaType.rawValue,
@@ -96,6 +96,16 @@ enum AgentMentionContext {
             "trimEndFrame": clip.trimEndFrame,
             "speed": clip.speed,
         ]
+        if let speedRamp = clip.speedRamp {
+            context["speedRamp"] = speedRamp.points.map {
+                [
+                    "position": $0.position,
+                    "speed": $0.speed,
+                    "interpolation": $0.interpolationOut.rawValue,
+                ] as [String: Any]
+            }
+        }
+        return context
     }
 }
 

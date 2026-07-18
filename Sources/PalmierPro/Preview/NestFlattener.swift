@@ -46,13 +46,22 @@ enum NestFlattener {
         var c = clip
         let headCut = start - clip.startFrame
         if headCut > 0 {
-            c.trimStartFrame += Int((Double(headCut) * c.speed).rounded())
+            c.trimStartFrame += Int(c.sourceOffset(atTimelineOffset: Double(headCut)).rounded())
             c.fadeInFrames = 0
             shiftKeyframeTracks(&c, by: headCut)
         }
         if end < clip.endFrame { c.fadeOutFrames = 0 }
+        let newDuration = end - start
+        if let speedRamp = c.speedRamp {
+            c.speedRamp = speedRamp.windowed(
+                startOffset: headCut,
+                duration: newDuration,
+                oldDuration: clip.durationFrames
+            )
+            c.speed = c.speedRamp?.averageSpeed ?? c.speed
+        }
         c.startFrame = start + shift
-        c.durationFrames = end - start
+        c.durationFrames = newDuration
         c.clampFadesToDuration()
         c.clampKeyframesToDuration()
         // Unique per nest instance so the same child nested twice can't collide.

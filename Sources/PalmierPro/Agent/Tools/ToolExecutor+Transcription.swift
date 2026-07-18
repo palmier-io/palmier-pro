@@ -501,7 +501,10 @@ extension ToolExecutor {
         let endFrame = min(end * rate, visible.end)
         guard endFrame > startFrame else { return nil }
         func toTimeline(_ sourceFrame: Double) -> Int {
-            Int((Double(clip.startFrame) + (sourceFrame - visible.start) / max(clip.speed, 0.0001)).rounded())
+            let sourceOffset = sourceFrame - visible.start
+            let timelineOffset = clip.timelineOffset(atSourceOffset: sourceOffset)
+                ?? Double(clip.durationFrames)
+            return Int((Double(clip.startFrame) + timelineOffset).rounded())
         }
         let mappedStart = toTimeline(startFrame)
         return (mappedStart, max(mappedStart, toTimeline(endFrame)))

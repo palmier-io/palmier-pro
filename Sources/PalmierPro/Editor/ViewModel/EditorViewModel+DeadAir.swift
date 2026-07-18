@@ -18,7 +18,8 @@ extension EditorViewModel {
     func deadAirSpanRange(clip: Clip, atTimelineFrame frame: Int) -> FrameRange? {
         guard let mask = deadAirMask(for: clip), !mask.isEmpty else { return nil }
         let cellFrames = VoiceActivity.chunkDuration * Double(max(1, timeline.fps))
-        let sourceFrame = Double(clip.trimStartFrame) + Double(frame - clip.startFrame) * clip.speed
+        let sourceFrame = Double(clip.trimStartFrame)
+            + clip.sourceOffset(atTimelineOffset: Double(frame - clip.startFrame))
         let cell = Int(sourceFrame / cellFrames)
         guard mask.indices.contains(cell), mask[cell] else { return nil }
         var lo = cell
@@ -94,9 +95,12 @@ extension EditorViewModel {
     private func timelineRange(clip: Clip, sourceStart: Double, sourceEnd: Double) -> FrameRange? {
         let s0 = max(sourceStart, Double(clip.trimStartFrame))
         let s1 = min(sourceEnd, Double(clip.trimStartFrame + clip.sourceFramesConsumed))
-        guard s1 > s0, clip.speed > 0 else { return nil }
-        let t0 = Double(clip.startFrame) + (s0 - Double(clip.trimStartFrame)) / clip.speed
-        let t1 = Double(clip.startFrame) + (s1 - Double(clip.trimStartFrame)) / clip.speed
+        guard s1 > s0,
+              let offset0 = clip.timelineOffset(atSourceOffset: s0 - Double(clip.trimStartFrame)),
+              let offset1 = clip.timelineOffset(atSourceOffset: s1 - Double(clip.trimStartFrame))
+        else { return nil }
+        let t0 = Double(clip.startFrame) + offset0
+        let t1 = Double(clip.startFrame) + offset1
         let range = FrameRange(start: Int(t0.rounded()), end: Int(t1.rounded()))
         return range.length > 0 ? range : nil
     }

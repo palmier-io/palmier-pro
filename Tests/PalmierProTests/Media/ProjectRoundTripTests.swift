@@ -48,6 +48,22 @@ struct ProjectRoundTripTests {
         #expect(dc.opacity == 0.5)
     }
 
+    @Test func clipSpeedRampSurvivesRoundTrip() throws {
+        var clip = Fixtures.clip(start: 0, duration: 90)
+        clip.speedRamp = SpeedRamp(points: [
+            SpeedRampPoint(position: 0, speed: 0.5, interpolationOut: .smooth),
+            SpeedRampPoint(position: 0.4, speed: 2, interpolationOut: .hold),
+            SpeedRampPoint(position: 1, speed: 1),
+        ])
+        clip.speed = clip.speedRamp!.averageSpeed
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+
+        let decoded = try roundTrip(timeline).tracks[0].clips[0]
+
+        #expect(decoded.speedRamp == clip.speedRamp)
+        #expect(decoded.speed == clip.speedRamp?.averageSpeed)
+    }
+
     @Test func clipTransformAndCropSurviveRoundTrip() throws {
         var clip = Fixtures.clip(start: 0, duration: 30)
         clip.transform = Transform(centerX: 0.4, centerY: 0.6, width: 0.5, height: 0.5, rotation: 45,

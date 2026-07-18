@@ -105,7 +105,8 @@ extension EditorViewModel {
                 seedWindowHops: seedWindow, maxLagHops: maxLag, minOverlapHops: minOverlap,
                 minConfidence: minConfidence
             ) else { return nil }
-            let lagFrames = Double(result.lagHops) * hop * fps / max(anchor.clip.speed, SyncDefaults.minSpeed)
+            let lagFrames = Double(result.lagHops) * hop * fps
+                / max(anchor.clip.speed, SyncDefaults.minSpeed)
             return (Int((Double(anchor.rawStart) + lagFrames).rounded()), result.confidence)
         }
 
@@ -126,7 +127,7 @@ extension EditorViewModel {
                 }
                 let rawStart = Self.timecodeAlignedStart(
                     refStartFrame: liveRef.startFrame, refTrimStartFrame: liveRef.trimStartFrame,
-                    refSpeed: liveRef.speed, refTimecode: refTC,
+                    refSpeed: liveRef.speed(atTimelineOffset: 0), refTimecode: refTC,
                     targetTrimStartFrame: liveCarrier.trimStartFrame, targetTimecode: targetTC, fps: fps)
                 if mode == .timecode {
                     placements.append((carrier.id, rawStart, 1.0, .timecode))
@@ -156,7 +157,8 @@ extension EditorViewModel {
                 if let liveRef = liveClip(referenceClipId),
                    let refEnv = await envelope(of: liveRef, fps: fps), !refEnv.samples.isEmpty {
                     anchors.append((liveRef.startFrame, AudioClip(
-                        clipId: liveRef.id, samples: refEnv.samples, speed: liveRef.speed,
+                        clipId: liveRef.id, samples: refEnv.samples,
+                        speed: liveRef.speed(atTimelineOffset: 0),
                         mediaRef: liveRef.mediaRef, trimStartFrame: liveRef.trimStartFrame)))
                 }
             }
@@ -171,7 +173,8 @@ extension EditorViewModel {
                 report.failures.append((bearer.id, "Clip not found.")); continue
             }
             let clip = AudioClip(
-                clipId: bearer.id, samples: env.samples, speed: liveBearer.speed,
+                clipId: bearer.id, samples: env.samples,
+                speed: liveBearer.speed(atTimelineOffset: 0),
                 mediaRef: liveBearer.mediaRef, trimStartFrame: liveBearer.trimStartFrame)
             candidates.append((clip, await match(refAnchor, clip), tcHint?.rawStart))
         }
@@ -313,7 +316,7 @@ extension EditorViewModel {
     private func envelope(of clip: Clip, fps: Double) async -> AudioEnvelope? {
         guard let url = mediaResolver.resolveURL(for: clip.mediaRef) else { return nil }
         let start = Double(clip.trimStartFrame) / fps
-        let end = start + Double(clip.durationFrames) * max(clip.speed, SyncDefaults.minSpeed) / fps
+        let end = start + Double(clip.sourceFramesConsumed) / fps
         return try? await AudioEnvelopeExtractor.extract(from: url, range: start...max(start + AudioEnvelopeExtractor.hopSeconds, end))
     }
 }

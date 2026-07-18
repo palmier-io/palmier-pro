@@ -30,6 +30,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case splitClips = "split_clips"
     case rippleDeleteRanges = "ripple_delete_ranges"
     case setClipProperties = "set_clip_properties"
+    case setSpeedRamp = "set_speed_ramp"
     case setKeyframes = "set_keyframes"
     case applyLayout = "apply_layout"
     case syncClips = "sync_clips"
@@ -79,7 +80,7 @@ enum ToolDefinitions {
     static let all: [AgentTool] = [
         AgentTool(
             name: .getTimeline,
-            description: "Always call at the start of a session. Returns project settings (fps, resolution, totalFrames, durationSeconds), tracks with a stable trackId, their current index (what every trackIndex parameter takes), type, and clips, plus canGenerate (if false, generation/upscale tools will fail — tell the user to sign in to Palmier and subscribe before attempting them). Clip ids are accepted by clip mutation tools; trackId is accepted by manage_tracks.\n\nEvery clip occupies frames: [start, end) — timeline frames, end exclusive, duration = end − start. gaps on a track lists its empty [start, end) spans; no gaps key means contiguous. A video clip's linked audio partner is folded into it as audio: {id, track, …} carrying only what deviates (volume, effects, differing trims); the partner is not repeated on its own track, which instead reports linkedClips (its folded count). Address the audio side by its nested id.\n\nFields equal to their defaults are omitted: mediaType 'video', sourceClipType = mediaType, speed 1, volume 1, opacity 1, trims/fades 0, identity transform/crop, default textStyle, track muted/hidden false. Text clips never report trims. Keyframe tracks that animate nothing are shown as what they are: identity tracks are dropped, constant ones appear as the static field (e.g. crop: {left: 0.31}). A graded clip carries `color` — its grade in apply_color's own vocabulary, pasteable to other clips via apply_color's color parameter. Other effects appear as effects: [{type, params}], the exact shape apply_effect accepts.\n\nCaption clips (sharing a captionGroupId) come back per track as captionGroups summaries: clipCount, frameRange, shared style, and a textPreview — individual caption clips and their ids are NOT listed. That summary is all you need to restyle (update_text with captionGroupId) or judge coverage; the spoken words live in get_transcript. Only when you must touch individual caption clips (retime one, delete one, fix one word's style), re-read with captionDetail:true — ideally windowed — to get [clipId, startFrame, endFrame, text] rows, capped at 200 per group. Caption clips whose properties deviate from the group always appear individually in clips.",
+            description: "Always call at the start of a session. Returns project settings (fps, resolution, totalFrames, durationSeconds), tracks with a stable trackId, their current index (what every trackIndex parameter takes), type, and clips, plus canGenerate (if false, generation/upscale tools will fail — tell the user to sign in to Palmier and subscribe before attempting them). Clip ids are accepted by clip mutation tools; trackId is accepted by manage_tracks.\n\nEvery clip occupies frames: [start, end) — timeline frames, end exclusive, duration = end − start. gaps on a track lists its empty [start, end) spans; no gaps key means contiguous. A video clip's linked audio partner is folded into it as audio: {id, track, …} carrying only what deviates (volume, effects, differing trims); the partner is not repeated on its own track, which instead reports linkedClips (its folded count). Address the audio side by its nested id.\n\nFields equal to their defaults are omitted: mediaType 'video', sourceClipType = mediaType, speed 1, volume 1, opacity 1, trims/fades 0, identity transform/crop, default textStyle, track muted/hidden false. A variable-speed clip includes speedRamp points with normalized position, speed, and interpolationOut; edit it with set_speed_ramp. Text clips never report trims. Keyframe tracks that animate nothing are shown as what they are: identity tracks are dropped, constant ones appear as the static field (e.g. crop: {left: 0.31}). A graded clip carries `color` — its grade in apply_color's own vocabulary, pasteable to other clips via apply_color's color parameter. Other effects appear as effects: [{type, params}], the exact shape apply_effect accepts.\n\nCaption clips (sharing a captionGroupId) come back per track as captionGroups summaries: clipCount, frameRange, shared style, and a textPreview — individual caption clips and their ids are NOT listed. That summary is all you need to restyle (update_text with captionGroupId) or judge coverage; the spoken words live in get_transcript. Only when you must touch individual caption clips (retime one, delete one, fix one word's style), re-read with captionDetail:true — ideally windowed — to get [clipId, startFrame, endFrame, text] rows, capped at 200 per group. Caption clips whose properties deviate from the group always appear individually in clips.",
             inputSchema: objectSchema(
                 properties: [
                     "startFrame": ["type": "integer", "description": "Optional. Window start (inclusive); only clips intersecting [startFrame, endFrame) are returned. Tracks report totalClips when the window hides some."],
@@ -464,8 +465,8 @@ enum ToolDefinitions {
                         "items": ["type": "string"],
                     ],
                     "durationFrames": ["type": "integer", "description": "New duration in frames."],
-                    "trimStartFrame": ["type": "integer", "description": "SOURCE-media offset, NOT a timeline frame: frames trimmed off the start of the source — measured in PROJECT frames (the timeline's fps, same units as startFrame/durationFrames; never the source's own fps). To turn a get_transcript project frame P into this clip's source offset, use trimStartFrame + (P − startFrame) × speed; setting trimStartFrame to that value makes the clip begin at P's source content."],
-                    "trimEndFrame": ["type": "integer", "description": "SOURCE-media offset, NOT a timeline frame: frames trimmed off the end of the source, in PROJECT frames. Maps the same way as trimStartFrame via startFrame/speed."],
+                    "trimStartFrame": ["type": "integer", "description": "SOURCE-media offset, NOT a timeline frame: frames trimmed off the start of the source — measured in PROJECT frames (the timeline's fps, same units as startFrame/durationFrames; never the source's own fps). For constant speed, source offset at project frame P is trimStartFrame + (P − startFrame) × speed. A speed-ramped clip is nonlinear; split or ripple-delete by project frame instead of hand-computing its trim."],
+                    "trimEndFrame": ["type": "integer", "description": "SOURCE-media offset, NOT a timeline frame: frames trimmed off the end of the source, in PROJECT frames. For a speed-ramped clip, prefer timeline-frame split/ripple tools so the shared time map performs the conversion."],
                     "speed": ["type": "number", "description": "Playback speed multiplier (default 1.0). >1 speeds up, <1 slows down. The clip's timeline length is rescaled to keep the same source content (2x speed → half the frames), unless you also pass durationFrames to set the length explicitly."],
                     "volume": ["type": "number", "description": "Volume 0.0-1.0. Clears any existing volume keyframes."],
                     "opacity": ["type": "number", "description": "Opacity 0.0-1.0. Clears any existing opacity keyframes."],
@@ -488,6 +489,45 @@ enum ToolDefinitions {
                     ],
                 ],
                 required: ["clipIds"]
+            )
+        ),
+        AgentTool(
+            name: .setSpeedRamp,
+            description: "Set constant speed or a variable speed ramp on one or more clips in one undoable edit. This is the speed-specific tool; use set_clip_properties for other clip properties.\n\nmode='constant' requires speed. mode='ramp' requires at least two points from position 0 through 1, where position is normalized through the visible clip and speed is the playback multiplier. Points must be strictly increasing and include both endpoints. interpolation controls the curve leaving each point: smooth (default) eases naturally, linear changes at a steady rate, hold keeps the current speed until the next point.\n\nChanging speed preserves the source content used by the clip, so the timeline duration changes to match the ramp's average speed and contiguous clips ripple with it. Linked audio/video partners receive the same retiming. Speeds are limited to 0.25x–4x. Nested timelines and multicam clips are refused.",
+            inputSchema: objectSchema(
+                properties: [
+                    "clipIds": [
+                        "type": "array",
+                        "items": ["type": "string"],
+                        "description": "Clip IDs to retime. Linked audio/video partners are included automatically.",
+                    ],
+                    "mode": [
+                        "type": "string",
+                        "enum": ["constant", "ramp"],
+                        "description": "Constant uses one speed; ramp uses the points curve.",
+                    ],
+                    "speed": [
+                        "type": "number",
+                        "description": "Required for constant mode. Playback multiplier from 0.25 through 4.",
+                    ],
+                    "points": [
+                        "type": "array",
+                        "description": "Required for ramp mode. At least two strictly increasing points including positions 0 and 1.",
+                        "items": objectSchema(
+                            properties: [
+                                "position": ["type": "number", "description": "Normalized position through the clip, 0–1."],
+                                "speed": ["type": "number", "description": "Playback multiplier, 0.25–4."],
+                                "interpolation": [
+                                    "type": "string",
+                                    "enum": ["smooth", "linear", "hold"],
+                                    "description": "Curve leaving this point. Default smooth.",
+                                ],
+                            ],
+                            required: ["position", "speed"]
+                        ),
+                    ],
+                ],
+                required: ["clipIds", "mode"]
             )
         ),
         AgentTool(

@@ -238,6 +238,7 @@ enum MulticamEngine {
             && b.startFrame == a.endFrame
             && b.trimStartFrame == a.trimStartFrame + a.sourceFramesConsumed
             && a.speed == b.speed
+            && a.speedRamp == nil && b.speedRamp == nil
             && a.volume == b.volume
             && a.opacity == b.opacity
             && a.transform == b.transform

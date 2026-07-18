@@ -114,9 +114,16 @@ extension EditorViewModel {
         withTimelineSwap(actionName: "Ripple Trim") {
             for r in plan.resizes {
                 guard let l = findClip(id: r.clipId) else { continue }
+                let current = timeline.tracks[l.trackIndex].clips[l.clipIndex]
+                let startOffset = Int(current.timelineSpanAtStart(
+                    forSourceDelta: r.trimStart - current.trimStartFrame
+                ).rounded())
                 timeline.tracks[l.trackIndex].clips[l.clipIndex].trimStartFrame = r.trimStart
                 timeline.tracks[l.trackIndex].clips[l.clipIndex].trimEndFrame = r.trimEnd
-                timeline.tracks[l.trackIndex].clips[l.clipIndex].setDuration(r.duration)
+                timeline.tracks[l.trackIndex].clips[l.clipIndex].applyRetimingWindow(
+                    startOffset: startOffset,
+                    newDuration: r.duration
+                )
             }
             applyShifts(plan.shifts)
             for ti in timeline.tracks.indices where timeline.tracks[ti].clips.contains(where: { touched.contains($0.id) }) {
@@ -128,8 +135,13 @@ extension EditorViewModel {
     /// Timeline delta from a ripple trim of `clip` by `delta` frames.
     private func rippleTrimDurationDelta(for clip: Clip, edge: TrimEdge, delta: Int) -> Int {
         let fields = trimValues(for: clip, edge: edge, delta: delta)
-        let sourceShift = (fields.trimStart - clip.trimStartFrame) + (fields.trimEnd - clip.trimEndFrame)
-        return -Int((Double(sourceShift) / clip.speed).rounded())
+        let startSpan = clip.timelineSpanAtStart(
+            forSourceDelta: fields.trimStart - clip.trimStartFrame
+        )
+        let endSpan = clip.timelineSpanAtEnd(
+            forSourceDelta: fields.trimEnd - clip.trimEndFrame
+        )
+        return -Int((startSpan + endSpan).rounded())
     }
 
     /// Ripple delete: remove selected clips and shift sync-locked tracks to keep them aligned.
@@ -491,8 +503,8 @@ extension EditorViewModel {
         // into timeline frames before applying to `startFrame` / `durationFrames`.
         let deltaStartSource = trimStartFrame - prevStart
         let deltaEndSource = trimEndFrame - prevEnd
-        let deltaStartTimeline = Int((Double(deltaStartSource) / clip.speed).rounded())
-        let deltaEndTimeline = Int((Double(deltaEndSource) / clip.speed).rounded())
+        let deltaStartTimeline = Int(clip.timelineSpanAtStart(forSourceDelta: deltaStartSource).rounded())
+        let deltaEndTimeline = Int(clip.timelineSpanAtEnd(forSourceDelta: deltaEndSource).rounded())
         let newDuration = prevDuration - deltaStartTimeline - deltaEndTimeline
         let newStartFrame = clip.startFrame + deltaStartTimeline
 
@@ -512,7 +524,10 @@ extension EditorViewModel {
             timeline.tracks[loc.trackIndex].clips[loc.clipIndex].trimStartFrame = trimStartFrame
             timeline.tracks[loc.trackIndex].clips[loc.clipIndex].trimEndFrame = trimEndFrame
             timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame = newStartFrame
-            timeline.tracks[loc.trackIndex].clips[loc.clipIndex].setDuration(newDuration)
+            timeline.tracks[loc.trackIndex].clips[loc.clipIndex].applyRetimingWindow(
+                startOffset: deltaStartTimeline,
+                newDuration: newDuration
+            )
 
             sortClips(trackIndex: loc.trackIndex)
 

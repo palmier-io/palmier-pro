@@ -150,18 +150,21 @@ extension EditorViewModel {
     nonisolated static func splitValues(of clip: Clip, atFrame: Int) -> (left: Clip, right: Clip)? {
         guard atFrame > clip.startFrame && atFrame < clip.endFrame else { return nil }
         let splitOffset = atFrame - clip.startFrame
-        let leftSource = Int((Double(splitOffset) * clip.speed).rounded())
-        let rightSource = Int((Double(clip.durationFrames - splitOffset) * clip.speed).rounded())
+        let leftSource = Int(clip.sourceOffset(atTimelineOffset: Double(splitOffset)).rounded())
+        let rightSource = max(0, clip.sourceFramesConsumed - leftSource)
 
         var left = clip
-        left.durationFrames = splitOffset
+        left.applyRetimingWindow(startOffset: 0, newDuration: splitOffset)
         left.trimEndFrame = clip.trimEndFrame + rightSource
         left.fadeOutFrames = 0
 
         var right = clip
         right.id = UUID().uuidString
         right.startFrame = atFrame
-        right.durationFrames = clip.durationFrames - splitOffset
+        right.applyRetimingWindow(
+            startOffset: splitOffset,
+            newDuration: clip.durationFrames - splitOffset
+        )
         right.trimStartFrame = clip.trimStartFrame + leftSource
         right.fadeInFrames = 0
 
@@ -217,33 +220,110 @@ extension EditorViewModel {
     }
 
     func applyClipSpeed(clipId: String, newSpeed: Double) {
-        guard !refusesMulticamRetime(clipIds: [clipId], quiet: true) else { return }
-        guard let loc = findClip(id: clipId) else { return }
-        guard timeline.tracks[loc.trackIndex].clips[loc.clipIndex].supportsRetiming else { return }
+        guard newSpeed.isFinite, newSpeed >= SpeedRamp.minimumSpeed, newSpeed <= SpeedRamp.maximumSpeed else {
+            return
+        }
+        let targetIds = Set([clipId]).union(timingPropagationPartners(of: [clipId]))
+        guard !refusesMulticamRetime(clipIds: Array(targetIds), quiet: true),
+              targetIds.allSatisfy({ clipFor(id: $0)?.supportsRetiming == true }) else { return }
         if preDragTimeline == nil {
             preDragTimeline = timeline
         }
-        if dragBefore[clipId] == nil {
-            dragBefore[clipId] = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        for id in targetIds {
+            guard let loc = findClip(id: id) else { continue }
+            if dragBefore[id] == nil {
+                dragBefore[id] = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            }
+            setClipRetiming(at: loc, speed: newSpeed, ramp: nil)
         }
-        setClipSpeed(at: loc, newSpeed: newSpeed)
     }
 
     func commitClipSpeed(ids: [String], newSpeed: Double) {
-        guard !refusesMulticamRetime(clipIds: ids) else { return }
+        guard newSpeed.isFinite, newSpeed >= SpeedRamp.minimumSpeed, newSpeed <= SpeedRamp.maximumSpeed else {
+            return
+        }
+        let targetIds = Set(ids).union(timingPropagationPartners(of: Set(ids)))
+        guard !refusesMulticamRetime(clipIds: Array(targetIds)),
+              targetIds.allSatisfy({ clipFor(id: $0)?.supportsRetiming == true }) else { return }
         let before: Timeline = preDragTimeline ?? timeline
-        for id in ids {
+        for id in targetIds {
             guard let loc = findClip(id: id) else { continue }
             guard timeline.tracks[loc.trackIndex].clips[loc.clipIndex].supportsRetiming else { continue }
-            if timeline.tracks[loc.trackIndex].clips[loc.clipIndex].speed != newSpeed {
-                setClipSpeed(at: loc, newSpeed: newSpeed)
+            let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            if clip.speed != newSpeed || clip.speedRamp != nil {
+                setClipRetiming(at: loc, speed: newSpeed, ramp: nil)
             }
         }
         let after = timeline
         preDragTimeline = nil
-        for id in ids { dragBefore.removeValue(forKey: id) }
+        for id in targetIds { dragBefore.removeValue(forKey: id) }
         guard before != after else { return }
         registerTimelineSwap(undoState: before, redoState: after, actionName: "Change Speed")
+    }
+
+    func applyClipSpeedRamp(clipId: String, ramp: SpeedRamp) {
+        let targetIds = Set([clipId]).union(timingPropagationPartners(of: [clipId]))
+        guard !refusesMulticamRetime(clipIds: Array(targetIds), quiet: true),
+              targetIds.allSatisfy({ clipFor(id: $0)?.supportsRetiming == true }) else { return }
+        if preDragTimeline == nil {
+            preDragTimeline = timeline
+        }
+        for id in targetIds {
+            guard let loc = findClip(id: id) else { continue }
+            if dragBefore[id] == nil {
+                dragBefore[id] = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            }
+            setClipRetiming(at: loc, speed: ramp.averageSpeed, ramp: ramp)
+        }
+    }
+
+    func commitClipSpeedRamp(ids: [String], ramp: SpeedRamp) {
+        guard !ids.isEmpty else { return }
+        let targetIds = Set(ids).union(timingPropagationPartners(of: Set(ids)))
+        guard !refusesMulticamRetime(clipIds: Array(targetIds)),
+              targetIds.allSatisfy({ clipFor(id: $0)?.supportsRetiming == true }) else { return }
+        let before = preDragTimeline ?? timeline
+        for id in targetIds {
+            guard let loc = findClip(id: id),
+                  timeline.tracks[loc.trackIndex].clips[loc.clipIndex].supportsRetiming else { continue }
+            setClipRetiming(at: loc, speed: ramp.averageSpeed, ramp: ramp)
+        }
+        finishClipRetiming(targetIds: targetIds, before: before, actionName: "Change Speed Ramp")
+    }
+
+    func commitClipSpeedMode(ids: [String], ramped: Bool) {
+        guard !ids.isEmpty else { return }
+        let targetIds = Set(ids).union(timingPropagationPartners(of: Set(ids)))
+        guard !refusesMulticamRetime(clipIds: Array(targetIds)),
+              targetIds.allSatisfy({ clipFor(id: $0)?.supportsRetiming == true }) else { return }
+        let before = timeline
+        for id in targetIds {
+            guard let loc = findClip(id: id) else { continue }
+            var clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            guard clip.supportsRetiming else { continue }
+            if ramped {
+                guard clip.speedRamp == nil else { continue }
+                clip.speedRamp = SpeedRamp(points: [
+                    SpeedRampPoint(position: 0, speed: clip.speed),
+                    SpeedRampPoint(position: 1, speed: clip.speed),
+                ])
+            } else {
+                guard let ramp = clip.speedRamp else { continue }
+                clip.speed = ramp.averageSpeed
+                clip.speedRamp = nil
+            }
+            timeline.tracks[loc.trackIndex].clips[loc.clipIndex] = clip
+        }
+        finishClipRetiming(targetIds: targetIds, before: before, actionName: "Change Speed Mode")
+    }
+
+    private func finishClipRetiming(targetIds: Set<String>, before: Timeline, actionName: String) {
+        let after = timeline
+        preDragTimeline = nil
+        for id in targetIds { dragBefore.removeValue(forKey: id) }
+        guard before != after else { return }
+        registerTimelineSwap(undoState: before, redoState: after, actionName: actionName)
+        notifyTimelineChanged()
     }
 
     func registerTimelineSwap(undoState: Timeline, redoState: Timeline, actionName: String) {
@@ -265,16 +345,17 @@ extension EditorViewModel {
         notifyTimelineChanged(refreshVisuals: refreshVisuals)
     }
 
-    fileprivate func setClipSpeed(at loc: ClipLocation, newSpeed: Double) {
+    fileprivate func setClipRetiming(at loc: ClipLocation, speed newSpeed: Double, ramp: SpeedRamp?) {
         let ti = loc.trackIndex
         let clip = timeline.tracks[ti].clips[loc.clipIndex]
         let basis = dragBefore[clip.id] ?? clip
-        let sourceFrames = Double(basis.durationFrames) * basis.speed
+        let sourceFrames = basis.sourceOffset(atTimelineOffset: Double(basis.durationFrames))
         let newDuration = max(1, Int((sourceFrames / newSpeed).rounded()))
         let oldDuration = clip.durationFrames
         let oldEnd = clip.endFrame
 
         timeline.tracks[ti].clips[loc.clipIndex].speed = newSpeed
+        timeline.tracks[ti].clips[loc.clipIndex].speedRamp = ramp
         timeline.tracks[ti].clips[loc.clipIndex].durationFrames = newDuration
         // Keyframe offsets are clip-relative, so retime them before the clamp drops them.
         timeline.tracks[ti].clips[loc.clipIndex].rescaleWordTimings(from: oldDuration)
@@ -648,7 +729,7 @@ extension EditorViewModel {
             let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
             guard currentFrame > clip.startFrame && currentFrame < clip.endFrame else { continue }
             let delta = currentFrame - clip.startFrame
-            let sourceDelta = Int((Double(delta) * clip.speed).rounded())
+            let sourceDelta = Int(clip.sourceOffset(atTimelineOffset: Double(delta)).rounded())
             trimClips([(clipId: id, trimStartFrame: clip.trimStartFrame + sourceDelta, trimEndFrame: clip.trimEndFrame)])
         }
     }
@@ -659,7 +740,9 @@ extension EditorViewModel {
             let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
             guard currentFrame > clip.startFrame && currentFrame < clip.endFrame else { continue }
             let delta = clip.endFrame - currentFrame
-            let sourceDelta = Int((Double(delta) * clip.speed).rounded())
+            let keptDuration = clip.durationFrames - delta
+            let sourceDelta = clip.sourceFramesConsumed
+                - Int(clip.sourceOffset(atTimelineOffset: Double(keptDuration)).rounded())
             trimClips([(clipId: id, trimStartFrame: clip.trimStartFrame, trimEndFrame: clip.trimEndFrame + sourceDelta)])
         }
     }
@@ -713,19 +796,21 @@ extension EditorViewModel {
             case .trimEnd(let clipId, let newDuration):
                 if let loc = findClip(id: clipId) {
                     let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-                    let sourceDelta = Int((Double(clip.durationFrames - newDuration) * clip.speed).rounded())
+                    let sourceDelta = clip.sourceFramesConsumed
+                        - Int(clip.sourceOffset(atTimelineOffset: Double(newDuration)).rounded())
                     let newTrimEnd = clip.trimEndFrame + sourceDelta
                     mutateClips(ids: [clipId], actionName: "Trim Clip") {
                         $0.trimEndFrame = newTrimEnd
-                        $0.setDuration(newDuration)
+                        $0.applyRetimingWindow(startOffset: 0, newDuration: newDuration)
                     }
                 }
 
             case .trimStart(let clipId, let newStartFrame, let newTrimStart, let newDuration):
                 mutateClips(ids: [clipId], actionName: "Trim Clip") {
+                    let removedAtStart = newStartFrame - $0.startFrame
                     $0.startFrame = newStartFrame
                     $0.trimStartFrame = newTrimStart
-                    $0.setDuration(newDuration)
+                    $0.applyRetimingWindow(startOffset: removedAtStart, newDuration: newDuration)
                 }
 
             case .split(let clipId, _, _, _, _, _):

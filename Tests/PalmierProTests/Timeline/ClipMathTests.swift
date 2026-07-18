@@ -23,6 +23,40 @@ struct ClipMathTests {
         #expect(clip.sourceFramesConsumed == 25)
     }
 
+    @Test func speedRampIntegratesAndInvertsSourceTime() {
+        var clip = Fixtures.clip(start: 10, duration: 100)
+        clip.speedRamp = SpeedRamp(points: [
+            SpeedRampPoint(position: 0, speed: 1, interpolationOut: .linear),
+            SpeedRampPoint(position: 1, speed: 3),
+        ])
+        clip.speed = clip.speedRamp!.averageSpeed
+
+        #expect(clip.sourceFramesConsumed == 200)
+        #expect(abs(clip.sourceOffset(atTimelineOffset: 50) - 75) < 0.000_001)
+        #expect(abs((clip.timelineOffset(atSourceOffset: 75) ?? 0) - 50) < 0.000_001)
+    }
+
+    @Test func holdSpeedRampKeepsOutgoingSpeedUntilNextPoint() {
+        let ramp = SpeedRamp(points: [
+            SpeedRampPoint(position: 0, speed: 1, interpolationOut: .hold),
+            SpeedRampPoint(position: 1, speed: 4),
+        ])
+
+        #expect(ramp.averageSpeed == 1)
+        #expect(ramp.speed(at: 0.75) == 1)
+    }
+
+    @Test func holdSpeedRampUsesNewSpeedAtBoundary() {
+        let ramp = SpeedRamp(points: [
+            SpeedRampPoint(position: 0, speed: 1, interpolationOut: .hold),
+            SpeedRampPoint(position: 0.5, speed: 3, interpolationOut: .hold),
+            SpeedRampPoint(position: 1, speed: 2),
+        ])
+
+        #expect(ramp.speed(at: 0.499) == 1)
+        #expect(ramp.speed(at: 0.5) == 3)
+    }
+
     @Test func sourceDurationIncludesBothTrims() {
         // consumed (100) + trimStart (10) + trimEnd (5) = 115.
         let clip = Fixtures.clip(start: 0, duration: 100, trimStart: 10, trimEnd: 5)

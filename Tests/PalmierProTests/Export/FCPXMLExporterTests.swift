@@ -375,6 +375,25 @@ struct FCPXMLExporterTests {
         #expect(xml.contains("<timept time=\"10s\" value=\"5s\" interp=\"linear\"/>"))
     }
 
+    @Test func speedRampEmitsClipLocalTimeMap() async throws {
+        let (resolver, tmpDir) = try makeResolver(entries: [videoEntry(id: "media-v", in: NSTemporaryDirectory())])
+        var clip = Fixtures.clip(id: "ramp", mediaRef: "media-v", start: 0, duration: 60, trimStart: 10)
+        clip.speedRamp = SpeedRamp(points: [
+            SpeedRampPoint(position: 0, speed: 1, interpolationOut: .linear),
+            SpeedRampPoint(position: 1, speed: 3),
+        ])
+        clip.speed = clip.speedRamp!.averageSpeed
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+
+        let xml = try await export(timeline, resolver: resolver, tmpDir: tmpDir)
+
+        #expect(xml.contains("offset=\"0s\" start=\"1/3s\" duration=\"2s\""))
+        #expect(xml.contains("<timeMap frameSampling=\"floor\">"))
+        #expect(xml.contains("<timept time=\"1/3s\" value=\"1/3s\" interp=\"linear\"/>"))
+        #expect(xml.contains("<timept time=\"7/3s\" value=\"13/3s\" interp=\"linear\"/>"))
+        #expect(xml.contains("value=\"5s\" interp=\"linear\"/>"))
+    }
+
     @Test func retimedKeyframeTimeIsOffsetByStart() async throws {
         // Resolve measures param keyframe time from the timeMap origin, so it's offset by the clip's
         // output-axis start (trimStart ÷ speed), not zero-based. 5s media @30fps, 2× speed, trimStart 10.

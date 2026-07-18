@@ -253,7 +253,7 @@ enum XMLExporter {
                 leaf("out", outPoint),
                 fileNode(for: clip.mediaRef, isAudio: isAudio),
             ]
-            if let remap = timeRemapFilter(speed: clip.speed, isAudio: isAudio) { children.append(remap) }
+            if let remap = timeRemapFilter(clip: clip, isAudio: isAudio) { children.append(remap) }
             children += isAudio ? volumeFilters(clip) : videoFilters(clip)
             children += linkNodes(for: clip)
             return el("clipitem", attrs: [("id", "clipitem-\(clip.id)")], children)
@@ -410,14 +410,60 @@ enum XMLExporter {
         // MARK: - Filters
 
         /// Premiere needs this to apply speed; it won't infer it from the in/out vs start/end ratio.
-        private func timeRemapFilter(speed: Double, isAudio: Bool) -> XMLNode? {
-            guard speed != 1.0 else { return nil }
-            return filter(effect(name: "Time Remap", id: "timeremap", type: "motion", mediatype: isAudio ? "audio" : "video", body: [
-                parameter(id: "variablespeed", name: "variablespeed", min: "0", max: "1", value: leaf("value", 0)),
-                parameter(id: "speed", name: "speed", min: "-100000", max: "100000", value: leaf("value", String(format: "%.4f", speed * 100))),
+        private func timeRemapFilter(clip: Clip, isAudio: Bool) -> XMLNode? {
+            guard clip.speed != 1.0 || clip.speedRamp != nil else { return nil }
+            var body: [XMLNode] = [
+                parameter(id: "variablespeed", name: "variablespeed", min: "0", max: "1", value: leaf("value", clip.speedRamp == nil ? 0 : 1))
+            ]
+            if let speedRamp = clip.speedRamp {
+                let offsets = speedRamp.timelineOffsetsForRendering(duration: clip.durationFrames)
+                let keyframes = offsets.map { offset -> XMLNode in
+                    var children = [
+                        leaf("when", offset),
+                        leaf(
+                            "value",
+                            String(
+                                format: "%.4f",
+                                Double(clip.trimStartFrame)
+                                    + clip.sourceOffset(atTimelineOffset: Double(offset))
+                            )
+                        ),
+                        bool("speedvirtualkf", offset == 0 || offset == clip.durationFrames),
+                    ]
+                    if offset == 0 {
+                        children.append(bool("speedkfstart", true))
+                        children.append(bool("speedkfin", true))
+                    }
+                    if offset == clip.durationFrames {
+                        children.append(bool("speedkfout", true))
+                        children.append(bool("speedkfend", true))
+                    }
+                    return el("keyframe", children)
+                }
+                body.append(el("parameter", [
+                    leaf("parameterid", "graphdict"),
+                    leaf("name", "graphdict"),
+                ] + keyframes))
+            } else {
+                body.append(parameter(
+                    id: "speed",
+                    name: "speed",
+                    min: "-100000",
+                    max: "100000",
+                    value: leaf("value", String(format: "%.4f", clip.speed * 100))
+                ))
+            }
+            body += [
                 parameter(id: "reverse", name: "reverse", value: bool("value", false)),
                 parameter(id: "frameblending", name: "frameblending", value: bool("value", false)),
-            ]))
+            ]
+            return filter(effect(
+                name: "Time Remap",
+                id: "timeremap",
+                type: "motion",
+                mediatype: isAudio ? "audio" : "video",
+                body: body
+            ))
         }
 
         /// `level` is linear (1 = 0 dB, clamped to ~3.98). Uses fade-excluded volume since fades
