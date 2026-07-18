@@ -10,6 +10,7 @@ extension ToolExecutor {
     private static let glossaryListAllowedKeys: Set<String> = ["scope", "confidence"]
     private static let glossaryRemoveAllowedKeys: Set<String> = ["canonical", "scope"]
     private static let glossaryApplyAllowedKeys: Set<String> = ["dryRun", "confidence"]
+    private static let glossaryPromoteAllowedKeys: Set<String> = ["canonical", "fromScope", "toScope", "confidence"]
 
     /// The merged, read-only glossary for the editor's current project context.
     func glossaryStore(_ editor: EditorViewModel) -> GlossaryStore {
@@ -39,10 +40,18 @@ extension ToolExecutor {
         var payload: [String: Any] = ["terms": rows]
         let warnings = store.allWarnings()
         if !warnings.isEmpty { payload["warnings"] = warnings }
+        var notes: [String] = []
         let suggestions = rows.filter { ($0["confidence"] as? String) == GlossaryConfidence.inferred.rawValue }.count
         if suggestions > 0 {
-            payload["note"] = "\(suggestions) inferred term(s) are suggestions only and are not auto-applied."
+            notes.append("\(suggestions) inferred term(s) are suggestions only and are not auto-applied.")
         }
+        let projectAsserted = store.merged().filter {
+            $0.scope == .project && $0.term.confidence == .asserted
+        }.count
+        if projectAsserted > 0 {
+            notes.append("\(projectAsserted) asserted project-scope term(s) — glossary_promote moves them to library for reuse across projects.")
+        }
+        if !notes.isEmpty { payload["note"] = notes.joined(separator: " ") }
         guard let json = Self.jsonString(payload) else { throw ToolError("glossary_list: failed to encode") }
         return .ok(json)
     }
@@ -124,9 +133,10 @@ extension ToolExecutor {
         return (sanitized.term, sanitized.warnings)
     }
 
-    /// Promote a classified caption edit into the project glossary as an asserted term.
-    /// Returns a response row, or nil if the project scope is unavailable or the variant was
-    /// dropped by validation. Called from update_text's promotion hook. §6
+    /// Promote a classified caption edit into the library glossary as an asserted term. A caption-edit
+    /// correction is speaker/domain-level knowledge, not project-level, so it lands in library to be
+    /// reused across projects. Returns a response row, or nil if the variant was dropped by
+    /// validation. Called from update_text's promotion hook. §6
     func promoteCaptionEdit(_ promotion: GlossaryClassifier.Promotion, clipId: String, editor: EditorViewModel) -> [String: Any]? {
         let term = GlossaryTerm(
             canonical: promotion.canonical,
@@ -134,7 +144,7 @@ extension ToolExecutor {
             provenance: "auto:caption-edit@\(clipId)",
             confidence: .asserted
         )
-        guard let (added, _) = try? upsertGlossaryTerm(term, scope: .project, editor: editor),
+        guard let (added, _) = try? upsertGlossaryTerm(term, scope: .library, editor: editor),
               !added.variants.isEmpty else { return nil }
         return ["canonical": added.canonical, "variants": added.variants, "clipId": clipId]
     }
@@ -169,6 +179,72 @@ extension ToolExecutor {
             if let report = editor.takeResyncReport() { payload["captionResync"] = report.agentPayload }
         }
         guard let json = Self.jsonString(payload) else { throw ToolError("glossary_remove: failed to encode") }
+        return .ok(json)
+    }
+
+    // MARK: - glossary_promote
+
+    /// Move terms up the sharing hierarchy (default project → library) so a correction made once is
+    /// reused across projects. Selected terms are written into `toScope` and removed from `fromScope`.
+    /// Collision (canonical already in `toScope`): the term from the higher-precedence scope wins —
+    /// promoting project→library, the incoming project term overwrites the library entry.
+    func glossaryPromote(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        try validateUnknownKeys(args, allowed: Self.glossaryPromoteAllowedKeys, path: "glossary_promote")
+        let fromScope = try parseGlossaryScope(args["fromScope"], path: "glossary_promote.fromScope") ?? .project
+        let toScope = try parseGlossaryScope(args["toScope"], path: "glossary_promote.toScope") ?? .library
+        guard fromScope != toScope else {
+            throw ToolError("glossary_promote: fromScope and toScope must differ.")
+        }
+        let confidenceFilter = try parseGlossaryConfidence(args["confidence"], path: "glossary_promote.confidence")
+        let canonicalArg = args.string("canonical")?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let projectURL = editor.projectURL
+        let fromDoc: GlossaryDocument
+        let toDoc: GlossaryDocument
+        do {
+            fromDoc = try GlossaryStore.read(scope: fromScope, projectURL: projectURL)
+            toDoc = try GlossaryStore.read(scope: toScope, projectURL: projectURL)
+        } catch let error as GlossaryError {
+            throw ToolError(error.errorDescription ?? "glossary scope unavailable")
+        }
+
+        let plan = GlossaryPromotion.plan(
+            from: fromDoc, to: toDoc,
+            fromWinsCollision: fromScope.precedenceIndex > toScope.precedenceIndex,
+            canonical: canonicalArg, confidence: confidenceFilter
+        )
+        guard !plan.rows.isEmpty else {
+            let target = (canonicalArg == nil || canonicalArg?.lowercased() == "all") ? nil : canonicalArg
+            let payload: [String: Any] = [
+                "promoted": [[String: Any]](), "count": 0,
+                "fromScope": fromScope.rawValue, "toScope": toScope.rawValue,
+                "note": target.map { "No term '\($0)' in \(fromScope.rawValue)." }
+                    ?? "No terms in \(fromScope.rawValue) matched the filter.",
+            ]
+            guard let json = Self.jsonString(payload) else { throw ToolError("glossary_promote: failed to encode") }
+            return .ok(json)
+        }
+
+        do {
+            try GlossaryStore.write(plan.to, scope: toScope, projectURL: projectURL)
+            try GlossaryStore.write(plan.from, scope: fromScope, projectURL: projectURL)
+        } catch let error as GlossaryError {
+            throw ToolError(error.errorDescription ?? "glossary scope unavailable")
+        } catch {
+            throw ToolError("glossary_promote: could not write glossary: \(error.localizedDescription)")
+        }
+        glossaryStore(editor).applyBias()
+
+        let rows: [[String: Any]] = plan.rows.map { row in
+            var out: [String: Any] = ["canonical": row.canonical]
+            if let collision = row.collision { out["collision"] = "\(collision.rawValue)-\(toScope.rawValue)" }
+            return out
+        }
+        let payload: [String: Any] = [
+            "promoted": rows, "count": rows.count,
+            "fromScope": fromScope.rawValue, "toScope": toScope.rawValue,
+        ]
+        guard let json = Self.jsonString(payload) else { throw ToolError("glossary_promote: failed to encode") }
         return .ok(json)
     }
 

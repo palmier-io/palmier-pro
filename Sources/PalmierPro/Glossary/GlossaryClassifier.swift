@@ -3,6 +3,7 @@
 // alone. No confirmation prompts, biased toward promoting (a false positive costs one remove). refs feature/glossary
 
 import Foundation
+import NaturalLanguage
 
 enum GlossaryClassifier {
     /// A proposed glossary entry derived from an old→new caption edit.
@@ -39,14 +40,82 @@ enum GlossaryClassifier {
         let canonical = join(newSpanTokens, isCJK: isCJK)
         guard !variant.isEmpty, !canonical.isEmpty else { return nil }
 
-        // Guards. Phonetic distance is deliberately NOT one of them.
+        // Guards apply to the MINIMAL span. Phonetic distance is deliberately NOT one of them.
         if normalize(variant) == normalize(canonical) { return nil }          // punctuation/casing-only span
         if GlossaryCommonWords.isAllFiller(oldSpanTokens) { return nil }        // filler cleanup
         if GlossaryCommonWords.isAllFiller(newSpanTokens) { return nil }
         if GlossaryCommonWords.isCommonVocabulary(canonical) { return nil }     // rephrase, not a term
-        if GlossaryValidation.tooShortReason(variant) != nil { return nil }     // unsafe to find/replace
+
+        // Length safety: a variant below the find/replace threshold (a single CJK char like 开→拍)
+        // would corrupt longer words. Dropping it makes the user re-fix the term every episode, so
+        // instead widen the span into the shared neighbouring context until the variant clears the
+        // threshold (开→拍 inside 开视频→拍视频 becomes 开视频→拍视频). CJK only; Latin is unchanged.
+        if GlossaryValidation.tooShortReason(variant) != nil {
+            guard isCJK, let widened = widen(old: oldTrimmed, new: newTrimmed) else { return nil }
+            return widened
+        }
 
         return Promotion(canonical: canonical, variant: variant)
+    }
+
+    // MARK: - Span widening
+
+    /// Widen a sub-threshold minimal substitution into the shared neighbouring context until the
+    /// variant is safe to find/replace. Extends by whole NLTokenizer word groups (so the change grows
+    /// to the enclosing word), suffix first then prefix, bounded by the caption. The result is always
+    /// a contiguous substring of `old`/`new`. Returns nil when no context can clear the threshold.
+    private static func widen(old: String, new: String) -> Promotion? {
+        let o = Array(old), n = Array(new)
+        var p = 0
+        while p < o.count && p < n.count && o[p] == n[p] { p += 1 }
+        var s = 0
+        while s < o.count - p && s < n.count - p && o[o.count - 1 - s] == n[n.count - 1 - s] { s += 1 }
+        let oldSpan = Array(o[p..<o.count - s])
+        let newSpan = Array(n[p..<n.count - s])
+        guard !oldSpan.isEmpty, !newSpan.isEmpty else { return nil }
+
+        let pre = Array(o[0..<p])
+        let suf = Array(o[(o.count - s)...])
+        let sufEnds = wordBoundaries(suf).ends          // consume from the start
+        let preStarts = wordBoundaries(pre).starts      // consume from the end
+        var si = 0, pi = preStarts.count - 1
+        var leadLen = 0, trailLen = 0
+        func variant() -> String { String(Array(pre.suffix(leadLen)) + oldSpan + Array(suf.prefix(trailLen))) }
+        func canonical() -> String { String(Array(pre.suffix(leadLen)) + newSpan + Array(suf.prefix(trailLen))) }
+        while GlossaryValidation.tooShortReason(variant()) != nil {
+            if si < sufEnds.count {
+                trailLen = sufEnds[si]; si += 1
+            } else if pi >= 0 {
+                leadLen = pre.count - preStarts[pi]; pi -= 1
+            } else {
+                return nil  // context exhausted, still unsafe
+            }
+        }
+        let v = variant(), c = canonical()
+        guard normalize(v) != normalize(c) else { return nil }
+        // Re-apply the rephrase/filler guards to the WIDENED spans, not just the minimal char:
+        // widening a sub-threshold single-char edit can produce an all-common-vocabulary span
+        // (在→再 widening to 在来→再来) that would silently corrupt unrelated text (现在来 → 现再来).
+        // Only a span carrying a non-common, non-filler character earns promotion.
+        if GlossaryCommonWords.isCommonVocabulary(v) || GlossaryCommonWords.isCommonVocabulary(c) { return nil }
+        if GlossaryCommonWords.isAllFiller(v.map(String.init)) || GlossaryCommonWords.isAllFiller(c.map(String.init)) { return nil }
+        return Promotion(canonical: c, variant: v)
+    }
+
+    /// Character offsets of NLTokenizer word-group boundaries within `chars` (offsets index into
+    /// `chars`). `starts`/`ends` skip inter-token whitespace, so slicing to a boundary lands on a word.
+    private static func wordBoundaries(_ chars: [Character]) -> (starts: [Int], ends: [Int]) {
+        guard !chars.isEmpty else { return ([], []) }
+        let s = String(chars)
+        let tokenizer = NLTokenizer(unit: .word)
+        tokenizer.string = s
+        var starts: [Int] = [], ends: [Int] = []
+        tokenizer.enumerateTokens(in: s.startIndex..<s.endIndex) { range, _ in
+            starts.append(s.distance(from: s.startIndex, to: range.lowerBound))
+            ends.append(s.distance(from: s.startIndex, to: range.upperBound))
+            return true
+        }
+        return (starts, ends)
     }
 
     // MARK: - Tokenization

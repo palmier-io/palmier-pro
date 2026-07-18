@@ -1,26 +1,26 @@
-# fix/resync-materialisation — Status
+# feature/glossary-persistence — Status
 
-Phase 2 complete. Ready for Evaluator. Branched off fork main 0e3133f.
+Phase 2 complete. Ready for Evaluator. Full `swift build` + full `swift test` green (1266/1266).
 
-## Audit fixes A1–A4
+| Item | Change                                                                                                                                                 |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| B1a  | promoteCaptionEdit retargets project -> library scope (cross-project reuse)                                                                            |
+| B1b  | glossary.json preserved across save-as/duplicate; Project.glossaryFilename const                                                                       |
+| B1c  | glossary_promote tool (move up scope, higher-precedence wins collision); pure GlossaryPromotion planner; schema + dispatch                             |
+| B1d  | glossary_list notes asserted project-scope terms -> promote                                                                                            |
+| B2   | Classifier widens sub-threshold CJK variant to enclosing NLTokenizer word (开视频->拍视频 promotes); CJK-only; common-vocab guard on minimal span kept |
+| B3   | Corrector enforces Latin word boundaries on the Latin edges of mixed-script variants (AI技术 no longer corrupts OpenAI技术)                            |
+| B4a  | Whitespace-only variants rejected in sanitize (read+write) + corrector skips blank                                                                     |
+| B4b  | Deterministic lexicographic-canonical tie-break for shared variants (match list + word-span lookup)                                                    |
 
-| ID  | Change                                                                                                                                                                                                                                                                                   | Files                            |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
-| A1  | Resync word source materialises the project glossary (corrector loaded once per provider, applied per cached read) so corrected captions are never reverted to raw ASR; fixes §5.2 glossary-add no-op                                                                                    | TimelineTranscriptProvider.swift |
-| A2  | Full-file cloud transcripts publish a provider-neutral "latest" alias; cachedOnDisk/hasCachedOnDisk fall back to it after local salted/unsalted keys → cloud projects resync                                                                                                             | TranscriptCache.swift            |
-| A3  | transcript() default cache key no longer salted by TranscriptionBias.fingerprint (unsalted by default); cacheTag opts into biased re-decode; cachedOnDisk now reads UNSALTED→salted→alias so a fresh unsalted entry wins over a stale pre-A3 salted one (salted kept for legacy entries) | TranscriptCache.swift            |
-| A4  | OnsetRefiner.risingEdge requires a speech attack: fast floor→sustained rise (~250ms, rejects fade-ins) that holds ~50ms (rejects clicks); existing guards + tone-burst tests green                                                                                                       | OnsetRefiner.swift               |
+Decisions:
 
-## Eval round-1 fixes
+- Added `@TaskLocal GlossaryScope.sharedRootOverride` (nil in production) so the library (~~/Documents) and global (~~/.config) roots are injectable for tests. A `TestScoping` trait `.isolatedGlossaryRoot` binds it to a fresh temp dir per test (recursive), applied to the Glossary, Glossary tools, and CaptionLint tool suites so EVERY glossary read and write hits an isolated root, never $HOME. Verified: glossary paths absent after two full runs. Gave the CaptionLint autoApply test a FixedWordSource so the post-promotion resync rebuilds instead of clearing (no transcript in that unit).
+- glossary_promote is a MOVE (writes toScope, removes from fromScope); collision resolved by scope precedence (promoted wins when its scope is higher precedence).
 
-- A3 MEDIUM blocker: read order was salted-first, shadowing fresh unsalted writes. Fixed to unsalted-first with salted fallback; doc comment updated. New tests: unsaltedEntryWinsOverStaleSaltedEntry, legacySaltedOnlyEntryStillReadable.
-- Bias-fingerprint tests isolated in a `.serialized` "TranscriptCache — bias keys" suite (they mutate process-global TranscriptionBias; nothing else in the suite does).
+Deviations:
 
-## Verification (this branch)
-
-- `swift build` — clean.
-- `swift test` (full) — 1259/1259 pass this run. NOTE: base 0e3133f carries a pre-existing ~1/8 parallel-isolation flake (≈5 glossary/lint tests share user-scope glossary paths and pollute each other under parallel execution); not fixed here — wsB owns the cure (@TaskLocal path seam). If it fires, it is unrelated to A1–A4.
-- New tests: CaptionResyncMaterialisationTests (4: provider materialisation + a/b/c engine integration), OnsetRefiner fade-in/click/genuine-attack (3), TranscriptCache cloud-alias/windowed (2) + serialized bias-keys fingerprint-churn/unsalted-wins/legacy-salted (3).
+- Updated the classifier test `doesNotPromoteUnsafeShortVariant` (我的师父->我的狮父) — with B2 it now widens and promotes (师父->狮父); added a no-context nil case (师->狮) in its place.
 
 ---
 

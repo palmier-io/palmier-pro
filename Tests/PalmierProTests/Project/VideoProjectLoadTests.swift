@@ -305,6 +305,28 @@ struct VideoProjectLoadTests {
         #expect(preserved == original)   // bytes carried over verbatim
     }
 
+    @Test func saveAsPreservesGlossarySidecar() throws {
+        // Duplicate/save-as must carry the project glossary forward — the app never regenerates it,
+        // so without this a corrected term would silently vanish in the new project. (B1b)
+        let source = try makeBundle()
+        defer { try? fm.removeItem(at: source) }
+        let glossaryBytes = Data(#"{"version":1,"terms":[{"canonical":"嬢嬢","variants":["娘娘"]}]}"#.utf8)
+        try glossaryBytes.write(to: source.appendingPathComponent(Project.glossaryFilename))
+
+        let dest = fm.temporaryDirectory
+            .appendingPathComponent("vp-dest-\(UUID().uuidString).palmier", isDirectory: true)
+        defer { try? fm.removeItem(at: dest) }
+
+        let snapshot = ProjectPackageSnapshot(
+            timeline: try JSONEncoder().encode(Fixtures.timeline()),
+            manifest: nil, generationLog: nil, thumbnail: nil, chatSessionFiles: []
+        )
+        try VideoProject.writeProjectPackage(snapshot, to: dest, sourceURL: source)
+
+        let preserved = try Data(contentsOf: dest.appendingPathComponent(Project.glossaryFilename))
+        #expect(preserved == glossaryBytes)
+    }
+
     @Test func inPlaceSaveLeavesUnreadableManifestUntouched() throws {
         // The common autosave path writes in place (source == dest). The original media.json
         // must survive byte-for-byte rather than being clobbered with an empty manifest.

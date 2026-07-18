@@ -14,17 +14,26 @@ enum GlossaryScope: String, Codable, Sendable, CaseIterable {
     /// Resolution order, weakest first.
     static let precedence: [GlossaryScope] = [.global, .library, .project]
 
+    /// Position in the resolution order — higher means it wins at read time (project strongest).
+    var precedenceIndex: Int { Self.precedence.firstIndex(of: self) ?? 0 }
+
+    /// Test seam: redirects the process-global library/global roots to an isolated directory. nil in
+    /// production (real user paths). Task-local so parallel tests each get their own root with no race.
+    @TaskLocal static var sharedRootOverride: URL?
+
     /// The glossary.json for this scope, or nil when unavailable (e.g. project scope with no open project).
     func fileURL(projectURL: URL?) -> URL? {
         switch self {
         case .global:
-            return FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".config/glossary/global.json", isDirectory: false)
+            let root = Self.sharedRootOverride
+                ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/glossary", isDirectory: true)
+            return root.appendingPathComponent("global.json", isDirectory: false)
         case .library:
             // No cross-project media-library root exists; the shared storage dir is the closest concept.
-            return Project.storageDirectory.appendingPathComponent("glossary.json", isDirectory: false)
+            let root = Self.sharedRootOverride ?? Project.storageDirectory
+            return root.appendingPathComponent(Project.glossaryFilename, isDirectory: false)
         case .project:
-            return projectURL?.appendingPathComponent("glossary.json", isDirectory: false)
+            return projectURL?.appendingPathComponent(Project.glossaryFilename, isDirectory: false)
         }
     }
 }

@@ -12,6 +12,14 @@ private struct FailingCompleter: LintCompleter {
     func complete(system: String, user: String) async throws -> String { throw Boom() }
 }
 
+/// Returns fixed words for any span — stands in for a cached transcript so the post-edit caption
+/// resync rebuilds to the same text instead of clearing it (production always has a transcript).
+private struct FixedWordSource: CaptionWordSource {
+    let words: [WordTiming]
+    func audibleWords(in range: Range<Int>) -> [WordTiming] { words }
+    func uncachedRefs(in range: Range<Int>) -> [String] { [] }
+}
+
 // MARK: - Core linter (pure, no editor)
 
 @Suite struct CaptionLinterTests {
@@ -137,7 +145,7 @@ private struct FailingCompleter: LintCompleter {
 // MARK: - Tool wiring (editor + injected completer)
 
 @MainActor
-@Suite struct CaptionLintToolTests {
+@Suite(.isolatedGlossaryRoot) struct CaptionLintToolTests {
     private func spec(_ text: String, start: Int, duration: Int, group: String) -> EditorViewModel.TextClipSpec {
         var s = EditorViewModel.TextClipSpec(
             trackIndex: 0, startFrame: start, durationFrames: duration,
@@ -190,6 +198,12 @@ private struct FailingCompleter: LintCompleter {
         let stub = StubCompleter(response: """
         [{"clipId":"\(target)","original":"开视频","suggestion":"拍视频","reason":"near-sound","confidence":0.8}]
         """)
+        // A cached transcript stand-in so the post-promotion resync rebuilds the corrected caption
+        // rather than clearing it (the auto-applied edit now promotes into the glossary — which the
+        // suite's .isolatedGlossaryRoot trait keeps off the real user library).
+        e.captionWordSourceProvider = { _ in
+            FixedWordSource(words: [WordTiming(text: "好久没有拍视频了", startFrame: 100, endFrame: 150)])
+        }
         let exec = ToolExecutor(editor: e)
         let result = try await exec.captionLint(e, ["mode": "flags", "autoApplyThreshold": 0.7], completer: stub)
         let out = body(result)

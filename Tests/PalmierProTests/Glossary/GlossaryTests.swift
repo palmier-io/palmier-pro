@@ -5,7 +5,7 @@ import Foundation
 import Testing
 @testable import PalmierPro
 
-@Suite("Glossary")
+@Suite("Glossary", .isolatedGlossaryRoot)
 struct GlossaryTests {
     private func corrector(_ terms: [GlossaryTerm]) -> GlossaryCorrector {
         GlossaryCorrector(terms: terms)
@@ -210,5 +210,166 @@ struct GlossaryTests {
         #expect(a.biasFingerprint() == b.biasFingerprint())
         #expect(a.biasFingerprint() != c.biasFingerprint())
         #expect(a.hotwordTerms() == ["Xterm"])
+    }
+
+    // MARK: - Mixed-script variant boundaries (B3)
+
+    @Test func mixedScriptVariantRespectsLatinEdge() {
+        // "AI技术" starts with a Latin edge; it must correct 我用AI技术 but never fire mid-word in
+        // OpenAI技术 (which would corrupt it to Open人工智能).
+        let c = corrector([term("人工智能", ["AI技术"])])
+        #expect(c.correct("我用AI技术") == "我用人工智能")
+        #expect(c.correct("OpenAI技术") == "OpenAI技术")
+    }
+
+    @Test func mixedScriptVariantLeadingDigitEdge() {
+        // "5G网络" leads with a digit (a Latin word char); H5G网络 must not match mid-token.
+        let c = corrector([term("五G网络", ["5G网络"])])
+        #expect(c.correct("用5G网络") == "用五G网络")
+        #expect(c.correct("H5G网络") == "H5G网络")
+    }
+
+    @Test func mixedScriptVariantTrailingLatinEdge() {
+        // "手机iPhone" ends on a Latin edge; must not fire inside 手机iPhones.
+        let c = corrector([term("手机苹果", ["手机iPhone"])])
+        #expect(c.correct("买手机iPhone吧") == "买手机苹果吧")
+        #expect(c.correct("手机iPhones") == "手机iPhones")
+    }
+
+    @Test func pureCJKAndPureLatinUnaffectedByEdgeRule() {
+        let cjk = corrector([term("嬢嬢", ["娘娘"])])
+        #expect(cjk.correct("陈娘娘家") == "陈嬢嬢家")
+        let latin = corrector([term("Kubernetes", ["kubernetis"])])
+        #expect(latin.correct("kubernetisation") == "kubernetisation")
+    }
+
+    // MARK: - Whitespace-only variants + tie-break (B4)
+
+    @Test func whitespaceOnlyVariantRejectedBySanitize() {
+        let r = GlossaryValidation.sanitize(term("canonical", [" "]), otherCanonicals: [])
+        #expect(r.term.variants.isEmpty)
+        #expect(r.rejectedVariants.contains(" "))
+        #expect(r.warnings.contains { $0.contains("whitespace-only") })
+    }
+
+    @Test func whitespaceOnlyVariantNeverReplacesEmptyTokens() {
+        // A blank variant must not reach the corrector and blank out real tokens.
+        let c = corrector([term("canonical", [" "])])
+        #expect(c.correctWordSpans(["a", "b"]) == ["a", "b"])
+    }
+
+    @Test func sharedVariantResolvesDeterministically() {
+        // Two terms sharing the variant "xyz" resolve to the lexicographically-smaller canonical,
+        // regardless of construction order.
+        let ab = corrector([term("AAA", ["xyzxyz"]), term("BBB", ["xyzxyz"])])
+        let ba = corrector([term("BBB", ["xyzxyz"]), term("AAA", ["xyzxyz"])])
+        #expect(ab.correct("xyzxyz") == "AAA")
+        #expect(ba.correct("xyzxyz") == "AAA")
+    }
+
+    // MARK: - Promotion planner (B1c)
+
+    private func doc(_ terms: [GlossaryTerm]) -> GlossaryDocument { GlossaryDocument(terms: terms) }
+
+    @Test func planPromotesSingleTermAndRemovesFromSource() {
+        let plan = GlossaryPromotion.plan(
+            from: doc([term("嬢嬢", ["娘娘"]), term("狮", ["师傅"])]),
+            to: doc([]), fromWinsCollision: true, canonical: "嬢嬢", confidence: nil
+        )
+        #expect(plan.to.terms.map(\.canonical) == ["嬢嬢"])
+        #expect(plan.from.terms.map(\.canonical) == ["狮"])
+        #expect(plan.rows == [.init(canonical: "嬢嬢", collision: nil)])
+    }
+
+    @Test func planPromotesAllTerms() {
+        let plan = GlossaryPromotion.plan(
+            from: doc([term("A", ["aa"]), term("B", ["bb"])]),
+            to: doc([]), fromWinsCollision: true, canonical: nil, confidence: nil
+        )
+        #expect(Set(plan.to.terms.map(\.canonical)) == ["A", "B"])
+        #expect(plan.from.terms.isEmpty)
+        #expect(plan.rows.count == 2)
+    }
+
+    @Test func planConfidenceFilterSelectsSubset() {
+        let plan = GlossaryPromotion.plan(
+            from: doc([term("A", ["aa"], confidence: .asserted), term("B", ["bb"], confidence: .declared)]),
+            to: doc([]), fromWinsCollision: true, canonical: "all", confidence: .asserted
+        )
+        #expect(plan.to.terms.map(\.canonical) == ["A"])
+        #expect(plan.from.terms.map(\.canonical) == ["B"])
+    }
+
+    @Test func planCollisionHigherScopeWins() {
+        // Promoted term from the higher-precedence scope overwrites the destination entry.
+        let win = GlossaryPromotion.plan(
+            from: doc([term("A", ["fresh"])]), to: doc([term("A", ["stale"])]),
+            fromWinsCollision: true, canonical: "A", confidence: nil
+        )
+        #expect(win.to.terms.map(\.variants) == [["fresh"]])
+        #expect(win.rows == [.init(canonical: "A", collision: .overwrote)])
+        // When the destination is the higher scope, its entry is kept and the source copy removed.
+        let keep = GlossaryPromotion.plan(
+            from: doc([term("A", ["fresh"])]), to: doc([term("A", ["stale"])]),
+            fromWinsCollision: false, canonical: "A", confidence: nil
+        )
+        #expect(keep.to.terms.map(\.variants) == [["stale"]])
+        #expect(keep.from.terms.isEmpty)
+        #expect(keep.rows == [.init(canonical: "A", collision: .kept)])
+    }
+}
+
+/// Tool-level glossary_promote / glossary_list behaviour that needs a live ToolExecutor.
+@Suite("Glossary tools", .isolatedGlossaryRoot)
+@MainActor
+struct GlossaryToolTests {
+    private func makeProject() throws -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("gloss-tool-\(UUID().uuidString).palmier", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    private func term(_ canonical: String, _ variants: [String], confidence: GlossaryConfidence) -> GlossaryTerm {
+        GlossaryTerm(canonical: canonical, variants: variants, provenance: "user", confidence: confidence)
+    }
+
+    @Test func listNotesAssertedProjectScopeTerms() async throws {
+        let dir = try makeProject()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let canonical = "Prj\(UUID().uuidString.prefix(6))"
+        try GlossaryStore.write(
+            GlossaryDocument(terms: [term(canonical, ["variantone"], confidence: .asserted)]),
+            scope: .project, projectURL: dir
+        )
+        let h = ToolHarness()
+        h.editor.projectURL = dir
+
+        let payload = try await h.runOK("glossary_list") as? [String: Any]
+        let note = payload?["note"] as? String
+        #expect(note?.contains("asserted project-scope term") == true)
+        #expect(note?.contains("glossary_promote") == true)
+    }
+
+    @Test func promoteMovesTermFromProjectToLibrary() async throws {
+        let dir = try makeProject()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let canonical = "Lib\(UUID().uuidString.prefix(6))"
+        try GlossaryStore.write(
+            GlossaryDocument(terms: [term(canonical, ["variantone"], confidence: .asserted)]),
+            scope: .project, projectURL: dir
+        )
+        let h = ToolHarness()
+        h.editor.projectURL = dir
+
+        let payload = try await h.runOK("glossary_promote", args: ["canonical": canonical]) as? [String: Any]
+        #expect(payload?["count"] as? Int == 1)
+        #expect(payload?["toScope"] as? String == "library")
+
+        // Landed in library (isolated temp root via .isolatedGlossaryRoot), gone from project.
+        let lib = try GlossaryStore.read(scope: .library, projectURL: dir)
+        #expect(lib.terms.contains { $0.canonical == canonical })
+        let project = try GlossaryStore.read(scope: .project, projectURL: dir)
+        #expect(!project.terms.contains { $0.canonical == canonical })
     }
 }

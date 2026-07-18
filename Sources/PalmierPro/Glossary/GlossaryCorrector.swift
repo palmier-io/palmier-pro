@@ -39,16 +39,23 @@ struct GlossaryCorrector: Sendable {
                     replaces: false
                 ))
             }
-            for variant in term.variants where variant != canonical && !variant.isEmpty {
+            for variant in term.variants
+            where variant != canonical && !variant.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 let isLatin = !GlossaryText.isCJKPhrase(variant)
                 known.append(Known(chars: Array(variant), canonical: canonical, isLatin: isLatin, replaces: true))
-                wordSpan[Self.normalize(variant, isLatin: isLatin)] = canonical
+                // Two terms may share a variant; keep the lexicographically-smaller canonical so this
+                // matches the winner `match` returns from the sorted `known` list.
+                let key = Self.normalize(variant, isLatin: isLatin)
+                if let existing = wordSpan[key] { wordSpan[key] = min(existing, canonical) } else { wordSpan[key] = canonical }
                 maxSpan = max(maxSpan, variant.count)
             }
         }
-        // Longest first; protected canonicals ahead of equal-length variants so nesting wins.
+        // Longest first; protected canonicals ahead of equal-length variants so nesting wins; then a
+        // lexicographic canonical tie-break so two terms sharing a variant resolve deterministically.
         known.sort { a, b in
-            a.chars.count != b.chars.count ? a.chars.count > b.chars.count : (!a.replaces && b.replaces)
+            if a.chars.count != b.chars.count { return a.chars.count > b.chars.count }
+            if a.replaces != b.replaces { return !a.replaces }
+            return a.canonical < b.canonical
         }
         self.known = known
         self.wordSpanLookup = wordSpan
@@ -96,8 +103,12 @@ struct GlossaryCorrector: Sendable {
                 }
             }
             guard ok else { continue }
-            if k.isLatin {
-                if i > 0, GlossaryText.isLatinWordChar(chars[i - 1]) { continue }
+            // Latin word boundaries apply to a pure-Latin variant AND to the Latin edges of a
+            // mixed-script one (else variant "AI技术" matches inside "OpenAI技术").
+            let startsLatin = k.chars.first.map(GlossaryText.isLatinWordChar) ?? false
+            let endsLatin = k.chars.last.map(GlossaryText.isLatinWordChar) ?? false
+            if (k.isLatin || startsLatin), i > 0, GlossaryText.isLatinWordChar(chars[i - 1]) { continue }
+            if k.isLatin || endsLatin {
                 let after = i + n
                 if after < chars.count, GlossaryText.isLatinWordChar(chars[after]) { continue }
             }

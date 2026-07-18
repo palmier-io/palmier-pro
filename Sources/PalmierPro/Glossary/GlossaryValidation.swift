@@ -27,7 +27,15 @@ enum GlossaryValidation {
 
         for raw in term.variants {
             let variant = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            if variant.isEmpty { continue }
+            if variant.isEmpty {
+                // A whitespace-only variant normalizes to "" and would match empty spans (corrupting
+                // output); reject it explicitly. A truly empty "" is skipped silently.
+                if !raw.isEmpty {
+                    rejected.append(raw)
+                    warnings.append("Variant is whitespace-only and was dropped — it would match empty text.")
+                }
+                continue
+            }
             if variant == canonical {
                 rejected.append(raw)
                 warnings.append("Variant '\(variant)' equals the canonical and was dropped (no-op).")

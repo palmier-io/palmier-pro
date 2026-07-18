@@ -293,6 +293,8 @@ final class VideoProject: NSDocument {
         }
         // Caption-style profile is a user/agent-authored sidecar the app never generates; preserve it across saves.
         try copyPreservedFile(Project.captionStyleFilename, from: sourceURL, to: packageURL, fm: fm)
+        // Glossary is a user/agent-authored sidecar the app never regenerates; preserve it so corrections survive save-as/duplicate.
+        try copyPreservedFile(Project.glossaryFilename, from: sourceURL, to: packageURL, fm: fm)
         try writeChatDirectory(snapshot.chatSessionFiles, to: packageURL, fm: fm)
         try copyMediaDirectoryIfNeeded(from: sourceURL, to: packageURL, fm: fm)
         try fm.createDirectory(

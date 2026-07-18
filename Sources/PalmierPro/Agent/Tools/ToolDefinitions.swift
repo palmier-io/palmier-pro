@@ -58,6 +58,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case glossaryList = "glossary_list"
     case glossaryAdd = "glossary_add"
     case glossaryRemove = "glossary_remove"
+    case glossaryPromote = "glossary_promote"
     case glossaryApply = "glossary_apply"
 
     // Color & effects
@@ -845,6 +846,18 @@ enum ToolDefinitions {
                     "scope": ["type": "string", "enum": GlossaryScope.allCases.map(\.rawValue), "description": "Which layer to remove from. Default project."],
                 ],
                 required: ["canonical"]
+            )
+        ),
+        AgentTool(
+            name: .glossaryPromote,
+            description: "Move glossary terms up the sharing hierarchy so a correction made once is reused everywhere — by default project → library, which makes project-local corrections apply to every future project. Selected terms are written into toScope and removed from fromScope (a move, not a copy). canonical names one term; omit it or pass 'all' to promote every matching term. Optional confidence filters which terms move (e.g. only asserted auto-promotions). Collision — the canonical already exists in toScope: the term from the higher-precedence scope wins, so promoting project → library the incoming project term overwrites the library entry. fromScope defaults to project, toScope to library; they must differ. Returns {promoted:[{canonical, collision?}], count, fromScope, toScope}.",
+            inputSchema: objectSchema(
+                properties: [
+                    "canonical": ["type": "string", "description": "Canonical of the single term to promote. Omit or pass 'all' to promote every matching term."],
+                    "fromScope": ["type": "string", "enum": GlossaryScope.allCases.map(\.rawValue), "description": "Source layer to move terms out of. Default project."],
+                    "toScope": ["type": "string", "enum": GlossaryScope.allCases.map(\.rawValue), "description": "Destination layer to move terms into. Default library."],
+                    "confidence": ["type": "string", "enum": GlossaryConfidence.allCases.map(\.rawValue), "description": "Optional. Only promote terms at this confidence."],
+                ]
             )
         ),
         AgentTool(
