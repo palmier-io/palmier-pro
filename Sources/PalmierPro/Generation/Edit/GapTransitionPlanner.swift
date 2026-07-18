@@ -77,7 +77,7 @@ enum GapTransitionPlanner {
               fps <= Int.max / generationDurationSeconds else { return nil }
         let sourceFrameCount = generationDurationSeconds * fps
         guard sourceFrameCount != targetFrameCount else { return 1 }
-        return (Double(sourceFrameCount) / Double(targetFrameCount)).nextUp
+        return Double(sourceFrameCount) / Double(targetFrameCount)
     }
 
     static func closestAspectRatio(

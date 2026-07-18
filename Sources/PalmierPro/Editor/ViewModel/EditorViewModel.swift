@@ -23,6 +23,10 @@ struct PendingGapTransitionPlacement: Equatable, Sendable {
     let timelineRevision: Int
     let firstFrameAssetId: String
     let lastFrameAssetId: String
+    let previousMediaRef: String
+    let nextMediaRef: String
+    let previousMediaURL: URL?
+    let nextMediaURL: URL?
 }
 
 @Observable

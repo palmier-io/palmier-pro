@@ -403,7 +403,7 @@ enum CompositionBuilder {
 
         let sourceFrames = clip.speed == 1.0
             ? clip.durationFrames
-            : max(1, Int(Double(clip.durationFrames) * clip.speed))
+            : max(1, clip.sourceFramesConsumed)
         let durationSeconds = Double(sourceFrames) / Double(timescale)
         var sourceDuration = CMTime(seconds: durationSeconds, preferredTimescale: sourceTimescale)
         // Baked sources can be a hair shorter than the original; clamp instead of throwing.

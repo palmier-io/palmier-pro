@@ -39,6 +39,18 @@ extension EditorViewModel {
         guard timelineRenderRevision == placement.timelineRevision else {
             return "The timeline changed. Create the transition again."
         }
+        guard let track = timeline.tracks.first(where: { $0.id == context.trackId }),
+              let previous = track.clips.first(where: { $0.id == context.previousClipId }),
+              let next = track.clips.first(where: { $0.id == context.nextClipId }),
+              previous.mediaRef == placement.previousMediaRef,
+              next.mediaRef == placement.nextMediaRef else {
+            return "The clips around the gap changed. Create the transition again."
+        }
+        let currentMediaURLs = mediaResolver.expectedURLMap()
+        guard currentMediaURLs[previous.mediaRef] == placement.previousMediaURL,
+              currentMediaURLs[next.mediaRef] == placement.nextMediaURL else {
+            return "The media around the gap changed. Create the transition again."
+        }
         guard gapTransitionContext(
             for: GapSelection(trackIndex: context.trackIndex, range: context.range)
         ) == context else {
@@ -214,7 +226,11 @@ extension EditorViewModel {
                     context: context,
                     timelineRevision: timelineRevision,
                     firstFrameAssetId: firstFrame.id,
-                    lastFrameAssetId: lastFrame.id
+                    lastFrameAssetId: lastFrame.id,
+                    previousMediaRef: previous.mediaRef,
+                    nextMediaRef: next.mediaRef,
+                    previousMediaURL: mediaURLs[previous.mediaRef],
+                    nextMediaURL: mediaURLs[next.mediaRef]
                 )
             )
             mediaPanelToast = nil

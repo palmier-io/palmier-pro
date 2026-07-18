@@ -52,7 +52,7 @@ struct GapTransitionTests {
             fps: 30
         ))
 
-        #expect(Int(Double(targetFrameCount) * speed) == duration * 30)
+        #expect(Int((Double(targetFrameCount) * speed).rounded()) == duration * 30)
     }
 
     @Test func choosesAspectRatioClosestToTimelineCanvas() {
@@ -97,7 +97,11 @@ struct GapTransitionTests {
                 context: context,
                 timelineRevision: editor.timelineRenderRevision,
                 firstFrameAssetId: "first",
-                lastFrameAssetId: "last"
+                lastFrameAssetId: "last",
+                previousMediaRef: "media-1",
+                nextMediaRef: "media-1",
+                previousMediaURL: nil,
+                nextMediaURL: nil
             ),
             generationDurationSeconds: 6
         ))
@@ -143,7 +147,11 @@ struct GapTransitionTests {
                 context: context,
                 timelineRevision: editor.timelineRenderRevision,
                 firstFrameAssetId: "first",
-                lastFrameAssetId: "last"
+                lastFrameAssetId: "last",
+                previousMediaRef: "media-1",
+                nextMediaRef: "media-1",
+                previousMediaURL: nil,
+                nextMediaURL: nil
             ),
             generationDurationSeconds: 6
         )
