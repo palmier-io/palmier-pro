@@ -703,7 +703,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addTexts,
-            description: "Adds text clips as timeline layers. Omit trackIndex on every entry to create one new top video track; otherwise set trackIndex on every entry. Transform is normalized text-box center/size; center-only auto-fits, all four fields override the box. Use the nested style object for typography, outline, shadow, and background. Use add_captions for spoken audio captions. Unknown fields are rejected.",
+            description: "Adds text clips as timeline layers. Omit trackIndex on every entry to create one new top video track; otherwise set trackIndex on every entry. Transform is normalized text-box center/size; center-only auto-fits, all four fields override the box. Use the nested style object for typography, outline, shadow, and background. fillMode 'footage' stencils layers below through the letter shapes. Use add_captions for spoken audio captions. Unknown fields are rejected.",
             inputSchema: objectSchema(
                 properties: [
                     "entries": [
@@ -724,6 +724,7 @@ enum ToolDefinitions {
                             ], textStyleProperties(detailed: false), [
                                 "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Animation preset; off clears."],
                                 "highlightColor": ["type": "string", "description": "Active-word hex."],
+                                "fillMode": ["type": "string", "enum": ["color", "footage"], "description": "color = solid typography (default). footage = stencil layers below through the letter shapes."],
                             ]),
                             "required": ["startFrame", "endFrame", "content"],
                         ],
@@ -734,7 +735,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .updateText,
-            description: "Updates text clips or a captionGroupId. The nested style object is a partial patch: omitted values stay unchanged. Use it for typography, color, outline, shadow, and background. Content and layout-affecting style changes auto-fit the box unless transform is passed. Unknown fields are rejected.",
+            description: "Updates text clips or a captionGroupId. The nested style object is a partial patch: omitted values stay unchanged. Use it for typography, color, outline, shadow, and background. fillMode 'footage' stencils layers below through the glyphs. Content and layout-affecting style changes auto-fit the box unless transform is passed. Unknown fields are rejected.",
             inputSchema: objectSchema(
                 properties: mergedProperties([
                     "clipIds": [
@@ -752,6 +753,7 @@ enum ToolDefinitions {
                 ], textStyleProperties(detailed: true), [
                     "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Animation preset; off clears."],
                     "highlightColor": ["type": "string", "description": "Active-word hex."],
+                    "fillMode": ["type": "string", "enum": ["color", "footage"], "description": "color = solid typography. footage = stencil layers below through the letter shapes."],
                 ]),
                 required: []
             )
