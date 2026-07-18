@@ -63,6 +63,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case generateImage = "generate_image"
     case generateAudio = "generate_audio"
     case upscaleMedia = "upscale_media"
+    case reframeVideo = "reframe_video"
 
     // Meta
     case sendFeedback = "send_feedback"
@@ -905,7 +906,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .listModels,
-            description: "Lists AI models with their capabilities (durations, aspect ratios, resolutions, first/last frame support, reference support, voices/category for audio, upscaler speed). Always call before generate_video, generate_image, generate_audio, or upscale_media so the model you pick actually supports the constraints you need. Returns { models, loaded } — if loaded=false the catalog hasn't synced yet (e.g. user not signed in); the models array may be empty even when models exist, so do not conclude no models are available. Retry after the user signs in.",
+            description: "Lists AI models with their capabilities (operation, durations, source-duration limit, aspect ratios, resolutions, first/last frame support, reference support, voices/category for audio, upscaler speed). Always call before generate_video, generate_image, generate_audio, upscale_media, or reframe_video so the model you pick actually supports the constraints you need. Returns { models, loaded } — if loaded=false the catalog hasn't synced yet (e.g. user not signed in); the models array may be empty even when models exist, so do not conclude no models are available. Retry after the user signs in.",
             inputSchema: objectSchema(
                 properties: [
                     "type": ["type": "string", "enum": ["video", "image", "audio", "upscale"], "description": "Filter by type. Omit to list all models."],
@@ -985,6 +986,20 @@ enum ToolDefinitions {
                     "sourceClipId": ["type": "string", "description": "Optional. Video clip id (from get_timeline) referencing mediaRef. When set and the clip is trimmed, only the clip's visible range is upscaled, not the full source."],
                 ],
                 required: ["mediaRef"]
+            )
+        ),
+        AgentTool(
+            name: .reframeVideo,
+            description: "Reframes an existing video to a new aspect ratio with generative outpainting instead of destructive cropping. Returns a placeholder asset ID immediately; the reframed asset appears in get_media once ready. Supports source videos up to 60 seconds, including a timeline clip's visible trimmed range. Costs real money and is not undoable.",
+            inputSchema: objectSchema(
+                properties: [
+                    "mediaRef": ["type": "string", "description": "ID of the source video asset to reframe."],
+                    "aspectRatio": ["type": "string", "enum": ["1:1", "4:5", "5:4", "9:16", "16:9"], "description": "Target output aspect ratio."],
+                    "resolution": ["type": "string", "enum": ["720p", "1080p"], "description": "Output resolution tier. Defaults to 1080p."],
+                    "sourceClipId": ["type": "string", "description": "Optional timeline clip id referencing mediaRef. When the clip is trimmed, only its visible range is reframed."],
+                    "name": ["type": "string", "description": "Optional display name for the reframed asset."],
+                ],
+                required: ["mediaRef", "aspectRatio"]
             )
         ),
         AgentTool(

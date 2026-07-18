@@ -41,6 +41,9 @@ extension ToolExecutor {
             guard let model = VideoModelConfig.allModels.first(where: { $0.id == modelId }) else {
                 throw ToolError("Unknown model '\(modelId)'. Available: \(VideoModelConfig.allModels.map(\.id).joined(separator: ", "))")
             }
+            if model.operation == .reframe {
+                throw ToolError("Use reframe_video for model '\(model.id)'.")
+            }
             try requirePlan(for: model.id, paidOnly: model.paidOnly)
             return model.requiresSourceVideo
                 ? try generateVideoEdit(editor, args, prompt: prompt, model: model)
@@ -405,6 +408,66 @@ extension ToolExecutor {
         return .ok("Upscale started. Placeholder asset ID: \(placeholderId). Model: \(model.displayName), source: \(asset.name)\(trimmed != nil ? " (trimmed range)" : "")")
     }
 
+    func reframeVideo(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        let mediaRef = try args.requireString("mediaRef")
+        let source = try asset(mediaRef, editor: editor, label: "Source video")
+        guard source.type == .video else {
+            throw ToolError("Reframe supports video assets only (got \(source.type.rawValue)).")
+        }
+        guard AccountService.shared.isSignedIn else {
+            throw ToolError("Reframe requires signing in to Palmier. Tell the user to sign in.")
+        }
+        guard AccountService.shared.hasCredits else {
+            throw ToolError("Out of credits. Tell the user to add credits or subscribe to keep generating.")
+        }
+        guard let model = VideoModelConfig.reframe else {
+            throw ToolError("Reframe model not available. Try again after the model catalog loads.")
+        }
+        try requirePlan(for: model.id, paidOnly: model.paidOnly)
+
+        let aspectRatio = try args.requireString("aspectRatio")
+        let resolution = args.string("resolution") ?? "1080p"
+        guard model.aspectRatios.contains(aspectRatio) else {
+            throw ToolError(unsupportedValue(
+                model: model.displayName,
+                field: "aspect ratio",
+                value: aspectRatio,
+                allowed: model.aspectRatios
+            ))
+        }
+        guard model.resolutions?.contains(resolution) == true else {
+            throw ToolError(unsupportedValue(
+                model: model.displayName,
+                field: "resolution",
+                value: resolution,
+                allowed: model.resolutions ?? []
+            ))
+        }
+
+        let trimmed = try trimmedSource(args, editor: editor, source: source)
+        let availability = EditSubmitter.reframeAvailability(for: source, trimmedSource: trimmed)
+        guard availability.isAvailable else {
+            throw ToolError(availability.reason ?? "Video cannot be reframed.")
+        }
+        guard let placeholderId = EditSubmitter.submitReframe(
+            asset: source,
+            aspectRatio: aspectRatio,
+            resolution: resolution,
+            editor: editor,
+            trimmedSource: trimmed,
+            name: args.string("name")
+        ) else {
+            throw ToolError("Failed to start reframe.")
+        }
+
+        let rangeNote = trimmed != nil ? " (trimmed range)" : ""
+        return .ok(
+            "Reframe started. Placeholder asset ID: \(placeholderId). "
+            + "Model: \(model.displayName), source: \(source.name)\(rangeNote), "
+            + "output: \(aspectRatio) \(resolution)."
+        )
+    }
+
     private func trimmedSource(
         _ args: [String: Any], editor: EditorViewModel, source: MediaAsset
     ) throws -> TrimmedSource? {
@@ -464,6 +527,7 @@ extension ToolExecutor {
     nonisolated static func videoModelInfo(_ m: VideoModelConfig, includeType: Bool = false) -> [String: Any] {
         var info: [String: Any] = [
             "id": m.id, "displayName": m.displayName,
+            "operation": m.operation.rawValue,
             "durations": m.durations, "aspectRatios": m.aspectRatios,
             "supportsFirstFrame": m.supportsFirstFrame,
             "supportsLastFrame": m.supportsLastFrame,
@@ -471,6 +535,9 @@ extension ToolExecutor {
         ]
         if includeType { info["type"] = "video" }
         if let r = m.resolutions { info["resolutions"] = r }
+        if let maximum = m.maxSourceDurationSeconds {
+            info["maxSourceDurationSeconds"] = Int(maximum)
+        }
         if m.supportsReferences {
             if m.maxReferenceImages > 0 { info["maxReferenceImages"] = m.maxReferenceImages }
             if m.maxReferenceVideos > 0 { info["maxReferenceVideos"] = m.maxReferenceVideos }
