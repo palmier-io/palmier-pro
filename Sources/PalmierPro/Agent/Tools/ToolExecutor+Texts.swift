@@ -527,9 +527,6 @@ extension ToolExecutor {
             guard clip.mediaType == .text else {
                 throw ToolError("update_text only applies to text clips: \(id) is \(clip.mediaType.rawValue)")
             }
-            if fillMode == .footage, clip.captionGroupId != nil {
-                throw ToolError("fillMode footage is only available for non-caption text; use add_texts for timed footage-fill text")
-            }
         }
 
         var notes: [String] = []
@@ -592,9 +589,7 @@ extension ToolExecutor {
                     clip.textAnimation = a
                 }
                 if let fillMode {
-                    clip.setTextFillMode(fillMode)
-                } else {
-                    clip.stripFootageIncompatibleTextStyle()
+                    clip.textFillMode = fillMode == .footage ? .footage : nil
                 }
                 if shouldFitToContent {
                     _ = editor.fitTextClipToContentIfNeeded(&clip, canvasW: canvasW, canvasH: canvasH)

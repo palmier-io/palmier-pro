@@ -5,17 +5,13 @@ import SwiftUI
 struct CaptionPresetGallery: View {
     @Binding var selection: TextAnimation.Preset
     var highlight: TextStyle.RGBA? = nil
-    var allowsHighlightPresets: Bool = true
 
     private let columns = [GridItem(.adaptive(minimum: 84), spacing: AppTheme.Spacing.sm)]
 
     var body: some View {
-        let perWord = allowsHighlightPresets
-            ? TextAnimation.Preset.perWord
-            : TextAnimation.Preset.perWord.filter { $0 != .highlightPop && $0 != .highlightBlock }
         VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
             section("Per line", [.none] + TextAnimation.Preset.perLine)
-            section("Per word", perWord)
+            section("Per word", TextAnimation.Preset.perWord)
         }
     }
 

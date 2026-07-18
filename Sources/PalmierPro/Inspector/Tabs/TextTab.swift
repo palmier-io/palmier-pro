@@ -10,11 +10,8 @@ struct TextTab: View {
     private var clipIds: [String] { clips.map(\.id) }
     private var isBatch: Bool { clips.count > 1 }
 
-    private var includesFootageFill: Bool {
-        clips.contains { $0.textFillMode == .footage }
-    }
-    private var allowsFootageFill: Bool {
-        clips.allSatisfy { $0.captionGroupId == nil }
+    private var isFootageFill: Bool {
+        sharedClipValue(clips) { $0.textFillMode ?? .color } == .footage
     }
 
     var body: some View {
@@ -26,11 +23,11 @@ struct TextTab: View {
                     fallback: Self.defaults
                 ),
                 defaults: Self.defaults,
-                showsSolidFillControls: !includesFootageFill,
+                showsSolidFillControls: !isFootageFill,
                 actions: styleActions,
                 afterAlignment: {
                     positionSection
-                    if allowsFootageFill { fillModeRow }
+                    fillModeRow
                 },
                 afterColor: { opacitySlider }
             )
@@ -42,13 +39,15 @@ struct TextTab: View {
         return InspectorRow(
             label: "Fill",
             onReset: {
-                editor.commitClipProperties(clipIds: clipIds) { $0.setTextFillMode(nil) }
+                editor.commitClipProperties(clipIds: clipIds) { $0.textFillMode = nil }
             }
         ) {
             Menu {
                 ForEach(TextFillMode.allCases, id: \.self) { mode in
                     Button(mode.displayName) {
-                        editor.commitClipProperties(clipIds: clipIds) { $0.setTextFillMode(mode) }
+                        editor.commitClipProperties(clipIds: clipIds) {
+                            $0.textFillMode = mode == .footage ? .footage : nil
+                        }
                     }
                 }
             } label: {
@@ -157,9 +156,6 @@ struct TextAnimateTab: View {
     @Environment(EditorViewModel.self) private var editor
 
     private var clip: Clip { clips[0] }
-    private var includesFootageFill: Bool {
-        clips.contains { $0.textFillMode == .footage }
-    }
     private var targetIds: [String] {
         var seen = Set<String>()
         return clips.flatMap { editor.captionGroupTextClipIds(for: $0.id) }
@@ -174,10 +170,9 @@ struct TextAnimateTab: View {
                     get: { anim.preset },
                     set: { new in setAnim { $0.preset = new } }
                 ),
-                highlight: anim.highlight,
-                allowsHighlightPresets: !includesFootageFill
+                highlight: anim.highlight
             )
-            if !includesFootageFill, anim.preset.usesHighlight { highlightRow(anim) }
+            if anim.preset.usesHighlight { highlightRow(anim) }
         }
     }
 
