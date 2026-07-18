@@ -6,7 +6,8 @@ fileprivate struct SetProjectSettingsInput: DecodableToolArgs {
     let height: Int?
     let aspectRatio: String?
     let quality: String?
-    static let allowedKeys: Set<String> = ["fps", "width", "height", "aspectRatio", "quality"]
+    let transcriptionPreference: String?
+    static let allowedKeys: Set<String> = ["fps", "width", "height", "aspectRatio", "quality", "transcriptionPreference"]
 }
 
 extension ToolExecutor {
@@ -15,6 +16,7 @@ extension ToolExecutor {
         fileprivate let input: SetProjectSettingsInput
         let aspectPreset: AspectPreset?
         let qualityPreset: QualityPreset?
+        let transcriptionPreference: TranscriptionPreference?
     }
 
     @discardableResult
@@ -22,8 +24,8 @@ extension ToolExecutor {
         let input: SetProjectSettingsInput = try decodeToolArgs(args, path: "set_project_settings")
 
         guard input.fps != nil || input.width != nil || input.height != nil
-                || input.aspectRatio != nil || input.quality != nil else {
-            throw ToolError("Provide at least one of: fps, width, height, aspectRatio, quality")
+                || input.aspectRatio != nil || input.quality != nil || input.transcriptionPreference != nil else {
+            throw ToolError("Provide at least one of: fps, width, height, aspectRatio, quality, transcriptionPreference")
         }
         if input.aspectRatio != nil && (input.width != nil || input.height != nil) {
             throw ToolError("'aspectRatio' and explicit 'width'/'height' are mutually exclusive")
@@ -55,7 +57,14 @@ extension ToolExecutor {
                 throw ToolError("Unknown quality '\(q)'. Use one of: 720p, 1080p, 2K, 4K")
             }
         }
-        return ValidatedProjectSettings(input: input, aspectPreset: aspectPreset, qualityPreset: qualityPreset)
+
+        let transcriptionPreference: TranscriptionPreference? = try input.transcriptionPreference.map { raw in
+            guard let pref = TranscriptionPreference(rawValue: raw) else {
+                throw ToolError("Unknown transcriptionPreference '\(raw)'. Use one of: auto, cloud, local")
+            }
+            return pref
+        }
+        return ValidatedProjectSettings(input: input, aspectPreset: aspectPreset, qualityPreset: qualityPreset, transcriptionPreference: transcriptionPreference)
     }
 
     func setProjectSettings(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
@@ -107,9 +116,18 @@ extension ToolExecutor {
         if newFPS != prevFPS { changed.append("fps") }
         if newWidth != prevWidth || newHeight != prevHeight { changed.append("resolution") }
 
+        // transcriptionPreference is a project-level pref, not a timeline property; persist it via the
+        // checkpoint autosave hook (same path speaker/matte edits use) rather than the undo/timeline swap.
+        if let pref = settings.transcriptionPreference, pref != editor.transcriptionPreference {
+            editor.transcriptionPreference = pref
+            editor.onProjectCheckpointRequired?()
+            changed.append("transcriptionPreference")
+        }
+
         var payload: [String: Any] = [
             "fps": newFPS,
             "resolution": "\(newWidth)x\(newHeight)",
+            "transcriptionPreference": editor.transcriptionPreference.rawValue,
             "changed": changed,
         ]
         if changed.isEmpty {

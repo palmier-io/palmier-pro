@@ -27,7 +27,8 @@ extension TranscriptionResult {
             words: correctedWords,
             segments: segments.map {
                 TranscriptionSegment(text: corrector.correct($0.text), start: $0.start, end: $0.end, speaker: $0.speaker)
-            }
+            },
+            model: model
         )
     }
 }

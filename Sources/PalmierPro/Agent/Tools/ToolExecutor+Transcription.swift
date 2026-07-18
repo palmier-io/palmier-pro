@@ -3,6 +3,21 @@ import Foundation
 struct TranscriptionToolContext {
     let provider: TranscriptionProvider
     let preferredLocale: Locale?
+    /// The project preference that produced `provider` — needed to decide whether a low-accuracy notice applies.
+    let preference: TranscriptionPreference
+    /// True only when preference was `.auto` and the flow degraded to local because cloud was unavailable.
+    let fellBackToLocal: Bool
+
+    init(provider: TranscriptionProvider, preferredLocale: Locale?, preference: TranscriptionPreference = .auto, fellBackToLocal: Bool = false) {
+        self.provider = provider
+        self.preferredLocale = preferredLocale
+        self.preference = preference
+        self.fellBackToLocal = fellBackToLocal
+    }
+
+    /// Shown on add_captions/get_transcript when auto silently degraded to local — the whole point of
+    /// the `.cloud` preference is to avoid this happening unnoticed on accuracy-critical captioning.
+    static let lowAccuracyNotice = "Transcribed locally (lower accuracy) — sign in with credits or set transcriptionPreference to 'cloud' to force the higher-accuracy cloud model."
 }
 
 struct TimelineWord {
@@ -21,6 +36,8 @@ struct TimelineTranscript {
     let context: TranscriptionToolContext
     let words: [TimelineWord]
     let skipped: [[String: Any]]
+    /// The model that produced the transcripts behind these words (e.g. "qwen3-asr-0.6B-int8", "cloud").
+    let resolvedModel: String
 
     var includesSpeakers: Bool {
         words.contains { $0.speaker != nil }
@@ -92,8 +109,10 @@ struct TimelineTranscript {
             "fps": fps,
             "timing": "projectFrames",
             "transcriptionSource": context.provider.rawValue,
+            "transcriptionModel": resolvedModel,
             "clips": clipsOut,
         ]
+        if context.fellBackToLocal { out["transcriptionNote"] = TranscriptionToolContext.lowAccuracyNotice }
         if segments {
             out["segmentFormat"] = ["firstWordIndex", "text", "start", "end"]
         } else {
@@ -162,6 +181,7 @@ extension ToolExecutor {
     func transcriptionContext(
         _ args: [String: Any],
         path: String,
+        preference: TranscriptionPreference,
         preferLast: Bool = false,
         estimatedCloudCost: () async -> Int
     ) async throws -> TranscriptionToolContext {
@@ -169,22 +189,66 @@ extension ToolExecutor {
             return lastTranscriptContext
         }
         let account = AccountService.shared
-        let cost = await estimatedCloudCost()
-        let provider: TranscriptionProvider = Self.canUseCloudTranscription(
+        // Only pay to estimate cloud cost when cloud is actually reachable for this preference.
+        let cost = preference == .local ? 0 : await estimatedCloudCost()
+        let resolved = try Self.resolveTranscriptionProvider(
+            preference: preference,
             isSignedIn: account.isSignedIn,
             remainingCredits: account.remainingCredits,
-            estimatedCost: cost
-        ) ? .cloud : .local
-        return TranscriptionToolContext(
-            provider: provider,
-            preferredLocale: provider == .cloud ? nil : try await Self.parseLocale(args, path: path)
+            estimatedCost: cost,
+            path: path
         )
+        return TranscriptionToolContext(
+            provider: resolved.provider,
+            preferredLocale: resolved.provider == .cloud ? nil : try await Self.parseLocale(args, path: path),
+            preference: preference,
+            fellBackToLocal: resolved.fellBackToLocal
+        )
+    }
+
+    /// Cloud-vs-local decision, factored out of `transcriptionContext` so it unit-tests without an
+    /// account. The routing:
+    ///   • `.local`  → always local, never a fallback notice.
+    ///   • `.auto`   → cloud when the account can afford the uncached request, otherwise local. Local
+    ///                 here is a *silent degrade*, so `fellBackToLocal` is set and the tool surfaces a notice.
+    ///   • `.cloud`  → cloud when reachable; otherwise THROW an actionable error instead of degrading —
+    ///                 captioning work forces the higher-accuracy path rather than quietly using local.
+    /// `estimatedCost == 0` (cached / free) counts as affordable so cached cloud reads still route to cloud.
+    static func resolveTranscriptionProvider(
+        preference: TranscriptionPreference,
+        isSignedIn: Bool,
+        remainingCredits: Int,
+        estimatedCost: Int,
+        path: String
+    ) throws -> (provider: TranscriptionProvider, fellBackToLocal: Bool) {
+        let canCloud = canUseCloudTranscription(isSignedIn: isSignedIn, remainingCredits: remainingCredits, estimatedCost: estimatedCost)
+        switch preference {
+        case .local:
+            return (.local, false)
+        case .auto:
+            return canCloud ? (.cloud, false) : (.local, true)
+        case .cloud:
+            if canCloud { return (.cloud, false) }
+            if !isSignedIn {
+                throw ToolError("\(path): transcriptionPreference is 'cloud' but no account is signed in. Sign in with credits, or set transcriptionPreference to 'auto' or 'local'.")
+            }
+            throw ToolError("\(path): transcriptionPreference is 'cloud' but the account can't cover the request (\(CostEstimator.format(estimatedCost)) needed, \(remainingCredits.formatted()) remaining). Add credits, or set transcriptionPreference to 'auto' or 'local'.")
+        }
     }
 
     static func canUseCloudTranscription(isSignedIn: Bool, remainingCredits: Int, estimatedCost: Int) -> Bool {
         guard isSignedIn else { return false }
         guard estimatedCost > 0 else { return true }
         return remainingCredits >= estimatedCost
+    }
+
+    /// Collapses the per-file models a transcription pass produced into one label for the response.
+    /// Empty (e.g. all-cached pre-tagging results) derives a sensible default from the provider.
+    static func resolvedModelLabel(models: [String], provider: TranscriptionProvider) -> String {
+        let unique = Array(Set(models)).sorted()
+        if unique.count == 1 { return unique[0] }
+        if unique.isEmpty { return provider == .cloud ? "cloud" : LocalSpeechEngine.current.modelId }
+        return unique.joined(separator: ", ")
     }
 
     static func parseLocale(_ args: [String: Any], path: String) async throws -> Locale? {
@@ -225,7 +289,7 @@ extension ToolExecutor {
             throw ToolError("granularity must be 'words' or 'segments' (got '\(granularity)')")
         }
 
-        let context = try await transcriptionContext(args, path: "get_transcript") {
+        let context = try await transcriptionContext(args, path: "get_transcript", preference: editor.transcriptionPreference) {
             await editor.captionCloudCreditCost(for: .init(autoDetect: true, provider: .cloud))
         }
         let transcript = try await timelineTranscript(editor, context: context)
@@ -248,8 +312,11 @@ extension ToolExecutor {
             let request = EditorViewModel.CaptionRequest(autoDetect: true, provider: .cloud)
             try await Self.validateCloudTranscriptionAccess(for: request, in: editor)
         }
-        let (words, skipped) = try await timelineWords(editor, context: context)
-        return TimelineTranscript(context: context, words: words, skipped: skipped)
+        let (words, skipped, models) = try await timelineWords(editor, context: context)
+        return TimelineTranscript(
+            context: context, words: words, skipped: skipped,
+            resolvedModel: Self.resolvedModelLabel(models: models, provider: context.provider)
+        )
     }
 
     private func validateTranscriptClipFilter(_ clipId: String?, _ editor: EditorViewModel) throws {
@@ -262,7 +329,7 @@ extension ToolExecutor {
         }
     }
 
-    private func timelineWords(_ editor: EditorViewModel, context: TranscriptionToolContext) async throws -> (words: [TimelineWord], skipped: [[String: Any]]) {
+    private func timelineWords(_ editor: EditorViewModel, context: TranscriptionToolContext) async throws -> (words: [TimelineWord], skipped: [[String: Any]], models: [String]) {
         let fps = editor.timeline.fps
         let assetsById = Dictionary(editor.mediaAssets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var fragments: [TranscriptFragment] = []
@@ -308,7 +375,7 @@ extension ToolExecutor {
                 ))
             }
         }
-        return (words, transcripts.skipped)
+        return (words, transcripts.skipped, transcripts.results.values.compactMap(\.model))
     }
 
     /// Per-file speaker labels are file-local; align them project-wide by voice fingerprint.
@@ -454,6 +521,9 @@ extension ToolExecutor {
     ) -> [String: Any] {
         var out: [String: Any] = [
             "timing": mapping == nil ? "sourceSeconds" : "projectFrames",
+            // inspect_media transcribes the source asset on-device; it never routes to cloud.
+            "transcriptionSource": TranscriptionProvider.local.rawValue,
+            "transcriptionModel": transcript.model ?? LocalSpeechEngine.current.modelId,
         ]
         if let lang = transcript.language { out["language"] = lang }
 

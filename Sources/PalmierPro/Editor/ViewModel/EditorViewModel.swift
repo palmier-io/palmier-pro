@@ -428,6 +428,13 @@ final class EditorViewModel {
     /// How caption resync treats manually-edited caption clips; persisted in project.json.
     var captionConflictPolicy: CaptionConflictPolicy = .default
 
+    /// Cloud/local transcription routing for this project; persisted in project.json.
+    var transcriptionPreference: TranscriptionPreference = .default
+
+    /// Models that produced the most recent caption transcription pass, so the tool layer can
+    /// surface the resolved model in the add_captions response. Set in generateCaptions' transcribe.
+    var lastTranscriptionModels: [String] = []
+
     /// True while resync is applying its own writes, so those writes never re-trigger resync.
     var isResyncingCaptions = false
 

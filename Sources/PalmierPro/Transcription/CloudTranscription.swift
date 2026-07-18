@@ -32,7 +32,9 @@ enum CloudTranscription {
             language: language,
             projectId: projectId
         )
-        let result = try await TranscriptionBackend.waitForResult(jobId: submitted.jobId)
+        // Prefer the model the backend reports in its result JSON; fall back to a generic "cloud".
+        let raw = try await TranscriptionBackend.waitForResult(jobId: submitted.jobId)
+        let result = raw.withModel(raw.model ?? "cloud")
             .offsetting(by: range?.lowerBound ?? 0)
         await TranscriptCache.shared.storeCloudTranscript(
             result,

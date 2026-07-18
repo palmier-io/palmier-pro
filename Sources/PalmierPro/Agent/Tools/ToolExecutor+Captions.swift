@@ -51,7 +51,7 @@ extension ToolExecutor {
         let fillerPolicy = try parseFillerPolicy(args.string("fillerPolicy"), path: "add_captions")
         let segmentation = try parseSegmentation(args.string("segmentation"), path: "add_captions")
 
-        let context = try await transcriptionContext(args, path: "add_captions") {
+        let context = try await transcriptionContext(args, path: "add_captions", preference: editor.transcriptionPreference) {
             await editor.captionCloudCreditCost(for: .init(autoDetect: true, provider: .cloud))
         }
         let provider = context.provider
@@ -84,7 +84,13 @@ extension ToolExecutor {
             editor.undo.perform("Generate Captions (Agent)", mutation)
         })
         guard !ids.isEmpty else { throw ToolError("No speech detected to caption.") }
-        return mutationResult(editor, since: snapshot)
+
+        let extra: [String: Any] = [
+            "transcriptionSource": provider.rawValue,
+            "transcriptionModel": Self.resolvedModelLabel(models: editor.lastTranscriptionModels, provider: provider),
+        ]
+        let notes = context.fellBackToLocal ? [TranscriptionToolContext.lowAccuracyNotice] : []
+        return mutationResult(editor, since: snapshot, extra: extra, notes: notes)
     }
 
     private enum FillerPolicyMode: String { case off, removeAlways }

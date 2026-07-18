@@ -51,6 +51,22 @@ struct TranscriptionResult: Sendable, Codable {
     let language: String?
     let words: [TranscriptionWord]
     let segments: [TranscriptionSegment]
+    /// Which model produced this transcript (e.g. "qwen3-asr-0.6B-int8", "apple-speech", "cloud").
+    /// nil for transcripts cached before model tagging; callers derive a fallback from the provider.
+    let model: String?
+
+    init(text: String, language: String?, words: [TranscriptionWord], segments: [TranscriptionSegment], model: String? = nil) {
+        self.text = text
+        self.language = language
+        self.words = words
+        self.segments = segments
+        self.model = model
+    }
+
+    /// Stamps the producing model, preserving everything else. Used at the engine/provider boundary.
+    func withModel(_ model: String?) -> TranscriptionResult {
+        TranscriptionResult(text: text, language: language, words: words, segments: segments, model: model)
+    }
 
     /// Shifts all timestamps back into source time after transcribing an extracted range
     func offsetting(by offset: Double) -> TranscriptionResult {
@@ -69,7 +85,8 @@ struct TranscriptionResult: Sendable, Codable {
             },
             segments: segments.map {
                 TranscriptionSegment(text: $0.text, start: $0.start + offset, end: $0.end + offset, speaker: $0.speaker)
-            }
+            },
+            model: model
         )
     }
 }
@@ -140,8 +157,13 @@ enum Transcription {
             return result.offsetting(by: sourceRange.lowerBound)
         }
 
-        // Route through the configured on-device engine; fall back to Apple Speech on failure
-        // (e.g. first-run model download with no network).
+        // Local engine selection (see LocalSpeechEngine): the on-device engine is read from the
+        // app-global `localSpeechEngine` UserDefaults key — qwen3 (default), whisper, or apple.
+        // qwen3/whisper run first; on failure (e.g. first-run model download with no network) the
+        // code falls through to the Apple SpeechTranscriber path below. The model that actually ran
+        // is stamped onto the returned TranscriptionResult (transcribeWithEngine / decodeResults) so
+        // the tool layer can surface it verbatim rather than re-deriving from the current global.
+        // The cloud-vs-local decision happens one layer up, in transcriptionContext.
         let engine = LocalSpeechEngine.current
         if engine != .apple {
             do {
@@ -266,9 +288,9 @@ enum Transcription {
         switch engine {
         case .qwen3:
             // Qwen3-ASR autodetects language per chunk; no hint parameter.
-            return try await Qwen3ASREngine.shared.transcribe(fileURL: fileURL)
+            return try await Qwen3ASREngine.shared.transcribe(fileURL: fileURL).withModel(engine.modelId)
         case .whisper:
-            return try await WhisperKitEngine.shared.transcribe(fileURL: fileURL, language: languageCode, refineOnsets: true)
+            return try await WhisperKitEngine.shared.transcribe(fileURL: fileURL, language: languageCode, refineOnsets: true).withModel(engine.modelId)
         case .apple:
             throw TranscriptionError.analysisFailed("apple engine is not routed here")
         }
@@ -368,6 +390,7 @@ enum Transcription {
             language: locale.identifier(.bcp47),
             words: words,
             segments: segments,
+            model: LocalSpeechEngine.apple.modelId
         )
     }
 }

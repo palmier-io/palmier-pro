@@ -56,11 +56,14 @@ struct GetTranscriptParamTests {
                 w(2, "Hi", 60, 70, "S2"), w(3, "back.", 70, 80, "S2"),
                 w(4, "Great", 90, 100, "S1"),
             ],
-            skipped: []
+            skipped: [],
+            resolvedModel: "qwen3-asr-0.6B-int8"
         )
 
         let words = transcript.responsePayload(fps: 30, clipId: nil, startFrame: nil, endFrame: nil, maxWords: 100)
         #expect(words["wordFormat"] as? [String] == ["index", "text", "start"])
+        #expect(words["transcriptionModel"] as? String == "qwen3-asr-0.6B-int8")
+        #expect(words["transcriptionNote"] == nil) // provider chosen deliberately (not a fallback)
         let rows = ((words["clips"] as? [[String: Any]])?.first?["words"]) as? [[Any]]
         #expect(rows?.count == 5)
         #expect(rows?.first?.count == 3) // no per-word end, no speaker column

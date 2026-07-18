@@ -10,6 +10,8 @@ struct ProjectFile: Codable, Sendable {
     var multicamGroups: [MulticamSource]?
     /// How caption resync treats manually-edited caption clips. nil decodes as `.preserve`.
     var captionConflictPolicy: CaptionConflictPolicy?
+    /// Cloud/local transcription routing for this project. nil decodes as `.auto`.
+    var transcriptionPreference: TranscriptionPreference?
 
     static func decode(_ data: Data) throws -> ProjectFile {
         let decoder = JSONDecoder()

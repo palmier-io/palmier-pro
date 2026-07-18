@@ -248,6 +248,7 @@ extension EditorViewModel {
             }
         }
         if results.isEmpty, let firstError { throw firstError }
+        lastTranscriptionModels = results.values.compactMap(\.model)
         return results
     }
 
