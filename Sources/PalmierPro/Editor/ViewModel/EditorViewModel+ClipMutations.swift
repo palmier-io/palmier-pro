@@ -88,6 +88,7 @@ extension EditorViewModel {
             }
             for i in timeline.tracks.indices { sortClips(trackIndex: i) }
             pruneEmptyTracks()
+            sanitizeAllTransitions()
         }
     }
 
@@ -164,6 +165,7 @@ extension EditorViewModel {
         right.durationFrames = clip.durationFrames - splitOffset
         right.trimStartFrame = clip.trimStartFrame + leftSource
         right.fadeInFrames = 0
+        right.transition = nil
 
         (left.opacityTrack,  right.opacityTrack)  = splitKeyframeTrack(clip.opacityTrack,  at: splitOffset, fallback: clip.opacity)
         (left.volumeTrack,   right.volumeTrack)   = splitKeyframeTrack(clip.volumeTrack,   at: splitOffset, fallback: clip.volume)
@@ -203,6 +205,7 @@ extension EditorViewModel {
                 timeline.tracks[i].clips.removeAll { ids.contains($0.id) }
             }
             if prune { pruneEmptyTracks() }
+            sanitizeAllTransitions()
         }
     }
 

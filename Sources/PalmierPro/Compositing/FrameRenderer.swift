@@ -59,6 +59,12 @@ enum FrameRenderer {
             case .group(let children, let canvas):
                 image = composedGroupLayer(layer, children: children, canvas: canvas, frame: frame,
                                            renderSize: renderSize, sourceFrame: sourceFrame, bakeOpacity: isNormal)
+            case .transition(let outgoing, let incoming, let type, let durationFrames, let startFrame):
+                image = composedTransition(
+                    outgoing: outgoing, incoming: incoming, type: type,
+                    durationFrames: durationFrames, startFrame: startFrame,
+                    frame: frame, renderSize: renderSize, sourceFrame: sourceFrame
+                )
             }
             guard let image else { continue }
             if isNormal {
@@ -93,6 +99,53 @@ enum FrameRenderer {
             image: intermediate, srcHeight: canvas.height, layer: layer, frame: frame,
             renderSize: renderSize, alpha: alpha, bakeOpacity: bakeOpacity
         )
+    }
+
+    private static func composedTransition(
+        outgoing: LayerPlan,
+        incoming: LayerPlan,
+        type: String,
+        durationFrames: Int,
+        startFrame: Int,
+        frame: Int,
+        renderSize: CGSize,
+        sourceFrame: (CMPersistentTrackID) -> CVPixelBuffer?
+    ) -> CIImage? {
+        let extent = CGRect(origin: .zero, size: renderSize)
+        guard let outImage = resolvedLayerImage(
+            outgoing, frame: frame, renderSize: renderSize, sourceFrame: sourceFrame
+        ),
+        let inImage = resolvedLayerImage(
+            incoming, frame: frame, renderSize: renderSize, sourceFrame: sourceFrame
+        ) else { return nil }
+        let progress = durationFrames > 0
+            ? min(1, max(0, Double(frame - startFrame) / Double(durationFrames)))
+            : 1
+        return TransitionRegistry.apply(
+            type: type, outgoing: outImage, incoming: inImage, progress: progress, extent: extent
+        )
+    }
+
+    private static func resolvedLayerImage(
+        _ layer: LayerPlan,
+        frame: Int,
+        renderSize: CGSize,
+        sourceFrame: (CMPersistentTrackID) -> CVPixelBuffer?
+    ) -> CIImage? {
+        switch layer.source {
+        case .track(let id):
+            guard let buffer = sourceFrame(id) else { return nil }
+            return composedLayer(layer, buffer: buffer, frame: frame, renderSize: renderSize, bakeOpacity: true)
+        case .text:
+            return composedTextLayer(layer, frame: frame, renderSize: renderSize, bakeOpacity: true)
+        case .group(let children, let canvas):
+            return composedGroupLayer(
+                layer, children: children, canvas: canvas, frame: frame,
+                renderSize: renderSize, sourceFrame: sourceFrame, bakeOpacity: true
+            )
+        case .transition:
+            return nil
+        }
     }
 
     /// Blend `image` over `background`, then fade the blend to background by `opacity`.
@@ -141,6 +194,15 @@ enum FrameRenderer {
                     frame: frame,
                     sourceFrame: sourceFrame,
                     gateByClipRange: true
+                ) {
+                    return buffer
+                }
+            case .transition(_, let incoming, _, _, _):
+                if let buffer = colorTagSource(
+                    layers: [incoming],
+                    frame: frame,
+                    sourceFrame: sourceFrame,
+                    gateByClipRange: false
                 ) {
                     return buffer
                 }

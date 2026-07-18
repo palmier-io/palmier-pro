@@ -143,7 +143,7 @@ enum CompositionBuilder {
         }
     }
 
-    /// One lane of video clips → at most one composition track; sequence clips expand recursively.
+    /// One lane of video clips → one or two composition tracks (ping-pong for transition overlaps).
     private static func insertVideoLane(
         clips: [Clip],
         parentTrackIndex: Int,
@@ -151,49 +151,121 @@ enum CompositionBuilder {
         depth: Int,
         ctx: BuildContext
     ) async throws {
-        var compTrack: AVMutableCompositionTrack?
-        var cursor = CMTime.zero
-        var inserted: [Clip] = []
+        var slots: [LaneSlot] = []
         var previousEndFrame = Int.min
         for clip in clips {
-            guard clip.durationFrames > 0, clip.startFrame >= previousEndFrame else { continue }
-            if clip.mediaType == .text { continue }   // text renders in instructions, nests render it in groups
+            guard clip.durationFrames > 0 else { continue }
+            if clip.mediaType == .text { continue }
             if clip.mediaType == .sequence {
+                // Nests stay non-overlapping with neighbors on this lane.
+                guard clip.startFrame >= previousEndFrame else { continue }
                 try await expandNestVideo(carrier: clip, parentTrackIndex: parentTrackIndex, depth: depth, ctx: ctx)
                 previousEndFrame = clip.endFrame
                 continue
             }
+            // Allow pairwise overlaps (transitions); reject triple-stack on the lane cursor.
+            guard clip.startFrame >= previousEndFrame
+                    || (clip.startFrame < previousEndFrame && clip.endFrame > previousEndFrame) else { continue }
             let source: (asset: AVURLAsset, track: AVAssetTrack)
             switch try await loadSource(clip: clip, mediaType: .video, ctx: ctx) {
             case .loaded(let asset, let track): source = (asset, track)
             case .offline: ctx.offlineMediaRefs.insert(clip.mediaRef); continue
             case .unprocessable: ctx.unprocessableMediaRefs.insert(clip.mediaRef); continue
             }
-            if compTrack == nil {
-                compTrack = ctx.composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
-            }
-            guard let track = compTrack else { continue }
             await recordSourceGeometry(for: clip, sourceTrack: source.track, ctx: ctx)
-            if await insertClip(clip, sourceAsset: source.asset, sourceTrack: source.track,
-                                into: track, cursor: &cursor, timescale: ctx.timescale) {
-                inserted.append(clip)
-                previousEndFrame = clip.endFrame
-            }
+            slots.append(LaneSlot(clip: clip, asset: source.asset, track: source.track))
+            previousEndFrame = max(previousEndFrame, clip.endFrame)
         }
-        guard let compTrack else { return }
-        guard !inserted.isEmpty else {
-            ctx.composition.removeTrack(compTrack)
-            return
-        }
-        let naturalSize = (try? await compTrack.load(.naturalSize)).flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil } ?? ctx.renderSize
-        let kind: TrackMapping.Kind = nestCarrier.map { .nested(clips: inserted, carrier: $0, parentTrackIndex: parentTrackIndex) }
-            ?? .timeline(trackIndex: parentTrackIndex, clipIds: Set(inserted.map(\.id)))
-        ctx.trackMappings.append(TrackMapping(
-            compositionTrack: compTrack, kind: kind, naturalSize: naturalSize, endTime: cursor, isVideo: true
-        ))
+        try await commitLaneSlots(slots, mediaType: .video, parentTrackIndex: parentTrackIndex,
+                                  nestCarrier: nestCarrier, ctx: ctx)
     }
 
-    /// One lane of audio clips → at most one shared composition track (per-lane clips never overlap).
+    private struct LaneSlot {
+        let clip: Clip
+        let asset: AVURLAsset
+        let track: AVAssetTrack
+    }
+
+    /// Insert clips into one or two composition tracks so overlapping pairs can both decode.
+    private static func commitLaneSlots(
+        _ slots: [LaneSlot],
+        mediaType: AVMediaType,
+        parentTrackIndex: Int,
+        nestCarrier: Clip?,
+        ctx: BuildContext,
+        wetAudio: Bool = false,
+        blendedClipIds: Set<String> = []
+    ) async throws {
+        guard !slots.isEmpty else { return }
+        var primary: AVMutableCompositionTrack?
+        var secondary: AVMutableCompositionTrack?
+        var primaryCursor = CMTime.zero
+        var secondaryCursor = CMTime.zero
+        var primaryEndFrame = Int.min
+        var secondaryEndFrame = Int.min
+        var primaryInserted: [Clip] = []
+        var secondaryInserted: [Clip] = []
+
+        for slot in slots {
+            let usePrimary = slot.clip.startFrame >= primaryEndFrame
+            let useSecondary = !usePrimary && slot.clip.startFrame >= secondaryEndFrame
+            guard usePrimary || useSecondary else { continue }
+
+            if usePrimary {
+                if primary == nil {
+                    primary = ctx.composition.addMutableTrack(
+                        withMediaType: mediaType, preferredTrackID: kCMPersistentTrackID_Invalid
+                    )
+                }
+                guard let track = primary else { continue }
+                if await insertClip(slot.clip, sourceAsset: slot.asset, sourceTrack: slot.track,
+                                    into: track, cursor: &primaryCursor, timescale: ctx.timescale) {
+                    primaryInserted.append(slot.clip)
+                    primaryEndFrame = slot.clip.endFrame
+                }
+            } else {
+                if secondary == nil {
+                    secondary = ctx.composition.addMutableTrack(
+                        withMediaType: mediaType, preferredTrackID: kCMPersistentTrackID_Invalid
+                    )
+                }
+                guard let track = secondary else { continue }
+                if await insertClip(slot.clip, sourceAsset: slot.asset, sourceTrack: slot.track,
+                                    into: track, cursor: &secondaryCursor, timescale: ctx.timescale) {
+                    secondaryInserted.append(slot.clip)
+                    secondaryEndFrame = slot.clip.endFrame
+                }
+            }
+        }
+
+        func appendMapping(_ compTrack: AVMutableCompositionTrack?, inserted: [Clip], endTime: CMTime) async {
+            guard let compTrack else { return }
+            guard !inserted.isEmpty else {
+                ctx.composition.removeTrack(compTrack)
+                return
+            }
+            let naturalSize: CGSize
+            if mediaType == .video {
+                naturalSize = (try? await compTrack.load(.naturalSize))
+                    .flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil } ?? ctx.renderSize
+            } else {
+                naturalSize = .zero
+            }
+            let kind: TrackMapping.Kind = nestCarrier.map {
+                .nested(clips: inserted, carrier: $0, parentTrackIndex: parentTrackIndex)
+            } ?? .timeline(trackIndex: parentTrackIndex, clipIds: Set(inserted.map(\.id)))
+            ctx.trackMappings.append(TrackMapping(
+                compositionTrack: compTrack, kind: kind, naturalSize: naturalSize, endTime: endTime,
+                isVideo: mediaType == .video, wetAudio: wetAudio,
+                blendedClipIds: blendedClipIds.intersection(Set(inserted.map(\.id)))
+            ))
+        }
+
+        await appendMapping(primary, inserted: primaryInserted, endTime: primaryCursor)
+        await appendMapping(secondary, inserted: secondaryInserted, endTime: secondaryCursor)
+    }
+
+    /// One lane of audio clips → one or two composition tracks (ping-pong for transition overlaps).
     private static func insertAudioLane(
         clips: [Clip],
         parentTrackIndex: Int,
@@ -201,15 +273,14 @@ enum CompositionBuilder {
         depth: Int,
         ctx: BuildContext
     ) async throws {
-        var compTrack: AVMutableCompositionTrack?
-        var cursor = CMTime.zero
-        var inserted: [Clip] = []
+        var slots: [LaneSlot] = []
         var blendedClipIds = Set<String>()
         var previousEndFrame = Int.min
         for var clip in clips {
-            guard clip.durationFrames > 0, clip.startFrame >= previousEndFrame else { continue }
-            previousEndFrame = clip.endFrame
+            guard clip.durationFrames > 0 else { continue }
             if clip.sourceClipType == .sequence {
+                guard clip.startFrame >= previousEndFrame else { continue }
+                previousEndFrame = clip.endFrame
                 try await expandNestAudio(
                     carrier: clip,
                     topCarrier: nest?.topCarrier ?? clip,
@@ -218,6 +289,8 @@ enum CompositionBuilder {
                 )
                 continue
             }
+            guard clip.startFrame >= previousEndFrame
+                    || (clip.startFrame < previousEndFrame && clip.endFrame > previousEndFrame) else { continue }
             if let nest { clip.volume *= nest.volumeScale }
             let source: (asset: AVURLAsset, track: AVAssetTrack)
             switch try await loadSource(clip: clip, mediaType: .audio, ctx: ctx) {
@@ -225,29 +298,16 @@ enum CompositionBuilder {
             case .offline: ctx.offlineMediaRefs.insert(clip.mediaRef); continue
             case .unprocessable: ctx.unprocessableMediaRefs.insert(clip.mediaRef); continue
             }
-            if compTrack == nil {
-                compTrack = ctx.composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+            if nest == nil, await insertDenoisedTwin(clip, parentTrackIndex: parentTrackIndex, ctx: ctx) {
+                blendedClipIds.insert(clip.id)
             }
-            guard let track = compTrack else { continue }
-            if await insertClip(clip, sourceAsset: source.asset, sourceTrack: source.track,
-                                into: track, cursor: &cursor, timescale: ctx.timescale) {
-                inserted.append(clip)
-                if nest == nil, await insertDenoisedTwin(clip, parentTrackIndex: parentTrackIndex, ctx: ctx) {
-                    blendedClipIds.insert(clip.id)
-                }
-            }
+            slots.append(LaneSlot(clip: clip, asset: source.asset, track: source.track))
+            previousEndFrame = max(previousEndFrame, clip.endFrame)
         }
-        guard let compTrack else { return }
-        guard !inserted.isEmpty else {
-            ctx.composition.removeTrack(compTrack)
-            return
-        }
-        let kind: TrackMapping.Kind = nest.map { .nested(clips: inserted, carrier: $0.topCarrier, parentTrackIndex: parentTrackIndex) }
-            ?? .timeline(trackIndex: parentTrackIndex, clipIds: Set(inserted.map(\.id)))
-        ctx.trackMappings.append(TrackMapping(
-            compositionTrack: compTrack, kind: kind, naturalSize: .zero, endTime: .zero, isVideo: false,
-            blendedClipIds: blendedClipIds
-        ))
+        try await commitLaneSlots(
+            slots, mediaType: .audio, parentTrackIndex: parentTrackIndex,
+            nestCarrier: nest?.topCarrier, ctx: ctx, blendedClipIds: blendedClipIds
+        )
     }
 
     private static func insertDenoisedTwin(_ clip: Clip, parentTrackIndex: Int, ctx: BuildContext) async -> Bool {
@@ -662,35 +722,80 @@ enum CompositionBuilder {
         }
 
         // Walk tracks in reverse to produce bottom→top entries. Text layers follow track order.
+        // Transition overlaps emit a single mixed layer for each overlap window.
         var entries: [Entry] = []
         for track in timeline.tracks.reversed() where !track.hidden {
-            var prevEndFrame = Int.min
-            for clip in track.clips.sorted(by: { $0.startFrame < $1.startFrame }) where clip.durationFrames > 0 {
-                let plan: LayerPlan
-                if clip.mediaType == .text {
-                    guard !(clip.textContent ?? "").isEmpty else { continue }
-                    plan = LayerPlan(source: .text, clip: clip, natSize: renderSize, preferredTransform: .identity)
-                } else if clip.mediaType == .sequence {
-                    guard clip.startFrame >= prevEndFrame else { continue }
-                    prevEndFrame = clip.endFrame
-                    // One entry per child-boundary segment: each requires only the
-                    // source tracks visible in that segment.
-                    let bounds = ([clip.startFrame, clip.endFrame] + nestCutFrames(carrier: clip, depth: 0))
-                        .reduce(into: Set<Int>()) { $0.insert($1) }
-                        .sorted()
-                    for i in 0..<(bounds.count - 1) {
-                        let window = bounds[i]..<bounds[i + 1]
-                        guard window.count > 0,
-                              let group = nestGroupPlan(carrier: clip, depth: 0, window: window) else { continue }
-                        entries.append(Entry(start: cmTime(window.lowerBound), end: cmTime(window.upperBound), plan: group))
-                    }
-                    continue
-                } else {
-                    guard clip.startFrame >= prevEndFrame, let slot = media[clip.id] else { continue }
-                    plan = LayerPlan(source: .track(slot.trackID), clip: clip, natSize: slot.natSize, preferredTransform: slot.transform)
-                    prevEndFrame = clip.endFrame
-                }
+            let sorted = track.clips
+                .filter { $0.durationFrames > 0 }
+                .sorted { $0.startFrame < $1.startFrame }
+
+            for clip in sorted where clip.mediaType == .text {
+                guard !(clip.textContent ?? "").isEmpty else { continue }
+                let plan = LayerPlan(source: .text, clip: clip, natSize: renderSize, preferredTransform: .identity)
                 entries.append(Entry(start: cmTime(clip.startFrame), end: cmTime(clip.endFrame), plan: plan))
+            }
+
+            for clip in sorted where clip.mediaType == .sequence {
+                let bounds = ([clip.startFrame, clip.endFrame] + nestCutFrames(carrier: clip, depth: 0))
+                    .reduce(into: Set<Int>()) { $0.insert($1) }
+                    .sorted()
+                for b in 0..<(bounds.count - 1) {
+                    let window = bounds[b]..<bounds[b + 1]
+                    guard window.count > 0,
+                          let group = nestGroupPlan(carrier: clip, depth: 0, window: window) else { continue }
+                    entries.append(Entry(start: cmTime(window.lowerBound), end: cmTime(window.upperBound), plan: group))
+                }
+            }
+
+            let mediaClips = sorted.filter {
+                $0.mediaType != .text && $0.mediaType != .sequence && media[$0.id] != nil
+            }
+            guard !mediaClips.isEmpty else { continue }
+
+            func plan(for clip: Clip) -> LayerPlan? {
+                guard let slot = media[clip.id] else { return nil }
+                return LayerPlan(
+                    source: .track(slot.trackID), clip: clip,
+                    natSize: slot.natSize, preferredTransform: slot.transform
+                )
+            }
+
+            var cuts = Set<Int>()
+            for clip in mediaClips {
+                cuts.insert(clip.startFrame)
+                cuts.insert(clip.endFrame)
+            }
+            let bounds = cuts.sorted()
+            for b in 0..<(bounds.count - 1) {
+                let start = bounds[b]
+                let end = bounds[b + 1]
+                guard end > start else { continue }
+                let active = mediaClips.filter { $0.startFrame < end && $0.endFrame > start }
+                if active.count >= 2 {
+                    let ordered = active.sorted { $0.startFrame < $1.startFrame }
+                    let outgoing = ordered[0]
+                    let incoming = ordered[1]
+                    if Clip.hasValidTransition(outgoing: outgoing, incoming: incoming),
+                       let outPlan = plan(for: outgoing),
+                       let inPlan = plan(for: incoming),
+                       let transition = incoming.transition {
+                        let mixed = LayerPlan(
+                            source: .transition(
+                                outgoing: outPlan, incoming: inPlan,
+                                type: transition.type,
+                                durationFrames: transition.durationFrames,
+                                startFrame: incoming.startFrame
+                            ),
+                            clip: incoming, natSize: renderSize, preferredTransform: .identity
+                        )
+                        entries.append(Entry(start: cmTime(start), end: cmTime(end), plan: mixed))
+                        continue
+                    }
+                }
+                if let clip = active.max(by: { $0.startFrame < $1.startFrame }),
+                   let layer = plan(for: clip) {
+                    entries.append(Entry(start: cmTime(start), end: cmTime(end), plan: layer))
+                }
             }
         }
 

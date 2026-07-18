@@ -54,6 +54,7 @@ enum ToolName: String, CaseIterable, Sendable {
     // Color & effects
     case applyColor = "apply_color"
     case applyEffect = "apply_effect"
+    case applyTransition = "apply_transition"
     case inspectColor = "inspect_color"
     case denoiseAudio = "denoise_audio"
 
@@ -877,6 +878,44 @@ enum ToolDefinitions {
                     "remove": ["type": "array", "items": ["type": "string"], "description": "Effect type ids to remove from the clips."],
                 ],
                 required: ["clipIds"]
+            )
+        ),
+        AgentTool(
+            name: .applyTransition,
+            description: """
+            Apply or remove a clip-to-clip transition at an edit point — dissolve, wipe, push, zoom, or flash \
+            between two adjacent clips on the same track. Distinct from per-clip fadeIn/fadeOut (those are \
+            single-sided ramps to black/silence). The incoming clip overlaps the outgoing clip by the \
+            transition duration (timeline shortens by that amount); linked audio partners get the same overlap \
+            and a volume crossfade. Pass transitions to apply/replace, and/or incomingClipIds to remove and \
+            restore a hard cut. durationFrames defaults to half a second. One bad entry rejects the whole \
+            call. Undoable. Verify with inspect_timeline over the cut.
+
+            Available types:
+            \(TransitionRegistry.catalogLine())
+            """,
+            inputSchema: objectSchema(
+                properties: [
+                    "transitions": [
+                        "type": "array",
+                        "description": "Transitions to apply or replace between adjacent clip pairs.",
+                        "items": objectSchema(
+                            properties: [
+                                "outgoingClipId": ["type": "string", "description": "Clip that ends at the cut (from get_timeline)."],
+                                "incomingClipId": ["type": "string", "description": "Clip that starts at the cut (from get_timeline)."],
+                                "type": ["type": "string", "description": "Transition type id (see list above), e.g. dissolve, wipe.left, push.right, zoom.in."],
+                                "durationFrames": ["type": "integer", "description": "Overlap length in project frames. Defaults to half a second. Must be shorter than both clips."],
+                            ],
+                            required: ["outgoingClipId", "incomingClipId", "type"]
+                        ),
+                    ],
+                    "incomingClipIds": [
+                        "type": "array",
+                        "items": ["type": "string"],
+                        "description": "Incoming clip ids whose transition should be removed (restores a hard cut).",
+                    ],
+                ],
+                required: []
             )
         ),
         AgentTool(

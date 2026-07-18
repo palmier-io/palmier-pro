@@ -283,6 +283,24 @@ extension CompositorRenderTests {
         #expect(isRed(a.tl), "first clip TL red: \(a.tl)")
         #expect(isGreen(b.tl), "second (flipped) clip TL green: \(b.tl)")
     }
+
+    @Test func dissolveTransitionBlendsAtMidpoint() async throws {
+        let outgoing = CompositorFixtures.patternClip(id: "a", start: 0, duration: 40)
+        var incoming = CompositorFixtures.patternClip(id: "b", start: 20, duration: 40)
+        incoming.transform = Transform(flipHorizontal: true)
+        incoming.transition = ClipTransition(type: "dissolve", durationFrames: 20)
+        let tl = Self.timelineWith(Fixtures.videoTrack(clips: [outgoing, incoming]))
+
+        let before = try await Self.render(tl, frame: 10)
+        let mid = try await Self.render(tl, frame: 30)
+        let after = try await Self.render(tl, frame: 45)
+
+        #expect(isRed(before.tl), "pre-transition should be outgoing TL red: \(before.tl)")
+        #expect(isGreen(after.tl), "post-transition should be incoming (flipped) TL green: \(after.tl)")
+        // Mid dissolve: red+green mix — neither pure red nor pure green.
+        #expect(mid.tl.r > 60 && mid.tl.g > 60, "mid dissolve should mix red and green: \(mid.tl)")
+        #expect(mid.tl.r < 200 && mid.tl.g < 200, "mid dissolve should not be fully either side: \(mid.tl)")
+    }
 }
 
 // MARK: - Fixture helper

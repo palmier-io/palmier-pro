@@ -20,9 +20,10 @@ Not yet. This is still a very early product with a small team behind it, but we 
 
 What we don't have yet:
 
-1. Transitions
-2. Masking
-3. Graphics
+1. Masking
+2. Graphics
+
+Basic clip-to-clip transitions (dissolve, wipe, push, zoom, flash) are available via the agent/`apply_transition` tool.
 
 We launched it because it was enough for us to make professional AI videos. We acknowledge that without AI features, this is quite a bare-bone video editor. That's why we decided to open source it and release the video editor for free, because we want to improve the product with the community.
 

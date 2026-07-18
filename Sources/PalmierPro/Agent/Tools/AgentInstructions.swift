@@ -59,7 +59,9 @@ enum AgentInstructions {
         - Text: add_texts for authored overlays; add_captions transcribes the timeline's \
           spoken audio (no targeting) — restyle with update_text and the returned \
           captionGroupId. Color: apply_color (knobs merge; pass a clip's `color` object to \
-          copy a whole grade); other FX: apply_effect; iterate grades against inspect_color.
+          copy a whole grade); other FX: apply_effect; clip-to-clip transitions (dissolve, \
+          wipe, push, zoom): apply_transition between adjacent clips; iterate grades against \
+          inspect_color.
         - Transcription language: omit unless the user names the spoken language. Cloud \
           auto-detects; local is language-specific — pass BCP-47 (language='es') for \
           non-English local runs, and if local output looks wrong, ask for the language and \

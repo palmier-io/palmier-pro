@@ -312,6 +312,12 @@ extension ToolExecutor {
             let cleaned = compactEffects(fx)
             if cleaned.isEmpty { out.removeValue(forKey: "effects") } else { out["effects"] = cleaned }
         }
+        if let transition = out["transition"] as? [String: Any] {
+            var compact: [String: Any] = [:]
+            if let type = transition["type"] { compact["type"] = type }
+            if let duration = transition["durationFrames"] { compact["durationFrames"] = duration }
+            if compact.isEmpty { out.removeValue(forKey: "transition") } else { out["transition"] = compact }
+        }
         let start = intValue(out["startFrame"])
         out["frames"] = [start, start + intValue(out["durationFrames"])]
         out.removeValue(forKey: "startFrame")
