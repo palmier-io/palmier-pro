@@ -166,6 +166,76 @@ enum GlossaryClassifier {
         return regions
     }
 
+    // MARK: - Reason-bearing classification
+
+    /// Why a caption edit was not promoted into the glossary — surfaced to the agent so it can tell a
+    /// learned correction from one that will recur. noCaptionGroup is assigned by the caller (the clip
+    /// carries no captionGroupId), never by the classifier itself.
+    enum RejectReason: Equatable {
+        case noCaptionGroup
+        case noChange
+        case punctuationOrCasingOnly
+        case scatteredEdits
+        case pureDeletion
+        case pureInsertion
+        case commonVocabulary
+        case filler
+        case unsafeShortVariant
+
+        var note: String {
+            switch self {
+            case .noCaptionGroup: return "no caption group"
+            case .noChange: return "no change"
+            case .punctuationOrCasingOnly: return "punctuation or casing only"
+            case .scatteredEdits: return "scattered edits"
+            case .pureDeletion: return "deletion only"
+            case .pureInsertion: return "insertion only"
+            case .commonVocabulary: return "common vocabulary"
+            case .filler: return "filler cleanup"
+            case .unsafeShortVariant: return "term too short to match safely"
+            }
+        }
+    }
+
+    enum Outcome: Equatable {
+        case promote(Promotion)
+        case reject(RejectReason)
+    }
+
+    /// Same decision as `classify`, but returns the rejection reason on the nil path. Mirrors classify's
+    /// guard order exactly; the two must agree on whether a pair promotes (pinned by test).
+    static func classifyWithReason(old: String, new: String) -> Outcome {
+        let oldTrimmed = old.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newTrimmed = new.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard oldTrimmed != newTrimmed else { return .reject(.noChange) }
+        if normalize(oldTrimmed) == normalize(newTrimmed) { return .reject(.punctuationOrCasingOnly) }
+
+        let isCJK = GlossaryText.isCJKPhrase(oldTrimmed) || GlossaryText.isCJKPhrase(newTrimmed)
+        let oldTokens = tokenize(oldTrimmed, isCJK: isCJK)
+        let newTokens = tokenize(newTrimmed, isCJK: isCJK)
+
+        let regions = diffRegions(oldTokens, newTokens)
+        guard regions.count == 1 else { return .reject(.scatteredEdits) }
+        let region = regions[0]
+
+        let oldSpanTokens = Array(oldTokens[region.oldRange])
+        let newSpanTokens = Array(newTokens[region.newRange])
+        if oldSpanTokens.isEmpty { return .reject(.pureInsertion) }
+        if newSpanTokens.isEmpty { return .reject(.pureDeletion) }
+
+        let variant = join(oldSpanTokens, isCJK: isCJK)
+        let canonical = join(newSpanTokens, isCJK: isCJK)
+        guard !variant.isEmpty, !canonical.isEmpty else { return .reject(.scatteredEdits) }
+
+        if normalize(variant) == normalize(canonical) { return .reject(.punctuationOrCasingOnly) }
+        if GlossaryCommonWords.isAllFiller(oldSpanTokens) { return .reject(.filler) }
+        if GlossaryCommonWords.isAllFiller(newSpanTokens) { return .reject(.filler) }
+        if GlossaryCommonWords.isCommonVocabulary(canonical) { return .reject(.commonVocabulary) }
+        if GlossaryValidation.tooShortReason(variant) != nil { return .reject(.unsafeShortVariant) }
+
+        return .promote(Promotion(canonical: canonical, variant: variant))
+    }
+
     /// Longest common subsequence as matched (indexInA, indexInB) pairs.
     private static func lcsMatches(_ a: [String], _ b: [String]) -> [(Int, Int)] {
         let n = a.count, m = b.count

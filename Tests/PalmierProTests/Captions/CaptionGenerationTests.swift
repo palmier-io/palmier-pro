@@ -125,6 +125,28 @@ private func mediaAsset(_ id: String, hasAudio: Bool = true) -> MediaAsset {
     }
 }
 
+@MainActor
+@Suite struct AddCaptionsResolvedTests {
+    @Test func echoesResolvedParams() {
+        let r = ToolExecutor.captionResolved(
+            segmentation: .natural, maxWords: 6, fillerPolicy: .removeAlways, typographyFromParams: true
+        )
+        #expect(r["segmentation"] as? String == "natural")
+        #expect(r["maxWords"] as? Int == 6)
+        #expect(r["fillerPolicy"] as? String == "removeAlways")
+        #expect(r["typographyFrom"] as? String == "params")
+    }
+
+    @Test func omitsMaxWordsWhenNilAndReportsProfileTypography() {
+        let r = ToolExecutor.captionResolved(
+            segmentation: .fixedChars, maxWords: nil, fillerPolicy: .off, typographyFromParams: false
+        )
+        #expect(r["maxWords"] == nil)
+        #expect(r["fillerPolicy"] as? String == "off")
+        #expect(r["typographyFrom"] as? String == "profile")
+    }
+}
+
 @Suite struct CaptionCaseTests {
     @Test func transformsText() {
         #expect(EditorViewModel.CaptionCase.auto.apply("Hello World.") == "Hello World.")

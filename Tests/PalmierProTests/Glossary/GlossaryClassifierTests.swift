@@ -108,4 +108,46 @@ struct GlossaryClassifierTests {
         // Widening is CJK-only; a sub-threshold Latin substitution (Xe→Xen, 2 chars) stays nil.
         #expect(GlossaryClassifier.classify(old: "Xe", new: "Xen") == nil)
     }
+
+    // MARK: - classifyWithReason (D3)
+
+    /// classifyWithReason must agree with classify on whether every table case promotes.
+    @Test func reasonWrapperAgreesWithClassify() {
+        let pairs: [(String, String)] = [
+            ("陈娘娘", "陈嬢嬢"),
+            ("I love black sushi", "I love black sesame"),
+            ("呃，我们住的酒店", "我们住的酒店"),
+            ("太好吃了", "非常好吃"),
+            ("我们住的酒店是", "我们的酒店"),
+            ("你好。", "你好，"),
+            ("hello world", "Hello World"),
+            ("我们住的酒店", "呃，我们住的酒店"),
+            ("um the plan", "uh the plan"),
+            ("陈嬢嬢", "陈嬢嬢"),
+            ("我的师父", "我的狮父"),
+        ]
+        for (old, new) in pairs {
+            let classic = GlossaryClassifier.classify(old: old, new: new)
+            switch GlossaryClassifier.classifyWithReason(old: old, new: new) {
+            case .promote(let p): #expect(classic == p, "\(old)→\(new): wrapper promoted but classify differed")
+            case .reject: #expect(classic == nil, "\(old)→\(new): wrapper rejected but classify promoted")
+            }
+        }
+    }
+
+    @Test func reasonNamesScatteredEdits() {
+        #expect(GlossaryClassifier.classifyWithReason(old: "我们住的酒店是", new: "我们的酒店") == .reject(.scatteredEdits))
+    }
+
+    @Test func reasonNamesPureDeletion() {
+        #expect(GlossaryClassifier.classifyWithReason(old: "呃我们住的酒店", new: "我们住的酒店") == .reject(.pureDeletion))
+    }
+
+    @Test func reasonNamesCommonVocabulary() {
+        if case .reject(let r) = GlossaryClassifier.classifyWithReason(old: "太好吃了", new: "非常好吃") {
+            #expect(r == .commonVocabulary || r == .scatteredEdits)
+        } else {
+            Issue.record("expected a rejection for a common-vocab rephrase")
+        }
+    }
 }

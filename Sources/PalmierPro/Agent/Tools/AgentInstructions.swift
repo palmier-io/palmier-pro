@@ -60,6 +60,13 @@ enum AgentInstructions {
           spoken audio (no targeting) — restyle with update_text and the returned \
           captionGroupId. Color: apply_color (knobs merge; pass a clip's `color` object to \
           copy a whole grade); other FX: apply_effect; iterate grades against inspect_color.
+        - Caption correction pipeline: caption_style reads the project's filler/typography \
+          policy; add_captions transcribes (natural segmentation by default); caption_lint \
+          proofreads for mis-hearings (mode:'context' judges them yourself, no credits); \
+          update_text fixes wording and auto-promotes a clean single-term correction into the \
+          glossary so it stops recurring; captions resync automatically on audio edits, and \
+          resync_captions forces a rebuild. glossary_list confidence:asserted reviews the \
+          terms learned this way.
         - Transcription language: omit unless the user names the spoken language. Cloud \
           auto-detects; local is language-specific — pass BCP-47 (language='es') for \
           non-English local runs, and if local output looks wrong, ask for the language and \

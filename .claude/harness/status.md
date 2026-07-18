@@ -1,54 +1,24 @@
-# feature/style-lint-persistence — Status
+# feature/tool-ergonomics — Status (wsD)
 
-Phase 2 complete. Ready for Evaluator. Branch off fork main 0e3133f. 3 commits (C1, C2, C3).
+Phase 2 complete. Ready for Evaluator. Full `swift build` + full `swift test` (1264/1264) green.
 
-North star: judgments made once persist across projects.
+## Items shipped (D1–D6)
 
-## C1 — caption-style WRITE path + segmentation profile key
+| ID  | Change                                                                                                                                                              |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | add_texts `onOverlap` 'clear'(default, now documented)\|'fail'. fail validates every entry vs existing clips on its target track BEFORE mutating; errors with ids   |
+| D2  | update_text `entries:[{clipId,content}]` — per-clip content, one undo, shared style/anim/transform; retimer + promotion run per entry; mutual-exclusion + dup guard |
+| D3  | update_text desc states auto-promotion; response names first non-promoted reason (classifyWithReason or "no caption group"); undo desc notes glossary not reverted  |
+| D4  | AgentInstructions caption-pipeline paragraph (caption_style→add_captions→caption_lint→update_text→resync)                                                           |
+| D5  | CaptionBuilder: naturalLines merges punctuation-only lines; time() continues on zero-alnum line instead of break (auditor F3)                                       |
+| D6  | add_captions response `resolved` echoes segmentation/maxWords/fillerPolicy/typographyFrom                                                                           |
 
-| Area         | Change                                                                                                                                                                                                                                                                                                                      |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Store        | CaptionStyleStore.writeLayer/readLayer/deepMerge/url(for:) — read-modify-write ONE layer file; provided keys replace, absent untouched, hand-edited keys survive                                                                                                                                                            |
-| Model        | CaptionStyleProfile.Typography.segmentation (String?); profile.lintDismissals ([String]); Partial overlay/resolve/jsonObject/from all threaded                                                                                                                                                                              |
-| Tool         | set_caption_style {scope global\|library\|project (default library), typography?, fillers?, protectedPhrases?, provenance?} — ToolExecutor+SetCaptionStyle.swift                                                                                                                                                            |
-| Validation   | unknown keys, non-string list elements, absurd typography rejected (fontSize 12–300, position 0–1, maxWords 1–100, segmentation enum) — actionable ToolError                                                                                                                                                                |
-| Segmentation | add_captions/resync_captions honor profile.typography.segmentation when no explicit param; explicit wins; unknown value → natural. Reactive resync (AfterSwap/AfterTrim/ForGlossaryTerm) honors it too — runCaptionResync resolves the profile once per run when segmentation is nil (Evaluator MEDIUM fix, commit 9bd2cb4) |
-| Read         | caption_style payload now surfaces typography.segmentation + lintDismissals (+ semantics)                                                                                                                                                                                                                                   |
-| Register     | ToolName.setCaptionStyle + dispatch + ToolDefinitions schema (additive, after caption_style; no reorders — wsD ToolDefinitions kept safe)                                                                                                                                                                                   |
+## Coordination / deviations
 
-## C2 — lint rejection memory (dismiss)
-
-| Area      | Change                                                                                                                                                |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tool      | caption_lint {action:"dismiss", original, reason?} — appends confirmed-correct surface form to lintDismissals at LIBRARY scope, reusing C1 writeLayer |
-| Masking   | lintExclusions folds profile.lintDismissals → dismissed terms masked exactly like protectedPhrases (diff-based on CHANGED tokens)                     |
-| Report    | response gains dismissedCount + dismissedNote when dismissed terms present in linted windows                                                          |
-| Guard     | shortDismissalWarning — non-blocking warning for lone CJK char / 1–2 Latin letters (suppresses broadly); does not block                               |
-| Read      | dismissals listed in caption_style response (lintDismissals)                                                                                          |
-| Test seam | dismissLintTerm(libraryURL:) injectable (mirrors completer injection) so tests never touch the real ~/Documents library                               |
-
-## C3 — cloud decoder-bias investigation
-
-Outcome: NO — not deliverable. TranscriptionBackend.submit's Convex `transcriptions:submit` action exposes
-no prompt/phrase-hint/vocabulary field, so GlossaryStore.hotwordTerms() cannot bias the cloud decoder without
-a backend protocol change (out of scope). Local sherpa still biases via TranscriptionBias.hotwordsCSV. Added a
-one-line doc comment at the request site; no cache-key change (nothing bias-dependent varies in the cloud payload).
-
-## Verification
-
-- `swift build` — clean. `swift test` (full) — 1258/1258 pass (was 1224 on caption-lint base; +34 net incl. new suites).
-- New tests: CaptionStyleTests +6 (partial-merge without clobber, array-replace/object-merge, layered resolve,
-  set_caption_style write+read, validation failures, segmentation default+explicit-wins). CaptionLintTests +5
-  (dismiss persist+append, dismiss requires original, dismissed term suppressed next run, caption_style lists
-  dismissals, short-dismissal warning).
-- Hermetic test seam: CaptionStyleStore.@TaskLocal globalDirectoryOverride/libraryDirectoryOverride
-  (CaptionStyleStore.swift:25-26) + HermeticCaptionStyle TestScoping trait on the CaptionStyle/CaptionLintTool
-  suites pin all caption-style/lint tests off the real ~/.config/caption-style and ~/Documents/Palmier Pro.
-  Writer tests bind a unique temp library each (withFreshLibrary). Verified: both real paths absent after a
-  full run. Dropped the test-only libraryURL: param from dismissLintTerm (store seam replaces it).
-- Pre-existing flake NOT from this branch: FrameSamplerTests.detectsScenesAndHonorsCoverageFloor flakes under
-  parallel load (passes alone, not in diff). The earlier glossary-file caption pollution is resolved for
-  caption-style by this seam; the glossary store's own seam is a sibling builder's task.
+- D3b classifier addition is PURE ADDITION to GlossaryClassifier.swift (new RejectReason/Outcome + classifyWithReason at file end); `classify` untouched. Low conflict with builder-wsB.
+- D1+D2+D3 share ToolExecutor+Texts.swift, ToolDefinitions.swift, ToolExecutorTests.swift → bundled into one commit (interactive git staging unavailable to split same-function hunks). D3b, D4, D5, D6 are file-disjoint, own commits.
+- ToolDefinitions changes are additive (new params/description text only).
+- ENV NOTE (not my bug): Glossary/CaptionLint tests non-hermetically read the shared library glossary at `~/Documents/Palmier Pro/glossary.json`. A concurrent builder's promotion test polluted it (provenance auto:caption-edit@<uuid>), failing 9 unrelated tests. No test in THIS worktree writes there (all use temp projectURLs). Cleaning the file → 1264/1264 green. The hermeticity gap lives in wsB/wsC-owned store/tests; left untouched per coordination rules.
 
 ---
 

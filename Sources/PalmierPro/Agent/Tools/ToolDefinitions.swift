@@ -655,7 +655,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .undo,
-            description: "Reverts the latest action from the editor's shared undo history, whether the user or agent made it. Call only when that latest action should be reversed. For example, verify a cut with get_transcript, then undo if it overshot and retry with corrected ranges. After undoing, ids and frames returned by the reverted action may be invalid; re-read with get_timeline or get_transcript before editing again. Takes no arguments.",
+            description: "Reverts the latest action from the editor's shared undo history, whether the user or agent made it. Call only when that latest action should be reversed. For example, verify a cut with get_transcript, then undo if it overshot and retry with corrected ranges. After undoing, ids and frames returned by the reverted action may be invalid; re-read with get_timeline or get_transcript before editing again. Glossary terms written by update_text auto-promotion are NOT reverted by undo — remove them with glossary_remove. Takes no arguments.",
             inputSchema: objectSchema()
         ),
         AgentTool(
@@ -715,7 +715,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addTexts,
-            description: "Adds text clips as timeline layers. Omit trackIndex on every entry to create one new top video track; otherwise set trackIndex on every entry. Transform is normalized text-box center/size; center-only auto-fits, all four fields override the box. Use the nested style object for typography, outline, shadow, and background. Use add_captions for spoken audio captions. Text added onto a track whose existing clips all share one caption group joins that group by default (so group restyle and resync manage it); pass captionGroupId to force a group or \"none\" to opt out. Unknown fields are rejected.",
+            description: "Adds text clips as timeline layers. Omit trackIndex on every entry to create one new top video track; otherwise set trackIndex on every entry. Transform is normalized text-box center/size; center-only auto-fits, all four fields override the box. Use the nested style object for typography, outline, shadow, and background. Use add_captions for spoken audio captions. Text added onto a track whose existing clips all share one caption group joins that group by default (so group restyle and resync manage it); pass captionGroupId to force a group or \"none\" to opt out.\n\nOverwrite: by default (onOverlap:'clear') each entry CLEARS its [startFrame, endFrame) span on the target track first — any existing clip in that span (text, video, or audio) is trimmed, split, or deleted to make room. On a busy track this silently removes clips. Pass onOverlap:'fail' to instead reject the whole call, listing the colliding clip ids, when any entry's span intersects an existing clip — nothing is mutated. Unknown fields are rejected.",
             inputSchema: objectSchema(
                 properties: [
                     "entries": [
@@ -742,22 +742,35 @@ enum ToolDefinitions {
                             "required": ["startFrame", "endFrame", "content"],
                         ],
                     ],
+                    "onOverlap": ["type": "string", "enum": ["clear", "fail"], "description": "What to do when an entry's span overlaps existing clips on its target track. Default 'clear' overwrites the span (trims/splits/deletes existing clips). 'fail' rejects the whole call before mutating and lists the colliding clip ids."],
                 ],
                 required: ["entries"]
             )
         ),
         AgentTool(
             name: .updateText,
-            description: "Updates text clips or a captionGroupId. The nested style object is a partial patch: omitted values stay unchanged. Use it for typography, color, outline, shadow, and background. Content and layout-affecting style changes auto-fit the box unless transform is passed. Unknown fields are rejected.",
+            description: "Updates text clips or a captionGroupId. The nested style object is a partial patch: omitted values stay unchanged. Use it for typography, color, outline, shadow, and background. Content and layout-affecting style changes auto-fit the box unless transform is passed.\n\nEditing a caption clip's content may auto-promote a clean single-term correction into the project glossary, so the same mis-hearing is fixed everywhere and stops recurring (pass origin:'resync' to suppress); the response reports `promoted`, and a note names why the first non-promoted caption edit was left alone.\n\nTo give DIFFERENT clips different content in one undoable call (e.g. applying a whole lint pass), pass `entries: [{clipId, content}]` instead of clipIds+content — the shared style/animation/transform params still apply to every entry's clip, and each clip's timing is re-fit to its own text. entries is mutually exclusive with clipIds, content, and captionGroupId. Unknown fields are rejected.",
             inputSchema: objectSchema(
                 properties: mergedProperties([
                     "clipIds": [
                         "type": "array",
                         "items": ["type": "string"],
-                        "description": "Text clip IDs. Optional if captionGroupId is given.",
+                        "description": "Text clip IDs. Optional if captionGroupId or entries is given.",
+                    ],
+                    "entries": [
+                        "type": "array",
+                        "description": "Per-clip content edits: [{clipId, content}]. One undoable action; shared style/animation/transform apply to all. Mutually exclusive with clipIds, content, and captionGroupId.",
+                        "items": [
+                            "type": "object",
+                            "properties": [
+                                "clipId": ["type": "string", "description": "Text clip id."],
+                                "content": ["type": "string", "description": "Replacement text for this clip. Supports \\n."],
+                            ],
+                            "required": ["clipId", "content"],
+                        ],
                     ],
                     "captionGroupId": ["type": "string", "description": "Caption group id from get_timeline."],
-                    "content": ["type": "string", "description": "Replacement text. Supports \\n."],
+                    "content": ["type": "string", "description": "Replacement text applied to every clipId. Supports \\n."],
                     "transform": [
                         "type": "object",
                         "description": "Partial text-box transform; omitted fields keep current values.",

@@ -93,12 +93,34 @@ extension ToolExecutor {
         let extra: [String: Any] = [
             "transcriptionSource": provider.rawValue,
             "transcriptionModel": Self.resolvedModelLabel(models: editor.lastTranscriptionModels, provider: provider),
+            "resolved": Self.captionResolved(
+                segmentation: segmentation,
+                maxWords: maxWords,
+                fillerPolicy: fillerPolicy,
+                typographyFromParams: stylePatch != nil
+            ),
         ]
         let notes = context.fellBackToLocal ? [TranscriptionToolContext.lowAccuracyNotice] : []
         return mutationResult(editor, since: snapshot, extra: extra, notes: notes)
     }
 
-    private enum FillerPolicyMode: String { case off, removeAlways }
+    /// Echo what add_captions actually resolved, so the agent sees whether its params or the profile won.
+    static func captionResolved(
+        segmentation: CaptionBuilder.Segmentation,
+        maxWords: Int?,
+        fillerPolicy: FillerPolicyMode,
+        typographyFromParams: Bool
+    ) -> [String: Any] {
+        var resolved: [String: Any] = [
+            "segmentation": segmentation.rawValue,
+            "fillerPolicy": fillerPolicy.rawValue,
+            "typographyFrom": typographyFromParams ? "params" : "profile",
+        ]
+        if let maxWords { resolved["maxWords"] = maxWords }
+        return resolved
+    }
+
+    enum FillerPolicyMode: String { case off, removeAlways }
 
     private func parseFillerPolicy(_ raw: String?, path: String) throws -> FillerPolicyMode {
         guard let raw else { return .off }

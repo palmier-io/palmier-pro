@@ -135,7 +135,27 @@ enum CaptionBuilder {
             i = next
         }
         flush()
-        return lines
+        return mergePunctuationOnly(lines)
+    }
+
+    /// Fold punctuation-only lines (a hard-break run like "。。。") into a neighbour so they never stand
+    /// alone: bind to the preceding line, or the following one when they lead. Without this a run of marks
+    /// explodes into one zero-word line each, and time() can't anchor them to any word.
+    private static func mergePunctuationOnly(_ lines: [String]) -> [String] {
+        guard lines.count > 1 else { return lines }
+        var result: [String] = []
+        for line in lines {
+            if alphanumericCount(line) == 0, let last = result.last {
+                result[result.count - 1] = last + line   // punctuation binds left — no separator
+            } else {
+                result.append(line)
+            }
+        }
+        if result.count > 1, alphanumericCount(result[0]) == 0 {
+            result[1] = result[0] + result[1]
+            result.removeFirst()
+        }
+        return result
     }
 
     private static func isHardBreak(_ c: Character, nextChar: Character?) -> Bool {
@@ -259,7 +279,14 @@ enum CaptionBuilder {
                 got += run.count
                 idx += 1
             }
-            guard let f = first, let l = last else { break }
+            guard let f = first, let l = last else {
+                // Zero-alphanumeric line (a stray punctuation run): anchor a degenerate span to the
+                // previous phrase's end and continue — one such line must not collapse the whole
+                // segment to distribute() and throw away every other line's acoustic timing.
+                let anchor = phrases.last?.end ?? segment.start
+                phrases.append(Phrase(text: text, start: anchor, end: anchor))
+                continue
+            }
             phrases.append(Phrase(text: text, start: f.start, end: l.end, words: spans))
         }
         return phrases.count == texts.count ? phrases : distribute(texts, start: segment.start, end: segment.end)

@@ -136,6 +136,34 @@ struct NaturalSegmentationTests {
         #expect(phrases.map(\.text).allSatisfy { $0.count <= 10 })
     }
 
+    // MARK: - Punctuation-only runs (D5)
+
+    @Test func punctuationOnlyRunProducesOneSaneLine() {
+        // "。。。！！！" must not explode into one line per mark.
+        let phrases = CaptionBuilder.phrases(
+            fromTimedWords: cjkWords("。。。！！！"),
+            fits: { _ in true },
+            minDuration: 0
+        )
+        #expect(phrases.map(\.text) == ["。。。！！！"])
+    }
+
+    @Test func punctuationRunKeepsAcousticTimingForRealWords() {
+        // A stray punctuation run between words must not collapse the segment to distribute() and
+        // discard every real word's transcript timing.
+        let phrases = CaptionBuilder.phrases(
+            fromTimedWords: cjkWords("好。。。久"),
+            fits: { _ in true },
+            minDuration: 0
+        )
+        #expect(phrases.map(\.text) == ["好。。。", "久"])
+        #expect(phrases.first?.words.map(\.text) == ["好"])
+        #expect(phrases.first?.start == 0.0)
+        #expect(phrases.first?.end == 0.5)     // acoustic span of 好, not an even split
+        #expect(phrases.last?.start == 2.0)    // 久 is the 5th char → 2.0s in
+        #expect(phrases.last?.end == 2.5)
+    }
+
     // MARK: - Legacy pin
 
     @Test func fixedCharsReproducesLegacyGuillotine() {
