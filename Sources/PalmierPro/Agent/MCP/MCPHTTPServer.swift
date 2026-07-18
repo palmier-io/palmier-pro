@@ -2,11 +2,16 @@ import Foundation
 import MCP
 import Network
 
+struct MCPServerInstance: Sendable {
+    let server: Server
+    let onInitialize: @Sendable (Client.Info) async -> Void
+}
+
 /// HTTP server for MCP. Each client session gets its own `Server` + stateful transport
 actor MCPHTTPServer {
 
     private let port: UInt16
-    private let makeServer: @Sendable () async -> Server
+    private let makeServer: @Sendable () async -> MCPServerInstance
     private nonisolated(unsafe) var listener: NWListener?
 
     private struct Session {
@@ -22,7 +27,7 @@ actor MCPHTTPServer {
 
     init(
         port: UInt16,
-        makeServer: @escaping @Sendable () async -> Server
+        makeServer: @escaping @Sendable () async -> MCPServerInstance
     ) {
         self.port = port
         self.makeServer = makeServer
@@ -145,12 +150,14 @@ actor MCPHTTPServer {
             let transport = StatefulHTTPServerTransport(
                 validationPipeline: StandardValidationPipeline(validators: baseValidators() + [SessionValidator()])
             )
-            let server = await makeServer()
-            try? await server.start(transport: transport)
+            let instance = await makeServer()
+            try? await instance.server.start(transport: transport) { clientInfo, _ in
+                await instance.onInitialize(clientInfo)
+            }
             response = await transport.handleRequest(request)
             if let assigned = response.headers[HTTPHeaderName.sessionID] {
                 pruneIdleSessions()
-                sessions[assigned] = Session(server: server, transport: transport, lastUsed: .now)
+                sessions[assigned] = Session(server: instance.server, transport: transport, lastUsed: .now)
                 Log.mcp.notice("session started id=\(assigned) total=\(self.sessions.count)")
             } else {
                 await transport.disconnect()
@@ -175,8 +182,11 @@ actor MCPHTTPServer {
     private func fallbackPair() async -> (server: Server, transport: StatelessHTTPServerTransport) {
         if let fallback { return fallback }
         let pipeline = StandardValidationPipeline(validators: baseValidators())
-        let pair = (server: await makeServer(), transport: StatelessHTTPServerTransport(validationPipeline: pipeline))
-        try? await pair.server.start(transport: pair.transport)
+        let instance = await makeServer()
+        let pair = (server: instance.server, transport: StatelessHTTPServerTransport(validationPipeline: pipeline))
+        try? await pair.server.start(transport: pair.transport) { clientInfo, _ in
+            await instance.onInitialize(clientInfo)
+        }
         fallback = pair
         return pair
     }

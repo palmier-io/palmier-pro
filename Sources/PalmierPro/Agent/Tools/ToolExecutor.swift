@@ -13,6 +13,7 @@ final class ToolExecutor {
     private let frontmostProjectProvider: (() -> VideoProject?)?
     // External MCP stays on this project until manage_project rebinds it.
     private weak var boundProject: VideoProject?
+    private var mcpClientInfo: MCPClientInfo?
     private(set) var mcpSessionActivation = Analytics.SessionActivation()
     let exportQueue: ExportQueue
 
@@ -46,6 +47,10 @@ final class ToolExecutor {
     func bindProject(_ project: VideoProject?) {
         guard frontmostProjectProvider != nil else { return }
         boundProject = project
+    }
+
+    func setMCPClientInfo(_ clientInfo: MCPClientInfo) {
+        mcpClientInfo = clientInfo
     }
 
     var feedbackState = FeedbackState()
@@ -148,10 +153,18 @@ final class ToolExecutor {
 
     private func activateMCPSessionIfNeeded(source: String, toolName: String) {
         guard source == "mcp", mcpSessionActivation.activate() else { return }
-        Analytics.capture(.mcpSessionActivated, properties: [
+        Analytics.capture(.mcpSessionActivated, properties: mcpSessionActivationProperties(toolName: toolName))
+    }
+
+    func mcpSessionActivationProperties(toolName: String) -> Analytics.Payload {
+        var properties: Analytics.Payload = [
             "source": "mcp",
             "tool_name": toolName,
-        ])
+        ]
+        if let mcpClientInfo {
+            properties["client_info"] = mcpClientInfo.payload
+        }
+        return properties
     }
 
     private func projectFocusError() -> String? {

@@ -46,7 +46,9 @@ final class MCPService {
             )
             await Self.registerTools(on: server, executor: toolExecutor)
             await Self.registerResources(on: server)
-            return server
+            return MCPServerInstance(server: server) { clientInfo in
+                await toolExecutor.setMCPClientInfo(MCPClientInfo(clientInfo))
+            }
         }
         self.httpServer = httpServer
         Task { @MainActor [weak self] in
