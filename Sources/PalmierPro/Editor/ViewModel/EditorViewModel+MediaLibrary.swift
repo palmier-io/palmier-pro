@@ -262,6 +262,7 @@ extension EditorViewModel {
     struct MediaImportSummary: Sendable {
         var assetCount: Int
         var folderCount: Int
+        var assets: [MediaAsset] = []
     }
 
     /// Import files and folders from the open panel or a Finder drop as one undo step
@@ -269,6 +270,7 @@ extension EditorViewModel {
     func importFinderItems(
         _ urls: [URL],
         into folderId: String?,
+        finalize: Bool = true,
         applying mutation: (@MainActor (@MainActor () -> MediaImportSummary) async throws -> MediaImportSummary)? = nil
     ) async throws -> MediaImportSummary {
         let previous = mediaImportTail
@@ -276,7 +278,7 @@ extension EditorViewModel {
         let sequence = mediaImportSequence
         let task = Task { @MainActor in
             _ = try? await previous?.value
-            return try await performFinderImport(urls, into: folderId, applying: mutation)
+            return try await performFinderImport(urls, into: folderId, finalize: finalize, applying: mutation)
         }
         mediaImportTail = task
 
@@ -290,6 +292,7 @@ extension EditorViewModel {
     private func performFinderImport(
         _ urls: [URL],
         into folderId: String?,
+        finalize: Bool,
         applying mutation: (@MainActor (@MainActor () -> MediaImportSummary) async throws -> MediaImportSummary)?
     ) async throws -> MediaImportSummary {
         let before = mediaLibraryUndoSnapshot()
@@ -299,13 +302,17 @@ extension EditorViewModel {
             MediaImportScanner.scan(roots: roots)
         }.value
         if let mutation {
-            return try await mutation { self.applyMediaImportPlan(plan, restoringFrom: before) }
+            return try await mutation { self.applyMediaImportPlan(plan, restoringFrom: before, finalize: finalize) }
         }
-        return applyMediaImportPlan(plan, restoringFrom: before)
+        return applyMediaImportPlan(plan, restoringFrom: before, finalize: finalize)
     }
 
     @discardableResult
-    private func applyMediaImportPlan(_ plan: MediaImportPlan, restoringFrom before: MediaLibraryUndoSnapshot) -> MediaImportSummary {
+    private func applyMediaImportPlan(
+        _ plan: MediaImportPlan,
+        restoringFrom before: MediaLibraryUndoSnapshot,
+        finalize: Bool = true
+    ) -> MediaImportSummary {
         let importedAssets = undo.withoutRegistration {
             var folderIds = Array(repeating: "", count: plan.folders.count)
             for (index, folder) in plan.folders.enumerated() {
@@ -344,14 +351,17 @@ extension EditorViewModel {
 
         let summary = MediaImportSummary(
             assetCount: mediaAssets.count - before.mediaAssets.count,
-            folderCount: mediaManifest.folders.count - before.mediaManifest.folders.count
+            folderCount: mediaManifest.folders.count - before.mediaManifest.folders.count,
+            assets: importedAssets
         )
         guard summary.assetCount != 0 || summary.folderCount != 0 else { return summary }
         undo.register("Import Media", withTarget: self) { vm in
             vm.restoreMediaLibraryUndoSnapshot(before, actionName: "Import Media")
         }
-        for asset in importedAssets {
-            Task { await finalizeImportedAsset(asset, batchManifestUpdate: true) }
+        if finalize {
+            for asset in importedAssets {
+                Task { await finalizeImportedAsset(asset, batchManifestUpdate: true) }
+            }
         }
         return summary
     }
@@ -362,6 +372,62 @@ extension EditorViewModel {
             id
         case .plannedFolder(let index):
             plannedFolderIds[index]
+        }
+    }
+
+    func dropPlaceholderAssets(for urls: [URL]) -> [MediaAsset] {
+        urls.compactMap { url in
+            // hasDirectoryPath avoids disk access on the drag-hover path.
+            guard !url.hasDirectoryPath,
+                  let type = ClipType(fileExtension: url.pathExtension.lowercased()) else { return nil }
+            let asset = MediaAsset(
+                url: url, type: type,
+                name: url.deletingPathExtension().lastPathComponent,
+                duration: Defaults.imageDurationSeconds
+            )
+            asset.hasAudio = type == .video
+            return asset
+        }
+    }
+
+    func importFinderItemsToTimeline(
+        _ urls: [URL],
+        cursor: TrackDropTarget,
+        atFrame: Int,
+        ripple: Bool
+    ) async {
+        var before: MediaLibraryUndoSnapshot?
+        let summary = try? await importFinderItems(urls, into: mediaPanelCurrentFolderId, finalize: false) { apply in
+            before = self.mediaLibraryUndoSnapshot()
+            return self.undo.withoutRegistration { apply() }
+        }
+        guard let summary, let before,
+              summary.assetCount != 0 || summary.folderCount != 0 else { return }
+
+        var placeable: [MediaAsset] = []
+        for asset in summary.assets {
+            if await finalizeImportedAsset(asset, batchManifestUpdate: true) {
+                placeable.append(asset)
+            }
+        }
+        // Revalidate after the awaits: bail if the project changed while metadata loaded.
+        guard summary.assets.allSatisfy({ mediaAssetsById[$0.id] === $0 }) else { return }
+
+        let operation: @MainActor () -> Void = { [weak self] in
+            guard let self else { return }
+            undo.perform("Add Media") {
+                undo.register("Add Media", withTarget: self) { vm in
+                    vm.restoreMediaLibraryUndoSnapshot(before, actionName: "Add Media")
+                }
+                if !placeable.isEmpty {
+                    placeDroppedAssets(placeable, cursor: cursor, atFrame: atFrame, ripple: ripple)
+                }
+            }
+        }
+        if placeable.isEmpty {
+            operation()
+        } else {
+            addClipsWithSettingsCheck(assets: placeable, operation: operation)
         }
     }
 

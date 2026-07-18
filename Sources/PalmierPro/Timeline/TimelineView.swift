@@ -1310,6 +1310,13 @@ final class TimelineView: NSView {
             externalDragAssets = editor.assetsFromDragPayload(urlString)
             externalDragSegments = editor.segmentsFromDragPayload(urlString)
         }
+        if externalDragAssets == nil {
+            let urls = Self.finderFileURLs(sender.draggingPasteboard)
+            let placeholders = editor.dropPlaceholderAssets(for: urls)
+            // Folders carry no placeholder ghost but still import recursively on drop.
+            guard !placeholders.isEmpty || urls.contains(where: \.hasDirectoryPath) else { return [] }
+            externalDragAssets = placeholders
+        }
         externalDropTarget = geo.dropTargetAt(y: point.y)
         externalSnapState = SnapEngine.SnapState()
         externalDragFrame = applyExternalSnap(at: point, geo: geo)
@@ -1319,6 +1326,7 @@ final class TimelineView: NSView {
     }
 
     override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        guard externalDragAssets != nil else { return [] }
         let point = convert(sender.draggingLocation, from: nil)
         let geo = geometry
         externalDropTarget = geo.dropTargetAt(y: point.y)
@@ -1377,9 +1385,18 @@ final class TimelineView: NSView {
         externalSnapState = SnapEngine.SnapState()
         externalDragIsRippleInsert = false
 
-        guard let urlString = sender.draggingPasteboard.string(forType: .string) else { return false }
-
         let editor = self.editor
+
+        guard let urlString = sender.draggingPasteboard.string(forType: .string) else {
+            let urls = Self.finderFileURLs(sender.draggingPasteboard)
+            guard !urls.isEmpty else { return false }
+            let ripple = NSEvent.modifierFlags.contains(.command)
+            Task { @MainActor in
+                await editor.importFinderItemsToTimeline(urls, cursor: cursorTarget, atFrame: targetFrame, ripple: ripple)
+                self.needsDisplay = true
+            }
+            return true
+        }
 
         let timelineIds = editor.timelineIdsFromDragPayload(urlString)
         if !timelineIds.isEmpty {
@@ -1396,37 +1413,20 @@ final class TimelineView: NSView {
         let segments = editor.segmentsFromDragPayload(urlString)
         guard !assets.isEmpty else { return false }
 
-        let mods = NSEvent.modifierFlags
-
-        let operation: @MainActor () -> Void = {
-            editor.undo.perform("Add Clips") {
-                let plan = editor.resolveDropPlan(cursor: cursorTarget, assets: assets, atFrame: targetFrame, segments: segments)
-                let (visualIdx, audioIdx) = editor.materialize(plan: plan)
-                let ripple = mods.contains(.command)
-
-                let insert: ([MediaAsset], Int, Int?) -> Void = { assets, trackIdx, linkedAudio in
-                    if ripple {
-                        editor.rippleInsertClips(assets: assets, trackIndex: trackIdx, atFrame: targetFrame, segments: segments)
-                    } else {
-                        editor.addClips(assets: assets, trackIndex: trackIdx, startFrame: targetFrame, linkedAudioTrackIndex: linkedAudio, segments: segments)
-                    }
-                }
-
-                let visualAssets = plan.visualAssets
-                if !visualAssets.isEmpty, let vIdx = visualIdx {
-                    insert(visualAssets, vIdx, audioIdx)
-                }
-                let audioOnlyAssets = plan.audioOnlyAssets
-                if !audioOnlyAssets.isEmpty, let aIdx = audioIdx {
-                    insert(audioOnlyAssets, aIdx, nil)
-                }
-            }
+        let ripple = NSEvent.modifierFlags.contains(.command)
+        editor.addClipsWithSettingsCheck(assets: assets) {
+            editor.placeDroppedAssets(assets, cursor: cursorTarget, atFrame: targetFrame, segments: segments, ripple: ripple)
         }
-
-        editor.addClipsWithSettingsCheck(assets: assets, operation: operation)
 
         needsDisplay = true
         return true
+    }
+
+    private static func finderFileURLs(_ pasteboard: NSPasteboard) -> [URL] {
+        (pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL]) ?? []
     }
 }
 
