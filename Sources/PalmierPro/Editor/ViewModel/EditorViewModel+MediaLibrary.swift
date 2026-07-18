@@ -262,6 +262,7 @@ extension EditorViewModel {
     struct MediaImportSummary: Sendable {
         var assetCount: Int
         var folderCount: Int
+        var assetIds: [String]
     }
 
     /// Import files and folders from the open panel or a Finder drop as one undo step
@@ -269,6 +270,7 @@ extension EditorViewModel {
     func importFinderItems(
         _ urls: [URL],
         into folderId: String?,
+        finalizeImmediately: Bool = true,
         applying mutation: (@MainActor (@MainActor () -> MediaImportSummary) async throws -> MediaImportSummary)? = nil
     ) async throws -> MediaImportSummary {
         let previous = mediaImportTail
@@ -276,7 +278,12 @@ extension EditorViewModel {
         let sequence = mediaImportSequence
         let task = Task { @MainActor in
             _ = try? await previous?.value
-            return try await performFinderImport(urls, into: folderId, applying: mutation)
+            return try await performFinderImport(
+                urls,
+                into: folderId,
+                finalizeImmediately: finalizeImmediately,
+                applying: mutation
+            )
         }
         mediaImportTail = task
 
@@ -286,10 +293,44 @@ extension EditorViewModel {
         return try await task.value
     }
 
+    /// Import Finder items into the library, await metadata, then place them end-to-end on the timeline.
+    func importAndPlaceFinderItems(
+        _ urls: [URL],
+        into folderId: String?,
+        cursor: TrackDropTarget,
+        atFrame: Int,
+        ripple: Bool
+    ) async {
+        let summary: MediaImportSummary
+        do {
+            summary = try await importFinderItems(urls, into: folderId, finalizeImmediately: false)
+        } catch {
+            Log.project.error(
+                "finder timeline import failed: \(error.localizedDescription)",
+                telemetry: "Finder timeline import failed",
+                data: ["urlCount": urls.count]
+            )
+            mediaPanelToast = "Couldn't import dropped media."
+            return
+        }
+        guard !summary.assetIds.isEmpty else { return }
+
+        var assets: [MediaAsset] = []
+        assets.reserveCapacity(summary.assetIds.count)
+        for id in summary.assetIds {
+            guard let asset = mediaAssets.first(where: { $0.id == id }) else { continue }
+            _ = await finalizeImportedAsset(asset, batchManifestUpdate: true)
+            assets.append(asset)
+        }
+        guard !assets.isEmpty else { return }
+        commitExternalMediaDrop(assets: assets, cursor: cursor, atFrame: atFrame, ripple: ripple)
+    }
+
     @discardableResult
     private func performFinderImport(
         _ urls: [URL],
         into folderId: String?,
+        finalizeImmediately: Bool,
         applying mutation: (@MainActor (@MainActor () -> MediaImportSummary) async throws -> MediaImportSummary)?
     ) async throws -> MediaImportSummary {
         let before = mediaLibraryUndoSnapshot()
@@ -299,13 +340,19 @@ extension EditorViewModel {
             MediaImportScanner.scan(roots: roots)
         }.value
         if let mutation {
-            return try await mutation { self.applyMediaImportPlan(plan, restoringFrom: before) }
+            return try await mutation {
+                self.applyMediaImportPlan(plan, restoringFrom: before, finalizeImmediately: finalizeImmediately)
+            }
         }
-        return applyMediaImportPlan(plan, restoringFrom: before)
+        return applyMediaImportPlan(plan, restoringFrom: before, finalizeImmediately: finalizeImmediately)
     }
 
     @discardableResult
-    private func applyMediaImportPlan(_ plan: MediaImportPlan, restoringFrom before: MediaLibraryUndoSnapshot) -> MediaImportSummary {
+    private func applyMediaImportPlan(
+        _ plan: MediaImportPlan,
+        restoringFrom before: MediaLibraryUndoSnapshot,
+        finalizeImmediately: Bool = true
+    ) -> MediaImportSummary {
         let importedAssets = undo.withoutRegistration {
             var folderIds = Array(repeating: "", count: plan.folders.count)
             for (index, folder) in plan.folders.enumerated() {
@@ -344,14 +391,17 @@ extension EditorViewModel {
 
         let summary = MediaImportSummary(
             assetCount: mediaAssets.count - before.mediaAssets.count,
-            folderCount: mediaManifest.folders.count - before.mediaManifest.folders.count
+            folderCount: mediaManifest.folders.count - before.mediaManifest.folders.count,
+            assetIds: importedAssets.map(\.id)
         )
         guard summary.assetCount != 0 || summary.folderCount != 0 else { return summary }
         undo.register("Import Media", withTarget: self) { vm in
             vm.restoreMediaLibraryUndoSnapshot(before, actionName: "Import Media")
         }
-        for asset in importedAssets {
-            Task { await finalizeImportedAsset(asset, batchManifestUpdate: true) }
+        if finalizeImmediately {
+            for asset in importedAssets {
+                Task { await finalizeImportedAsset(asset, batchManifestUpdate: true) }
+            }
         }
         return summary
     }

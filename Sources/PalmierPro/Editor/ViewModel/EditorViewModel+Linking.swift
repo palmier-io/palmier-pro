@@ -356,6 +356,57 @@ extension EditorViewModel {
         return (visualIdx, audioIdx)
     }
 
+    /// Commit a media-library drop onto the timeline (media panel or Finder → timeline).
+    func commitExternalMediaDrop(
+        assets: [MediaAsset],
+        cursor: TrackDropTarget,
+        atFrame: Int,
+        segments: [String: ClosedRange<Double>] = [:],
+        ripple: Bool
+    ) {
+        guard !assets.isEmpty else { return }
+        let operation: @MainActor () -> Void = {
+            self.undo.perform("Add Clips") {
+                let plan = self.resolveDropPlan(
+                    cursor: cursor,
+                    assets: assets,
+                    atFrame: atFrame,
+                    segments: segments
+                )
+                let (visualIdx, audioIdx) = self.materialize(plan: plan)
+
+                let insert: ([MediaAsset], Int, Int?) -> Void = { assets, trackIdx, linkedAudio in
+                    if ripple {
+                        self.rippleInsertClips(
+                            assets: assets,
+                            trackIndex: trackIdx,
+                            atFrame: atFrame,
+                            segments: segments
+                        )
+                    } else {
+                        self.addClips(
+                            assets: assets,
+                            trackIndex: trackIdx,
+                            startFrame: atFrame,
+                            linkedAudioTrackIndex: linkedAudio,
+                            segments: segments
+                        )
+                    }
+                }
+
+                let visualAssets = plan.visualAssets
+                if !visualAssets.isEmpty, let vIdx = visualIdx {
+                    insert(visualAssets, vIdx, audioIdx)
+                }
+                let audioOnlyAssets = plan.audioOnlyAssets
+                if !audioOnlyAssets.isEmpty, let aIdx = audioIdx {
+                    insert(audioOnlyAssets, aIdx, nil)
+                }
+            }
+        }
+        addClipsWithSettingsCheck(assets: assets, operation: operation)
+    }
+
     func audioTargetAfterVisualInsertion(plan: DropPlan) -> TrackDropTarget? {
         plan.audioTarget.map { audio in
             plan.visualTarget.map { shiftAfterVisualInsertion(audio: audio, visual: $0) } ?? audio

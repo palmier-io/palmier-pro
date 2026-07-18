@@ -1301,7 +1301,7 @@ final class TimelineView: NSView {
         ))
     }
 
-    // MARK: - Drop target (drag from media panel)
+    // MARK: - Drop target (media panel or Finder)
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
         let point = convert(sender.draggingLocation, from: nil)
@@ -1377,56 +1377,58 @@ final class TimelineView: NSView {
         externalSnapState = SnapEngine.SnapState()
         externalDragIsRippleInsert = false
 
-        guard let urlString = sender.draggingPasteboard.string(forType: .string) else { return false }
-
         let editor = self.editor
+        let ripple = NSEvent.modifierFlags.contains(.command)
 
-        let timelineIds = editor.timelineIdsFromDragPayload(urlString)
-        if !timelineIds.isEmpty {
-            var frame = targetFrame
-            for id in timelineIds {
-                guard editor.nestTimeline(id, cursor: cursorTarget, atFrame: frame) else { continue }
-                frame += editor.timeline(for: id)?.totalFrames ?? 0
+        if let urlString = sender.draggingPasteboard.string(forType: .string) {
+            let timelineIds = editor.timelineIdsFromDragPayload(urlString)
+            if !timelineIds.isEmpty {
+                var frame = targetFrame
+                for id in timelineIds {
+                    guard editor.nestTimeline(id, cursor: cursorTarget, atFrame: frame) else { continue }
+                    frame += editor.timeline(for: id)?.totalFrames ?? 0
+                }
+                needsDisplay = true
+                return true
             }
-            needsDisplay = true
-            return true
-        }
 
-        let assets = editor.assetsFromDragPayload(urlString)
-        let segments = editor.segmentsFromDragPayload(urlString)
-        guard !assets.isEmpty else { return false }
-
-        let mods = NSEvent.modifierFlags
-
-        let operation: @MainActor () -> Void = {
-            editor.undo.perform("Add Clips") {
-                let plan = editor.resolveDropPlan(cursor: cursorTarget, assets: assets, atFrame: targetFrame, segments: segments)
-                let (visualIdx, audioIdx) = editor.materialize(plan: plan)
-                let ripple = mods.contains(.command)
-
-                let insert: ([MediaAsset], Int, Int?) -> Void = { assets, trackIdx, linkedAudio in
-                    if ripple {
-                        editor.rippleInsertClips(assets: assets, trackIndex: trackIdx, atFrame: targetFrame, segments: segments)
-                    } else {
-                        editor.addClips(assets: assets, trackIndex: trackIdx, startFrame: targetFrame, linkedAudioTrackIndex: linkedAudio, segments: segments)
-                    }
-                }
-
-                let visualAssets = plan.visualAssets
-                if !visualAssets.isEmpty, let vIdx = visualIdx {
-                    insert(visualAssets, vIdx, audioIdx)
-                }
-                let audioOnlyAssets = plan.audioOnlyAssets
-                if !audioOnlyAssets.isEmpty, let aIdx = audioIdx {
-                    insert(audioOnlyAssets, aIdx, nil)
-                }
+            let assets = editor.assetsFromDragPayload(urlString)
+            let segments = editor.segmentsFromDragPayload(urlString)
+            if !assets.isEmpty {
+                editor.commitExternalMediaDrop(
+                    assets: assets,
+                    cursor: cursorTarget,
+                    atFrame: targetFrame,
+                    segments: segments,
+                    ripple: ripple
+                )
+                needsDisplay = true
+                return true
             }
         }
 
-        editor.addClipsWithSettingsCheck(assets: assets, operation: operation)
+        let urls = Self.fileURLs(from: sender.draggingPasteboard)
+        guard !urls.isEmpty else { return false }
 
-        needsDisplay = true
+        let folderId = editor.mediaPanelCurrentFolderId
+        Task { @MainActor in
+            await editor.importAndPlaceFinderItems(
+                urls,
+                into: folderId,
+                cursor: cursorTarget,
+                atFrame: targetFrame,
+                ripple: ripple
+            )
+            self.needsDisplay = true
+        }
         return true
+    }
+
+    private static func fileURLs(from pasteboard: NSPasteboard) -> [URL] {
+        (pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL]) ?? []
     }
 }
 
