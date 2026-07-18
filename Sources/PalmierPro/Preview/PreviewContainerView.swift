@@ -48,15 +48,17 @@ struct PreviewContainerView: View {
                 }
                 .frame(width: scaledWidth, height: scaledHeight)
                 .simultaneousGesture(
-                    SpatialTapGesture(count: 2)
+                    SpatialTapGesture()
                         .onEnded { value in
                             guard isTimeline,
+                                  !editor.cropEditingActive,
+                                  editor.chromaKeySamplingClipId == nil,
                                   let id = PreviewHitTester.clipID(
                                     at: value.location,
                                     viewSize: CGSize(width: scaledWidth, height: scaledHeight),
                                     editor: editor
                                   ) else { return }
-                            editor.selectedClipIds = editor.expandToLinkGroup([id])
+                            editor.selectPreviewClip(id)
                         }
                 )
                 .overlay(
