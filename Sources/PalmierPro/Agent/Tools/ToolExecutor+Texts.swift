@@ -85,6 +85,14 @@ struct ParsedTextStylePatch {
     }
 }
 
+/// How an add_texts entry resolves its caption group: inherit the track's uniform group by default,
+/// opt out explicitly, or join a named group.
+fileprivate enum CaptionGroupChoice {
+    case inherit
+    case none
+    case explicit(String)
+}
+
 fileprivate struct PartialTextSpec {
     let trackId: String?
     let startFrame: Int
@@ -93,12 +101,13 @@ fileprivate struct PartialTextSpec {
     let style: TextStyle
     let transform: Transform?
     let animation: TextAnimation?
+    let group: CaptionGroupChoice
 }
 
 extension ToolExecutor {
     private static let addTextsAllowedKeys: Set<String> = Set([
         "trackIndex", "startFrame", "endFrame", "content",
-        "style", "transform", "animation", "highlightColor",
+        "style", "transform", "animation", "highlightColor", "captionGroupId",
     ])
 
     private static let updateTextAllowedKeys: Set<String> = Set([
@@ -366,6 +375,29 @@ extension ToolExecutor {
         return transform.hasAnyField ? transform : nil
     }
 
+    /// Resolve an entry's `captionGroupId`: absent → inherit the track's uniform group, "none" → opt
+    /// out, any other string → join that existing group (validated).
+    fileprivate func parseCaptionGroupChoice(_ editor: EditorViewModel, entry: [String: Any], path: String) throws -> CaptionGroupChoice {
+        guard entry.keys.contains("captionGroupId") else { return .inherit }
+        guard let raw = entry["captionGroupId"] as? String else {
+            throw ToolError("\(path).captionGroupId: expected a string group id or \"none\"")
+        }
+        if raw == "none" { return .none }
+        guard !editor.captionGroupTextClipIds(groupId: raw).isEmpty else {
+            throw ToolError("\(path): captionGroupId '\(raw)' has no caption clips")
+        }
+        return .explicit(raw)
+    }
+
+    /// The single caption group every text clip on this track already shares, or nil when the track has
+    /// no text clips, mixes groups, or holds ungrouped text. New captions default-join only a uniform group.
+    fileprivate func inheritedCaptionGroup(_ editor: EditorViewModel, trackIndex: Int) -> String? {
+        guard editor.timeline.tracks.indices.contains(trackIndex) else { return nil }
+        let groups = Set(editor.timeline.tracks[trackIndex].clips.filter { $0.mediaType == .text }.map(\.captionGroupId))
+        guard groups.count == 1, let group = groups.first, let group else { return nil }
+        return group
+    }
+
     func addTexts(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         guard let rawEntries = args["entries"] as? [Any], !rawEntries.isEmpty else {
             throw ToolError("Missing or empty 'entries' array")
@@ -423,7 +455,8 @@ extension ToolExecutor {
                 content: content,
                 style: style,
                 transform: transform,
-                animation: try parseTextAnimation(preset: entry.string("animation"), highlightColor: entry.string("highlightColor"), path: path)
+                animation: try parseTextAnimation(preset: entry.string("animation"), highlightColor: entry.string("highlightColor"), path: path),
+                group: try parseCaptionGroupChoice(editor, entry: entry, path: path)
             ))
         }
 
@@ -451,6 +484,12 @@ extension ToolExecutor {
                 guard let id, let trackIdx = editor.timeline.tracks.firstIndex(where: { $0.id == id }) else {
                     return nil
                 }
+                let captionGroupId: String?
+                switch p.group {
+                case .explicit(let gid): captionGroupId = gid
+                case .none: captionGroupId = nil
+                case .inherit: captionGroupId = inheritedCaptionGroup(editor, trackIndex: trackIdx)
+                }
                 return .init(
                     trackIndex: trackIdx,
                     startFrame: p.startFrame,
@@ -458,6 +497,7 @@ extension ToolExecutor {
                     content: p.content,
                     style: p.style,
                     transform: p.transform,
+                    captionGroupId: captionGroupId,
                     animation: p.animation
                 )
             }

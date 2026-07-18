@@ -1,7 +1,18 @@
 import Foundation
+import NaturalLanguage
 
 // Purpose: Decides how words from CaptionTranscriptMapper should be grouped into chunks
 enum CaptionBuilder {
+    /// How a run of transcript text is cut into caption lines.
+    enum Segmentation: String, Sendable, CaseIterable {
+        /// Break at sentence/clause punctuation and word-token boundaries, preferring shorter lines.
+        case natural
+        /// Legacy recursive sentence→clause→mid-word width split (kept for callers that depend on it).
+        case fixedChars
+
+        static let `default`: Segmentation = .natural
+    }
+
     struct Phrase: Equatable {
         var text: String
         var start: Double
@@ -23,15 +34,21 @@ enum CaptionBuilder {
         words: [TranscriptionWord] = [],
         fits: (String) -> Bool,
         maxWords: Int? = nil,
-        minDuration: Double
+        minDuration: Double,
+        segmentation: Segmentation = .default
     ) -> [Phrase] {
         // Only phrases that fit visually and within the word cap are accepted; else, keep splitting.
         let pieces: [String]
-        if let limit = maxWords {
-            let cap = max(1, limit)
-            pieces = split(segment.text, fits: { fits($0) && wordCount($0) <= cap })
-        } else {
-            pieces = split(segment.text, fits: fits)
+        switch segmentation {
+        case .fixedChars:
+            if let limit = maxWords {
+                let cap = max(1, limit)
+                pieces = split(segment.text, fits: { fits($0) && wordCount($0) <= cap })
+            } else {
+                pieces = split(segment.text, fits: fits)
+            }
+        case .natural:
+            pieces = naturalLines(segment.text, fits: fits, maxWords: maxWords)
         }
         let timed = time(pieces, segment: segment, words: words)
         return enforceMinDuration(timed, minDuration: minDuration)
@@ -41,25 +58,138 @@ enum CaptionBuilder {
         fromTimedWords words: [TranscriptionWord],
         fits: (String) -> Bool,
         maxWords: Int? = nil,
-        minDuration: Double
+        minDuration: Double,
+        segmentation: Segmentation = .default
     ) -> [Phrase] {
         let timed = words.filter { $0.start != nil && $0.end != nil }
         guard let first = timed.first, let last = timed.last, let start = first.start, let end = last.end, end > start else { return [] }
-        // Drop empty tokens (a multi-token glossary variant empties the span's tail) so the join
-        // doesn't leave a double space in caption content. Timing already ignores empty words.
-        let text = timed.map(\.text).filter { !$0.isEmpty }.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        // Drop empty tokens (a multi-token glossary variant empties the span's tail). Legacy mode joins
+        // on spaces; natural mode glues CJK runs so re-tokenisation sees words, not spaced characters.
+        let tokens = timed.map(\.text).filter { !$0.isEmpty }
+        let joined = segmentation == .fixedChars ? tokens.joined(separator: " ") : cjkAwareJoin(tokens)
+        let text = joined.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return [] }
         return phrases(
             for: TranscriptionSegment(text: text, start: start, end: end, speaker: first.speaker),
             words: timed,
             fits: fits,
             maxWords: maxWords,
-            minDuration: minDuration
+            minDuration: minDuration,
+            segmentation: segmentation
         )
     }
 
     private static func wordCount(_ text: String) -> Int {
         text.split(whereSeparator: \.isWhitespace).count
+    }
+
+    // MARK: - Natural segmentation
+
+    /// Sentence/clause marks that end a caption line, bound to the preceding line, never starting the next.
+    private static let hardBreakPunct: Set<Character> = ["。", "？", "！", "，", "、", "；", "…", ".", "?", "!", ","]
+    private static let asciiHardBreak: Set<Character> = [".", "?", "!", ","]
+
+    /// Cut into shortest natural lines: hard breaks then word-token boundaries; content preserved.
+    /// No NER — under a tight cap a run splits at the NLTokenizer seam (重庆|西站), only mid-token is prevented.
+    private static func naturalLines(_ text: String, fits: (String) -> Bool, maxWords: Int?) -> [String] {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        let tokens = wordTokenStarts(in: trimmed)
+        var lines: [String] = []
+        var current = ""
+
+        func flush() {
+            let line = current.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !line.isEmpty { lines.append(line) }
+            current = ""
+        }
+
+        var i = trimmed.startIndex
+        while i < trimmed.endIndex {
+            if let range = tokens[i] {
+                let token = String(trimmed[range])
+                let candidate = current + token
+                let fitted = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   exceedsCap(fitted, maxWords) || !fits(fitted) {
+                    flush()
+                    current = token
+                } else {
+                    current = candidate
+                }
+                i = range.upperBound
+                continue
+            }
+
+            let c = trimmed[i]
+            let next = trimmed.index(after: i)
+            if c.isWhitespace {
+                if !current.isEmpty { current.append(c) }   // keep interior spacing, drop leading space
+            } else {
+                current.append(c)
+                if isHardBreak(c, nextChar: next < trimmed.endIndex ? trimmed[next] : nil) {
+                    flush()
+                }
+            }
+            i = next
+        }
+        flush()
+        return lines
+    }
+
+    private static func isHardBreak(_ c: Character, nextChar: Character?) -> Bool {
+        guard hardBreakPunct.contains(c) else { return false }
+        // ASCII marks end a line only before whitespace or end-of-text, so "U.S." and "3.14" stay intact.
+        guard asciiHardBreak.contains(c) else { return true }
+        guard let n = nextChar else { return true }
+        return n.isWhitespace
+    }
+
+    /// Cap counts characters for CJK-bearing lines, words for Latin — what callers mean by maxWords.
+    private static func exceedsCap(_ line: String, _ maxWords: Int?) -> Bool {
+        guard let cap = maxWords else { return false }
+        if line.contains(where: GlossaryText.isCJK) {
+            return alphanumericCount(line) > cap
+        }
+        return wordCount(line) > cap
+    }
+
+    private static func wordTokenStarts(in text: String) -> [String.Index: Range<String.Index>] {
+        let tokenizer = NLTokenizer(unit: .word)
+        tokenizer.string = text
+        var map: [String.Index: Range<String.Index>] = [:]
+        tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
+            map[range.lowerBound] = range
+            return true
+        }
+        return map
+    }
+
+    /// Join tokens cleanly: no space inside a CJK run or before punctuation, one space at Latin/seam gaps.
+    private static func cjkAwareJoin(_ tokens: [String]) -> String {
+        var out = ""
+        for token in tokens where !token.isEmpty {
+            guard let prev = out.last, let cur = token.first else { out += token; continue }
+            let glue = (isCJKContext(prev) && isCJKContext(cur)) || bindsLeft(cur)
+            out += glue ? token : " " + token
+        }
+        return out
+    }
+
+    private static func isCJKContext(_ c: Character) -> Bool {
+        GlossaryText.isCJK(c) || isFullwidthPunct(c)
+    }
+
+    private static func isFullwidthPunct(_ c: Character) -> Bool {
+        c.unicodeScalars.contains { (0x3000...0x303F).contains($0.value) || (0xFF00...0xFFEF).contains($0.value) }
+    }
+
+    /// Punctuation that attaches to the token on its left — never spaced off it, never starting a line.
+    private static func bindsLeft(_ c: Character) -> Bool {
+        if hardBreakPunct.contains(c) { return true }
+        if isFullwidthPunct(c) { return true }
+        return ":;)]}".contains(c)
     }
 
     private static func split(_ text: String, fits: (String) -> Bool) -> [String] {

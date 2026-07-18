@@ -54,7 +54,7 @@ extension EditorViewModel {
 
     /// Build the plan and apply it. Stashes the report on `lastResyncReport` for the agent tool layer.
     @discardableResult
-    func runCaptionResync(spans: [Range<Int>], trigger: String, dryRun: Bool = false, policyOverride: CaptionConflictPolicy? = nil) -> CaptionResyncReport? {
+    func runCaptionResync(spans: [Range<Int>], trigger: String, dryRun: Bool = false, policyOverride: CaptionConflictPolicy? = nil, segmentation: CaptionBuilder.Segmentation = .default) -> CaptionResyncReport? {
         let merged = CaptionResyncEngine.mergeSpans(spans)
         guard !merged.isEmpty else { return nil }
         let source = captionWordSourceProvider?(self) ?? TimelineTranscriptProvider(editor: self)
@@ -65,7 +65,7 @@ extension EditorViewModel {
             fps: timeline.fps,
             policy: policyOverride ?? captionConflictPolicy,
             wordSource: source,
-            chunk: captionResyncChunker()
+            chunk: captionResyncChunker(segmentation: segmentation)
         )
         guard !dryRun else { return plan.report }
         guard plan.hasWork else {
@@ -234,7 +234,7 @@ extension EditorViewModel {
 
     /// Splits newly uncovered words into caption-sized groups using the same phrase logic as generation,
     /// so created clips respect the group's visual fit and implied maxWords.
-    func captionResyncChunker() -> CaptionResyncEngine.Chunker {
+    func captionResyncChunker(segmentation: CaptionBuilder.Segmentation = .default) -> CaptionResyncEngine.Chunker {
         let fps = Double(timeline.fps)
         let style = captionResyncModalStyle()
         return { [weak self] words, maxWords in
@@ -246,7 +246,8 @@ extension EditorViewModel {
                 fromTimedWords: synthetic,
                 fits: { self.captionLineFits($0, style: style) },
                 maxWords: maxWords,
-                minDuration: AppTheme.Caption.minDisplayDuration
+                minDuration: AppTheme.Caption.minDisplayDuration,
+                segmentation: segmentation
             )
             guard !phrases.isEmpty else { return [words] }
             var out: [[WordTiming]] = []

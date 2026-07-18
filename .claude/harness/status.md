@@ -1,26 +1,41 @@
-# Caption Timing Fixes — Status
+# fix/caption-segmentation — Status
 
 Phase 2 complete. Ready for Evaluator.
 
-## Delivered
+## Scope
 
-| Bug   | Fix                                                                 | Commit  |
-| ----- | ------------------------------------------------------------------- | ------- |
-| BUG-4 | `WordTiming.aligned` threaded end-to-end + surfaced in get_timeline | 80528c9 |
-| BUG-3 | `OnsetRefiner` acoustic onset rollback; wired Qwen3 + Whisper       | fb2c680 |
-| BUG-5 | `WordTimingRetimer` incremental re-alignment; shared Clip helper    | 4199284 |
-| BUG-6 | Per-character CJK animation tokenization in the renderer            | 333e144 |
+Two production caption bugs from a 42-min code-switched zh/en vlog (1120 auto captions,
+re-broken into shortest natural semantic units).
+
+## BUG-1 — add_texts orphaned from caption group
+
+| Area           | Change                                                                                       |
+| -------------- | -------------------------------------------------------------------------------------------- |
+| Inheritance    | ToolExecutor+Texts.swift `addTexts` — new clips default-join a track's uniform caption group |
+| Explicit param | add_texts `captionGroupId` (validated); "none" opts out; explicit overrides inheritance      |
+| Engine default | CaptionResyncEngine.swift — nil generatedText is now dirty (preserve+conflict), not replace  |
+| Schema         | ToolDefinitions.swift add_texts entry gains captionGroupId                                   |
+
+## BUG-2 — fixed ~5-CJK-char guillotine
+
+| Area         | Change                                                                                               |
+| ------------ | ---------------------------------------------------------------------------------------------------- |
+| Segmentation | CaptionBuilder.swift natural mode: hard breaks at 。？！，、；… . ? ! , then NLTokenizer word splits |
+| CJK safety   | Never splits a CJK/Latin token; punctuation binds left; maxWords = chars (CJK) / words (Latin)       |
+| Plumbing     | segmentation param on add_captions + resync_captions → CaptionRequest + resync chunker               |
+| Default      | natural everywhere incl reactive auto-resync; fixedChars = legacy                                    |
+| Timing       | naturally segmented phrases still slice per-word timings (karaoke preserved)                         |
 
 ## Verification
 
 - `swift build` — clean.
-- `swift test` — 1161/1161 pass.
-- New suites: OnsetRefiner (5), WordTimingRetimer (8), render CJK/aligned (3), get_timeline detail (1), update_text retime (2).
+- `swift test` (full) — 1158/1158 pass.
+- New suites: NaturalSegmentation (7), AddTexts caption grouping (8); existing CaptionBuilder
+  tests pinned to `.fixedChars` as the legacy regression pin.
 
-## Notes
+## Integration notes
 
-- Cache tags bumped qw5→qw6, wk1→wk2 so existing transcript caches regenerate.
-- Onset engine is fps-agnostic; lead-in bias uses a fixed 30fps reference.
-- BUG-3 root cause: first-after-pause word inherits a chunk/anchor-quantized start.
-- Worktree needed `Vendor/sherpa-onnx.xcframework` symlinked from the main checkout
-  (gitignored binary artifact, not carried into worktrees).
+- Touched ToolExecutor+Texts (add_texts) and CaptionBuilder — edits kept additive/localized to
+  minimize merge with sibling fix/caption-timing (update_text + CaptionBuilder timing threading).
+- `parseSegmentation` lives in ToolExecutor+Captions.swift, shared by add_captions and resync_captions.
+- Worktree Vendor/sherpa-onnx.xcframework symlinked from the main checkout (git-ignored binary).

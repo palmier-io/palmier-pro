@@ -18,6 +18,8 @@ extension EditorViewModel {
         var fillerProfile: CaptionStyleProfile? = nil
         /// When true, removeAlways-classified tokens are dropped from caption TEXT (display only).
         var dropRemoveAlwaysFillers: Bool = false
+        /// How transcript runs are cut into caption lines.
+        var segmentation: CaptionBuilder.Segmentation = .default
     }
 
     enum CaptionCase: String, CaseIterable, Sendable {
@@ -273,7 +275,8 @@ extension EditorViewModel {
                 fps: fps,
                 maxWords: request.maxWords,
                 minDuration: AppTheme.Caption.minDisplayDuration,
-                fits: { captionLineFits($0, style: request.style) }
+                fits: { captionLineFits($0, style: request.style) },
+                segmentation: request.segmentation
             )
             guard !phrases.isEmpty else { return [] }
             let cased = phrases.map { CaptionBuilder.Phrase(text: request.textCase.apply($0.text), start: $0.start, end: $0.end, words: $0.words) }

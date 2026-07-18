@@ -48,7 +48,7 @@ struct CaptionResyncReport: Equatable, Sendable {
     struct Updated: Equatable, Sendable { var clipId: String; var before: String; var after: String }
     struct Removed: Equatable, Sendable { var clipId: String; var text: String }
     struct Created: Equatable, Sendable { var clipId: String?; var text: String; var startFrame: Int; var endFrame: Int }
-    struct Conflict: Equatable, Sendable { var clipId: String; var manualText: String; var newTranscript: String }
+    struct Conflict: Equatable, Sendable { var clipId: String; var manualText: String; var newTranscript: String; var reason: String = "" }
 
     var trigger: String
     var spans: [[Int]] = []            // [[lower, upper), …] — array form so it is Sendable/Codable-friendly
@@ -120,11 +120,19 @@ enum CaptionResyncEngine {
     ) {
         let clipWords = words.filter { $0.startFrame < clip.endFrame && $0.endFrame > clip.startFrame }
         let current = clip.textContent ?? ""
+        // Clean only when provably transcript-generated and untouched; nil generatedText counts as dirty.
+        let clean = clip.generatedText != nil && clip.textContent == clip.generatedText
 
+        // Empty span: auto-remove only clean generated captions; custom/edited ones follow policy.
         guard !clipWords.isEmpty else {
-            plan.removals.append(clip.id)
-            removed.insert(clip.id)
-            plan.report.removed.append(.init(clipId: clip.id, text: current))
+            if clean { remove(clip, current: current, into: &plan, removed: &removed); return }
+            switch policy {
+            case .overwrite: remove(clip, current: current, into: &plan, removed: &removed)
+            case .preserve: plan.report.conflicts.append(conflict(clip, current: current, newText: ""))
+            case .flag:
+                plan.flagged.append(clip.id)
+                plan.report.conflicts.append(conflict(clip, current: current, newText: ""))
+            }
             return
         }
 
@@ -137,15 +145,9 @@ enum CaptionResyncEngine {
             return
         }
 
-        let dirty = clip.generatedText != nil && clip.textContent != clip.generatedText
-        if !dirty {
-            // Clean, or unknown provenance (generatedText == nil). Both replace; unknown provenance is
-            // additionally conflict-logged for visibility since we can't prove the text was generated.
+        if clean {
             plan.replacements.append(.init(clipId: clip.id, text: newText, wordTimings: newTimings, generatedText: newText))
             plan.report.updated.append(.init(clipId: clip.id, before: current, after: newText))
-            if clip.generatedText == nil {
-                plan.report.conflicts.append(.init(clipId: clip.id, manualText: current, newTranscript: newText))
-            }
             return
         }
 
@@ -154,11 +156,24 @@ enum CaptionResyncEngine {
             plan.replacements.append(.init(clipId: clip.id, text: newText, wordTimings: newTimings, generatedText: newText))
             plan.report.updated.append(.init(clipId: clip.id, before: current, after: newText))
         case .preserve:
-            plan.report.conflicts.append(.init(clipId: clip.id, manualText: current, newTranscript: newText))
+            plan.report.conflicts.append(conflict(clip, current: current, newText: newText))
         case .flag:
             plan.flagged.append(clip.id)
-            plan.report.conflicts.append(.init(clipId: clip.id, manualText: current, newTranscript: newText))
+            plan.report.conflicts.append(conflict(clip, current: current, newText: newText))
         }
+    }
+
+    private static func remove(_ clip: Clip, current: String, into plan: inout CaptionResyncPlan, removed: inout Set<String>) {
+        plan.removals.append(clip.id)
+        removed.insert(clip.id)
+        plan.report.removed.append(.init(clipId: clip.id, text: current))
+    }
+
+    private static func conflict(_ clip: Clip, current: String, newText: String) -> CaptionResyncReport.Conflict {
+        let reason = clip.generatedText == nil
+            ? "unknown provenance — predates provenance tracking or hand-placed; resync_captions onManualEdits:overwrite to rebuild"
+            : "manual edit preserved; resync_captions onManualEdits:overwrite to rebuild"
+        return .init(clipId: clip.id, manualText: current, newTranscript: newText, reason: reason)
     }
 
     // MARK: - CREATE for newly uncovered speech
