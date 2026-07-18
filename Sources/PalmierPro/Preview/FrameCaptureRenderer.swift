@@ -1,7 +1,5 @@
 import AVFoundation
 import Foundation
-import ImageIO
-import UniformTypeIdentifiers
 
 struct RenderedFrame: Sendable {
     let stagedURL: URL
@@ -75,13 +73,7 @@ enum FrameCaptureRenderer {
         generator.requestedTimeToleranceAfter = .zero
 
         let time = CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(timeline.fps))
-        let image: CGImage
-        do {
-            image = try await generator.image(at: time).image
-        } catch {
-            try Task.checkCancellation()
-            throw RenderError.renderFailed(error.localizedDescription)
-        }
+        let image = try await generateImage(using: generator, at: time).image
         return try stage(image, actualSourceSeconds: nil)
     }
 
@@ -112,20 +104,11 @@ enum FrameCaptureRenderer {
         generator.requestedTimeToleranceBefore = minimumFrameDuration
         generator.requestedTimeToleranceAfter = request.capturesLastFrame ? .zero : minimumFrameDuration
 
-        let image: CGImage
-        let actualTime: CMTime
-        do {
-            let generated = try await generator.image(at: request.time)
-            image = generated.image
-            actualTime = generated.actualTime
-        } catch {
-            try Task.checkCancellation()
-            throw RenderError.renderFailed(error.localizedDescription)
-        }
+        let generated = try await generateImage(using: generator, at: request.time)
         return try stage(
-            image,
+            generated.image,
             actualSourceSeconds: SourceMediaTimebase.relativeSeconds(
-                absoluteTime: actualTime,
+                absoluteTime: generated.actualTime,
                 trackStart: timeRange.start
             )
         )
@@ -165,24 +148,25 @@ enum FrameCaptureRenderer {
         try? FileManager.default.removeItem(at: url)
     }
 
+    private static func generateImage(
+        using generator: AVAssetImageGenerator,
+        at time: CMTime
+    ) async throws -> (image: CGImage, actualTime: CMTime) {
+        do {
+            let generated = try await generator.image(at: time)
+            return (generated.image, generated.actualTime)
+        } catch {
+            try Task.checkCancellation()
+            throw RenderError.renderFailed(error.localizedDescription)
+        }
+    }
+
     private nonisolated static func stage(
         _ image: CGImage,
         actualSourceSeconds: Double?
     ) throws -> RenderedFrame {
-        let buffer = NSMutableData()
-        guard let destination = CGImageDestinationCreateWithData(
-            buffer,
-            UTType.png.identifier as CFString,
-            1,
-            nil
-        ) else {
-            throw RenderError.encodeFailed
-        }
-        CGImageDestinationAddImage(destination, image, nil)
-        guard CGImageDestinationFinalize(destination) else {
-            throw RenderError.encodeFailed
-        }
-        let stagedURL = try FileIO.stageData(buffer as Data, pathExtension: "png")
+        guard let data = ImageEncoder.encodePNG(image) else { throw RenderError.encodeFailed }
+        let stagedURL = try FileIO.stageData(data, pathExtension: "png")
         do {
             try Task.checkCancellation()
         } catch {

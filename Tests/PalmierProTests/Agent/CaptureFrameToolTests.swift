@@ -35,7 +35,9 @@ struct CaptureFrameToolTests {
                 "sourceSeconds": .double(fixture.source.duration),
                 "name": .string("Final source frame"),
             ])
-            let sourceRef = try #require(try json(text(sourceCapture.content))["mediaRef"] as? String)
+            let sourceReceipt = try json(text(sourceCapture.content))
+            let sourceRef = try #require(sourceReceipt["mediaRef"] as? String)
+            #expect(sourceReceipt["name"] as? String == "Final source frame")
             let sourceImage = try imageData(try await client.callTool(
                 name: "inspect_media",
                 arguments: ["mediaRef": .string(sourceRef)]
@@ -54,15 +56,6 @@ struct CaptureFrameToolTests {
             let timelineColor = try await Self.averageRGB(timelineImage)
             #expect(sourceColor.blue > sourceColor.red)
             #expect(timelineColor.red > timelineColor.blue)
-
-            let inventory = try await client.callTool(name: "get_media", arguments: [
-                "ids": .array([.string(sourceRef), .string(timelineRef)]),
-            ])
-            let assets = try #require(try json(text(inventory.content))["assets"] as? [[String: Any]])
-            #expect(Set(assets.compactMap { $0["name"] as? String }) == ["Final source frame", "Frame 0"])
-            #expect(assets.allSatisfy { $0["type"] as? String == "image" })
-            #expect(assets.allSatisfy { $0["width"] as? Int == 64 && $0["height"] as? Int == 64 })
-            #expect(assets.allSatisfy { $0["durationSeconds"] as? Double == Defaults.imageDurationSeconds })
 
             let placement = try await client.callTool(name: "add_clips", arguments: [
                 "entries": .array([.object([

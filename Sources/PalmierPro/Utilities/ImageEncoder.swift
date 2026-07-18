@@ -29,11 +29,17 @@ enum ImageEncoder {
         return output
     }
 
-    /// JPEG-encode an already-decoded `CGImage`. Shared with video frame sampling.
     nonisolated static func encodeJPEG(_ image: CGImage, quality: CGFloat) -> Data? {
         let buffer = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(buffer, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
         CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+        return CGImageDestinationFinalize(dest) ? buffer as Data : nil
+    }
+
+    nonisolated static func encodePNG(_ image: CGImage) -> Data? {
+        let buffer = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(buffer, UTType.png.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, image, nil)
         return CGImageDestinationFinalize(dest) ? buffer as Data : nil
     }
 

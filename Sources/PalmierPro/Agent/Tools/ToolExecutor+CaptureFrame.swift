@@ -36,23 +36,12 @@ extension ToolExecutor {
 
         let source: FrameCaptureSource
         if let timelineFrame {
-            guard timelineFrame >= 0 else {
-                throw ToolError("timelineFrame must be >= 0 (got \(timelineFrame)).")
-            }
             source = .timeline(frame: timelineFrame)
         } else {
             guard let mediaRef, let sourceSeconds else {
                 throw ToolError("mediaRef and sourceSeconds are both required for a source-video capture.")
             }
-            guard !mediaRef.isEmpty else { throw ToolError("mediaRef must not be empty.") }
-            guard sourceSeconds.isFinite, sourceSeconds >= 0 else {
-                throw ToolError("sourceSeconds must be a finite number >= 0.")
-            }
-            let media = try asset(mediaRef, editor: editor)
-            guard media.type == .video else {
-                throw ToolError("capture_frame needs a video asset; \(mediaRef) is \(media.type.rawValue).")
-            }
-            source = .media(mediaRef: media.id, sourceSeconds: sourceSeconds)
+            source = .media(mediaRef: mediaRef, sourceSeconds: sourceSeconds)
         }
 
         let receipt = try await editor.captureFrameToMedia(source: source, name: name)
@@ -65,7 +54,7 @@ extension ToolExecutor {
             "width": receipt.width,
             "height": receipt.height,
         ]
-        switch receipt.source {
+        switch source {
         case .timeline(let frame):
             payload["capturedFrom"] = [
                 "timelineId": receipt.timelineId ?? editor.activeTimelineId,

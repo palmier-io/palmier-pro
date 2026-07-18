@@ -1,6 +1,6 @@
 import Foundation
 
-enum FrameCaptureSource: Sendable, Equatable {
+enum FrameCaptureSource: Sendable {
     case timeline(frame: Int)
     case media(mediaRef: String, sourceSeconds: Double)
 }
@@ -9,7 +9,6 @@ struct FrameCaptureReceipt {
     let asset: MediaAsset
     let width: Int
     let height: Int
-    let source: FrameCaptureSource
     let timelineId: String?
     let actualSourceSeconds: Double?
     let warning: String?
@@ -58,7 +57,7 @@ extension EditorViewModel {
 
         let defaultName: String
         let capturedTimelineId: String?
-        let render: @Sendable () async throws -> RenderedFrame
+        let rendered: RenderedFrame
         switch source {
         case .timeline(let frame):
             let timeline = timeline
@@ -71,15 +70,13 @@ extension EditorViewModel {
             let missingMediaRefs = missingMediaRefs
             defaultName = "Frame \(frame)"
             capturedTimelineId = timeline.id
-            render = {
-                try await FrameCaptureRenderer.timeline(
-                    timeline,
-                    frame: frame,
-                    mediaURLs: mediaURLs,
-                    resolveTimeline: resolveTimeline,
-                    missingMediaRefs: missingMediaRefs
-                )
-            }
+            rendered = try await FrameCaptureRenderer.timeline(
+                timeline,
+                frame: frame,
+                mediaURLs: mediaURLs,
+                resolveTimeline: resolveTimeline,
+                missingMediaRefs: missingMediaRefs
+            )
 
         case .media(let mediaRef, let sourceSeconds):
             guard let media = mediaAssetsById[mediaRef] else {
@@ -95,10 +92,9 @@ extension EditorViewModel {
             let url = media.url
             defaultName = "\(media.name) frame"
             capturedTimelineId = nil
-            render = { try await FrameCaptureRenderer.media(url: url, sourceSeconds: sourceSeconds) }
+            rendered = try await FrameCaptureRenderer.media(url: url, sourceSeconds: sourceSeconds)
         }
 
-        let rendered = try await render()
         do {
             try Task.checkCancellation()
             guard projectURL != nil else { throw FrameCaptureError.noProject }
@@ -141,7 +137,6 @@ extension EditorViewModel {
             asset: asset,
             width: rendered.width,
             height: rendered.height,
-            source: source,
             timelineId: capturedTimelineId,
             actualSourceSeconds: rendered.actualSourceSeconds,
             warning: destinationFolderStillExists
