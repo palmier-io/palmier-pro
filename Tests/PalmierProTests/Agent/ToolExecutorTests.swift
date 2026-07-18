@@ -2378,4 +2378,169 @@ struct SetClipPropertiesTests {
         #expect(result.isError == false, "\(ToolHarness.textOf(result))")
         #expect(h.editor.timeline.tracks[0].clips[0].wordTimings == nil, "no surviving word clears timings")
     }
+
+    // MARK: - add_texts onOverlap (D1)
+
+    private func textClip(_ id: String, start: Int, duration: Int, content: String) -> Clip {
+        var c = Fixtures.clip(id: id, mediaRef: "text", mediaType: .text, start: start, duration: duration)
+        c.textContent = content
+        c.textStyle = TextStyle()
+        return c
+    }
+
+    @Test func addTextsFailOnOverlapRejectsBeforeMutating() async {
+        let existing = textClip("cap1", start: 0, duration: 60, content: "Existing")
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [existing])]))
+        let result = await h.runRaw("add_texts", args: [
+            "onOverlap": "fail",
+            "entries": [["trackIndex": 0, "startFrame": 30, "endFrame": 90, "content": "New"]],
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("cap1"))
+        // Nothing mutated: the original clip is untouched and no clip was added.
+        let clips = h.editor.timeline.tracks[0].clips
+        #expect(clips.count == 1)
+        #expect(clips[0].id == "cap1")
+        #expect(clips[0].durationFrames == 60)
+    }
+
+    @Test func addTextsClearOnOverlapOverwritesRegion() async {
+        let existing = textClip("cap1", start: 0, duration: 60, content: "Existing")
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [existing])]))
+        let result = await h.runRaw("add_texts", args: [
+            "entries": [["trackIndex": 0, "startFrame": 30, "endFrame": 90, "content": "New"]],
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        // Default 'clear' trims the existing clip to [0,30) and places the new clip at [30,90).
+        let clips = h.editor.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }
+        #expect(clips.count == 2)
+        #expect(clips[0].id == "cap1")
+        #expect(clips[0].durationFrames == 30)
+        #expect(clips[1].textContent == "New")
+        #expect(clips[1].startFrame == 30)
+    }
+
+    @Test func addTextsFailOnOverlapValidatesPerTrackAtomically() async {
+        let existing = textClip("cap1", start: 0, duration: 60, content: "Existing")
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [existing]),   // track 0 is busy
+            Fixtures.videoTrack(clips: []),           // track 1 is empty
+        ]))
+        let result = await h.runRaw("add_texts", args: [
+            "onOverlap": "fail",
+            "entries": [
+                ["trackIndex": 1, "startFrame": 0, "endFrame": 30, "content": "Clear"],    // no collision
+                ["trackIndex": 0, "startFrame": 10, "endFrame": 40, "content": "Collides"], // collides with cap1
+            ],
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("cap1"))
+        // Atomic: the non-colliding entry on track 1 was NOT placed either.
+        #expect(h.editor.timeline.tracks[1].clips.isEmpty)
+        #expect(h.editor.timeline.tracks[0].clips.count == 1)
+    }
+
+    // MARK: - update_text entries (D2)
+
+    @Test func updateTextEntriesAppliesPerClipContentAndRetimes() async {
+        var a = textClip("a", start: 0, duration: 60, content: "alpha one")
+        a.wordTimings = [WordTiming(text: "alpha", startFrame: 0, endFrame: 30), WordTiming(text: "one", startFrame: 30, endFrame: 60)]
+        let b = textClip("b", start: 60, duration: 60, content: "beta two")
+        let c = textClip("c", start: 120, duration: 60, content: "gamma three")
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [a, b, c])]))
+        let um = UndoManager()
+        h.editor.undo.attach(um)
+
+        let result = await h.runRaw("update_text", args: [
+            "entries": [
+                ["clipId": "a", "content": "alpha ONE"],
+                ["clipId": "b", "content": "beta TWO"],
+                ["clipId": "c", "content": "gamma THREE"],
+            ],
+        ])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let byId = Dictionary(uniqueKeysWithValues: h.editor.timeline.tracks[0].clips.map { ($0.id, $0) })
+        #expect(byId["a"]?.textContent == "alpha ONE")
+        #expect(byId["b"]?.textContent == "beta TWO")
+        #expect(byId["c"]?.textContent == "gamma THREE")
+        // Per-clip retime: both words keep their transcript spans; only clip a's timings are touched.
+        #expect(byId["a"]?.wordTimings == [
+            WordTiming(text: "alpha", startFrame: 0, endFrame: 30),
+            WordTiming(text: "ONE", startFrame: 30, endFrame: 60),
+        ])
+
+        // One undo reverts every entry.
+        _ = await h.runRaw("undo")
+        let reverted = Dictionary(uniqueKeysWithValues: h.editor.timeline.tracks[0].clips.map { ($0.id, $0) })
+        #expect(reverted["a"]?.textContent == "alpha one")
+        #expect(reverted["b"]?.textContent == "beta two")
+        #expect(reverted["c"]?.textContent == "gamma three")
+    }
+
+    @Test func updateTextEntriesRejectsCombinedWithContent() async {
+        let a = textClip("a", start: 0, duration: 60, content: "one")
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [a])]))
+        let result = await h.runRaw("update_text", args: [
+            "entries": [["clipId": "a", "content": "two"]],
+            "content": "three",
+        ])
+        #expect(result.isError)
+        #expect(ToolHarness.textOf(result).contains("mutually exclusive"))
+    }
+
+    @Test func updateTextEntriesRejectsDuplicateClipId() async {
+        let a = textClip("a", start: 0, duration: 60, content: "one")
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [a])]))
+        let result = await h.runRaw("update_text", args: [
+            "entries": [["clipId": "a", "content": "two"], ["clipId": "a", "content": "three"]],
+        ])
+        #expect(result.isError)
+    }
+
+    // MARK: - promotion visibility (D3)
+
+    @Test func updateTextEntriesPromotesPerEntry() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("promote-\(UUID().uuidString).palmier", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        var cap = textClip("cap", start: 0, duration: 60, content: "陈娘娘")
+        cap.captionGroupId = "g1"
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [cap])]))
+        h.editor.projectURL = dir
+
+        let json = try await h.runOK("update_text", args: [
+            "entries": [["clipId": "cap", "content": "陈嬢嬢"]],
+        ]) as? [String: Any]
+        let promoted = json?["promoted"] as? [[String: Any]]
+        // The promoted term is the single-substitution span (娘娘→嬢嬢), not the whole caption.
+        #expect(promoted?.first?["canonical"] as? String == "嬢嬢")
+        #expect((promoted?.first?["variants"] as? [String]) == ["娘娘"])
+        let notes = (json?["notes"] as? [String]) ?? []
+        #expect(!notes.contains { $0.contains("not promoted") })
+    }
+
+    @Test func updateTextNotesReasonForUngroupedNonPromotion() async throws {
+        let plain = textClip("title", start: 0, duration: 60, content: "hello")
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [plain])]))
+        let json = try await h.runOK("update_text", args: [
+            "clipIds": ["title"],
+            "content": "goodbye",
+        ]) as? [String: Any]
+        let notes = (json?["notes"] as? [String]) ?? []
+        #expect(notes.contains { $0.contains("not promoted to glossary: no caption group") })
+    }
+
+    @Test func updateTextNotesReasonForScatteredCaptionEdit() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("reason-\(UUID().uuidString).palmier", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        var cap = textClip("cap", start: 0, duration: 60, content: "我们住的酒店是")
+        cap.captionGroupId = "g1"
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [cap])]))
+        h.editor.projectURL = dir
+        let json = try await h.runOK("update_text", args: [
+            "entries": [["clipId": "cap", "content": "我们的酒店"]],
+        ]) as? [String: Any]
+        #expect(json?["promoted"] == nil)
+        let notes = (json?["notes"] as? [String]) ?? []
+        #expect(notes.contains { $0.contains("not promoted to glossary: scattered edits") })
+    }
 }
