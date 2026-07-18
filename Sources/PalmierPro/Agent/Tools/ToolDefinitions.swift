@@ -994,8 +994,8 @@ enum ToolDefinitions {
             inputSchema: objectSchema(
                 properties: [
                     "mediaRef": ["type": "string", "description": "ID of the source video asset to reframe."],
-                    "aspectRatio": ["type": "string", "enum": ["1:1", "4:5", "5:4", "9:16", "16:9"], "description": "Target output aspect ratio."],
-                    "resolution": ["type": "string", "enum": ["720p", "1080p"], "description": "Output resolution tier. Defaults to 1080p."],
+                    "aspectRatio": ["type": "string", "description": "Target output aspect ratio. Use list_models to see supported values."],
+                    "resolution": ["type": "string", "description": "Output resolution tier. Defaults to 1080p; use list_models to see supported values."],
                     "sourceClipId": ["type": "string", "description": "Optional timeline clip id referencing mediaRef. When the clip is trimmed, only its visible range is reframed."],
                     "name": ["type": "string", "description": "Optional display name for the reframed asset."],
                 ],

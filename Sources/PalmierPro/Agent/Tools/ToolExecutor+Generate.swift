@@ -37,7 +37,11 @@ extension ToolExecutor {
             throw ToolError("Cannot generate a sequence. Sequences are timelines.")
         case .video:
             let modelId = try args.string("model") ?? defaultModelId(
-                VideoModelConfig.allModels.map { (id: $0.id, paidOnly: $0.paidOnly) }, kind: "video")
+                VideoModelConfig.allModels
+                    .filter(\.appearsInGenerationPanel)
+                    .map { (id: $0.id, paidOnly: $0.paidOnly) },
+                kind: "video"
+            )
             guard let model = VideoModelConfig.allModels.first(where: { $0.id == modelId }) else {
                 throw ToolError("Unknown model '\(modelId)'. Available: \(VideoModelConfig.allModels.map(\.id).joined(separator: ", "))")
             }
@@ -448,6 +452,19 @@ extension ToolExecutor {
         let availability = EditSubmitter.reframeAvailability(for: source, trimmedSource: trimmed)
         guard availability.isAvailable else {
             throw ToolError(availability.reason ?? "Video cannot be reframed.")
+        }
+        let duration = EditSubmitter.effectiveDuration(for: source, trimmedSource: trimmed)
+        let cost = CostEstimator.videoCost(
+            model: model,
+            durationSeconds: duration,
+            resolution: resolution,
+            generateAudio: false
+        )
+        if let cost, let budget = AccountService.shared.budgetCredits {
+            let remaining = max(0, budget - AccountService.shared.spentCredits)
+            if cost > remaining {
+                throw ToolError("\(cost) credits needed. Only \(remaining.formatted()) remaining.")
+            }
         }
         guard let placeholderId = EditSubmitter.submitReframe(
             asset: source,
