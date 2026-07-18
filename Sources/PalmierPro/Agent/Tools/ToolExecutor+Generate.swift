@@ -45,8 +45,11 @@ extension ToolExecutor {
             guard let model = VideoModelConfig.allModels.first(where: { $0.id == modelId }) else {
                 throw ToolError("Unknown model '\(modelId)'. Available: \(VideoModelConfig.allModels.map(\.id).joined(separator: ", "))")
             }
-            if model.operation == .reframe {
-                throw ToolError("Use reframe_video for model '\(model.id)'.")
+            if !model.appearsInGenerationPanel {
+                let guidance = model.operation == .reframe
+                    ? "Use reframe_video instead."
+                    : "This model operation is not supported by generate_video."
+                throw ToolError("Model '\(model.id)' cannot be used here. \(guidance)")
             }
             try requirePlan(for: model.id, paidOnly: model.paidOnly)
             return model.requiresSourceVideo
