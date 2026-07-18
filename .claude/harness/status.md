@@ -26,8 +26,8 @@ Phase 2 complete. Ready for Evaluator.
 ## Verification (this branch)
 
 - `swift build` — clean.
-- `swift test` (full) — 1205/1205 pass.
-- New: CaptionResyncRetimeTests (7), granularity render/parse tests (11), OnsetRefiner cap (1), off-by-default lock-in (7).
+- `swift test` (full) — 1206/1206 pass.
+- New: CaptionResyncRetimeTests (7), granularity render/parse tests (11), OnsetRefiner cap (1), off-by-default lock-in (7), retiming idempotency (1).
 
 ---
 

@@ -433,6 +433,26 @@ private func timeline(_ tracks: [Track]) -> Timeline {
         #expect(cap?.startFrame == 484)
         #expect(cap?.durationFrames == 571 - 484)
     }
+
+    // Retiming must converge: a second identical resync on the already-retimed timeline does nothing.
+    // Guards the `start != clip.startFrame` churn threshold in retimedBounds against regression.
+    @Test func retimingIsIdempotent() async {
+        let caption = captionClip(id: "cap", start: 529, duration: 42, text: "我 hello", generatedText: "我 hello")
+        let h = ToolHarness(timeline: timeline([Fixtures.videoTrack(clips: [caption])]))
+        let src = FakeWordSource(words: [word("我", 484, 550), word("hello", 550, 571)])
+        h.editor.captionWordSourceProvider = { _ in src }
+
+        _ = await h.runRaw("resync_captions", args: ["captionGroupId": "g1"])
+        let retimed = h.editor.timeline.tracks[0].clips.first { $0.id == "cap" }
+        #expect(retimed?.startFrame == 484 && retimed?.durationFrames == 571 - 484)
+
+        let plan2 = CaptionResyncEngine.plan(
+            timeline: h.editor.timeline, triggerSpans: [484..<571], trigger: "resync_captions", fps: 30,
+            policy: .preserve, wordSource: src, chunk: singleChunk
+        )
+        #expect(!plan2.hasWork)
+        #expect(plan2.report.retimed.isEmpty)
+    }
 }
 
 // MARK: - Span diff heuristic
