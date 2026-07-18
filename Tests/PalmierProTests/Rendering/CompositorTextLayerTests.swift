@@ -55,4 +55,39 @@ struct CompositorTextLayerTests {
         #expect(whiteInBand(f) == 0, "text behind an opaque video must be hidden: \(whiteInBand(f))")
     }
 
+    @Test func footageFillStencilsVideoThroughGlyphs() async throws {
+        var text = textClip("HELLO")
+        text.textFillMode = .footage
+        var style = text.textStyle ?? TextStyle()
+        style.fontScale = 4
+        style.isBold = true
+        text.textStyle = style
+        text.transform = Transform(topLeft: (0.05, 0.25), width: 0.9, height: 0.5)
+
+        let tl = CompositorRenderTests.timelineWith(
+            Fixtures.videoTrack(clips: [text]),
+            Fixtures.videoTrack(clips: [CompositorFixtures.patternClip(id: "bg")])
+        )
+        let f = try await CompositorRenderTests.render(tl, frame: 15, renderSize: Self.size)
+
+        // Corners sit outside letter strokes → transparent stencil → black clear color.
+        #expect(CompositorFixtures.isBlack(f.tl), "outside glyphs should be black: \(f.tl)")
+        #expect(CompositorFixtures.isBlack(f.tr), "outside glyphs should be black: \(f.tr)")
+        #expect(CompositorFixtures.isBlack(f.bl), "outside glyphs should be black: \(f.bl)")
+        #expect(CompositorFixtures.isBlack(f.br), "outside glyphs should be black: \(f.br)")
+
+        // Inside the text band, stencil reveals pattern quadrants (BR is white in the fixture).
+        var patternPixels = 0
+        for y in 60..<120 {
+            for x in 20..<300 {
+                let p = f.at(x, y)
+                if CompositorFixtures.isRed(p) || CompositorFixtures.isGreen(p)
+                    || CompositorFixtures.isBlue(p) || CompositorFixtures.isWhite(p) {
+                    patternPixels += 1
+                }
+            }
+        }
+        #expect(patternPixels > 80, "footage should show through glyphs: \(patternPixels)")
+    }
+
 }

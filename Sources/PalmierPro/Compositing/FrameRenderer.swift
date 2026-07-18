@@ -43,6 +43,18 @@ enum FrameRenderer {
         var accum = background
         for layer in layers {
             if gateByClipRange, !layer.clip.contains(timelineFrame: frame) { continue }
+
+            if case .text = layer.source, layer.clip.textFillMode == .footage {
+                if let matte = textStencilMatte(layer, frame: frame, renderSize: renderSize) {
+                    let black = CIImage(color: .black).cropped(to: accum.extent)
+                    accum = accum.applyingFilter("CIBlendWithMask", parameters: [
+                        kCIInputBackgroundImageKey: black,
+                        kCIInputMaskImageKey: matte,
+                    ]).cropped(to: accum.extent)
+                }
+                continue
+            }
+
             let mode = layer.clip.blendMode ?? .normal
             // Source-over bakes opacity into alpha; blend modes apply it as a fade of
             // the blend RESULT (Photoshop/Premiere semantics), so don't bake it there.
@@ -69,6 +81,33 @@ enum FrameRenderer {
             }
         }
         return accum
+    }
+
+    private static func textStencilMatte(
+        _ layer: LayerPlan,
+        frame: Int,
+        renderSize: CGSize
+    ) -> CIImage? {
+        var clip = layer.clip
+        var style = clip.textStyle ?? TextStyle()
+        style.color = .init(r: 1, g: 1, b: 1, a: 1)
+        style.shadow.enabled = false
+        style.background.enabled = false
+        clip.textStyle = style
+
+        let alpha = min(1.0, max(0.0, clip.opacityAt(frame: frame)))
+        guard alpha > 0,
+              var image = TextFrameRenderer.image(clip: clip, frame: frame, renderSize: renderSize)
+        else { return nil }
+        if alpha < 1 {
+            image = image.applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": CIVector(x: alpha, y: 0, z: 0, w: 0),
+                "inputGVector": CIVector(x: 0, y: alpha, z: 0, w: 0),
+                "inputBVector": CIVector(x: 0, y: 0, z: alpha, w: 0),
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: alpha),
+            ])
+        }
+        return image
     }
 
     /// Children composite at the child canvas; the nest clip's pipeline runs on the result.
