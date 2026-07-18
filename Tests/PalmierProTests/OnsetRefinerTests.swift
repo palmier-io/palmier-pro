@@ -86,4 +86,45 @@ struct OnsetRefinerTests {
 
         #expect(refined[1].start == 1.25, "a word without a real pause before it is not refined")
     }
+
+    @Test func doesNotRollOntoMusicFadeIn() {
+        // 2s linear fade-in of a 440Hz tone from silence, then 1s of steady tone. Its 15%-of-range
+        // crossing sits ~1.3s before any voice — a slow swell, not a speech attack — so the word start
+        // must stay where ASR put it rather than snapping back onto the music.
+        var samples: [Float] = []
+        let fadeCount = Int(2.0 * Double(sampleRate))
+        for n in 0..<fadeCount {
+            let env = Float(n) / Float(fadeCount)
+            samples.append(env * 0.3 * sinf(2 * .pi * 440 * Float(n) / Float(sampleRate)))
+        }
+        for n in 0..<sampleRate {
+            samples.append(0.3 * sinf(2 * .pi * 440 * Float(n) / Float(sampleRate)))
+        }
+        let word = TranscriptionWord(text: "hi", start: 2.5, end: 2.9, aligned: true)
+        let refined = refine([word], samples)[0]
+
+        #expect(refined.start == 2.5, "a slow fade-in has no speech attack — start is left untouched")
+    }
+
+    @Test func doesNotRollOntoIsolatedClick() {
+        // A single 10ms click in an otherwise silent lead-in. It spikes and immediately decays back to
+        // the floor — not a syllable — so the word start must not snap onto it.
+        var samples = [Float](repeating: 0, count: sampleRate)  // 1s silence
+        let clickStart = Int(0.5 * Double(sampleRate))
+        for n in 0..<Int(0.01 * Double(sampleRate)) { samples[clickStart + n] = 0.5 }
+        samples.append(contentsOf: [Float](repeating: 0, count: Int(0.5 * Double(sampleRate))))  // silence to 1.5s
+        let word = TranscriptionWord(text: "hi", start: 1.2, end: 1.5, aligned: true)
+        let refined = refine([word], samples)[0]
+
+        #expect(refined.start == 1.2, "an isolated click is not a speech onset — start is unchanged")
+    }
+
+    @Test func stillRefinesGenuineAttackAfterTheseGuards() {
+        // Regression guard: the fade-in/click discrimination must not suppress a real sharp onset.
+        let samples = silenceThenTone(toneSeconds: 0.6)
+        let word = TranscriptionWord(text: "hi", start: 1.4, end: 1.9, aligned: true)
+        let refined = refine([word], samples)[0]
+
+        #expect(refined.start! <= 1.0, "a sharp tone-burst onset still rolls back to the attack")
+    }
 }
