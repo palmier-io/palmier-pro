@@ -203,14 +203,19 @@ struct AIEditTab: View {
         let trim = trimmedSourceIfEnabled()
         let availability = EditSubmitter.reframeAvailability(for: asset, trimmedSource: trim)
         let paidBlocked = model?.paidOnly == true && !account.isPaid
+        let cost = reframeCost(model: model)
+        let creditError = reframeCreditError(cost: cost)
         let selectionsValid = model?.aspectRatios.contains(reframeAspectRatio) == true
             && model?.resolutions?.contains(reframeResolution) == true
         let isEnabled = availability.isAvailable
             && !paidBlocked
+            && creditError == nil
             && aiDisabledReason == nil
             && selectionsValid
         let disabledReason = aiDisabledReason
-            ?? (paidBlocked ? "Requires a paid plan" : availability.reason)
+            ?? (paidBlocked ? "Requires a paid plan" : nil)
+            ?? creditError
+            ?? availability.reason
 
         VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
             HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
@@ -259,7 +264,7 @@ struct AIEditTab: View {
 
                 Spacer(minLength: AppTheme.Spacing.xs)
 
-                Button(reframeButtonTitle(model: model)) {
+                Button(reframeButtonTitle(cost: cost)) {
                     runReframe()
                 }
                 .buttonStyle(.capsule(.secondary))
@@ -272,15 +277,25 @@ struct AIEditTab: View {
         .help(disabledReason ?? "")
     }
 
-    private func reframeButtonTitle(model: VideoModelConfig?) -> String {
-        guard let model else { return "Reframe" }
+    private func reframeCost(model: VideoModelConfig?) -> Int? {
+        guard let model else { return nil }
         let seconds = max(1, Int((effectiveDurationForAvailability ?? asset.duration).rounded()))
-        let cost = CostEstimator.videoCost(
+        return CostEstimator.videoCost(
             model: model,
             durationSeconds: seconds,
             resolution: reframeResolution,
             generateAudio: false
         )
+    }
+
+    private func reframeCreditError(cost: Int?) -> String? {
+        guard let cost, let budget = account.budgetCredits else { return nil }
+        let remaining = max(0, budget - account.spentCredits)
+        guard cost > remaining else { return nil }
+        return "\(cost) credits needed. Only \(remaining.formatted()) remaining."
+    }
+
+    private func reframeButtonTitle(cost: Int?) -> String {
         return "Reframe · \(CostEstimator.format(cost))"
     }
 
@@ -463,7 +478,8 @@ struct AIEditTab: View {
             presentVideoAudio(kind: .sfx)
         case .rerun:
             let modelId = asset.generationInput?.model ?? ""
-            if UpscaleModelConfig.allIds.contains(modelId) {
+            let reframeModel = VideoModelConfig.allModels.first(where: { $0.id == modelId })
+            if UpscaleModelConfig.allIds.contains(modelId) || reframeModel?.operation == .reframe {
                 do {
                     markReplacementPendingIfNeeded()
                     _ = try EditSubmitter.rerun(

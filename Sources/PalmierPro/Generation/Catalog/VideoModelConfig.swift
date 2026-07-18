@@ -36,7 +36,9 @@ struct VideoModelConfig: Identifiable, Sendable {
         caps.operation ?? (requiresSourceVideo ? .edit : .generate)
     }
     var maxSourceDurationSeconds: Double? { caps.maxSourceDurationSeconds }
-    var appearsInGenerationPanel: Bool { operation != .reframe }
+    var appearsInGenerationPanel: Bool {
+        operation == .generate || operation == .edit
+    }
 
     var supportsReferences: Bool {
         maxReferenceImages > 0 || maxReferenceVideos > 0 || maxReferenceAudios > 0

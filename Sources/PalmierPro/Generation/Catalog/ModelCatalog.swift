@@ -241,6 +241,12 @@ enum VideoOperation: String, Decodable, Sendable {
     case generate
     case edit
     case reframe
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        self = VideoOperation(rawValue: value) ?? .unknown
+    }
 }
 
 struct ImageCaps: Decodable, Sendable {
