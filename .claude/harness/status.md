@@ -1,6 +1,34 @@
-# fix/caption-anim-onset — Status
+# feature/caption-lint — Status
 
 Phase 2 complete. Ready for Evaluator.
+
+## caption_lint — transcript-correction lint stage
+
+| Area       | Change                                                                                                            |
+| ---------- | ----------------------------------------------------------------------------------------------------------------- |
+| Core       | CaptionLinter (pure): flag/context/partition + JSON parse; LintExclusions masks glossary + filler terms           |
+| Completer  | LintCompleter protocol; AgentLintCompleter drains AgentClient.stream (tools:[]); reachable() mirrors selectClient |
+| Tool       | ToolExecutor+CaptionLint builds windows from caption text clips w/ neighbour context; paged (200/call)            |
+| Degrade    | flags → context (never errors) when LLM unreachable (nil completer) or the call throws                            |
+| AutoApply  | opt-in autoApplyThreshold routes ≥threshold via update_text(origin:"user") → glossary promotion synergy           |
+| Exclusions | glossary variants/canonicals + caption-style removeAlways/caseByCase/neverRemove/protectedPhrases masked          |
+| Registered | ToolName.captionLint + ToolExecutor.run + ToolDefinitions schema (flag-only default, both modes documented)       |
+
+## LLM call path found
+
+- App's only primitive is streaming `AgentClient.stream(system:tools:messages:)` (AgentClientTypes.swift). No one-shot API.
+- Model selection is private on the per-editor `AgentService`; MCP ToolExecutor path has no AgentService.
+- Auth: personal Anthropic key (AnthropicKeychain) OR signed-in account (AccountService.shared). This project's user is NOT signed in (canGenerate:false) → CaptionLintClient.reachable() returns nil → context mode is the primary path.
+- Completer stubbed behind LintCompleter protocol; no network in tests.
+
+## Verification
+
+- `swift build` — clean.
+- `swift test` (full) — 1220/1220 pass. New: CaptionLintTests (14) — 6 core (incl. 开视频→拍视频 flag, filler+glossary exclusion, context windows, partition gating, absent-original drop, registration) + 8 tool (flag-only, autoApply ≥threshold rewrites clip, below-threshold, built-in filler excluded, context no-call, unreachable degrade, failure degrade, no-captions note).
+
+---
+
+# fix/caption-anim-onset — Status
 
 ## FIX-A — animation granularity (per-char now opt-in) + off by default
 
