@@ -41,9 +41,14 @@ one-line doc comment at the request site; no cache-key change (nothing bias-depe
   set_caption_style write+read, validation failures, segmentation default+explicit-wins). CaptionLintTests +5
   (dismiss persist+append, dismiss requires original, dismissed term suppressed next run, caption_style lists
   dismissals, short-dismissal warning).
-- Pre-existing flakes seen during runs, NOT from this branch: (1) a stale `~/Documents/Palmier Pro/glossary.json`
-  left by the glossary suite pollutes caption-lint exclusions when present — clear it before running; (2)
-  FrameSamplerTests.detectsScenesAndHonorsCoverageFloor flakes under parallel load (passes alone, not in diff).
+- Hermetic test seam: CaptionStyleStore.@TaskLocal globalDirectoryOverride/libraryDirectoryOverride
+  (CaptionStyleStore.swift:25-26) + HermeticCaptionStyle TestScoping trait on the CaptionStyle/CaptionLintTool
+  suites pin all caption-style/lint tests off the real ~/.config/caption-style and ~/Documents/Palmier Pro.
+  Writer tests bind a unique temp library each (withFreshLibrary). Verified: both real paths absent after a
+  full run. Dropped the test-only libraryURL: param from dismissLintTerm (store seam replaces it).
+- Pre-existing flake NOT from this branch: FrameSamplerTests.detectsScenesAndHonorsCoverageFloor flakes under
+  parallel load (passes alone, not in diff). The earlier glossary-file caption pollution is resolved for
+  caption-style by this seam; the glossary store's own seam is a sibling builder's task.
 
 ---
 
