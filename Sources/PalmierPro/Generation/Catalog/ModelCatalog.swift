@@ -218,6 +218,7 @@ struct CatalogEntry: Decodable, Sendable {
 }
 
 struct VideoCaps: Decodable, Sendable {
+    let operation: VideoOperation?
     let durations: [Int]
     let resolutions: [String]?
     let aspectRatios: [String]
@@ -233,6 +234,13 @@ struct VideoCaps: Decodable, Sendable {
     let referenceTagNoun: String
     let requiresSourceVideo: Bool
     let requiresReferenceImage: Bool
+    let maxSourceDurationSeconds: Double?
+}
+
+enum VideoOperation: String, Decodable, Sendable {
+    case generate
+    case edit
+    case reframe
 }
 
 struct ImageCaps: Decodable, Sendable {

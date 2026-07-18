@@ -12,6 +12,8 @@ struct AIEditTab: View {
     @State private var placeAudioOnTimeline: Bool = true
     @State private var aiEnhanceExpanded: Bool = true
     @State private var aiAudioExpanded: Bool = true
+    @State private var reframeAspectRatio = "9:16"
+    @State private var reframeResolution = "1080p"
 
     init(asset: MediaAsset, clipId: String? = nil) {
         self.asset = asset
@@ -42,6 +44,9 @@ struct AIEditTab: View {
                             title: "Edit",
                             description: "Transform with a prompt or motion reference"
                         )
+                        if asset.type == .video {
+                            reframeActionRow
+                        }
                         actionRow(
                             action: .rerun,
                             icon: "arrow.clockwise",
@@ -188,6 +193,112 @@ struct AIEditTab: View {
 
     private var effectiveDurationForAvailability: Double? {
         trimmedSourceIfEnabled()?.durationSeconds
+    }
+
+    // MARK: - Reframe
+
+    @ViewBuilder
+    private var reframeActionRow: some View {
+        let model = VideoModelConfig.reframe
+        let trim = trimmedSourceIfEnabled()
+        let availability = EditSubmitter.reframeAvailability(for: asset, trimmedSource: trim)
+        let paidBlocked = model?.paidOnly == true && !account.isPaid
+        let selectionsValid = model?.aspectRatios.contains(reframeAspectRatio) == true
+            && model?.resolutions?.contains(reframeResolution) == true
+        let isEnabled = availability.isAvailable
+            && !paidBlocked
+            && aiDisabledReason == nil
+            && selectionsValid
+        let disabledReason = aiDisabledReason
+            ?? (paidBlocked ? "Requires a paid plan" : availability.reason)
+
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.sm) {
+                Image(systemName: "aspectratio")
+                    .font(.system(size: AppTheme.FontSize.md))
+                    .foregroundStyle(isEnabled ? AppTheme.Text.secondaryColor : AppTheme.Text.mutedColor)
+                    .frame(width: AppTheme.Spacing.lgXl, alignment: .center)
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.xxs) {
+                    Text("Reframe")
+                        .font(.system(size: AppTheme.FontSize.sm, weight: .medium))
+                        .foregroundStyle(isEnabled ? AppTheme.Text.primaryColor : AppTheme.Text.mutedColor)
+                    Text(disabledReason ?? "Change aspect ratio without cropping")
+                        .font(.system(size: AppTheme.FontSize.xs))
+                        .foregroundStyle(disabledReason != nil
+                            ? AppTheme.Text.secondaryColor
+                            : AppTheme.Text.tertiaryColor)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: AppTheme.Spacing.xs)
+            }
+
+            HStack(spacing: AppTheme.Spacing.sm) {
+                Menu {
+                    if let model {
+                        Picker("Aspect Ratio", selection: $reframeAspectRatio) {
+                            ForEach(model.aspectRatios, id: \.self) { ratio in
+                                Text(ratio).tag(ratio)
+                            }
+                        }
+                        if let resolutions = model.resolutions {
+                            Picker("Resolution", selection: $reframeResolution) {
+                                ForEach(resolutions, id: \.self) { resolution in
+                                    Text(resolution).tag(resolution)
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Text("\(reframeAspectRatio) · \(reframeResolution)")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .controlSize(.small)
+                .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
+                .disabled(model == nil)
+
+                Spacer(minLength: AppTheme.Spacing.xs)
+
+                Button(reframeButtonTitle(model: model)) {
+                    runReframe()
+                }
+                .buttonStyle(.capsule(.secondary))
+                .controlSize(.small)
+                .disabled(!isEnabled)
+            }
+            .padding(.leading, AppTheme.Spacing.lgXl + AppTheme.Spacing.sm)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .help(disabledReason ?? "")
+    }
+
+    private func reframeButtonTitle(model: VideoModelConfig?) -> String {
+        guard let model else { return "Reframe" }
+        let seconds = max(1, Int((effectiveDurationForAvailability ?? asset.duration).rounded()))
+        let cost = CostEstimator.videoCost(
+            model: model,
+            durationSeconds: seconds,
+            resolution: reframeResolution,
+            generateAudio: false
+        )
+        return "Reframe · \(CostEstimator.format(cost))"
+    }
+
+    private func runReframe() {
+        markReplacementPendingIfNeeded()
+        let trim = trimmedSourceIfEnabled()
+        let placeholderId = EditSubmitter.submitReframe(
+            asset: asset,
+            aspectRatio: reframeAspectRatio,
+            resolution: reframeResolution,
+            editor: editor,
+            trimmedSource: trim,
+            onComplete: replacementCompletion(resetTrim: trim != nil),
+            onFailure: replacementFailure()
+        )
+        if placeholderId == nil {
+            unmarkReplacementPendingIfNeeded()
+        }
     }
 
     // MARK: - Action row

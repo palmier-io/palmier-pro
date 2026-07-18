@@ -32,6 +32,11 @@ struct VideoModelConfig: Identifiable, Sendable {
     var referenceTagNoun: String { caps.referenceTagNoun }
     var requiresSourceVideo: Bool { caps.requiresSourceVideo }
     var requiresReferenceImage: Bool { caps.requiresReferenceImage }
+    var operation: VideoOperation {
+        caps.operation ?? (requiresSourceVideo ? .edit : .generate)
+    }
+    var maxSourceDurationSeconds: Double? { caps.maxSourceDurationSeconds }
+    var appearsInGenerationPanel: Bool { operation != .reframe }
 
     var supportsReferences: Bool {
         maxReferenceImages > 0 || maxReferenceVideos > 0 || maxReferenceAudios > 0

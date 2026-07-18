@@ -5,7 +5,9 @@ extension EditSubmitter {
         let modelId: String
         switch asset.type {
         case .video:
-            guard let model = VideoModelConfig.allModels.first(where: { $0.requiresSourceVideo }) else {
+            guard let model = VideoModelConfig.allModels.first(where: {
+                $0.requiresSourceVideo && $0.operation == .edit
+            }) else {
                 return nil
             }
             modelId = model.id

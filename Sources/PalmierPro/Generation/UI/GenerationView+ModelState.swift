@@ -3,7 +3,9 @@ import SwiftUI
 // Model catalog selection and per-model capability state.
 extension GenerationView {
 
-    var videoModels: [VideoModelConfig] { ModelCatalog.shared.video }
+    var videoModels: [VideoModelConfig] {
+        ModelCatalog.shared.video.filter(\.appearsInGenerationPanel)
+    }
     var imageModels: [ImageModelConfig] { ModelCatalog.shared.image }
     var audioModels: [AudioModelConfig] { ModelCatalog.shared.audio }
 

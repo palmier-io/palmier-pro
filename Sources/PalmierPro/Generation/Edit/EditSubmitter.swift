@@ -13,7 +13,7 @@ enum EditSubmitter {
     }
 
     static func prefixedName(_ prefix: String, for asset: MediaAsset) -> String {
-        let prefixes = ["Upscaled ", "Edited ", "Rerun "]
+        let prefixes = ["Upscaled ", "Edited ", "Reframed ", "Rerun "]
         let base = prefixes.first(where: asset.name.hasPrefix)
             .map { String(asset.name.dropFirst($0.count)) }
             ?? asset.name
