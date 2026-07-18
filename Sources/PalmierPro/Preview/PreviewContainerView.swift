@@ -58,8 +58,7 @@ struct PreviewContainerView: View {
                                     viewSize: CGSize(width: scaledWidth, height: scaledHeight),
                                     editor: editor
                                   ) else { return }
-                            guard !editor.selectedClipIds.contains(id) else { return }
-                            editor.selectedClipIds = editor.expandToLinkGroup([id])
+                            editor.selectPreviewClip(id)
                         }
                 )
                 .overlay(
