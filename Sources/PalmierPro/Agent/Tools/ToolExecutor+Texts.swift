@@ -651,9 +651,12 @@ extension ToolExecutor {
             }
         }
 
-        // §5.2: update every other caption that still shows a promoted variant.
+        // §5.2: update every other caption that still shows a promoted variant, and surface the resync
+        // report (incl. skippedNoTranscript) so a cold-cache skip is visible, not a silent no-op.
+        var captionResync: [String: Any]?
         if !promotedStrings.isEmpty {
             editor.resyncCaptionsForGlossaryTerm(strings: promotedStrings, trigger: "glossary_promotion")
+            if let report = editor.takeResyncReport() { captionResync = report.agentPayload }
         }
 
         if clearedTimings > 0 {
@@ -662,6 +665,7 @@ extension ToolExecutor {
 
         var extra: [String: Any] = [:]
         if !promoted.isEmpty { extra["promoted"] = promoted }
+        if let captionResync { extra["captionResync"] = captionResync }
         return mutationResult(editor, since: snapshot, touched: clipIds, extra: extra, notes: notes)
     }
 }

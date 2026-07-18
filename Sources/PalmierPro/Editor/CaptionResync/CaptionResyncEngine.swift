@@ -63,7 +63,7 @@ struct CaptionResyncReport: Equatable, Sendable {
     var retimed: [Retimed] = []
     var skippedRefs: [String] = []
 
-    var isEmpty: Bool { updated.isEmpty && removed.isEmpty && created.isEmpty && conflicts.isEmpty && retimed.isEmpty }
+    var isEmpty: Bool { updated.isEmpty && removed.isEmpty && created.isEmpty && conflicts.isEmpty && retimed.isEmpty && skippedRefs.isEmpty }
 }
 
 @MainActor
@@ -110,7 +110,11 @@ enum CaptionResyncEngine {
 
             var removedIds = Set<String>()
             for clip in captionClips {
-                resolveClip(clip, words: words, policy: policy,
+                // A ref with source clips overlapping this caption but no cached transcript means the word
+                // set for this clip is absent or partial — not a genuine speech cut. Gate destructive
+                // actions on it so a cold cache can't delete or shrink a good caption.
+                let uncached = !wordSource.uncachedRefs(in: clip.startFrame..<clip.endFrame).isEmpty
+                resolveClip(clip, words: words, policy: policy, uncached: uncached,
                             bounds: neighborBounds(for: clip, in: timeline), into: &plan, removed: &removedIds)
             }
 
@@ -125,13 +129,24 @@ enum CaptionResyncEngine {
     // MARK: - Per-clip REPLACE / REMOVE / conflict
 
     private static func resolveClip(
-        _ clip: Clip, words: [WordTiming], policy: CaptionConflictPolicy,
+        _ clip: Clip, words: [WordTiming], policy: CaptionConflictPolicy, uncached: Bool,
         bounds: (lower: Int, upper: Int), into plan: inout CaptionResyncPlan, removed: inout Set<String>
     ) {
         let clipWords = words.filter { $0.startFrame < clip.endFrame && $0.endFrame > clip.startFrame }
         let current = clip.textContent ?? ""
         // Clean only when provably transcript-generated and untouched; nil generatedText counts as dirty.
         let clean = clip.generatedText != nil && clip.textContent == clip.generatedText
+
+        // Cold cache: a clean caption is rebuilt from cached words, so an uncached overlapping ref would
+        // either DELETE it (empty span read as a speech cut) or shrink it (partial words). Preserve it and
+        // log why instead — the correction survives a reopen/eviction/unmaterialised-cloud read until the
+        // transcript is available again. Dirty clips fall through to policy; cached clips are unaffected.
+        if clean, uncached {
+            plan.report.conflicts.append(.init(
+                clipId: clip.id, manualText: current, newTranscript: current,
+                reason: "transcript not cached — resync skipped; re-open the transcript or run resync_captions after transcription"))
+            return
+        }
 
         // Empty span: auto-remove only clean generated captions; custom/edited ones follow policy.
         guard !clipWords.isEmpty else {

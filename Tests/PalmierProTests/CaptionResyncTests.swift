@@ -9,7 +9,7 @@ import Testing
 
 /// Read-only word source. Conforming to CaptionWordSource is the only capability it has — there is no
 /// write API, so an engine holding one cannot touch asset transcripts (L1) or the cache (L2).
-private final class FakeWordSource: CaptionWordSource {
+final class FakeWordSource: CaptionWordSource {
     var words: [WordTiming]
     var uncached: [String]
     private(set) var queriedRanges: [Range<Int>] = []
@@ -701,5 +701,39 @@ private func timeline(_ tracks: [Track]) -> Timeline {
             timeline: tl, triggerSpans: [0..<30], trigger: "glossary_remove", fps: 30,
             policy: .preserve, wordSource: provider(GlossaryCorrector(terms: []), source: source()), chunk: singleChunk)
         #expect(plan.replacements.first { $0.clipId == "cap" }?.text == "open eye")
+    }
+}
+
+// A clean caption over a source whose transcript is not cached (cold cache after reopen, eviction,
+// unmaterialised cloud) must be PRESERVED, not deleted — the empty word span is a missing read, not a
+// speech cut. A genuinely-cached empty span still removes the caption (no over-preservation).
+@MainActor
+@Suite struct CaptionResyncColdCacheTests {
+    @Test func uncachedRefPreservesCleanCaptionInsteadOfDeleting() {
+        let caption = captionClip(id: "cap", start: 0, duration: 90, text: "开视频", generatedText: "开视频")
+        let tl = timeline([Fixtures.videoTrack(clips: [caption])])
+        let src = FakeWordSource(words: [], uncached: ["m"])  // audio ref has no cached transcript
+
+        let plan = CaptionResyncEngine.plan(
+            timeline: tl, triggerSpans: [0..<90], trigger: "glossary_promotion", fps: 30,
+            policy: .preserve, wordSource: src, chunk: singleChunk)
+
+        #expect(plan.removals.isEmpty, "a clean caption is not deleted when its transcript is uncached")
+        #expect(!plan.report.removed.contains { $0.clipId == "cap" })
+        #expect(plan.report.conflicts.contains { $0.clipId == "cap" && $0.reason.contains("transcript not cached") })
+        #expect(plan.report.skippedRefs == ["m"])
+    }
+
+    @Test func cachedEmptySpanStillRemovesCleanCaption() {
+        let caption = captionClip(id: "cap", start: 0, duration: 90, text: "开视频", generatedText: "开视频")
+        let tl = timeline([Fixtures.videoTrack(clips: [caption])])
+        let src = FakeWordSource(words: [], uncached: [])  // transcript cached; span genuinely empty (speech cut)
+
+        let plan = CaptionResyncEngine.plan(
+            timeline: tl, triggerSpans: [0..<90], trigger: "Trim Clip", fps: 30,
+            policy: .preserve, wordSource: src, chunk: singleChunk)
+
+        #expect(plan.removals == ["cap"], "a genuinely-empty cached span still removes the clean caption")
+        #expect(plan.report.conflicts.isEmpty)
     }
 }
