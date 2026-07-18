@@ -48,9 +48,7 @@ struct TextTab: View {
             Menu {
                 ForEach(TextFillMode.allCases, id: \.self) { mode in
                     Button(mode.displayName) {
-                        editor.commitClipProperties(clipIds: clipIds) {
-                            $0.setTextFillMode(mode == .footage ? .footage : nil)
-                        }
+                        editor.commitClipProperties(clipIds: clipIds) { $0.setTextFillMode(mode) }
                     }
                 }
             } label: {

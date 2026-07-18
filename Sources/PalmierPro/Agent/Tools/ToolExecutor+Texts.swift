@@ -515,10 +515,9 @@ extension ToolExecutor {
         let animation = try parseTextAnimation(preset: args.string("animation"), highlightColor: args.string("highlightColor"), path: "update_text")
         let shouldSetAnimation = args.string("animation") != nil
         let highlightOnly = shouldSetAnimation ? nil : try parseColorHex(args.string("highlightColor"), path: "update_text")
-        let shouldSetFillMode = args.string("fillMode") != nil
         let fillMode = try parseTextFillMode(args.string("fillMode"), path: "update_text")
 
-        guard hasContent || textStylePatch?.hasAnyField == true || transform != nil || shouldSetAnimation || highlightOnly != nil || shouldSetFillMode else {
+        guard hasContent || textStylePatch?.hasAnyField == true || transform != nil || shouldSetAnimation || highlightOnly != nil || fillMode != nil else {
             throw ToolError("update_text needs at least one text property to apply")
         }
 
@@ -528,7 +527,7 @@ extension ToolExecutor {
             guard clip.mediaType == .text else {
                 throw ToolError("update_text only applies to text clips: \(id) is \(clip.mediaType.rawValue)")
             }
-            if shouldSetFillMode, fillMode == .footage, clip.captionGroupId != nil {
+            if fillMode == .footage, clip.captionGroupId != nil {
                 throw ToolError("fillMode footage is only available for non-caption text; use add_texts for timed footage-fill text")
             }
         }
@@ -592,8 +591,8 @@ extension ToolExecutor {
                     a.highlight = hl
                     clip.textAnimation = a
                 }
-                if shouldSetFillMode {
-                    clip.setTextFillMode(fillMode == .footage ? .footage : nil)
+                if let fillMode {
+                    clip.setTextFillMode(fillMode)
                 } else {
                     clip.stripFootageIncompatibleTextStyle()
                 }
