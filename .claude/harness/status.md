@@ -1,3 +1,24 @@
+# fix/resync-materialisation — Status
+
+Phase 2 complete. Ready for Evaluator. Branched off fork main 0e3133f.
+
+## Audit fixes A1–A4
+
+| ID  | Change                                                                                                                                                                                                | Files                            |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| A1  | Resync word source materialises the project glossary (corrector loaded once per provider, applied per cached read) so corrected captions are never reverted to raw ASR; fixes §5.2 glossary-add no-op | TimelineTranscriptProvider.swift |
+| A2  | Full-file cloud transcripts publish a provider-neutral "latest" alias; cachedOnDisk/hasCachedOnDisk fall back to it after local salted/unsalted keys → cloud projects resync                          | TranscriptCache.swift            |
+| A3  | transcript() default cache key no longer salted by TranscriptionBias.fingerprint (unsalted by default); cacheTag param still opts into biased re-decode; readTags fallback + Qwen3 hotwords unchanged | TranscriptCache.swift            |
+| A4  | OnsetRefiner.risingEdge requires a speech attack: fast floor→sustained rise (~250ms, rejects fade-ins) that holds ~50ms (rejects clicks); existing guards + tone-burst tests green                    | OnsetRefiner.swift               |
+
+## Verification (this branch)
+
+- `swift build` — clean.
+- `swift test` (full) — 1257/1257 pass.
+- New tests: CaptionResyncMaterialisationTests (4: provider materialisation + a/b/c engine integration), OnsetRefiner fade-in/click/genuine-attack (3), TranscriptCache cloud-alias/windowed/fingerprint-churn (3).
+
+---
+
 # feature/caption-lint — Status
 
 Phase 2 complete. Ready for Evaluator.
