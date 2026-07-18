@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreImage
 import Foundation
 import MCP
@@ -61,6 +62,16 @@ struct CaptureFrameToolTests {
             #expect(Set(assets.compactMap { $0["name"] as? String }) == ["Final source frame", "Frame 0"])
             #expect(assets.allSatisfy { $0["type"] as? String == "image" })
             #expect(assets.allSatisfy { $0["width"] as? Int == 64 && $0["height"] as? Int == 64 })
+            #expect(assets.allSatisfy { $0["durationSeconds"] as? Double == Defaults.imageDurationSeconds })
+
+            let placement = try await client.callTool(name: "add_clips", arguments: [
+                "entries": .array([.object([
+                    "mediaRef": .string(timelineRef),
+                    "startFrame": .int(10),
+                ])]),
+            ])
+            _ = try json(text(placement.content))
+            _ = try await client.callTool(name: "undo")
 
             _ = try await client.callTool(name: "undo")
             let afterFirstUndo = try await mediaIds(client, ids: [sourceRef, timelineRef])
@@ -113,6 +124,20 @@ struct CaptureFrameToolTests {
         }
         fixture.editor.projectPackageCoordinator.cancelClosing()
         #expect(fixture.editor.mediaAssets.map(\.id) == originalIds)
+    }
+
+    @Test func sourceSecondsUseVideoTrackTimeRange() throws {
+        let timeRange = CMTimeRange(
+            start: CMTime(value: 5, timescale: 5),
+            duration: CMTime(value: 10, timescale: 5)
+        )
+        let request = try FrameCaptureRenderer.sourceFrameRequest(
+            sourceSeconds: 2,
+            timeRange: timeRange,
+            minimumFrameDuration: CMTime(value: 1, timescale: 5)
+        )
+        #expect(request.capturesLastFrame)
+        #expect(request.time == CMTime(value: 14, timescale: 5))
     }
 
     private struct Fixture {

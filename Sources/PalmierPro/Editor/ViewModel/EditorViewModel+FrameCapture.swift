@@ -123,7 +123,12 @@ extension EditorViewModel {
 
         let name = requestedName?.trimmingCharacters(in: .whitespacesAndNewlines)
         let displayName = name.flatMap { $0.isEmpty ? nil : $0 } ?? defaultName
-        let asset = MediaAsset(url: committedURL, type: .image, name: displayName)
+        let asset = MediaAsset(
+            url: committedURL,
+            type: .image,
+            name: displayName,
+            duration: Defaults.imageDurationSeconds
+        )
         asset.folderId = destinationFolderStillExists ? folderId : nil
         asset.sourceWidth = rendered.width
         asset.sourceHeight = rendered.height

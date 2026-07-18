@@ -95,16 +95,53 @@ enum FrameCaptureRenderer {
         guard let track = try await asset.loadTracks(withMediaType: .video).first else {
             throw RenderError.noVideoTrack
         }
-        let duration = try await asset.load(.duration)
-        let durationSeconds = duration.seconds
-        guard duration.isNumeric, durationSeconds.isFinite, durationSeconds > 0 else {
-            throw RenderError.invalidDuration
-        }
+        let timeRange = try await track.load(.timeRange)
         let loadedMinimum = try? await track.load(.minFrameDuration)
         try Task.checkCancellation()
         let minimumFrameDuration = loadedMinimum.flatMap { duration in
             duration.isNumeric && duration > .zero ? duration : nil
         } ?? CMTime(value: 1, timescale: 600)
+        let request = try sourceFrameRequest(
+            sourceSeconds: sourceSeconds,
+            timeRange: timeRange,
+            minimumFrameDuration: minimumFrameDuration
+        )
+
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.requestedTimeToleranceBefore = minimumFrameDuration
+        generator.requestedTimeToleranceAfter = request.capturesLastFrame ? .zero : minimumFrameDuration
+
+        let image: CGImage
+        let actualTime: CMTime
+        do {
+            let generated = try await generator.image(at: request.time)
+            image = generated.image
+            actualTime = generated.actualTime
+        } catch {
+            try Task.checkCancellation()
+            throw RenderError.renderFailed(error.localizedDescription)
+        }
+        return try stage(
+            image,
+            actualSourceSeconds: (actualTime - timeRange.start).seconds
+        )
+    }
+
+    static func sourceFrameRequest(
+        sourceSeconds: Double,
+        timeRange: CMTimeRange,
+        minimumFrameDuration: CMTime
+    ) throws -> (time: CMTime, capturesLastFrame: Bool) {
+        let duration = timeRange.duration
+        let durationSeconds = duration.seconds
+        guard timeRange.isValid,
+              timeRange.start.isNumeric,
+              duration.isNumeric,
+              durationSeconds.isFinite,
+              durationSeconds > 0 else {
+            throw RenderError.invalidDuration
+        }
         guard sourceSeconds.isFinite,
               sourceSeconds >= 0,
               sourceSeconds <= durationSeconds + mediaDurationReceiptTolerance else {
@@ -112,25 +149,9 @@ enum FrameCaptureRenderer {
         }
         let capturesLastFrame = sourceSeconds >= durationSeconds - minimumFrameDuration.seconds
         let requestedTime = capturesLastFrame
-            ? max(.zero, duration - minimumFrameDuration)
-            : CMTime(seconds: sourceSeconds, preferredTimescale: 60_000)
-
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.requestedTimeToleranceBefore = minimumFrameDuration
-        generator.requestedTimeToleranceAfter = capturesLastFrame ? .zero : minimumFrameDuration
-
-        let image: CGImage
-        let actualTime: CMTime
-        do {
-            let generated = try await generator.image(at: requestedTime)
-            image = generated.image
-            actualTime = generated.actualTime
-        } catch {
-            try Task.checkCancellation()
-            throw RenderError.renderFailed(error.localizedDescription)
-        }
-        return try stage(image, actualSourceSeconds: actualTime.seconds)
+            ? max(timeRange.start, timeRange.end - minimumFrameDuration)
+            : timeRange.start + CMTime(seconds: sourceSeconds, preferredTimescale: 60_000)
+        return (requestedTime, capturesLastFrame)
     }
 
     @concurrent
