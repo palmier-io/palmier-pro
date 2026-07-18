@@ -140,6 +140,26 @@ struct CaptureFrameToolTests {
         #expect(request.time == CMTime(value: 14, timescale: 5))
     }
 
+    @Test func sourcePreviewAndCaptureUseSameTrackRelativeTime() throws {
+        let trackStart = CMTime(value: 30, timescale: 30)
+        let previewTime = SourceMediaTimebase.absoluteTime(
+            relativeFrame: 30,
+            fps: 30,
+            trackStart: trackStart
+        )
+        let capture = try FrameCaptureRenderer.sourceFrameRequest(
+            sourceSeconds: 1,
+            timeRange: CMTimeRange(start: trackStart, duration: CMTime(value: 300, timescale: 30)),
+            minimumFrameDuration: CMTime(value: 1, timescale: 30)
+        )
+        #expect(previewTime == capture.time)
+        #expect(SourceMediaTimebase.relativeFrame(
+            absoluteTime: previewTime,
+            fps: 30,
+            trackStart: trackStart
+        ) == 30)
+    }
+
     private struct Fixture {
         let editor: EditorViewModel
         let root: URL

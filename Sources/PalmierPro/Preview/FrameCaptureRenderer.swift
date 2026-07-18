@@ -124,7 +124,10 @@ enum FrameCaptureRenderer {
         }
         return try stage(
             image,
-            actualSourceSeconds: (actualTime - timeRange.start).seconds
+            actualSourceSeconds: SourceMediaTimebase.relativeSeconds(
+                absoluteTime: actualTime,
+                trackStart: timeRange.start
+            )
         )
     }
 
@@ -150,7 +153,10 @@ enum FrameCaptureRenderer {
         let capturesLastFrame = sourceSeconds >= durationSeconds - minimumFrameDuration.seconds
         let requestedTime = capturesLastFrame
             ? max(timeRange.start, timeRange.end - minimumFrameDuration)
-            : timeRange.start + CMTime(seconds: sourceSeconds, preferredTimescale: 60_000)
+            : SourceMediaTimebase.absoluteTime(
+                relativeSeconds: sourceSeconds,
+                trackStart: timeRange.start
+            )
         return (requestedTime, capturesLastFrame)
     }
 
