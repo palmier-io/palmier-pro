@@ -45,4 +45,49 @@ struct TranscriptCacheTests {
         #expect(decoded.words.count == full.words.count)
         #expect(decoded.words[0].start == full.words[0].start)
     }
+
+    // A2: a full-file cloud transcript lives under a .cloud key the local read scheme never reaches.
+    // The provider-neutral alias makes it visible to cachedOnDisk so cloud projects can resync.
+    @Test func cloudFullTranscriptIsFoundByCacheOnDiskViaAlias() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pp-cloudcache-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("clip.wav")
+        try Data("audio-bytes".utf8).write(to: file)
+
+        #expect(!TranscriptCache.hasCachedOnDisk(for: file))
+        await TranscriptCache.shared.storeCloudTranscript(full, for: file, range: nil, language: "zh")
+        await TranscriptCache.shared.clearMemory()  // force the read to come off disk
+
+        #expect(TranscriptCache.hasCachedOnDisk(for: file))
+        #expect(TranscriptCache.cachedOnDisk(for: file)?.words.map(\.text) == full.words.map(\.text))
+    }
+
+    @Test func windowedCloudTranscriptDoesNotPublishAlias() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pp-cloudcache-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("clip.wav")
+        try Data("audio-bytes".utf8).write(to: file)
+
+        await TranscriptCache.shared.storeCloudTranscript(full, for: file, range: 4.0...6.0, language: "zh")
+        await TranscriptCache.shared.clearMemory()
+        // Only the full-file entry is the resync source; a windowed cloud entry must not become the alias.
+        #expect(!TranscriptCache.hasCachedOnDisk(for: file))
+    }
+
+    // A3: the default (nil cacheTag) transcript() key must not shift when the glossary bias fingerprint
+    // changes — otherwise every glossary edit re-transcribes the whole file. Explicit tags still salt.
+    @Test func defaultCacheKeyIgnoresBiasFingerprintChurn() {
+        let file = URL(fileURLWithPath: "/System/Library/CoreServices/SystemVersion.plist")  // a stable existing file
+        TranscriptionBias.update(hotwords: ["OpenAI"], fingerprint: "fp-1")
+        defer { TranscriptionBias.update(hotwords: [], fingerprint: "") }
+
+        let a = TranscriptCache.key(for: file, cacheTag: nil)
+        TranscriptionBias.update(hotwords: ["OpenAI", "Anthropic"], fingerprint: "fp-2")
+        let b = TranscriptCache.key(for: file, cacheTag: nil)
+
+        #expect(a != nil && a == b, "default key is unsalted, so fingerprint churn cannot invalidate it")
+        #expect(TranscriptCache.key(for: file, cacheTag: "fp-2") != a, "an explicit cacheTag still salts to a distinct key")
+    }
 }

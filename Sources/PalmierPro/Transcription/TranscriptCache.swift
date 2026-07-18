@@ -11,8 +11,11 @@ actor TranscriptCache {
     private var memory: [String: TranscriptionResult] = [:]
     private static let memoryMax = 4
 
-    /// `cacheTag` salts the cache key (e.g. a decoder-bias fingerprint from GlossaryStore.biasFingerprint())
-    /// so a changed hotword set yields a fresh transcription instead of a stale cached one. §4
+    /// `cacheTag` opts this call into a bias-salted key (e.g. a decoder-bias fingerprint) so a caller
+    /// that wants a fresh biased decode gets one. The hot path passes nil and reads/writes the UNSALTED
+    /// key: read-time glossary materialisation already applies corrections regardless of what decoded,
+    /// so salting every glossary edit here would re-transcribe the whole file for marginal decode gain.
+    /// `cachedOnDisk` still falls back salted→unsalted, so pre-existing salted entries stay readable. §4
     func transcript(for url: URL, isVideo: Bool, range: ClosedRange<Double>?, preferredLocale: Locale? = nil, cacheTag: String? = nil) async throws -> TranscriptionResult {
         // When a locale is forced, bypass the cache — locale variants must not overwrite the auto-detected entry.
         if let preferredLocale {
@@ -21,7 +24,7 @@ actor TranscriptCache {
                 : try await Transcription.transcribe(fileURL: url, preferredLocale: preferredLocale, sourceRange: range)
         }
         // Cache full transcripts only; windowed calls filter the cached result for consistency.
-        let key = Self.key(for: url, cacheTag: cacheTag ?? TranscriptionBias.fingerprint)
+        let key = Self.key(for: url, cacheTag: cacheTag)
         let full: TranscriptionResult
         if let key, let cached = cached(key) {
             full = cached
@@ -34,24 +37,23 @@ actor TranscriptCache {
         return range.map { Self.filter(full, to: $0) } ?? full
     }
 
-    // Read-only lookups prefer the bias-salted entry but fall back to the unsalted one, so
-    // pre-glossary transcripts stay searchable/resyncable until a biased pass supersedes them.
-    private nonisolated static var readTags: [String?] {
-        TranscriptionBias.fingerprint.map { [$0, nil] } ?? [nil]
+    // Read-only lookups prefer the bias-salted local entry, fall back to the unsalted one (so
+    // pre-glossary transcripts stay searchable/resyncable), and finally the provider-neutral alias
+    // that full-file cloud transcripts write under — cloud entries live in .cloud-variant keys the
+    // local scheme never reaches, so without the alias cloud projects would never resync.
+    private nonisolated static func readKeys(for url: URL) -> [String] {
+        let tags: [String?] = TranscriptionBias.fingerprint.map { [$0, nil] } ?? [nil]
+        return (tags.compactMap { key(for: url, cacheTag: $0) } + [key(for: url, variant: .readAlias)].compactMap { $0 })
     }
 
     nonisolated static func hasCachedOnDisk(for url: URL) -> Bool {
-        readTags.contains { tag in
-            guard let key = key(for: url, cacheTag: tag) else { return false }
-            return FileManager.default.fileExists(atPath: diskURL(key).path)
-        }
+        readKeys(for: url).contains { FileManager.default.fileExists(atPath: diskURL($0).path) }
     }
 
     /// Disk-only read
     nonisolated static func cachedOnDisk(for url: URL) -> TranscriptionResult? {
-        for tag in readTags {
-            if let key = key(for: url, cacheTag: tag),
-               let data = try? Data(contentsOf: diskURL(key)),
+        for key in readKeys(for: url) {
+            if let data = try? Data(contentsOf: diskURL(key)),
                let result = try? JSONDecoder().decode(TranscriptionResult.self, from: data) {
                 return result
             }
@@ -100,6 +102,11 @@ actor TranscriptCache {
     ) {
         guard let key = Self.key(for: url, variant: .cloud(range: range, language: language)) else { return }
         store(result, key: key)
+        // A full-file cloud transcript is the one resync/search read via cachedOnDisk; publish it under
+        // the provider-neutral alias so those readers find it without knowing the cloud language/range.
+        if range == nil, let alias = Self.key(for: url, variant: .readAlias) {
+            store(result, key: alias)
+        }
     }
 
     /// Drop in-memory entries so a disk clear isn't shadowed by the memory cache.
@@ -130,7 +137,7 @@ actor TranscriptCache {
         directory.appendingPathComponent("\(key).json")
     }
 
-    private static func key(for url: URL, variant: CacheVariant = .local, cacheTag: String? = nil) -> String? {
+    static func key(for url: URL, variant: CacheVariant = .local, cacheTag: String? = nil) -> String? {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
               let size = (attrs[.size] as? NSNumber)?.int64Value,
               let mtime = attrs[.modificationDate] as? Date else { return nil }
@@ -140,9 +147,10 @@ actor TranscriptCache {
         return SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined().prefix(32).description
     }
 
-    private enum CacheVariant {
+    enum CacheVariant {
         case local
         case cloud(range: ClosedRange<Double>?, language: String?)
+        case readAlias  // provider-neutral "latest full transcript" pointer; the fallback cachedOnDisk reads
 
         var prefix: String? {
             switch self {
@@ -154,6 +162,8 @@ actor TranscriptCache {
                 let lang = language ?? "auto"
                 guard let range else { return "cloud|\(lang)|full" }
                 return String(format: "cloud|%@|%.3f...%.3f", lang, range.lowerBound, range.upperBound)
+            case .readAlias:
+                return "latest"
             }
         }
     }
