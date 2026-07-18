@@ -200,6 +200,7 @@ enum Analytics {
     private static var allowedCapturePropertyKeys: Set<String> {
         Set([
             "active_day",
+            "client_info",
             "export_duration_seconds",
             "failure_reason",
             "format",
