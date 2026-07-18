@@ -46,7 +46,7 @@ cache tag from the passed engine.
 
 - `swift build` — clean.
 - `swift test` (full) — 1228/1228 pass.
-- New: TranscriptionModelSelectionTests (26) — preference matrix, cloud+no-credits error, model
+- New: TranscriptionModelSelectionTests (23 @Test) — preference matrix, cloud+no-credits error, model
   threading per engine, fallback-notice-only-on-auto-fallback, ProjectFile round-trip + legacy decode,
   set_project_settings surface. GetTranscriptParamTests updated for the new resolvedModel field.
 

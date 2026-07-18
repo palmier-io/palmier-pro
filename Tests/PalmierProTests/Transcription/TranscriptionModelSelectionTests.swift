@@ -22,6 +22,18 @@ struct TranscriptionModelSelectionTests {
         #expect(LocalSpeechEngine.apple.modelId == "apple-speech")
     }
 
+    /// The `transcript.model ?? LocalSpeechEngine.current.modelId` fallback for nil-model cached
+    /// entries is only honest while each engine re-transcribes into its own cache slot — i.e. every
+    /// non-nil cacheTag is distinct and at most one engine (apple) opts out with a nil tag. If a future
+    /// edit collides tags or drops the salt, a cached entry from one engine could be reported under
+    /// another's model. Pin the invariant so that regression can't slip through unnoticed.
+    @Test func engineCacheTagsAreDistinct() {
+        let tags = LocalSpeechEngine.allCases.map(\.cacheTag)
+        let nonNil = tags.compactMap { $0 }
+        #expect(Set(nonNil).count == nonNil.count) // non-nil tags are unique
+        #expect(tags.filter { $0 == nil }.count <= 1) // at most one engine (apple) is untagged
+    }
+
     // MARK: - Deliverable 2: preference resolution matrix
 
     @Test func autoRoutesCloudWhenAffordable() throws {
