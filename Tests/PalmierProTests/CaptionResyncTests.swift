@@ -646,3 +646,44 @@ private func timeline(_ tracks: [Track]) -> Timeline {
         #expect(listing() == before)   // TranscriptCache directory untouched — resync never writes L1/L2.
     }
 }
+
+// The REACTIVE resync path (not the tools) must chunk newly uncovered words using the project's
+// caption-style segmentation, so a trim produces the same line breaks as add_captions/resync_captions.
+@MainActor
+@Suite struct CaptionResyncProfileSegmentationTests {
+    @Test func reactiveResyncHonorsProfileSegmentation() throws {
+        let pkg = FileManager.default.temporaryDirectory
+            .appendingPathComponent("resync-seg-\(UUID().uuidString).palmier", isDirectory: true)
+        try FileManager.default.createDirectory(at: pkg, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: pkg) }
+        // Project profile sets fixedChars; a sidecar write is hermetic (temp package).
+        try CaptionStyleStore.writeLayer(["typography": ["segmentation": "fixedChars"]],
+                                         at: #require(CaptionStyleStore.projectURL(package: pkg)))
+
+        var cap = captionClip(id: "cap", start: 0, duration: 30, text: "开始", generatedText: "开始")
+        cap.textStyle = TextStyle(fontSize: 12)   // small font so the short CJK clause fits one fixedChars line
+        let e = EditorViewModel()
+        e.projectURL = pkg
+        e.timeline = timeline([Fixtures.videoTrack(clips: [cap])])
+        // 开始 covers [0,30); the uncovered clause 你好。再见朋友 in [30,120) is what gets chunked.
+        let src = FakeWordSource(words: [
+            word("开", 0, 15), word("始", 15, 30),
+            word("你", 30, 45), word("好", 45, 60), word("。", 60, 65),
+            word("再", 65, 80), word("见", 80, 95), word("朋", 95, 110), word("友", 110, 120),
+        ])
+        e.captionWordSourceProvider = { _ in src }
+
+        func createdTexts(_ segmentation: CaptionBuilder.Segmentation?) -> [String] {
+            let report = e.runCaptionResync(spans: [0..<120], trigger: "test", dryRun: true, segmentation: segmentation)
+            return (report?.created ?? []).map(\.text)
+        }
+
+        let profile = createdTexts(nil)         // reactive: no explicit arg → resolves fixedChars from the profile
+        let fixed = createdTexts(.fixedChars)    // explicit fixedChars reference
+        let natural = createdTexts(.natural)     // explicit natural reference
+
+        #expect(!profile.isEmpty)
+        #expect(profile == fixed)                // reactive honored the fixedChars profile
+        #expect(fixed != natural)                // the input actually discriminates the two modes
+    }
+}

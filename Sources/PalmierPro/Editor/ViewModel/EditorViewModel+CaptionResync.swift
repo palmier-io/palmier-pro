@@ -54,9 +54,12 @@ extension EditorViewModel {
 
     /// Build the plan and apply it. Stashes the report on `lastResyncReport` for the agent tool layer.
     @discardableResult
-    func runCaptionResync(spans: [Range<Int>], trigger: String, dryRun: Bool = false, policyOverride: CaptionConflictPolicy? = nil, segmentation: CaptionBuilder.Segmentation = .default) -> CaptionResyncReport? {
+    func runCaptionResync(spans: [Range<Int>], trigger: String, dryRun: Bool = false, policyOverride: CaptionConflictPolicy? = nil, segmentation: CaptionBuilder.Segmentation? = nil) -> CaptionResyncReport? {
         let merged = CaptionResyncEngine.mergeSpans(spans)
         guard !merged.isEmpty else { return nil }
+        // Reactive callers pass no segmentation → honor the project's profile default so a trim chunks
+        // the same way add_captions/resync_captions do. Resolved once per run; explicit (tool) wins.
+        let effectiveSegmentation = segmentation ?? profileSegmentationDefault()
         let source = captionWordSourceProvider?(self) ?? TimelineTranscriptProvider(editor: self)
         let plan = CaptionResyncEngine.plan(
             timeline: timeline,
@@ -65,7 +68,7 @@ extension EditorViewModel {
             fps: timeline.fps,
             policy: policyOverride ?? captionConflictPolicy,
             wordSource: source,
-            chunk: captionResyncChunker(segmentation: segmentation)
+            chunk: captionResyncChunker(segmentation: effectiveSegmentation)
         )
         guard !dryRun else { return plan.report }
         guard plan.hasWork else {
@@ -75,6 +78,13 @@ extension EditorViewModel {
         let report = applyResyncPlan(plan)
         lastResyncReport = report
         return report
+    }
+
+    /// Project caption-style segmentation default, honored by reactive resyncs that pass no explicit
+    /// value. Unknown/absent → natural. Kept here so the profile is read once per resync run, not cached.
+    private func profileSegmentationDefault() -> CaptionBuilder.Segmentation {
+        let raw = CaptionStyleStore.resolve(projectPackageURL: projectURL).profile.typography.segmentation
+        return raw.flatMap(CaptionBuilder.Segmentation.init(rawValue:)) ?? .default
     }
 
     /// Reads and clears the stashed report so a tool wrapper reports each resync at most once.
