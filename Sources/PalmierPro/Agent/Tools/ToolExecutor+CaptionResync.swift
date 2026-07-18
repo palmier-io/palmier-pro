@@ -81,6 +81,9 @@ extension CaptionResyncReport {
         var out: [String: Any] = ["trigger": trigger]
         if !spans.isEmpty { out["spans"] = spans }
         if !updated.isEmpty { out["updated"] = updated.map { ["clipId": $0.clipId, "before": $0.before, "after": $0.after] } }
+        if !retimed.isEmpty {
+            out["retimed"] = retimed.map { ["clipId": $0.clipId, "beforeStart": $0.beforeStart, "beforeEnd": $0.beforeEnd, "afterStart": $0.afterStart, "afterEnd": $0.afterEnd] }
+        }
         if !removed.isEmpty { out["removed"] = removed.map { ["clipId": $0.clipId, "text": $0.text] } }
         if !created.isEmpty {
             out["created"] = created.map { c -> [String: Any] in

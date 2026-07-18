@@ -30,6 +30,9 @@ struct CaptionResyncPlan {
         var text: String
         var wordTimings: [WordTiming]
         var generatedText: String
+        // Set only when a clean clip's boundaries were retimed to its word span; nil leaves them.
+        var startFrame: Int?
+        var durationFrames: Int?
     }
     var replacements: [Replacement] = []
     var removals: [String] = []
@@ -49,6 +52,7 @@ struct CaptionResyncReport: Equatable, Sendable {
     struct Removed: Equatable, Sendable { var clipId: String; var text: String }
     struct Created: Equatable, Sendable { var clipId: String?; var text: String; var startFrame: Int; var endFrame: Int }
     struct Conflict: Equatable, Sendable { var clipId: String; var manualText: String; var newTranscript: String; var reason: String = "" }
+    struct Retimed: Equatable, Sendable { var clipId: String; var beforeStart: Int; var beforeEnd: Int; var afterStart: Int; var afterEnd: Int }
 
     var trigger: String
     var spans: [[Int]] = []            // [[lower, upper), …] — array form so it is Sendable/Codable-friendly
@@ -56,13 +60,18 @@ struct CaptionResyncReport: Equatable, Sendable {
     var removed: [Removed] = []
     var created: [Created] = []
     var conflicts: [Conflict] = []
+    var retimed: [Retimed] = []
     var skippedRefs: [String] = []
 
-    var isEmpty: Bool { updated.isEmpty && removed.isEmpty && created.isEmpty && conflicts.isEmpty }
+    var isEmpty: Bool { updated.isEmpty && removed.isEmpty && created.isEmpty && conflicts.isEmpty && retimed.isEmpty }
 }
 
 @MainActor
 enum CaptionResyncEngine {
+    /// A clean clip's boundary is only moved when its word span drifts more than this from the clip
+    /// edge — smaller drifts are quantization noise and would churn the timeline for nothing.
+    static let boundaryThreshold = 2
+
     /// Splits audible words (absolute project frames) into caption-sized phrase groups for newly
     /// uncovered spans. Injected so tests can substitute a trivial splitter for CaptionBuilder.
     typealias Chunker = (_ words: [WordTiming], _ maxWords: Int?) -> [[WordTiming]]
@@ -101,7 +110,8 @@ enum CaptionResyncEngine {
 
             var removedIds = Set<String>()
             for clip in captionClips {
-                resolveClip(clip, words: words, policy: policy, into: &plan, removed: &removedIds)
+                resolveClip(clip, words: words, policy: policy,
+                            bounds: neighborBounds(for: clip, in: timeline), into: &plan, removed: &removedIds)
             }
 
             createUncovered(
@@ -116,7 +126,7 @@ enum CaptionResyncEngine {
 
     private static func resolveClip(
         _ clip: Clip, words: [WordTiming], policy: CaptionConflictPolicy,
-        into plan: inout CaptionResyncPlan, removed: inout Set<String>
+        bounds: (lower: Int, upper: Int), into plan: inout CaptionResyncPlan, removed: inout Set<String>
     ) {
         let clipWords = words.filter { $0.startFrame < clip.endFrame && $0.endFrame > clip.startFrame }
         let current = clip.textContent ?? ""
@@ -137,16 +147,21 @@ enum CaptionResyncEngine {
         }
 
         let newText = joinWords(clipWords)
-        let newTimings = relativeTimings(clipWords, clipStart: clip.startFrame, duration: clip.durationFrames)
+        // Boundary retiming (onset rollback / trailing-silence tighten) is confined to clean clips.
+        let retiming = clean ? retimedBounds(clip, clipWords: clipWords, bounds: bounds) : nil
+        let effStart = retiming?.startFrame ?? clip.startFrame
+        let effDuration = retiming?.durationFrames ?? clip.durationFrames
+        let newTimings = relativeTimings(clipWords, clipStart: effStart, duration: effDuration)
 
         if newText == current {
-            // Match — no text change. Clear a stale conflict flag if the manual text now agrees.
+            // Text matches, but a clean clip's boundaries may still have drifted (e.g. onset rollback).
+            if let retiming { appendReplacement(clip, text: newText, timings: newTimings, retiming: retiming, into: &plan) }
             if clip.resyncConflict == true { plan.clearedFlags.append(clip.id) }
             return
         }
 
         if clean {
-            plan.replacements.append(.init(clipId: clip.id, text: newText, wordTimings: newTimings, generatedText: newText))
+            appendReplacement(clip, text: newText, timings: newTimings, retiming: retiming, into: &plan)
             plan.report.updated.append(.init(clipId: clip.id, before: current, after: newText))
             return
         }
@@ -161,6 +176,53 @@ enum CaptionResyncEngine {
             plan.flagged.append(clip.id)
             plan.report.conflicts.append(conflict(clip, current: current, newText: newText))
         }
+    }
+
+    private struct Retiming { var startFrame: Int; var durationFrames: Int }
+
+    private static func appendReplacement(
+        _ clip: Clip, text: String, timings: [WordTiming], retiming: Retiming?, into plan: inout CaptionResyncPlan
+    ) {
+        var r = CaptionResyncPlan.Replacement(clipId: clip.id, text: text, wordTimings: timings, generatedText: text)
+        if let retiming {
+            r.startFrame = retiming.startFrame
+            r.durationFrames = retiming.durationFrames
+            plan.report.retimed.append(.init(
+                clipId: clip.id, beforeStart: clip.startFrame, beforeEnd: clip.endFrame,
+                afterStart: retiming.startFrame, afterEnd: retiming.startFrame + retiming.durationFrames))
+        }
+        plan.replacements.append(r)
+    }
+
+    /// New boundaries for a clean clip whose word span drifted past the threshold, clamped so it never
+    /// overlaps a track neighbor. nil when nothing moved beyond the churn threshold or there is no room.
+    private static func retimedBounds(_ clip: Clip, clipWords: [WordTiming], bounds: (lower: Int, upper: Int)) -> Retiming? {
+        guard let first = clipWords.first, let last = clipWords.last else { return nil }
+        let lower = max(0, bounds.lower)
+        let upper = bounds.upper
+        guard lower < upper else { return nil }
+        let spanStart = min(max(first.startFrame, lower), upper - 1)
+        let spanEnd = max(min(last.endFrame, upper), lower + 1)
+        guard spanStart < spanEnd else { return nil }
+        let start = abs(spanStart - clip.startFrame) > boundaryThreshold ? spanStart : clip.startFrame
+        let end = abs(spanEnd - clip.endFrame) > boundaryThreshold ? spanEnd : clip.endFrame
+        guard (start != clip.startFrame || end != clip.endFrame), end > start else { return nil }
+        return Retiming(startFrame: start, durationFrames: end - start)
+    }
+
+    /// Frame window a clip may grow into without overlapping other clips on its track. Track clips never
+    /// overlap, so every other clip is wholly before (bounds the lower edge) or after (bounds the upper).
+    private static func neighborBounds(for clip: Clip, in timeline: Timeline) -> (lower: Int, upper: Int) {
+        guard let track = timeline.tracks.first(where: { t in t.clips.contains { $0.id == clip.id } }) else {
+            return (0, Int.max)
+        }
+        var lower = 0
+        var upper = Int.max
+        for other in track.clips where other.id != clip.id {
+            if other.startFrame < clip.startFrame { lower = max(lower, other.endFrame) }
+            else if other.startFrame > clip.startFrame { upper = min(upper, other.startFrame) }
+        }
+        return (lower, upper)
     }
 
     private static func remove(_ clip: Clip, current: String, into plan: inout CaptionResyncPlan, removed: inout Set<String>) {

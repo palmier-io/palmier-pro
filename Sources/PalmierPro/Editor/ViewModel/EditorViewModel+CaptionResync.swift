@@ -100,6 +100,8 @@ extension EditorViewModel {
         }
         for r in plan.replacements {
             guard let loc = findClip(id: r.clipId) else { continue }
+            if let s = r.startFrame { timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame = s }
+            if let d = r.durationFrames { timeline.tracks[loc.trackIndex].clips[loc.clipIndex].durationFrames = d }
             timeline.tracks[loc.trackIndex].clips[loc.clipIndex].textContent = r.text
             timeline.tracks[loc.trackIndex].clips[loc.clipIndex].wordTimings = r.wordTimings.isEmpty ? nil : r.wordTimings
             timeline.tracks[loc.trackIndex].clips[loc.clipIndex].generatedText = r.generatedText

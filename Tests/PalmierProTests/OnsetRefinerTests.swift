@@ -53,6 +53,21 @@ struct OnsetRefinerTests {
         #expect(refined.start! >= 2.8 - OnsetRefiner.maxRollback, "rollback is bounded to the cap")
     }
 
+    @Test func rollbackReachesOnsetBeyondOldCap() {
+        // Silence 0–1s, tone 1.0–1.6s, then silence to 3.6s. A word quantized to 2.9 sits 1.9s past the
+        // onset — beyond the former 1.5s cap. The raised cap lets it roll to the true onset (~1.0s).
+        var samples = [Float](repeating: 0, count: sampleRate)
+        for n in 0..<Int(0.6 * Double(sampleRate)) {
+            samples.append(0.3 * sinf(2 * .pi * 440 * Float(n) / Float(sampleRate)))
+        }
+        samples.append(contentsOf: [Float](repeating: 0, count: 2 * sampleRate))
+        let word = TranscriptionWord(text: "late", start: 2.9, end: 3.3, aligned: true)
+        let refined = refine([word], samples)[0]
+
+        #expect(refined.start! < 2.9 - 1.5, "rolls back further than the old 1.5s cap")
+        #expect(abs(refined.start! - 1.0) <= 3.0 / Double(fps), "lands at the true onset ~1.0s")
+    }
+
     @Test func leavesInterpolatedFlagUnchanged() {
         let samples = silenceThenTone(toneSeconds: 0.6)
         let word = TranscriptionWord(text: "hi", start: 1.4, end: 1.9, aligned: false)

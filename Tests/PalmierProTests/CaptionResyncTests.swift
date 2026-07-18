@@ -320,6 +320,121 @@ private func timeline(_ tracks: [Track]) -> Timeline {
     }
 }
 
+// MARK: - Boundary retiming (onset rollback / trailing-silence tighten)
+
+@MainActor
+@Suite struct CaptionResyncRetimeTests {
+    // The bug case: onset rollback moved 「我」's true start to 484 while the caption still begins at 529.
+    // A clean clip must follow its words back — extend [529,571] → [484,571] and rebase its timings.
+    @Test func cleanClipExtendsToRolledBackOnset() {
+        let caption = captionClip(id: "cap", start: 529, duration: 42, text: "我 hello", generatedText: "我 hello")
+        let tl = timeline([Fixtures.videoTrack(clips: [caption])])
+        let src = FakeWordSource(words: [word("我", 484, 550), word("hello", 550, 571)])
+
+        let plan = CaptionResyncEngine.plan(
+            timeline: tl, triggerSpans: [529..<571], trigger: "resync_captions", fps: 30,
+            policy: .preserve, wordSource: src, chunk: singleChunk
+        )
+        #expect(plan.replacements.first?.startFrame == 484)
+        #expect(plan.replacements.first?.durationFrames == 571 - 484)
+        #expect(plan.replacements.first?.wordTimings == [word("我", 0, 66), word("hello", 66, 87)])
+        #expect(plan.report.retimed == [.init(clipId: "cap", beforeStart: 529, beforeEnd: 571, afterStart: 484, afterEnd: 571)])
+        #expect(plan.report.updated.isEmpty)  // text unchanged — retime only
+    }
+
+    @Test func retimeClampsAgainstTrackNeighbor() {
+        // A previous caption (different, exempt group so it isn't itself resolved) ends at 490; the onset
+        // wants 484 but the clip must not overlap it → start clamps to 490.
+        let prev = captionClip(id: "prev", group: "g0", start: 400, duration: 90, text: "before", generatedText: "before", exempt: true)
+        let caption = captionClip(id: "cap", group: "g1", start: 529, duration: 42, text: "我 hello", generatedText: "我 hello")
+        let tl = timeline([Fixtures.videoTrack(clips: [prev, caption])])
+        let src = FakeWordSource(words: [word("我", 484, 550), word("hello", 550, 571)])
+
+        let plan = CaptionResyncEngine.plan(
+            timeline: tl, triggerSpans: [400..<571], trigger: "resync_captions", fps: 30,
+            policy: .preserve, wordSource: src, chunk: singleChunk
+        )
+        let cap = plan.replacements.first { $0.clipId == "cap" }
+        #expect(cap?.startFrame == 490)                 // clamped to prev.endFrame, not 484
+        #expect(cap?.durationFrames == 571 - 490)
+        #expect(!plan.replacements.contains { $0.clipId == "prev" })  // exempt group untouched
+    }
+
+    @Test func dirtyClipBoundariesNeverRetimed() {
+        // Unknown provenance (nil generatedText) → dirty; even under overwrite the text is rebuilt but the
+        // boundaries are policy-governed and must stay put.
+        let caption = captionClip(id: "cap", start: 529, duration: 42, text: "old text", generatedText: nil)
+        let tl = timeline([Fixtures.videoTrack(clips: [caption])])
+        let src = FakeWordSource(words: [word("我", 484, 550), word("hello", 550, 571)])
+
+        let plan = CaptionResyncEngine.plan(
+            timeline: tl, triggerSpans: [529..<571], trigger: "resync_captions", fps: 30,
+            policy: .overwrite, wordSource: src, chunk: singleChunk
+        )
+        #expect(plan.replacements.first?.text == "我 hello")
+        #expect(plan.replacements.first?.startFrame == nil)
+        #expect(plan.replacements.first?.durationFrames == nil)
+        #expect(plan.report.retimed.isEmpty)
+    }
+
+    @Test func trailingSilenceTightensEnd() {
+        // Words end at 90 but the clip runs to 120 — the trailing silence tightens the end to 90.
+        let caption = captionClip(id: "cap", start: 0, duration: 120, text: "one two", generatedText: "one two")
+        let tl = timeline([Fixtures.videoTrack(clips: [caption])])
+        let src = FakeWordSource(words: [word("one", 0, 45), word("two", 45, 90)])
+
+        let plan = CaptionResyncEngine.plan(
+            timeline: tl, triggerSpans: [0..<120], trigger: "resync_captions", fps: 30,
+            policy: .preserve, wordSource: src, chunk: singleChunk
+        )
+        #expect(plan.replacements.first?.startFrame == 0)          // start unmoved
+        #expect(plan.replacements.first?.durationFrames == 90)     // end tightened 120 → 90
+        #expect(plan.report.retimed.first?.afterEnd == 90)
+    }
+
+    @Test func subThresholdDriftIsNoOp() {
+        // First word starts at 2 (2-frame drift) — within the churn threshold, so nothing moves.
+        let caption = captionClip(id: "cap", start: 0, duration: 60, text: "one two", generatedText: "one two")
+        let tl = timeline([Fixtures.videoTrack(clips: [caption])])
+        let src = FakeWordSource(words: [word("one", 2, 30), word("two", 30, 60)])
+
+        let plan = CaptionResyncEngine.plan(
+            timeline: tl, triggerSpans: [0..<60], trigger: "resync_captions", fps: 30,
+            policy: .preserve, wordSource: src, chunk: singleChunk
+        )
+        #expect(!plan.hasWork)
+        #expect(plan.report.retimed.isEmpty)
+    }
+
+    @Test func retimedAppearsInAgentPayload() {
+        let caption = captionClip(id: "cap", start: 529, duration: 42, text: "我 hello", generatedText: "我 hello")
+        let tl = timeline([Fixtures.videoTrack(clips: [caption])])
+        let src = FakeWordSource(words: [word("我", 484, 550), word("hello", 550, 571)])
+
+        let plan = CaptionResyncEngine.plan(
+            timeline: tl, triggerSpans: [529..<571], trigger: "resync_captions", fps: 30,
+            policy: .preserve, wordSource: src, chunk: singleChunk
+        )
+        let retimed = plan.report.agentPayload["retimed"] as? [[String: Any]]
+        #expect(retimed?.first?["clipId"] as? String == "cap")
+        #expect(retimed?.first?["afterStart"] as? Int == 484)
+        #expect(retimed?.first?["afterEnd"] as? Int == 571)
+    }
+
+    // Whole-group resync_captions tool path applies the retiming end to end (plan → apply → timeline).
+    @Test func resyncCaptionsToolAppliesRetiming() async {
+        let caption = captionClip(id: "cap", start: 529, duration: 42, text: "我 hello", generatedText: "我 hello")
+        let h = ToolHarness(timeline: timeline([Fixtures.videoTrack(clips: [caption])]))
+        let src = FakeWordSource(words: [word("我", 484, 550), word("hello", 550, 571)])
+        h.editor.captionWordSourceProvider = { _ in src }
+
+        _ = await h.runRaw("resync_captions", args: ["captionGroupId": "g1"])
+        let cap = h.editor.timeline.tracks[0].clips.first { $0.id == "cap" }
+        #expect(cap?.startFrame == 484)
+        #expect(cap?.durationFrames == 571 - 484)
+    }
+}
+
 // MARK: - Span diff heuristic
 
 @MainActor

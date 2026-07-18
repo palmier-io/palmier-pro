@@ -7,8 +7,10 @@ import Foundation
 enum OnsetRefiner {
     /// A word qualifies for refinement when the silence before it exceeds this (seconds).
     static let gapThreshold = 0.3
-    /// Never roll a start back further than this before its current position (seconds).
-    static let maxRollback = 1.5
+    /// Never roll a start back further than this before its current position (seconds). Covers the
+    /// long chunk-quantization lag after a pause (real cases exceed 1.7s); still bounded by the
+    /// previous word's end and the energy rising edge, so a larger cap only helps genuine silence gaps.
+    static let maxRollback = 2.5
     /// Land this many frames early so the caption leads the consonant rather than clipping it.
     static let leadFrames = 2.5
 
