@@ -686,7 +686,7 @@ struct ToolExecutorReadOnlyTests {
     }
 }
 
-@Suite("ToolExecutor — clip handlers")
+@Suite("ToolExecutor — clip handlers", .isolatedGlossaryRoot)
 @MainActor
 struct ToolExecutorClipTests {
 
@@ -1760,7 +1760,7 @@ struct ToolExecutorClipTests {
     }
 }
 
-@Suite("ToolExecutor — text and folder handlers")
+@Suite("ToolExecutor — text and folder handlers", .isolatedGlossaryRoot)
 @MainActor
 struct ToolExecutorTextFolderTests {
 
@@ -2164,7 +2164,7 @@ struct ToolExecutorTextFolderTests {
     }
 }
 
-@Suite("ToolExecutor — set_clip_properties")
+@Suite("ToolExecutor — set_clip_properties", .isolatedGlossaryRoot)
 @MainActor
 struct SetClipPropertiesTests {
 
