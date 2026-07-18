@@ -1,3 +1,27 @@
+# feature/tool-ergonomics — Status (wsD)
+
+Phase 2 complete. Ready for Evaluator. Full `swift build` + full `swift test` (1264/1264) green.
+
+## Items shipped (D1–D6)
+
+| ID  | Change                                                                                                                                                              |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | add_texts `onOverlap` 'clear'(default, now documented)\|'fail'. fail validates every entry vs existing clips on its target track BEFORE mutating; errors with ids   |
+| D2  | update_text `entries:[{clipId,content}]` — per-clip content, one undo, shared style/anim/transform; retimer + promotion run per entry; mutual-exclusion + dup guard |
+| D3  | update_text desc states auto-promotion; response names first non-promoted reason (classifyWithReason or "no caption group"); undo desc notes glossary not reverted  |
+| D4  | AgentInstructions caption-pipeline paragraph (caption_style→add_captions→caption_lint→update_text→resync)                                                           |
+| D5  | CaptionBuilder: naturalLines merges punctuation-only lines; time() continues on zero-alnum line instead of break (auditor F3)                                       |
+| D6  | add_captions response `resolved` echoes segmentation/maxWords/fillerPolicy/typographyFrom                                                                           |
+
+## Coordination / deviations
+
+- D3b classifier addition is PURE ADDITION to GlossaryClassifier.swift (new RejectReason/Outcome + classifyWithReason at file end); `classify` untouched. Low conflict with builder-wsB.
+- D1+D2+D3 share ToolExecutor+Texts.swift, ToolDefinitions.swift, ToolExecutorTests.swift → bundled into one commit (interactive git staging unavailable to split same-function hunks). D3b, D4, D5, D6 are file-disjoint, own commits.
+- ToolDefinitions changes are additive (new params/description text only).
+- ENV NOTE (not my bug): Glossary/CaptionLint tests non-hermetically read the shared library glossary at `~/Documents/Palmier Pro/glossary.json`. A concurrent builder's promotion test polluted it (provenance auto:caption-edit@<uuid>), failing 9 unrelated tests. No test in THIS worktree writes there (all use temp projectURLs). Cleaning the file → 1264/1264 green. The hermeticity gap lives in wsB/wsC-owned store/tests; left untouched per coordination rules.
+
+---
+
 # feature/caption-lint — Status
 
 Phase 2 complete. Ready for Evaluator.
