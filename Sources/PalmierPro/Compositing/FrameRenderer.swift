@@ -43,6 +43,29 @@ enum FrameRenderer {
         var accum = background
         for layer in layers {
             if gateByClipRange, !layer.clip.contains(timelineFrame: frame) { continue }
+
+            if case .text = layer.source, layer.clip.textFillMode == .footage {
+                let opacity = min(1.0, max(0.0, layer.clip.opacityAt(frame: frame)))
+                if opacity > 0, let matte = textStencilMatte(layer, frame: frame, renderSize: renderSize) {
+                    let original = accum
+                    let black = CIImage(color: .black).cropped(to: accum.extent)
+                    let stenciled = accum.applyingFilter("CIBlendWithMask", parameters: [
+                        kCIInputBackgroundImageKey: black,
+                        kCIInputMaskImageKey: matte,
+                    ]).cropped(to: accum.extent)
+                    if opacity < 1 {
+                        let f = CIFilter(name: "CIDissolveTransition")
+                        f?.setValue(original, forKey: kCIInputImageKey)
+                        f?.setValue(stenciled, forKey: "inputTargetImage")
+                        f?.setValue(opacity, forKey: "inputTime")
+                        accum = (f?.outputImage ?? stenciled).cropped(to: original.extent)
+                    } else {
+                        accum = stenciled
+                    }
+                }
+                continue
+            }
+
             let mode = layer.clip.blendMode ?? .normal
             // Source-over bakes opacity into alpha; blend modes apply it as a fade of
             // the blend RESULT (Photoshop/Premiere semantics), so don't bake it there.
@@ -69,6 +92,18 @@ enum FrameRenderer {
             }
         }
         return accum
+    }
+
+    private static func textStencilMatte(
+        _ layer: LayerPlan,
+        frame: Int,
+        renderSize: CGSize
+    ) -> CIImage? {
+        var clip = layer.clip
+        var style = clip.textStyle ?? TextStyle()
+        style.color = .init(r: 1, g: 1, b: 1, a: 1)
+        clip.textStyle = style
+        return TextFrameRenderer.image(clip: clip, frame: frame, renderSize: renderSize)
     }
 
     /// Children composite at the child canvas; the nest clip's pipeline runs on the result.

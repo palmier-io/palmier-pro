@@ -58,7 +58,8 @@ enum AgentInstructions {
           (bar starts) — beats only for fast montage rhythms. Times are source seconds.
         - Text: add_texts for authored overlays; add_captions transcribes the timeline's \
           spoken audio (no targeting) — restyle with update_text and the returned \
-          captionGroupId. Color: apply_color (knobs merge; pass a clip's `color` object to \
+          captionGroupId. fillMode 'footage' stencils layers below through the letter shapes. \
+          Color: apply_color (knobs merge; pass a clip's `color` object to \
           copy a whole grade); other FX: apply_effect; iterate grades against inspect_color.
         - Transcription language: omit unless the user names the spoken language. Cloud \
           auto-detects; local is language-specific — pass BCP-47 (language='es') for \
