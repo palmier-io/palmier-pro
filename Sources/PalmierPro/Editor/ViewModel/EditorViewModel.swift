@@ -18,6 +18,10 @@ struct PendingAudioPlacement {
     let actionName: String
 }
 
+struct PendingGapTransitionPlacement: Equatable, Sendable {
+    let context: GapTransitionContext
+}
+
 @Observable
 @MainActor
 final class EditorViewModel {
@@ -127,6 +131,9 @@ final class EditorViewModel {
     var pendingEditReplacementClipId: String?
     var pendingEditTrimmedSource: TrimmedSource?
     var pendingEditAudioPlacement: PendingAudioPlacement?
+    var pendingGapTransitionPlacement: PendingGapTransitionPlacement?
+    @ObservationIgnored var pendingGapTransitionSeedTask: Task<Void, Never>?
+    @ObservationIgnored var pendingGapTransitionRequestId: UUID?
     /// Clip ids currently awaiting an AI-generated replacement.
     var pendingReplacements: Set<String> = []
     var cropEditingActive: Bool = false

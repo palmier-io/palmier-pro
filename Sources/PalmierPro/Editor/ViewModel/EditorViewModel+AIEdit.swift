@@ -121,11 +121,13 @@ extension EditorViewModel {
         stored: GenerationInput,
         replacementClipId: String? = nil,
         trimmedSource: TrimmedSource? = nil,
-        audioPlacement: PendingAudioPlacement? = nil
+        audioPlacement: PendingAudioPlacement? = nil,
+        gapTransitionPlacement: PendingGapTransitionPlacement? = nil
     ) {
         pendingEditReplacementClipId = replacementClipId
         pendingEditTrimmedSource = trimmedSource
         pendingEditAudioPlacement = audioPlacement
+        pendingGapTransitionPlacement = gapTransitionPlacement
         pendingPanelSeed = PendingPanelSeed(asset: asset, stored: stored)
         showGenerationPanel = true
     }

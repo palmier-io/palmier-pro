@@ -194,6 +194,17 @@ extension GenerationView {
             SettingsWindowController.shared.show(tab: .account)
             return
         }
+        let pendingGapTransition = selectedType == .video
+            ? editor.pendingGapTransitionPlacement
+            : nil
+        if let pendingGapTransition,
+           let issue = editor.gapTransitionPlacementIssue(
+               pendingGapTransition,
+               generationDurationSeconds: selectedDuration
+           ) {
+            flashDropError(issue)
+            return
+        }
         let audioDuration: Int = {
             guard selectedType == .audio else { return 0 }
             if audioModel.acceptsSourceMedia { return effectiveAudioSourceSeconds }
@@ -234,6 +245,7 @@ extension GenerationView {
         editor.pendingEditReplacementClipId = nil
         let pendingAudioPlacement = selectedType == .audio ? editor.pendingEditAudioPlacement : nil
         editor.pendingEditAudioPlacement = nil
+        editor.pendingGapTransitionPlacement = nil
         let editorRef = editor
         if let clipId = replacementClipId {
             editor.markPendingReplacement(clipId: clipId)
@@ -255,7 +267,7 @@ extension GenerationView {
         }()
 
         let autoOpenPreview: (String) -> Void = { newAssetId in
-            guard replacementClipId == nil else { return }
+            guard replacementClipId == nil, pendingGapTransition == nil else { return }
             editorRef.selectMediaPanelItem(newAssetId)
         }
 
@@ -301,6 +313,15 @@ extension GenerationView {
                 onComplete: makeOnComplete(trimmedSource?.hasTrim == true),
                 onFailure: onFailure
             )
+            if let placement = pendingGapTransition,
+               editor.placeGeneratingGapTransition(
+                   placeholderId: videoAssetId,
+                   placement: placement,
+                   generationDurationSeconds: selectedDuration
+               ) == nil {
+                editor.mediaPanelToast = "The video is generating, but the gap changed before it could be placed."
+                editor.selectMediaPanelItem(videoAssetId)
+            }
             autoOpenPreview(videoAssetId)
         case .image:
             let model = imageModel

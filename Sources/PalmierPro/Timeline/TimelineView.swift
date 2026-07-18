@@ -833,7 +833,22 @@ final class TimelineView: NSView {
         let clickFrame = max(0, geometry.frameAt(x: point.x))
         let clickedRange = editor.validSelectedTimelineRange?.contains(frame: clickFrame) ?? false
         guard let hit = inputController.hitTestClip(at: point, trackIndex: trackIndex, geometry: geometry) else {
-            return emptyAreaMenu(trackIndex: trackIndex, frame: clickFrame, clickedRange: clickedRange)
+            let gap = inputController.hitTestGap(
+                at: point,
+                trackIndex: trackIndex,
+                geometry: geometry
+            )
+            editor.selectedGap = gap
+            if gap != nil {
+                editor.selectedClipIds.removeAll()
+                needsDisplay = true
+            }
+            return emptyAreaMenu(
+                trackIndex: trackIndex,
+                frame: clickFrame,
+                clickedRange: clickedRange,
+                gap: gap
+            )
         }
         let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
         let clipRect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)
@@ -1033,10 +1048,28 @@ final class TimelineView: NSView {
         return menu.items.isEmpty ? nil : menu
     }
 
-    private func emptyAreaMenu(trackIndex: Int, frame: Int, clickedRange: Bool) -> NSMenu? {
+    private func emptyAreaMenu(
+        trackIndex: Int,
+        frame: Int,
+        clickedRange: Bool,
+        gap: GapSelection?
+    ) -> NSMenu? {
         let menu = NSMenu()
+        menu.autoenablesItems = false
+        if let gap, let context = editor.gapTransitionContext(for: gap) {
+            let item = NSMenuItem(
+                title: "Generate Seamless Transition",
+                action: #selector(performGenerateGapTransition(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = context
+            item.isEnabled = editor.aiEditAllowed
+            menu.addItem(item)
+        }
         if editor.canPasteClips,
            editor.timeline.tracks.indices.contains(trackIndex) {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
             let item = NSMenuItem(title: "Paste", action: #selector(performPasteClips(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = ["trackIndex": trackIndex, "frame": frame] as [String: Any]
@@ -1178,6 +1211,13 @@ final class TimelineView: NSView {
               let frame = info["frame"] as? Int else { return }
         editor.pasteClips(atTrack: trackIndex, atFrame: frame)
         needsDisplay = true
+    }
+
+    @objc private func performGenerateGapTransition(_ sender: Any?) {
+        guard let context = (sender as? NSMenuItem)?.representedObject as? GapTransitionContext else {
+            return
+        }
+        editor.beginGapTransition(context)
     }
 
     @objc private func performLink(_ sender: Any?) {

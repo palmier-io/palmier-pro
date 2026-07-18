@@ -172,6 +172,8 @@ struct GenerationView: View {
                     editor.pendingEditReplacementClipId = nil
                     editor.pendingEditTrimmedSource = nil
                     editor.pendingEditAudioPlacement = nil
+                    editor.pendingGapTransitionPlacement = nil
+                    editor.cancelPendingGapTransitionSeed()
                     editor.pendingPanelSeed = nil
                     editFolderId = nil
                     editor.showGenerationPanel = false
@@ -284,6 +286,7 @@ struct GenerationView: View {
             editFolderId = nil
             editor.pendingEditTrimmedSource = nil
             editor.pendingEditAudioPlacement = nil
+            editor.pendingGapTransitionPlacement = nil
         }
         .onChange(of: selectedVideoModelIndex) { _, _ in
             guard !isPopulatingPanel else { return }
