@@ -15,7 +15,7 @@ Phase 2 complete. Ready for Evaluator. Full `swift build` + full `swift test` gr
 
 Decisions:
 
-- Added `@TaskLocal GlossaryScope.sharedRootOverride` (nil in production) as a test seam so promotion writes to library/global stay isolated per parallel test. Wrapped the CaptionLint autoApply test (only in-suite library writer) + new glossary tool tests; also gave autoApply test a FixedWordSource so the post-promotion resync rebuilds instead of clearing (no transcript in that unit).
+- Added `@TaskLocal GlossaryScope.sharedRootOverride` (nil in production) so the library (~~/Documents) and global (~~/.config) roots are injectable for tests. A `TestScoping` trait `.isolatedGlossaryRoot` binds it to a fresh temp dir per test (recursive), applied to the Glossary, Glossary tools, and CaptionLint tool suites so EVERY glossary read and write hits an isolated root, never $HOME. Verified: glossary paths absent after two full runs. Gave the CaptionLint autoApply test a FixedWordSource so the post-promotion resync rebuilds instead of clearing (no transcript in that unit).
 - glossary_promote is a MOVE (writes toScope, removes from fromScope); collision resolved by scope precedence (promoted wins when its scope is higher precedence).
 
 Deviations:
