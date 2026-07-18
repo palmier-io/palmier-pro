@@ -99,8 +99,8 @@ struct TextStyleControls<AfterAlignment: View, AfterColor: View>: View {
                 }
                 afterColor()
             }
-            outlineGroup
             if showsSolidFillControls {
+                outlineGroup
                 shadowGroup
                 backgroundGroup
             }

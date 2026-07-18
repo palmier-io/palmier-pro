@@ -483,6 +483,7 @@ extension Clip {
             effects: try? c.decode([Effect].self, forKey: .effects),
             blendMode: try? c.decode(BlendMode.self, forKey: .blendMode)
         )
+        setTextFillMode(textFillMode)
     }
 }
 

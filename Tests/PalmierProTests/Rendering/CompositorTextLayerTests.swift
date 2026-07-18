@@ -56,8 +56,33 @@ struct CompositorTextLayerTests {
     }
 
     @Test func footageFillStencilsVideoThroughGlyphs() async throws {
+        let f = try await renderFootageFill(opacity: 1)
+
+        #expect(CompositorFixtures.isBlack(f.tl), "outside glyphs should be black: \(f.tl)")
+        #expect(CompositorFixtures.isBlack(f.tr), "outside glyphs should be black: \(f.tr)")
+        #expect(CompositorFixtures.isBlack(f.bl), "outside glyphs should be black: \(f.bl)")
+        #expect(CompositorFixtures.isBlack(f.br), "outside glyphs should be black: \(f.br)")
+
+        let patternPixels = patternPixelsInTextBand(f)
+        #expect(patternPixels > 80, "footage should show through glyphs: \(patternPixels)")
+    }
+
+    @Test func footageFillOpacityCrossfadesStencil() async throws {
+        let opaque = try await renderFootageFill(opacity: 1)
+        let mid = try await renderFootageFill(opacity: 0.5)
+        let clear = try await renderFootageFill(opacity: 0)
+
+        #expect(CompositorFixtures.isBlack(opaque.tl), "full opacity blacks outside glyphs: \(opaque.tl)")
+        #expect(!CompositorFixtures.isBlack(mid.tl), "partial opacity should keep outside-glyph color: \(mid.tl)")
+        #expect(CompositorFixtures.isRed(clear.tl), "zero opacity leaves the full frame: \(clear.tl)")
+        #expect(mid.tl.r > opaque.tl.r && mid.tl.r < clear.tl.r,
+                "corner red should sit between stenciled and full: \(mid.tl) vs \(opaque.tl)/\(clear.tl)")
+    }
+
+    private func renderFootageFill(opacity: Double) async throws -> CompositorRenderTests.Frame {
         var text = textClip("HELLO")
         text.textFillMode = .footage
+        text.opacity = opacity
         var style = text.textStyle ?? TextStyle()
         style.fontScale = 4
         style.isBold = true
@@ -68,26 +93,21 @@ struct CompositorTextLayerTests {
             Fixtures.videoTrack(clips: [text]),
             Fixtures.videoTrack(clips: [CompositorFixtures.patternClip(id: "bg")])
         )
-        let f = try await CompositorRenderTests.render(tl, frame: 15, renderSize: Self.size)
+        return try await CompositorRenderTests.render(tl, frame: 15, renderSize: Self.size)
+    }
 
-        // Corners sit outside letter strokes → transparent stencil → black clear color.
-        #expect(CompositorFixtures.isBlack(f.tl), "outside glyphs should be black: \(f.tl)")
-        #expect(CompositorFixtures.isBlack(f.tr), "outside glyphs should be black: \(f.tr)")
-        #expect(CompositorFixtures.isBlack(f.bl), "outside glyphs should be black: \(f.bl)")
-        #expect(CompositorFixtures.isBlack(f.br), "outside glyphs should be black: \(f.br)")
-
-        // Inside the text band, stencil reveals pattern quadrants (BR is white in the fixture).
-        var patternPixels = 0
+    private func patternPixelsInTextBand(_ f: CompositorRenderTests.Frame) -> Int {
+        var n = 0
         for y in 60..<120 {
             for x in 20..<300 {
                 let p = f.at(x, y)
                 if CompositorFixtures.isRed(p) || CompositorFixtures.isGreen(p)
                     || CompositorFixtures.isBlue(p) || CompositorFixtures.isWhite(p) {
-                    patternPixels += 1
+                    n += 1
                 }
             }
         }
-        #expect(patternPixels > 80, "footage should show through glyphs: \(patternPixels)")
+        return n
     }
 
 }

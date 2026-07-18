@@ -2142,6 +2142,21 @@ struct SetClipPropertiesTests {
         #expect(group?["textPreview"] as? String == "word0 … word2")
     }
 
+    @Test func updateTextRejectsFootageFillForCaptionGroups() async {
+        var clip = Fixtures.clip(id: "caption", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
+        clip.captionGroupId = "captions"
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])]))
+
+        let result = await h.runRaw("update_text", args: [
+            "captionGroupId": "captions",
+            "fillMode": "footage",
+        ])
+
+        #expect(result.isError == true)
+        #expect(ToolHarness.textOf(result).contains("only available for non-caption text"))
+        #expect(h.editor.timeline.tracks[0].clips[0].textFillMode == nil)
+    }
+
     @Test func updateTextCaptionGroupAcceptsRichTextStyleFields() async {
         var a = Fixtures.clip(id: "cap-a", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
         var b = Fixtures.clip(id: "cap-b", mediaRef: "text", mediaType: .text, start: 30, duration: 30)

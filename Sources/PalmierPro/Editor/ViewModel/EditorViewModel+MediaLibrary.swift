@@ -772,7 +772,7 @@ extension EditorViewModel {
                 clip.captionGroupId = spec.captionGroupId
                 clip.wordTimings = spec.words
                 clip.textAnimation = spec.animation
-                clip.textFillMode = spec.fillMode == .footage ? .footage : nil
+                clip.setTextFillMode(spec.fillMode == .footage ? .footage : nil)
                 timeline.tracks[spec.trackIndex].clips.append(clip)
                 createdIds[i] = clip.id
             }
