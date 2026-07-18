@@ -19,15 +19,23 @@ enum CaptionStyleStore {
         let warnings: [String]
     }
 
+    /// Test seam: point the machine-global / shared-library base directories at temp dirs so tests
+    /// never read or write the real `~/.config/caption-style` and `~/Documents/Palmier Pro`. `@TaskLocal`
+    /// is bound per test task, so it stays hermetic under the test runner's parallel execution.
+    @TaskLocal static var globalDirectoryOverride: URL?
+    @TaskLocal static var libraryDirectoryOverride: URL?
+
     /// `~/.config/caption-style/global.json` — the pattern's first ~/.config user in the app.
     static var globalURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/caption-style/global.json", isDirectory: false)
+        (globalDirectoryOverride ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/caption-style", isDirectory: true))
+            .appendingPathComponent("global.json", isDirectory: false)
     }
 
     /// `<library>/caption-style.json` — the shared media library root.
     static var libraryURL: URL {
-        Project.storageDirectory.appendingPathComponent(Project.captionStyleFilename, isDirectory: false)
+        (libraryDirectoryOverride ?? Project.storageDirectory)
+            .appendingPathComponent(Project.captionStyleFilename, isDirectory: false)
     }
 
     /// `<project>.palmier/caption-style.json` — sidecar inside the project package.

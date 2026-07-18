@@ -137,7 +137,7 @@ private struct FailingCompleter: LintCompleter {
 // MARK: - Tool wiring (editor + injected completer)
 
 @MainActor
-@Suite struct CaptionLintToolTests {
+@Suite(.hermeticCaptionStyle) struct CaptionLintToolTests {
     private func spec(_ text: String, start: Int, duration: Int, group: String) -> EditorViewModel.TextClipSpec {
         var s = EditorViewModel.TextClipSpec(
             trackIndex: 0, startFrame: start, durationFrames: duration,
@@ -163,6 +163,19 @@ private struct FailingCompleter: LintCompleter {
               let data = s.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
         return obj
+    }
+
+    /// Bind a UNIQUE temp library for the body so parallel writer tests don't share the suite's library.
+    private func withFreshLibrary<T>(_ body: () throws -> T) rethrows -> T {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("cs-lib-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        return try CaptionStyleStore.$libraryDirectoryOverride.withValue(dir) { try body() }
+    }
+
+    private func withFreshLibrary<T>(_ body: () async throws -> T) async rethrows -> T {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("cs-lib-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        return try await CaptionStyleStore.$libraryDirectoryOverride.withValue(dir) { try await body() }
     }
 
     @Test func flagsModeSurfacesButDoesNotApply() async throws {
@@ -290,63 +303,62 @@ private struct FailingCompleter: LintCompleter {
     // MARK: - Reject-path persistence (dismiss)
 
     @Test func dismissPersistsToLibraryFileAndAppends() throws {
-        let libURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("lint-lib-\(UUID().uuidString).json", isDirectory: false)
-        defer { try? FileManager.default.removeItem(at: libURL) }
-        let e = editorWithCaptions([("我在看视频呢", 0, 40)])
-        let exec = ToolExecutor(editor: e)
+        // Writes to a temp library scope — CaptionStyleStore.libraryURL, isolated per test.
+        try withFreshLibrary {
+            let e = editorWithCaptions([("我在看视频呢", 0, 40)])
+            let exec = ToolExecutor(editor: e)
 
-        let out1 = body(try exec.dismissLintTerm(e, ["original": "视频"], libraryURL: libURL))
-        #expect(out1["dismissed"] as? String == "视频")
-        #expect(out1["lintDismissals"] as? [String] == ["视频"])
-        #expect(out1["warning"] == nil)  // 2 CJK chars is distinctive, not broad
+            let out1 = body(try exec.dismissLintTerm(e, ["original": "视频"]))
+            #expect(out1["dismissed"] as? String == "视频")
+            #expect(out1["lintDismissals"] as? [String] == ["视频"])
+            #expect(out1["warning"] == nil)  // 2 CJK chars is distinctive, not broad
 
-        // A different term appends; re-dismissing an existing one is idempotent.
-        _ = try exec.dismissLintTerm(e, ["original": "开视频"], libraryURL: libURL)
-        let out3 = body(try exec.dismissLintTerm(e, ["original": "视频"], libraryURL: libURL))
-        #expect((out3["lintDismissals"] as? [String])?.sorted() == ["开视频", "视频"].sorted())
+            // A different term appends; re-dismissing an existing one is idempotent.
+            _ = try exec.dismissLintTerm(e, ["original": "开视频"])
+            let out3 = body(try exec.dismissLintTerm(e, ["original": "视频"]))
+            #expect((out3["lintDismissals"] as? [String])?.sorted() == ["开视频", "视频"].sorted())
 
-        // Persisted to the profile file itself.
-        let onDisk = CaptionStyleStore.readLayer(at: libURL)["lintDismissals"] as? [String]
-        #expect(onDisk?.sorted() == ["开视频", "视频"].sorted())
+            // Persisted to the profile file itself.
+            let onDisk = CaptionStyleStore.readLayer(at: CaptionStyleStore.libraryURL)["lintDismissals"] as? [String]
+            #expect(onDisk?.sorted() == ["开视频", "视频"].sorted())
+        }
     }
 
     @Test func dismissRequiresOriginal() throws {
         let e = editorWithCaptions([("我在看视频呢", 0, 40)])
         let exec = ToolExecutor(editor: e)
         #expect(throws: (any Error).self) {
-            try exec.dismissLintTerm(e, ["reason": "no original"], libraryURL: FileManager.default.temporaryDirectory.appendingPathComponent("x.json"))
+            try exec.dismissLintTerm(e, ["reason": "no original"])
         }
     }
 
     @Test func dismissedTermSuppressesSameFlagOnNextRun() async throws {
-        // The dismissal reaches lint through the resolved caption-style profile; a project sidecar is
-        // the isolatable layer, and it exercises the identical lintExclusions → profile.lintDismissals path.
-        let pkg = try tempPackage()
-        defer { try? FileManager.default.removeItem(at: pkg) }
-        try CaptionStyleStore.writeLayer(["lintDismissals": ["视频"]], at: #require(CaptionStyleStore.projectURL(package: pkg)))
+        // End-to-end: dismiss writes the library scope, then the same stubbed flag is suppressed on the
+        // next run because library dismissals feed lintExclusions. Library is an isolated temp dir.
+        try await withFreshLibrary {
+            let e = editorWithCaptions([("我在看视频呢", 0, 40)])  // projectURL nil → resolve reads library
+            let target = clipId(e, text: "我在看视频呢")
+            let exec = ToolExecutor(editor: e)
+            _ = try exec.dismissLintTerm(e, ["original": "视频"])
 
-        let e = editorWithCaptions([("我在看视频呢", 0, 40)])
-        e.projectURL = pkg
-        let target = clipId(e, text: "我在看视频呢")
-        let exec = ToolExecutor(editor: e)
-        let stub = StubCompleter(response: """
-        [{"clipId":"\(target)","original":"视频","suggestion":"视屏","reason":"x","confidence":0.9}]
-        """)
-        let out = body(try await exec.captionLint(e, ["mode": "flags"], completer: stub))
-        #expect((out["flags"] as? [[String: Any]])?.isEmpty ?? true)
-        #expect((out["dismissedCount"] as? Int ?? 0) >= 1)
+            let stub = StubCompleter(response: """
+            [{"clipId":"\(target)","original":"视频","suggestion":"视屏","reason":"x","confidence":0.9}]
+            """)
+            let out = body(try await exec.captionLint(e, ["mode": "flags"], completer: stub))
+            #expect((out["flags"] as? [[String: Any]])?.isEmpty ?? true)
+            #expect((out["dismissedCount"] as? Int ?? 0) >= 1)
+        }
     }
 
     @Test func captionStyleReadListsDismissals() throws {
-        let pkg = try tempPackage()
-        defer { try? FileManager.default.removeItem(at: pkg) }
-        try CaptionStyleStore.writeLayer(["lintDismissals": ["视频", "开视频"]], at: #require(CaptionStyleStore.projectURL(package: pkg)))
-        let e = EditorViewModel()
-        e.projectURL = pkg
-        let exec = ToolExecutor(editor: e)
-        let out = body(try exec.captionStyle(e, [:]))
-        #expect((out["lintDismissals"] as? [String])?.sorted() == ["开视频", "视频"].sorted())
+        try withFreshLibrary {
+            let e = editorWithCaptions([("我在看视频呢", 0, 40)])
+            let exec = ToolExecutor(editor: e)
+            _ = try exec.dismissLintTerm(e, ["original": "视频"])
+            _ = try exec.dismissLintTerm(e, ["original": "开视频"])
+            let out = body(try exec.captionStyle(e, [:]))
+            #expect((out["lintDismissals"] as? [String])?.sorted() == ["开视频", "视频"].sorted())
+        }
     }
 
     @Test func shortDismissalWarnsButLongOneDoesNot() {
@@ -354,12 +366,5 @@ private struct FailingCompleter: LintCompleter {
         #expect(ToolExecutor.shortDismissalWarning("ok") != nil)     // 2 Latin letters — broad
         #expect(ToolExecutor.shortDismissalWarning("视频") == nil)   // 2 CJK chars — distinctive
         #expect(ToolExecutor.shortDismissalWarning("okay") == nil)   // 4 Latin letters — distinctive
-    }
-
-    private func tempPackage() throws -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("lint-dismiss-\(UUID().uuidString).palmier", isDirectory: true)
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
     }
 }

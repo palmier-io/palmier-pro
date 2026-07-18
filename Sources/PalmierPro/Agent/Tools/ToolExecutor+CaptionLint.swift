@@ -194,12 +194,12 @@ extension ToolExecutor {
     /// Persist a confirmed-correct surface form so caption_lint stops re-surfacing it. Writes to the
     /// caption-style profile at LIBRARY scope (crosses projects), reusing the set_caption_style write
     /// machinery. Read-modify-write of just that layer's lintDismissals list.
-    func dismissLintTerm(_ editor: EditorViewModel, _ args: [String: Any], libraryURL: URL = CaptionStyleStore.libraryURL) throws -> ToolResult {
+    func dismissLintTerm(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         guard let raw = args.string("original")?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
             throw ToolError("caption_lint: action 'dismiss' requires a non-empty 'original' — the caption surface form that is actually correct.")
         }
 
-        let url = libraryURL
+        let url = CaptionStyleStore.libraryURL
         let existing = CaptionStyleStore.readLayer(at: url)
         var dismissals = (existing["lintDismissals"] as? [Any])?.compactMap { $0 as? String } ?? []
         let alreadyPresent = dismissals.contains(raw)

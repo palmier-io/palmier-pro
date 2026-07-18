@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import PalmierPro
 
-@Suite("CaptionStyle")
+@Suite("CaptionStyle", .hermeticCaptionStyle)
 struct CaptionStyleTests {
     // MARK: - Filler classification & planning
 
