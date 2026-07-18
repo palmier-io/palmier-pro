@@ -20,9 +20,21 @@ final class VideoEngine {
 
     private var timeObserver: Any?
     private var rebuildTask: Task<Void, Never>?
-    private var sourcePreviewTask: Task<Void, Never>?
+    private(set) var sourcePreviewTask: Task<Void, Never>?
     private var sourcePreviewGeneration = 0
     private var sourceTrackStart: CMTime = .zero
+
+    private enum SourcePreviewError: LocalizedError {
+        case noVideoTrack
+        case invalidTimeRange
+
+        var errorDescription: String? {
+            switch self {
+            case .noVideoTrack: "No video track is available."
+            case .invalidTimeRange: "The video track has no valid duration."
+            }
+        }
+    }
 
     private var trackMappings: [TrackMapping] = []
     private var clipNaturalSizes: [String: CGSize] = [:]
@@ -57,7 +69,7 @@ final class VideoEngine {
         guard let editor else { return }
         scrubAudioEngine.stopScrubbing()
         editor.isPlaying = true
-        guard rebuildTask == nil else { return }
+        guard rebuildTask == nil, sourcePreviewTask == nil else { return }
         let frame = playbackStartFrame(for: editor)
         seek(to: frame, mode: .exact)
         player.play()
@@ -72,6 +84,7 @@ final class VideoEngine {
     func resumePlayback() {
         scrubAudioEngine.stopScrubbing()
         editor?.isPlaying = true
+        guard sourcePreviewTask == nil else { return }
         player.play()
     }
 
@@ -134,28 +147,36 @@ final class VideoEngine {
                 do {
                     trackStart = try await Self.loadVideoTrackStart(url: url)
                 } catch {
-                    guard !Task.isCancelled else { return }
-                    trackStart = .zero
+                    guard !Task.isCancelled,
+                          let self,
+                          self.isCurrentSourcePreview(id: id, url: url, generation: generation) else { return }
+                    self.sourcePreviewTask = nil
+                    self.pause()
                     Log.preview.warning(
                         "source preview timing load failed asset=\(id.prefix(8)): \(error.localizedDescription)"
                     )
+                    self.editor?.mediaPanelToast = MediaPanelToast(message: "Couldn’t load video preview.")
+                    return
                 }
                 guard !Task.isCancelled,
                       let self,
-                      generation == self.sourcePreviewGeneration,
-                      case .mediaAsset(let activeId, _, _) = self.editor?.activePreviewTab,
-                      activeId == id,
-                      self.editor?.mediaAssets.first(where: { $0.id == id })?.url == url else { return }
-                self.sourcePreviewTask = nil
+                      self.isCurrentSourcePreview(id: id, url: url, generation: generation) else { return }
                 self.replacePlayerItem(
                     AVPlayerItem(url: url),
                     reason: "previewAsset",
                     sourceTrackStart: trackStart
                 )
-                if let editor = self.editor {
-                    self.seek(to: editor.sourcePlayheadFrame, mode: .exact)
-                    if editor.isPlaying { self.player.play() }
-                }
+                guard let editor = self.editor else { return }
+                let time = SourceMediaTimebase.absoluteTime(
+                    relativeFrame: editor.playheadState.sourceFrame,
+                    fps: editor.timeline.fps,
+                    trackStart: trackStart
+                )
+                let didSeek = await self.seekPlayer(to: time)
+                guard !Task.isCancelled,
+                      self.isCurrentSourcePreview(id: id, url: url, generation: generation) else { return }
+                self.sourcePreviewTask = nil
+                if didSeek, editor.isPlaying { self.player.play() }
             }
             return
         }
@@ -200,14 +221,24 @@ final class VideoEngine {
     @concurrent
     private static func loadVideoTrackStart(url: URL) async throws -> CMTime {
         let asset = AVURLAsset(url: url)
-        guard let track = try await asset.loadTracks(withMediaType: .video).first else { return .zero }
+        guard let track = try await asset.loadTracks(withMediaType: .video).first else {
+            throw SourcePreviewError.noVideoTrack
+        }
         let timeRange = try await track.load(.timeRange)
         try Task.checkCancellation()
         guard timeRange.isValid,
               timeRange.start.isNumeric,
               timeRange.duration.isNumeric,
-              timeRange.duration > .zero else { return .zero }
+              timeRange.duration > .zero else { throw SourcePreviewError.invalidTimeRange }
         return timeRange.start
+    }
+
+    private func isCurrentSourcePreview(id: String, url: URL, generation: Int) -> Bool {
+        guard generation == sourcePreviewGeneration,
+              case .mediaAsset(let activeId, _, _) = editor?.activePreviewTab,
+              activeId == id,
+              editor?.mediaAssets.first(where: { $0.id == id })?.url == url else { return false }
+        return true
     }
 
     private func cancelSourcePreviewLoad() {
@@ -493,6 +524,14 @@ final class VideoEngine {
         guard let item = player.currentItem else { return }
         item.cancelPendingSeeks()
         player.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance)
+    }
+
+    private func seekPlayer(to time: CMTime) async -> Bool {
+        await withCheckedContinuation { continuation in
+            player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { completed in
+                continuation.resume(returning: completed)
+            }
+        }
     }
 
     private func playerTime(forPreviewFrame frame: Int) -> CMTime? {

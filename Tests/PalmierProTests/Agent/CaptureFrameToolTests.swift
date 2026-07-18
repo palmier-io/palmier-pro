@@ -153,6 +153,57 @@ struct CaptureFrameToolTests {
         ) == 30)
     }
 
+    @Test func sourcePreviewLoadUsesLiveScrubFrameBeforePlaying() async throws {
+        let fixture = try await makeFixture()
+        defer { cleanup(fixture) }
+        let engine = VideoEngine(editor: fixture.editor)
+        fixture.editor.videoEngine = engine
+        defer {
+            engine.pause()
+            engine.teardown()
+            fixture.editor.videoEngine = nil
+        }
+
+        fixture.editor.openPreviewTab(for: fixture.source)
+        let load = try #require(engine.sourcePreviewTask)
+        fixture.editor.seekSourceToFrame(5, mode: .interactiveScrub)
+        engine.play()
+        await load.value
+
+        #expect(engine.sourcePreviewTask == nil)
+        #expect(engine.player.currentItem != nil)
+        #expect(engine.player.currentTime().seconds >= 0.9)
+        #expect(engine.player.rate > 0)
+    }
+
+    @Test func sourcePreviewTimingFailureDoesNotInstallOrPlayItem() async throws {
+        let fixture = try await makeFixture()
+        defer { cleanup(fixture) }
+        let missing = MediaAsset(
+            url: fixture.root.appendingPathComponent("missing.mov"),
+            type: .video,
+            name: "Missing",
+            duration: 1
+        )
+        fixture.editor.importMediaAsset(missing)
+        let engine = VideoEngine(editor: fixture.editor)
+        fixture.editor.videoEngine = engine
+        defer {
+            engine.teardown()
+            fixture.editor.videoEngine = nil
+        }
+
+        fixture.editor.openPreviewTab(for: missing)
+        let load = try #require(engine.sourcePreviewTask)
+        engine.play()
+        await load.value
+
+        #expect(engine.sourcePreviewTask == nil)
+        #expect(engine.player.currentItem == nil)
+        #expect(!fixture.editor.isPlaying)
+        #expect(fixture.editor.mediaPanelToast?.message == "Couldn’t load video preview.")
+    }
+
     private struct Fixture {
         let editor: EditorViewModel
         let root: URL
