@@ -33,6 +33,22 @@ struct GapTransitionTests {
         #expect(duration == 6)
     }
 
+    @Test func rejectsFrameRatesOutsideProjectLimits() {
+        let previous = Fixtures.clip(id: "previous", start: 0, duration: 121)
+        let next = Fixtures.clip(id: "next", start: 605, duration: 121)
+        let timeline = Fixtures.timeline(
+            fps: 121,
+            tracks: [Fixtures.videoTrack(clips: [previous, next])]
+        )
+
+        let context = GapTransitionPlanner.context(
+            for: GapSelection(trackIndex: 0, range: FrameRange(start: 121, end: 605)),
+            in: timeline
+        )
+
+        #expect(context == nil)
+    }
+
     @Test func computesSpeedThatPreservesExactGapSpan() throws {
         let speed = try #require(GapTransitionPlanner.playbackRate(
             generationDurationSeconds: 6,

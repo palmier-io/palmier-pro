@@ -12,10 +12,12 @@ struct GapTransitionContext: Equatable, Sendable {
 enum GapTransitionPlanner {
     static let minimumSeconds = 4
     static let maximumSeconds = 15
+    static let maximumFPS = 120
     static let prompt = "Create a seemless transition between the first and last frame"
 
     static func context(for gap: GapSelection, in timeline: Timeline) -> GapTransitionContext? {
         guard timeline.fps > 0,
+              timeline.fps <= maximumFPS,
               timeline.fps <= Int.max / maximumSeconds,
               timeline.tracks.indices.contains(gap.trackIndex),
               gap.range.start > 0,
@@ -52,6 +54,7 @@ enum GapTransitionPlanner {
         supportedDurations: [Int]
     ) -> Int? {
         guard fps > 0,
+              fps <= maximumFPS,
               fps <= Int.max / maximumSeconds,
               gapFrameCount >= minimumSeconds * fps,
               gapFrameCount <= maximumSeconds * fps else { return nil }
@@ -74,6 +77,7 @@ enum GapTransitionPlanner {
               generationDurationSeconds <= maximumSeconds,
               targetFrameCount > 0,
               fps > 0,
+              fps <= maximumFPS,
               fps <= Int.max / generationDurationSeconds else { return nil }
         let sourceFrameCount = generationDurationSeconds * fps
         guard sourceFrameCount != targetFrameCount else { return 1 }
