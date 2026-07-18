@@ -534,17 +534,6 @@ extension ToolExecutor {
                 captionEditsBefore.append((id, old))
             }
         }
-        if hasContent {
-            let timingCleared = clipIds.filter { id in
-                guard let loc = editor.findClip(id: id) else { return false }
-                let clip = editor.timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
-                return clip.wordTimings != nil && clip.textContent != content
-            }
-            if !timingCleared.isEmpty {
-                notes.append("Content change cleared word timings on \(timingCleared.count) clip\(timingCleared.count == 1 ? "" : "s") — karaoke highlighting falls back to plain text there.")
-            }
-        }
-
         let snapshot = timelineSnapshot(editor)
         let actionName = clipIds.count == 1 ? "Update Text (Agent)" : "Update Texts (Agent)"
         let shouldFitToContent = transform == nil && (hasContent || textStylePatch?.affectsLayout == true)
@@ -552,13 +541,13 @@ extension ToolExecutor {
         let canvasH = Double(editor.timeline.height)
         var promoted: [[String: Any]] = []
         var promotedStrings: [String] = []
+        var clearedTimings = 0
         editor.undo.perform(actionName) {
             editor.commitClipProperties(clipIds: clipIds) { clip in
                 if let content {
-                    if clip.textContent != content {
-                        clip.wordTimings = nil
-                    }
-                    clip.textContent = content
+                    // Re-align surviving word timings instead of dropping them; only a rewrite with
+                    // no anchor clears wholesale.
+                    if clip.setCaptionContent(content) { clearedTimings += 1 }
                 }
                 if let textStylePatch, textStylePatch.hasAnyField {
                     var style = clip.textStyle ?? TextStyle()
@@ -616,6 +605,10 @@ extension ToolExecutor {
         // §5.2: update every other caption that still shows a promoted variant.
         if !promotedStrings.isEmpty {
             editor.resyncCaptionsForGlossaryTerm(strings: promotedStrings, trigger: "glossary_promotion")
+        }
+
+        if clearedTimings > 0 {
+            notes.append("Rewrote \(clearedTimings) caption\(clearedTimings == 1 ? "" : "s") with no surviving word — karaoke timing there was cleared and falls back to plain text.")
         }
 
         var extra: [String: Any] = [:]

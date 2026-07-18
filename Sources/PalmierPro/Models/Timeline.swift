@@ -396,6 +396,23 @@ extension Clip {
         fadeOutFrames = max(0, min(fadeOutFrames, durationFrames - fadeInFrames))
     }
 
+    /// Sets caption text, re-aligning existing word timings to the new text instead of dropping
+    /// them (shared by the MCP update_text and the inspector text field). Returns true when timings
+    /// were cleared wholesale because nothing anchored — the caller notes it; false otherwise.
+    mutating func setCaptionContent(_ newContent: String) -> Bool {
+        guard textContent != newContent else { return false }
+        let hadTimings = wordTimings != nil
+        if let old = wordTimings,
+           let retimed = WordTimingRetimer.retime(old: old, newContent: newContent, duration: durationFrames) {
+            wordTimings = retimed
+            textContent = newContent
+            return false
+        }
+        textContent = newContent
+        wordTimings = nil
+        return hadTimings
+    }
+
     mutating func rescaleWordTimings(from oldDuration: Int) {
         guard mediaType == .text, let timings = wordTimings, oldDuration > 0, durationFrames > 0 else { return }
         let scale = Double(durationFrames) / Double(oldDuration)

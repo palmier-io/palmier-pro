@@ -34,8 +34,7 @@ struct TextTab: View {
                     set: { new in
                         guard !isBatch else { return }
                         editor.applyClipProperty(clipId: clip.id, rebuild: true) {
-                            if $0.textContent != new { $0.wordTimings = nil }
-                            $0.textContent = new
+                            _ = $0.setCaptionContent(new)
                         }
                         editor.fitTextClipToContent(clipId: clip.id)
                     }
@@ -43,8 +42,7 @@ struct TextTab: View {
                 onCommit: { new in
                     guard !isBatch else { return }
                     editor.commitClipProperty(clipId: clip.id) {
-                        if $0.textContent != new { $0.wordTimings = nil }
-                        $0.textContent = new
+                        _ = $0.setCaptionContent(new)
                     }
                     editor.fitTextClipToContent(clipId: clip.id)
                 }
