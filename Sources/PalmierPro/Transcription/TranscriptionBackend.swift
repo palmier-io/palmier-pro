@@ -13,6 +13,9 @@ enum TranscriptionBackend {
         guard let convex = AccountService.shared.convex else {
             throw BackendError.notConfigured
         }
+        // Decoder bias (GlossaryStore.hotwordTerms) is NOT deliverable here: the transcriptions:submit
+        // backend action exposes no prompt/phrase-hint/vocabulary field. Local sherpa gets bias via
+        // TranscriptionBias.hotwordsCSV; the cloud path cannot without a backend protocol change.
         let args: [String: ConvexEncodable?] = [
             "storageId": storageId,
             "durationSeconds": durationSeconds,
