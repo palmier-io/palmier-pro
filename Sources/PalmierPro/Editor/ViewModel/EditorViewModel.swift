@@ -20,6 +20,9 @@ struct PendingAudioPlacement {
 
 struct PendingGapTransitionPlacement: Equatable, Sendable {
     let context: GapTransitionContext
+    let timelineRevision: Int
+    let firstFrameAssetId: String
+    let lastFrameAssetId: String
 }
 
 @Observable

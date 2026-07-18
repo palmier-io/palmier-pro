@@ -43,6 +43,28 @@ struct GapTransitionTests {
         #expect(abs(speed - (180.0 / 165.0)) < 0.000_001)
     }
 
+    @Test(arguments: Array(120...450))
+    func speedConsumesEveryRequestedSourceFrame(targetFrameCount: Int) throws {
+        let duration = Int(ceil(Double(targetFrameCount) / 30))
+        let speed = try #require(GapTransitionPlanner.playbackRate(
+            generationDurationSeconds: duration,
+            targetFrameCount: targetFrameCount,
+            fps: 30
+        ))
+
+        #expect(Int(Double(targetFrameCount) * speed) == duration * 30)
+    }
+
+    @Test func choosesAspectRatioClosestToTimelineCanvas() {
+        let aspectRatio = GapTransitionPlanner.closestAspectRatio(
+            width: 1080,
+            height: 1920,
+            supportedAspectRatios: ["16:9", "1:1", "9:16"]
+        )
+
+        #expect(aspectRatio == "9:16")
+    }
+
     @Test func placesRetimeAndUndoAsOneTimelineEdit() throws {
         let previous = Fixtures.clip(id: "previous", start: 0, duration: 30)
         let next = Fixtures.clip(id: "next", start: 195, duration: 30)
@@ -66,11 +88,17 @@ struct GapTransitionTests {
             trackIndex: 0,
             range: FrameRange(start: 30, end: 195)
         )
+        editor.selectedGap = gap
         let context = try #require(GapTransitionPlanner.context(for: gap, in: editor.timeline))
 
         let clipId = try #require(editor.placeGeneratingGapTransition(
             placeholderId: placeholder.id,
-            placement: PendingGapTransitionPlacement(context: context),
+            placement: PendingGapTransitionPlacement(
+                context: context,
+                timelineRevision: editor.timelineRenderRevision,
+                firstFrameAssetId: "first",
+                lastFrameAssetId: "last"
+            ),
             generationDurationSeconds: 6
         ))
         let clip = try #require(editor.clipFor(id: clipId))
@@ -83,11 +111,15 @@ struct GapTransitionTests {
 
         undoManager.undo()
         #expect(editor.clipFor(id: clipId) == nil)
+        #expect(editor.selectedGap == gap)
+        #expect(editor.selectedClipIds.isEmpty)
 
         undoManager.redo()
         let restored = try #require(editor.clipFor(id: clipId))
         #expect(restored.endFrame == 195)
         #expect(restored.speed == clip.speed)
+        #expect(editor.selectedGap == nil)
+        #expect(editor.selectedClipIds == [clipId])
     }
 
     @Test func refusesPlacementAfterGapChanges() throws {
@@ -107,7 +139,12 @@ struct GapTransitionTests {
         )
 
         let issue = editor.gapTransitionPlacementIssue(
-            PendingGapTransitionPlacement(context: context),
+            PendingGapTransitionPlacement(
+                context: context,
+                timelineRevision: editor.timelineRenderRevision,
+                firstFrameAssetId: "first",
+                lastFrameAssetId: "last"
+            ),
             generationDurationSeconds: 6
         )
 

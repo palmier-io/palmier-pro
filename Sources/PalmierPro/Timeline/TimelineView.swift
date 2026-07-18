@@ -838,9 +838,12 @@ final class TimelineView: NSView {
                 trackIndex: trackIndex,
                 geometry: geometry
             )
+            let gapChanged = editor.selectedGap != gap
             editor.selectedGap = gap
             if gap != nil {
                 editor.selectedClipIds.removeAll()
+            }
+            if gapChanged {
                 needsDisplay = true
             }
             return emptyAreaMenu(
@@ -849,6 +852,10 @@ final class TimelineView: NSView {
                 clickedRange: clickedRange,
                 gap: gap
             )
+        }
+        if editor.selectedGap != nil {
+            editor.selectedGap = nil
+            needsDisplay = true
         }
         let clip = editor.timeline.tracks[hit.trackIndex].clips[hit.clipIndex]
         let clipRect = geometry.clipRect(for: clip, trackIndex: hit.trackIndex)

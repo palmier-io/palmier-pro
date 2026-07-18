@@ -36,6 +36,9 @@ extension EditorViewModel {
         guard activeTimelineId == context.timelineId else {
             return "Return to the original timeline before generating this transition."
         }
+        guard timelineRenderRevision == placement.timelineRevision else {
+            return "The timeline changed. Create the transition again."
+        }
         guard gapTransitionContext(
             for: GapSelection(trackIndex: context.trackIndex, range: context.range)
         ) == context else {
@@ -71,6 +74,8 @@ extension EditorViewModel {
         ) else { return nil }
 
         let before = timeline
+        let selectedGapBefore = selectedGap
+        let selectedClipIdsBefore = selectedClipIds
         let ids = undo.withoutRegistration {
             placeClip(
                 asset: asset,
@@ -90,10 +95,13 @@ extension EditorViewModel {
         timeline.tracks[location.trackIndex].clips[location.clipIndex].trimEndFrame = 0
         selectedGap = nil
         selectedClipIds = [clipId]
-        registerTimelineSwap(
-            undoState: before,
-            redoState: timeline,
-            actionName: "Add Generated Transition"
+        registerGapTransitionPlacementSwap(
+            targetTimeline: before,
+            targetGap: selectedGapBefore,
+            targetClipIds: selectedClipIdsBefore,
+            inverseTimeline: timeline,
+            inverseGap: nil,
+            inverseClipIds: [clipId]
         )
         notifyTimelineChanged()
         return clipId
@@ -132,6 +140,7 @@ extension EditorViewModel {
         }
 
         let timelineSnapshot = timeline
+        let timelineRevision = timelineRenderRevision
         let mediaURLs = mediaResolver.expectedURLMap()
         let sourceSizes = Dictionary(uniqueKeysWithValues: mediaAssets.compactMap { asset in
             guard let width = asset.sourceWidth, let height = asset.sourceHeight else { return nil }
@@ -151,42 +160,62 @@ extension EditorViewModel {
             )
             try Task.checkCancellation()
             guard pendingGapTransitionRequestId == requestId,
+                  timelineRenderRevision == timelineRevision,
                   activeTimelineId == context.timelineId,
                   gapTransitionContext(
                     for: GapSelection(trackIndex: context.trackIndex, range: context.range)
                   ) == context,
                   frames.count == 2 else { return }
 
-            guard let firstFrame = await importPastedImageData(frames[0]),
-                  let lastFrame = await importPastedImageData(frames[1]) else {
+            guard let firstFrame = await importPastedImageData(frames[0]) else {
                 mediaPanelToast = "The transition frames could not be saved."
                 return
             }
+            firstFrame.name = "Transition First Frame"
+            updateManifestMetadata(for: [firstFrame])
             try Task.checkCancellation()
             guard pendingGapTransitionRequestId == requestId,
+                  timelineRenderRevision == timelineRevision,
                   activeTimelineId == context.timelineId,
                   gapTransitionContext(
                     for: GapSelection(trackIndex: context.trackIndex, range: context.range)
                   ) == context else { return }
 
-            firstFrame.name = "Transition First Frame"
+            guard let lastFrame = await importPastedImageData(frames[1]) else {
+                mediaPanelToast = "The last transition frame could not be saved."
+                return
+            }
             lastFrame.name = "Transition Last Frame"
-            updateManifestMetadata(for: [firstFrame, lastFrame])
+            updateManifestMetadata(for: [lastFrame])
+            try Task.checkCancellation()
+            guard pendingGapTransitionRequestId == requestId,
+                  timelineRenderRevision == timelineRevision,
+                  activeTimelineId == context.timelineId,
+                  gapTransitionContext(
+                    for: GapSelection(trackIndex: context.trackIndex, range: context.range)
+                  ) == context else { return }
 
             var stored = GenerationInput(
                 prompt: GapTransitionPlanner.prompt,
                 model: model.id,
                 duration: duration,
-                aspectRatio: model.aspectRatios.contains("16:9")
-                    ? "16:9"
-                    : (model.aspectRatios.first ?? ""),
+                aspectRatio: GapTransitionPlanner.closestAspectRatio(
+                    width: timeline.width,
+                    height: timeline.height,
+                    supportedAspectRatios: model.aspectRatios
+                ) ?? "",
                 resolution: "720p"
             )
             stored.imageURLAssetIds = [firstFrame.id, lastFrame.id]
             seedGenerationPanel(
                 asset: firstFrame,
                 stored: stored,
-                gapTransitionPlacement: PendingGapTransitionPlacement(context: context)
+                gapTransitionPlacement: PendingGapTransitionPlacement(
+                    context: context,
+                    timelineRevision: timelineRevision,
+                    firstFrameAssetId: firstFrame.id,
+                    lastFrameAssetId: lastFrame.id
+                )
             )
             mediaPanelToast = nil
         } catch is CancellationError {
@@ -212,6 +241,30 @@ extension EditorViewModel {
         return capable.first {
             $0.displayName.localizedCaseInsensitiveContains("Seedance 2.0")
                 && !$0.displayName.localizedCaseInsensitiveContains("Fast")
+        }
+    }
+
+    private func registerGapTransitionPlacementSwap(
+        targetTimeline: Timeline,
+        targetGap: GapSelection?,
+        targetClipIds: Set<String>,
+        inverseTimeline: Timeline,
+        inverseGap: GapSelection?,
+        inverseClipIds: Set<String>
+    ) {
+        registerTimelineUndo("Add Generated Transition") { vm in
+            vm.timeline = targetTimeline
+            vm.selectedGap = targetGap
+            vm.selectedClipIds = targetClipIds
+            vm.notifyTimelineChanged()
+            vm.registerGapTransitionPlacementSwap(
+                targetTimeline: inverseTimeline,
+                targetGap: inverseGap,
+                targetClipIds: inverseClipIds,
+                inverseTimeline: targetTimeline,
+                inverseGap: targetGap,
+                inverseClipIds: targetClipIds
+            )
         }
     }
 }

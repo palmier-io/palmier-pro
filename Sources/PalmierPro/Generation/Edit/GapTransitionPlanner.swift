@@ -75,6 +75,29 @@ enum GapTransitionPlanner {
               targetFrameCount > 0,
               fps > 0,
               fps <= Int.max / generationDurationSeconds else { return nil }
-        return Double(generationDurationSeconds * fps) / Double(targetFrameCount)
+        let sourceFrameCount = generationDurationSeconds * fps
+        guard sourceFrameCount != targetFrameCount else { return 1 }
+        return (Double(sourceFrameCount) / Double(targetFrameCount)).nextUp
+    }
+
+    static func closestAspectRatio(
+        width: Int,
+        height: Int,
+        supportedAspectRatios: [String]
+    ) -> String? {
+        guard width > 0, height > 0 else { return nil }
+        let target = Double(width) / Double(height)
+        return supportedAspectRatios.compactMap { value -> (value: String, distance: Double)? in
+            let parts = value.split(separator: ":")
+            guard parts.count == 2,
+                  let numerator = Double(parts[0]),
+                  let denominator = Double(parts[1]),
+                  numerator > 0,
+                  denominator > 0 else { return nil }
+            let distance = abs(log((numerator / denominator) / target))
+            return (value, distance)
+        }
+        .min { $0.distance < $1.distance }?
+        .value
     }
 }

@@ -197,13 +197,22 @@ extension GenerationView {
         let pendingGapTransition = selectedType == .video
             ? editor.pendingGapTransitionPlacement
             : nil
-        if let pendingGapTransition,
-           let issue = editor.gapTransitionPlacementIssue(
-               pendingGapTransition,
-               generationDurationSeconds: selectedDuration
-           ) {
-            flashDropError(issue)
-            return
+        if let pendingGapTransition {
+            guard !videoModel.requiresSourceVideo,
+                  videoModel.supportsFirstFrame,
+                  videoModel.supportsLastFrame,
+                  firstFrame?.id == pendingGapTransition.firstFrameAssetId,
+                  lastFrame?.id == pendingGapTransition.lastFrameAssetId else {
+                flashDropError("Restore the transition’s first and last frames before generating.")
+                return
+            }
+            if let issue = editor.gapTransitionPlacementIssue(
+                pendingGapTransition,
+                generationDurationSeconds: selectedDuration
+            ) {
+                flashDropError(issue)
+                return
+            }
         }
         let audioDuration: Int = {
             guard selectedType == .audio else { return 0 }
