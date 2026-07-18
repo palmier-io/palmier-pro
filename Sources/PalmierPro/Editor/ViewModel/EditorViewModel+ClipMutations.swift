@@ -350,9 +350,26 @@ extension EditorViewModel {
         let clip = timeline.tracks[ti].clips[loc.clipIndex]
         let basis = dragBefore[clip.id] ?? clip
         let sourceFrames = basis.sourceOffset(atTimelineOffset: Double(basis.durationFrames))
-        let newDuration = max(1, Int((sourceFrames / newSpeed).rounded()))
+        let durationValue = (sourceFrames / newSpeed).rounded()
+        guard durationValue.isFinite,
+              durationValue > 0,
+              durationValue < Double(Int.max) else { return }
+        let newDuration = max(1, Int(durationValue))
+        let (newEnd, endOverflow) = clip.startFrame.addingReportingOverflow(newDuration)
+        guard !endOverflow else { return }
         let oldDuration = clip.durationFrames
         let oldEnd = clip.endFrame
+        let (rippleDelta, rippleOverflow) = newEnd.subtractingReportingOverflow(oldEnd)
+        guard !rippleOverflow else { return }
+        let chainIds = rippleDelta == 0
+            ? Set<String>()
+            : timeline.tracks[ti].contiguousClipIds(fromEnd: oldEnd, excludeId: clip.id)
+        guard timeline.tracks[ti].clips.allSatisfy({ follower in
+            guard chainIds.contains(follower.id) else { return true }
+            let shifted = follower.startFrame.addingReportingOverflow(rippleDelta)
+            guard !shifted.overflow else { return false }
+            return !shifted.partialValue.addingReportingOverflow(follower.durationFrames).overflow
+        }) else { return }
 
         timeline.tracks[ti].clips[loc.clipIndex].speed = newSpeed
         timeline.tracks[ti].clips[loc.clipIndex].speedRamp = ramp
@@ -363,9 +380,7 @@ extension EditorViewModel {
         timeline.tracks[ti].clips[loc.clipIndex].clampKeyframesToDuration()
         timeline.tracks[ti].clips[loc.clipIndex].clampFadesToDuration()
 
-        let rippleDelta = (clip.startFrame + newDuration) - oldEnd
         if rippleDelta != 0 {
-            let chainIds = timeline.tracks[ti].contiguousClipIds(fromEnd: oldEnd, excludeId: clip.id)
             for ci in timeline.tracks[ti].clips.indices where chainIds.contains(timeline.tracks[ti].clips[ci].id) {
                 timeline.tracks[ti].clips[ci].startFrame += rippleDelta
             }

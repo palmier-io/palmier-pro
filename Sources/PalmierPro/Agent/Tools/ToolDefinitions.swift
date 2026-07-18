@@ -80,7 +80,7 @@ enum ToolDefinitions {
     static let all: [AgentTool] = [
         AgentTool(
             name: .getTimeline,
-            description: "Always call at the start of a session. Returns project settings (fps, resolution, totalFrames, durationSeconds), tracks with a stable trackId, their current index (what every trackIndex parameter takes), type, and clips, plus canGenerate (if false, generation/upscale tools will fail — tell the user to sign in to Palmier and subscribe before attempting them). Clip ids are accepted by clip mutation tools; trackId is accepted by manage_tracks.\n\nEvery clip occupies frames: [start, end) — timeline frames, end exclusive, duration = end − start. gaps on a track lists its empty [start, end) spans; no gaps key means contiguous. A video clip's linked audio partner is folded into it as audio: {id, track, …} carrying only what deviates (volume, effects, differing trims); the partner is not repeated on its own track, which instead reports linkedClips (its folded count). Address the audio side by its nested id.\n\nFields equal to their defaults are omitted: mediaType 'video', sourceClipType = mediaType, speed 1, volume 1, opacity 1, trims/fades 0, identity transform/crop, default textStyle, track muted/hidden false. A variable-speed clip includes speedRamp points with normalized position, speed, and interpolationOut; edit it with set_speed_ramp. Text clips never report trims. Keyframe tracks that animate nothing are shown as what they are: identity tracks are dropped, constant ones appear as the static field (e.g. crop: {left: 0.31}). A graded clip carries `color` — its grade in apply_color's own vocabulary, pasteable to other clips via apply_color's color parameter. Other effects appear as effects: [{type, params}], the exact shape apply_effect accepts.\n\nCaption clips (sharing a captionGroupId) come back per track as captionGroups summaries: clipCount, frameRange, shared style, and a textPreview — individual caption clips and their ids are NOT listed. That summary is all you need to restyle (update_text with captionGroupId) or judge coverage; the spoken words live in get_transcript. Only when you must touch individual caption clips (retime one, delete one, fix one word's style), re-read with captionDetail:true — ideally windowed — to get [clipId, startFrame, endFrame, text] rows, capped at 200 per group. Caption clips whose properties deviate from the group always appear individually in clips.",
+            description: "Always call at the start of a session. Returns project settings (fps, resolution, totalFrames, durationSeconds), tracks with a stable trackId, their current index (what every trackIndex parameter takes), type, and clips, plus canGenerate (if false, generation/upscale tools will fail — tell the user to sign in to Palmier and subscribe before attempting them). Clip ids are accepted by clip mutation tools; trackId is accepted by manage_tracks.\n\nEvery clip occupies frames: [start, end) — timeline frames, end exclusive, duration = end − start. gaps on a track lists its empty [start, end) spans; no gaps key means contiguous. A video clip's linked audio partner is folded into it as audio: {id, track, …} carrying only what deviates (volume, effects, differing trims); the partner is not repeated on its own track, which instead reports linkedClips (its folded count). Address the audio side by its nested id.\n\nFields equal to their defaults are omitted: mediaType 'video', sourceClipType = mediaType, speed 1, volume 1, opacity 1, trims/fades 0, identity transform/crop, default textStyle, track muted/hidden false. A variable-speed clip includes speedRamp points with normalized position, speed, and interpolation; the array is directly reusable with set_speed_ramp. Text clips never report trims. Keyframe tracks that animate nothing are shown as what they are: identity tracks are dropped, constant ones appear as the static field (e.g. crop: {left: 0.31}). A graded clip carries `color` — its grade in apply_color's own vocabulary, pasteable to other clips via apply_color's color parameter. Other effects appear as effects: [{type, params}], the exact shape apply_effect accepts.\n\nCaption clips (sharing a captionGroupId) come back per track as captionGroups summaries: clipCount, frameRange, shared style, and a textPreview — individual caption clips and their ids are NOT listed. That summary is all you need to restyle (update_text with captionGroupId) or judge coverage; the spoken words live in get_transcript. Only when you must touch individual caption clips (retime one, delete one, fix one word's style), re-read with captionDetail:true — ideally windowed — to get [clipId, startFrame, endFrame, text] rows, capped at 200 per group. Caption clips whose properties deviate from the group always appear individually in clips.",
             inputSchema: objectSchema(
                 properties: [
                     "startFrame": ["type": "integer", "description": "Optional. Window start (inclusive); only clips intersecting [startFrame, endFrame) are returned. Tracks report totalClips when the window hides some."],
@@ -493,12 +493,13 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .setSpeedRamp,
-            description: "Set constant speed or a variable speed ramp on one or more clips in one undoable edit. This is the speed-specific tool; use set_clip_properties for other clip properties.\n\nmode='constant' requires speed. mode='ramp' requires at least two points from position 0 through 1, where position is normalized through the visible clip and speed is the playback multiplier. Points must be strictly increasing and include both endpoints. interpolation controls the curve leaving each point: smooth (default) eases naturally, linear changes at a steady rate, hold keeps the current speed until the next point.\n\nChanging speed preserves the source content used by the clip, so the timeline duration changes to match the ramp's average speed and contiguous clips ripple with it. Linked audio/video partners receive the same retiming. Speeds are limited to 0.25x–4x. Nested timelines and multicam clips are refused.",
+            description: "Set constant speed or a variable speed ramp on one or more clips in one undoable edit. This is the speed-specific tool; use set_clip_properties for other clip properties.\n\nmode='constant' requires speed. mode='ramp' requires at least two points from position 0 through 1, where position is normalized through the visible clip and speed is the playback multiplier. Points must be strictly increasing and include both endpoints. interpolation controls the curve leaving each point: smooth (default) eases naturally, linear changes at a steady rate, hold keeps the current speed until the next point. get_timeline can return an optional tangent after a trim or split; preserve it when reusing those points.\n\nChanging speed preserves the source content used by the clip, so the timeline duration changes to match the ramp's average speed and contiguous clips ripple with it. Linked audio/video partners receive the same retiming. Speeds are limited to 0.25x–4x. Nested timelines and multicam clips are refused.",
             inputSchema: objectSchema(
                 properties: [
                     "clipIds": [
                         "type": "array",
                         "items": ["type": "string"],
+                        "minItems": 1,
                         "description": "Clip IDs to retime. Linked audio/video partners are included automatically.",
                     ],
                     "mode": [
@@ -508,19 +509,27 @@ enum ToolDefinitions {
                     ],
                     "speed": [
                         "type": "number",
+                        "minimum": SpeedRamp.minimumSpeed,
+                        "maximum": SpeedRamp.maximumSpeed,
                         "description": "Required for constant mode. Playback multiplier from 0.25 through 4.",
                     ],
                     "points": [
                         "type": "array",
+                        "minItems": 2,
+                        "maxItems": SpeedRamp.maximumPointCount,
                         "description": "Required for ramp mode. At least two strictly increasing points including positions 0 and 1.",
                         "items": objectSchema(
                             properties: [
-                                "position": ["type": "number", "description": "Normalized position through the clip, 0–1."],
-                                "speed": ["type": "number", "description": "Playback multiplier, 0.25–4."],
+                                "position": ["type": "number", "minimum": 0, "maximum": 1, "description": "Normalized position through the clip, 0–1."],
+                                "speed": ["type": "number", "minimum": SpeedRamp.minimumSpeed, "maximum": SpeedRamp.maximumSpeed, "description": "Playback multiplier, 0.25–4."],
                                 "interpolation": [
                                     "type": "string",
                                     "enum": ["smooth", "linear", "hold"],
                                     "description": "Curve leaving this point. Default smooth.",
+                                ],
+                                "tangent": [
+                                    "type": "number",
+                                    "description": "Optional curve tangent returned by get_timeline after a trim or split. Pass it through unchanged to preserve that curve exactly.",
                                 ],
                             ],
                             required: ["position", "speed"]

@@ -93,7 +93,8 @@ fileprivate struct SetSpeedRampInput: DecodableToolArgs {
         let position: Double
         let speed: Double
         let interpolation: String?
-        static let allowedKeys: Set<String> = ["position", "speed", "interpolation"]
+        let tangent: Double?
+        static let allowedKeys: Set<String> = ["position", "speed", "interpolation", "tangent"]
     }
 }
 
@@ -658,8 +659,12 @@ extension ToolExecutor {
             ramp = nil
         } else {
             guard input.speed == nil else { throw ToolError("ramp mode does not accept scalar 'speed'") }
-            guard let rows = input.points, rows.count >= 2 else {
-                throw ToolError("ramp mode requires at least two points")
+            guard let rows = input.points,
+                  rows.count >= 2,
+                  rows.count <= SpeedRamp.maximumPointCount,
+                  rows.count <= SpeedRamp.maximumAuthoredPointCount
+                    || rows.allSatisfy({ $0.tangent != nil }) else {
+                throw ToolError("ramp mode accepts up to \(SpeedRamp.maximumAuthoredPointCount) authored points")
             }
             guard rows.first?.position == 0, rows.last?.position == 1 else {
                 throw ToolError("ramp points must include position 0 first and position 1 last")
@@ -685,11 +690,30 @@ extension ToolExecutor {
                 points.append(SpeedRampPoint(
                     position: row.position,
                     speed: row.speed,
-                    interpolationOut: interpolation
+                    interpolationOut: interpolation,
+                    tangent: row.tangent
                 ))
                 previous = row.position
             }
-            ramp = SpeedRamp(points: points)
+            let parsedRamp = SpeedRamp(points: points)
+            guard parsedRamp.hasValidCurve else {
+                throw ToolError("ramp tangents produce a speed outside the supported 0.25–4 range")
+            }
+            ramp = parsedRamp
+        }
+
+        let targetSpeed = ramp?.averageSpeed ?? input.speed ?? 1
+        for id in touched {
+            guard let clip = editor.clipFor(id: id) else { continue }
+            let sourceFrames = clip.sourceOffset(atTimelineOffset: Double(clip.durationFrames))
+            let duration = (sourceFrames / targetSpeed).rounded()
+            guard duration.isFinite, duration > 0, duration < Double(Int.max) else {
+                throw ToolError("Retiming clip \(id) would exceed the supported timeline duration")
+            }
+            let (_, overflow) = clip.startFrame.addingReportingOverflow(Int(duration))
+            guard !overflow else {
+                throw ToolError("Retiming clip \(id) would overflow its timeline placement")
+            }
         }
 
         let snapshot = timelineSnapshot(editor)

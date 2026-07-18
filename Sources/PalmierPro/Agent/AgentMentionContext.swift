@@ -97,12 +97,14 @@ enum AgentMentionContext {
             "speed": clip.speed,
         ]
         if let speedRamp = clip.speedRamp {
-            context["speedRamp"] = speedRamp.points.map {
-                [
-                    "position": $0.position,
-                    "speed": $0.speed,
-                    "interpolation": $0.interpolationOut.rawValue,
-                ] as [String: Any]
+            context["speedRamp"] = speedRamp.points.map { point in
+                var value: [String: Any] = [
+                    "position": point.position,
+                    "speed": point.speed,
+                    "interpolation": point.interpolationOut.rawValue,
+                ]
+                if let tangent = point.tangent { value["tangent"] = tangent }
+                return value
             }
         }
         return context

@@ -124,7 +124,7 @@ extension Track {
             muted: (try? c.decode(Bool.self, forKey: .muted)) ?? false,
             hidden: (try? c.decode(Bool.self, forKey: .hidden)) ?? false,
             syncLocked: (try? c.decode(Bool.self, forKey: .syncLocked)) ?? true,
-            clips: (try? c.decode([Clip].self, forKey: .clips)) ?? [],
+            clips: try c.decodeIfPresent([Clip].self, forKey: .clips) ?? [],
             displayHeight: (try? c.decode(CGFloat.self, forKey: .displayHeight))
                 .map { min(max($0, TrackSize.minHeight), TrackSize.maxHeight) } ?? 50
         )
@@ -185,7 +185,10 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
     }
 
     /// Frame where this clip ends on the timeline
-    var endFrame: Int { startFrame + durationFrames }
+    var endFrame: Int {
+        let (value, overflow) = startFrame.addingReportingOverflow(durationFrames)
+        return overflow ? Int.max : value
+    }
 
     var supportsRetiming: Bool { sourceClipType != .sequence }
 
@@ -195,11 +198,19 @@ struct Clip: Codable, Sendable, Equatable, Identifiable {
 
     /// Source frames consumed by the visible portion
     var sourceFramesConsumed: Int {
-        Int(sourceOffset(atTimelineOffset: Double(durationFrames)).rounded())
+        let value = sourceOffset(atTimelineOffset: Double(durationFrames)).rounded()
+        guard value.isFinite, value > 0 else { return 0 }
+        guard value < Double(Int.max) else { return Int.max }
+        return Int(value)
     }
 
     /// Total source frames the clip references, including both trims.
-    var sourceDurationFrames: Int { sourceFramesConsumed + trimStartFrame + trimEndFrame }
+    var sourceDurationFrames: Int {
+        let (withStart, startOverflow) = sourceFramesConsumed.addingReportingOverflow(trimStartFrame)
+        guard !startOverflow else { return Int.max }
+        let (total, endOverflow) = withStart.addingReportingOverflow(trimEndFrame)
+        return endOverflow ? Int.max : total
+    }
 
     /// Convert an absolute timeline frame to the clip-relative offset used by track storage.
     private func keyframeOffset(forFrame frame: Int) -> Int { frame - startFrame }
@@ -495,6 +506,20 @@ extension Clip {
             )
             speed = self.speedRamp?.averageSpeed ?? speed
         }
+        if startOffset != 0 {
+            opacityTrack = opacityTrack?.rebased(by: startOffset, fallback: opacity)
+            positionTrack = positionTrack?.rebased(
+                by: startOffset,
+                fallback: AnimPair(a: 0, b: 0)
+            )
+            scaleTrack = scaleTrack?.rebased(
+                by: startOffset,
+                fallback: AnimPair(a: 1, b: 1)
+            )
+            rotationTrack = rotationTrack?.rebased(by: startOffset, fallback: 0)
+            cropTrack = cropTrack?.rebased(by: startOffset, fallback: crop)
+            volumeTrack = volumeTrack?.rebased(by: startOffset, fallback: 0)
+        }
         setDuration(newDuration)
     }
 
@@ -537,6 +562,28 @@ extension Clip {
         )
         if let speedRamp {
             speed = speedRamp.averageSpeed
+        }
+        let sourceFrames = sourceOffset(atTimelineOffset: Double(durationFrames)).rounded()
+        let (_, endOverflow) = startFrame.addingReportingOverflow(durationFrames)
+        let sourceCount = sourceFrames >= 0 && sourceFrames < Double(Int.max)
+            ? Int(sourceFrames)
+            : 0
+        let (withStartTrim, startTrimOverflow) = sourceCount.addingReportingOverflow(trimStartFrame)
+        let (_, endTrimOverflow) = withStartTrim.addingReportingOverflow(trimEndFrame)
+        guard durationFrames >= 0,
+              speed.isFinite,
+              speed > 0,
+              sourceFrames.isFinite,
+              sourceFrames >= 0,
+              sourceFrames < Double(Int.max),
+              !endOverflow,
+              !startTrimOverflow,
+              !endTrimOverflow else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .durationFrames,
+                in: c,
+                debugDescription: "Clip timing is outside the supported frame range."
+            )
         }
     }
 }

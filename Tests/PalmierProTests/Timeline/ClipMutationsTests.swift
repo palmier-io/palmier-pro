@@ -236,7 +236,7 @@ struct SplitClipTests {
         _ = e.splitClip(clipId: "c1", atFrame: 60)
 
         let left = e.timeline.tracks[0].clips.first { $0.id == "c1" }!
-        #expect(abs(left.sourceOffset(atTimelineOffset: 30) - originalQuarterSource) < 0.05)
+        #expect(abs(left.sourceOffset(atTimelineOffset: 30) - originalQuarterSource) < 0.000_001)
     }
 
     @Test func splitClipZerosOpacityFadesAcrossCut() {

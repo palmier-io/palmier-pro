@@ -141,12 +141,19 @@ extension EditorViewModel {
         }
 
         if mediaType == .video,
-           let audioSource = try? await asset.loadTracks(withMediaType: .audio).first,
-           let audioComp = composition.addMutableTrack(
-               withMediaType: .audio,
-               preferredTrackID: kCMPersistentTrackID_Invalid
-           ) {
-            try? await insertRetimedRange(clip: clip, source: audioSource, into: audioComp, timescale: timescale)
+           let audioSource = try await asset.loadTracks(withMediaType: .audio).first {
+            guard let audioComp = composition.addMutableTrack(
+                withMediaType: .audio,
+                preferredTrackID: kCMPersistentTrackID_Invalid
+            ) else {
+                throw ExportError(reason: "could not create audio composition track")
+            }
+            try await insertRetimedRange(
+                clip: clip,
+                source: audioSource,
+                into: audioComp,
+                timescale: timescale
+            )
         }
 
         try? FileManager.default.removeItem(at: destURL)

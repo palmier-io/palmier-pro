@@ -429,6 +429,9 @@ struct InspectorView: View {
                                     get: { ramp.points.first?.interpolationOut ?? .smooth },
                                     set: { interpolation in
                                         var points = ramp.points
+                                        for index in points.indices {
+                                            points[index].tangent = nil
+                                        }
                                         for index in points.indices.dropLast() {
                                             points[index].interpolationOut = interpolation
                                         }

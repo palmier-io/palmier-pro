@@ -57,6 +57,46 @@ struct ClipMathTests {
         #expect(ramp.speed(at: 0.5) == 3)
     }
 
+    @Test func speedRampRenderingIsAdaptiveAndBounded() {
+        let ramp = SpeedRamp(points: [
+            SpeedRampPoint(position: 0, speed: 0.25, interpolationOut: .smooth),
+            SpeedRampPoint(position: 1, speed: 4),
+        ])
+
+        let offsets = ramp.timelineOffsetsForRendering(duration: 100_000)
+
+        #expect(offsets.count > 17)
+        #expect(offsets.count <= SpeedRamp.maximumRenderSegments + 1)
+        #expect(offsets.first == 0)
+        #expect(offsets.last == 100_000)
+    }
+
+    @Test func repeatedSpeedRampWindowsPreserveSmoothSourceMapping() {
+        let original = SpeedRamp(points: [
+            SpeedRampPoint(position: 0, speed: 0.5, interpolationOut: .smooth),
+            SpeedRampPoint(position: 1, speed: 3),
+        ])
+        let first = original.windowed(startOffset: 30, duration: 90, oldDuration: 120)
+        let second = first.windowed(startOffset: 15, duration: 60, oldDuration: 90)
+        let expected = original.sourceOffset(atTimelineOffset: 75, duration: 120)
+            - original.sourceOffset(atTimelineOffset: 45, duration: 120)
+
+        #expect(abs(second.sourceOffset(atTimelineOffset: 30, duration: 60) - expected) < 0.000_001)
+    }
+
+    @Test func repeatedSpeedRampExtensionsStayFlatAndPersistable() {
+        let original = SpeedRamp(points: [
+            SpeedRampPoint(position: 0, speed: 1, interpolationOut: .smooth),
+            SpeedRampPoint(position: 1, speed: 3),
+        ])
+        let first = original.windowed(startOffset: -10, duration: 120, oldDuration: 100)
+        let second = first.windowed(startOffset: -10, duration: 140, oldDuration: 120)
+
+        #expect(abs(second.speed(at: 0.05) - 1) < 0.000_001)
+        #expect(second.points.count <= SpeedRamp.maximumPointCount)
+        #expect(second.hasValidCurve)
+    }
+
     @Test func sourceDurationIncludesBothTrims() {
         // consumed (100) + trimStart (10) + trimEnd (5) = 115.
         let clip = Fixtures.clip(start: 0, duration: 100, trimStart: 10, trimEnd: 5)
@@ -259,6 +299,33 @@ struct ClipMathTests {
         #expect(clip.cropTrack == nil)
         #expect(clip.volumeTrack == nil)
     }
+
+    @Test func retimingWindowRebasesKeyframesAfterHeadTrim() {
+        var clip = Fixtures.clip(start: 0, duration: 100)
+        clip.opacityTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 0.0, interpolationOut: .linear),
+            Keyframe(frame: 50, value: 1.0, interpolationOut: .linear),
+            Keyframe(frame: 100, value: 0.0),
+        ])
+
+        clip.applyRetimingWindow(startOffset: 20, newDuration: 80)
+
+        #expect(clip.opacityTrack?.keyframes.map(\.frame) == [0, 30, 80])
+        #expect(abs((clip.opacityTrack?.keyframes[0].value ?? 0) - 0.4) < 0.000_001)
+    }
+
+    @Test func retimingWindowExtendsKeyframesAtHead() {
+        var clip = Fixtures.clip(start: 0, duration: 100)
+        clip.opacityTrack = KeyframeTrack(keyframes: [
+            Keyframe(frame: 0, value: 0.5),
+            Keyframe(frame: 100, value: 1),
+        ])
+
+        clip.applyRetimingWindow(startOffset: -20, newDuration: 120)
+
+        #expect(clip.opacityTrack?.keyframes.map(\.frame) == [0, 20, 120])
+        #expect(clip.opacityTrack?.keyframes.first?.value == 0.5)
+    }
 }
 
 // MARK: - Adversarial
@@ -309,6 +376,14 @@ struct ClipMathAdversarialTests {
         #expect(clip.endFrame == -20)
         #expect(clip.contains(timelineFrame: -40))
         #expect(!clip.contains(timelineFrame: 0))
+    }
+
+    @Test func extremeDurationSaturatesSourceArithmetic() {
+        let clip = Fixtures.clip(start: 0, duration: Int.max, speed: 4)
+
+        #expect(clip.sourceFramesConsumed == Int.max)
+        #expect(clip.sourceDurationFrames == Int.max)
+        #expect(clip.endFrame == Int.max)
     }
 }
 

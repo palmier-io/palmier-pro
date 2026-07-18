@@ -64,6 +64,40 @@ struct ProjectRoundTripTests {
         #expect(decoded.speed == clip.speedRamp?.averageSpeed)
     }
 
+    @Test func malformedSpeedRampFailsWithoutDroppingTrackClips() throws {
+        var clip = Fixtures.clip(start: 0, duration: 90)
+        clip.speedRamp = SpeedRamp(points: [
+            SpeedRampPoint(position: 0, speed: 1),
+            SpeedRampPoint(position: 1, speed: 2),
+        ])
+        let timeline = Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: [clip])])
+        var object = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(timeline)) as? [String: Any]
+        )
+        var tracks = try #require(object["tracks"] as? [[String: Any]])
+        var clips = try #require(tracks[0]["clips"] as? [[String: Any]])
+        var points = try #require(clips[0]["speedRamp"] as? [[String: Any]])
+        points[0]["speed"] = 9.0
+        clips[0]["speedRamp"] = points
+        tracks[0]["clips"] = clips
+        object["tracks"] = tracks
+        let data = try JSONSerialization.data(withJSONObject: object)
+
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(Timeline.self, from: data)
+        }
+    }
+
+    @Test func speedRampPointWithoutInterpolationDefaultsToSmooth() throws {
+        let data = Data(
+            #"[{"position":0,"speed":1},{"position":1,"speed":2}]"#.utf8
+        )
+
+        let ramp = try JSONDecoder().decode(SpeedRamp.self, from: data)
+
+        #expect(ramp.points.allSatisfy { $0.interpolationOut == .smooth })
+    }
+
     @Test func clipTransformAndCropSurviveRoundTrip() throws {
         var clip = Fixtures.clip(start: 0, duration: 30)
         clip.transform = Transform(centerX: 0.4, centerY: 0.6, width: 0.5, height: 0.5, rotation: 45,

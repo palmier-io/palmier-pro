@@ -701,7 +701,9 @@ enum ClipRenderer {
         let maxCoveredSec = thumbnails.last!.time + spacing
         tileImage(width: thumbDisplayWidth, in: drawRect, context: context) { tileRect in
             let frac = (tileRect.minX - drawRect.minX) / drawRect.width
-            let timeSec = visibleStartSec + frac * visibleDurationSec
+            let timelineOffset = Double(frac) * Double(clip.durationFrames)
+            let timeSec = visibleStartSec
+                + clip.sourceOffset(atTimelineOffset: timelineOffset) / fpsD
             guard timeSec <= maxCoveredSec else { return nil }
             // Times are uniformly spaced, so the nearest thumbnail is an index away.
             let index = Int(((timeSec - startTime) / spacing).rounded())

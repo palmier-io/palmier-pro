@@ -227,7 +227,7 @@ extension ToolExecutor {
         }
         if let partnerRamp = partner["speedRamp"],
            (partnerRamp as? NSObject)?.isEqual(visual["speedRamp"]) != true {
-            out["speedRamp"] = partnerRamp
+            out["speedRamp"] = compactSpeedRamp(partnerRamp)
         }
         let stripped = strippingDefaults(compactClipKeyframes(partner), clipDefaults)
         for key in ["volume", "fadeInFrames", "fadeOutFrames", "fadeInInterpolation", "fadeOutInterpolation", "keyframes"] {
@@ -302,6 +302,9 @@ extension ToolExecutor {
         _ clip: [String: Any], fold: LinkFold, grades: [String: [String: Any]]
     ) -> [String: Any] {
         var out = compactClipKeyframes(clip)
+        if let speedRamp = out["speedRamp"] {
+            out["speedRamp"] = compactSpeedRamp(speedRamp)
+        }
         if let s = out["sourceClipType"] as? String, s == out["mediaType"] as? String {
             out.removeValue(forKey: "sourceClipType")
         }
@@ -325,6 +328,23 @@ extension ToolExecutor {
             out.removeValue(forKey: "linkGroupId")
         }
         return out
+    }
+
+    private static func compactSpeedRamp(_ raw: Any) -> Any {
+        guard let points = raw as? [[String: Any]] else { return raw }
+        return points.map { point in
+            var compact: [String: Any] = [
+                "position": point["position"] ?? 0,
+                "speed": point["speed"] ?? 1,
+            ]
+            if let interpolation = point["interpolationOut"] as? String {
+                compact["interpolation"] = interpolation
+            }
+            if let tangent = point["tangent"] {
+                compact["tangent"] = tangent
+            }
+            return compact
+        }
     }
 
     /// Removes keys whose values equal the defaults; recurses into nested objects.

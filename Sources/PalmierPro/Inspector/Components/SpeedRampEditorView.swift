@@ -5,6 +5,7 @@ struct SpeedRampEditorView: View {
     var onChange: (SpeedRamp) -> Void
     var onCommit: (SpeedRamp) -> Void
 
+    @Environment(\.scenePhase) private var scenePhase
     @State private var liveDrag: (points: [SpeedRampPoint], index: Int)?
 
     var body: some View {
@@ -46,6 +47,10 @@ struct SpeedRampEditorView: View {
             }
             .font(.system(size: AppTheme.FontSize.xxs))
             .foregroundStyle(AppTheme.Text.mutedColor)
+        }
+        .onDisappear { commitLiveDrag() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { commitLiveDrag() }
         }
     }
 
@@ -156,6 +161,13 @@ struct SpeedRampEditorView: View {
         if let index = nearestIndex(to: location, in: points, size) {
             return (points, index)
         }
+        if points.count >= SpeedRamp.maximumAuthoredPointCount {
+            let position = value(at: location, size).position
+            let index = points.indices.min {
+                abs(points[$0].position - position) < abs(points[$1].position - position)
+            } ?? 0
+            return (points, index)
+        }
         let value = value(at: location, size)
         let point = SpeedRampPoint(position: value.position, speed: value.speed)
         points.append(point)
@@ -187,6 +199,9 @@ struct SpeedRampEditorView: View {
         _ size: CGSize
     ) -> [SpeedRampPoint] {
         var points = points
+        for pointIndex in points.indices {
+            points[pointIndex].tangent = nil
+        }
         let value = value(at: location, size)
         points[index].speed = value.speed
         if index != 0, index != points.count - 1 {
@@ -205,6 +220,15 @@ struct SpeedRampEditorView: View {
               index > 0,
               index < points.count - 1 else { return }
         points.remove(at: index)
+        for pointIndex in points.indices {
+            points[pointIndex].tangent = nil
+        }
         onCommit(SpeedRamp(points: points))
+    }
+
+    private func commitLiveDrag() {
+        guard let liveDrag else { return }
+        onCommit(SpeedRamp(points: liveDrag.points))
+        self.liveDrag = nil
     }
 }

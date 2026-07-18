@@ -802,6 +802,53 @@ struct ToolExecutorClipTests {
         #expect(h.editor.timeline.tracks[0].clips[0] == original)
     }
 
+    @Test func setSpeedRampSchemaPublishesExecutionBounds() throws {
+        let tool = try #require(ToolDefinitions.mcpServer.first { $0.name == .setSpeedRamp })
+        let properties = try #require(tool.inputSchema["properties"] as? [String: [String: Any]])
+        let clipIds = try #require(properties["clipIds"])
+        let points = try #require(properties["points"])
+        let pointSchema = try #require(points["items"] as? [String: Any])
+        let pointProperties = try #require(pointSchema["properties"] as? [String: [String: Any]])
+
+        #expect(clipIds["minItems"] as? Int == 1)
+        #expect(points["minItems"] as? Int == 2)
+        #expect(points["maxItems"] as? Int == SpeedRamp.maximumPointCount)
+        #expect(pointProperties["position"]?["minimum"] as? Int == 0)
+        #expect(pointProperties["position"]?["maximum"] as? Int == 1)
+        #expect(pointProperties["speed"]?["minimum"] as? Double == SpeedRamp.minimumSpeed)
+        #expect(pointProperties["speed"]?["maximum"] as? Double == SpeedRamp.maximumSpeed)
+        #expect(pointProperties["tangent"]?["type"] as? String == "number")
+    }
+
+    @Test func getTimelineSpeedRampPointsRoundTripWithoutTimingDrift() async throws {
+        var clip = Fixtures.clip(id: "c1", start: 0, duration: 80)
+        let authored = SpeedRamp(points: [
+            SpeedRampPoint(position: 0, speed: 0.5, interpolationOut: .smooth),
+            SpeedRampPoint(position: 1, speed: 3),
+        ])
+        clip.speedRamp = authored.windowed(startOffset: 20, duration: 80, oldDuration: 120)
+        clip.speed = clip.speedRamp!.averageSpeed
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [clip]),
+        ]))
+        let beforeSource = clip.sourceFramesConsumed
+        let timeline = try await h.runOK("get_timeline") as? [String: Any]
+        let tracks = timeline?["tracks"] as? [[String: Any]]
+        let clips = tracks?.first?["clips"] as? [[String: Any]]
+        let points = try #require(clips?.first?["speedRamp"] as? [[String: Any]])
+
+        let result = await h.runRaw("set_speed_ramp", args: [
+            "clipIds": ["c1"],
+            "mode": "ramp",
+            "points": points,
+        ])
+
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let updated = h.editor.timeline.tracks[0].clips[0]
+        #expect(updated.durationFrames == 80)
+        #expect(updated.sourceFramesConsumed == beforeSource)
+    }
+
     // MARK: - add_clips
 
     @Test func addClipsPlacesClipOnTrack() async throws {
