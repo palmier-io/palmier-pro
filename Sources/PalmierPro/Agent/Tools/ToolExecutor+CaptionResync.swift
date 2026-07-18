@@ -5,13 +5,14 @@
 import Foundation
 
 extension ToolExecutor {
-    static let resyncCaptionsAllowedKeys: Set<String> = ["captionGroupId", "startFrame", "endFrame", "dryRun", "onManualEdits"]
+    static let resyncCaptionsAllowedKeys: Set<String> = ["captionGroupId", "startFrame", "endFrame", "dryRun", "onManualEdits", "segmentation"]
 
     func resyncCaptions(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.resyncCaptionsAllowedKeys, path: "resync_captions")
 
         let dryRun = args["dryRun"] as? Bool ?? false
         let policyOverride = try parseConflictPolicy(args.string("onManualEdits"))
+        let segmentation = try parseSegmentation(args.string("segmentation"), path: "resync_captions")
 
         // Resolve the spans to rebuild: an explicit group, an explicit range, their intersection,
         // or — when neither is given — every caption group in the project.
@@ -53,14 +54,14 @@ extension ToolExecutor {
         guard !spans.isEmpty else { throw ToolError("resync_captions: nothing to resync in the requested range") }
 
         if dryRun {
-            let report = editor.runCaptionResync(spans: spans, trigger: "resync_captions", dryRun: true, policyOverride: policyOverride)
+            let report = editor.runCaptionResync(spans: spans, trigger: "resync_captions", dryRun: true, policyOverride: policyOverride, segmentation: segmentation)
             let payload: [String: Any] = ["dryRun": true, "captionResync": report?.agentPayload ?? [:]]
             return .ok(Self.jsonString(payload) ?? "{}")
         }
 
         let snapshot = timelineSnapshot(editor)
         editor.undo.perform("Resync Captions") {
-            editor.runCaptionResync(spans: spans, trigger: "resync_captions", policyOverride: policyOverride)
+            editor.runCaptionResync(spans: spans, trigger: "resync_captions", policyOverride: policyOverride, segmentation: segmentation)
         }
         return mutationResult(editor, since: snapshot)
     }

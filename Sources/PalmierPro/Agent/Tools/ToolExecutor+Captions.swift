@@ -3,8 +3,17 @@ import Foundation
 
 extension ToolExecutor {
     private static let addCaptionsAllowedKeys: Set<String> = Set([
-        "style", "transform", "censorProfanity", "language", "animation", "highlightColor", "maxWords", "fillerPolicy",
+        "style", "transform", "censorProfanity", "language", "animation", "highlightColor", "maxWords", "fillerPolicy", "segmentation",
     ])
+
+    /// Parse the shared `segmentation` param (add_captions / resync_captions). Defaults to natural.
+    func parseSegmentation(_ raw: String?, path: String) throws -> CaptionBuilder.Segmentation {
+        guard let raw else { return .default }
+        guard let mode = CaptionBuilder.Segmentation(rawValue: raw) else {
+            throw ToolError("\(path): invalid segmentation '\(raw)'. Expected 'natural' or 'fixedChars'.")
+        }
+        return mode
+    }
 
     func addCaptions(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.addCaptionsAllowedKeys, path: "add_captions")
@@ -40,6 +49,7 @@ extension ToolExecutor {
         }
 
         let fillerPolicy = try parseFillerPolicy(args.string("fillerPolicy"), path: "add_captions")
+        let segmentation = try parseSegmentation(args.string("segmentation"), path: "add_captions")
 
         let context = try await transcriptionContext(args, path: "add_captions") {
             await editor.captionCloudCreditCost(for: .init(autoDetect: true, provider: .cloud))
@@ -63,7 +73,8 @@ extension ToolExecutor {
             provider: provider,
             animation: animation,
             fillerProfile: fillerPolicy == .removeAlways ? profile : nil,
-            dropRemoveAlwaysFillers: fillerPolicy == .removeAlways
+            dropRemoveAlwaysFillers: fillerPolicy == .removeAlways,
+            segmentation: segmentation
         )
 
         try await Self.validateCloudTranscriptionAccess(for: request, in: editor)

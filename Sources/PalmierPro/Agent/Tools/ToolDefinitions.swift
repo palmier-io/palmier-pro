@@ -711,7 +711,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addTexts,
-            description: "Adds text clips as timeline layers. Omit trackIndex on every entry to create one new top video track; otherwise set trackIndex on every entry. Transform is normalized text-box center/size; center-only auto-fits, all four fields override the box. Use the nested style object for typography, outline, shadow, and background. Use add_captions for spoken audio captions. Unknown fields are rejected.",
+            description: "Adds text clips as timeline layers. Omit trackIndex on every entry to create one new top video track; otherwise set trackIndex on every entry. Transform is normalized text-box center/size; center-only auto-fits, all four fields override the box. Use the nested style object for typography, outline, shadow, and background. Use add_captions for spoken audio captions. Text added onto a track whose existing clips all share one caption group joins that group by default (so group restyle and resync manage it); pass captionGroupId to force a group or \"none\" to opt out. Unknown fields are rejected.",
             inputSchema: objectSchema(
                 properties: [
                     "entries": [
@@ -732,6 +732,7 @@ enum ToolDefinitions {
                             ], textStyleProperties(detailed: false), [
                                 "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Animation preset; off clears."],
                                 "highlightColor": ["type": "string", "description": "Active-word hex."],
+                                "captionGroupId": ["type": "string", "description": "Join this caption group, or \"none\" to opt out. Omit to default-join the track's group when its clips all share one; a plain text track stays ungrouped."],
                             ]),
                             "required": ["startFrame", "endFrame", "content"],
                         ],
@@ -780,7 +781,8 @@ enum ToolDefinitions {
                         ],
                     ],
                     "censorProfanity": ["type": "boolean", "description": "Mask profanity."],
-                    "maxWords": ["type": "integer", "description": "Max words per caption."],
+                    "maxWords": ["type": "integer", "description": "Max words per caption (Latin); for CJK this caps characters per line."],
+                    "segmentation": ["type": "string", "enum": CaptionBuilder.Segmentation.allCases.map(\.rawValue), "description": "Default natural: break at sentence/clause punctuation and word boundaries (never mid-word), preferring short lines — the right default for CJK and mixed scripts. fixedChars is the legacy recursive width split."],
                 ], textStyleProperties(detailed: false), [
                     "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Caption animation preset."],
                     "highlightColor": ["type": "string", "description": "Active-word hex."],
@@ -808,6 +810,7 @@ enum ToolDefinitions {
                     "endFrame": ["type": "integer", "description": "Window end (exclusive). Pair with startFrame."],
                     "dryRun": ["type": "boolean", "description": "Report what would change without mutating. Default false."],
                     "onManualEdits": ["type": "string", "enum": ["preserve", "overwrite", "flag"], "description": "How to treat hand-edited captions. Defaults to the project's conflict policy (preserve)."],
+                    "segmentation": ["type": "string", "enum": CaptionBuilder.Segmentation.allCases.map(\.rawValue), "description": "Line-breaking for rebuilt captions. Default natural: break at sentence/clause punctuation and word boundaries (never mid-word). fixedChars is the legacy recursive width split."],
                 ]
             )
         ),
