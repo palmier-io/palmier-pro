@@ -103,8 +103,12 @@ enum EditAction {
             if asset.isGenerating {
                 return .disabled(reason: "Generation in progress")
             }
-            guard let modelId = asset.generationInput?.model, ModelRegistry.exists(id: modelId) else {
+            guard let modelId = asset.generationInput?.model,
+                  let model = ModelRegistry.byId[modelId] else {
                 return .disabled(reason: "Model no longer available")
+            }
+            if case .video(let videoModel) = model, !videoModel.supportsRerun {
+                return .disabled(reason: "This model operation cannot be rerun")
             }
             return .available
         }

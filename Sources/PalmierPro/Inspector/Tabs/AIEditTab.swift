@@ -204,7 +204,7 @@ struct AIEditTab: View {
         let availability = EditSubmitter.reframeAvailability(for: asset, trimmedSource: trim)
         let paidBlocked = model?.paidOnly == true && !account.isPaid
         let cost = reframeCost(model: model)
-        let creditError = reframeCreditError(cost: cost)
+        let creditError = insufficientCreditError(cost: cost)
         let selectionsValid = model?.aspectRatios.contains(reframeAspectRatio) == true
             && model?.resolutions?.contains(reframeResolution) == true
         let isEnabled = availability.isAvailable
@@ -288,7 +288,7 @@ struct AIEditTab: View {
         )
     }
 
-    private func reframeCreditError(cost: Int?) -> String? {
+    private func insufficientCreditError(cost: Int?) -> String? {
         guard let cost, let budget = account.budgetCredits else { return nil }
         let remaining = max(0, budget - account.spentCredits)
         guard cost > remaining else { return nil }
@@ -330,10 +330,24 @@ struct AIEditTab: View {
             for: asset,
             effectiveDurationOverride: effectiveDurationForAvailability
         )
-        let paidBlocked = (action == .upscale || action == .edit) && !account.isPaid
-        let isEnabled = availability.isAvailable && !paidBlocked && aiDisabledReason == nil
+        let paidBlocked = (
+            action == .upscale
+                || action == .edit
+                || (action == .rerun && rerunModelPaidOnly)
+        ) && !account.isPaid
+        let creditError = action == .rerun
+            ? insufficientCreditError(cost: asset.generationInput.flatMap {
+                CostEstimator.cost(for: $0)
+            })
+            : nil
+        let isEnabled = availability.isAvailable
+            && !paidBlocked
+            && creditError == nil
+            && aiDisabledReason == nil
         let disabledReason = aiDisabledReason
-            ?? (paidBlocked ? "Requires a paid plan" : availability.reason)
+            ?? (paidBlocked ? "Requires a paid plan" : nil)
+            ?? creditError
+            ?? availability.reason
 
         descriptiveActionRow(
             icon: icon,
@@ -477,6 +491,16 @@ struct AIEditTab: View {
         case .generateSFX:
             presentVideoAudio(kind: .sfx)
         case .rerun:
+            if rerunModelPaidOnly && !account.isPaid {
+                rerunError = "Requires a paid plan"
+                return
+            }
+            if let error = insufficientCreditError(
+                cost: asset.generationInput.flatMap { CostEstimator.cost(for: $0) }
+            ) {
+                rerunError = error
+                return
+            }
             let modelId = asset.generationInput?.model ?? ""
             let reframeModel = VideoModelConfig.allModels.first(where: { $0.id == modelId })
             if UpscaleModelConfig.allIds.contains(modelId) || reframeModel?.operation == .reframe {
@@ -535,6 +559,17 @@ struct AIEditTab: View {
         let seconds = Int((effectiveDurationForAvailability ?? asset.duration).rounded())
         let cost = CostEstimator.upscaleCost(model: model, durationSeconds: max(1, seconds))
         return "\(model.displayName) · \(model.speed) · \(CostEstimator.format(cost))"
+    }
+
+    private var rerunModelPaidOnly: Bool {
+        guard let modelId = asset.generationInput?.model else { return false }
+        switch ModelRegistry.byId[modelId] {
+        case .video(let model): model.paidOnly
+        case .image(let model): model.paidOnly
+        case .audio(let model): model.paidOnly
+        case .upscale(let model): model.paidOnly
+        case .none: false
+        }
     }
 
     private func runUpscale(_ model: UpscaleModelConfig) {

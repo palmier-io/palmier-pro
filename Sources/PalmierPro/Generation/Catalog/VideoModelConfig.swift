@@ -39,6 +39,7 @@ struct VideoModelConfig: Identifiable, Sendable {
     var appearsInGenerationPanel: Bool {
         operation == .generate || operation == .edit
     }
+    var supportsRerun: Bool { operation != .unknown }
 
     var supportsReferences: Bool {
         maxReferenceImages > 0 || maxReferenceVideos > 0 || maxReferenceAudios > 0
