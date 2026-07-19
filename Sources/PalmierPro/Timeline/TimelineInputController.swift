@@ -245,7 +245,6 @@ final class TimelineInputController {
                     let headroom = slipHeadroom(for: clip, linked: linkedOn)
                     dragState = .slip(DragState.SlipDrag(
                         clipId: clip.id,
-                        trackIndex: hit.trackIndex,
                         grabFrame: geometry.frameAt(x: point.x),
                         maxRightDelta: headroom.right,
                         maxLeftDelta: headroom.left,

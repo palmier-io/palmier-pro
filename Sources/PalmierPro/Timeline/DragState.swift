@@ -85,7 +85,6 @@ enum DragState {
 
     struct SlipDrag {
         let clipId: String
-        let trackIndex: Int
         let grabFrame: Int
         /// Timeline-frame caps from source headroom across the slip group:
         /// dragging right consumes head material, left consumes tail material.
