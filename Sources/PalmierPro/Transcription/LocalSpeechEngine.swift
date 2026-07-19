@@ -39,7 +39,7 @@ enum LocalSpeechEngine: String, CaseIterable, Identifiable, Sendable {
     var cacheTag: String? {
         switch self {
         case .apple: nil  // preserves pre-existing cache entries
-        case .qwen3: "qw6"  // v6: acoustic onset refinement on first-after-pause words
+        case .qwen3: "qw7"  // v7: zh-en punctuation restoration folded onto the word stream
         case .whisper: "wk2"  // v2: acoustic onset refinement
         }
     }
