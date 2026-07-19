@@ -60,6 +60,7 @@ enum FrameCaptureRenderer {
             renderSize: canvas
         )
         guard (try? await result.composition.loadTracks(withMediaType: .video).first) != nil else {
+            try Task.checkCancellation()
             throw RenderError.noVideoTrack
         }
         try Task.checkCancellation()
