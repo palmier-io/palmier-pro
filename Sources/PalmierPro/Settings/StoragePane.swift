@@ -80,6 +80,20 @@ struct StoragePane: View {
                 .font(.system(size: AppTheme.FontSize.xs))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
                 .fixedSize(horizontal: false, vertical: true)
+            if hasProjectModelOverride {
+                Text("Some open projects override this — see the project's caption settings.")
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.tertiaryColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// True when any open project pins a per-project transcription engine, so the app-global picker
+    /// here isn't the whole story for those projects.
+    private var hasProjectModelOverride: Bool {
+        NSDocumentController.shared.documents.contains { document in
+            (document as? VideoProject)?.editorViewModel.transcriptionLocalModel != nil
         }
     }
 
