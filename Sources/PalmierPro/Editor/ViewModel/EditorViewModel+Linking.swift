@@ -350,6 +350,36 @@ extension EditorViewModel {
         return DropPlan(placements: placements, visualTarget: visualTarget, audioTarget: audioTarget)
     }
 
+    /// Shared placement for media dropped on the timeline (panel assets and Finder files).
+    func placeDroppedAssets(
+        _ assets: [MediaAsset],
+        cursor: TrackDropTarget,
+        atFrame: Int,
+        segments: [String: ClosedRange<Double>] = [:],
+        ripple: Bool
+    ) {
+        undo.perform("Add Clips") {
+            let plan = resolveDropPlan(cursor: cursor, assets: assets, atFrame: atFrame, segments: segments)
+            let (visualIdx, audioIdx) = materialize(plan: plan)
+
+            @MainActor func insert(_ assets: [MediaAsset], trackIndex: Int, linkedAudio: Int?) {
+                if ripple {
+                    rippleInsertClips(assets: assets, trackIndex: trackIndex, atFrame: atFrame, segments: segments)
+                } else {
+                    addClips(assets: assets, trackIndex: trackIndex, startFrame: atFrame, linkedAudioTrackIndex: linkedAudio, segments: segments)
+                }
+            }
+            let visualAssets = plan.visualAssets
+            if !visualAssets.isEmpty, let vIdx = visualIdx {
+                insert(visualAssets, trackIndex: vIdx, linkedAudio: audioIdx)
+            }
+            let audioOnlyAssets = plan.audioOnlyAssets
+            if !audioOnlyAssets.isEmpty, let aIdx = audioIdx {
+                insert(audioOnlyAssets, trackIndex: aIdx, linkedAudio: nil)
+            }
+        }
+    }
+
     func materialize(plan: DropPlan) -> (visual: Int?, audio: Int?) {
         let visualIdx = plan.visualTarget.map { materializeTrackIndex(target: $0, type: .video) }
         let audioIdx = audioTargetAfterVisualInsertion(plan: plan).map { materializeTrackIndex(target: $0, type: .audio) }
