@@ -10,9 +10,21 @@ struct TextTab: View {
     private var clipIds: [String] { clips.map(\.id) }
     private var isBatch: Bool { clips.count > 1 }
 
+    private var isCaption: Bool { clips.contains { $0.captionGroupId != nil } }
+    private var conflictedIds: [String] { clips.filter { $0.resyncConflict == true }.map(\.id) }
+    /// Whole caption group(s) spanned by the selection — the unit "Freeze captions" acts on.
+    private var captionTargetIds: [String] {
+        var seen = Set<String>()
+        return clips.flatMap { editor.captionGroupTextClipIds(for: $0.id) }.filter { seen.insert($0).inserted }
+    }
+    private var isFrozen: Bool {
+        !captionTargetIds.isEmpty && captionTargetIds.allSatisfy { editor.clipFor(id: $0)?.resyncExempt == true }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.zero) {
             contentField
+            if isCaption { captionSection }
             TextStyleControls(
                 selection: TextStyleSelection(
                     styles: clips.map { $0.textStyle ?? Self.defaults },
@@ -41,10 +53,12 @@ struct TextTab: View {
                 ),
                 onCommit: { new in
                     guard !isBatch else { return }
+                    let old = clip.textContent ?? ""
                     editor.commitClipProperty(clipId: clip.id) {
                         _ = $0.setCaptionContent(new)
                     }
                     editor.fitTextClipToContent(clipId: clip.id)
+                    editor.promoteInspectorCaptionEdit(old: old, new: new, clipId: clip.id)
                 }
             )
             .disabled(isBatch)
@@ -52,6 +66,52 @@ struct TextTab: View {
             .frame(minHeight: AppTheme.EditorPanel.textEditorMinHeight)
             .padding(AppTheme.Spacing.smMd)
             .editorValueField()
+        }
+    }
+
+    @ViewBuilder
+    private var captionSection: some View {
+        EditorPanelGroup("Captions") {
+            if !conflictedIds.isEmpty { conflictRow }
+            freezeRow
+        }
+    }
+
+    private var conflictRow: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            HStack(spacing: AppTheme.Spacing.xs) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Status.captionConflictColor)
+                Text("Caption differs from the audio's transcript.")
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Status.captionConflictColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: AppTheme.Spacing.sm) {
+                Button("Keep mine") { editor.keepManualCaptionText(clipIds: conflictedIds) }
+                    .help("Keep the current caption text and clear the mismatch marker.")
+                Button("Use transcript") { editor.useTranscriptForCaptionConflicts(clipIds: conflictedIds) }
+                    .help("Replace the caption with the audio's transcript.")
+            }
+            .controlSize(.small)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var freezeRow: some View {
+        InspectorRow(
+            label: "Freeze captions",
+            labelHelp: "Excludes these captions from automatic resync. Text and timing stay exactly as authored."
+        ) {
+            Toggle("", isOn: Binding(
+                get: { isFrozen },
+                set: { editor.setCaptionResyncExempt(clipIds: captionTargetIds, exempt: $0) }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .accessibilityLabel("Freeze captions")
         }
     }
 
