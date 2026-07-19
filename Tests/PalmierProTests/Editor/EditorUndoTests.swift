@@ -82,6 +82,39 @@ struct EditorUndoTests {
         #expect(manager.undoActionName == "Outer")
     }
 
+    @Test func transactionDoesNotCloseArmedEventGroup() {
+        let (undo, manager, counter) = harness()
+        let textStorage = UndoCounter()
+
+        // A direct registration (AppKit-style, outside EditorUndo) lazily
+        // opens the automatic event group. Foundation only disarms its
+        // "event group open" bookkeeping in the deferred group ending that
+        // NSDocument's save completion also invokes — nothing else clears it.
+        manager.registerUndo(withTarget: textStorage) { _ in }
+        let armedLevel = manager.groupingLevel
+        #expect(armedLevel > 0)
+
+        // An agent transaction must therefore never close the automatic
+        // event group itself. 0.6.6's ToolExecutor did
+        // (`if groupingLevel == 1 { endUndoGrouping() }`), which left the
+        // bookkeeping armed with no open group; the next save completion
+        // then raised "endUndoGrouping called with no matching begin" —
+        // fatal under NSApplicationCrashOnExceptions, and far from the
+        // cause. The transaction has to nest inside the armed group and
+        // leave it open for its scheduled ending.
+        undo.perform("Agent Edit") {
+            setCounter(1, actionName: "Agent Edit", counter: counter, undo: undo)
+        }
+        #expect(manager.groupingLevel == armedLevel)
+        #expect(manager.groupsByEvent)
+
+        // removeAllActions is the public API that both drains the history
+        // and cancels the scheduled automatic ending, so no armed state
+        // leaks into other tests.
+        manager.removeAllActions()
+        #expect(manager.groupingLevel == 0)
+    }
+
     @Test func throwingScopesRestoreUndoState() {
         let (undo, manager, counter) = harness()
 
