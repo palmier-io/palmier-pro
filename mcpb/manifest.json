@@ -12,6 +12,12 @@
   },
   "homepage": "https://palmier.io",
   "keywords": ["video", "editor", "timeline", "creative", "media"],
+  "compatibility": {
+    "platforms": ["darwin"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  },
   "server": {
     "type": "node",
     "entry_point": "server/index.js",
