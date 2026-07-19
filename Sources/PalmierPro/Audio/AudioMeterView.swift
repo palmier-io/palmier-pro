@@ -12,7 +12,7 @@ struct AudioMeterView: View {
     ).map { $0 }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .leading) {
             Canvas { context, size in
                 drawBackground(size: size, context: &context)
             }
@@ -24,6 +24,14 @@ struct AudioMeterView: View {
                 }
                 .accessibilityHidden(true)
             }
+
+            Rectangle()
+                .fill(AppTheme.Background.previewCanvasColor)
+                .frame(width: AppTheme.BorderWidth.thin)
+                .frame(maxHeight: .infinity)
+                .offset(x: AppTheme.AudioMeter.barWidth - AppTheme.BorderWidth.thin / 2)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
         .frame(width: Self.contentWidth)
         .frame(maxHeight: .infinity)
@@ -52,14 +60,6 @@ struct AudioMeterView: View {
             background.addRect(layout.segmentRect(at: index, x: 0))
             background.addRect(layout.segmentRect(at: index, x: AppTheme.AudioMeter.barWidth))
         }
-        background.addRect(
-            CGRect(
-                x: AppTheme.AudioMeter.barWidth - AppTheme.BorderWidth.thin / 2,
-                y: 0,
-                width: AppTheme.BorderWidth.thin,
-                height: size.height
-            )
-        )
         context.fill(background, with: .color(AppTheme.Background.previewCanvasColor))
 
         var ruler = Path()
@@ -99,14 +99,16 @@ struct AudioMeterView: View {
     ) {
         let activeCount = layout.activeSegmentCount(for: channel.levelDb)
         for index in 0..<activeCount {
-            let band: AudioMeterSegmentBand = channel.clipped && index == layout.count - 1
-                ? .red
-                : AudioMeterSegmentBand(decibels: layout.decibels(at: index))
-            paths.add(layout.segmentRect(at: index, x: x), to: band)
+            let rect = layout.segmentRect(at: index, x: x)
+            if channel.clipped && index == layout.count - 1 {
+                paths.addClipping(rect)
+            } else {
+                paths.add(rect, to: AudioMeterSegmentBand(decibels: layout.decibels(at: index)))
+            }
         }
 
         if channel.clipped && activeCount < layout.count {
-            paths.add(layout.segmentRect(at: layout.count - 1, x: x), to: .red)
+            paths.addClipping(layout.segmentRect(at: layout.count - 1, x: x))
         }
         if let peak = layout.peakRect(for: channel.peakDb, x: x) {
             paths.add(peak, to: AudioMeterSegmentBand(decibels: channel.peakDb))
@@ -231,9 +233,11 @@ private struct AudioMeterLevelPaths {
     private var green = Path()
     private var yellow = Path()
     private var red = Path()
+    private var clipping = Path()
     private var hasGreen = false
     private var hasYellow = false
     private var hasRed = false
+    private var hasClipping = false
 
     mutating func add(_ rect: CGRect, to band: AudioMeterSegmentBand) {
         switch band {
@@ -249,9 +253,15 @@ private struct AudioMeterLevelPaths {
         }
     }
 
+    mutating func addClipping(_ rect: CGRect) {
+        clipping.addRect(rect)
+        hasClipping = true
+    }
+
     func draw(context: inout GraphicsContext) {
         if hasGreen { context.fill(green, with: .color(AppTheme.AudioMeter.greenSegment)) }
         if hasYellow { context.fill(yellow, with: .color(AppTheme.AudioMeter.yellowSegment)) }
         if hasRed { context.fill(red, with: .color(AppTheme.AudioMeter.redSegment)) }
+        if hasClipping { context.fill(clipping, with: .color(AppTheme.Status.errorColor)) }
     }
 }
