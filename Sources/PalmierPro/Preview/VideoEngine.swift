@@ -138,53 +138,56 @@ final class VideoEngine {
             return
         }
         if asset.type == .video {
-            let id = asset.id
-            let url = asset.url
-            let generation = sourcePreviewGeneration
-            replacePlayerItem(nil, reason: "previewAssetLoading")
-            sourcePreviewTask = Task { @MainActor [weak self] in
-                guard let self else { return }
-                var didFinishSeek = false
-                defer {
-                    if generation == self.sourcePreviewGeneration {
-                        self.sourcePreviewTask = nil
-                        if !didFinishSeek { self.pause() }
-                    }
-                }
-                let trackStart: CMTime
-                do {
-                    trackStart = try await Self.loadVideoTrackStart(url: url)
-                } catch {
-                    guard !Task.isCancelled,
-                          self.isCurrentSourcePreview(id: id, url: url, generation: generation) else { return }
-                    Log.preview.warning(
-                        "source preview timing load failed asset=\(id.prefix(8)): \(error.localizedDescription)"
-                    )
-                    self.editor?.mediaPanelToast = MediaPanelToast(message: "Couldn’t load video preview.")
-                    return
-                }
-                guard !Task.isCancelled,
-                      self.isCurrentSourcePreview(id: id, url: url, generation: generation) else { return }
-                self.replacePlayerItem(
-                    AVPlayerItem(url: url),
-                    reason: "previewAsset",
-                    sourceTrackStart: trackStart
-                )
-                guard let editor = self.editor else { return }
-                let time = SourceMediaTimebase.absoluteTime(
-                    relativeFrame: editor.playheadState.sourceFrame,
-                    fps: editor.timeline.fps,
-                    trackStart: trackStart
-                )
-                let didSeek = await self.seekPlayer(to: time)
-                guard !Task.isCancelled,
-                      self.isCurrentSourcePreview(id: id, url: url, generation: generation) else { return }
-                didFinishSeek = didSeek
-                if didSeek, editor.isPlaying { self.player.play() }
-            }
+            loadSourcePreview(id: asset.id, url: asset.url)
             return
         }
         replacePlayerItem(AVPlayerItem(url: asset.url), reason: "previewAsset")
+    }
+
+    private func loadSourcePreview(id: String, url: URL) {
+        let generation = sourcePreviewGeneration
+        replacePlayerItem(nil, reason: "previewAssetLoading")
+        sourcePreviewTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            var shouldPause = false
+            defer {
+                if generation == self.sourcePreviewGeneration {
+                    self.sourcePreviewTask = nil
+                    if shouldPause { self.pause() }
+                }
+            }
+            let trackStart: CMTime
+            do {
+                trackStart = try await Self.loadVideoTrackStart(url: url)
+            } catch {
+                guard !Task.isCancelled,
+                      self.isCurrentSourcePreview(id: id, url: url, generation: generation) else { return }
+                shouldPause = true
+                Log.preview.warning(
+                    "source preview timing load failed asset=\(id.prefix(8)): \(error.localizedDescription)"
+                )
+                self.editor?.mediaPanelToast = MediaPanelToast(message: "Couldn’t load video preview.")
+                return
+            }
+            guard !Task.isCancelled,
+                  self.isCurrentSourcePreview(id: id, url: url, generation: generation) else { return }
+            self.replacePlayerItem(
+                AVPlayerItem(url: url),
+                reason: "previewAsset",
+                sourceTrackStart: trackStart
+            )
+            guard let editor = self.editor else { return }
+            let time = SourceMediaTimebase.absoluteTime(
+                relativeFrame: editor.playheadState.sourceFrame,
+                fps: editor.timeline.fps,
+                trackStart: trackStart
+            )
+            let didSeek = await self.seekPlayer(to: time)
+            guard !Task.isCancelled,
+                  self.isCurrentSourcePreview(id: id, url: url, generation: generation) else { return }
+            shouldPause = !didSeek
+            if didSeek, editor.isPlaying { self.player.play() }
+        }
     }
 
     func activateTab(_ tab: PreviewTab) {
@@ -237,6 +240,7 @@ final class VideoEngine {
         return timeRange.start
     }
 
+    // The URL check catches in-place asset replacement, which doesn't bump the generation.
     private func isCurrentSourcePreview(id: String, url: URL, generation: Int) -> Bool {
         guard generation == sourcePreviewGeneration,
               case .mediaAsset(let activeId, _, _) = editor?.activePreviewTab,

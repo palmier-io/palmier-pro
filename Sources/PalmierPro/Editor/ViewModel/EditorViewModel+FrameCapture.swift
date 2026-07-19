@@ -98,9 +98,6 @@ extension EditorViewModel {
         do {
             try Task.checkCancellation()
             guard projectURL != nil else { throw FrameCaptureError.noProject }
-            if let folderId, folder(id: folderId) == nil {
-                throw FrameCaptureError.destinationFolderMissing
-            }
             try projectPackageCoordinator.beginMutation()
         } catch {
             await FrameCaptureRenderer.discardStagedFile(at: rendered.stagedURL)
@@ -117,12 +114,10 @@ extension EditorViewModel {
 
         let destinationFolderStillExists = folderId.map { folder(id: $0) != nil } ?? true
 
-        let name = requestedName?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let displayName = name.flatMap { $0.isEmpty ? nil : $0 } ?? defaultName
         let asset = MediaAsset(
             url: committedURL,
             type: .image,
-            name: displayName,
+            name: requestedName ?? defaultName,
             duration: Defaults.imageDurationSeconds
         )
         asset.folderId = destinationFolderStillExists ? folderId : nil
@@ -130,7 +125,14 @@ extension EditorViewModel {
         asset.sourceHeight = rendered.height
 
         undo.perform("Capture Frame") {
-            addCapturedFrameAsset(asset)
+            let before = mediaLibraryUndoSnapshot()
+            importMediaAsset(asset)
+            searchIndex.schedule(asset)
+            prepareMediaVisuals(for: asset)
+            undo.register("Capture Frame", withTarget: self) { editor in
+                editor.restoreMediaLibraryUndoSnapshot(before, actionName: "Capture Frame")
+            }
+            onProjectCheckpointRequired?()
         }
 
         return FrameCaptureReceipt(
@@ -145,32 +147,6 @@ extension EditorViewModel {
         )
     }
 
-    private func addCapturedFrameAsset(_ asset: MediaAsset) {
-        guard !mediaAssets.contains(where: { $0.id == asset.id }) else { return }
-        importMediaAsset(asset)
-        undo.register("Capture Frame", withTarget: self) { editor in
-            editor.removeCapturedFrameAsset(asset)
-        }
-        searchIndex.schedule(asset)
-        prepareMediaVisuals(for: asset)
-        onProjectCheckpointRequired?()
-    }
-
-    private func removeCapturedFrameAsset(_ asset: MediaAsset) {
-        guard mediaAssets.contains(where: { $0.id == asset.id }) else { return }
-        mediaAssets.removeAll { $0.id == asset.id }
-        mediaManifest.entries.removeAll { $0.id == asset.id }
-        selectedMediaAssetIds.remove(asset.id)
-        closePreviewTab(id: PreviewTab.mediaAssetTabId(for: asset.id))
-        missingMediaRefs.remove(asset.id)
-        offlineMediaRefs.remove(asset.id)
-        unprocessableMediaRefs.remove(asset.id)
-        undo.register("Capture Frame", withTarget: self) { editor in
-            editor.addCapturedFrameAsset(asset)
-        }
-        onProjectCheckpointRequired?()
-    }
-
     func captureCurrentFrameToMedia() {
         guard frameCaptureTask == nil else { return }
 
@@ -182,7 +158,10 @@ extension EditorViewModel {
             guard type == .video else { return }
             source = .media(
                 mediaRef: id,
-                sourceSeconds: Double(sourcePlayheadFrame) / Double(max(1, timeline.fps))
+                sourceSeconds: SourceMediaTimebase.relativeSeconds(
+                    relativeFrame: sourcePlayheadFrame,
+                    fps: timeline.fps
+                )
             )
         }
         let folderId = mediaPanelCurrentFolderId

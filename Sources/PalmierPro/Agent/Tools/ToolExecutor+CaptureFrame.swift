@@ -56,10 +56,11 @@ extension ToolExecutor {
         ]
         switch source {
         case .timeline(let frame):
-            payload["capturedFrom"] = [
-                "timelineId": receipt.timelineId ?? editor.activeTimelineId,
-                "timelineFrame": frame,
-            ]
+            var capturedFrom: [String: Any] = ["timelineFrame": frame]
+            if let timelineId = receipt.timelineId {
+                capturedFrom["timelineId"] = timelineId
+            }
+            payload["capturedFrom"] = capturedFrom
         case .media(let mediaRef, let sourceSeconds):
             var capturedFrom: [String: Any] = [
                 "mediaRef": mediaRef,

@@ -204,7 +204,7 @@ struct CaptureFrameToolTests {
         #expect(fixture.editor.mediaPanelToast?.message == "Couldn’t load video preview.")
     }
 
-    @Test func staleSourcePreviewLoadClearsDeferredPlayback() async throws {
+    @Test func staleSourcePreviewLoadPreservesDeferredPlayback() async throws {
         let fixture = try await makeFixture()
         defer { cleanup(fixture) }
         let engine = VideoEngine(editor: fixture.editor)
@@ -221,8 +221,17 @@ struct CaptureFrameToolTests {
         await load.value
 
         #expect(engine.sourcePreviewTask == nil)
-        #expect(!fixture.editor.isPlaying)
+        #expect(fixture.editor.isPlaying)
         #expect(engine.player.rate == 0)
+
+        fixture.source.url = fixture.videoURL
+        engine.previewAsset(fixture.source)
+        let successor = try #require(engine.sourcePreviewTask)
+        await successor.value
+
+        #expect(engine.sourcePreviewTask == nil)
+        #expect(fixture.editor.isPlaying)
+        #expect(engine.player.rate > 0)
     }
 
     private struct Fixture {

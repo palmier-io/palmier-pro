@@ -59,11 +59,10 @@ enum FrameCaptureRenderer {
             missingMediaRefs: missingMediaRefs,
             renderSize: canvas
         )
-        let videoTrack = try? await result.composition.loadTracks(withMediaType: .video).first
-        try Task.checkCancellation()
-        guard videoTrack != nil else {
+        guard (try? await result.composition.loadTracks(withMediaType: .video).first) != nil else {
             throw RenderError.noVideoTrack
         }
+        try Task.checkCancellation()
 
         let generator = AVAssetImageGenerator(asset: result.composition)
         generator.videoComposition = result.videoComposition

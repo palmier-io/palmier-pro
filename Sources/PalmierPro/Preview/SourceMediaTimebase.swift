@@ -13,6 +13,10 @@ enum SourceMediaTimebase {
         (absoluteTime - trackStart).seconds
     }
 
+    static func relativeSeconds(relativeFrame: Int, fps: Int) -> Double {
+        Double(relativeFrame) / Double(max(1, fps))
+    }
+
     static func relativeFrame(absoluteTime: CMTime, fps: Int, trackStart: CMTime) -> Int {
         let seconds = relativeSeconds(absoluteTime: absoluteTime, trackStart: trackStart)
         guard seconds.isFinite else { return 0 }
