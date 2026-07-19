@@ -154,7 +154,13 @@ async function handleClientMessage(msg) {
   if (msg.method === 'notifications/initialized') return; // sent internally per session
   const deadline = Date.now() + REQUEST_REPLAY_MS;
   for (;;) {
-    if (reconnecting) await reconnecting;
+    if (reconnecting) {
+      const timeLeft = deadline - Date.now();
+      if (timeLeft <= 0 || !(await Promise.race([
+        reconnecting.then(() => true),
+        sleep(timeLeft).then(() => false),
+      ]))) throw new Error('reconnect pending');
+    }
     try {
       await post(msg, (out) => {
         if (out.id !== undefined || out.method) writeOut(out);

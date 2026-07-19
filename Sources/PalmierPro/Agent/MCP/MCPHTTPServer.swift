@@ -182,8 +182,16 @@ actor MCPHTTPServer {
                 try await server.notify(ToolListChangedNotification.message())
             } catch {
                 Log.mcp.warning("tool list_changed notify failed id=\(sessionID): \(error.localizedDescription)")
+                await self.resetToolListAnnouncement(sessionID: sessionID)
             }
         }
+    }
+
+    // A failed announce retries on the next GET-stream attach.
+    private func resetToolListAnnouncement(sessionID: String) {
+        guard var session = sessions[sessionID] else { return }
+        session.toolListAnnounced = false
+        sessions[sessionID] = session
     }
 
     private nonisolated func isInitialize(_ request: HTTPRequest) -> Bool {
