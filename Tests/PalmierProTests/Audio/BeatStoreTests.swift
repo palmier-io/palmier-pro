@@ -49,16 +49,43 @@ struct BeatStoreTests {
         #expect(store.analysis(for: asset.id) == nil)
     }
 
+    @Test func urlChangeRestartsHydrationWithCurrentURL() async throws {
+        let loader = ControlledBeatCacheLoader()
+        let store = makeStore(loader: loader)
+        let originalURL = URL(fileURLWithPath: "/tmp/original.palmier/Media/audio.wav")
+        let rebasedURL = URL(fileURLWithPath: "/tmp/rebased.palmier/Media/audio.wav")
+        let asset = makeAsset(url: originalURL)
+        let stale = BeatAnalysis(bpm: 90, beats: [0.5], downbeats: [])
+        let current = BeatAnalysis(bpm: 120, beats: [1], downbeats: [1])
+
+        let first = try #require(store.hydrate(for: asset))
+        await loader.waitUntilInvocationCount(1)
+        asset.url = rebasedURL
+        #expect(await loader.finishNext(with: BeatAnalysisCacheEntry(analysis: stale, fileTag: "old")))
+        await first.value
+
+        await loader.waitUntilInvocationCount(2)
+        let restarted = try #require(store.hydrate(for: asset))
+        #expect(await loader.requestedURLs() == [originalURL, rebasedURL])
+        #expect(store.analysis(for: asset.id) == nil)
+        #expect(await loader.finishNext(with: BeatAnalysisCacheEntry(analysis: current, fileTag: "new")))
+        await restarted.value
+
+        #expect(store.analysis(for: asset.id) == current)
+    }
+
     private func makeStore(loader: ControlledBeatCacheLoader) -> BeatStore {
         BeatStore { sourceURL, mediaRef in
             await loader.load(sourceURL: sourceURL, mediaRef: mediaRef)
         }
     }
 
-    private func makeAsset() -> MediaAsset {
+    private func makeAsset(
+        url: URL = URL(fileURLWithPath: "/tmp/beat-store-\(UUID().uuidString).wav")
+    ) -> MediaAsset {
         MediaAsset(
             id: UUID().uuidString,
-            url: URL(fileURLWithPath: "/tmp/beat-store-\(UUID().uuidString).wav"),
+            url: url,
             type: .audio,
             name: "Test Audio"
         )
@@ -67,27 +94,41 @@ struct BeatStoreTests {
 
 private actor ControlledBeatCacheLoader {
     private var loadCount = 0
-    private var startedWaiters: [CheckedContinuation<Void, Never>] = []
+    private var sourceURLs: [URL] = []
+    private var startedWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
     private var resultWaiters: [CheckedContinuation<BeatAnalysisCacheEntry?, Never>] = []
 
-    func load(sourceURL _: URL, mediaRef _: String) async -> BeatAnalysisCacheEntry? {
+    func load(sourceURL: URL, mediaRef _: String) async -> BeatAnalysisCacheEntry? {
         loadCount += 1
+        sourceURLs.append(sourceURL)
         let waiters = startedWaiters
         startedWaiters.removeAll()
-        for waiter in waiters { waiter.resume() }
+        for waiter in waiters {
+            if loadCount >= waiter.count {
+                waiter.continuation.resume()
+            } else {
+                startedWaiters.append(waiter)
+            }
+        }
         return await withCheckedContinuation { continuation in
             resultWaiters.append(continuation)
         }
     }
 
     func waitUntilStarted() async {
-        guard loadCount == 0 else { return }
+        await waitUntilInvocationCount(1)
+    }
+
+    func waitUntilInvocationCount(_ count: Int) async {
+        guard loadCount < count else { return }
         await withCheckedContinuation { continuation in
-            startedWaiters.append(continuation)
+            startedWaiters.append((count, continuation))
         }
     }
 
     func invocationCount() -> Int { loadCount }
+
+    func requestedURLs() -> [URL] { sourceURLs }
 
     func finishNext(with result: BeatAnalysisCacheEntry?) -> Bool {
         guard !resultWaiters.isEmpty else { return false }

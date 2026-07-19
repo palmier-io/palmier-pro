@@ -34,12 +34,16 @@ final class BeatStore {
         let id = UUID()
         let url = asset.url
         let loader = cachedAnalysisLoader
-        let task = Task(priority: .utility) { @MainActor [weak self] in
+        let task = Task(priority: .utility) { @MainActor [weak self, weak asset] in
             let entry = await loader(url, key)
             guard let self, self.hydrationTasks[key]?.id == id else { return }
             self.hydrationTasks.removeValue(forKey: key)
-            guard !Task.isCancelled,
-                  self.tasks[key] == nil,
+            guard !Task.isCancelled, let asset else { return }
+            guard asset.url.standardizedFileURL == url.standardizedFileURL else {
+                self.hydrate(for: asset)
+                return
+            }
+            guard self.tasks[key] == nil,
                   self.analyses[key] == nil,
                   let entry else { return }
             self.analyses[key] = entry.analysis
