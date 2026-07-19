@@ -12,50 +12,36 @@ struct AudioMeterView: View {
     ).map { $0 }
 
     var body: some View {
-        SwiftUI.TimelineView(.animation(minimumInterval: AppTheme.AudioMeter.refreshInterval)) { _ in
-            let display = editor.audioMeter.display()
+        ZStack(alignment: .leading) {
             Canvas { context, size in
-                drawChannel(display.left, x: 0, height: size.height, context: &context)
-                drawChannel(display.right, x: AppTheme.AudioMeter.barWidth, height: size.height, context: &context)
-                fill(
-                    CGRect(
-                        x: AppTheme.AudioMeter.barWidth - AppTheme.BorderWidth.thin / 2,
-                        y: 0,
-                        width: AppTheme.BorderWidth.thin,
-                        height: size.height
-                    ),
-                    color: AppTheme.Background.previewCanvasColor,
-                    context: &context
-                )
+                drawBackground(size: size, context: &context)
+            }
 
-                let rulerX = Self.barsWidth + AppTheme.Spacing.xxs
-                for db in Self.rulerMarks {
-                    let major = db.truncatingRemainder(dividingBy: AppTheme.AudioMeter.rulerMajorStepDb) == 0
-                    fill(
-                        CGRect(
-                            x: rulerX,
-                            y: tickY(for: db, height: size.height),
-                            width: major ? AppTheme.Spacing.xs : AppTheme.BorderWidth.thick,
-                            height: AppTheme.BorderWidth.hairline
-                        ),
-                        color: AppTheme.Text.mutedColor,
-                        context: &context
-                    )
+            SwiftUI.TimelineView(.animation(minimumInterval: AppTheme.AudioMeter.refreshInterval)) { _ in
+                let display = editor.audioMeter.display()
+                Canvas { context, size in
+                    drawLevels(display, size: size, context: &context)
                 }
+                .accessibilityHidden(true)
             }
-            .frame(width: Self.contentWidth)
-            .frame(maxHeight: .infinity)
-            .padding(.horizontal, AppTheme.Spacing.xs)
-            .padding(.vertical, AppTheme.Spacing.sm)
-            .contentShape(Rectangle())
-            .onTapGesture { editor.audioMeter.resetClipping() }
-            .help("Reset Clipping Indicators")
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Master Audio Meter")
-            .accessibilityValue(accessibilityValue(display))
-            .accessibilityAction(named: "Reset Clipping Indicators") {
-                editor.audioMeter.resetClipping()
-            }
+
+            Rectangle()
+                .fill(AppTheme.Background.previewCanvasColor)
+                .frame(width: AppTheme.BorderWidth.thin)
+                .frame(maxHeight: .infinity)
+                .offset(x: AppTheme.AudioMeter.barWidth - AppTheme.BorderWidth.thin / 2)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+        .frame(width: Self.contentWidth)
+        .frame(maxHeight: .infinity)
+        .padding(.horizontal, AppTheme.Spacing.xs)
+        .padding(.vertical, AppTheme.Spacing.sm)
+        .contentShape(Rectangle())
+        .onTapGesture { editor.audioMeter.resetClipping() }
+        .help("Reset Clipping Indicators")
+        .accessibilityRepresentation {
+            AudioMeterAccessibilityRepresentation(meter: editor.audioMeter)
         }
         .frame(width: AppTheme.AudioMeter.panelWidth)
         .background(AppTheme.Background.baseColor)
@@ -66,76 +52,216 @@ struct AudioMeterView: View {
         }
     }
 
-    private func drawChannel(
-        _ channel: AudioMeterChannelDisplay,
-        x: CGFloat,
-        height: CGFloat,
-        context: inout GraphicsContext
-    ) {
-        let gap = AppTheme.BorderWidth.thin
-        let count = max(1, Int((height + gap) / (AppTheme.BorderWidth.thin + gap)))
-        let segmentHeight = (height - CGFloat(count - 1) * gap) / CGFloat(count)
-        guard segmentHeight > 0 else { return }
-        let activeCount = min(count, max(0, Int(ceil(normalized(channel.levelDb) * CGFloat(count)))))
+    private func drawBackground(size: CGSize, context: inout GraphicsContext) {
+        let layout = AudioMeterSegmentLayout(height: size.height)
+        guard layout.count > 0 else { return }
+        var background = Path()
+        for index in 0..<layout.count {
+            background.addRect(layout.segmentRect(at: index, x: 0))
+            background.addRect(layout.segmentRect(at: index, x: AppTheme.AudioMeter.barWidth))
+        }
+        context.fill(background, with: .color(AppTheme.Background.previewCanvasColor))
 
-        for index in 0..<count {
-            let color: Color
-            if channel.clipped && index == count - 1 {
-                color = AppTheme.Status.errorColor
-            } else if index < activeCount {
-                color = segmentColor(for: decibels(at: index, count: count))
-            } else {
-                color = AppTheme.Background.previewCanvasColor
-            }
-            let y = height - CGFloat(index + 1) * segmentHeight - CGFloat(index) * gap
-            fill(
-                CGRect(x: x, y: y, width: AppTheme.AudioMeter.barWidth, height: segmentHeight),
-                color: color,
-                context: &context
+        var ruler = Path()
+        let rulerX = Self.barsWidth + AppTheme.Spacing.xxs
+        for db in Self.rulerMarks {
+            let major = db.truncatingRemainder(dividingBy: AppTheme.AudioMeter.rulerMajorStepDb) == 0
+            ruler.addRect(
+                CGRect(
+                    x: rulerX,
+                    y: layout.tickY(for: db),
+                    width: major ? AppTheme.Spacing.xs : AppTheme.BorderWidth.thick,
+                    height: AppTheme.BorderWidth.hairline
+                )
             )
         }
-
-        guard channel.peakDb > AudioMeterChannelState.floorDb else { return }
-        let lineHeight = AppTheme.BorderWidth.thin
-        let y = min(
-            height - lineHeight,
-            max(0, height * (1 - normalized(channel.peakDb)) - lineHeight / 2)
-        )
-        fill(
-            CGRect(x: x, y: y, width: AppTheme.AudioMeter.barWidth, height: lineHeight),
-            color: segmentColor(for: channel.peakDb),
-            context: &context
-        )
+        context.fill(ruler, with: .color(AppTheme.Text.mutedColor))
     }
 
-    private func fill(_ rect: CGRect, color: Color, context: inout GraphicsContext) {
-        context.fill(Path(rect), with: .color(color))
+    private func drawLevels(
+        _ display: StereoAudioMeterDisplay,
+        size: CGSize,
+        context: inout GraphicsContext
+    ) {
+        let layout = AudioMeterSegmentLayout(height: size.height)
+        guard layout.count > 0 else { return }
+        var paths = AudioMeterLevelPaths()
+        append(display.left, x: 0, layout: layout, paths: &paths)
+        append(display.right, x: AppTheme.AudioMeter.barWidth, layout: layout, paths: &paths)
+        paths.draw(context: &context)
     }
 
-    private func normalized(_ db: Float) -> CGFloat {
-        let floor = AudioMeterChannelState.floorDb
-        let ceiling = AudioMeterChannelState.ceilingDb
-        return CGFloat(min(1, max(0, (db - floor) / (ceiling - floor))))
+    private func append(
+        _ channel: AudioMeterChannelDisplay,
+        x: CGFloat,
+        layout: AudioMeterSegmentLayout,
+        paths: inout AudioMeterLevelPaths
+    ) {
+        let activeCount = layout.activeSegmentCount(for: channel.levelDb)
+        for index in 0..<activeCount {
+            let rect = layout.segmentRect(at: index, x: x)
+            if channel.clipped && index == layout.count - 1 {
+                paths.addClipping(rect)
+            } else {
+                paths.add(rect, to: AudioMeterSegmentBand(decibels: layout.decibels(at: index)))
+            }
+        }
+
+        if channel.clipped && activeCount < layout.count {
+            paths.addClipping(layout.segmentRect(at: layout.count - 1, x: x))
+        }
+        if let peak = layout.peakRect(for: channel.peakDb, x: x) {
+            paths.add(peak, to: AudioMeterSegmentBand(decibels: channel.peakDb))
+        }
     }
 
-    private func decibels(at index: Int, count: Int) -> Float {
-        let floor = AudioMeterChannelState.floorDb
+}
+
+private struct AudioMeterAccessibilityRepresentation: View {
+    let meter: AudioMeterHub
+    @State private var description = "Left \(Int(AudioMeterChannelState.floorDb)) dBFS, right \(Int(AudioMeterChannelState.floorDb)) dBFS"
+
+    var body: some View {
+        Text("Master Audio Meter")
+            .accessibilityValue(description)
+            .accessibilityAction(named: "Reset Clipping Indicators") {
+                meter.resetClipping()
+            }
+            .task { await updateDescription() }
+    }
+
+    private func updateDescription() async {
+        let clock = ContinuousClock()
+        while !Task.isCancelled {
+            let value = Self.value(for: meter.display())
+            if description != value { description = value }
+            do {
+                try await clock.sleep(for: AppTheme.AudioMeter.accessibilityRefreshInterval)
+            } catch {
+                return
+            }
+        }
+    }
+
+    private static func value(for display: StereoAudioMeterDisplay) -> String {
+        "Left \(Int(display.left.levelDb.rounded())) dBFS, right \(Int(display.right.levelDb.rounded())) dBFS"
+    }
+}
+
+struct AudioMeterSegmentLayout: Equatable {
+    let height: CGFloat
+    let segmentHeight: CGFloat
+    let count: Int
+
+    init(height: CGFloat) {
+        let gap = AppTheme.BorderWidth.thin
+        let divisor = AppTheme.BorderWidth.thin + gap
+        let rawCount = (height + gap) / divisor
+        guard height.isFinite, height > 0, divisor > 0,
+              rawCount.isFinite, rawCount < CGFloat(Int.max) else {
+            self.height = max(0, height.isFinite ? height : 0)
+            segmentHeight = 0
+            count = 0
+            return
+        }
+        let count = max(1, Int(rawCount))
+        let segmentHeight = (height - CGFloat(count - 1) * gap) / CGFloat(count)
+        guard segmentHeight.isFinite, segmentHeight > 0 else {
+            self.height = height
+            self.segmentHeight = 0
+            self.count = 0
+            return
+        }
+        self.height = height
+        self.segmentHeight = segmentHeight
+        self.count = count
+    }
+
+    func segmentRect(at index: Int, x: CGFloat) -> CGRect {
+        let y = height - CGFloat(index + 1) * segmentHeight - CGFloat(index) * AppTheme.BorderWidth.thin
+        return CGRect(x: x, y: y, width: AppTheme.AudioMeter.barWidth, height: segmentHeight)
+    }
+
+    func activeSegmentCount(for decibels: Float) -> Int {
+        Int(ceil(normalized(decibels) * CGFloat(count)))
+    }
+
+    func decibels(at index: Int) -> Float {
+        guard count > 0 else { return AudioMeterChannelState.floorDb }
         let position = (Float(index) + 0.5) / Float(count)
-        return floor + position * (AudioMeterChannelState.ceilingDb - floor)
+        return AudioMeterChannelState.floorDb
+            + position * (AudioMeterChannelState.ceilingDb - AudioMeterChannelState.floorDb)
     }
 
-    private func segmentColor(for db: Float) -> Color {
-        if db >= AppTheme.AudioMeter.redThresholdDb { return AppTheme.AudioMeter.redSegment }
-        if db >= AppTheme.AudioMeter.yellowThresholdDb { return AppTheme.AudioMeter.yellowSegment }
-        return AppTheme.AudioMeter.greenSegment
+    func peakRect(for decibels: Float, x: CGFloat) -> CGRect? {
+        guard decibels.isFinite, decibels > AudioMeterChannelState.floorDb, height > 0 else { return nil }
+        let lineHeight = min(AppTheme.BorderWidth.thin, height)
+        let y = min(height - lineHeight, max(0, height * (1 - normalized(decibels)) - lineHeight / 2))
+        return CGRect(x: x, y: y, width: AppTheme.AudioMeter.barWidth, height: lineHeight)
     }
 
-    private func tickY(for db: Float, height: CGFloat) -> CGFloat {
-        let y = height * (1 - normalized(db)) - AppTheme.BorderWidth.hairline / 2
+    func tickY(for decibels: Float) -> CGFloat {
+        guard height > AppTheme.BorderWidth.hairline else { return 0 }
+        let y = height * (1 - normalized(decibels)) - AppTheme.BorderWidth.hairline / 2
         return min(height - AppTheme.BorderWidth.hairline, max(0, y))
     }
 
-    private func accessibilityValue(_ display: StereoAudioMeterDisplay) -> String {
-        "Left \(Int(display.left.levelDb.rounded())) dBFS, right \(Int(display.right.levelDb.rounded())) dBFS"
+    private func normalized(_ decibels: Float) -> CGFloat {
+        guard decibels.isFinite else { return 0 }
+        let range = AudioMeterChannelState.ceilingDb - AudioMeterChannelState.floorDb
+        return CGFloat(min(1, max(0, (decibels - AudioMeterChannelState.floorDb) / range)))
+    }
+}
+
+private enum AudioMeterSegmentBand {
+    case green
+    case yellow
+    case red
+
+    init(decibels: Float) {
+        if decibels >= AppTheme.AudioMeter.redThresholdDb {
+            self = .red
+        } else if decibels >= AppTheme.AudioMeter.yellowThresholdDb {
+            self = .yellow
+        } else {
+            self = .green
+        }
+    }
+}
+
+private struct AudioMeterLevelPaths {
+    private var green = Path()
+    private var yellow = Path()
+    private var red = Path()
+    private var clipping = Path()
+    private var hasGreen = false
+    private var hasYellow = false
+    private var hasRed = false
+    private var hasClipping = false
+
+    mutating func add(_ rect: CGRect, to band: AudioMeterSegmentBand) {
+        switch band {
+        case .green:
+            green.addRect(rect)
+            hasGreen = true
+        case .yellow:
+            yellow.addRect(rect)
+            hasYellow = true
+        case .red:
+            red.addRect(rect)
+            hasRed = true
+        }
+    }
+
+    mutating func addClipping(_ rect: CGRect) {
+        clipping.addRect(rect)
+        hasClipping = true
+    }
+
+    func draw(context: inout GraphicsContext) {
+        if hasGreen { context.fill(green, with: .color(AppTheme.AudioMeter.greenSegment)) }
+        if hasYellow { context.fill(yellow, with: .color(AppTheme.AudioMeter.yellowSegment)) }
+        if hasRed { context.fill(red, with: .color(AppTheme.AudioMeter.redSegment)) }
+        if hasClipping { context.fill(clipping, with: .color(AppTheme.Status.errorColor)) }
     }
 }
