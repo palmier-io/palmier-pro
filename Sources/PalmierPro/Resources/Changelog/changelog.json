@@ -2,25 +2,22 @@
   "changelogURL": "https://github.com/palmier-io/palmier-pro/releases",
   "entries": [
     {
-      "version": "0.6.9",
-      "date": "2026-07-14",
+      "version": "0.6.12",
+      "date": "2026-07-19",
       "sections": [
         {
           "heading": "New",
           "items": [
-            "More Text Styling: Agent can now have full control over text styling."
+            "Text Stencil: new text stencil support.",
+            "Drop Finder files onto the timeline: Easier way to drag files from your computer directly onto the timeline.",
+            "Agent new tool: Agent can now capture frames from your timeline."
           ]
         },
         {
           "heading": "Improved",
           "items": [
-            "Better Inspector panel UI"
-          ]
-        },
-        {
-          "heading": "Fixed",
-          "items": [
-            "Fix agent undo causing crashes."
+            "Claude Desktop MCP server: We released mcpb 2.0 where it eliminates the need to reinstall the MCP server to Claude Desktop on every update. You do need to re-install one more time to update to 2.0.",
+            "Rendering: Better audio meter rendering to improve performance."
           ]
         }
       ]
