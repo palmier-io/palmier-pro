@@ -381,4 +381,43 @@ private struct FixedWordSource: CaptionWordSource {
         #expect(ToolExecutor.shortDismissalWarning("视频") == nil)   // 2 CJK chars — distinctive
         #expect(ToolExecutor.shortDismissalWarning("okay") == nil)   // 4 Latin letters — distinctive
     }
+
+    /// Deliverable 3 — the near-sound lint safety net composes end-to-end with a per-project model
+    /// override. Captions containing 开视频 and a stubbed completer suggesting 拍视频: the flag surfaces
+    /// (flag-only default), then applying it via update_text rewrites the clip and promotes the widened
+    /// term — all while the project is pinned to a non-default local engine, proving the two features
+    /// are independent (the report's exact 开视频→拍视频 scenario).
+    @Test func nearSoundLintFlagAndApplyComposeUnderModelOverride() async throws {
+        try await withFreshLibrary {
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("lint-override-\(UUID().uuidString).palmier", isDirectory: true)
+            defer { try? FileManager.default.removeItem(at: dir) }
+            let e = editorWithCaptions([("好久没有开视频了", 100, 50)])
+            e.projectURL = dir
+            e.transcriptionLocalModel = .whisper  // project pinned off the app-global engine
+            e.captionWordSourceProvider = { _ in
+                FixedWordSource(words: [WordTiming(text: "好久没有拍视频了", startFrame: 100, endFrame: 150)])
+            }
+            let target = clipId(e, text: "好久没有开视频了")
+            let exec = ToolExecutor(editor: e)
+
+            // Flag-only default: the near-sound error surfaces, nothing is applied.
+            let stub = StubCompleter(response: """
+            [{"clipId":"\(target)","original":"开视频","suggestion":"拍视频","reason":"near-sound","confidence":0.8}]
+            """)
+            let lint = body(try await exec.captionLint(e, ["mode": "flags"], completer: stub))
+            #expect((lint["flags"] as? [[String: Any]])?.count == 1)
+            #expect((lint["applied"] as? [[String: Any]])?.isEmpty ?? true)
+            #expect(e.timeline.tracks.flatMap(\.clips).first { $0.id == target }?.textContent == "好久没有开视频了")
+
+            // Applying the suggestion via update_text rewrites the clip and promotes the widened term.
+            let apply = body(await exec.execute(name: "update_text", args: [
+                "entries": [["clipId": target, "content": "好久没有拍视频了"]],
+            ]))
+            #expect((apply["promoted"] as? [[String: Any]])?.isEmpty == false)
+            #expect(e.timeline.tracks.flatMap(\.clips).first { $0.id == target }?.textContent == "好久没有拍视频了")
+
+            // The override is untouched by the lint/edit flow — model selection and lint are independent.
+            #expect(e.resolvedLocalEngine == .whisper)
+        }
+    }
 }
