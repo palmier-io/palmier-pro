@@ -41,7 +41,7 @@ final class MCPService {
                 instructions: AgentInstructions.serverInstructions + AgentInstructions.projectNavigation,
                 capabilities: .init(
                     resources: .init(subscribe: false, listChanged: false),
-                    tools: .init(listChanged: false)
+                    tools: .init(listChanged: true)
                 )
             )
             await Self.registerTools(on: server, executor: toolExecutor)
