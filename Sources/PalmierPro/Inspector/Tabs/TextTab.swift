@@ -145,7 +145,29 @@ struct TextAnimateTab: View {
                 ),
                 highlight: anim.highlight
             )
+            if anim.preset != .none { granularityRow(anim) }
             if anim.preset.usesHighlight { highlightRow(anim) }
+        }
+    }
+
+    private func granularityRow(_ anim: TextAnimation) -> some View {
+        InspectorRow(
+            label: "Animate by",
+            labelHelp: "Whether each step reveals a whole word or a single character.",
+            onReset: { setAnim { $0.granularity = .word } }
+        ) {
+            Menu {
+                Button { setAnim { $0.granularity = .word } } label: {
+                    Label("Word", systemImage: anim.granularity == .word ? "checkmark" : "")
+                }
+                Button { setAnim { $0.granularity = .char } } label: {
+                    Label("Character", systemImage: anim.granularity == .char ? "checkmark" : "")
+                }
+            } label: {
+                EditorMenuValue(text: anim.granularity == .char ? "Character" : "Word", expanded: true)
+            }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
+            .frame(maxWidth: .infinity)
         }
     }
 

@@ -176,33 +176,34 @@ struct CaptionTab: View {
 
     private var modelMenu: some View {
         Menu {
-            modelMenuItem(nil, title: "Default (app setting)")
-            Divider()
             modelMenuItem(.qwen3, title: "Qwen3 (best Chinese)")
             modelMenuItem(.whisper, title: "Whisper (best English)")
             modelMenuItem(.apple, title: "Apple")
         } label: {
-            EditorMenuValue(text: modelFieldLabel(editor.transcriptionLocalModel), expanded: true)
+            EditorMenuValue(text: modelFieldLabel, expanded: true)
         }
         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
         .frame(maxWidth: .infinity)
     }
 
-    private func modelMenuItem(_ engine: LocalSpeechEngine?, title: String) -> some View {
-        Button {
-            setLocalModel(engine)
+    private func modelMenuItem(_ engine: LocalSpeechEngine, title: String) -> some View {
+        let isAppDefault = engine == LocalSpeechEngine.current
+        return Button {
+            // Picking the app default clears the override; anything else pins it to this project.
+            setLocalModel(isAppDefault ? nil : engine)
         } label: {
-            Label(title, systemImage: editor.transcriptionLocalModel == engine ? "checkmark" : "")
+            Label(isAppDefault ? "\(title) — Default" : title,
+                  systemImage: editor.resolvedLocalEngine == engine ? "checkmark" : "")
         }
     }
 
-    private func modelFieldLabel(_ engine: LocalSpeechEngine?) -> String {
-        switch engine {
-        case nil: "Default"
+    private var modelFieldLabel: String {
+        let name = switch editor.resolvedLocalEngine {
         case .qwen3: "Qwen3"
         case .whisper: "Whisper"
         case .apple: "Apple"
         }
+        return editor.transcriptionLocalModel == nil ? "\(name) — Default" : name
     }
 
     private func providerForPreference(_ pref: TranscriptionPreference) -> TranscriptionProvider {
