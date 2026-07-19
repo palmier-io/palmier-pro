@@ -162,6 +162,10 @@ enum ClipRenderer {
             drawKeyframeMarkers(clip: clip, in: rect, context: context)
         }
 
+        if showDetailChrome, clip.mediaType == .text, clip.captionGroupId != nil, clip.resyncConflict == true {
+            drawCaptionConflictBadge(in: rect, context: context)
+        }
+
         if markBeats, type == .audio, clip.sourceClipType != .sequence, let beats = cache?.beatAnalysis(for: clip.mediaRef) {
             drawBeatTicks(analysis: beats, clip: clip, in: rect, fps: fps, context: context)
         }
@@ -780,6 +784,30 @@ enum ClipRenderer {
         str.draw(at: NSPoint(x: rect.minX + padH, y: rect.minY + padV))
         context.restoreGState()
         return rect
+    }
+
+    /// Amber marker on a caption clip whose text no longer matches its audio (resyncConflict). A
+    /// right-aligned "!" pill, or a dot when the clip is too narrow for one. Display-only — the inspector
+    /// carries resolve actions.
+    private static func drawCaptionConflictBadge(in rect: NSRect, context: CGContext) {
+        let fill = AppTheme.Status.captionConflict
+        let text = "!"
+        let padH = AppTheme.ComponentSize.timelineBadgePadH
+        let width = NSAttributedString(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: AppTheme.FontSize.xs, weight: .semibold),
+        ]).size().width + padH * 2
+        let x = rect.maxX - Trim.handleWidth - width - AppTheme.Spacing.xxs
+        if x > rect.minX + AppTheme.Spacing.sm,
+           drawPill(text, textColor: NSColor.black.withAlphaComponent(AppTheme.Opacity.prominent), fill: fill,
+                    fontSize: AppTheme.FontSize.xs, at: NSPoint(x: x, y: rect.minY + AppTheme.Spacing.xxs),
+                    maxWidth: width, context: context) != nil {
+            return
+        }
+        guard rect.width >= AppTheme.ComponentSize.timelineClipBorderMinWidth else { return }
+        let d = AppTheme.ComponentSize.timelineDotSize
+        let inset = AppTheme.Spacing.xxs
+        context.setFillColor(fill.cgColor)
+        context.fillEllipse(in: CGRect(x: rect.maxX - d - inset, y: rect.minY + inset, width: d, height: d))
     }
 
     private static func drawLabelBar(clip: Clip, type: ClipType, in labelRect: NSRect, clipRect: NSRect, context: CGContext, displayName: String? = nil, badge: String? = nil, fps: Int) {
