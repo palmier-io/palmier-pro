@@ -76,7 +76,7 @@ final class MCPService {
         Log.mcp.notice("http server stopped")
     }
 
-    private nonisolated static func registerTools(on server: Server, executor: ToolExecutor) async {
+    nonisolated static func registerTools(on server: Server, executor: ToolExecutor) async {
         let tools: [Tool] = ToolDefinitions.mcpServer.map { def in
             Tool(name: def.name.rawValue, description: def.description, inputSchema: def.mcpSchemaValue)
         }

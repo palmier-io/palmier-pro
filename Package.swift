@@ -86,7 +86,10 @@ let package = Package(
         .plugin(name: "MetalCIKernelPlugin", capability: .buildTool()),
         .testTarget(
             name: "PalmierProTests",
-            dependencies: ["PalmierPro"],
+            dependencies: [
+                "PalmierPro",
+                .product(name: "MCP", package: "swift-sdk"),
+            ],
             path: "Tests/PalmierProTests"
         ),
     ]

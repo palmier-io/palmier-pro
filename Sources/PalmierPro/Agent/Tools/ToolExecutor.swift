@@ -224,6 +224,7 @@ final class ToolExecutor {
         case .getTimeline:   return try getTimeline(editor, args)
         case .getMedia:      return try getMedia(editor, args)
         case .inspectMedia:  return try await inspectMedia(editor, args)
+        case .captureFrame:  return try await captureFrame(editor, args)
         case .getTranscript: return try await getTranscript(editor, args)
         case .detectBeats:   return try await detectBeats(editor, args)
         case .inspectTimeline: return try await inspectTimeline(editor, args)
