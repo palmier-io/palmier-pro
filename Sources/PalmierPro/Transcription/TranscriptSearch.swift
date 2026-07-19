@@ -7,11 +7,23 @@ enum TranscriptSearch {
         let start: Double
         let end: Double
         let text: String
+        /// From a prior engine tag (e.g. qw6 after the qw7 bump): findable but pre-punctuation.
+        let stale: Bool
+
+        init(assetID: String, start: Double, end: Double, text: String, stale: Bool = false) {
+            self.assetID = assetID
+            self.start = start
+            self.end = end
+            self.text = text
+            self.stale = stale
+        }
     }
 
     /// Dual-layer search: a query hits if it matches the RAW segment text OR the glossary-CORRECTED
     /// text, so both the mis-heard spelling and the canonical stay findable. Corrected/canonical hits
     /// rank above raw-only hits. Passing no corrector (or an empty one) searches raw text only.
+    /// Reads tolerate a tag bump: an asset with no current-tag transcript falls back to a prior tag's
+    /// entry, and its hits are flagged `stale` (see cachedOnDiskAllowingStale).
     static func search(
         query: String,
         assets: [(id: String, url: URL)],
@@ -19,14 +31,21 @@ enum TranscriptSearch {
         corrector: GlossaryCorrector? = nil,
         engine: LocalSpeechEngine = .current
     ) -> [Hit] {
-        rank(
+        let loaded = assets.compactMap { asset in
+            TranscriptCache.cachedOnDiskAllowingStale(for: asset.url, engine: engine)
+                .map { (id: asset.id, transcript: $0.result, stale: $0.stale) }
+        }
+        let staleIDs = Set(loaded.filter(\.stale).map(\.id))
+        let hits = rank(
             query: query,
-            transcripts: assets.compactMap { asset in
-                TranscriptCache.cachedOnDisk(for: asset.url, engine: engine).map { (asset.id, $0) }
-            },
+            transcripts: loaded.map { (assetID: $0.id, transcript: $0.transcript) },
             limit: limit,
             corrector: corrector
         )
+        guard !staleIDs.isEmpty else { return hits }
+        return hits.map { hit in
+            Hit(assetID: hit.assetID, start: hit.start, end: hit.end, text: hit.text, stale: staleIDs.contains(hit.assetID))
+        }
     }
 
     /// The disk-independent ranking core: a query hits if it matches the RAW segment text OR the

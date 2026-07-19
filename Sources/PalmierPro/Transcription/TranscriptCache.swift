@@ -87,6 +87,26 @@ actor TranscriptCache {
         return nil
     }
 
+    /// Disk-only read for read-only consumers that prefer stale text over nothing (spoken search).
+    /// Returns the current-tag entry when present (`stale: false`); otherwise falls back to this
+    /// engine's PRIOR cache tags (`stale: true`) so a tag bump doesn't blank search — the qw6 entries
+    /// the bump orphaned stay findable. `transcript()` still regenerates under the current tag on a
+    /// full read, so this never poisons the current slot. Resync deliberately does NOT use this — it
+    /// needs the current tag's word stream and skips uncached refs instead.
+    nonisolated static func cachedOnDiskAllowingStale(
+        for url: URL, engine: LocalSpeechEngine? = nil
+    ) -> (result: TranscriptionResult, stale: Bool)? {
+        let engine = engine ?? .current
+        if let fresh = cachedOnDisk(for: url, engine: engine) { return (fresh, false) }
+        for tag in engine.priorCacheTags {
+            guard let key = key(for: url, variant: .localTag(tag)),
+                  let data = try? Data(contentsOf: diskURL(key)),
+                  let result = try? JSONDecoder().decode(TranscriptionResult.self, from: data) else { continue }
+            return (result, true)
+        }
+        return nil
+    }
+
     static func filter(_ r: TranscriptionResult, to range: ClosedRange<Double>) -> TranscriptionResult {
         let segments = r.segments.filter { $0.end > range.lowerBound && $0.start < range.upperBound }
         let words = r.words.filter { w in
@@ -175,6 +195,7 @@ actor TranscriptCache {
 
     enum CacheVariant {
         case local(engine: LocalSpeechEngine)
+        case localTag(String?)  // explicit engine tag; used to reach a prior version's slot for stale reads
         case cloud(range: ClosedRange<Double>?, language: String?)
         case readAlias  // provider-neutral "latest full transcript" pointer; the fallback cachedOnDisk reads
 
@@ -184,6 +205,8 @@ actor TranscriptCache {
                 // Engine-tagged so switching engines/variants re-transcribes; Apple stays untagged
                 // to keep pre-engine cache entries valid.
                 return engine.cacheTag
+            case .localTag(let tag):
+                return tag
             case .cloud(let range, let language):
                 let lang = language ?? "auto"
                 guard let range else { return "cloud|\(lang)|full" }

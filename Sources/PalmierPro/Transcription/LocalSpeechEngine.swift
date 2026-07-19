@@ -44,6 +44,18 @@ enum LocalSpeechEngine: String, CaseIterable, Identifiable, Sendable, Codable {
         }
     }
 
+    /// Cache tags this engine wrote in earlier app versions, newest first. Read-only consumers
+    /// (spoken search) fall back to these when the current-tag slot is empty so a tag bump doesn't
+    /// blank search until re-transcription — the stale text (e.g. pre-punctuation) is flagged, while
+    /// a full read still regenerates under `cacheTag`. Not used by resync, which needs the current tag.
+    var priorCacheTags: [String] {
+        switch self {
+        case .apple: []
+        case .qwen3: ["qw6", "qw5"]
+        case .whisper: ["wk1"]
+        }
+    }
+
     private static let defaultsKey = "localSpeechEngine"
 
     static var current: LocalSpeechEngine {

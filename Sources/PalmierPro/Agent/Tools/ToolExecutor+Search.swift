@@ -88,13 +88,15 @@ extension ToolExecutor {
             .map { (id: $0.id, url: $0.url) }
         let hits = TranscriptSearch.search(query: query, assets: candidates, limit: limit, corrector: glossaryCorrector(editor), engine: editor.resolvedLocalEngine)
         return hits.map { hit in
-            [
+            var entry: [String: Any] = [
                 "mediaRef": hit.assetID,
                 "name": editor.mediaAssets.first { $0.id == hit.assetID }?.name ?? "",
                 "startSeconds": hit.start,
                 "endSeconds": hit.end,
                 "text": hit.text,
             ]
+            if hit.stale { entry["stale"] = true }
+            return entry
         }
     }
 

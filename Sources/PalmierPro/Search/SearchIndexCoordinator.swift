@@ -48,6 +48,13 @@ final class SearchIndexCoordinator {
     var assetsProvider: () -> [MediaAsset] = { [] }
     /// The project's resolved on-device engine; keeps index reads/writes on the same cache slot.
     var localEngineProvider: () -> LocalSpeechEngine = { .current }
+    /// mediaRefs referenced by the ACTIVE timeline (incl. nested) — indexed first, transcribed first.
+    var activeTimelineRefsProvider: () -> Set<String> = { [] }
+    /// mediaRefs referenced by any OPEN timeline (incl. nested). Background SPOKEN transcription is
+    /// limited to these: a library asset that isn't on an open timeline is visual-indexed but not
+    /// eagerly transcribed, so a cache-tag bump can't fan re-transcription out across the whole
+    /// library — stale/never-cached assets transcribe lazily on first read instead.
+    var openTimelineRefsProvider: () -> Set<String> = { [] }
 
     private var queue: [IndexWork] = []
     private var scheduledIds: Set<String> = []
@@ -113,9 +120,23 @@ final class SearchIndexCoordinator {
                 "queuedBefore": queue.count
             ]
         )
-        for asset in assets {
+        for asset in Self.prioritized(assets, active: activeTimelineRefsProvider(), open: openTimelineRefsProvider()) {
             schedule(asset)
         }
+    }
+
+    /// Active-timeline assets first, then other open-project assets, then the rest — so the clips a
+    /// user is actually working on index (and, where eligible, transcribe) ahead of idle library media.
+    /// Stable within each tier to keep ordering deterministic.
+    static func prioritized(_ assets: [MediaAsset], active: Set<String>, open: Set<String>) -> [MediaAsset] {
+        func tier(_ asset: MediaAsset) -> Int {
+            if active.contains(asset.id) { return 0 }
+            if open.contains(asset.id) { return 1 }
+            return 2
+        }
+        return assets.enumerated()
+            .sorted { (tier($0.element), $0.offset) < (tier($1.element), $1.offset) }
+            .map(\.element)
     }
 
     func schedule(_ asset: MediaAsset) {
@@ -177,6 +198,10 @@ final class SearchIndexCoordinator {
         )
         worker = Task(priority: .utility) { [weak self] in
             while let self, !Task.isCancelled, let work = self.dequeue() {
+                // Yield the qwen3 actor to any interactive transcript read before starting the next
+                // item, so a get_transcript is never stuck behind the background queue.
+                await BackgroundTranscriptionGate.shared.waitUntilIdle()
+                guard !Task.isCancelled else { break }
                 self.currentAssetFraction = 0
                 await self.process(work)
             }
@@ -232,7 +257,21 @@ final class SearchIndexCoordinator {
             retry = assetsProvider().first { $0.id == work.asset.id }
             return
         }
-        await indexOne(work.asset, model: model, transcribe: result.needsTranscript, engine: engine)
+        // Off-timeline library media is visual-indexed here but transcribed lazily on first read — so
+        // a cache-tag bump can't enqueue whole-library re-transcription.
+        let transcribe = Self.shouldBackgroundTranscribe(
+            needsTranscript: result.needsTranscript,
+            assetId: work.asset.id,
+            openTimelineRefs: openTimelineRefsProvider()
+        )
+        await indexOne(work.asset, model: model, transcribe: transcribe, engine: engine)
+    }
+
+    /// Background spoken transcription runs only for a cache-missing asset that an open timeline uses.
+    /// A stale-under-a-new-tag or never-cached library asset that no open project references is left
+    /// for lazy on-read transcription, so a tag bump doesn't fan re-transcription across the library.
+    nonisolated static func shouldBackgroundTranscribe(needsTranscript: Bool, assetId: String, openTimelineRefs: Set<String>) -> Bool {
+        needsTranscript && openTimelineRefs.contains(assetId)
     }
 
     private func isCurrent(_ work: IndexWork) -> Bool {

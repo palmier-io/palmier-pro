@@ -52,6 +52,23 @@ final class EditorViewModel {
             yield &timelines[i]
         }
     }
+
+    /// mediaRefs of the media clips reachable from the given timelines, following nested sequences.
+    /// Feeds the search indexer's transcription gate and priority ordering.
+    func mediaRefs(inTimelines ids: [String]) -> Set<String> {
+        let resolve: (String) -> Timeline? = { [timelines] id in timelines.first { $0.id == id } }
+        var refs: Set<String> = []
+        for id in ids {
+            guard let root = resolve(id) else { continue }
+            for timeline in [root] + root.reachableTimelines(resolve: resolve) {
+                for clip in timeline.tracks.flatMap(\.clips) where clip.sourceClipType != .sequence {
+                    refs.insert(clip.mediaRef)
+                }
+            }
+        }
+        return refs
+    }
+
     var mediaManifest = MediaManifest()
     var generationLog = GenerationLog()
 
@@ -268,6 +285,8 @@ final class EditorViewModel {
         agentService.editor = self
         searchIndex.assetsProvider = { [weak self] in self?.mediaAssets ?? [] }
         searchIndex.localEngineProvider = { [weak self] in self?.resolvedLocalEngine ?? .current }
+        searchIndex.activeTimelineRefsProvider = { [weak self] in self?.mediaRefs(inTimelines: [self?.activeTimelineId].compactMap { $0 }) ?? [] }
+        searchIndex.openTimelineRefsProvider = { [weak self] in self?.mediaRefs(inTimelines: self?.openTimelineIds ?? []) ?? [] }
         mediaVisualCache.speech.onAnalyzingCountChange = { [weak self] count in
             self?.speechAnalyzingCount = count
         }
