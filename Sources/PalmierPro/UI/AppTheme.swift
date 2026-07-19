@@ -90,6 +90,7 @@ enum AppTheme {
         static let panelWidth: CGFloat = 32
         static let barWidth: CGFloat = 8
         static let refreshInterval: Double = 1.0 / 30.0
+        static let accessibilityRefreshInterval: Duration = .milliseconds(250)
         static let rulerStepDb: Float = 6
         static let rulerMajorStepDb: Float = 12
         static let yellowThresholdDb: Float = -20
