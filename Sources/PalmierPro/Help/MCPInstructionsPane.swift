@@ -27,26 +27,6 @@ struct MCPInstructionsPane: View {
         """
     }
 
-    private var claudeDesktopJSONConfig: String {
-        """
-        {
-          "mcpServers": {
-            "palmier-pro": {
-              "command": "npx",
-              "args": [
-                "-y",
-                "mcp-remote",
-                "\(mcpEndpoint)",
-                "--allow-http",
-                "--transport",
-                "http-only"
-              ]
-            }
-          }
-        }
-        """
-    }
-
     private var cursorDeepLink: URL? {
         let config: [String: String] = ["type": "http", "url": mcpEndpoint]
         guard
@@ -134,8 +114,8 @@ struct MCPInstructionsPane: View {
             action: ("Install in Claude Desktop", openClaudeDesktopBundle)
         ) {
             ManualFallback(
-                intro: "In Claude Desktop, open Settings › Developer › Edit Config, then add this configuration to mcpServers.",
-                code: claudeDesktopJSONConfig
+                intro: "In Claude Desktop, choose Settings › Extensions › Advanced settings › Install extension…, then select the connector at this path.",
+                code: claudeDesktopBundleURL?.path ?? "palmier-pro.mcpb"
             )
         }
     }
